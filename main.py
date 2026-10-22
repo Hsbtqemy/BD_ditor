@@ -27,7 +27,7 @@ from database import (DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT, citations
                       collection_par_defaut, contributions_album, creer_document,
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
-                      liens_vus, relecture_planches, reindex_region, retirer_locuteur_muet,
+                      liens_vus, relecture_planches, reindex_region, retirer_liens_caches,
                       sql_projet_d_album, unindex_region)
 import autorisation
 import conflit
@@ -1051,7 +1051,7 @@ def update_region(region_id: int, patch: RegionUpdate,
                                  actuel=existing[champ], nouveau=valeur)
     except conflit.Perime as exc:
         raise _conflit_http(exc)
-    retire = None
+    retires: dict = {}
     if fields:
         avant = journal.snapshot_region(conn, region_id)
         cols = ", ".join(f"{k} = ?" for k in fields)
@@ -1059,20 +1059,23 @@ def update_region(region_id: int, patch: RegionUpdate,
                      (*fields.values(), region_id))
         if "ocr_texte" in fields:
             reindex_region(conn, region_id)
-        # ANN-8 (Hugo, 2026-10-21) — une zone de texte qui DEVIENT case ou boîte personnage
-        # (le type change réellement) perd son locuteur : il restait, invisible à l'écran et compté partout ailleurs. Le
-        # retrait entre dans CE geste — `avant` le porte sous `locuteur`, la clé d'un nœud
-        # d'instantané profond — et non dans un `delien` à part : un seul Ctrl+Z rend le
-        # type ET le locuteur (cf. `undo._liens_a_rendre`), sans état intermédiaire.
+        # ANN-8 (Hugo, 2026-10-21) — une région qui CHANGE de type (le type change
+        # réellement) perd ce que son nouveau type ne montre pas : une zone de texte devenue
+        # case ou boîte personnage son locuteur, une case devenue zone de texte ou boîte
+        # personnage sa situation, une boîte personnage devenue autre chose son personnage
+        # montré. Ils restaient, invisibles à l'écran et comptés partout ailleurs. Le retrait
+        # entre dans CE geste — `avant` le porte sous `locuteur`, `presence`, `attributs`,
+        # les clés d'un nœud d'instantané profond — et non dans des `delien` à part : un seul
+        # Ctrl+Z rend le type ET ses liens (cf. `undo._liens_a_rendre`), sans état
+        # intermédiaire.
         #
         # Et chaque changement de type PHOTOGRAPHIE les liens qu'il voit, sous `liens_vus` —
         # une clé à part, qui ne veut pas dire « retiré » : l'annulation compare à elle ce
         # que la région porte au moment de défaire (`undo._garder_liens_du_type`).
         if "type" in fields and fields["type"] != existing["type"]:
             avant["liens_vus"] = liens_vus(conn, region_id)
-            retire = retirer_locuteur_muet(conn, region_id)
-            if retire is not None:
-                avant["locuteur"] = retire
+            retires = retirer_liens_caches(conn, region_id)
+            avant.update(retires)
         # Retouche humaine d'une zone (souvent un pré-remplissage machine) : événement +
         # surface dénormalisée `touche` (lue par l'indicateur de dérive). marquer_touche
         # après le snapshot `apres` (touche n'est pas une colonne métier → hors instantané).
@@ -1081,10 +1084,16 @@ def update_region(region_id: int, patch: RegionUpdate,
         journal.marquer_touche(conn, region_id)
         conn.commit()
     res = _row(conn.execute("SELECT * FROM regions WHERE id = ?", (region_id,)))
-    if retire is not None:
-        # L'écran le DIT : sans quoi le retrait se découvrirait en repassant la région en bulle.
-        res["locuteur_retire"] = _row(conn.execute(
-            "SELECT id, nom, serie FROM personnages WHERE id = ?", (retire,)))
+    # L'écran le DIT : sans quoi le retrait se découvrirait en repassant la région à son type
+    # d'avant. Un personnage par son nom — il apparaissait dans cette région, que l'appelant
+    # écrit — ; une situation par son NOMBRE de valeurs seulement : un terme peut être local
+    # à une collection que l'appelant ne lit pas.
+    for cle, champ in (("locuteur", "locuteur_retire"), ("presence", "presence_retiree")):
+        if cle in retires:
+            res[champ] = _row(conn.execute(
+                "SELECT id, nom, serie FROM personnages WHERE id = ?", (retires[cle],)))
+    if "attributs" in retires:
+        res["situation_retiree"] = len(retires["attributs"])
     return res
 
 

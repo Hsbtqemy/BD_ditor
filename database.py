@@ -15,7 +15,7 @@ import unicodedata
 from contextlib import contextmanager
 from typing import Iterator
 
-from config import DB_PATH, STATUTS, TYPES_LOCUTEUR
+from config import DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUATION
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
@@ -1777,8 +1777,9 @@ def retirer_locuteur_muet(conn: sqlite3.Connection, region_id: int) -> int | Non
 
 def liens_vus(conn: sqlite3.Connection, region_id: int) -> dict:
     """Les liens que porte une région au moment d'un changement de type : `{"locuteur": id
-    du personnage, ou None}`. Des IDENTIFIANTS seulement, comme tout ce qu'un acte range au
-    journal.
+    du personnage ou None, "presence": id du personnage montré ou None, "attributs": [ids
+    des valeurs de sa situation]}`. Des IDENTIFIANTS seulement, comme tout ce qu'un acte
+    range au journal — les clés mêmes d'un nœud d'instantané profond.
 
     ANN-8 — le changement de type les PHOTOGRAPHIE dans son `avant`, sous `liens_vus`, et
     l'annulation compare à cette photographie ce que la région porte au moment de défaire
@@ -1786,9 +1787,74 @@ def liens_vus(conn: sqlite3.Connection, region_id: int) -> dict:
     ANN-8 qui portait déjà le locuteur de la bulle qu'elle était, repassée en bulle puis
     Ctrl+Z, recevait un 409 faux, sa seule auteure étant prise pour quelqu'un d'autre. La clé
     est distincte de `locuteur`, qui dit, elle, ce que le changement a RETIRÉ."""
-    r = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
-                     (region_id,)).fetchone()
-    return {"locuteur": r["personnage_id"] if r else None}
+    vus: dict = {}
+    for cle, table in (("locuteur", "bulle_locuteur"), ("presence", "personnage_presence")):
+        r = conn.execute(f"SELECT personnage_id FROM {table} WHERE region_id = ?",
+                         (region_id,)).fetchone()
+        vus[cle] = r["personnage_id"] if r else None
+    vus["attributs"] = [r["valeur_id"] for r in conn.execute(
+        "SELECT valeur_id FROM region_attribut WHERE region_id = ? ORDER BY valeur_id",
+        (region_id,))]
+    return vus
+
+
+def retirer_liens_caches(conn: sqlite3.Connection, region_id: int) -> dict:
+    """Retire d'une région ce que son type ne montre pas — le locuteur hors des zones de
+    texte (`TYPES_LOCUTEUR`), le personnage montré hors des boîtes personnage
+    (`TYPES_PRESENCE`), la situation hors des cases (`TYPES_SITUATION`) — et rend ce qui est
+    parti : `{"locuteur": id, "presence": id, "attributs": [ids]}`, chaque clé seulement si
+    elle porte quelque chose. NE JOURNALISE PAS et NE COMMITE PAS : le changement de type le
+    range dans SON acte (`PUT /api/regions/{id}`).
+
+    ANN-8 — le miroir du locuteur, tranché par Hugo le 2026-10-21 (« c'est utile ») : une
+    case devenue bulle gardait sa situation, une boîte personnage devenue bulle son
+    personnage montré, ni l'un ni l'autre visibles sur une bulle, et comptés ailleurs."""
+    r = conn.execute("SELECT type FROM regions WHERE id = ?", (region_id,)).fetchone()
+    if r is None:
+        return {}
+    vus, retires = liens_vus(conn, region_id), {}
+    if vus["locuteur"] is not None and r["type"] not in TYPES_LOCUTEUR:
+        conn.execute("DELETE FROM bulle_locuteur WHERE region_id = ?", (region_id,))
+        retires["locuteur"] = vus["locuteur"]
+    if vus["presence"] is not None and r["type"] not in TYPES_PRESENCE:
+        conn.execute("DELETE FROM personnage_presence WHERE region_id = ?", (region_id,))
+        retires["presence"] = vus["presence"]
+    if vus["attributs"] and r["type"] not in TYPES_SITUATION:
+        conn.execute("DELETE FROM region_attribut WHERE region_id = ?", (region_id,))
+        retires["attributs"] = vus["attributs"]
+    return retires
+
+
+# ANN-8 — ce que la base portait AVANT le miroir du locuteur : des personnages montrés
+# hors des boîtes personnage, des situations hors des cases. Lu par
+# `tools/retirer_liens_caches.py`, qui le dit et le retire.
+def presences_cachees(conn: sqlite3.Connection) -> list:
+    """Les personnages montrés par des régions qui n'en montrent pas : `region_id`, `type`,
+    `planche_id`, `album_id`, `personnage_id`, `personnage_nom`. Rangés par album, planche,
+    région."""
+    return conn.execute(
+        "SELECT r.id AS region_id, r.type, r.planche_id, pl.album_id, pp.personnage_id, "
+        "       p.nom AS personnage_nom "
+        "FROM personnage_presence pp "
+        "JOIN regions r ON r.id = pp.region_id "
+        "JOIN planches pl ON pl.id = r.planche_id "
+        "JOIN personnages p ON p.id = pp.personnage_id "
+        f"WHERE r.type NOT IN ({', '.join('?' * len(TYPES_PRESENCE))}) "
+        "ORDER BY pl.album_id, r.planche_id, r.id", TYPES_PRESENCE).fetchall()
+
+
+def situations_cachees(conn: sqlite3.Connection) -> list:
+    """Les valeurs de situation que portent des régions qui n'en reçoivent pas : `region_id`,
+    `type`, `planche_id`, `album_id`, `valeur_id`. Une ligne par valeur ; rangées par album,
+    planche, région, valeur. Ni dimension ni valeur nommées : un terme peut être local à une
+    collection, et l'outil porte sur la base entière."""
+    return conn.execute(
+        "SELECT r.id AS region_id, r.type, r.planche_id, pl.album_id, ra.valeur_id "
+        "FROM region_attribut ra "
+        "JOIN regions r ON r.id = ra.region_id "
+        "JOIN planches pl ON pl.id = r.planche_id "
+        f"WHERE r.type NOT IN ({', '.join('?' * len(TYPES_SITUATION))}) "
+        "ORDER BY pl.album_id, r.planche_id, r.id, ra.valeur_id", TYPES_SITUATION).fetchall()
 
 
 # Régions de texte (citées au niveau bulle « pl·c·b ») — cf. ordre de lecture.

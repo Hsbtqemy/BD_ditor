@@ -2369,14 +2369,17 @@ async function patchRegion(id, fields, vuExplicite = null) {
     fields.source = "corrige";
   }
   try {
-    const { locuteur_retire: retire, ...updated } = await apiSend(
-      "PUT", `/api/regions/${id}`, Object.keys(vu).length ? { ...fields, vu } : fields);
+    const { locuteur_retire: loc, presence_retiree: pres, situation_retiree: sit, ...updated } =
+      await apiSend("PUT", `/api/regions/${id}`,
+                    Object.keys(vu).length ? { ...fields, vu } : fields);
     Object.assign(state.regionsById.get(id), updated);
     renderOverlay();
     renderPanel();
-    // ANN-8 — une zone de texte devenue case ou boîte personnage perd son locuteur : le dire,
-    // sans quoi on ne le découvrirait qu'en la repassant en bulle. Ctrl+Z rend les deux.
-    if (retire) toast(`Locuteur « ${retire.nom} » retiré : ce type de région n'en porte pas. Ctrl+Z le rend.`, "", 6000);
+    // ANN-8 — une région qui change de type perd ce que son nouveau type ne montre pas : le
+    // dire, sans quoi on ne le découvrirait qu'en la repassant à son type d'avant. Ctrl+Z
+    // rend le type et ses liens.
+    const retraits = messageRetraits(loc, pres, sit);
+    if (retraits) toast(retraits, "", 6000);
   } catch (e) {
     if (regionDisparue(e, id)) return;
     if (e.statut === 409 && e.detail && e.detail.conflit) {
@@ -2388,6 +2391,20 @@ async function patchRegion(id, fields, vuExplicite = null) {
     }
     toast("Échec mise à jour : " + e.message, "error");
   }
+}
+
+/* ANN-8 — ce qu'un changement de type a retiré, en une phrase : le locuteur et le
+   personnage montré par leur nom, la situation par son nombre de valeurs (le serveur ne
+   nomme pas un terme, qui peut être local à une collection qu'on ne lit pas). null si rien
+   n'est parti. */
+function messageRetraits(loc, pres, sit) {
+  const partis = [];
+  if (loc) partis.push(`Locuteur « ${loc.nom} » retiré`);
+  if (pres) partis.push(`Personnage montré « ${pres.nom} » retiré`);
+  if (sit) partis.push(`Situation retirée (${sit} valeur${sit > 1 ? "s" : ""})`);
+  if (!partis.length) return null;
+  const pronom = partis.length > 1 ? "les" : (sit ? "la" : "le");
+  return `${partis.join(" ; ")} : ce type de région ne ${pronom} montre pas. Ctrl+Z ${pronom} rend.`;
 }
 
 async function deleteRegion(id) {
@@ -3611,7 +3628,7 @@ async function undoLast() {
   // ceux dont l'objet n'est plus là ou plus visible : le dire, sans rien nommer.
   const manque = res.liens_non_rendus || 0;
   toast("Annulé : " + res.description + (manque
-    ? ` — ${manque} lien${manque > 1 ? "s" : ""} non rendu${manque > 1 ? "s" : ""} (personnage ou valeur disparus)`
+    ? ` — ${manque} lien${manque > 1 ? "s" : ""} non rendu${manque > 1 ? "s" : ""} (personnage ou valeur disparus, ou type qui ne les montre pas)`
     : ""), "", manque ? 8000 : 4000);
   if (res.planche_id && state.planche && res.planche_id === state.planche.id) {
     await loadRegions(state.planche.id);

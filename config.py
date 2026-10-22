@@ -240,6 +240,16 @@ TYPES_REGION = ("case", "bulle", "personnage", "texte", "cartouche")
 # aussi, et `tests/test_e2e_atelier_annotation.py` mesure leur accord type par type.
 TYPES_LOCUTEUR = ("bulle", "cartouche", "texte")
 
+# Types de régions qui MONTRENT un personnage (§14, brique (a) : la boîte porte l'identité),
+# et types qui reçoivent une SITUATION (`region_attribut`, une dimension de cible « case »).
+# ANN-8 (Hugo, 2026-10-21) — le miroir du locuteur : une région qui change de type perd ce
+# que son nouveau type ne montre pas (`database.retirer_liens_caches`), et l'annulation ne
+# le repose que sur un type qui le montre. L'écran n'offre le bloc Personnage qu'à la boîte
+# et le bloc Situation qu'à la case ; leurs routes ne gardent pas le type, à la différence de
+# celle du locuteur (`PUT /api/regions/{id}/personnage`, `…/attributs`).
+TYPES_PRESENCE = ("personnage",)
+TYPES_SITUATION = ("case",)
+
 # Cibles d'un attribut facetté (ANN-2) : un axe émergent s'applique soit au profil
 # (socio)linguistique d'un PERSONNAGE, soit à la situation d'une CASE (scène).
 # Cf. docs/personnages-et-attribution.md (§13).

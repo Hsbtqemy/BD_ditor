@@ -24,7 +24,7 @@ from typing import Optional
 
 import conflit
 import journal
-from config import TYPES_LOCUTEUR
+from config import TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUATION
 from database import NATURE_COLLECTIF, reindex_region, unindex_region
 
 # Types d'événements et tables que l'undo sait inverser (le reste est ignoré : ni annulé,
@@ -80,17 +80,29 @@ class Irretablissable(Exception):
     en `NeSAnnulePlus` (seconde phrase) ; la route défait ce qui aurait été écrit."""
 
 
+# ANN-8 — ce qu'un changement de type peut retirer, sous sa clé dans `avant` (celle d'un nœud
+# d'instantané profond), et comment la description du geste le nomme.
+_RETRAITS = (("locuteur", "de son locuteur"), ("presence", "du personnage montré"),
+             ("attributs", "de sa situation"))
+
+
 def _description(e) -> str:
-    if _retire_un_locuteur(e):
-        return "modification d'une région et retrait de son locuteur"
+    retires = _liens_retires(e)
+    if retires:
+        quoi = [nom for cle, nom in _RETRAITS if cle in retires]
+        quoi = quoi[0] if len(quoi) == 1 else ", ".join(quoi[:-1]) + " et " + quoi[-1]
+        return f"modification d'une région et retrait {quoi}"
     return _DESCRIPTIONS.get((e["type"], e["cible_table"]), f"{e['type']} {e['cible_table']}")
 
 
-def _retire_un_locuteur(e) -> bool:
-    """La modification d'une région a-t-elle retiré son locuteur avec son type ? (ANN-8 :
-    `PUT /api/regions/{id}` le range sous `locuteur` dans son `avant`.)"""
-    return (e["type"] == "modification" and e["cible_table"] == "regions"
-            and (_charge(e["avant"]) or {}).get("locuteur") is not None)
+def _liens_retires(e) -> dict:
+    """Ce que la modification d'une région a retiré avec son type (ANN-8 : `PUT
+    /api/regions/{id}` le range sous `locuteur`, `presence`, `attributs` dans son `avant`) :
+    ces clés seulement, et seulement si elles portent quelque chose ; vide sinon."""
+    if e["type"] != "modification" or e["cible_table"] != "regions":
+        return {}
+    avant = _charge(e["avant"]) or {}
+    return {cle: avant[cle] for cle, _ in _RETRAITS if avant.get(cle)}
 
 
 def _charge(champ) -> Optional[dict]:
@@ -353,26 +365,30 @@ def _recreer_region_profond(conn, snap):
 
 def _rendre_liens(conn, snap, rendables) -> int:
     """ANN-8 — repose les liens des régions qu'une annulation vient de rétablir — par une
-    suppression défaite, ou par un changement de type défait qui avait emporté le
-    locuteur : le locuteur, le personnage montré, les attributs de case. Seulement ceux qui
-    sont RENDABLES (`_liens_rendables`, calculé avant toute écriture) : le personnage ou la
-    valeur existe encore, est celui de l'acte, et l'agent le voit — et un locuteur, sur une
-    région dont le type en porte un (`_porte_un_locuteur`). Un lien qui ne l'est pas ne
+    suppression défaite, ou par un changement de type défait qui les avait emportés : le
+    locuteur, le personnage montré, les attributs de case. Seulement ceux qui sont RENDABLES
+    (`_liens_rendables`, calculé avant toute écriture) : le personnage ou la valeur existe
+    encore, est celui de l'acte, et l'agent le voit — et sur une région dont le type montre
+    ce lien (`_montre`). Un lien qui ne l'est pas ne
     revient pas, et la région revient quand même — elle est l'objet de l'acte, et le lien
     serait parti de toute façon avec ce qu'il désignait. Rend combien de liens ne reviennent
-    pas, compté par NŒUD : deux bulles du même locuteur font deux liens."""
+    pas, compté par NŒUD : deux bulles du même locuteur font deux liens.
+
+    Le miroir (Hugo, 2026-10-21) : un personnage montré ne revient que sur une boîte
+    personnage, une situation que sur une case — sur une région dont le type ne le montre
+    pas, le lien ne revient pas et se compte, comme un locuteur sur une case."""
     manque = 0
     for n in _noeuds(snap):
         for cle, table in _LIENS_INSTANTANE:
             if n.get(cle) is None:
                 continue
-            if n[cle] not in rendables["personnages"] or (
-                    table == "bulle_locuteur" and not _porte_un_locuteur(conn, n["id"])):
+            if n[cle] not in rendables["personnages"] or not _montre(conn, table, n["id"]):
                 manque += 1
                 continue
             _poser_lien(conn, table, n["id"], n[cle])
+        montre = _montre(conn, "region_attribut", n["id"])
         for vid in n.get("attributs", []):
-            if vid not in rendables["valeurs"]:
+            if vid not in rendables["valeurs"] or not montre:
                 manque += 1
                 continue
             conn.execute("INSERT OR IGNORE INTO region_attribut (region_id, valeur_id) "
@@ -410,19 +426,20 @@ def _liens_a_rendre(e) -> Optional[dict]:
     (`_noeuds`), ou None si elle n'en repose aucun.
 
     Deux actes en portent. La SUPPRESSION d'une région : son instantané profond, tel quel.
-    La MODIFICATION qui a changé le type d'une zone de texte en case ou en boîte personnage
-    et lui a retiré son locuteur (ANN-8, Hugo, 2026-10-21) : un nœud seul, la région de
-    l'acte et ce locuteur. Un acte et non deux — pas de `delien` à part — pour que UN Ctrl+Z
-    rende le type et le locuteur : deux actes en auraient demandé deux, et le premier aurait
-    rendu une bulle muette que personne n'a voulue (le défaut qu'`UX-5` relève déjà pour
-    les retouches). Et le lien revient par la même porte que ceux d'une suppression, sous
-    les mêmes questions."""
+    La MODIFICATION qui a changé le type d'une région et lui a retiré ce que son nouveau
+    type ne montre pas (ANN-8, Hugo, 2026-10-21) — locuteur, personnage montré, situation :
+    un nœud seul, la région de l'acte et ces liens. Un acte et non plusieurs — pas de
+    `delien` à part — pour que UN Ctrl+Z rende le type et ses liens : deux actes en auraient
+    demandé deux, et le premier aurait rendu une bulle muette que personne n'a voulue (le
+    défaut qu'`UX-5` relève déjà pour les retouches). Et les liens reviennent par la même
+    porte que ceux d'une suppression, sous les mêmes questions."""
     if e["cible_table"] != "regions":
         return None
     if e["type"] == "suppression":
         return _charge(e["avant"]) or {}
-    if _retire_un_locuteur(e):
-        return {"id": e["cible_id"], "locuteur": _charge(e["avant"])["locuteur"]}
+    retires = _liens_retires(e)
+    if retires:
+        return {"id": e["cible_id"], **retires}
     return None
 
 
@@ -447,8 +464,12 @@ def _liens_rendables(conn, e, snap, ecrivable) -> dict:
 
 
 # ANN-8 — les liens d'une région qu'un changement de type photographie (`liens_vus`, cf.
-# `database.liens_vus`) et que son annulation garde : (clé, table, types qui le montrent).
-_LIENS_DU_TYPE = (("locuteur", "bulle_locuteur", TYPES_LOCUTEUR),)
+# `database.liens_vus`) et que son annulation garde : (clé, table, champ nommé par le 409,
+# types qui le montrent). Les deux premiers désignent UN personnage ; la situation est un
+# ensemble de valeurs.
+_LIENS_DU_TYPE = (("locuteur", "bulle_locuteur", "locuteur", TYPES_LOCUTEUR),
+                  ("presence", "personnage_presence", "presence", TYPES_PRESENCE),
+                  ("attributs", "region_attribut", "situation", TYPES_SITUATION))
 
 
 def _garder_liens_du_type(conn, region_id, avant) -> None:
@@ -463,7 +484,9 @@ def _garder_liens_du_type(conn, region_id, avant) -> None:
 
     - il montre le lien, et l'acte l'avait retiré : l'annulation le repose. Admis : aucun
       (rien n'a bougé), ou celui-là (déjà remis). Un AUTRE serait écrasé — Alice passe la
-      bulle de Tintin en case, Bob la repasse en bulle et lui donne Haddock (h1).
+      bulle de Tintin en case, Bob la repasse en bulle et lui donne Haddock (h1). La
+      situation, un ENSEMBLE, revient par différence, comme les tags (CONC-3) : ses valeurs
+      se reposent à côté de celles qu'un autre a mises, sans rien écraser — pas de garde.
       S'il le montre et que l'acte n'y a pas touché, l'annulation n'y touche pas non plus :
       rien à garder ;
     - il ne le montre pas : l'annulation ne repose rien, et ce que la région porte resterait,
@@ -471,33 +494,53 @@ def _garder_liens_du_type(conn, region_id, avant) -> None:
       portait déjà un locuteur, repassée en bulle puis Ctrl+Z, retrouve l'état d'avant tel
       qu'il était (c3), et c'est `tools/retirer_locuteurs_muets.py` qui le nettoie. Un autre,
       posé depuis, deviendrait invisible — Alice passe une case en bulle, Bob lui donne
-      Haddock (h2).
+      Haddock (h2). Pour la situation : ce que la région porte doit être une PARTIE de ce
+      que l'acte avait laissé.
 
     Un acte d'avant la photographie n'a pas `liens_vus` : la garde y suppose ce qu'elle
     supposait alors, qu'aucun lien n'était laissé — et le 409 faux de c3 y reste possible."""
     vus = avant.get("liens_vus") or {}
-    for cle, table, types in _LIENS_DU_TYPE:
-        retire = avant.get(cle)
-        laisse = None if retire is not None else vus.get(cle)
+    for cle, table, champ, types in _LIENS_DU_TYPE:
+        ensemble = table == "region_attribut"
+        colonne = "valeur_id" if ensemble else "personnage_id"
+        retire = set(_en_liste(avant.get(cle)))
+        laisse = set() if retire else set(_en_liste(vus.get(cle)))
         if avant.get("type") in types:
-            if retire is None:
+            if not retire or ensemble:
                 continue
-            admis = (None, retire)
+            admis = retire
         else:
-            admis = (None, laisse)
-        r = conn.execute(f"SELECT personnage_id FROM {table} WHERE region_id = ?",
-                         (region_id,)).fetchone()
-        actuel = r["personnage_id"] if r else None
-        if actuel not in admis:
-            raise conflit.Perime(table, region_id, cle, actuel,
-                                 conflit.auteur_du_champ(conn, table, region_id,
-                                                         "personnage_id", actuel))
+            admis = laisse
+        actuel = {r[colonne] for r in conn.execute(
+            f"SELECT {colonne} FROM {table} WHERE region_id = ?", (region_id,))}
+        if actuel <= admis:
+            continue
+        pose = min(actuel - admis)          # nommer qui a posé ce qui n'était pas admis
+        valeur = sorted(actuel) if ensemble else pose
+        raise conflit.Perime(table, region_id, champ, valeur,
+                             conflit.auteur_du_champ(conn, table, region_id, colonne, pose))
 
 
-def _porte_un_locuteur(conn, region_id) -> bool:
-    """La région existe-t-elle, d'un type qui reçoit un locuteur (`config.TYPES_LOCUTEUR`) ?"""
+def _en_liste(valeur) -> list:
+    """Un lien photographié, en liste : un personnage (ou None) devient [id] (ou []), une
+    situation est déjà une liste."""
+    if valeur is None:
+        return []
+    return list(valeur) if isinstance(valeur, list) else [valeur]
+
+
+# Quels types MONTRENT le lien de chaque table (ANN-8) : `config`, à un seul endroit.
+_TYPES_QUI_MONTRENT = {"bulle_locuteur": TYPES_LOCUTEUR,
+                       "personnage_presence": TYPES_PRESENCE,
+                       "region_attribut": TYPES_SITUATION}
+
+
+def _montre(conn, table, region_id) -> bool:
+    """La région existe-t-elle, d'un type qui montre le lien de `table` — un locuteur, un
+    personnage montré, une situation (`config.TYPES_LOCUTEUR`, `TYPES_PRESENCE`,
+    `TYPES_SITUATION`) ?"""
     r = conn.execute("SELECT type FROM regions WHERE id = ?", (region_id,)).fetchone()
-    return r is not None and r["type"] in TYPES_LOCUTEUR
+    return r is not None and r["type"] in _TYPES_QUI_MONTRENT[table]
 
 
 def _poser_lien(conn, table, region_id, personnage_id):
@@ -505,8 +548,9 @@ def _poser_lien(conn, table, region_id, personnage_id):
     que sur une région dont le type en porte un. La route d'attribution le refusait seule
     (422) : une bulle dont on avait retiré le locuteur, passée en case par une collègue,
     le retrouvait EN TANT QUE CASE au Ctrl+Z suivant. L'état d'avant n'a plus où se poser :
-    l'acte est irrétablissable, donc passé (`annuler`)."""
-    if table == "bulle_locuteur" and not _porte_un_locuteur(conn, region_id):
+    l'acte est irrétablissable, donc passé (`annuler`). Le miroir : un personnage montré ne
+    se repose que sur une boîte personnage."""
+    if not _montre(conn, table, region_id):
         raise Irretablissable()
     conn.execute(f"INSERT INTO {table} (region_id, personnage_id) VALUES (?, ?) "
                  f"ON CONFLICT(region_id) DO UPDATE SET personnage_id = excluded.personnage_id",

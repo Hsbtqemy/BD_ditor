@@ -314,8 +314,10 @@ def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db),
 # --- Présence : quelle entité est MONTRÉE dans une boîte personnage (§14, brique (a)).
 #     Miroir du locuteur, mais pour l'image — la boîte porte l'identité, et le profil de
 #     l'entité devient atteignable depuis l'image (muets compris). La cohérence de type
-#     (region.type = 'personnage') n'est assurée ICI que côté UI ; le locuteur, lui, est
-#     gardé par sa route depuis ANN-6 (`config.TYPES_LOCUTEUR`).
+#     (region.type = 'personnage', `config.TYPES_PRESENCE`) n'est pas gardée par cette
+#     route : l'écran n'offre le bloc qu'à la boîte, le changement de type retire le
+#     personnage d'une région qui cesse d'en montrer un et l'annulation ne l'y repose pas
+#     (ANN-8). Le locuteur, lui, est gardé par sa route depuis ANN-6 (`config.TYPES_LOCUTEUR`).
 @router.get("/api/regions/{region_id}/personnage")
 def get_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):

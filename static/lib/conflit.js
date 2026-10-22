@@ -33,7 +33,10 @@
     w: ["Taille", "f", "la taille"], h: ["Taille", "f", "la taille"],
     type: ["Type", "m", "le type"],
     parent_id: ["Rattachement", "m", "le rattachement"],
-    locuteur: ["Locuteur", "m", "le locuteur"],   // ANN-8 : gardé par l'annulation
+    // ANN-8 : gardés par l'annulation d'un changement de type (`undo._garder_liens_du_type`).
+    locuteur: ["Locuteur", "m", "le locuteur"],
+    presence: ["Personnage montré", "m", "le personnage montré"],
+    situation: ["Situation", "f", "la situation"],
   };
   const INCONNU = ["Valeur", "f", "la valeur"];
 

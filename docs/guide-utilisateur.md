@@ -248,7 +248,8 @@ type :
   la liste n'a pas encore suivi votre frappe, Entrée ne prend rien et la liste se met à
   jour — choisissez dans celle-ci. Une zone de texte qu'on passe en case ou en boîte
   personnage **perd son locuteur** — un message le dit —, et un seul Ctrl+Z rend le type
-  et le locuteur ;
+  et le locuteur. Il en va de même de ce qu'un type ne montre pas : une boîte personnage
+  qui change de type perd son personnage montré, une case sa situation ;
 - la **présence** dans une boîte personnage — quelle entité y est montrée, choisie de la
   même façon ;
 - le **profil** du personnage (dimensions de cible `personnage`) ;

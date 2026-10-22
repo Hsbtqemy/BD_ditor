@@ -294,6 +294,57 @@ def test_une_bulle_devenue_case_perd_son_locuteur_et_un_ctrl_z_rend_les_deux(pag
     expect(page.locator("#loc-current")).to_contain_text("Tintin", timeout=15000)
     assert _locuteur(atelier, rid)["id"] == atelier["tintin"]
 
+
+def test_une_case_devenue_bulle_perd_sa_situation_et_un_ctrl_z_rend_les_deux(page, atelier):
+    """ANN-8, le miroir (Hugo, 2026-10-21) — une case située passe en bulle : l'écran DIT que
+    la situation part, par son nombre de valeurs (aucun terme nommé), et UN Ctrl+Z rend la
+    case avec sa situation."""
+    rid = atelier["case"]
+    with httpx.Client(base_url=atelier["base"], trust_env=False, timeout=30,
+                      headers=ECRITURE) as c:
+        d = c.post("/api/attributs/dimensions", json={"cible": "case", "nom": "lieu"}).json()["id"]
+        v = c.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "falaise"}).json()["id"]
+        assert c.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v}).status_code == 200
+    _ouvrir(page, atelier, "case")
+    expect(page.locator("#sit-current")).to_contain_text("falaise", timeout=15000)
+
+    with page.expect_response(_est("PUT", f"/api/regions/{rid}")) as reponse:
+        page.locator("#region-type").select_option("bulle")
+    assert reponse.value.status == 200, reponse.value.text()
+    toast = page.locator("#toasts .toast", has_text=re.compile(r"Situation retirée \(1 valeur\)"))
+    expect(toast).to_be_visible(timeout=15000)
+    expect(toast).not_to_contain_text("falaise")
+    expect(page.locator("#loc-section")).to_be_visible(timeout=15000)
+    assert _attributs(atelier, rid) == []
+
+    with page.expect_response(lambda r: r.url.endswith("/api/undo")
+                              and r.request.method == "POST") as annulation:
+        page.locator("body").press("Control+z")
+    assert annulation.value.status == 200, annulation.value.text()
+    expect(page.locator("#region-type")).to_have_value("case", timeout=15000)
+    expect(page.locator("#situation-section")).to_be_visible(timeout=15000)
+    expect(page.locator("#sit-current")).to_contain_text("falaise", timeout=15000)
+    assert _attributs(atelier, rid) == [("lieu", "falaise")]
+
+
+def test_une_boite_devenue_bulle_dit_que_son_personnage_part(page, atelier):
+    """Le même geste sur une boîte personnage : le personnage montré part, et l'écran le
+    nomme."""
+    rid = atelier["personnage"]
+    with httpx.Client(base_url=atelier["base"], trust_env=False, timeout=30,
+                      headers=ECRITURE) as c:
+        rep = c.put(f"/api/regions/{rid}/personnage", json={"personnage_id": atelier["tintin"]})
+        assert rep.status_code == 200, rep.text
+    _ouvrir(page, atelier, "personnage")
+    expect(page.locator("#perso-section")).to_be_visible(timeout=15000)
+
+    with page.expect_response(_est("PUT", f"/api/regions/{rid}")) as reponse:
+        page.locator("#region-type").select_option("bulle")
+    assert reponse.value.status == 200, reponse.value.text()
+    expect(page.locator("#toasts .toast",
+                        has_text=re.compile(r"Personnage montré « Tintin » retiré"))
+           ).to_be_visible(timeout=15000)
+
 # --------------------------------------------------------------------------- #
 # Le changement de type, quand il ne se passe pas comme prévu
 # --------------------------------------------------------------------------- #

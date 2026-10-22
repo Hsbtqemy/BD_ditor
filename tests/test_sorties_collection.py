@@ -569,6 +569,11 @@ OUTILS_HORS = {
         "par identifiant et le NOM d'un personnage du registre — jamais un terme de "
         "vocabulaire ni une charge du journal. Sans périmètre de collection : il porte sur "
         "la base entière.",
+    "retirer_liens_caches.py":
+        "Maintenance (ANN-8) : son compte rendu nomme des régions, des planches, des albums "
+        "par identifiant, le NOM d'un personnage du registre et l'IDENTIFIANT d'une valeur "
+        "de situation — jamais un terme de vocabulaire ni une charge du journal. Sans "
+        "périmètre de collection : il porte sur la base entière.",
     "semer_demo.py": "SÈME un corpus de démonstration par l'API : il écrit, il ne "
                      "sort rien.",
     "regenerer_exemples.py":
@@ -605,6 +610,7 @@ ENTREES_HORS = {
     "convertir_en_copies_de_travail.py": {"--album", "--appliquer"},
     "normaliser_casse.py": {"--album", "--dry-run", "--planche"},
     "retirer_locuteurs_muets.py": {"--appliquer"},
+    "retirer_liens_caches.py": {"--appliquer"},
     "semer_demo.py": set(),
     "regenerer_exemples.py": set(),
     "fabriquer_base_de_version.py": {"commit", "sortie", "--copie"},

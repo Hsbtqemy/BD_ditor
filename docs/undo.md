@@ -32,11 +32,12 @@ rollback en cas d'échec.
 | `creation` région | supprimer la région (+ sous-arbre, désindexé) — **refusé** si quelqu'un d'autre l'a modifiée, annotée ou y a rattaché une région depuis |
 | `modification` région (géométrie / OCR / déplacement) | remettre les colonnes que l'acte a CHANGÉES à leur valeur `avant` — **refusé** si l'une d'elles a changé depuis (sauf par un moteur) |
 | `modification` région qui a changé le type d'une zone de texte en case ou en boîte personnage | remettre le type, puis **reposer le locuteur** que le changement avait retiré (ANN-8), s'il est rendable — sinon le type revient seul, et la réponse le compte (`liens_non_rendus`) ; **refusé** (409 nommé) si la région porte aujourd'hui un AUTRE locuteur |
+| `modification` région qui a changé le type d'une boîte personnage ou d'une case | le miroir : remettre le type, puis **reposer le personnage montré ou la situation** que le changement avait retirés — **refusé** (409 nommé) si la boîte montre aujourd'hui un AUTRE personnage ; la situation revient par différence, à côté de celle qu'un autre a posée |
 | `modification` région qui rend un type sans locuteur (case, boîte personnage) | comme toute modification — **refusé** (409 nommé) si la région porte aujourd'hui un locuteur AUTRE que celui que l'acte avait laissé (sa photographie, `liens_vus`) |
 | `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) — **passé** si un `id` a été repris, si une planche ou le parent n'est plus le même, ou si l'on n'écrit plus dans l'une des planches |
 | `creation` / `modification` / `suppression` annotation | défaire ce que l'acte a CHANGÉ, sur l'état actuel : la note revient à `avant` si l'acte l'a changée ; les tags qu'il a ajoutés partent, ceux qu'il a retirés reviennent ; vide, l'annotation est supprimée |
 | `lien` locuteur/présence (avant ∅) | retirer le lien |
-| `lien` (avant présent) / `delien` | rétablir l'ancien lien — **passé** si c'est un locuteur et que la région n'est plus d'un type qui en porte un (ANN-8) |
+| `lien` (avant présent) / `delien` | rétablir l'ancien lien — **passé** si la région n'est plus d'un type qui le montre : un locuteur hors d'une zone de texte, un personnage montré hors d'une boîte personnage (ANN-8) |
 
 **Un locuteur part avec le type, et revient avec lui** (ANN-8, tranché par Hugo le
 2026-10-21). Une bulle, un cartouche ou une zone de texte qui devient case ou boîte
@@ -56,6 +57,24 @@ au Ctrl+Z suivant. L'annulation d'un tel `delien` est désormais **passée** (se
 revient pas et compte parmi les `liens_non_rendus`. Ce que la base portait avant cette règle,
 `tools/retirer_locuteurs_muets.py` le montre, et le retire avec `--appliquer` — en acte
 MACHINE, donc hors Ctrl+Z.
+
+**Le miroir : ce qu'un type ne montre pas part avec lui** (ANN-8, demandé par Hugo le
+2026-10-21). Une boîte personnage qui change de type perd son personnage montré, une case qui
+devient zone de texte ou boîte personnage sa situation — invisibles sur une bulle, ils
+comptaient encore au registre, dans la Recherche, l'Exploration et les exports. Même patron
+que le locuteur : seulement sur un vrai changement de type, dans le même acte (son `avant`
+porte `presence` et `attributs`, des identifiants), un seul Ctrl+Z les rend, la réponse le
+dit (`presence_retiree`, le personnage ; `situation_retiree`, un NOMBRE de valeurs — un
+terme peut être local à une collection qu'on ne lit pas), et l'annulation ne repose un
+personnage montré que sur une boîte, une situation que sur une case. Le personnage montré
+est gardé comme le locuteur (409 nommé, champ `presence`). La situation est un ENSEMBLE :
+quand le type rendu la montre, ses valeurs reviennent par différence, à côté de celles
+qu'un autre a mises entre-temps, comme les tags d'une annotation — rien n'est écrasé, donc
+pas de garde ; quand il ne la montre pas, ce que la région porte doit être une partie de ce
+que l'acte avait laissé, sinon 409 nommé, champ `situation`. Ce que la base portait déjà,
+`tools/retirer_liens_caches.py` le montre et le retire. Leurs routes, elles, ne gardent pas
+le type (à la différence de celle du locuteur) : c'est l'écran qui n'offre le bloc
+Personnage qu'à la boîte, et le bloc Situation qu'à la case.
 
 **Le locuteur est un champ GARDÉ de l'annulation** (relecture croisée de ANN-8, 2026-10-21 ;
 `undo._garder_locuteur`). Deux annulations d'un changement de type écrasaient le geste d'un
@@ -86,6 +105,8 @@ compare. Deux cas, selon le type rendu :
   aucun locuteur, ou celui-là ; un autre serait écrasé (Alice, Bob et Haddock, ci-dessus) ;
 - il n'en porte pas : l'annulation ne repose rien. Admis : aucun locuteur, ou celui que
   l'acte avait laissé. Un autre deviendrait invisible ; aucun n'efface rien.
+
+La photographie porte aussi le personnage montré et la situation, sous la même règle.
 
 L'annulation rend donc l'état d'avant TEL QU'IL ÉTAIT : la case d'avant ANN-8 retrouve son
 locuteur caché, et c'est `tools/retirer_locuteurs_muets.py` qui la nettoie — ce n'est pas le
