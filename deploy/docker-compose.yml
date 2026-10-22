@@ -91,8 +91,13 @@ services:
       - BD_ANNUAIRE_MOT_DE_PASSE=${LLDAP_APPLICATION_PASS:-}
       - BD_ANNUAIRE_URL=${BD_ANNUAIRE_URL:-}
       # - BD_SPACY_MODEL=fr_core_news_sm   # modèle NLP (lg = index plus riche, + de RAM)
-      # - BD_NLP_PREWARM=1                  # charge spaCy au démarrage (évite le gel de
-      #                                     #  la 1re écriture) ; à éviter en consultation pure
+      # Le préchauffage du moteur de langue : `BD_NLP_PREWARM=1` dans `deploy/.env` le charge
+      # en arrière-plan dès le démarrage — sans lui, la première note ou le premier Ctrl+Z
+      # qui réindexe après un redémarrage attend son chargement (9 à 17 s mesurées). Vide :
+      # désactivé, ce que `main.py` lit comme faux (seuls 1/true/yes/on l'activent). Par
+      # `.env` et non décommenté ici, pour la raison du référent : une ligne versionnée
+      # changée sur le serveur ferait un conflit à chaque `git pull`. Cf. docs/exploitation.md.
+      - BD_NLP_PREWARM=${BD_NLP_PREWARM:-}
     volumes:
       - bd-data:/data            # corpus, dérivés, base SQLite, caches de modèles
     expose:
