@@ -166,17 +166,24 @@ semaines » (Hugo, le même jour).
 - [ ] **On compte aussi par niveau et par famille, ou seulement tag par tag** — attendu :
   tranché. Hugo, le 2026-10-12 : « je ne sais pas, il faut qu'on réfléchisse » ; toutes les
   familles ne serviront pas à chaque zone
+- [ ] **La double annotation à l'aveugle est voulue, ou non** — attendu : réponse des
+  linguistes. La passe est commune (`ANN-7`, Q7, 2026-10-22) : on se partage les zones. Deux
+  personnes qui annotent la même zone sans voir l'autre, pour mesurer leur accord, demanderaient
+  un mode de campagne aux passes séparées, à concevoir alors
 
 ### Avant que les stagiaires commencent
 
 *Sorties vers `ANN-8` le 2026-10-21 : les défauts de l'annotation d'aujourd'hui, qui ne dépendent pas du relevé.*
 
-- [ ] **Ce qu'ils font en attendant le relevé est choisi** — attendu : tranché par Hugo. (a)
+- [x] **Ce qu'ils font en attendant le relevé est choisi** — attendu : tranché par Hugo. (a)
   Annoter tout de suite en tags à plat, en acceptant de repasser sur chaque bulle pour
   montrer les mots. (b) Les occuper d'abord à ce qui ne se reprend pas : découpage,
   transcription relue, locuteurs, lieux. (c) Les deux, dans cet ordre. Proposition : (c) —
   la transcription doit de toute façon être stable avant qu'on accroche quoi que ce soit à
   ses mots
+  **Tranché par Hugo le 2026-10-22, à la séance de conception d'`ANN-7` (Q9) : (b)** —
+  découpage, transcription relue, locuteurs, lieux, et aucun tag avant le basculement, ce qui
+  laisse les grilles partir d'un vocabulaire neuf sans rien convertir
 - [ ] **Le guide ne donne qu'UNE forme par tag** — attendu : ses tableaux et son index
   s'accordent. Six écarts relevés le 2026-10-12, dont chacun ferait deux tags, donc deux
   compteurs : « élision » et « élision notée » ; « il / ils réduit à i ou y » et « il réduit à
@@ -185,13 +192,15 @@ semaines » (Hugo, le même jour).
   l'interrogative indirecte rangée sous le titre « Exclamation » ; la ligne « intensifieur »,
   qui donne un tag dans une colonne et trois dans l'autre
   **Hugo, le 2026-10-12** : ces écarts seront réglés, de son côté
-- [ ] **Les tags du guide existent avant le premier stagiaire** — attendu : chacun est créé
+- [x] **Les tags du guide existent avant le premier stagiaire** — attendu : chacun est créé
   d'avance, avec sa définition et son exemple, pour que personne ne le tape de mémoire ;
   l'autocomplétion fait le reste. Environ soixante-cinq tags simples, plus une centaine de
   combinaisons aux niveaux 6 et 7. Lu le 2026-10-12 : l'import de vocabulaire
   (`lexique_import.py`) ne charge que domaines, dimensions et valeurs — rien ne charge des
   tags en lot
   **Reporté par Hugo le 2026-10-12**, avec la vue d'annotation : cf. « Tranché par Hugo »
+  **Sans objet depuis le 2026-10-22** : les stagiaires ne posent aucun tag avant le
+  basculement (case ci-dessus), et la grille importée tient lieu de tags créés d'avance
 - [ ] **Une planche est transcrite et relue avant qu'on y pose des relevés** — attendu : écrit
   dans l'ordre de travail donné aux stagiaires. Un relevé accroché à des mots dépend du
   texte ; le statut de relecture par planche existe déjà et peut servir de feu vert

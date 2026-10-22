@@ -43,6 +43,106 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   attendu : tranché. Hugo : « ok pour un seul modèle ». Le basculement a lieu quand le nouveau
   mode d'annotation remplace le panneau actuel, cf. « Un seul modèle »
 
+### Tranché par Hugo — 2026-10-22, la séance de conception
+
+- [x] **Q1 — Le projet STOCKE l'activation, une collection peut RESTREINDRE l'affichage** —
+  attendu : tranché. Une grille s'active sur le projet ; une collection du projet peut ne
+  montrer qu'une partie de ses grilles actives (« Paratexte » n'affiche que les tags libres).
+  La restriction est un FILTRE D'ÉCRAN, pas une garde : le serveur ne refuse aucun relevé selon
+  la collection d'où l'on vient, et les relevés déjà posés restent visibles en lecture. **Un
+  relevé ne porte aucun `collection_id`** : il tient à sa cible, et un album rangé dans deux
+  collections du projet montre les mêmes relevés par l'une et par l'autre. Tranché par Hugo le
+  2026-10-22 (proposition (b) du dossier) ; l'activation par collection, que rouvrait
+  `docs/collections-niveau-ou-calque.md`, est écartée
+- [x] **Q2 — Les grilles SONT le vocabulaire au niveau du projet de la tranche 4 de `COL-3`** —
+  attendu : tranché. Le vocabulaire ne migre qu'une fois, vers les grilles ; la tranche 4 de
+  `COL-3` ne garde que les personnages, la Recherche et l'Exploration bornées au projet, et le
+  double compte des copies sœurs. Tranché par Hugo le 2026-10-22 ; le renvoi est posé sous la
+  case « Le vocabulaire et les personnages ont un étage de projet » de `COL-3`
+- [x] **Q3 — Le basculement part d'un vocabulaire NEUF, sans conversion** — attendu : tranché.
+  Ce que la production porte est un corpus de test (Hugo, 2026-10-21) : les tags, dimensions,
+  valeurs et leurs affectations ne deviennent pas des grilles ; leurs tables sont retirées au
+  basculement, et les Ctrl+Z d'avant lui sont coupés (passés, comme un acte d'`AUTH-14`) au lieu
+  de réécrire dans des tables mortes (`undo._ensure_tag`). Aucun terme local ne devient donc
+  visible du projet entier : la question de portée d'`AUTH-11` ne se pose pas. **Condition** :
+  que personne ne pose de vrai travail en tags d'ici là — cf. Q9, les stagiaires. Tranché par
+  Hugo le 2026-10-22
+- [x] **Q8 — Activer une grille partagée est LIBRE** — attendu : tranché. Partager vaut
+  publier : tout responsable de projet active une grille du catalogue sans rien demander.
+  L'asymétrie avec le fonds est voulue et s'écrit ainsi : prendre au fonds touche des
+  DOCUMENTS (des images, le travail d'autrui), activer une grille ne copie rien et n'expose que
+  son plan, que le partage a rendu public. Le catalogue emprunte au fonds son patron d'écran
+  (liste et fiche), pas sa demande. Tranché par Hugo le 2026-10-22
+- [x] **Q4 — Le personnage est DEUX cibles : la boîte et l'entité** — attendu : tranché. La
+  boîte (`personnage`, une région : ce personnage dans cette case, sous les droits de l'album)
+  et l'entité du registre (`entite` : ce personnage partout, le profil d'aujourd'hui), rattachée
+  au PROJET de la grille. L'entité n'ayant aujourd'hui ni album ni portée, la cible `entite`
+  attend son étage de projet, la moitié des personnages qui reste à la tranche 4 de `COL-3`
+  (Q2) : à séquencer ensemble. Avec Q3, le profil d'entité ne se convertit pas, il se repose.
+  Tranché par Hugo le 2026-10-22
+- [x] **Q5 — À l'assemblage d'une double page, les relevés « planche » sont REPORTÉS** —
+  attendu : tranché. La planche reste la surface (`IMG-2`, 2026-10-16) ; l'assemblage reporte
+  sur la surface les relevés de la planche absorbée, avec une trace au journal. La table des
+  relevés n'est PAS en `CASCADE` sur la planche. Le chantier qui arrive second (`IMG-2` ou la
+  tranche 1 des grilles) écrit le report ; d'ici là, assembler une planche qui porte des
+  relevés est refusé par un 409 qui le nomme. Les relevés des régions suivent d'eux-mêmes (une
+  région garde son identifiant). Tranché par Hugo le 2026-10-22 — le cas est l'ordinaire et
+  non l'exception, toute double page se scannant en deux images (`IMG-2`, 2026-10-21)
+- [x] **Q6 — La cardinalité se déclare dans le tableur** — attendu : tranché. Une colonne
+  `cardinalite` (`une` · `plusieurs`) ; vide, elle prend le défaut de la cible : `plusieurs`
+  sur des mots (deux élisions dans une bulle), `une` sur une région entière ou la planche (un
+  seul registre par bulle). Le serveur refuse un second relevé d'une entrée `une` sur la même
+  cible ; à l'écran, en choisir une autre remplace. Tranché par Hugo le 2026-10-22
+- [x] **Q7 — La passe est COMMUNE et signée, les valeurs uniques portent une version** —
+  attendu : tranché. Une passe « appliquée » vaut pour tous et dit qui l'a faite, quand : on se
+  partage les zones. La variante choisie, la levée d'un doute et la passe portent une version de
+  ligne dès la tranche 1, et une écriture sur une valeur périmée reçoit le 409 de `CONC-3`
+  — c'est la réponse au renvoi de `CONC-4` (les attributs de case à plusieurs). La double
+  annotation à l'aveugle (deux passes séparées, pour mesurer l'accord) n'est pas exclue : elle
+  serait un mode de campagne, plus tard, et la question va aux linguistes. Tranché par Hugo le
+  2026-10-22
+- [x] **Les champs d'un relevé** — attendu : arrêtés, avant de maquetter l'onglet Annotation.
+  Un identifiant `AUTOINCREMENT` ; UNE cible parmi quatre — une région (bulle, cartouche,
+  texte, case, boîte personnage, détail), la planche (la surface), l'entité personnage, ou des
+  mots d'une région ; le passage (rang et forme de chaque mot) ; la version de la grille ; la
+  `cle` de l'entrée ; la `cle` de la variante ou la liste des qualificatifs ; la précision libre ;
+  le lien vers une autre région ; un état (normal · à revoir · à compléter) ; l'auteur, les dates
+  de création et de modification, la version de ligne (Q7). AUCUN `collection_id` (Q1).
+  `CASCADE` sur la région cible (Ctrl+Z les rend, note §11), jamais sur la planche (Q5).
+  Tranché par Hugo le 2026-10-22, tels que proposés
+- [x] **Un lien dont la région désignée disparaît passe « à revoir »** — attendu : tranché. Le
+  relevé reste, perd sa cible, garde le texte de la région qu'il désignait ; Ctrl+Z de la
+  suppression le rattache. Le patron d'un passage dont un mot a disparu (note §5). Tranché par
+  Hugo le 2026-10-22
+- [x] **Une copie sœur n'emporte les relevés que d'une grille active à l'arrivée** — attendu :
+  tranché en principe, codé avec la 3b de `COL-3`. Les relevés partent au cran `annotations`
+  avec leur auteur (aucun événement recopié, la chaîne de `region_origine` les attribue, E3) ;
+  les zones `detail` et `texte`, des régions, partent au cran `decoupage`. Le patron d'E5 : ils
+  suivent si leur grille est active dans le projet d'arrivée, QUELLE QUE SOIT la version (un
+  relevé de la v2 se relit en v2) ; sinon ils sont COMPTÉS dans l'aperçu, qui propose d'activer
+  d'abord une grille partagée. Jamais posés et invisibles (le piège de `COL-1`). Tranché par
+  Hugo le 2026-10-22
+- [x] **À la copie, les passes suivent, les doutes non** — attendu : tranché en principe. Sans
+  ses passes, un relevé copié arriverait sur une zone « à faire » ; un doute est une
+  conversation de l'équipe source, qui nomme ses membres, et l'arrivée n'en hérite pas.
+  Tranché par Hugo le 2026-10-22
+- [x] **Deux gardes qui échouent OUVERT couvrent les relevés, et un cliquet les tient** —
+  attendu : tranché en principe. La règle « travail d'autrui » de la suppression directe
+  (`autorisation._sql_travail_d_autrui`) compte les actes sur les relevés, les passes et les
+  doutes — sans quoi on supprimerait seul un album annoté par d'autres ; « Repartir de zéro »
+  (E8) les efface. Un test exige que toute table de l'annotation soit lue par l'une et par
+  l'autre. Et la fusion de deux régions réunit leurs relevés, ceux d'une entrée `une` qui se
+  contredisent passant « à revoir ». Tranché par Hugo le 2026-10-22
+- [x] **Q9 — Les stagiaires commencent par ce qui ne se reprend pas** — attendu : tranché.
+  Découpage, transcription relue, locuteurs, lieux ; AUCUN tag avant le basculement — c'est la
+  condition de Q3, qui tient donc sans règle de conversion. Une planche relue (statut de
+  relecture) est le feu vert des relevés. Option (b) d'`ANN-6`, retenue par Hugo le 2026-10-22
+  (le dossier proposait (c) ; le vocabulaire neuf l'a fait préférer)
+- [x] **Q9 — Qui publie la grille des linguistes** — attendu : tranché. Elle s'importera dans
+  le projet « Principal » ou « LingApp », à choisir au déploiement ; Hugo, administrateur, et
+  la gestionnaire du projet la publient. Dit par Hugo le 2026-10-22. Reste à vérifier au
+  déploiement, case ci-dessous
+
 ### Le modèle — à écrire avant tout code
 
 - [ ] **Les quatre objets sont définis** — attendu : écrit, avec leurs champs. La GRILLE (un
@@ -69,9 +169,13 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   écrit. Le premier niveau de la grille des linguistes (type de zone, locuteur, lieu) existe
   déjà dans l'outil
   **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§2)
-- [ ] **Un exemple peut désigner un relevé du corpus** — attendu : tranché. Un exemple est du
+- [x] **Un exemple peut désigner un relevé du corpus** — attendu : tranché. Un exemple est du
   texte, ou un renvoi à un vrai relevé, qui s'ouvre en un clic ; le guide laisse plusieurs
   « [exemple du corpus] » vides
+  **Tranché par Hugo le 2026-10-22** : un exemple est un texte, ou un renvoi à un relevé, qui
+  s'ouvre en un clic pour qui LIT son album. Les autres, en particulier depuis le catalogue,
+  lisent « exemple du corpus d'un autre projet » SANS son texte : le guide d'une grille
+  partagée ne fait pas sortir de transcription
 - [x] **Une version en usage ne se modifie pas en place** — attendu : écrit. On prépare la
   suivante, on la publie ; un relevé dit dans quelle version il a été posé. Effet de chaque
   changement : ajouter, renommer (l'identifiant tient), retoucher une définition (le sens
@@ -87,33 +191,56 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   ajouts, renommages, et pour chaque entrée disparue qui a des relevés, « retirer, ou fusionner
   dans… ». BD_ditor réexporte la grille vers le tableur, identifiants compris
   **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§7) : les colonnes, le bilan avant publication, le réexport
-- [ ] **Une coquille se corrige à l'écran** — attendu : tranché. Seule exception au tableur
+- [x] **Une coquille se corrige à l'écran** — attendu : tranché. Seule exception au tableur
   envisagée : une définition ou un exemple, qui ne touchent aucun relevé
+  **Tranché par Hugo le 2026-10-22** : par un responsable, sans nouvelle version, tracé au
+  journal (déjà écrit dans la note, §6)
 - [ ] **Le guide des linguistes découle de la grille** — attendu : tranché. BD_ditor peut en
   produire les pages (rubriques, entrées, structures, exemples), pour qu'il ne soit plus tenu
   à côté
+  **Tranché par Hugo le 2026-10-22 : oui**, en tranche 2 ou après — la tranche 1 n'a pas d'écran
+- [ ] **La note est à jour des décisions du 2026-10-22** — attendu : `docs/grilles-et-releves.md`
+  dit la cible `entite` (§4, Q4), la restriction d'affichage par collection (§10, Q1),
+  l'absence de `CASCADE` sur la planche et le report à l'assemblage (§11, Q5), la colonne
+  `cardinalite` (§7, Q6), la passe commune et la version de ligne (§9, Q7), le lien « à revoir »
+  (§3), les relevés aux crans de copie (nouveau §) ; sa question ouverte n°7 renvoie à Q9.
+  À faire au premier commit de la tranche 1, pas avant : la note fixe ce qui se code
 
 ### Le catalogue et le partage
 
-- [ ] **Seules les versions publiées se partagent** — attendu : écrit. Décochée par défaut, la
+- [x] **Seules les versions publiées se partagent** — attendu : écrit. Décochée par défaut, la
   case « Partager » laisse la grille à son projet, invisible des autres ; cochée, elle entre au
   catalogue et tout projet peut l'activer. Le brouillon reste chez ses auteurs
-- [ ] **Un projet reste sur sa version et choisit quand passer à la suivante** — attendu :
+  **Tranché par Hugo le 2026-10-22**, tel qu'écrit
+- [x] **Un projet reste sur sa version et choisit quand passer à la suivante** — attendu :
   écrit. Il voit qu'une version neuve existe, lit son bilan pour SES relevés, et décide ;
   sans son accord, rien ne bouge — l'écran d'annotation montre les entrées et les définitions
   de sa version. Une campagne en cours ne voit pas sa grille changer sous elle
-- [ ] **Décocher « Partager » ne retire rien à personne** — attendu : écrit. La grille sort
+  **Tranché par Hugo le 2026-10-22**, tel qu'écrit
+- [x] **Décocher « Partager » ne retire rien à personne** — attendu : écrit. La grille sort
   du catalogue pour les nouveaux venus ; les projets qui l'emploient la gardent
-- [ ] **Adapter une grille commune, c'est proposer ou dériver** — attendu : écrit. Proposer
+  **Tranché par Hugo le 2026-10-22**, après avoir demandé si la règle servait : il en faut
+  une, les deux autres issues étant d'ôter sa grille à un projet qui y a posé des relevés, ou
+  d'interdire de décocher dès qu'un autre projet l'emploie. Celle-ci est la plus simple
+- [x] **Adapter une grille commune, c'est proposer ou dériver** — attendu : écrit. Proposer
   aux responsables, pour la version suivante ; ou dériver une grille neuve qui garde la trace
   de son origine et les identifiants des entrées héritées, donc comparable sur ce qu'elles
   partagent. Jamais modifier une grille commune pour son seul projet
-- [ ] **La suppression suit l'emploi** — attendu : écrit. Une grille que nul autre projet
+  **Tranché par Hugo le 2026-10-22, en version ALLÉGÉE** : seul l'interdit est une règle
+  (jamais modifier une grille commune pour son seul projet). Proposer n'est pas un geste de
+  l'outil : on écrit aux responsables. Dériver, c'est réexporter le tableur (identifiants
+  compris) et le réimporter comme grille de son projet ; les `cle` héritées la gardent
+  comparable. La trace de l'origine viendra plus tard, si l'usage la demande
+- [x] **La suppression suit l'emploi** — attendu : écrit. Une grille que nul autre projet
   n'emploie, son responsable la supprime ; employée ailleurs, elle ne peut que sortir du
   catalogue, et la supprimer se DEMANDE à un administrateur. Le tri de l'administrateur suit la
   même règle
-- [ ] **Désactiver une grille dans un projet ne supprime aucun relevé** — attendu : écrit.
+  **Tranché par Hugo le 2026-10-22, en version ALLÉGÉE** : employée par un autre projet, une
+  grille ne se supprime pas, elle peut seulement sortir du catalogue. Seul un administrateur
+  la supprime, lors du tri. Pas de demande, donc pas de sixième genre dans « À faire »
+- [x] **Désactiver une grille dans un projet ne supprime aucun relevé** — attendu : écrit.
   Ils restent, en lecture
+  **Tranché par Hugo le 2026-10-22**, avec la case « Décocher »
 - [ ] **Les relevés sortent avec leur grille et sa version** — attendu : cadré. Une lecture
   faite en v1 reste interprétable quand la grille en est à la v5 ; la grille sort dans un
   format standard (SKOS, comme le lexique aujourd'hui), et une grille venue d'ailleurs peut
@@ -125,35 +252,57 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 
 ### Un seul modèle : ce qui existe y entre
 
-- [ ] **Les trois vocabulaires d'aujourd'hui ont leur place de grille** — attendu : écrit.
+- [x] **Les trois vocabulaires d'aujourd'hui ont leur place de grille** — attendu : écrit.
   Les tags libres : une grille ouverte, de forme simple, sur la zone. La situation d'une
   case : une grille à variantes sur la case. Le profil d'un personnage : une grille à
   variantes sur le personnage. Le vocabulaire d'étude proposé dans `ANN-1` : une grille de
   plus. Le lexique situé (définition, note de portée, état) devient ce que porte une entrée
+  **Tenu le 2026-10-22, avec deux précisions de la séance** : ces grilles naissent NEUVES, les
+  termes d'aujourd'hui ne s'y convertissent pas (Q3) ; le profil vise l'ENTITÉ, la boîte
+  personnage étant une autre cible (Q4)
 - [ ] **Le coût de la réécriture est mesuré** — attendu : chaque lecteur des tags et des
   attributs relevé, avec un ordre de grandeur. Le coût n'est pas dans les données mais dans
   le code : Recherche et index plein texte, Exploration (distribution, croisement,
   concordance), exports (CSV, JSON, TEI, SKOS), lexique et import du tableur, annulation,
   cloisonnement des termes, registre des personnages. Une lecture du code, sans passe de
   tests
-- [ ] **Ce que la production porte déjà est compté** — attendu : nombres de tags, de tags
+- [x] **Ce que la production porte déjà est compté** — attendu : nombres de tags, de tags
   posés, d'attributs et d'affectations, sur la production. Des utilisateurs en ont posé ; peu,
   sans doute. Commande à préparer pour Hugo, qui seul a la main sur le serveur
-- [ ] **Ce que les stagiaires poseront en attendant se convertit** — attendu : la règle est
+  **Mesuré par Hugo le 2026-10-21**, en lecture seule : cf. Contexte, « Mesuré en production ».
+  Sans objet depuis Q3 : rien n'est converti
+- [x] **Ce que les stagiaires poseront en attendant se convertit** — attendu : la règle est
   écrite avant leur premier jour. Ils commencent dans quelques semaines, sans doute avant le
   nouveau mode : ce qu'ils poseront sera des tags, à convertir au basculement (cf. `ANN-6`)
-- [ ] **La réindexation plein texte se paie une fois** — attendu : tranché. L'index agrège
+  **Tranché par Hugo le 2026-10-22 : il n'y a rien à convertir.** Ils ne posent aucun tag
+  avant le basculement (Q9) ; la règle à leur donner est celle-là, avec le statut de relecture
+  comme feu vert
+- [x] **La réindexation plein texte se paie une fois** — attendu : tranché. L'index agrège
   les tags d'une région (`tags_concat`), et la limite écrite sous `AUTH-11` attend la
   prochaine migration forcée de l'index pour être reprise : le basculement en est une
-- [ ] **Supprimer, fusionner, renommer un terme a sa règle dans le modèle** — attendu : écrit. Les
+  **Tranché par Hugo le 2026-10-22** : le basculement RETIRE `tags_concat` et ne met pas les
+  relevés dans l'index — structurés et versionnés, ils y vieilliraient à chaque montée de
+  version. Une seule réindexation complète, au basculement ; la Recherche gagne en tranche 4 un
+  filtre « porte le relevé… », et le champ promet « dialogues, notes ». La limite d'`AUTH-11` se
+  ferme avec lui
+- [x] **Supprimer, fusionner, renommer un terme a sa règle dans le modèle** — attendu : écrit. Les
   tags libres reçoivent ces gestes AVANT les grilles, en mesure d'attente (`ANN-8`, Hugo,
   2026-10-22 : tag local, le propriétaire de la collection ; global, l'administrateur seul) ;
   le modèle dit ce qu'ils deviennent pour une entrée de grille, versionnée et partagée
-- [ ] **Une référence à une autre bulle se tient par l'outil** — attendu : tranché dans le
+  **Tranché par Hugo le 2026-10-22.** Grille FERMÉE : seulement par une nouvelle version
+  (tableur et bilan, note §6) — renommer garde la `cle`, fusionner reporte les relevés, une
+  entrée employée devient « retirée » ; rien en place. Grille OUVERTE (les tags libres) : propre
+  à son projet, sans version publiée, NON partageable tant qu'on ne la fige pas en grille
+  fermée ; les gestes d'`ANN-8` s'y font en place, par les responsables du projet, journalisés.
+  Dans les deux cas, Ctrl+Z désigne une entrée par sa `cle`, jamais par son libellé — la
+  généralisation du correctif qui fait suivre à Ctrl+Z les renommages et les fusions de tags
+- [x] **Une référence à une autre bulle se tient par l'outil** — attendu : tranché dans le
   modèle. Aujourd'hui, pour un chevauchement, la Note porte la référence de l'autre bulle écrite
   à la main ; dérivée de l'ordre de lecture, elle désignait une autre bulle dès qu'une case
   bougeait. Renvoi d'`ANN-8` (Hugo, 2026-10-21) : d'ici là le guide fait écrire l'identifiant
   stable « #123 », et un lien que l'outil tient vient avec les grilles
+  **Tranché par Hugo le 2026-10-22** : un champ `lien` du relevé désigne la région ; si elle
+  disparaît, le relevé passe « à revoir » (cf. « Tranché par Hugo — 2026-10-22 »)
 
 ### L'ordre
 
@@ -169,8 +318,44 @@ dès le lot 1, en parallèle : le code attend son lot, pas la conception.*
   et le fonds de `COL-3` partagent le patron du pot commun, et gagnent à être conçus ensemble
   **Tranché par Hugo le 2026-10-14** : `COL-3` d'abord (fusion de sa tranche 1, puis sa tranche 2), puis le modèle des grilles, en quatre tranches (`docs/grilles-et-releves.md`, §1). Commits sur `dev`, sans push, chacun après revue
 - [x] **La cible « planche » attend le modèle d'`IMG-2`, ou le tranche** — attendu : avant que la tranche 1 fige « la planche » comme cible d'une entrée, dit si c'est la PAGE (unité imprimée, numérotée, citée) ou la SURFACE (le repère où vivent les régions). Ouvert le 2026-10-16 : `docs/images-pages-surfaces.md` propose de séparer image, page et surface, que la planche confond aujourd'hui ; les régions changeraient alors de repère **Tranché par Hugo le 2026-10-16, dans `IMG-2` : la cible « planche » est la SURFACE** — pour une double page, la double page entière, que l'écran nomme « la planche (ou la double page) » ; une cible « page » viendra si une grille en a besoin
+- [ ] **La gestionnaire est responsable du projet de la grille des linguistes** — attendu : au
+  déploiement de la tranche 1, dans « Qui y entre » du projet retenu (« Principal » ou
+  « LingApp »), la gestionnaire figure avec le rôle « responsable » ; sinon seul un
+  administrateur publie (Q9)
 
 ## Contexte
+
+### La séance de conception — 2026-10-22
+
+Une séance d'une heure et demie avec Hugo, sur le dossier ci-dessous, sans maquette (elle
+viendra après, en session dédiée, avec ces décisions). Tout le dossier a été parcouru : Q1 à
+Q9, le catalogue, le relevé, les copies en principe, les cases ouvertes du modèle. Chaque
+décision est une case cochée de « Tranché par Hugo — 2026-10-22 » ou de sa zone d'origine.
+Le dossier recommandait ; Hugo a suivi la recommandation partout, sauf trois fois, où elle a été
+reprise avec lui : le catalogue en version ALLÉGÉE (proposer hors de l'outil, dériver par le
+tableur, aucune demande de suppression), Q9 en (b) plutôt qu'en (c), le vocabulaire neuf
+(Q3) l'ayant rendue nécessaire, et la passe commune avec la double annotation renvoyée aux
+linguistes.
+
+**Ce que la séance a changé au dossier** : le basculement ne convertit RIEN (Q3), ce qui fait
+tomber la question de portée d'`AUTH-11`, la règle de conversion des stagiaires et la mesure de
+la production ; le relevé a ses champs, et aucun `collection_id` ; la tranche 4 de `COL-3` perd
+le vocabulaire et garde les personnages, dont la cible `entite` dépend.
+
+**Ce qui reste ouvert ici** : les champs des objets de grille (à la migration de la tranche 1) ;
+le coût de la réécriture, lu dans le code — moindre depuis Q3, les lecteurs à réécrire restant
+les mêmes ; ce que les relevés deviennent à la SORTIE (tranche 4, relecture croisée) ; la note à
+mettre à jour au premier commit ; la gestionnaire responsable du projet retenu.
+
+**Aux linguistes**, à jour : occurrences ou bulles ; le compte d'un relevé à qualificatifs ; un
+passage qui saute des mots ; compter par niveau et par famille ; la grille tient-elle dans les
+trois formes, cardinalité comprise (colonne `cardinalite`) ; une ou deux grilles avec
+`tools/vocabulaire-etude-propose.csv` ; la double annotation à l'aveugle (case d'`ANN-6`) ; les
+« [exemple du corpus] » du guide, à désigner une fois les relevés posés. Le narrateur au
+registre des personnages reste une question pour eux, avec Q4.
+
+**À mesurer sans Hugo** : la durée d'une réindexation FTS complète sur la recette ; l'import de
+la vraie grille (hors dépôt) dans les trois formes ; le coût de la réécriture.
 
 ### Préparer la séance de conception — relu le 2026-10-21
 
