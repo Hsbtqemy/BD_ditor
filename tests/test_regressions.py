@@ -2055,3 +2055,22 @@ def test_la_resolution_de_compose_rend_none_des_qu_elle_n_a_pas_de_reponse_lisib
         raise subprocess.TimeoutExpired("docker", 60)
     monkeypatch.setattr(vd.subprocess, "run", trop_long)
     assert vd.environnement_app_resolu(tmp_path, env) is None, "délai dépassé"
+
+
+def test_l_infobulle_de_la_citation_ne_la_dit_plus_stable():
+    """ANN-8 (Hugo, 2026-10-21) — la citation `pl·c·b` est DÉRIVÉE de l'ordre de lecture
+    (`database.citations_regions`) : une case ajoutée ou déplacée, et la même citation
+    désigne une autre bulle. L'infobulle disait « Repère stable à l'échelle de l'album », et
+    poussait à citer une bulle par elle ; elle dit d'où vient la citation et renvoie à
+    l'identifiant de la ligne « Région »."""
+    import re
+    from pathlib import Path
+    gabarit = (Path(__file__).resolve().parent.parent / "templates" / "index.html").read_text(
+        encoding="utf-8")
+    ligne = re.search(r'<div class="panel-row" title="([^"]*)">\s*<span class="muted">Citation<',
+                      gabarit)
+    assert ligne, "la ligne « Citation » du panneau de l'Atelier est introuvable"
+    titre = ligne.group(1)
+    assert "stable" not in titre.lower()
+    assert "ordre de lecture" in titre
+    assert "« Région »" in titre and "#" in titre
