@@ -453,7 +453,7 @@ semaines » (Hugo, le même jour).
   de large, 900 et 768 de haut, dans Chromium ; le glissé sur les mots aussi dans Firefox. Non
   essayés : tablette, téléphone, contraste élevé, lecteur d'écran. Retenu pour la tranche 2 :
   pendant un glissé, ne rien redessiner sous le pointeur — la maquette le faisait, 61 fois par
-  seconde, et le relâchement s'y perdait **Validée par les linguistes le 2026-10-22**, rapporté par Hugo : la maquette v3 (`https://claude.ai/artifact/3EXqt485Dv7SwwTRVogLuQ`). Reste ouvert de leur côté : « Un relevé à qualificatifs compte UNE fois son phénomène »
+  seconde, et le relâchement s'y perdait **Validée par les linguistes le 2026-10-22**, rapporté par Hugo : la maquette v3 (`https://claude.ai/artifact/3EXqt485Dv7SwwTRVogLuQ`). Leur réponse sur le relevé à qualificatifs, le même jour : deux tags (cf. sa case)
 
 ### À trancher sur la maquette, avec les linguistes
 
@@ -466,10 +466,10 @@ semaines » (Hugo, le même jour).
   un passage continu ; Ctrl+clic, ou « Ajouter un mot » au doigt, ajoute ou retire un mot
   isolé (« ne … pas »). Un passage à trou se trace sans trait sous les mots sautés, et se
   lit « son … il » dans la liste **Confirmé par les linguistes le 2026-10-22**, rapporté par Hugo, sur la maquette v3
-- [ ] **Un relevé à qualificatifs compte UNE fois son phénomène** — attendu : confirmé par les
+- [x] **Un relevé à qualificatifs compte UNE fois son phénomène** — attendu : confirmé par les
   linguistes. La maquette pose « emphase par typographie et ponctuation » comme un seul
   relevé : 1 emphase, 1 typographie, 1 ponctuation. Le guide en fait deux tags, donc deux
-  emphases
+  emphases **Non — répondu par les linguistes le 2026-10-22**, rapporté par Hugo : « deux tags ». « Emphase par typographie et ponctuation » compte DEUX emphases, comme le guide ; ce que la maquette faisait (un seul relevé, une emphase) ne vaut pas. Ce que cela change au modèle est une case d'`ANN-7`
 - [ ] **Le chevauchement désigne l'autre bulle d'un clic** — attendu : confirmé. Un lien que
   l'outil tient remplace la référence écrite dans la Note, qui change quand l'ordre de
   lecture change (cf. « Avant que les stagiaires commencent »)
