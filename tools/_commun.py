@@ -334,6 +334,12 @@ CIBLES_RETENUES = {
         "lui est faite. Sa charge nomme un document ou un projet, et la demande elle-même "
         "porte le login de qui demande et son motif : une conversation interne entre un "
         "membre et les administrateurs, que rien ne doit à l'entrepôt.",
+    "tags":
+        "ANN-8 — un tag renommé, fusionné dans un autre ou supprimé. C'est la CURATION du "
+        "vocabulaire, pas une annotation : la charge nomme le libellé d'un tag qui peut "
+        "être local à une collection que l'artefact ne couvre pas, et la liste des régions "
+        "qui le portaient, celles des autres études comprises. Ce que le dépôt doit savoir "
+        "du vocabulaire part par ses records, sous son libellé d'aujourd'hui.",
 }
 
 
@@ -445,7 +451,11 @@ def evenements_publiables(conn, ordre: str = "ASC"):
 #:
 #: `region_attribut` aussi (relecture croisée de la tranche 2) : écrit depuis peu, il
 #: donnerait sinon un rang à qui n'a fait que qualifier des cases, et décalerait les autres.
-CIBLES_SANS_RANG = frozenset({"document", "collection_album", "demande", "region_attribut"})
+#:
+#: `tags` (ANN-8) dès sa naissance, pour la même raison : l'administrateur qui range le
+#: vocabulaire prendrait sinon un rang, et décalerait tous ceux qui annotent après lui.
+CIBLES_SANS_RANG = frozenset({"document", "collection_album", "demande", "region_attribut",
+                              "tags"})
 
 
 def pseudonymes(conn) -> dict:

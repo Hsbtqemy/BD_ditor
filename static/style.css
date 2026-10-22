@@ -2627,6 +2627,13 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 }
 .lex-row { display: flex; gap: 1.2308rem; align-items: center; flex-wrap: wrap; }
 .lex-fields .lex-row .lex-check { flex-direction: row; align-items: center; gap: .4615rem; color: var(--text); }
+/* ANN-8 — les gestes d'un tag (renommer, fusionner, supprimer) : chaque champ reste collé à
+   son bouton, et la rangée s'enroule plutôt que de déborder d'une modale étroite. */
+.lex-gestes { gap: .6154rem 1.2308rem; }
+.lex-geste { display: inline-flex; align-items: center; gap: .4615rem; flex-wrap: wrap; max-width: 100%; }
+.lex-geste input, .lex-geste select { max-width: 100%; min-width: 0; }
+.lex-geste input { width: 12em; background: var(--bg-panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; padding: .4615rem .6154rem; font: inherit; }
 /* Domaine (piste B) : en-tête de regroupement — filet accent à gauche pour le distinguer
    des dimensions qu'il chapeaute. Ses dimensions suivent, légèrement en retrait. */
 .lex-term.lex-domaine { border-left: 3px solid var(--accent-blue); background: var(--bg-panel); }

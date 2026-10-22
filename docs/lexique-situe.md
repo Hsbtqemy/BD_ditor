@@ -116,6 +116,46 @@ nouvelle portée.
   éditable (définition, note de portée, case « Défini », menu Portée) ; un compteur **% défini**
   suit la maturité en direct. Audit axe (WCAG 2.1 AA) verrouillé (`pytest -m e2e`).
 
+## Remanier un tag — renommer, fusionner, supprimer (ANN-8)
+
+Décidé par Hugo le 2026-10-22, comme mesure d'attente avant les grilles d'`ANN-7` : un tag
+tapé de travers restait dans le vocabulaire, et dans les propositions de l'Atelier.
+
+- **Routes** (`routes/lexique.py`) : `PUT /api/tags/{id}` `{label}` renomme ;
+  `POST /api/tags/{id}/fusion` `{cible_id, a_blanc?}` fusionne dans `cible_id` ;
+  `DELETE /api/tags/{id}?a_blanc=` supprime. `a_blanc` passe les mêmes gardes, compte, et
+  n'écrit rien : c'est lui qui donne le nombre que la confirmation du navigateur annonce.
+- **Deux questions.** Supprimer un tag que plus aucune région ne porte — compté sur tout le
+  corpus — demande `peut_ecrire_terme`. Renommer, fusionner, supprimer un tag posé, c'est le
+  REMANIER : `Portee.peut_remanier_tag` (local → propriétaire de sa collection ou
+  administrateur ; global → portée totale). L'écran la reçoit par la clé `remaniable`, tag
+  par tag, dans `GET /api/lexique` — et non dans `GET /api/tags`, que lisent l'Atelier et la
+  Recherche, qui ne remanient rien.
+- **Un tag local peut être posé hors de sa collection** (constaté en écrivant ces gestes :
+  `socle._ensure_tags` attache tout tag qu'on LIT, et l'on peut lire la collection d'un tag
+  en écrivant dans un album d'une autre ; un tag rendu local après avoir servi, un album
+  retiré de la collection, font de même). Hors d'une portée totale, retirer et fusionner
+  exigent donc d'écrire dans TOUS les albums où le tag est posé. Le refus apprend au
+  propriétaire que son tag sert ailleurs — un bit, écrit comme limite ; l'autre voie aurait
+  été d'écrire hors de sa portée.
+- **Une fusion ne cache rien** : la cible est globale, ou de la même collection que le tag
+  fusionné — sous toute portée (409 sinon). Les régions portent la cible une seule fois ; la
+  cible garde son libellé, sa définition et sa portée.
+- **Renommer** écrit le libellé sous sa clé (`database.cle_tag`) ; un autre tag de même clé,
+  c'est une fusion, et le 409 le nomme s'il est lisible (« déjà pris » sinon, la phrase de
+  `POST /api/tags`).
+- **L'index** : chaque région dont les tags changent, ou dont un tag change de libellé, est
+  réindexée (`tags_concat`), spaCy chargé hors du verrou d'écriture. Une annotation à qui il
+  ne reste ni note ni tag est supprimée, comme celle qu'on vide à l'Atelier.
+- **Le journal** : cible `tags` (`modification`, `fusion`, `suppression`), identifiants et
+  libellés dans les charges, avec la liste des régions touchées. Retenue de toute sortie,
+  sans rang de pseudonyme, hors des actes qu'un compte laisse en partant, et hors de Ctrl+Z.
+- **Limite connue** : l'annulation repose une annotation d'après son instantané, qui nomme
+  ses tags par LIBELLÉ (`journal.snapshot_annotation`). Ctrl+Z d'un geste d'annotation
+  ANTÉRIEUR à un renommage, une fusion ou une suppression repose donc l'ancien libellé — et
+  le recrée en tag global s'il n'existe plus (`undo._ensure_tag`). La question de Ctrl+Z
+  face au vocabulaire remanié n'est pas tranchée ici.
+
 ## Indicateur « % défini »
 
 `database.lexique_resume(conn, collection_id)` — part des termes (dimensions + valeurs + tags)

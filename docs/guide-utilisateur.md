@@ -835,6 +835,15 @@ en lecture seule pour vous, ou rangerait un terme hors de la collection de son p
 refusée, et le bilan le dit par motif
 (cf. [`import-vocabulaire.md`](import-vocabulaire.md)).
 
+Un tag ouvert dans le panneau porte aussi, si vous y avez droit, trois gestes :
+**Renommer** (le libellé change partout où il est posé), **Fusionner** dans un autre tag —
+choisi dans le menu, parmi les tags globaux ou de la même collection — et **Supprimer**.
+Avant une fusion ou une suppression, le navigateur demande de confirmer en disant combien de
+régions seront touchées ; le message qui suit dit ce qui a été fait. Qui y a droit :
+supprimer un tag que plus aucune région ne porte, quiconque peut le modifier ; le reste, le
+propriétaire de la collection du tag s'il est local, l'administrateur s'il est global. Ces
+gestes ne s'annulent pas par Ctrl+Z. Cf. [`modele-et-droits.md`](modele-et-droits.md) §4.
+
 ---
 
 ## 5. Ce qui n'a pas (encore) de bouton

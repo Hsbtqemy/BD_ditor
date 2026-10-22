@@ -442,6 +442,9 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 | Transcrire, corriger le découpage, annoter, relire la grammaire | — | ✅ | ✅ | ✅ |
 | Lancer les passes automatiques (cases, bulles, OCR) | — | ✅ | ✅ | ✅ |
 | Créer et documenter du vocabulaire local à la collection | — | ✅ | ✅ | ✅ |
+| **Supprimer un tag** que plus aucune région ne porte, sur tout le corpus (local à la collection, ou global) | — | ✅ | ✅ | ✅ |
+| **Renommer, fusionner un tag, ou supprimer un tag encore posé** — tag local à la collection, et posé seulement dans des albums où l'on écrit | — | — | ✅ | ✅ |
+| … un tag **global** | — | — | — | ✅ |
 | **Supprimer un album de la collection** — même la dernière : il est alors gardé au fonds | — | ✅ | ✅ | ✅ |
 | **Supprimer définitivement** un album ou une planche sans rien demander — à condition de l'avoir importé, que personne d'autre n'y ait travaillé, d'écrire dans *toutes* ses collections, et de ne pas être sous un compte partagé (§2, *Le fonds*) | — | ✅ | ✅ | ✅ |
 | **Demander** la suppression définitive d'un album, motif et certification à l'appui | — | ✅ | ✅ | — (il la fait) |
@@ -765,6 +768,33 @@ Deux règles gouvernent cette portée, et la seconde n'est pas intuitive.
 **Voir n'est pas modifier.** Un terme *local* se modifie si vous écrivez dans **sa**
 collection ; un terme *global* se modifie si vous écrivez **quelque part**. Un refus de
 modification sur un terme est un **403** — il vient d'être listé, un 404 mentirait.
+
+**Modifier un tag n'est pas le remanier** (décidé par Hugo le 2026-10-22, en attendant les
+grilles d'`ANN-7`). Le panneau *📖 Lexique* offre trois gestes sur un tag — **Renommer**,
+**Fusionner** dans un autre, **Supprimer** — et deux questions décident qui les fait.
+
+- **Supprimer un tag que plus aucune région ne porte** — sur tout le corpus, pas seulement
+  sur ce que vous lisez — est l'affaire de qui modifie déjà le tag : rien de ce que d'autres
+  ont posé ne change. Un tag qui compte 0 pour vous peut être posé dans une collection que
+  vous ne lisez pas : il ne se supprime alors pas, et le refus le dit sans dire où.
+- **Le renommer, le fusionner, ou le supprimer quand des régions le portent**, c'est changer
+  ce que d'autres ont posé : un tag **local** se remanie par le propriétaire de sa collection
+  et l'administrateur, un tag **global** par l'administrateur seul (et en mono-poste).
+
+Un tag local peut être **posé hors de sa collection** : qui lit la collection du tag et
+écrit dans un album rangé ailleurs l'y pose, puisqu'il le lit. Le propriétaire ne retire
+donc ou ne fusionne un tag que s'il écrit dans tous les albums où il est posé ; sinon, c'est
+un administrateur qui le fait, et le refus dit seulement que le tag est posé là où vous
+n'écrivez pas. Le renommage n'y est pas soumis : il change le mot, pas les régions, qui
+suivent.
+
+Avant de confirmer, le navigateur dit **combien de régions** le geste touchera ; ce nombre
+ne compte jamais au-delà de ce que vous lisez — quand il le devrait, le geste vous est refusé
+avant. Une **fusion** porte le tag choisi sur chaque région du premier (une seule fois si
+elle le portait déjà), puis le premier disparaît ; elle ne se fait que vers un tag global
+ou de la même collection, pour ne cacher le tag à personne. **Renommer** vers le libellé
+d'un autre tag est refusé : c'est une fusion, et le message le dit. Ces gestes sont écrits
+au journal, ne partent pas au dépôt, et **Ctrl+Z ne les défait pas**.
 
 **Voir n'est pas non plus ce qui SORT, et il y a deux règles de sortie** (mis au vrai le
 2026-10-07).

@@ -757,7 +757,7 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   mono-poste lisent encore dans la Recherche et l'Exploration le texte d'une copie gardée
   au fonds : leur portée totale la lit.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue vingt questions — dix jusqu'au 2026-10-10 (`peut_lire` /
+  serveur distingue vingt et une questions — dix jusqu'au 2026-10-10 (`peut_lire` /
   `peut_ecrire` / `peut_administrer` / `peut_exporter`, `clause_album` /
   `clause_destruction` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`
   / `peut_exporter_quelque_part`), quatorze jusqu'au 2026-10-16 avec les quatre du projet
@@ -765,10 +765,11 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   COL-3), dix-sept jusqu'au 2026-10-17 avec les trois du fonds
   (`clause_suppression_directe` / `peut_tenir_le_fonds` / `peut_nommer_le_demandeur`,
   COL-3, tranche 2), et les trois de la prise (`peut_lire_les_notices` /
-  `clause_rejoindre_directe` / `peut_repondre_a`, COL-3, tranche 3a) ; la 3a donne aussi à
+  `clause_rejoindre_directe` / `peut_repondre_a`, COL-3, tranche 3a), vingt jusqu'au
+  2026-10-22, où s'ajoute `peut_remanier_tag` (ANN-8) ; la 3a donne aussi à
   `peut_nommer_le_demandeur` un second usage, nommer qui demande à qui doit CONSENTIR à un
-  `rejoindre` (`consentement`). Le client en reçoit huit par une clé — six jusqu'au
-  2026-10-16, sept jusqu'au 2026-10-17 —, et trois par la FORME d'une réponse (ci-dessous). Une projet
+  `rejoindre` (`consentement`). Le client en reçoit neuf par une clé — six jusqu'au
+  2026-10-16, sept jusqu'au 2026-10-17, huit jusqu'au 2026-10-22 —, et trois par la FORME d'une réponse (ci-dessous). Une projet
   par projet, dans `GET /api/projets` : `gerable`
   (`mon_role` l'accompagne comme `mon_niveau` accompagne une collection : il dit sous quel
   rôle on y figure, et vaut `null` pour une portée totale, qui règle tout sans figurer
@@ -807,6 +808,11 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   (écran de la 3a) : la même question que dans `GET /api/projets`, `peut_gerer_projet`,
   posée sur le projet de la collection — pour qu'une ligne dérivée ne mène à « Régler dans
   le projet » que qui le règle.
+  La neuvième clé (ANN-8, 2026-10-22) : `remaniable`, tag par tag dans `GET /api/lexique` —
+  `peut_remanier_tag` —, et non dans `GET /api/tags`, que lisent l'Atelier et la Recherche,
+  qui ne remanient rien. La suppression d'un tag inutilisé, qui ne demande que
+  `peut_ecrire_terme`, n'a pas de clé : l'écran la lit dans `ecrivable`, comme le menu
+  « Portée » du même panneau.
   Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
   d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
   qu'on ajoute dans un panneau gardé hérite de sa garde **par défaut et non par décision** :
@@ -847,6 +853,13 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   `ecriture=True` sur les routes d'écriture — 19 ne l'avaient pas au premier jet, avec une
   suite entièrement verte. Le refus d'écriture est un **403** sur un terme (il vient d'être
   listé, un 404 mentirait) et un **404** sur une donnée (l'absence ne fuit rien).
+  **Et MODIFIER un tag n'est pas le REMANIER** (ANN-8, Hugo, 2026-10-22) : le renommer, le
+  fusionner, le supprimer quand des régions le portent, c'est `peut_remanier_tag` — tag
+  local, le propriétaire de sa collection et l'administrateur ; tag global, la portée
+  totale seule. Supprimer un tag que plus aucune région ne porte, sur TOUT le corpus,
+  reste `peut_ecrire_terme`. Un tag local pouvant être posé hors de sa collection (qui la
+  lit l'attache dans un album où il écrit), retirer et fusionner exigent en plus, hors
+  portée totale, d'écrire dans TOUS les albums où il est posé (`routes/lexique.py`).
 - **Deux portées dérivées** — un personnage se voit par ses APPARITIONS (`_clause_personnage` ;
   celui qui n'apparaît nulle part reste visible, sans quoi on ne pourrait plus en créer) ;
   l'annulation (Ctrl+Z) se filtre par AGENT et non par collection, parce que la cible d'une
@@ -1031,7 +1044,7 @@ Invariants :
 
 ### Lexique situé (A4, v17)
 
-Couche définitionnelle **SKOS** sur le vocabulaire ÉMERGENT (dimensions, valeurs **et** tags — le même patron « contrôlé-mais-ouvert »). Chaque terme porte `definition` (pour un tag, sa `description` legacy EST la définition), `note_portee` (SKOS `scopeNote` = le « situé »), `etat` (`provisoire`→`defini`, miroir `auto→validé`) et `collection_id` (**portée d'appartenance** : NULL = global, sinon local ; promotion → NULL via `ON DELETE SET NULL`, patron *mentions→entités*). Édition : `PATCH /api/attributs/{dimensions,valeurs}/{id}/lexique` + `PATCH /api/tags/{id}/lexique` (partielle) ; `GET /api/lexique` (read model + **% défini** via `database.lexique_resume`). UI : bouton **📖 Lexique** sur Exploration → modale accessible (`dialog.js`). Exporté en SKOS (records + paradonnée). Cf. `docs/lexique-situe.md`.
+Couche définitionnelle **SKOS** sur le vocabulaire ÉMERGENT (dimensions, valeurs **et** tags — le même patron « contrôlé-mais-ouvert »). Chaque terme porte `definition` (pour un tag, sa `description` legacy EST la définition), `note_portee` (SKOS `scopeNote` = le « situé »), `etat` (`provisoire`→`defini`, miroir `auto→validé`) et `collection_id` (**portée d'appartenance** : NULL = global, sinon local ; promotion → NULL via `ON DELETE SET NULL`, patron *mentions→entités*). Édition : `PATCH /api/attributs/{dimensions,valeurs}/{id}/lexique` + `PATCH /api/tags/{id}/lexique` (partielle) ; `GET /api/lexique` (read model + **% défini** via `database.lexique_resume`). UI : bouton **📖 Lexique** sur Exploration → modale accessible (`dialog.js`). Un tag s'y **renomme**, se **fusionne** dans un autre et se **supprime** (ANN-8 : `PUT /api/tags/{id}`, `POST /api/tags/{id}/fusion`, `DELETE /api/tags/{id}` — les deux derniers jouables `a_blanc`, pour dire le nombre de régions avant la confirmation ; réindexation FTS des régions touchées ; journal sous la cible `tags`, retenue de toute sortie, hors Ctrl+Z ; logique d'écran dans `static/lib/gestes-tag.js`). Exporté en SKOS (records + paradonnée). Cf. `docs/lexique-situe.md`.
 
 ### Alignement d'autorité (A5, v18)
 

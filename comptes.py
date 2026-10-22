@@ -85,10 +85,12 @@ def traces(conn) -> tuple[dict, dict, dict, dict]:
         # `demande` (COL-3, tranche 2), pour la raison d'`utilisateur_nature` : déposer une
         # demande ou y répondre est un acte, mais il n'orpheline aucune annotation. Qui a
         # demandé reste écrit sur la demande.
+        # `tags` (ANN-8) pour la même raison : renommer, fusionner ou supprimer un tag range
+        # le vocabulaire, et n'orpheline aucune annotation.
         "SELECT agent, COUNT(*) AS n FROM evenement "
         "WHERE agent_type = 'humain' AND agent IS NOT NULL "
         "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature', 'annulation', "
-        "                          'document', 'collection_album', 'demande') "
+        "                          'document', 'collection_album', 'demande', 'tags') "
         "GROUP BY agent")}
     acces = {r["principal"]: r["n"] for r in conn.execute(
         "SELECT principal, COUNT(*) AS n FROM collection_acces "

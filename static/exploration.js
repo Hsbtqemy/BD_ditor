@@ -663,6 +663,7 @@ function setupBack() {
    Read model : GET /api/lexique ; écriture : PATCH .../lexique (partielle). */
 let LEX_COLLECTIONS = [];   // {id, nom, …} — menu « portée »
 let LEX_DOMAINES = [];      // {id, nom, …} — menu « domaine » des dimensions (piste B)
+let LEX_TAGS = [];          // les tags visibles — cibles d'une fusion (ANN-8)
 
 async function openLexique() {
   $("#lex-import-bilan").hidden = true;        // un bilan d'une ouverture précédente
@@ -678,6 +679,7 @@ async function loadLexique() {
     const [lex, cols] = await Promise.all([apiGet("/api/lexique"), apiGet("/api/collections")]);
     LEX_COLLECTIONS = cols;
     LEX_DOMAINES = lex.domaines || [];
+    LEX_TAGS = lex.tags || [];
     renderLexique(lex);
   } catch (e) { body.textContent = "Impossible de charger le lexique."; }
 }
@@ -821,7 +823,84 @@ function termEditor(kind, term, defi) {
       e.target.value = porteeAffichee;
     }
   });
+  if (kind === "tag") gestesDuTag(d, term);
   return d;
+}
+
+/* ANN-8 — renommer, fusionner, supprimer un tag. Les gestes offerts viennent de la clé
+   `remaniable` du serveur et du droit de modifier le terme (cf. static/lib/gestes-tag.js) ;
+   un tag sans geste offert n'a pas de rangée. Le nombre de régions est demandé à la route
+   jouée à blanc, AVANT la confirmation du navigateur. Après un geste, le lexique est
+   rechargé : un tag renommé ou disparu change aussi les menus de fusion des autres. */
+function gestesDuTag(d, tag) {
+  const G = BDGestesTag;
+  const offerts = G.gestesOfferts(tag, G.modifiable(tag, LEX_COLLECTIONS));
+  if (!offerts.renommer && !offerts.fusionner && !offerts.supprimer) return;
+  const cibles = G.ciblesDeFusion(tag, LEX_TAGS);
+  const rangee = document.createElement("div");
+  rangee.className = "lex-row lex-gestes";
+  rangee.innerHTML = `
+    ${offerts.renommer ? `
+      <span class="lex-geste">
+        <input data-g="label" value="${esc(tag.label)}" autocomplete="off"
+               aria-label="Nouveau libellé de « ${esc(tag.label)} »">
+        <button type="button" class="ghost small" data-g="renommer"
+                title="${esc(G.INFOBULLES.renommer)}">Renommer</button>
+      </span>` : ""}
+    ${offerts.fusionner ? `
+      <span class="lex-geste">
+        <select data-g="cible" aria-label="Fusionner « ${esc(tag.label)} » dans">
+          <option value="">Fusionner dans…</option>
+          ${cibles.map((c) => `<option value="${c.id}">${esc(c.label)}</option>`).join("")}
+        </select>
+        <button type="button" class="ghost small" data-g="fusionner"
+                title="${esc(G.INFOBULLES.fusionner)}">Fusionner</button>
+      </span>` : ""}
+    ${offerts.supprimer ? `
+      <button type="button" class="danger small" data-g="supprimer"
+              title="${esc(G.INFOBULLES.supprimer)}">Supprimer</button>` : ""}`;
+  d.querySelector(".lex-fields").appendChild(rangee);
+
+  const apres = async (message) => {
+    toast(message, "success");
+    await loadLexique();
+  };
+  const echec = (e) => toast("Échec : " + e.message, "error");
+
+  const btnRenommer = rangee.querySelector('[data-g="renommer"]');
+  if (btnRenommer) btnRenommer.addEventListener("click", async () => {
+    const champ = rangee.querySelector('[data-g="label"]');
+    const label = champ.value.trim();
+    if (!label || label === tag.label) { champ.focus(); return; }
+    try {
+      const rep = await apiSend("PUT", `/api/tags/${tag.id}`, { label });
+      await apres(G.reussiteRenommage(tag.label, rep));
+      const rouvert = document.querySelector(`#lex-body [data-terme="tag:${tag.id}"]`);
+      if (rouvert) rouvert.open = true;
+    } catch (e) { echec(e); }
+  });
+
+  const btnFusionner = rangee.querySelector('[data-g="fusionner"]');
+  if (btnFusionner) btnFusionner.addEventListener("click", async () => {
+    const menu = rangee.querySelector('[data-g="cible"]');
+    if (!menu.value) { menu.focus(); return; }
+    const corps = { cible_id: Number(menu.value) };
+    try {
+      const blanc = await apiSend("POST", `/api/tags/${tag.id}/fusion`,
+                                  { ...corps, a_blanc: true });
+      if (!window.confirm(G.confirmerFusion(blanc))) return;
+      await apres(G.reussiteFusion(await apiSend("POST", `/api/tags/${tag.id}/fusion`, corps)));
+    } catch (e) { echec(e); }
+  });
+
+  const btnSupprimer = rangee.querySelector('[data-g="supprimer"]');
+  if (btnSupprimer) btnSupprimer.addEventListener("click", async () => {
+    try {
+      const blanc = await apiSend("DELETE", `/api/tags/${tag.id}?a_blanc=true`);
+      if (!window.confirm(G.confirmerSuppression(blanc))) return;
+      await apres(G.reussiteSuppression(await apiSend("DELETE", `/api/tags/${tag.id}`)));
+    } catch (e) { echec(e); }
+  });
 }
 
 function renderLexique(lex) {

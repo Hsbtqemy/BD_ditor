@@ -699,6 +699,33 @@ class Portee:
             return bool(self.ecriture)
         return collection_id in self.ecriture
 
+    def peut_remanier_tag(self, collection_id) -> bool:
+        """A-t-on le droit de REMANIER ce tag — le renommer, le fusionner dans un autre, ou
+        le supprimer alors que des régions le portent ?  ANN-8 (Hugo, 2026-10-22).
+
+        Modifier un terme (`peut_ecrire_terme`) documente sa définition, sa note, sa portée.
+        Le remanier change ce que portent des régions annotées par d'autres : le nom sous
+        lequel ils l'ont posé, ou sa présence même. La question suit donc la PORTÉE du tag,
+        et non le droit d'écrire. Un tag LOCAL se remanie par le propriétaire de sa
+        collection (`peut_administrer`, qui laisse passer l'administrateur) ; un tag GLOBAL
+        par la portée totale seule — l'administrateur, et le mono-poste —, personne ne le
+        possédant en propre alors que tout le monde l'emploie.
+
+        Supprimer un tag que plus aucune région ne porte n'est PAS remanier : rien de ce
+        que d'autres ont posé ne change, et la question est celle de `peut_ecrire_terme`.
+
+        Ce que la question ne dit pas, et que la route doit tenir à part : un tag local
+        peut être POSÉ hors de sa collection — sur une région d'un album rangé ailleurs,
+        par qui lit la collection du tag et écrit dans celle de l'album. Remanier en
+        retirerait le tag là où l'appelant n'écrit pas ; seule une portée totale le fait
+        (cf. `routes/lexique.py`). Mesure d'attente : les grilles d'ANN-7 reprendront la
+        question."""
+        if self.tout:
+            return True
+        if collection_id is None:
+            return False
+        return self.peut_administrer(collection_id)
+
     def peut_ecrire_quelque_part(self) -> bool:
         """A-t-on le droit d'écrire, où que ce soit ? Sert aux gestes qui ne visent aucune
         collection en particulier — enrichir le vocabulaire, par exemple. Sans cela, une
