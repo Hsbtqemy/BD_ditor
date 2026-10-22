@@ -155,6 +155,25 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   table Node ; l'écran garde ce qui dépend du temps
 
 ### Les tags et la Note, tant que les grilles n'existent pas
+- [ ] **Un tag que plus aucune région ne porte se supprime** — attendu : depuis le panneau
+  📖 Lexique de l'Exploration, par qui peut déjà modifier ce tag (`peut_ecrire_terme`).
+  Aujourd'hui aucun écran ni aucune route ne supprime un tag : une faute de frappe reste dans
+  le vocabulaire à fréquence 0, et dans les propositions. Hugo, 2026-10-22 : « dérangeant de ne
+  pas pouvoir supprimer des tags libres »
+- [ ] **Un tag se fusionne dans un autre** — attendu : chaque région qui portait le premier
+  porte le second, puis le premier disparaît ; le nombre de régions touchées est dit avant de
+  confirmer ; journalisé, hors Ctrl+Z ; l'index plein texte des régions touchées est refait
+  (`tags_concat`)
+- [ ] **Un tag utilisé se supprime** — attendu : il quitte toutes les régions qui le portent,
+  après une confirmation qui en dit le nombre ; journalisé, hors Ctrl+Z ; index refait
+- [ ] **Un tag se renomme** — attendu : le libellé change sur place, les régions suivent (elles
+  désignent le tag, pas son libellé) ; refusé si un autre tag a déjà la même clé (`cle_tag`) —
+  c'est alors une fusion ; index refait
+- [ ] **Qui fusionne, supprime un tag utilisé ou renomme : selon la portée du tag** — attendu :
+  tag LOCAL, le propriétaire de sa collection et l'administrateur ; tag GLOBAL, l'administrateur
+  seul (Hugo, 2026-10-22). La question vit dans `autorisation.py`, et le client la reçoit par
+  une clé, pas en la devinant. Supprimer un tag inutilisé reste à qui le modifie déjà. Ces
+  quatre cases sont une mesure d'attente : les grilles d'`ANN-7` reprendront la question
 - [ ] **L'infobulle de la ligne « Citation » de l'Atelier ne pousse plus à citer une bulle par sa
   citation** — attendu : elle dit que la citation se dérive de l'ordre de lecture et change
   quand une case bouge, et renvoie à l'identifiant de la ligne « Région » pour désigner une

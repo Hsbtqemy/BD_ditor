@@ -145,6 +145,10 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 - [ ] **La réindexation plein texte se paie une fois** — attendu : tranché. L'index agrège
   les tags d'une région (`tags_concat`), et la limite écrite sous `AUTH-11` attend la
   prochaine migration forcée de l'index pour être reprise : le basculement en est une
+- [ ] **Supprimer, fusionner, renommer un terme a sa règle dans le modèle** — attendu : écrit. Les
+  tags libres reçoivent ces gestes AVANT les grilles, en mesure d'attente (`ANN-8`, Hugo,
+  2026-10-22 : tag local, le propriétaire de la collection ; global, l'administrateur seul) ;
+  le modèle dit ce qu'ils deviennent pour une entrée de grille, versionnée et partagée
 - [ ] **Une référence à une autre bulle se tient par l'outil** — attendu : tranché dans le
   modèle. Aujourd'hui, pour un chevauchement, la Note porte la référence de l'autre bulle écrite
   à la main ; dérivée de l'ordre de lecture, elle désignait une autre bulle dès qu'une case
