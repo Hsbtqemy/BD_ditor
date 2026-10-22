@@ -469,7 +469,7 @@ semaines » (Hugo, le même jour).
 - [x] **Un relevé à qualificatifs compte UNE fois son phénomène** — attendu : confirmé par les
   linguistes. La maquette pose « emphase par typographie et ponctuation » comme un seul
   relevé : 1 emphase, 1 typographie, 1 ponctuation. Le guide en fait deux tags, donc deux
-  emphases **Non — répondu par les linguistes le 2026-10-22**, rapporté par Hugo : « deux tags ». « Emphase par typographie et ponctuation » compte DEUX emphases, comme le guide ; ce que la maquette faisait (un seul relevé, une emphase) ne vaut pas. Ce que cela change au modèle est une case d'`ANN-7`
+  emphases **Non — répondu par les linguistes le 2026-10-22**, rapporté par Hugo : « deux tags ». « Emphase par typographie et ponctuation » compte DEUX emphases, comme le guide ; ce que la maquette faisait (un seul relevé, une emphase) ne vaut pas. Le modèle ne change pas (Hugo, même jour, case d'`ANN-7`) : la grille des linguistes écrira l'emphase par manière, une entrée chacune
 - [ ] **Le chevauchement désigne l'autre bulle d'un clic** — attendu : confirmé. Un lien que
   l'outil tient remplace la référence écrite dans la Note, qui change quand l'ordre de
   lecture change (cf. « Avant que les stagiaires commencent »)

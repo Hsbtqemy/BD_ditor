@@ -157,14 +157,17 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   plusieurs entrées). Une précision libre peut s'ajouter à une entrée. La grille des
   linguistes s'y range entière : à vérifier en l'important
   **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§3), avec la précision libre et le lien vers une autre zone
-- [ ] **Une entrée à qualificatifs compte comme les linguistes comptent** — attendu : tranché
+- [x] **Une entrée à qualificatifs compte comme les linguistes comptent** — attendu : tranché
   avant la migration de la tranche 1. Les linguistes ont répondu le 2026-10-22 (rapporté par
-  Hugo) : « emphase par typographie et ponctuation » fait DEUX tags, donc deux emphases — et
-  non un relevé qui compte une fois son phénomène, comme la maquette le posait (`ANN-6`). Deux
-  voies : la forme à qualificatifs compte une occurrence par qualificatif choisi ; ou
-  l'emphase redevient une entrée par manière (typographie, ponctuation…), et cette forme ne
-  sert qu'où un relevé à plusieurs choix compte une fois. Le décompte de l'Exploration et
-  l'import de la grille en dépendent
+  Hugo) : « emphase par typographie et ponctuation » fait DEUX tags, donc deux emphases.
+  **Tranché par Hugo le même jour : le modèle ne change pas.** Une grille est une DONNÉE —
+  l'outil est agnostique, la grille appartient à ses responsables, qui la modifient et
+  décident de ses entrées et de ce qu'elles comptent. La grille des linguistes écrira donc
+  l'emphase par manière (une entrée « emphase par typographie », une « emphase par
+  ponctuation »), et la forme à qualificatifs garde sa règle : un relevé compte UNE fois son
+  phénomène. Ce que l'outil doit, c'est DIRE comment chaque forme compte, dans le modèle du
+  tableur et sa documentation, pour que l'auteur d'une grille choisisse en connaissance de
+  cause
 - [x] **La cible d'une grille est une donnée** — attendu : écrit. Des mots d'une zone, une
   zone entière, une case, un personnage, une planche : c'est ce qui laisse entrer dans le même
   modèle une grille d'oralité, des émotions de personnages et la situation d'une case
