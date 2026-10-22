@@ -155,6 +155,11 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   table Node ; l'écran garde ce qui dépend du temps
 
 ### Les tags et la Note, tant que les grilles n'existent pas
+- [ ] **Un tag LOCAL ne se pose que sur les albums de sa collection** — attendu : tranché par
+  Hugo le 2026-10-22 : empêché dès la saisie (`_ensure_tags`, et les propositions de l'Atelier
+  ne l'offrent pas ailleurs) ; ce qui existe déjà reste, et un outil à blanc le dit. Constaté
+  par la mission des gestes sur un tag : quiconque lit la collection d'un tag local et écrit
+  dans une autre l'y posait ; cela ferme aussi le refus « posé ailleurs » de la fusion
 - [ ] **Un tag que plus aucune région ne porte se supprime** — attendu : depuis le panneau
   📖 Lexique de l'Exploration, par qui peut déjà modifier ce tag (`peut_ecrire_terme`).
   Aujourd'hui aucun écran ni aucune route ne supprime un tag : une faute de frappe reste dans

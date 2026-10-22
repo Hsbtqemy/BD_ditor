@@ -25,6 +25,21 @@ wizard en session dédiée.
 - [x] **Le moment de l'effacement** — attendu : tranché. Hugo : « peu m'importe » ; retenu, la proposition du cadrage : le lundi à 4 h pour tous, un bac à sable créé moins de 24 h avant gardé jusqu'à la semaine suivante (S5)
 - [x] **Rien ne sort d'un bac à sable, et l'on y invite des comptes au rôle de membre** — attendu : tranché. Propositions du cadrage (S3, S11) soumises à Hugo le 2026-10-21 pour simple confirmation ; il n'y a pas objecté. À rouvrir sur son mot
 
+### Tranché par Hugo — 2026-10-22
+- [x] **L'effacement : le lundi à 4 h pour tous, SANS exception** — attendu : tranché. Revient
+  sur la proposition retenue le 2026-10-21 (un bac à sable créé moins de 24 h avant gardé
+  jusqu'à la semaine suivante) : le moment est le même pour tous, sans délai de grâce. L'écran
+  dit la date du prochain effacement
+- [x] **Un administrateur a, lui aussi, un bac à sable** — attendu : tranché. L'isolement tient à
+  la NATURE du projet, jamais à la portée (S3) : sa portée totale n'y ouvre rien de plus
+- [ ] **Les images du jeu : « un peu des trois »** — attendu : la composition du jeu écrite, et
+  ce qu'elle emporte. Hugo veut mêler des planches DESSINÉES pour l'outil (licence libre, dans le
+  dépôt), du DOMAINE PUBLIC (licence du scan à lire, dans le dépôt) et des scans du CORPUS (sous
+  droits : jamais dans le dépôt, posés à la main sur le VPS). Conséquences à trancher avant le
+  code : le jeu a donc une part hors dépôt, que l'outil d'amorçage doit savoir trouver ou
+  ignorer ; l'export, permis sur les deux premières parts, doit rester FERMÉ sur la troisième —
+  par document, pas par bac à sable ; et qui choisit les planches de chaque part
+
 ### À cadrer avant le code
 - [x] **Une note de cadrage** — attendu : écrite et rendue à Hugo, lue dans le code : qui crée un projet aujourd'hui (`peut_decider_des_projets`, la portée totale seule) et l'exception écrite qu'est un bac à sable créé par son propre utilisateur ; comment on le reconnaît (un drapeau sur `projet`, à côté de `repli`) et ce qu'il NE donne PAS ailleurs ; comment l'effacement hebdomadaire détruit un projet et tout ce qu'il porte (albums, copies, collections, demandes, journal — append-only, donc il reste) sans toucher aux autres ; ce qui empêche un album du bac à sable de sortir vers un vrai projet (le rangement ne traverse pas les projets ; « en partir », E7, à décider) ; la minuterie (le patron de `bd-deploiement.timer`) ; et ce que la liste des projets de l'Administration fait de 75 bacs à sable **Écrite le 2026-10-21 : `docs/col4-bac-a-sable-cadrage.md`**, S1 à S12, rendue à Hugo le même jour. Elle relève que le bac à sable fait de chaque arrivant un responsable de projet qui « écrit quelque part », deux qualités qui ouvrent aujourd'hui beaucoup hors de lui (notices du fonds, vocabulaire et personnages globaux, annuaire, bandeau de portée vide) : la responsabilité d'un bac à sable ne doit compter pour rien d'autre (S2), d'où l'estimation portée à 5 à 6 jours et demi
 - [x] **Le jeu ne coûte rien sur le disque** — attendu : décidé dans le cadrage. Proposé : le jeu vit au FONDS comme des documents, et chaque bac à sable en prend des COPIES (COL-3, D6 : une copie désigne les mêmes images que sa source) — 75 bacs à sable pour presque rien, et l'effacement ne détruit que les copies. Des images du DOMAINE PUBLIC, pour que le jeu puisse vivre dans le dépôt et se tester ; sinon sur le VPS, hors du dépôt public **Décidé par le cadrage (S4)** : des documents de référence dans un projet caché, chaque bac à sable en prend des copies jusqu'au cran `grammaire` (au cran `annotations`, les personnages deviendraient communs à tous) — aucune image copiée (D6). **Les images, Hugo le 2026-10-21 : « un peu des trois », pour montrer la diversité du travail** — du domaine public ou sous licence libre (dans le dépôt), des scans de l'équipe (sur le VPS, hors du dépôt public), des planches dessinées exprès ; l'outil de préparation du jeu lit donc deux sources
