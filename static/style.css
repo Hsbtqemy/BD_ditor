@@ -154,6 +154,10 @@
   min-width: 16.1538rem; padding: .7692rem; display: flex; flex-direction: column; gap: .6154rem;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 6px 20px var(--shadow);
+  /* `theme.js` borne sa hauteur à la fenêtre visible à l'ouverture (`bornerALaFenetre`) :
+     sous le zoom d'interface il la dépassait, et A−/↺ sortaient de l'Atelier, qui ne
+     défile pas. Ce qui ne tient plus défile ICI. */
+  overflow-y: auto; overscroll-behavior: contain;
 }
 /* Sans ce garde, le display:flex ci-dessus l'emporterait sur l'attribut [hidden]
    (règle UA, même origine perd) → le menu resterait ouvert en permanence (cf. .empty-hint). */
@@ -225,7 +229,13 @@ kbd {
      mesurés à 320 px le 2026-09-05 — au lieu d'être bornée par la fenêtre, et tout
      ce qui dépassait était clippé par `html, body { overflow: hidden }`. */
   grid-template-columns: minmax(0, 1fr);
-  height: 100vh;
+  /* `100%` (de `body`, lui-même `100%` de la racine) et non `100vh` : sous le zoom
+     d'interface, `vh` se calcule contre la fenêtre NON zoomée puis grandit avec le zoom
+     (cf. « Les plafonds des tiroirs », plus bas). Mesuré le 2026-10-22 à 320 × 640 :
+     la coque faisait 896 px de haut sous 1,4, 1 280 sous 2, et `overflow: hidden`
+     coupait tout ce qui passait sous la fenêtre — la barre d'état, le bas des tiroirs.
+     Au zoom 1 les deux valeurs sont égales. */
+  height: 100%;
 }
 #body {
   display: grid;
@@ -286,6 +296,21 @@ kbd {
    devient sans effet sans que personne ait à la retirer. Le même nombre recopié en
    JavaScript aurait fait deux vérités à tenir d'accord — la faute qui a fermé
    l'instance de production le 2026-09-05, dans un tout autre fichier.
+
+   **Les plafonds des tiroirs sont en POURCENTAGE de `#body`, jamais en `vw`** (2026-10-22).
+   Le zoom d'interface du menu « Aa » pose `zoom` sur la racine, et sous lui une unité de
+   fenêtre ne suit plus la fenêtre VISIBLE. Mesuré sous Chromium 151 et Firefox 153, à
+   320 × 640 : `50vw` se calcule contre la fenêtre NON zoomée (160 px), puis le zoom le
+   multiplie — 224 px à l'écran sous 1,4, 320 sous 2 ; `vh` de même. Un pourcentage, lui,
+   se résout contre son conteneur, déjà zoomé : `50%` reste 160 px visibles à tout zoom ;
+   et `position: fixed; inset: 0` couvre bien la fenêtre. D'où des tiroirs qui
+   grandissaient avec le zoom au lieu de rester bornés à la fenêtre — 336 px pour 320 sous
+   1,4, le voile qui les referme et la bascule recouverts, Échap seul pour sortir ; et le
+   tiroir de structure dès 1,2. `#body` est l'ancre des tiroirs ET la boîte du voile
+   (`inset: 0`) : 86 % de lui laissent 14 % de voile à toucher, quel que soit le zoom, et
+   au zoom 1 c'est la même valeur qu'avant — `#body` fait la largeur de la fenêtre.
+   Diviser `vw` par le zoom aurait marché aussi, à condition de publier le zoom en
+   variable : un second propriétaire du même nombre, là où le pourcentage n'en a aucun.
    ------------------------------------------------------------------------------ */
 
 .tiroir-bascule { display: none; }        /* rendues visibles par les seuils */
@@ -312,7 +337,7 @@ kbd {
   #btn-tiroir-nav { display: inline-flex; }
   #sidebar {
     position: absolute; top: 0; bottom: 0; left: 0; z-index: 40;
-    width: min(var(--sidebar-w), 86vw);
+    width: min(var(--sidebar-w), 86%);    /* % de `#body`, pas `vw` : cf. plus haut */
     transform: translateX(-101%);         /* 101 % : la bordure droite sort aussi */
     box-shadow: 4px 0 16px var(--shadow);
   }
@@ -395,7 +420,7 @@ kbd {
      translaté hors champ mais toujours en colonne. Deux ID valent mieux qu'un ordre. */
   #body #panel {
     position: absolute; top: 0; bottom: 0; right: 0; z-index: 40;
-    width: min(var(--panel-w), 92vw);
+    width: min(var(--panel-w), 92%);      /* idem */
     transform: translateX(101%);
     box-shadow: -4px 0 16px var(--shadow);
   }
@@ -477,6 +502,7 @@ kbd {
   display: flex; flex-direction: column;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 6px 20px var(--shadow);
+  overflow-y: auto; overscroll-behavior: contain;   /* même patron que `.display-panel` */
 }
 /* Même garde que `.display-panel[hidden]` : sans elle, `display: flex` l'emporterait sur
    l'attribut, et le menu resterait ouvert en permanence. */

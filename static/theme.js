@@ -62,6 +62,7 @@
     applyZoom(curZoom());
     applyLecture(curLecture());
     sync();
+    rebornerTout();
   });
 
   var menus = [];
@@ -85,7 +86,7 @@
   function setLecture(on) { put(KEY.lecture, on ? "confort" : "normal"); applyLecture(on ? "confort" : "normal"); sync(); }
   function setZoom(z) {
     z = Math.min(2.0, Math.max(0.8, Math.round(z * 10) / 10));
-    put(KEY.zoom, String(z)); applyZoom(z); sync();
+    put(KEY.zoom, String(z)); applyZoom(z); sync(); rebornerTout();
   }
 
   function el(tag, cls, txt) {
@@ -107,11 +108,41 @@
      ouvert que le clavier a quitté recouvre ce qu'on vient d'atteindre. On ne regarde que
      les sorties VERS un autre élément de la page : `relatedTarget` vaut `null` quand la
      fenêtre perd le focus, et un menu ne doit pas se fermer parce qu'on a changé d'onglet. */
+  /* ---- Un panneau ouvert tient dans la HAUTEUR de la fenêtre (UX-7, 2026-10-22) ----
+     Sous le zoom d'interface, le panneau « Aa » grandit avec ce qu'il règle : à 320 × 640
+     sous 1,8, dans l'Atelier, il allait de y=274 à y=756, et l'Atelier ne défile pas — A−
+     et ↺, la seule façon de revenir en arrière, étaient hors d'atteinte. Le haut du
+     panneau dépend de la hauteur de la bande, qui passe à la ligne : aucune règle de la
+     feuille ne le connaît, d'où cette mesure à l'ouverture. Le reste est à la feuille :
+     le panneau défile en lui-même (`overflow-y: auto`).
+
+     La mesure se lit à l'écran (`getBoundingClientRect`, `innerHeight` : des pixels
+     VISIBLES), la borne s'écrit dans les pixels du panneau, que le zoom multiplie : d'où
+     la division. `currentCSSZoom` dit le zoom effectif ; à défaut, celui que pose ce
+     fichier, le seul de la page. Rejouée quand le zoom change panneau ouvert (A+ y est)
+     et quand la fenêtre change de taille. */
+  var bornes = [];
+  function bornerALaFenetre(panel) {
+    panel.style.maxHeight = "";
+    if (panel.hidden) return;
+    var z = typeof panel.currentCSSZoom === "number" ? panel.currentCSSZoom : curZoom();
+    var haut = panel.getBoundingClientRect().top;
+    var marge = 6;                              // pixels du panneau, sous son bord bas
+    var dispo = (window.innerHeight - haut) / z - marge;
+    panel.style.maxHeight = Math.max(dispo, 0) + "px";
+  }
+  function rebornerTout() { bornes.forEach(function (b) { b(); }); }
+  window.addEventListener("resize", rebornerTout);
+
   function menuDeroulant(wrap, btn, panel, detail) {
     btn.setAttribute("aria-haspopup", "true");
     btn.setAttribute("aria-expanded", "false");
     panel.hidden = true;
-    function open(o) { panel.hidden = !o; btn.setAttribute("aria-expanded", String(o)); }
+    bornes.push(function () { bornerALaFenetre(panel); });
+    function open(o) {
+      panel.hidden = !o; btn.setAttribute("aria-expanded", String(o));
+      bornerALaFenetre(panel);
+    }
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       var willOpen = panel.hidden;
