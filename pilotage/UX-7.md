@@ -6,7 +6,15 @@ audit: AUDIT.md
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-10-11, `4b421dc` : **à 320 px sous une préférence de 24, la rangée de boutons
+**Arrêté sur** — 2026-10-22, `6e3320b` : **sous le zoom d'interface, tiroirs, menu « Aa »,
+modales et cadres de page tiennent dans la fenêtre visible** (`fc0f952`, `6e3320b`), sur `dev` en
+local, pour le push qui suit le lot 1 ; rien ne bouge à 100 %. Relevé en route, non touché :
+au-delà de 160 % à 320 × 640, l'Atelier n'a presque plus de place pour la planche (la fenêtre
+plus basse que le chrome, ci-dessous) ; les media queries ne suivent pas le zoom ; le plancher
+`22rem` du cadre de la Bibliothèque déborde sous 2 dans une fenêtre de 400. Restent la passe de
+QA du push (les deux cases du lot 1 à rejouer) et le push.
+
+**Jusqu'au 2026-10-22** — `4b421dc`, 2026-10-11 : **à 320 px sous une préférence de 24, la rangée de boutons
 d'une modale passe à la ligne et la liste « Rattachée à » rétrécit, quelle que soit la police.**
 Trouvé par la passe navigateur jouée DANS l'image, où la même pile de polices rend DejaVu Sans
 et non Segoe UI : neuf échecs, dont cinq relevaient d'ici. Reste ouverte, entre autres, la
@@ -272,17 +280,17 @@ PANNEAU qui distingue, et le test est paramétré sur les deux depuis.
 ## Reste
 
 ### Rouvert le 2026-10-22 — le zoom d'interface fait déborder les tiroirs et le menu « Aa »
-- [ ] **À 320 px et à tout zoom d'interface de 100 à 200 %, le tiroir des planches se referme** —
+- [x] **À 320 px et à tout zoom d'interface de 100 à 200 %, le tiroir des planches se referme** —
   attendu : il tient dans la largeur visible et laisse une bande de voile cliquable. Mesuré le
   2026-10-22 (relevé par Hugo à la passe du lot 1, présent en production sur `16c6127`) : 336 px
   à 140 %, 480 à 200 %, pour un écran de 320 — il recouvre le voile et sa bascule, seul Échap
   le ferme. `static/theme.js` pose `zoom` sur la racine, et `min(var(--sidebar-w), 86vw)` ne
-  suit plus la largeur visible
-- [ ] **Même chose pour le tiroir de structure** — attendu : idem. Mesuré : il déborde par la
-  gauche dès 120 % (353 px), `min(var(--panel-w), 92vw)`
-- [ ] **Le menu « Aa » reste atteignable à 200 %, sur les cinq surfaces** — attendu : A−, A+ et
+  suit plus la largeur visible **Fait le 2026-10-22, `fc0f952`** : les largeurs en `%` (qui suivent la fenêtre visible), plus `6e3320b` pour les modales et les cadres de page (`--vw-visible`/`--vh-visible`, posés par `applyZoom`)
+- [x] **Même chose pour le tiroir de structure** — attendu : idem. Mesuré : il déborde par la
+  gauche dès 120 % (353 px), `min(var(--panel-w), 92vw)` **Fait le 2026-10-22, `fc0f952`**
+- [x] **Le menu « Aa » reste atteignable à 200 %, sur les cinq surfaces** — attendu : A−, A+ et
   ↺ toujours atteignables. Mesuré : à 180 %, dans l'Atelier, son panneau descend jusqu'à
-  y=756 dans une fenêtre de 640, et l'Atelier ne défile pas : on ne peut plus réduire le zoom
+  y=756 dans une fenêtre de 640, et l'Atelier ne défile pas : on ne peut plus réduire le zoom **Fait le 2026-10-22, `fc0f952`** : hauteur bornée en JS, le panneau défile
 - [ ] **La passe `lot-1` rejoue ses deux cases « À l'étroit et à grande police »** — attendu :
   cochées par Hugo, sur l'état `apres-lot1` de la recette, une fois ce correctif poussé
 

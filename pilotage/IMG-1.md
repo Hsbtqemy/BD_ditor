@@ -5,7 +5,12 @@ statut: interrompu
 
 # IMG-1 — accepter un format n'est pas savoir le convertir
 
-**Arrêté sur** — 2026-10-21, `a118461` : **la copie de travail est faite**, dans le lot 1, sur
+**Arrêté sur** — 2026-10-22, `69b3515` : **l'outil de conversion dit sa progression**, une ligne
+par fichier au moment où il le traite, vidée aussitôt — le journal de la conversion de
+production n'avait montré que l'avertissement pendant toute la passe. Sur `dev` en local, pour le
+push qui suit le lot 1.
+
+**Jusqu'au 2026-10-22** — `a118461`, 2026-10-21 : **la copie de travail est faite**, dans le lot 1, sur
 `dev` en local — la v34 (`e86aadc`), l'import qui écrit un JPEG à 300 dpi effectifs et des
 lecteurs qui prennent l'échelle (`f3d821f`), l'outil de rattrapage (`ae2fd1f`), puis ce que la
 relecture croisée et sa contre-relecture ont trouvé (`036b693`, `0f4b612`, `a118461`) — dont une

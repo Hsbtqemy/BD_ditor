@@ -5,7 +5,17 @@ statut: interrompu
 
 # ANN-8 — l'annotation d'aujourd'hui : les défauts que l'usage a relevés
 
-**Arrêté sur** — 2026-10-22, `23bf9db` : treize des quatorze cases d'origine sont faites, dans le
+**Arrêté sur** — 2026-10-22, `a77a93f` : **les cases du push qui suit le lot 1 sont faites**, sur
+`dev` en local — le miroir du type (situation et personnage montré partent avec lui, un Ctrl+Z
+les rend), la photographie des liens vus, « Passer ce geste », l'accent qui ne distingue pas deux
+personnages, l'infobulle de « Citation » (`0f09de5` … `4e8610b`), `BD_NLP_PREWARM` réglable
+(`b46751f`, Hugo l'active au déploiement), puis supprimer, fusionner et renommer un tag, Ctrl+Z
+qui suit les tags sans les recréer, le tag local tenu dans sa collection (`2f03f63`, `a99416b`,
+`0506793`, `a77a93f`). Restent ouverts : le premier gel après un redémarrage et la région des
+messages (à moitié), le guide des linguistes (de leur côté) ; puis la passe de QA du push et le
+push. D'où `interrompu`.
+
+**Jusqu'au 2026-10-22, soir** — `23bf9db`, poussé avec le lot 1 : treize des quatorze cases d'origine sont faites, dans le
 lot 1, sur `dev` en local — les quatre décisions de Hugo du 2026-10-21 codées la même nuit
 (`50c70bc`, `c21cf58`, `969f678`, `72447d8`, `9f5e962`), puis le correctif de la relecture croisée
 (`23bf9db` : le locuteur est un champ gardé de l'annulation). Deux le sont à moitié — le premier
@@ -72,15 +82,15 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   revient pas, la région revient, et la réponse dit combien (`liens_non_rendus`), sans rien
   nommer ; l'Atelier l'affiche
 
-- [ ] **Une case ou une boîte personnage qui devient zone de texte perd ce que son nouveau type
+- [x] **Une case ou une boîte personnage qui devient zone de texte perd ce que son nouveau type
   ne montre pas** — attendu : le miroir de la décision du locuteur, demandé par Hugo le
   2026-10-21 (« c'est utile »). Une case devenue bulle gardait sa situation
   (`region_attribut`), une boîte personnage devenue bulle son personnage montré
   (`personnage_presence`) : ni l'un ni l'autre ne se voit sur une bulle. Ils partent avec le
   type, dans le même acte, et un seul Ctrl+Z les rend ; ce que la base porte déjà se dit par
-  un outil à blanc. Relevé par l'agent qui a codé le locuteur
+  un outil à blanc. Relevé par l'agent qui a codé le locuteur **Fait le 2026-10-22, `88997ad`, `9ef0374`, `8008699`, `4e8610b`** : situation et personnage montré partent avec le type, dans le même acte, un seul Ctrl+Z les rend, gardés comme le locuteur ; une valeur ne revient que de sa dimension d'alors ; `tools/retirer_liens_caches.py` pour l'existant, à blanc par défaut
 
-- [ ] **Sur une base d'avant ANN-8, Ctrl+Z d'un passage case → bulle n'est pas refusé à tort**
+- [x] **Sur une base d'avant ANN-8, Ctrl+Z d'un passage case → bulle n'est pas refusé à tort**
   — attendu : une personne seule, une case qui portait déjà le locuteur de la bulle qu'elle
   était, repassée en bulle puis Ctrl+Z : l'annulation passe. Aujourd'hui 409, et sa phrase est
   fausse (« modifié ailleurs », ou « depuis un autre écran » avec une date ANTÉRIEURE à l'acte).
@@ -89,14 +99,14 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   locuteur vu. Remède : le photographier sous une clé à lui, et comparer à elle — à faire avec
   le miroir ci-dessus, qui touche le même instantané. **D'ici là, écarté par la session de
   pilotage** : le cas disparaît une fois `tools/retirer_locuteurs_muets.py --appliquer` passé,
-  à lancer au déploiement du lot 1
-- [ ] **Un 409 d'annulation dit comment s'en sortir** — attendu : écrit dans `docs/undo.md`, ou
+  à lancer au déploiement du lot 1 **Fait le 2026-10-22, `0f09de5`** : le changement de type photographie les liens vus (`liens_vus`), et la garde compare à eux
+- [x] **Un 409 d'annulation dit comment s'en sortir** — attendu : écrit dans `docs/undo.md`, ou
   tranché autrement. Après un refus, retirer à la main le locuteur de l'autre pour pouvoir
   annuler : le Ctrl+Z suivant défait d'abord ce retrait, et le même 409 revient. Vrai de tout
-  conflit de CONC-3 sur une annulation (l'acte reste en tête de pile), direct pour le locuteur
+  conflit de CONC-3 sur une annulation (l'acte reste en tête de pile), direct pour le locuteur **Fait le 2026-10-22, `c605387`, puis `9ef0374`** : écrit dans `docs/undo.md`, puis « Passer ce geste » (Hugo, 2026-10-22) — le refus offre de sortir l'acte de la pile (`POST /api/undo/passer`, trace `abandon`), et Ctrl+Z remonte au geste d'avant
 
 ### Les champs à propositions — laissé ouvert par le correctif du 2026-10-13
-- [ ] **Un nom tapé sans ses accents trouve l'homonyme accentué** — attendu : tranché par Hugo.
+- [x] **Un nom tapé sans ses accents trouve l'homonyme accentué** — attendu : tranché par Hugo.
   « etienne » tapé quand seul « Étienne » existe : la liste le montre (le serveur filtre sans
   les accents), mais Entrée sans surlignage propose « Créer « etienne » », un quasi-doublon
   (`BDPropositions.homonymes` compare en minuscules, AVEC les accents). La question : l'accent
@@ -104,7 +114,7 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   **Tranché par Hugo le 2026-10-21 : non, dans un même album l'accent ne distingue pas deux
   personnages.** Le registre se range par SÉRIE et non par album : la règle à coder compare le
   nom sans casse ni accents, dans la même série, et Entrée propose l'existant au lieu de créer.
-  Pour le push qui suit le lot 1
+  Pour le push qui suit le lot 1 **Fait le 2026-10-22, `46148be`** : dans une même série, l'accent ne distingue pas (Hugo, 2026-10-22) — `BDPropositions.homonymes` et le serveur comparent sans casse ni accents
 - [ ] **La région des messages existe avant son premier message, sur les cinq surfaces** —
   attendu : le premier message d'une page est annoncé par un lecteur d'écran, mesuré avec
   l'un d'eux. Aujourd'hui la région naît AVEC son premier message, et ce premier message
@@ -155,35 +165,35 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   table Node ; l'écran garde ce qui dépend du temps
 
 ### Les tags et la Note, tant que les grilles n'existent pas
-- [ ] **Un tag LOCAL ne se pose que sur les albums de sa collection** — attendu : tranché par
+- [x] **Un tag LOCAL ne se pose que sur les albums de sa collection** — attendu : tranché par
   Hugo le 2026-10-22 : empêché dès la saisie (`_ensure_tags`, et les propositions de l'Atelier
   ne l'offrent pas ailleurs) ; ce qui existe déjà reste, et un outil à blanc le dit. Constaté
   par la mission des gestes sur un tag : quiconque lit la collection d'un tag local et écrit
-  dans une autre l'y posait ; cela ferme aussi le refus « posé ailleurs » de la fusion
-- [ ] **Un tag que plus aucune région ne porte se supprime** — attendu : depuis le panneau
+  dans une autre l'y posait ; cela ferme aussi le refus « posé ailleurs » de la fusion **Fait le 2026-10-22, `0506793`** : un 422 qui nomme le tag et sa collection, sous toute portée ; `GET /api/tags?album=` ; `tools/tags_hors_collection.py` dit l'existant. Reste un chemin qui en fabrique : rendre local un tag déjà posé hors de la collection (écrit dans `docs/lexique-situe.md`)
+- [x] **Un tag que plus aucune région ne porte se supprime** — attendu : depuis le panneau
   📖 Lexique de l'Exploration, par qui peut déjà modifier ce tag (`peut_ecrire_terme`).
   Aujourd'hui aucun écran ni aucune route ne supprime un tag : une faute de frappe reste dans
   le vocabulaire à fréquence 0, et dans les propositions. Hugo, 2026-10-22 : « dérangeant de ne
-  pas pouvoir supprimer des tags libres »
-- [ ] **Un tag se fusionne dans un autre** — attendu : chaque région qui portait le premier
+  pas pouvoir supprimer des tags libres » **Fait le 2026-10-22, `2f03f63`**
+- [x] **Un tag se fusionne dans un autre** — attendu : chaque région qui portait le premier
   porte le second, puis le premier disparaît ; le nombre de régions touchées est dit avant de
   confirmer ; journalisé, hors Ctrl+Z ; l'index plein texte des régions touchées est refait
-  (`tags_concat`)
-- [ ] **Un tag utilisé se supprime** — attendu : il quitte toutes les régions qui le portent,
-  après une confirmation qui en dit le nombre ; journalisé, hors Ctrl+Z ; index refait
-- [ ] **Un tag se renomme** — attendu : le libellé change sur place, les régions suivent (elles
+  (`tags_concat`) **Fait le 2026-10-22, `2f03f63`, `a99416b`** (remanier ne relance plus l'analyse de langue)
+- [x] **Un tag utilisé se supprime** — attendu : il quitte toutes les régions qui le portent,
+  après une confirmation qui en dit le nombre ; journalisé, hors Ctrl+Z ; index refait **Fait le 2026-10-22, `2f03f63`**
+- [x] **Un tag se renomme** — attendu : le libellé change sur place, les régions suivent (elles
   désignent le tag, pas son libellé) ; refusé si un autre tag a déjà la même clé (`cle_tag`) —
-  c'est alors une fusion ; index refait
-- [ ] **Qui fusionne, supprime un tag utilisé ou renomme : selon la portée du tag** — attendu :
+  c'est alors une fusion ; index refait **Fait le 2026-10-22, `2f03f63`** ; Ctrl+Z suit renommages et fusions par le journal `tags` et ne recrée jamais un tag (`a99416b`, `0506793`), et le dit (`a77a93f`, `tags_non_rendus`)
+- [x] **Qui fusionne, supprime un tag utilisé ou renomme : selon la portée du tag** — attendu :
   tag LOCAL, le propriétaire de sa collection et l'administrateur ; tag GLOBAL, l'administrateur
   seul (Hugo, 2026-10-22). La question vit dans `autorisation.py`, et le client la reçoit par
   une clé, pas en la devinant. Supprimer un tag inutilisé reste à qui le modifie déjà. Ces
-  quatre cases sont une mesure d'attente : les grilles d'`ANN-7` reprendront la question
-- [ ] **L'infobulle de la ligne « Citation » de l'Atelier ne pousse plus à citer une bulle par sa
+  quatre cases sont une mesure d'attente : les grilles d'`ANN-7` reprendront la question **Fait le 2026-10-22, `2f03f63`** : `Portee.peut_remanier_tag`, clé `remaniable` dans `GET /api/lexique`
+- [x] **L'infobulle de la ligne « Citation » de l'Atelier ne pousse plus à citer une bulle par sa
   citation** — attendu : elle dit que la citation se dérive de l'ordre de lecture et change
   quand une case bouge, et renvoie à l'identifiant de la ligne « Région » pour désigner une
   bulle. Aujourd'hui : « Repère stable à l'échelle de l'album » (`templates/index.html`). Hugo,
-  2026-10-21 : « pourquoi pas »
+  2026-10-21 : « pourquoi pas » **Fait le 2026-10-22, `dcd1a1d`**
 - [ ] **Le guide d'annotation des linguistes fait écrire « #123 »** — attendu : corrigé de leur
   côté. La phrase « la référence de l'autre bulle telle que le logiciel l'affiche » vient de
   ce guide, qui n'est pas dans le dépôt ; le guide d'usage du dépôt le dit depuis `72447d8`
