@@ -161,6 +161,13 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   zone entière, une case, un personnage, une planche : c'est ce qui laisse entrer dans le même
   modèle une grille d'oralité, des émotions de personnages et la situation d'une case
   **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§4) : une version déclare ce qu'elle vise, parmi huit sortes ; le détail devient un type de région
+- [x] **Une entrée peut déclarer sa propre cible** — attendu : tranché. La note fait déclarer
+  la cible à la VERSION de la grille ; or la sorte de locuteur se pose sur la zone entière et le
+  lieu sur la case, dans une grille qui vise surtout des mots (`ANN-6`, 2026-10-22). Une colonne
+  `cible` facultative dans le tableur ; vide, l'entrée prend la cible choisie dans « Porte
+  sur ». Sur la maquette v3, une telle entrée se pose d'elle-même sur sa cible et le dit
+  (« toute la zone »). Tranché par Hugo le 2026-10-22 ; la note le dira au premier commit de la
+  tranche 1 (case « La note est à jour » ci-dessous)
 - [x] **Le doute n'est pas une entrée** — attendu : écrit. C'est une propriété de tout relevé,
   fournie par l'outil quelle que soit la grille, avec son commentaire. Le guide des
   linguistes le range comme un tag transversal
@@ -203,7 +210,11 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   dit la cible `entite` (§4, Q4), la restriction d'affichage par collection (§10, Q1),
   l'absence de `CASCADE` sur la planche et le report à l'assemblage (§11, Q5), la colonne
   `cardinalite` (§7, Q6), la passe commune et la version de ligne (§9, Q7), le lien « à revoir »
-  (§3), les relevés aux crans de copie (nouveau §) ; sa question ouverte n°7 renvoie à Q9.
+  (§3), les relevés aux crans de copie (nouveau §) ; sa question ouverte n°7 renvoie à Q9 ; la
+  n°6 est tranchée sur la maquette v3 d'`ANN-6` (2026-10-22) : la passe s'appelle « terminée »,
+  et « à compléter » a une seconde cause, un lien ou une précision attendus et absents (§3, §9) ;
+  une entrée peut déclarer sa propre cible, colonne `cible` (§4, §7) ; le lieu et la sorte de
+  locuteur ne sont plus « pris dans l'outil » (§2).
   À faire au premier commit de la tranche 1, pas avant : la note fixe ce qui se code
 
 ### Le catalogue et le partage
@@ -238,6 +249,12 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   **Tranché par Hugo le 2026-10-22, en version ALLÉGÉE** : employée par un autre projet, une
   grille ne se supprime pas, elle peut seulement sortir du catalogue. Seul un administrateur
   la supprime, lors du tri. Pas de demande, donc pas de sixième genre dans « À faire »
+- [x] **Les grilles d'un projet se règlent dans la fiche du projet** — attendu : tranché. Dans
+  Administration › Projets, la fiche dit les grilles actives et leur version, et c'est là
+  qu'on importe, qu'on partage et qu'on active depuis le catalogue (liste et fiche, le patron
+  du fonds). La page Annotation n'en garde qu'un lien, au responsable. Choisi par Hugo le
+  2026-10-22, en revue de la maquette v3 d'`ANN-6` ; l'écran lui-même reste à maquetter avec
+  le catalogue
 - [x] **Désactiver une grille dans un projet ne supprime aucun relevé** — attendu : écrit.
   Ils restent, en lecture
   **Tranché par Hugo le 2026-10-22**, avec la case « Décocher »

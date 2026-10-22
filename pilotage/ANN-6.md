@@ -136,6 +136,109 @@ semaines » (Hugo, le même jour).
 - [x] **La planche et la grille peuvent figurer dans la maquette publiée** — attendu :
   tranché. Hugo : « Planche et grille », sur une page privée
 
+### Tranché par Hugo — 2026-10-22, sur la maquette v3
+
+- [x] **La liste de ce qui est posé est toujours visible, en bas de la colonne de la grille** —
+  attendu : tranché. Sur la v3, cliquer « chais » ne montrait que ce qui porte EXACTEMENT sur
+  ce mot ; la négation posée sur « chais pas » ne se voyait que dans la Synthèse. Hugo : « ça
+  me semble très utile que ce soit toujours visible, comme le texte lui-même ». Une boîte à
+  hauteur fixe liste les relevés qui touchent les mots désignés, toutes grilles, ou toute la
+  zone si rien n'est désigné ; sur une case ou une boîte personnage, ce qui porte sur elle. Un
+  clic désigne exactement le passage du relevé et bascule sur sa grille. Placée d'abord sous
+  les mots (la page défilait dès que la fenêtre n'était pas très grande), puis au-dessus de
+  la grille, puis, essayée dans les deux positions, en bas, au-dessus de la ligne du guide, en
+  face de la boîte des mots. Hugo : « En bas, c'est pas mal du tout. j'aime bien »
+- [x] **L'en-tête de la grille s'allège** — attendu : tranché. Hugo le trouvait « très
+  bavard, entre le choix de grille de vocab et le début de la grille elle-même ». La
+  description de la grille (version, cible, note) passe en infobulle sur son onglet ;
+  « appliquée » et « Afficher » tiennent sur une ligne ; le parcours (« toutes les zones | à
+  faire seulement ») descend à côté de « Suivante », qu'il gouverne
+- [x] **Dans une collection qui masque des grilles, leurs onglets sont cachés** — attendu :
+  tranché (`ANN-7`, Q1). Les relevés des grilles masquées restent dans les listes, en gris,
+  sans geste ; l'infobulle de la liste Collection dit combien de grilles sont masquées.
+  L'autre forme essayée, des onglets grisés, est écartée
+- [x] **Un conflit sur une valeur unique s'affiche à la place de la ligne du guide** —
+  attendu : tranché (`ANN-7`, Q7). Le bandeau de l'Atelier (`CONC-3`) : ce qui n'est pas
+  enregistré, la version de l'autre, « Remplacer par la mienne » et « Garder l'autre » ; la
+  colonne ne change pas de hauteur. Une écriture identique à celle de l'autre passe sans
+  conflit
+- [x] **La cardinalité ne se marque que là où elle surprend** — attendu : tranché (`ANN-7`,
+  Q6). Une pastille « plusieurs » sur une entrée qui se pose plusieurs fois sur une cible
+  ENTIÈRE ; sur des mots, plusieurs est la règle, et « une » sur une cible entière aussi,
+  sans marque
+- [x] **« À compléter » a deux causes** — attendu : tranché. Un changement de forme entre
+  versions (note §6), et un relevé posé sans le lien ou la précision que son entrée attend (un
+  chevauchement sans l'autre bulle, « France » sans sa région). Les deux se réunissent dans
+  « À revoir », avec les doutes et les relevés « à revoir ». La note de `docs/grilles-et-releves.md`
+  le dira au premier commit de la tranche 1 (case « La note est à jour » d'`ANN-7`)
+- [x] **Par défaut, seuls les relevés de la grille active s'affichent** — attendu : tranché.
+  Hugo : un corpus déjà annoté avec Oralité et Émotions, qu'on reprend avec Couleur et dessin
+  — « Je n'ai pas spécialement envie que les annotations qui sont propres à d'autres
+  vocabulaires viennent parasiter le nouveau travail d'annotation », et « pas de base toutes
+  les grilles ». Un réglage d'AFFICHAGE, propre à chacun, dans l'en-tête de la liste de ce qui
+  est posé : « Relevés : Oralité ▾ », des cases par grille du projet (la grille active toujours
+  cochée, une grille masquée par la collection marquée « masquée ici »), « Toutes » et
+  « … seule ». Il vaut pour les traits sous les mots, la liste, la Synthèse et les marques de
+  doute sur la planche ; ni les nombres des onglets ni le Décompte. Retenu par personne et par
+  projet, sur le poste, comme le filtre de collection de l'Atelier (`UX-19`) ; ni la collection
+  ni l'adresse ne le portent. Hugo : « C'est bien ». Le cas d'un NOUVEAU projet sur le même
+  corpus se règle avant l'écran : une copie sœur n'emporte que les relevés des grilles actives
+  à l'arrivée, et aucun au cran « découpage » (`ANN-7`)
+- [x] **« Terminée » se marque au pied de la zone, avec Suivante** — attendu : tranché. Hugo
+  trouvait « Oralité appliquée », en tête de la grille, « un peu mal placé, et peut-être peu
+  clair ». Le pied de la colonne du centre a deux lignes de hauteur fixe : l'état de la zone
+  pour la grille active (« Oralité : à faire », ou « ✓ Oralité : terminée · Camille D. » et
+  « Rouvrir » ; la date et le sens — un zéro compte comme un zéro — en infobulle) et le
+  parcours ; puis « ‹ Précédente », « Suivante › », et le geste principal « Terminée,
+  suivante › », qui marque et avance en un clic. Hugo : « On garde les deux boutons, c'est
+  nécessaire » — on passe une zone sans la marquer. Le mot est « terminée », partout
+  (légende, onglet, barre d'état, Décompte) : la question ouverte n°6 de la note
+  (« appliquée » en attendant mieux) est tranchée. Hugo : « c'est très bien »
+- [x] **La Synthèse › Relevés montre toute la planche, rangée par case** — attendu : tranché.
+  Son ancien contenu (la zone et son contexte) faisait doublon avec la liste du bas. Une case
+  par groupe dans l'ordre de lecture (« Case c3 · 9 »), puis la planche et les personnages
+  partout ; une ligne compacte par relevé (libellé, zone, passage, états, grille) ; la case en
+  cours marquée ; un clic ouvre le relevé, un clic sur la case l'ouvre. Hugo : « à l'échelle
+  de la planche, c'est excellent »
+- [x] **Douter et retirer se font sur la liste de ce qui est posé** — attendu : tranché. Deux
+  petits boutons par ligne, « ? » et « ✕ », absents d'un relevé en lecture ; le doute s'écrit
+  dans la boîte du guide, comme le conflit. Répondre à un doute et le lever restent dans
+  « À revoir ». Hugo les a trouvés « trop discrets », avec une crainte : « que les utilisateurs
+  aient l'impression qu'il faut qu'ils cliquent dessus obligatoirement ». Colorés, sans fond
+  (l'ambre du doute, le rouge du retrait), « pour l'instant »
+- [x] **On n'active pas une grille depuis la page Annotation** — attendu : tranché. Activer est
+  un réglage du projet, rare, fait par son responsable ; la page Annotation est l'écran de
+  tous les jours. Elle n'offre au responsable qu'un lien, « Gérer les grilles ↗ », vers la
+  fiche du projet, où les grilles se règlent (cf. `ANN-7`, « Le catalogue et le partage »).
+  Choisi par Hugo le 2026-10-22, parmi trois formes (là, ici, les deux pleinement) ; le volet
+  de catalogue de la v3 quitte la page
+- [x] **Le Contexte ne garde que ce qui n'est pas du vocabulaire** — attendu : tranché. La
+  colonne de gauche de la v2 portait la « Situation » de la case (un attribut, qui part au
+  basculement avec Q3) et une « sorte » de locuteur, que l'outil n'a pas : la maquette v2
+  avait écrit EN DUR les quatre sortes de la grille des linguistes, ce que l'outil agnostique
+  interdit (vérifié dans `static/viewer.js` le 2026-10-22). Restent le locuteur (un lien vers
+  le registre), la note et le nom d'un détail ; le Contexte tient sans défiler
+- [x] **Le lieu d'une case est une entrée de grille, sur la case** — attendu : tranché par
+  Hugo le 2026-10-22, plutôt qu'un champ de l'outil dont les valeurs seraient un vocabulaire.
+  Le niveau 1 des linguistes cesse d'être « pris dans l'outil » pour le lieu. Il vit dans une
+  grille À PART, « Lieux », ouverte, sur la case — pas dans la grille des linguistes. Hugo :
+  « je préfère que c'est en dehors de la grille Oralité »
+- [x] **La sorte de locuteur est une entrée de la grille des linguistes** — attendu : tranché
+  par Hugo le 2026-10-22. Niveau 1, à variantes (identifié, non identifié, collectif,
+  narrateur·ice), sur la zone de texte, une fois par zone. La question du narrateur au
+  registre (case « Le narrateur d'un récitatif… ») reste aux linguistes
+- [ ] **La page Annotation atteint l'entité personnage par les deux chemins de l'Atelier** —
+  attendu : à la tranche 2, une grille qui vise l'entité (`ANN-7`, Q4) se pose depuis une boîte
+  personnage ET depuis le locuteur d'une zone de texte, comme le profil d'aujourd'hui dans le
+  panneau Personnage de l'Atelier (`static/viewer.js`, « profil corpus ») ; et l'écran dit
+  qu'un tel relevé vaut partout. La v3 ne fait jouer que la boîte, avec une grille fictive :
+  ce n'est pas une décision de forme, c'est ne pas perdre un geste qui existe (constaté le
+  2026-10-22, en revue de la maquette avec Hugo)
+- [ ] **« ? » et « ✕ » colorés ne passent pas pour des gestes obligatoires** — attendu : à
+  l'usage, avec les premiers stagiaires sur la page Annotation, personne ne clique « ? » sur
+  chaque relevé « pour valider » ; sinon, revenir à des boutons sans couleur et chercher
+  autre chose
+
 ### À confirmer avec les linguistes
 
 - [ ] **On compte des OCCURRENCES, pas des bulles** — attendu : confirmé par les linguistes.
@@ -334,6 +437,23 @@ semaines » (Hugo, le même jour).
   1 024 px, sur un téléphone de 390 px ; non essayés : contraste élevé, lecteur d'écran,
   Firefox, un vrai appareil. La case reste ouverte : elle se coche quand les linguistes
   l'ont vue
+  **Troisième maquette publiée le 2026-10-22**, en session dédiée, avec les décisions
+  d'`ANN-7` du même jour : page privée `https://claude.ai/artifact/3EXqt485Dv7SwwTRVogLuQ`,
+  à une adresse NEUVE — la v2 reste telle quelle pour qui a son lien. Source hors du dépôt :
+  `C:\temp\maquette-ann6\v3\source.html`, construite par `construire.py` (qui réinjecte les
+  deux planches). Elle fait jouer, depuis une bande de maquette : la collection qui masque des
+  grilles, les quatre cibles (la boîte et l'entité d'un personnage, la planche comme surface),
+  la cardinalité, la passe commune et signée, le conflit sur une variante, les trois états
+  d'un relevé (une transcription corrigée, une bulle liée supprimée puis rétablie), le
+  vocabulaire neuf des Tags libres, l'activation libre d'une grille du catalogue (retirée de
+  la page en cours de séance). Republiée onze fois le même jour, sur les retours de Hugo :
+  la liste de ce qui est posé, le réglage des relevés affichés, « terminée » au pied, la
+  Synthèse à l'échelle de la planche, le Contexte allégé, la sorte de locuteur et la grille
+  « Lieux » (cf. « Tranché par Hugo — 2026-10-22, sur la maquette v3 »). Vérifiée à 1 440 px
+  de large, 900 et 768 de haut, dans Chromium ; le glissé sur les mots aussi dans Firefox. Non
+  essayés : tablette, téléphone, contraste élevé, lecteur d'écran. Retenu pour la tranche 2 :
+  pendant un glissé, ne rien redessiner sous le pointeur — la maquette le faisait, 61 fois par
+  seconde, et le relâchement s'y perdait
 
 ### À trancher sur la maquette, avec les linguistes
 
