@@ -16,6 +16,7 @@ dans le bloc « Collections », ouvre sa FICHE à droite, en quatre onglets (Alb
 gestes sont les mêmes ; « dans la collection dépliée » se lit désormais « dans sa fiche ».
 """
 import io
+import re
 import zipfile
 
 import httpx
@@ -894,9 +895,28 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
                            "'#album-range-cases input[data-ranger]:checked').length === 1",
                            timeout=5000)
     assert len(demandes) == 2
-    # Redevenue lectrice de cet album : plus rien ne lui est offert dessus.
+    # Redevenue lectrice de cet album : « Supprimer… » ne lui est plus offert. Mais UNE case
+    # l'est encore, « Incubateur », où elle écrit : la cocher est REJOINDRE (COL-3, tranche
+    # 3a), que le serveur accepte de qui LIT la copie — ici en demande (202), puisqu'elle ne
+    # tient pas « Archives ». « Archives », qu'elle ne fait que lire, reste éteinte.
+    #
+    # Cette ligne attendait « aucune case offerte », la règle d'avant la 3a (ranger demandait
+    # d'écrire dans l'album). Elle passait en lisant l'ENTRE-DEUX : après le décochage, la case
+    # est éteinte le temps de la requête, puis la fiche se redessine — « Lecture des
+    # collections… », sans case — et ce n'est qu'ensuite que les cases reviennent, « Incubateur »
+    # offerte (mesuré : ~60 ms de trou). Un compte immédiat, puis une attente qui s'arrête au
+    # premier zéro, tombaient dans ce trou presque toujours, et sur l'état final quand le test
+    # arrivait après lui. L'attente porte donc sur ce qui n'existe qu'à la FIN : « Incubateur »
+    # décochée ET de nouveau active — pendant la requête elle est éteinte, pendant la relecture
+    # elle n'existe pas.
     expect(page.locator('#album-detail [data-act="supprimer"]')).to_have_count(0)
-    expect(page.locator("#album-range-cases input[data-ranger]:enabled")).to_have_count(0)
+    incubateur = page.locator(f'#album-range-cases input[data-ranger="{ids["Incubateur"]}"]')
+    expect(incubateur).to_be_enabled()
+    expect(incubateur).not_to_be_checked()
+    expect(incubateur.locator("xpath=..")).to_have_attribute("title", re.compile("^Cocher"))
+    expect(archives).to_be_checked()
+    expect(archives).to_be_disabled()
+    expect(page.locator("#album-range-cases input[data-ranger]:enabled")).to_have_count(1)
 
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
         rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Triple']}/collections").json()]
