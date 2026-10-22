@@ -1948,8 +1948,10 @@ async function clearPerso() {
    saisie côté serveur (`?q=`), calculée 200 ms après la dernière frappe ; Entrée y
    cherchait l'homonyme exact telle qu'elle était, et créait faute de l'y trouver. « Zed »
    existant, tapé vite, devenait un SECOND « Zed », aussitôt attribué (mesuré le
-   2026-10-12, quatorze personnages au registre). Le serveur ne pose aucune unicité, et
-   c'est voulu — la série distingue des homonymes légitimes : la garde est donc ici.
+   2026-10-12, quatorze personnages au registre). La série distingue des homonymes
+   légitimes : la garde est donc ici. Depuis ANN-8, le serveur retrouve aussi, au lieu de
+   créer, un personnage qu'on voit et qui porte le même nom sans casse ni accents dans la
+   même série — un filet, pour une liste lue trop tôt ; la décision reste celle de l'écran.
 
    - L'écran retient POUR QUELLE SAISIE sa liste vaut (`listePour`). Une réponse ne
      s'affiche que si elle vaut encore : aucune lecture partie depuis, saisie inchangée.

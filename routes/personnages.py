@@ -26,7 +26,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 import autorisation
 import conflit
@@ -90,20 +90,47 @@ def list_personnages(q: Optional[str] = None, conn: sqlite3.Connection = Depends
     return rows
 
 
+def _cle_homonyme(nom, serie) -> tuple:
+    """Ce qui fait de deux personnages le MÊME : le nom et la série, sans casse ni accents
+    (`socle._sans_accents`, la règle du filtre du registre). Une série absente est une
+    valeur : « sans série » n'est pas l'homonyme d'une série nommée."""
+    serie = (serie or "").strip()
+    return _sans_accents((nom or "").strip()), _sans_accents(serie) if serie else None
+
+
 @router.post("/api/personnages", status_code=201)
-def create_personnage(payload: PersonnageIn, conn: sqlite3.Connection = Depends(db),
+def create_personnage(payload: PersonnageIn, response: Response,
+                      conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
     """AUTH-2 — le registre des personnages n'appartient à aucune collection : y écrire
-    demande le droit d'écrire quelque part, comme pour le vocabulaire global."""
+    demande le droit d'écrire quelque part, comme pour le vocabulaire global.
+
+    ANN-8 (Hugo, 2026-10-21) — **l'accent ne distingue pas deux personnages** : dans une
+    même série, deux noms égaux sans casse ni accents désignent le même. Un personnage
+    qu'on VOIT (`_clause_personnage`) et qui porte ce nom dans cette série est donc RENDU au
+    lieu d'être créé une seconde fois — 200 au lieu de 201, rien d'écrit, ses notes
+    inchangées. L'Atelier, qui crée par ici à Entrée, attribue alors celui qui existe : c'est
+    le filet de sa propre règle (`BDPropositions.homonymes`), pour une liste lue avant que
+    l'homonyme n'existe. Un personnage qu'on ne voit pas n'est pas retrouvé : le rendre
+    dirait qu'il existe, et l'attacherait hors de la portée de qui le demande — on en crée
+    un, comme avant. Les noms déjà en double dans la base le restent : aucune fusion ici."""
     if not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Le registre des personnages est en lecture seule "
                                  "pour vous.")
     nom = (payload.nom or "").strip()
     if not nom:
         raise HTTPException(422, "Nom de personnage vide")
+    serie = (payload.serie or "").strip() or None
+    cle = _cle_homonyme(nom, serie)
+    ou, params = _clause_personnage(portee)
+    for r in conn.execute(f"SELECT p.id, p.nom, p.serie FROM personnages p WHERE {ou} "
+                          f"ORDER BY p.id", params):
+        if _cle_homonyme(r["nom"], r["serie"]) == cle:
+            response.status_code = 200
+            return _get_personnage(conn, portee, r["id"])
     pid = conn.execute(
         "INSERT INTO personnages (nom, serie, notes) VALUES (?, ?, ?)",
-        (nom, (payload.serie or "").strip() or None, payload.notes)).lastrowid
+        (nom, serie, payload.notes)).lastrowid
     conn.commit()
     return _get_personnage(conn, portee, pid)
 

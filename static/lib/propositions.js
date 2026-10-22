@@ -133,11 +133,15 @@
     return !s || sansAccents(it.nom).includes(sansAccents(s));
   }
 
-  /* Les personnages qui portent EXACTEMENT le nom tapé, sans égard à la casse — ceux que la
-     série départage. Saisie vide : aucun. */
+  /* Les personnages qui portent le nom tapé, sans égard à la casse NI AUX ACCENTS — ceux
+     que la série départage. ANN-8 (Hugo, 2026-10-21) : l'accent ne distingue pas deux
+     personnages ; « etienne » tapé quand « Étienne » existe désigne Étienne, et Entrée
+     proposait de créer un quasi-doublon. La comparaison est celle du filtre du serveur
+     (`sansAccents`), et celle par laquelle `POST /api/personnages` retrouve un homonyme au
+     lieu d'en créer un second. Saisie vide : aucun. */
   function homonymes(persos, q) {
-    const s = String(q ?? "").trim().toLowerCase();
-    return s ? (persos || []).filter((p) => String(p.nom ?? "").toLowerCase() === s) : [];
+    const s = sansAccents(String(q ?? "").trim());
+    return s ? (persos || []).filter((p) => sansAccents(String(p.nom ?? "").trim()) === s) : [];
   }
 
   /* Ce qu'Entrée fait dans un champ de personnage, sur la liste À L'ÉCRAN. Rend l'un de :
@@ -161,7 +165,8 @@
   }
 
   /* Ce que décide le registre LU pour la saisie `q`, quand Entrée n'a rien de surligné :
-     - un seul personnage porte ce nom → { geste: "choisir", item } ;
+     - un seul personnage porte ce nom (sans casse ni accents, `homonymes`) → { geste:
+       "choisir", item } ;
      - plusieurs → { geste: "departager", homonymes } : Entrée ne décide pas — prendre le
        premier dans l'ordre du registre, c'était choisir à la place de la personne, sans le
        lui dire (ANN-8, Hugo, 2026-10-21). La liste se réduit aux homonymes, chacun avec sa

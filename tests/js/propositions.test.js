@@ -167,13 +167,21 @@ test("repond : ce que le serveur aurait rendu pour la saisie, et la création ex
   }
 });
 
-test("homonymes : le nom exact, sans égard à la casse — les accents, eux, distinguent", () => {
+/* ANN-8 (Hugo, 2026-10-21) — l'accent ne distingue pas deux personnages : « etienne »
+   tapé désigne « Étienne ». La comparaison est `sansAccents`, celle du serveur. */
+test("homonymes : le nom exact, sans égard à la casse ni aux accents", () => {
   assert.deepEqual(P.homonymes(PERSOS, "zed").map((p) => p.id), [1, 2]);
   assert.deepEqual(P.homonymes(PERSOS, " Zed ").map((p) => p.id), [1, 2]);
   assert.deepEqual(P.homonymes(PERSOS, "Zeld").map((p) => p.id), []);   // contenir n'est pas porter
-  assert.deepEqual(P.homonymes(PERSOS, "etienne").map((p) => p.id), []); // l'accent distingue
+  assert.deepEqual(P.homonymes(PERSOS, "etienne").map((p) => p.id), [4]); // l'accent ne distingue pas
+  assert.deepEqual(P.homonymes(PERSOS, "ETIENNE").map((p) => p.id), [4]);
+  assert.deepEqual(P.homonymes(PERSOS, "e\u0301tienne").map((p) => p.id), [4]); // accent décomposé
+  assert.deepEqual(P.homonymes(PERSOS, "étiennette").map((p) => p.id), []);
   assert.deepEqual(P.homonymes(PERSOS, "").map((p) => p.id), []);
   assert.deepEqual(P.homonymes(null, "Zed"), []);
+  // Un nom accentué au registre, tapé sans accents, et l'inverse.
+  const reg = [{ id: 7, nom: "Zoe", serie: null }, { id: 8, nom: "Zoë", serie: "Les Aventures" }];
+  assert.deepEqual(P.homonymes(reg, "zoë").map((p) => p.id), [7, 8]);
 });
 
 /* LA table d'Entrée d'un champ de personnage (ANN-8, Hugo, 2026-10-21). Chaque ligne : ce
@@ -219,4 +227,9 @@ test("decisionNom : un homonyme est pris, plusieurs se départagent, aucun se cr
   assert.deepEqual(d.homonymes.map((p) => [p.id, p.serie]), [[1, null], [2, "Les Aventures"]]);
   assert.deepEqual(P.decisionNom(PERSOS, "Zeld"), { geste: "creer", nom: "Zeld" });
   assert.deepEqual(P.decisionNom([], " Milou "), { geste: "creer", nom: "Milou" });
+  // ANN-8 : « etienne » prend « Étienne », au lieu d'en créer un second.
+  assert.deepEqual(P.decisionNom(PERSOS, "etienne"), { geste: "choisir", item: PERSOS[3] });
+  // Deux séries, un même nom à l'accent près : Entrée ne décide pas.
+  const reg = [{ id: 7, nom: "Zoe", serie: null }, { id: 8, nom: "Zoë", serie: "Les Aventures" }];
+  assert.equal(P.decisionNom(reg, "ZOE").geste, "departager");
 });

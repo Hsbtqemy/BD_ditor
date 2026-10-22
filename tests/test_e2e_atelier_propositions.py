@@ -629,8 +629,10 @@ def test_l_attribut_va_a_la_cible_du_geste_meme_si_l_on_en_change(page, atelier)
 # choisissent dans le registre, dont la liste dépend de la saisie CÔTÉ SERVEUR (`?q=`).
 # Entrée y cherchait l'homonyme exact telle qu'elle était, et créait faute de l'y trouver :
 # « Zed » existant, tapé vite, devenait un SECOND « Zed », aussitôt attribué (reproduit le
-# 2026-10-12, quatorze personnages au registre). Le serveur ne pose aucune unicité — la
-# série distingue des homonymes légitimes —, donc rien ne rattrape l'écran.
+# 2026-10-12, quatorze personnages au registre). La série distingue des homonymes
+# légitimes ; depuis ANN-8, le serveur retrouve un homonyme qu'on voit au lieu d'en créer un
+# second (même nom sans casse ni accents, même série), mais les tests ci-dessous mesurent ce
+# que l'ÉCRAN décide : ils exigent qu'aucune création ne parte.
 #
 # La lecture du registre est tenue en vol comme plus haut. Là où il faut qu'Entrée précède
 # jusqu'à la lecture différée elle-même, la frappe et Entrée sont émises dans la même
@@ -744,6 +746,35 @@ def test_un_nom_existant_tape_avant_la_liste_prend_l_homonyme(page, atelier, cha
         # La liste de « Zed », revenue après le geste, ne se rouvre pas sur un champ vidé.
         page.wait_for_timeout(300)
         expect(page.locator(c["liste"])).to_be_hidden()
+
+
+@pytest.mark.parametrize("champ_de", list(CHAMPS_PERSONNAGE))
+def test_un_nom_tape_sans_ses_accents_prend_l_homonyme_accentue(page, atelier, champ_de):
+    """ANN-8 (Hugo, 2026-10-21) — l'accent ne distingue pas deux personnages. « Étienne » au
+    registre ; on tape « etienne » LENTEMENT : la liste le montre, sans « Créer », et Entrée
+    sans rien surligner le prend. Avant, Entrée proposait « Créer « etienne » », un
+    quasi-doublon : les homonymes se comparaient en minuscules, AVEC les accents."""
+    c = CHAMPS_PERSONNAGE[champ_de]
+    etienne = _peupler(atelier, "Étienne")["Étienne"]
+    rid = atelier[c["zone"]]
+    chemin = f"/api/regions/{rid}/{c['lien']}"
+    _ouvrir(page, atelier, c["zone"])
+    champ, liste = page.locator(c["champ"]), page.locator(f"{c['liste']} div")
+    parties = _ecritures(page)
+
+    champ.click()
+    champ.press_sequentially("etienne", delay=20)
+    expect(liste.filter(has_text="Étienne")).to_have_count(1, timeout=15000)
+    expect(liste.filter(has_text="Créer")).to_have_count(0)
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)) as reponse:
+        champ.press("Enter")
+    assert reponse.value.status == 200, reponse.value.text()
+    assert envoi.value.post_data_json == {"personnage_id": etienne}
+    expect(page.locator(c["puce"])).to_contain_text("Étienne", timeout=15000)
+    assert _creations(parties) == [], f"un quasi-doublon a été créé : {parties}"
+    assert [p["nom"] for p in _registre(atelier)].count("Étienne") == 1
+    assert "etienne" not in [p["nom"] for p in _registre(atelier)]
 
 
 def test_l_homonyme_au_dela_des_dix_propositions_est_pris_meme_tape_lentement(page, atelier):
