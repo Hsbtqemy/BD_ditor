@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS albums (
 CREATE TABLE IF NOT EXISTS planches (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     album_id           INTEGER REFERENCES albums(id) ON DELETE CASCADE,
-    numero             INTEGER NOT NULL,             -- ordre d'import (clé de tri, peut avoir des trous)
+    numero             INTEGER NOT NULL,             -- rang dans l'album (l'ordre d'import, puis UX-11) ; clé de tri, peut avoir des trous
     role               TEXT NOT NULL DEFAULT 'recit', -- 'recit' = narratif (numéroté) ; autre = paratexte (écarté)
     -- `chemin_tiff` : la COPIE DE TRAVAIL depuis la v34 (IMG-1) — un JPEG à 300 dpi
     -- effectifs, à la géométrie du scan ; le nom de la colonne date d'avant, quand le

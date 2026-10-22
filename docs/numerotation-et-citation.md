@@ -26,6 +26,15 @@ couverture / paratexte** dans le schéma. Donc « planche P » désigne aujourd'
 *position de fichier* — la couverture devient « planche 1 », la 1ʳᵉ vraie planche
 « planche 4 ». Inutilisable pour citer.
 
+> **Depuis le 2026-10-22 (UX-11), `planches.numero` est le RANG de la planche dans
+> l'album, et il se change** : ↑ ↓ et « Ranger par nom de fichier » dans la fiche d'un
+> album de la Bibliothèque (`PUT /api/albums/{id}/ordre-des-planches`). Les numéros
+> existants sont redistribués dans le nouvel ordre — leur ensemble, trous compris, ne
+> change pas — et les fichiers ne bougent pas : une planche peut porter le numéro 2 et
+> les fichiers `planche_0005.*`. Le numéro éditorial et les citations `pl·c·b` qui en
+> dérivent suivent, et c'est pourquoi l'écran fait confirmer « Ranger par nom de
+> fichier » : une citation faite avec l'ancien numéro ne désigne plus la même planche.
+
 ## 2. Décisions figées
 
 | # | Décision |

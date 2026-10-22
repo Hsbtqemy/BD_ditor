@@ -2250,6 +2250,12 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .bi-import progress { width: 10rem; max-width: 100%; }
 .bi-import-echecs { flex-basis: 100%; margin: 0; padding-left: 1.2rem; font-size: .85rem;
   overflow-wrap: anywhere; }
+/* Quel fichier est devenu quelle planche (UX-11, 2026-10-22) : une ligne par fichier, en
+   colonnes quand la place le permet — un album de cinquante pages ne repousse pas le
+   tableau des planches de cinquante lignes. */
+.bi-import-planches { flex-basis: 100%; margin: 0; padding-left: 1.2rem; font-size: .85rem;
+  overflow-wrap: anywhere; columns: 14rem 4; column-gap: 1.6rem; }
+.bi-import-planches li { break-inside: avoid; }
 .bi-perdues { margin: .2rem 0; }
 .val-lu { color: var(--accent-green); font-weight: 700; }
 /* Les gestes d'une planche suivent son NOM (Hugo, 2026-10-16) : deux par deux quand la

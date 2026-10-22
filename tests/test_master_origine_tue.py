@@ -1,4 +1,5 @@
-"""`planches.master_origine` ne sort d'aucune route, hors la réponse de l'import (IMG-1).
+"""`planches.master_origine` ne sort d'aucune route, hors la réponse de l'import (IMG-1) —
+et son NOM seul, d'une seule (UX-11, 2026-10-22).
 
 La colonne dit où vit le master d'archive : un chemin ShareDocs — parfois celui d'un espace
 PERSONNEL — ou un nom de fichier, recopié sur les planches d'une copie sœur d'un autre
@@ -16,8 +17,17 @@ Ce que le balayage couvre, et ce qu'il ne couvre pas, est écrit :
   SOURCE déclare, pour qu'une route neuve ne quitte pas le balayage en silence ;
 - pas les autres routes d'écriture : elles n'atteignent une planche que par
   `_get_planche`, qui la tait.
+
+UX-11 (Hugo, 2026-10-22) — la liste des planches d'un album rend le NOM du fichier
+d'origine, sans dossier ni préfixe, sous une clé à lui (`nom_fichier_origine`) : la fiche
+d'un album de la Bibliothèque le montre au survol et range un album par noms de fichier.
+D'où DEUX jetons dans la valeur semée : `JETON` est dans le DOSSIER, et ne doit sortir de
+nulle part, cette route comprise ; `NOM` est le nom du fichier, et ne sort que de la route
+déclarée dans `NOM_SEUL`, sous sa clé et nulle part ailleurs dans la réponse. Les exports
+d'album, des routes GET, sont balayés comme les autres : le nom n'y sort pas.
 """
 import ast
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -28,11 +38,20 @@ import inventaire_routes
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 JETON = "zzorigine7jeton"
+NOM = "zznom7fichier.tif"
+SEMIS = f"sharedocs:BD/{JETON}/{NOM}"
 
 # La réponse de l'import la rend EXPRÈS : à qui vient de donner le fichier, le nom qu'il a
 # donné. C'est la seule.
 EXCEPTIONS = {("POST", "/api/albums/{album_id}/import"):
               "rend à qui importe le nom du fichier qu'il vient d'envoyer"}
+
+# Les routes qui rendent le NOM seul du fichier d'origine, dérivé de la colonne — jamais son
+# dossier —, et la clé sous laquelle elles le rendent (UX-11). C'est la seule.
+NOM_SEUL = {"/api/albums/{album_id}/planches": (
+    "nom_fichier_origine",
+    "la fiche d'un album de la Bibliothèque le montre au survol d'une planche (« Fichier : "
+    "page-10.tif ») et range l'album par noms de fichier ; le dossier reste tu")}
 
 # Les corps des routes d'écriture sur une planche. Une route absente d'ici est appelée sans
 # corps.
@@ -62,7 +81,7 @@ def _decor(client, png_bytes, db_path) -> dict:
     r = client.post(f"/api/planches/{p['id']}/regions",
                     json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()
     c = sqlite3.connect(db_path)
-    c.execute("UPDATE planches SET master_origine = ?", (JETON,))
+    c.execute("UPDATE planches SET master_origine = ?", (SEMIS,))
     c.commit()
     ligne = c.execute("SELECT document_id, projet_id FROM albums WHERE id = ?",
                       (a["id"],)).fetchone()
@@ -88,6 +107,19 @@ def _concret(gabarit: str, decor: dict):
 
 def _fuite(texte: str) -> bool:
     return JETON in texte or "master_origine" in texte
+
+
+def _nom_hors_de_sa_cle(gabarit: str, texte: str) -> bool:
+    """Le NOM sort-il là où il ne doit pas ? Partout, sauf dans la route de `NOM_SEUL`, où
+    il ne se lit que sous sa clé, une fois par planche, et nulle part ailleurs."""
+    if NOM not in texte:
+        return False
+    if gabarit not in NOM_SEUL:
+        return True
+    cle, _ = NOM_SEUL[gabarit]
+    planches = json.loads(texte)
+    return not (planches and all(p.get(cle) == NOM for p in planches)
+                and texte.count(NOM) == len(planches))
 
 
 def _ecritures_de_planche_du_source() -> set:
@@ -123,11 +155,16 @@ def test_aucune_route_get_ne_rend_master_origine(client, png_bytes, db_path):
         if rep.status_code >= 400:
             continue
         atteintes.append(r.path)
-        if _fuite(rep.content.decode("utf-8", "replace")):
+        texte = rep.content.decode("utf-8", "replace")
+        if _fuite(texte) or _nom_hors_de_sa_cle(r.path, texte):
             fuites.append(r.path)
-    assert not fuites, f"ces routes rendent master_origine : {fuites}"
-    # Non-vacuité : la liste des planches, qui lit `SELECT p.*`, est bien balayée.
+    assert not fuites, f"ces routes rendent master_origine, ou son nom hors de sa clé : {fuites}"
+    # Non-vacuité : la liste des planches, qui lit `SELECT p.*`, est bien balayée — et y rend
+    # le nom ; les exports d'album aussi, où il ne doit pas sortir.
     assert "/api/albums/{album_id}/planches" in atteintes and len(atteintes) >= 30, atteintes
+    assert len([a for a in atteintes if a.startswith("/api/export/")]) >= 3, atteintes
+    planches = client.get(f"/api/albums/{decor['album_id']}/planches").json()
+    assert [p["nom_fichier_origine"] for p in planches] == [NOM]
 
 
 def test_aucune_ecriture_sur_une_planche_ne_rend_master_origine(client, png_bytes, db_path):
@@ -146,7 +183,7 @@ def test_aucune_ecriture_sur_une_planche_ne_rend_master_origine(client, png_byte
             if (methode, gabarit) not in PEUVENT_MANQUER:
                 manquees.append((methode, gabarit, rep.status_code, rep.text[:120]))
             continue
-        if _fuite(rep.text):
+        if _fuite(rep.text) or NOM in rep.text:
             fuites.append((methode, gabarit))
     assert not manquees, f"routes non atteintes, ni déclarées : {manquees}"
     assert not fuites, f"ces routes rendent master_origine : {fuites}"
@@ -159,3 +196,5 @@ def test_la_seule_exception_est_la_reponse_de_l_import(client, png_bytes, db_pat
     assert decor["import"]["master_origine"] == "Mon Scan.png"
     assert (methode, gabarit) in {(m, r.path) for r in inventaire_routes.routes_api()
                                   for m in r.methods}
+    for gabarit in NOM_SEUL:
+        assert gabarit in {r.path for r in inventaire_routes.routes_api() if "GET" in r.methods}

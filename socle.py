@@ -29,7 +29,7 @@ import logging
 import re
 import sqlite3
 import unicodedata
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Literal, Optional
 from urllib.parse import quote
 
 from fastapi import Depends, HTTPException, Request, Response
@@ -1721,6 +1721,16 @@ class ValidationIn(BaseModel):
 
 class VerrouIn(BaseModel):
     verrouillee: bool
+
+
+class OrdrePlanchesIn(BaseModel):
+    """L'ordre des planches d'un album (UX-11, 2026-10-22). `ordre` : chaque planche de
+    l'album, une fois, dans l'ordre voulu ; `vu` : dans l'ordre que l'écran montrait — la
+    version qu'il a vue, à la manière de CONC-3, OBLIGATOIRE ici (aucun client d'avant ne
+    l'ignore) ; `geste` : ce qui l'a produit, pour le journal."""
+    ordre: list[int]
+    vu: list[int]
+    geste: Optional[Literal["monter", "descendre", "ranger_par_nom"]] = None
 
 
 class RoleIn(BaseModel):

@@ -29,7 +29,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from config import (CORPUS_DIR, DATA_DIR, DERIVATIVES_DIR, MAX_IMAGE_PIXELS,
                     PILLOW_FORMATS, TRAVAIL_DPI, TRAVAIL_JPEG_QUALITY,
@@ -170,6 +170,24 @@ MODES_GRIS_16_BITS = ("I;16", "I;16B", "I;16L")
 
 class ModeImageRefuse(ValueError):
     """Mode d'image qu'aucune réduction en 8 bits ne rendrait juste (IMG-1)."""
+
+
+class ImageRefusee(ValueError):
+    """Le fichier reçu ne s'ouvre pas comme une image (UX-11, 2026-10-22). Son message est
+    un PRÉDICAT, sans sujet : « n'est pas une image lisible : … » — l'appelant y met le nom
+    du fichier (`phrase_de_refus`). Pillow disait « cannot identify image file
+    <_io.BytesIO object at 0x…> », où le seul mot utile était le nom qui manquait."""
+
+
+def phrase_de_refus(exc: BaseException, nom: str) -> str | None:
+    """La phrase qui dit pourquoi le fichier `nom` n'est pas entré, si le refus vient du
+    fichier lui-même ; None sinon — l'appelant garde alors le message de l'exception, qui
+    peut nommer une panne du serveur (un dossier qui ne se crée pas, un disque plein)."""
+    if isinstance(exc, ImageRefusee):
+        return f"{nom} {exc}"
+    if isinstance(exc, ModeImageRefuse):
+        return f"{nom} n'est pas importée : {exc}"
+    return None
 
 
 def _bits_portes(img: Image.Image) -> int:
@@ -375,6 +393,57 @@ def _reserver(chemins) -> list[Path]:
 ORIGINE_SHAREDOCS = "sharedocs:"
 
 
+def nom_du_fichier_d_origine(origine: str | None) -> str | None:
+    """Le NOM seul du fichier d'origine d'une planche, tiré de `planches.master_origine` :
+    sans le préfixe `sharedocs:`, sans aucun dossier. None pour une planche d'avant la v34
+    (rien n'a été noté) ou une valeur qui ne nomme aucun fichier.
+
+    UX-11 (Hugo, 2026-10-22) — c'est la SEULE part de `master_origine` qui sorte d'une route,
+    et d'une seule : la liste des planches d'un album (`GET /api/albums/{id}/planches`), où
+    la fiche de la Bibliothèque la montre au survol et range un album par noms de fichier.
+    Le chemin, lui, reste tu : pour un import ShareDocs il dit un dossier distant, parfois
+    un espace PERSONNEL. Les deux séparateurs sont coupés, la barre et la barre inverse : un
+    nom reçu d'un poste Windows peut porter la seconde (un vieux navigateur envoie le chemin
+    entier)."""
+    if not origine:
+        return None
+    if origine.startswith(ORIGINE_SHAREDOCS):
+        origine = origine[len(ORIGINE_SHAREDOCS):]
+    nom = re.split(r"[/\\]", origine)[-1].strip()
+    return nom or None
+
+
+def _decoder(flux) -> Image.Image:
+    """Ouvre et DÉCODE le scan reçu (SEC-3 : les seuls formats de `PILLOW_FORMATS`, cf.
+    `read_metadata`), ou lève `ImageRefusee` en disant pourquoi en mots.
+
+    Le décodage est forcé ICI (`load`) et non laissé à la première conversion : une image
+    tronquée ne lève qu'au décodage, par une `OSError` que rien ne distinguerait alors d'une
+    panne d'écriture de la copie de travail — un disque plein se serait dit « fichier
+    abîmé ». Mesuré sur Pillow 12.0 : un contenu qui n'est pas une image lève
+    `UnidentifiedImageError` à l'ouverture ; un PNG, un JPEG ou un TIFF coupés en deux,
+    `OSError: image file is truncated` au décodage — sa cause, gardée entre parenthèses,
+    est la seule information que Pillow ait à ajouter."""
+    trop_grande = ("n'est pas importée : l'image est trop grande pour être ouverte ({}).")
+    try:
+        img = Image.open(flux, formats=PILLOW_FORMATS)
+    except UnidentifiedImageError:
+        raise ImageRefusee("n'est pas une image lisible : son format n'est pas reconnu, ou "
+                           "le fichier est abîmé.") from None
+    except Image.DecompressionBombError as exc:     # levée dès l'ouverture, sur la taille
+        raise ImageRefusee(trop_grande.format(exc)) from exc
+    try:
+        img.load()
+    except Image.DecompressionBombError as exc:
+        img.close()
+        raise ImageRefusee(trop_grande.format(exc)) from exc
+    except (OSError, SyntaxError, ValueError) as exc:
+        img.close()
+        raise ImageRefusee(f"n'est pas une image lisible : le fichier est incomplet ou "
+                           f"abîmé ({exc}).") from exc
+    return img
+
+
 def ingest_image(conn: sqlite3.Connection, album_id: int, source,
                  numero: int | None = None,
                  keep_master: bool = True,
@@ -447,7 +516,8 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source,
                            f"en {_ESSAIS_DE_RESERVATION} essais.")
     numero = n
     try:
-        with Image.open(flux, formats=PILLOW_FORMATS) as img:   # SEC-3, cf. read_metadata
+        img = _decoder(flux)
+        with img:
             meta = _metadonnees(img)
             icc = img.info.get("icc_profile")
             img8 = image_8_bits(img)        # ModeImageRefuse AVANT d'écrire quoi que ce soit

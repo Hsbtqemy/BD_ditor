@@ -55,7 +55,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     MembreIn, NatureIn,
     PersonnageIn, PersonnageUpdate, PresenceIn, ProjetIn, ProjetUpdate, RegionIn, RegionUpdate, RelectureIn,
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
-    ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
+    OrdrePlanchesIn, ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
     _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
@@ -93,7 +93,8 @@ from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import RESERVATION as RESERVATION_INTERROMPUE
 from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, ecarter_dossiers_d_album,
-                             ingest_image, numero_occupe, remove_planche_files)
+                             ingest_image, nom_du_fichier_d_origine, numero_occupe,
+                             phrase_de_refus, remove_planche_files)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
@@ -733,6 +734,10 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
     # la charge utile : il est stable, et lui seul permet à l'écran de dire « par vous ».
     noms = noms_lisibles(conn, [p["verrou_par"] for p in planches])
     for p in planches:
+        # UX-11 (Hugo, 2026-10-22) — le NOM du fichier d'origine, dérivé de `master_origine`
+        # avant qu'elle soit tue : la seule part de la colonne qui sorte, et de cette seule
+        # route (`tests/test_master_origine_tue.py` le déclare). None avant la v34.
+        p["nom_fichier_origine"] = nom_du_fichier_d_origine(p.get("master_origine"))
         _planche_rendue(p)                  # IMG-1 : `SELECT p.*` ne passe pas par `_get_planche`
         p["verrou_par_nom"] = noms.get(p["verrou_par"])
         p["url_web"] = "/" + p["chemin_web"] if p["chemin_web"] else None
@@ -810,7 +815,12 @@ def import_planche(
     except sqlite3.IntegrityError:       # course rare : un concurrent a pris ce numéro
         raise HTTPException(409, f"Numéro {numero} déjà pris (course d'import) — réessayez.")
     except Exception as exc:
-        raise HTTPException(400, f"Échec de l'ingestion : {exc}")
+        # UX-11 (2026-10-22) — un refus qui vient du FICHIER se dit en mots et le nomme
+        # (« page-3.tif n'est pas une image lisible : … ») : l'import en lot l'affiche tel
+        # quel au bilan, l'Atelier dans un toast. Un autre échec garde son message, qui peut
+        # nommer une panne du serveur.
+        raise HTTPException(400, phrase_de_refus(exc, nom)
+                            or f"{nom} n'a pas pu être importée : {exc}")
     _journaliser_scan(conn, album_id, planche)
     conn.commit()
     planche["url_web"] = "/" + planche["chemin_web"]
@@ -1339,7 +1349,7 @@ def sharedocs_importer(payload: SharedocsImportIn,
                 remove_planche_files(planche.get("chemin_tiff"), planche.get("chemin_web"))
             if not isinstance(exc, Exception):
                 raise                        # une interruption n'est pas l'échec d'un fichier
-            erreurs.append({"chemin": chemin, "erreur": str(exc)})
+            erreurs.append({"chemin": chemin, "erreur": phrase_de_refus(exc, nom) or str(exc)})
             continue
         importes.append(planche)
         # Segmentation best-effort : un échec ici ne doit JAMAIS invalider
@@ -1975,6 +1985,99 @@ def valider_album(album_id: int, conn: sqlite3.Connection = Depends(db),
                         "AND validee IS NOT NULL", (album_id,)).fetchone()[0] - len(validees)
     conn.commit()
     return {"album_id": album_id, "validees": validees, "deja_validees": deja}
+
+
+# UX-11 (Hugo, 2026-10-22) — CHANGER L'ORDRE DES PLANCHES d'un album. Le numéro d'une
+# planche est son RANG : posé à l'import, il ne bougeait plus, si bien qu'un dossier mal
+# nommé laissait l'album dans un ordre que seul l'utilisateur savait faux. La fiche d'un
+# album de la Bibliothèque a deux gestes, « Ranger par nom de fichier » et ↑ ↓ ; tous deux
+# envoient ici l'ordre ENTIER qu'ils veulent — l'ordre « naturel » des noms ne s'écrit
+# donc qu'à un endroit, `static/lib/import-planches.js`, qui range déjà les fichiers d'un
+# import en lot.
+#
+# Ce qui change, et ce qui ne change pas :
+#   · les NUMÉROS seuls changent, et l'ensemble des numéros de l'album reste le même — ils
+#     sont redistribués dans le nouvel ordre, trous compris. Le numéro éditorial et les
+#     citations « pl·c·b » en dérivent (`numeros_editoriaux`, `citations_regions`) : ceux
+#     des planches déplacées changent, et l'écran le fait confirmer ;
+#   · les FICHIERS ne bougent pas : leurs chemins sont écrits sur la planche (`chemin_tiff`,
+#     `chemin_web`). Une planche peut donc porter le numéro 2 et les fichiers
+#     `planche_0005.*`. Un import n'y écrit jamais : il cherche un numéro dont les FICHIERS
+#     sont libres (`ingest.numero_occupe` regarde le disque et toutes les planches), et le
+#     plus grand numéro de l'album n'a pas changé.
+#
+# L'index unique (album_id, numero) refuse un échange en place : les numéros passent par
+# leur opposé dans la même transaction, puis prennent leur place. Gardé comme « Tout
+# valider » — écrire dans l'album —, journalisé sous le DOCUMENT (un acte par geste, les
+# deux ordres en identifiants, aucun nom), hors de Ctrl+Z qui ne défait que l'annotation.
+# Deux personnes qui réordonnent en même temps : la seconde reçoit un 409 qui nomme la
+# première (CONC-3 : la version qu'un écran a vue est la VALEUR, ici l'ordre).
+def _par_qui(a: Optional[dict]) -> str:
+    """« par X, le … (UTC) » — le patron de `conflit.Perime.message`, pour un ordre."""
+    if a is None:
+        return "ailleurs"
+    if a["meme_compte"]:
+        return f"depuis un autre écran de ce même compte, le {a['le']} (UTC)"
+    if a["nom"] or a["login"]:
+        return f"par {a['nom'] or a['login']}, le {a['le']} (UTC)"
+    return f"ailleurs, le {a['le']} (UTC)"
+
+
+def _auteur_de_l_ordre(conn, album_id: int) -> Optional[dict]:
+    """Le dernier acte qui a changé l'ordre des planches de l'album — un réordonnancement,
+    une planche importée ou supprimée —, pour NOMMER un conflit ; il ne le décide jamais."""
+    document_id = document_d_album(conn, album_id)
+    for e in conn.execute("SELECT * FROM evenement WHERE cible_table = 'document' "
+                          "AND cible_id IS ? ORDER BY id DESC", (document_id,)):
+        for charge in (e["apres"], e["avant"]):
+            try:
+                c = json.loads(charge) if charge else {}
+            except ValueError:
+                continue
+            if isinstance(c, dict) and c.get("album_id") == album_id and (
+                    "ordre" in c or isinstance(c.get("planche"), dict)):
+                return conflit.auteur(conn, e)
+    return None
+
+
+@app.put("/api/albums/{album_id}/ordre-des-planches")
+def ordonner_planches(album_id: int, payload: OrdrePlanchesIn,
+                      conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    """Donne aux planches de l'album l'ordre `ordre`, si l'écran avait vu l'ordre actuel
+    (`vu`). Rend les planches dans leur nouvel ordre, avec leur numéro."""
+    _get_album(conn, portee, album_id, ecriture=True)
+    conflit.verrouiller(conn)            # l'ordre actuel se lit sous le verrou d'écriture
+    lignes = conn.execute("SELECT id, numero FROM planches WHERE album_id = ? "
+                          "ORDER BY numero", (album_id,)).fetchall()
+    actuel = [r["id"] for r in lignes]
+    if payload.vu != actuel:
+        qui = _auteur_de_l_ordre(conn, album_id)
+        if sorted(payload.vu) == sorted(actuel):
+            message = (f"Conflit : l'ordre des planches a été changé {_par_qui(qui)} depuis "
+                       "que vous l'avez vu. Votre modification n'est pas enregistrée.")
+        else:
+            message = (f"Conflit : des planches ont été ajoutées ou supprimées {_par_qui(qui)} "
+                       "depuis que vous avez vu l'album. Votre modification n'est pas "
+                       "enregistrée.")
+        raise HTTPException(409, {"message": message,
+                                  "conflit": {"cible": "albums", "id": album_id,
+                                              "champ": "ordre_planches",
+                                              "valeur_actuelle": actuel, "auteur": qui}})
+    if len(set(payload.ordre)) != len(payload.ordre) or sorted(payload.ordre) != sorted(actuel):
+        raise HTTPException(422, "L'ordre envoyé doit nommer chaque planche de l'album, et "
+                                 "une seule fois.")
+    numeros = [r["numero"] for r in lignes]          # croissants : l'ensemble ne change pas
+    if payload.ordre != actuel:
+        conn.execute("UPDATE planches SET numero = -numero WHERE album_id = ?", (album_id,))
+        conn.executemany("UPDATE planches SET numero = ? WHERE id = ?",
+                         list(zip(numeros, payload.ordre)))
+        _journaliser_sur_le_document(conn, album_id,
+                                     {"ordre": payload.ordre, "geste": payload.geste},
+                                     avant={"album_id": album_id, "ordre": actuel})
+    conn.commit()
+    return {"album_id": album_id, "change": payload.ordre != actuel,
+            "planches": [{"id": i, "numero": n} for i, n in zip(payload.ordre, numeros)]}
 
 
 # =========================================================================== #

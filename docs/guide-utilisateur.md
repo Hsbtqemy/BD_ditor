@@ -87,10 +87,26 @@ celui que montre le sélecteur ; les nombres s'y lisent comme des nombres, `p2` 
 où il en est (*Import : 3 sur 50 — p003.tif*) ; un scan lourd prend plusieurs secondes,
 un album entier plusieurs minutes, et la page doit rester ouverte jusqu'au bout.
 *Arrêter* laisse finir le fichier en cours et n'envoie pas les suivants. À la fin, un
-bilan — *48 planches importées, 2 échecs* — et, sous lui, chaque fichier refusé avec sa
-raison : un refus ne défait pas les planches déjà entrées et n'empêche pas les suivantes.
-Réimportez les fichiers refusés une fois corrigés : ils s'ajoutent à la suite. Qui ne fait
-que lire l'album ne voit pas le bouton.
+bilan — *48 planches importées, 2 échecs* — et, sous lui, **quel fichier est devenu quelle
+planche** (*page-10.tif → planche 3*), puis chaque fichier refusé avec sa raison en mots
+(*page-3.tif n'est pas une image lisible…*) : un refus ne défait pas les planches déjà
+entrées et n'empêche pas les suivantes. Réimportez les fichiers refusés une fois corrigés :
+ils s'ajoutent à la suite. Qui ne fait que lire l'album ne voit pas le bouton.
+
+**L'ordre des planches se change ensuite**, dans la fiche de l'album, si vous y écrivez. Le
+numéro d'une planche est son rang : un dossier mal nommé (`1.tif`, `10.tif`, `2.tif`… rangés
+autrement que vous ne les lisez) peut donc arriver dans le mauvais ordre. Le nom du fichier
+d'origine de chaque planche se lit **au survol de sa ligne** (*Fichier : page-10.tif* ; rien
+pour une planche importée avant que l'outil le note). *⇅ Ranger par nom de fichier*, à côté
+de l'import, remet l'album dans l'ordre naturel des noms — celui de l'import en lot — après
+une confirmation qui dit combien de planches changent de place, que les **numéros
+éditoriaux et les citations `pl·c·b` qui en dérivent changent**, et ce que deviennent les
+planches sans nom noté : elles restent en tête, dans leur ordre. Et sur chaque ligne, **↑**
+et **↓** montent ou descendent une planche d'un cran, à la souris comme au clavier (le focus
+reste sur la planche déplacée : appuyer encore la déplace encore). Les fichiers, eux, ne
+bougent pas. Ce geste ne se défait pas par Ctrl+Z — refaites l'ordre inverse — ; si
+quelqu'un a changé l'ordre pendant que vous regardiez, le vôtre est refusé, le message dit
+par qui, et la fiche montre l'ordre actuel.
 
 **L'Atelier garde l'import à l'unité**, pour la page oubliée pendant qu'on annote : choisissez
 la collection dans la liste *Collection* de la barre latérale, puis
@@ -520,8 +536,12 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   l'album à moitié validé, et le message le dit.
 - **Importer des planches en lot** : *⤓ Importer des planches…*, dans la fiche d'un album où
   vous écrivez. Autant de fichiers qu'on veut, envoyés un par un dans l'ordre de leurs noms ;
-  la ligne à côté du bouton dit *n sur N* et le fichier en cours, puis le bilan, et nomme
-  chaque fichier refusé. Cf. étape 1.
+  la ligne à côté du bouton dit *n sur N* et le fichier en cours, puis le bilan, dit quel
+  fichier est devenu quelle planche et nomme chaque fichier refusé. Cf. étape 1.
+- **Changer l'ordre des planches** : *⇅ Ranger par nom de fichier* (confirmé d'abord), ou
+  ↑ ↓ sur la ligne d'une planche, dans la fiche d'un album où vous écrivez ; le nom du
+  fichier d'origine se lit au survol de la ligne. Les numéros éditoriaux et les citations
+  suivent le nouvel ordre. Cf. étape 1.
 - **Relecture** : une pastille par planche, et un filtre pour n'afficher que les planches à
   faire, en cours ou faites.
 - **Traitements par lot** : cocher des albums (onglet *Albums* d'une collection) ou des
@@ -880,9 +900,11 @@ Son format n'est pas dans les sept acceptés (étape 1). Deux contrôles se suiv
 ne remplace pas l'autre. L'**extension** du nom d'abord : hors liste, le fichier est refusé sans être décodé
 — depuis ShareDocs il dit « type non géré (image attendue) », depuis votre disque il nomme
 l'extension refusée. Puis le **contenu** : renommer un `.psd` en `.tif` passe le premier
-contrôle mais pas le second, et c'est précisément ce qu'il empêche ; depuis votre disque, ce
-refus-là commence par « Échec de l'ingestion ». Dans tous les cas rien n'a été enregistré :
-convertissez en TIFF ou en JPEG et réimportez.
+contrôle mais pas le second, et c'est précisément ce qu'il empêche ; ce refus-là nomme le
+fichier et dit *page-3.tif n'est pas une image lisible : son format n'est pas reconnu, ou le
+fichier est abîmé.* Un fichier coupé en route (un téléchargement interrompu) dit *le fichier
+est incomplet ou abîmé*, avec entre parenthèses ce que le décodeur a constaté. Dans tous les
+cas rien n'a été enregistré : convertissez en TIFF ou en JPEG et réimportez.
 
 Un format accepté peut aussi être refusé pour sa **profondeur** : un scan en entiers 32 bits
 (mode `I`) ou en nombres flottants (mode `F`) n'a pas d'équivalent sûr à l'écran, et le

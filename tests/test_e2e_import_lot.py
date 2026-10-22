@@ -123,8 +123,12 @@ def test_importer_quatre_fichiers_depuis_la_fiche_d_un_album(page, live_server):
     expect(etat).to_have_text("3 planches importées, 1 échec", timeout=30000)
     echecs = page.locator(".bi-import-echecs li")
     expect(echecs).to_have_count(1)
-    expect(echecs.first).to_contain_text("p2.png")
-    expect(echecs.first).to_contain_text("Échec de l'ingestion")
+    # Le refus se dit en mots et nomme son fichier, une fois (UX-11, 2026-10-22).
+    expect(echecs.first).to_have_text("p2.png n'est pas une image lisible : son format n'est "
+                                      "pas reconnu, ou le fichier est abîmé.")
+    # Quel fichier est devenu quelle planche, dans l'ordre d'envoi.
+    expect(page.locator(".bi-import-planches li")).to_have_text(
+        ["p1.png → planche 1", "p3.png → planche 2", "p10.png → planche 3"])
     expect(bouton).to_be_enabled()
 
     # La progression a dit chaque fichier, dans l'ordre des noms, puis le bilan.

@@ -1232,13 +1232,15 @@ function renderDetail() {
   // UX-19 — l'Atelier s'ouvre sur la collection d'où l'on a ouvert l'album (son retour),
   // même si l'album vit aussi ailleurs : l'Atelier la pose par l'adresse, et la retient.
   const versAtelier = B.depuis !== null ? `&collection=${B.depuis}` : "";
+  // UX-11 (Hugo, 2026-10-22) — le nom du fichier d'origine au SURVOL de la ligne, et rien de
+  // plus : Hugo n'est pas sûr qu'il mérite une colonne. Une planche d'avant la v34 n'en a pas.
   const planchesRows = planches.length
     ? planches.map((p) => `
-        <tr>
+        <tr data-ligne-planche="${p.id}"${p.nom_fichier_origine ? ` title="${esc("Fichier : " + p.nom_fichier_origine)}"` : ""}>
           <td class="c-chk"><input type="checkbox" aria-label="Sélectionner ${esc(plancheNomLu(p))}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
           <td class="c-vig"><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
           <td class="c-pl">${plancheNum(p)}${materielInfo(p)}</td>
-          <td class="c-act c-gestes">${roleToggle(p)} ${lockToggle(p)} <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}${versAtelier}" title="Ouvrir dans l'Atelier" aria-label="Ouvrir ${esc(plancheNomLu(p))} dans l'Atelier">↗</a> ${corbeillePlanche(a, p, droits)}</td>
+          <td class="c-act c-gestes">${boutonsOrdre(a, p)}${roleToggle(p)} ${lockToggle(p)} <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}${versAtelier}" title="Ouvrir dans l'Atelier" aria-label="Ouvrir ${esc(plancheNomLu(p))} dans l'Atelier">↗</a> ${corbeillePlanche(a, p, droits)}</td>
           <td data-l="Statut"><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
           <td class="c-num" data-l="Régions">${p.nb_regions} rég.</td>
           <td class="c-num" data-l="Annotées">${p.nb_annotees} ann.</td>
@@ -1315,6 +1317,7 @@ function renderDetail() {
     </section>`;
   $("#rel-filter").value = state.relFilter;                       // reflète l'état courant
   if (IMPORT.focus) { IMPORT.focus = false; const b = $("#bi-importer"); if (b) b.focus(); }
+  rendreFocusOrdre();
   loadDetailContribs(a.id);
   rangementDeLAlbum(a.id, ecrire);
 }
@@ -1348,18 +1351,112 @@ function htmlImport(a) {
         ${IMPORT.arreter ? "disabled" : ""}>${IMPORT.arreter ? "Arrêt…" : "Arrêter"}</button>`;
   } else if (ici && IMPORT.bilan) {
     etat = esc(BDImport.libelleBilan(IMPORT.bilan));
+    // UX-11 (Hugo, 2026-10-22) — quel fichier est devenu quelle planche, lu dans la liste
+    // ACTUELLE : après un réordonnancement, le bilan dit où chacune est maintenant.
+    const entres = BDImport.correspondances(IMPORT.bilan, state.planches);
+    if (entres.length) {
+      suite += `<ul class="bi-import-planches" aria-label="Fichiers importés">${entres.map((x) =>
+        `<li>${esc(x.nom)} → ${esc(x.planche)}</li>`).join("")}</ul>`;
+    }
     if (IMPORT.bilan.echecs.length) {
-      suite = `<ul class="bi-import-echecs" aria-label="Fichiers refusés">${IMPORT.bilan.echecs.map((e) =>
-        `<li><b>${esc(e.nom)}</b> : ${esc(e.message)}</li>`).join("")}</ul>`;
+      suite += `<ul class="bi-import-echecs" aria-label="Fichiers refusés">${IMPORT.bilan.echecs.map((e) => {
+        const l = BDImport.ligneEchec(e);
+        return `<li><b>${esc(l.nom)}</b>${esc(l.suite)}</li>`;
+      }).join("")}</ul>`;
     }
   }
   const ton = ici && !IMPORT.enCours && IMPORT.bilan ? ` ton-${BDImport.tonBilan(IMPORT.bilan)}` : "";
   return `<div class="bi-import" id="bi-import">
     <button class="ghost small" type="button" id="bi-importer" title="${esc(titre)}"
       ${IMPORT.enCours ? "disabled" : ""}>⤓ Importer des planches…</button>
+    <button class="ghost small" type="button" id="bi-ranger-nom"
+      title="Remettre les planches dans l'ordre des noms de leurs fichiers d'origine — une confirmation dit d'abord ce qui change"
+      ${IMPORT.enCours || ORDRE.enCours ? "disabled" : ""}>⇅ Ranger par nom de fichier</button>
     <span id="bi-import-etat" class="bi-import-etat small${ton}" role="status" aria-live="polite">${etat}</span>
     ${suite}
-  </div>`;
+  </div>
+  <p id="bi-ordre-msg" class="col-msg muted small" role="status" aria-live="polite"></p>`;
+}
+
+/* ── Changer l'ordre des planches (UX-11, Hugo, 2026-10-22) ────────────────────────────
+   Deux gestes, offerts à qui écrit dans l'album (`ecrivable`, la question exacte de la
+   route) : « Ranger par nom de fichier », qui confirme d'abord, et ↑ ↓ sur chaque ligne.
+   Tous deux envoient l'ordre ENTIER à `PUT /api/albums/{id}/ordre-des-planches`, avec
+   l'ordre que la fiche montrait (`vu`) : si quelqu'un l'a changé entre-temps, le serveur
+   refuse par un 409 qui le nomme, et la fiche se recharge sur l'ordre actuel. Le numéro
+   change, pas les fichiers. Un geste à la fois : un second ↑ pendant que le premier part
+   enverrait un ordre déjà périmé, et se refuserait à lui-même. La logique pure (l'ordre
+   naturel, un cran, la confirmation) vit dans `lib/import-planches.js`. */
+const ORDRE = { enCours: false, focus: null };
+
+function boutonsOrdre(a, p) {
+  if (!a.ecrivable) return "";
+  const i = state.planches.findIndex((x) => x.id === p.id);
+  const nom = esc(plancheNomLu(p));
+  return `<button type="button" class="icon-btn" data-monter="${p.id}" title="Monter d'un cran dans l'album" `
+    + `aria-label="Monter ${nom}" ${i <= 0 || ORDRE.enCours ? "disabled" : ""}>↑</button>`
+    + `<button type="button" class="icon-btn" data-descendre="${p.id}" title="Descendre d'un cran dans l'album" `
+    + `aria-label="Descendre ${nom}" ${i < 0 || i >= state.planches.length - 1 || ORDRE.enCours ? "disabled" : ""}>↓</button> `;
+}
+
+/* Après un ↑ ↓, le focus reste sur le bouton de la planche DÉPLACÉE, qui a changé de ligne :
+   un second appui la déplace encore. Au bord, ce bouton s'éteint ; le focus passe à l'autre. */
+function rendreFocusOrdre() {
+  if (!ORDRE.focus) return;
+  const { pid, sens } = ORDRE.focus;
+  ORDRE.focus = null;
+  const voulu = document.querySelector(`[data-${sens < 0 ? "monter" : "descendre"}="${pid}"]`);
+  const autre = document.querySelector(`[data-${sens < 0 ? "descendre" : "monter"}="${pid}"]`);
+  const b = voulu && !voulu.disabled ? voulu : autre;
+  if (b) b.focus();
+}
+
+/* Envoie l'ordre voulu ; rend null si c'est passé, sinon l'erreur. La fiche est rechargée
+   dans les deux cas : un refus 409 montre l'ordre que l'autre a posé. */
+async function envoyerOrdre(albumId, ordre, geste, focus) {
+  const vu = state.planches.map((p) => p.id);
+  ORDRE.enCours = true;
+  let erreur = null;
+  try {
+    await apiSend("PUT", `/api/albums/${albumId}/ordre-des-planches`, { ordre, vu, geste });
+  } catch (e) {
+    erreur = e;
+  } finally {
+    ORDRE.enCours = false;
+  }
+  if (state.openId !== albumId) return erreur;
+  ORDRE.focus = focus || null;
+  await openAlbum(albumId);
+  return erreur;
+}
+
+async function deplacerPlanche(pid, sens) {
+  if (ORDRE.enCours) return;
+  const albumId = state.openId;
+  const ordre = BDImport.deplacer(state.planches.map((p) => p.id), pid, sens);
+  if (!ordre) return;
+  const erreur = await envoyerOrdre(albumId, ordre, sens < 0 ? "monter" : "descendre",
+                                    { pid, sens });
+  if (state.openId !== albumId) return;
+  const p = state.planches.find((x) => x.id === pid);
+  if (erreur) colMsg($("#bi-ordre-msg"), erreur.message, true);
+  else if (p) colMsg($("#bi-ordre-msg"), `Déplacée : c'est maintenant ${plancheNomLu(p)}.`);
+}
+
+async function rangerParNom() {
+  if (ORDRE.enCours) return;
+  const albumId = state.openId;
+  const plan = BDImport.ordreParNom(state.planches);
+  const phrase = BDImport.phraseRangerParNom(plan);
+  if (!phrase.confirmer) { colMsg($("#bi-ordre-msg"), phrase.message); return; }
+  if (!confirm(phrase.confirmer)) return;
+  const erreur = await envoyerOrdre(albumId, plan.ordre, "ranger_par_nom");
+  if (state.openId !== albumId) return;
+  const ligne = $("#bi-ordre-msg");
+  if (erreur) colMsg(ligne, erreur.message, true);
+  else colMsg(ligne, `Planches rangées dans l'ordre des noms de fichier : ${pluriel(plan.deplacees, "planche a changé", "planches ont changé")} de place.`);
+  const b = $("#bi-ranger-nom");
+  if (b) b.focus();
 }
 
 /* Ce qui change pendant l'import, sans redessiner la fiche : la barre et la ligne d'état. */
@@ -2140,10 +2237,11 @@ async function spDefinitif() {
 
 
 /* Cellule « Planche » : numéro ÉDITORIAL (dérivé, cité) pour le récit, ou pastille
-   Paratexte ; l'ordre d'import reste visible en discret (clé de tri stable, ≠ du
-   numéro cité). Cf. docs/numerotation-et-citation.md. */
+   Paratexte ; le RANG dans l'album reste visible en discret (clé de tri, ≠ du numéro
+   cité) — l'ordre d'import, tant qu'on ne l'a pas changé (UX-11, ↑ ↓ et « Ranger par nom
+   de fichier »). Cf. docs/numerotation-et-citation.md. */
 function plancheNum(p) {
-  const imp = `<span class="muted small" title="ordre d'import">i.${String(p.numero).padStart(3, "0")}</span>`;
+  const imp = `<span class="muted small" title="rang dans l'album (l'ordre d'import, sauf s'il a été changé)">i.${String(p.numero).padStart(3, "0")}</span>`;
   if (p.role === "recit")
     return `<b title="Numéro éditorial (cité)">planche ${p.numero_editorial}</b><br>${imp}`;
   return `<span class="badge" title="Paratexte — hors numérotation du récit">Paratexte</span><br>${imp}`;
@@ -3153,6 +3251,11 @@ function brancherFiche() {
       champ.click();
       return;
     }
+    if (t.closest("#bi-ranger-nom")) { rangerParNom(); return; }
+    const monter = t.closest("button[data-monter]");
+    if (monter) { deplacerPlanche(Number(monter.dataset.monter), -1); return; }
+    const descendre = t.closest("button[data-descendre]");
+    if (descendre) { deplacerPlanche(Number(descendre.dataset.descendre), 1); return; }
     if (t.closest("#bi-import-arreter")) {
       IMPORT.arreter = true;
       const b = $("#bi-import-arreter");
