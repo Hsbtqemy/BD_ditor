@@ -3642,10 +3642,15 @@ async function undoLast() {
   } finally { clearTimeout(lent); }
   // ANN-8 — une suppression rend ses liens (locuteur, personnage montré, situation), sauf
   // ceux dont l'objet n'est plus là ou plus visible : le dire, sans rien nommer.
+  // Un tag supprimé depuis l'acte, ou que la clé ne retrouve que hors de portée, ne revient
+  // pas non plus : Ctrl+Z ne recrée jamais un tag (`tags_non_rendus`, compté à part).
   const manque = res.liens_non_rendus || 0;
+  const tags = res.tags_non_rendus || 0;
   toast("Annulé : " + res.description + (manque
     ? ` — ${manque} lien${manque > 1 ? "s" : ""} non rendu${manque > 1 ? "s" : ""} (personnage ou valeur disparus, ou type qui ne les montre pas)`
-    : ""), "", manque ? 8000 : 4000);
+    : "") + (tags
+    ? ` — ${tags} tag${tags > 1 ? "s" : ""} non rendu${tags > 1 ? "s" : ""} (supprimé${tags > 1 ? "s" : ""} depuis, ou hors de portée)`
+    : ""), "", manque || tags ? 8000 : 4000);
   if (res.planche_id && state.planche && res.planche_id === state.planche.id) {
     await loadRegions(state.planche.id);
     if (res.region_id != null && state.regionsById.has(res.region_id)) {
