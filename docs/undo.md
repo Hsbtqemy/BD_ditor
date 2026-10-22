@@ -144,6 +144,30 @@ gardés : l'ordre se recalcule, la source suit la retouche. La même règle refu
 CRÉATION d'une région que quelqu'un d'autre a travaillée depuis : la supprimer emporterait
 son travail, et l'annulation ne garde aucun instantané de ce qu'elle supprime.
 
+**Après un tel refus, l'acte RESTE en tête de la pile — et défaire à la main le geste de
+l'autre n'en sort pas** (relevé par la contre-relecture d'ANN-8, 2026-10-21). Le 409 n'écrit
+rien, pas même la trace qui PASSE un acte (cf. plus bas) : le Ctrl+Z suivant retombe sur le
+même acte, et redonne le même 409 tant que la valeur de l'autre est là. Le réflexe est de la
+retirer soi-même pour pouvoir annuler — Alice passe une case en bulle, Bob lui donne
+Haddock, le Ctrl+Z d'Alice est refusé ; elle retire Haddock à la main, puis refait Ctrl+Z.
+C'est un piège : ce retrait est un geste d'Alice, PLUS RÉCENT que son changement de type, et
+c'est lui que le Ctrl+Z suivant défait d'abord. Haddock revient, et au Ctrl+Z d'après, le
+même 409. La pile d'Alice reste bloquée sur cet acte, et ses gestes plus anciens hors de
+portée de Ctrl+Z. C'est vrai de tout refus de ce paragraphe, pas seulement du locuteur :
+retaper à la main le texte qu'un autre a remplacé, remettre une position, recrée le même
+cercle.
+
+Ce qui en sort, aujourd'hui :
+
+- **faire à la main ce que Ctrl+Z aurait fait** — remettre le type, la note, la position —,
+  sachant que c'est un geste neuf, écrit au journal sous son nom, et qu'il ne débloque pas la
+  pile : deux Ctrl+Z plus loin, le même refus ;
+- **que l'autre défasse son propre geste** : son Ctrl+Z à lui (ou le retrait qu'il fait) n'est
+  pas un acte d'Alice, et le Ctrl+Z suivant d'Alice passe — la valeur n'est plus là ;
+- sinon, laisser l'acte : un 409 ne change rien à la base.
+
+Rien, à l'écran, ne permet de PASSER volontairement un acte refusé.
+
 **Recréation à l'identique** : l'instantané profond porte les `id` d'origine → citations,
 deep-links et références restent valides. Si un `id` a été **réattribué** depuis (une nouvelle
 région a pris la place libérée), l'acte est **passé** (cf. ci-dessous) plutôt que d'écraser —

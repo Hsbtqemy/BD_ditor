@@ -377,6 +377,41 @@ def test_h2_ctrl_z_ne_rend_pas_une_case_qui_parle(client, planche, db_path, derr
     assert _ev_count(db_path) == n
 
 
+def test_apres_un_409_retirer_a_la_main_le_geste_de_l_autre_ramene_le_meme_409(
+        client, planche, db_path, derriere_proxy):
+    """Le piège écrit dans `docs/undo.md` (contre-relecture d'ANN-8, c4), tel qu'il est : le
+    retrait à la main est un geste d'Alice PLUS RÉCENT, que le Ctrl+Z suivant défait d'abord —
+    Haddock revient —, puis le même 409. Ce test décrit le comportement, il ne le juge pas :
+    s'il tombe, c'est que la décision a changé, et `docs/undo.md` avec elle."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="case")["id"]
+    y = client.post("/api/personnages", json={"nom": "Haddock"}, headers=ADMIN).json()["id"]
+    client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=ALICE)
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": y}, headers=BOB)
+    assert client.post("/api/undo", headers=ALICE).status_code == 409
+    assert client.delete(f"/api/regions/{rid}/locuteur", headers=ALICE).status_code == 204
+
+    r2 = client.post("/api/undo", headers=ALICE)
+    assert (r2.status_code, r2.json()["description"]) == (200, "retrait d'un locuteur")
+    assert _type_et_locuteur(db_path, rid) == ("bulle", y)
+    r3 = client.post("/api/undo", headers=ALICE)
+    assert r3.status_code == 409
+    assert r3.json()["detail"]["conflit"]["champ"] == "locuteur"
+
+
+def test_apres_un_409_le_ctrl_z_de_l_autre_debloque_la_pile(client, planche, db_path,
+                                                           derriere_proxy):
+    """Ce qui en sort : que l'autre défasse son propre geste. Son Ctrl+Z n'est pas un acte
+    d'Alice, et le Ctrl+Z suivant d'Alice passe — la case revient, muette."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="case")["id"]
+    y = client.post("/api/personnages", json={"nom": "Haddock"}, headers=ADMIN).json()["id"]
+    client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=ALICE)
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": y}, headers=BOB)
+    assert client.post("/api/undo", headers=ALICE).status_code == 409
+    assert client.post("/api/undo", headers=BOB).status_code == 200
+    assert client.post("/api/undo", headers=ALICE).status_code == 200
+    assert _type_et_locuteur(db_path, rid) == ("case", None)
+
+
 def test_h2_seul_les_deux_ctrl_z_rendent_la_case_muette(client, planche, db_path):
     """Seul à son poste, le même enchaînement se défait sans conflit : le Ctrl+Z du
     locuteur passe d'abord, et la case revient sans rien."""
