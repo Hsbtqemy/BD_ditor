@@ -185,3 +185,95 @@ def test_le_menu_aa_reste_dans_la_fenetre_quand_on_zoome_menu_ouvert(live_server
         assert page.evaluate("document.documentElement.style.zoom") == attendu
         p = page.evaluate(BOITE, ".display-panel")
         assert p["b"] <= 640.5 and p["y"] >= -0.5, f"zoom {attendu}, menu ouvert : il sort de la fenêtre : {p}"
+
+
+# ---------- Les modales, et les cadres d'une page qui défile (seconde passe, 2026-10-22) ----------
+# Mêmes unités, même défaut. Toutes les modales vivent dans un voile `position: fixed;
+# inset: 0` : leurs plafonds passent de `vw`/`vh` à un pourcentage de ce voile. Les cadres
+# d'une page (le liste-et-fiche de la Bibliothèque et de l'Administration dans une fenêtre
+# basse, le croisement, l'aperçu de la Recherche, une vignette) n'ont pas de conteneur à la
+# taille de la fenêtre : ils prennent `--vh-visible` / `--vw-visible`, que `theme.js` dérive
+# du zoom (cf. `:root` dans style.css). Mesuré avant : la fiche d'un album faisait 1 108 px
+# de haut sous 1,4 dans une fenêtre de 900, titre et boutons hors champ, et le voile ne
+# défile pas ; le Lexique sortait de 11 px par le haut sous 2 à 320 px.
+
+MODALES = [
+    # (surface, ce qui l'ouvre, la boîte, son titre, son dernier bouton)
+    ("/corpus", "#btn-new", "#album-modal .modal-box", "#modal-title", "#m-cancel"),
+    ("/exploration", "#btn-lexique", ".lexique-box", "#lexique-title", "#lex-close"),
+]
+
+
+@pytest.mark.parametrize("zoom", ["1.4", "2"])
+@pytest.mark.parametrize("largeur", [320, 375, 768])
+@pytest.mark.parametrize("surface,ouvre,boite,titre,dernier", MODALES,
+                         ids=["fiche-album", "lexique"])
+def test_une_modale_tient_dans_la_fenetre_et_tout_s_y_atteint(
+        live_server, page, surface, ouvre, boite, titre, dernier, largeur, zoom):
+    _ouvrir(page, live_server + surface, zoom, largeur, 900)
+    page.click(ouvre)
+    page.wait_for_selector(boite, state="visible")
+    page.wait_for_timeout(200)
+    m = page.evaluate("""([B, T, D, boite]) => { const box = eval(boite);
+      const b = document.querySelector(B); const avant = box(B);
+      // Défiler la BOÎTE seule, sans `scrollIntoView`, qui ferait aussi défiler la page sous
+      // le voile : ce n'est pas un geste que la modale offre.
+      const touche = (s) => { const e = document.querySelector(s); const r = e.getBoundingClientRect();
+        return document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2) === e; };
+      b.scrollTop = 0; const t = touche(T);
+      b.scrollTop = b.scrollHeight; const d = touche(D);
+      return {avant, fenetre: [innerWidth, innerHeight], titre: t, dernier: d}; }""", [boite, titre, dernier, BOITE])
+    p, (L, H) = m["avant"], m["fenetre"]
+    assert p["y"] >= -0.5 and p["b"] <= H + 0.5, f"{boite} sort de la fenêtre {L}×{H} par le haut ou le bas : {p}"
+    # Le voile reste visible des deux côtés : c'est par lui qu'on referme d'un clic, et à
+    # 100 % la boîte en laisse toujours une bande (8 % de la fenêtre en tout, ou plus).
+    assert p["x"] >= 1 and p["r"] <= L - 1, f"{boite} touche les bords de la fenêtre {L} : {p}"
+    assert m["titre"] and m["dernier"], (
+        f"zoom {zoom}, {largeur} px : titre atteint={m['titre']}, dernier bouton atteint={m['dernier']}")
+
+
+# Une fenêtre BASSE (sous 26.9375em de haut) : la page défile entière, et le cadre liste-et-
+# fiche se compte sur la fenêtre (`calc(100vh - …)` avant, `--vh-visible` depuis). 420 px et
+# non 400 : sous 1,4, le plancher de `.lf.bi` (22rem) donne 400 px à l'écran, et le test
+# doit dire « tient », pas « tient au pixel près ». 768 px de large : sous 33em la page
+# défait le cadre (une colonne, sans hauteur), et la règle ne s'applique plus.
+@pytest.mark.parametrize("surface,cadre,propriete", [
+    ("/corpus", "#biblio", "height"),
+    ("/administration?vue=projets", "#projets-bloc", "minHeight"),
+], ids=["bibliotheque", "administration"])
+def test_dans_une_fenetre_basse_le_cadre_se_compte_sur_la_fenetre_visible(
+        live_server, page, album, surface, cadre, propriete):
+    _ouvrir(page, live_server + surface, "1.4", 768, 420)
+    page.wait_for_selector(cadre, state="visible")
+    m = page.evaluate("""([C, P]) => { const e = document.querySelector(C);
+      return {v: parseFloat(getComputedStyle(e)[P]) * (e.currentCSSZoom || 1), h: innerHeight}; }""",
+                      [cadre, propriete])
+    assert 0 < m["v"] <= m["h"] + 0.5, (
+        f"{surface} : sous un zoom de 1,4, {cadre} demande {m['v']:.0f} px de haut pour une "
+        f"fenêtre de {m['h']} — une unité de fenêtre que le zoom a multipliée")
+
+
+# Les quatre surfaces-documents : toutes sauf l'Atelier, coque fixe qui ne défile pas.
+PAGES = [s for s in SURFACES_AUDITEES if s != "/"]
+
+
+@pytest.mark.parametrize("zoom", ["1.4", "2"])
+@pytest.mark.parametrize("surface", PAGES)
+def test_la_page_s_atteint_jusqu_en_bas_sous_le_zoom(live_server, page, album, surface, zoom):
+    """Ce qui défile — le document à 320 px, la coque au-dessus — tient dans la fenêtre, et
+    le bas de la coque s'y atteint en le faisant défiler, lui seul. Ce qui défile DANS la
+    coque (une liste dans son cadre) a son propre défilement et n'est pas mesuré ici."""
+    _ouvrir(page, live_server + surface, zoom, 320, 900)
+    page.wait_for_timeout(300)
+    m = page.evaluate("""() => {
+      const coque = document.querySelector('#corpus-app, #admin-app, #search-app, #explo-app');
+      const docDefile = getComputedStyle(document.documentElement).overflowY === 'visible';
+      const defile = docDefile ? document.scrollingElement : coque;
+      defile.scrollTop = defile.scrollHeight;
+      const r = coque.getBoundingClientRect();
+      return {docDefile, haut: r.top, bas: r.bottom, h: innerHeight}; }""")
+    assert m["bas"] <= m["h"] + 0.5, (
+        f"{surface}, zoom {zoom} : défilée jusqu'au bout, la page finit encore à {m['bas']:.0f} px "
+        f"pour une fenêtre de {m['h']}")
+    if not m["docDefile"]:
+        assert m["haut"] >= -0.5, f"{surface}, zoom {zoom} : la coque qui défile sort par le haut : {m}"

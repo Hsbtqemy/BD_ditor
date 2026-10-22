@@ -34,7 +34,14 @@
   function applyContrast(c) {
     if (c === "high") root.dataset.contrast = "high"; else delete root.dataset.contrast;
   }
-  function applyZoom(z) { root.style.zoom = z === 1 ? "" : String(z); }
+  // `--ui-zoom` accompagne `zoom`, et c'est son SEUL propriétaire : la feuille en tire
+  // `--vw-visible` / `--vh-visible`, une unité de fenêtre que le zoom ne multiplie pas
+  // (cf. `:root` dans style.css). Les deux se posent et se retirent ensemble.
+  function applyZoom(z) {
+    root.style.zoom = z === 1 ? "" : String(z);
+    if (z === 1) root.style.removeProperty("--ui-zoom");
+    else root.style.setProperty("--ui-zoom", String(z));
+  }
   function applyLecture(v) {
     if (v === "confort") root.dataset.lecture = "confort"; else delete root.dataset.lecture;
   }

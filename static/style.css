@@ -46,6 +46,17 @@
   --status-h: 2rem;
   --sidebar-w: 18.4615rem;
   --panel-w: 23.0769rem;
+
+  /* Une unité de fenêtre qui suit la fenêtre VISIBLE sous le zoom d'interface (UX-7).
+     `theme.js` pose `zoom` sur la racine, et sous lui `1vw` se calcule contre la fenêtre
+     NON zoomée puis grandit avec le zoom (mesuré : cf. « Les plafonds des tiroirs »). Là où
+     une boîte vit dans un conteneur à la taille de la fenêtre — le voile d'une modale, les
+     tiroirs —, un pourcentage suffit et n'a besoin de rien. Ailleurs (un cadre dans une page
+     qui défile, une vignette), on écrit `calc(70 * var(--vh-visible))` au lieu de `70vh`.
+     `--ui-zoom` a UN propriétaire, `applyZoom`, qui le pose en même temps que `zoom` :
+     absent, il vaut 1, et ces unités sont exactement `1vw` et `1vh`. */
+  --vw-visible: calc(1vw / var(--ui-zoom, 1));
+  --vh-visible: calc(1vh / var(--ui-zoom, 1));
 }
 
 /* Thème clair — redéfinit les mêmes tokens ; accents assombris pour rester
@@ -1313,7 +1324,7 @@ h3.collapsible:hover { color: var(--text); }
 /* Hauteur plafonnée + scroll interne : l'arbre ne repousse jamais les champs
    Tags / Note / OCR hors de vue, même sur une planche très peuplée. */
 .tree {
-  user-select: none; max-height: 34vh; overflow-y: auto;
+  user-select: none; max-height: calc(34 * var(--vh-visible)); overflow-y: auto;
   padding: .1538rem .1538rem .1538rem 0; font-size: .9231rem; line-height: 1.3;
 }
 /* Lignes de guidage de la hiérarchie : bordure gauche des sous-groupes. */
@@ -1518,7 +1529,7 @@ h3.collapsible:hover { color: var(--text); }
 #tr-mini { position: relative; max-width: 100%; }
 #tr-mini img {
   display: block; max-width: 100%;
-  max-height: calc(100vh - var(--nav-h) - var(--header-h) - var(--status-h) - 3.0769rem);
+  max-height: calc(100 * var(--vh-visible) - var(--nav-h) - var(--header-h) - var(--status-h) - 3.0769rem);
   border: 1px solid var(--border); border-radius: 4px;
 }
 #tr-mini svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
@@ -1603,7 +1614,7 @@ h3.collapsible:hover { color: var(--text); }
 /* `hidden` doit l'emporter sur les `display:flex` des sections internes. */
 #sharedocs [hidden] { display: none; }
 .sd-dialog {
-  width: min(58.4615rem, 92vw); max-height: 86vh;
+  width: min(58.4615rem, 92%); max-height: 86%;   /* % de `#sharedocs`, fixe et plein écran : cf. `.modal-box` */
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: 10px; box-shadow: 0 12px 48px var(--shadow-strong);
@@ -1727,7 +1738,7 @@ h3.collapsible:hover { color: var(--text); }
 .result.active { outline: 2px solid var(--accent-blue); }
 .preview {
   flex: 0 0 42%; position: sticky; top: .9231rem; align-self: flex-start;
-  max-height: calc(100vh - 6.9231rem); overflow: auto;
+  max-height: calc(100 * var(--vh-visible) - 6.9231rem); overflow: auto;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: 8px; padding: .7692rem;
 }
@@ -1902,7 +1913,7 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
   clip-path: inset(50%); white-space: nowrap; }
 
 /* ---------- Tableau croisé 2D (ANA-2) ---------- */
-.croise { margin-top: .6154rem; overflow: auto; max-height: 70vh; }
+.croise { margin-top: .6154rem; overflow: auto; max-height: calc(70 * var(--vh-visible)); }
 /* Le cadre défile, donc il doit s'ATTEINDRE au clavier — même règle que
    `.table-cadre` (UX-7, étape 1) : une zone défilante qu'on ne peut pas focaliser
    est une violation du 1.4.10 à part entière, et le croisement est le seul contenu
@@ -1979,7 +1990,7 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
      caractères par ligne (mesuré le 2026-09-05). `clamp` ne change RIEN au-dessus de
      591 px de fenêtre, où 22vw dépasse déjà 130 : la vignette ne rétrécit que là où
      elle prend la place de ce qu'on est venu lire. */
-  width: clamp(72px, 22vw, 130px); max-height: 96px; object-fit: contain; flex: 0 0 auto;
+  width: clamp(72px, calc(22 * var(--vw-visible)), 130px); max-height: 96px; object-fit: contain; flex: 0 0 auto;
   background: var(--media-bg); border-radius: 4px;
 }
 .r-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: .3077rem; }
@@ -2118,7 +2129,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    cadre se compte alors sur la fenêtre, comme le bloc de « Comptes et groupes ». */
 @supports selector(html:has(body)) {
   @media (max-height: 26.9375em) {
-    .lf.bi { height: calc(100vh - 2.5rem); }
+    .lf.bi { height: calc(100 * var(--vh-visible) - 2.5rem); }
   }
 }
 @media (max-width: 40em) {
@@ -2541,10 +2552,15 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .pl-refus-msg { display: block; white-space: normal; text-align: left; max-width: 18rem;
                 min-width: 10rem; margin: .2rem 0 0; overflow-wrap: anywhere; }
 .modal-box {
-  width: min(43.0769rem, 92vw); background: var(--bg-panel);
+  width: min(43.0769rem, 92%); background: var(--bg-panel);
   border: 1px solid var(--border); border-radius: 10px; padding: 1.3846rem;
   box-shadow: 0 12px 48px var(--shadow-strong); display: flex; flex-direction: column; gap: .9231rem;
-  max-height: 88vh; overflow-y: auto;          /* la fiche descriptive (N0) peut être longue */
+  max-height: 88%; overflow-y: auto;           /* la fiche descriptive (N0) peut être longue */
+  /* `%` et non `vw`/`vh` : toutes les modales vivent dans un voile `position: fixed;
+     inset: 0` sans rembourrage, qui EST la fenêtre visible à tout zoom d'interface (cf.
+     « Les plafonds des tiroirs », plus haut). En `vh`, la fiche d'un album faisait 1 108 px
+     de haut sous 1,4 dans une fenêtre de 900 : son titre et ses boutons sortaient par le
+     haut et le bas, et le voile ne défile pas. Au zoom 1, les deux valeurs sont égales. */
 }
 /* `min-width: 0` : un `<fieldset>` ne rétrécit pas, de lui-même, sous la largeur propre de
    ce qu'il contient — ici un champ de texte, vingt caractères. Sous une préférence de
@@ -2620,7 +2636,7 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 }
 #lexique-modal[hidden], #accord-modal[hidden], #accord-inter-modal[hidden],
 #export-modal[hidden], #figure-modal[hidden] { display: none; }
-.lexique-box { width: min(55.3846rem, 94vw); }
+.lexique-box { width: min(55.3846rem, 94%); }   /* % du voile : cf. `.modal-box` */
 /* DROIT-2 — le choix de la collection au titre de laquelle un album sort. Une ligne par
    collection, le bouton radio À CÔTÉ de son nom : `.modal-box label` empile en colonne. */
 .export-choix { display: flex; flex-direction: column; gap: .4615rem; }
@@ -2685,7 +2701,7 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .dist-actions { display: flex; align-items: center; gap: .4615rem; margin-left: auto; }
 
 /* Accord modèle↔humain (NLP-1) — modale de qualité de l'index (overlay partagé avec #lexique-modal). */
-.accord-box { width: min(43.0769rem, 94vw); }
+.accord-box { width: min(43.0769rem, 94%); }
 #accord-body { display: flex; flex-direction: column; gap: .7692rem; }
 .accord-table { border-collapse: collapse; width: 100%; font-size: 1rem; }
 .accord-table th, .accord-table td { border: 1px solid var(--border); padding: .3077rem .6923rem; text-align: left; }
@@ -2990,7 +3006,7 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
    l'ordre — c'est voulu, et c'est pourquoi ce bloc-ci est AVANT lui. */
 @supports selector(html:has(body)) {
   @media (max-height: 26.9375em) {
-    .admin-bloc.lf-bloc { min-height: calc(100vh - var(--admin-rembourrage)); }
+    .admin-bloc.lf-bloc { min-height: calc(100 * var(--vh-visible) - var(--admin-rembourrage)); }
   }
 }
 .lf-bloc > h2 { margin-bottom: 0; }
