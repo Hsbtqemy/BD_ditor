@@ -93,8 +93,9 @@ from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import RESERVATION as RESERVATION_INTERROMPUE
 from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, ecarter_dossiers_d_album,
-                             ingest_image, nom_du_fichier_d_origine, numero_occupe,
-                             phrase_de_refus, remove_planche_files)
+                             DecodeurAbsent, ingest_image, nom_du_fichier_d_origine,
+                             numero_occupe, phrase_d_ecriture_ratee, phrase_de_refus,
+                             remove_planche_files)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
@@ -814,6 +815,18 @@ def import_planche(
         raise HTTPException(409, f"Numéro {numero} déjà pris (course d'import) — {exc}")
     except sqlite3.IntegrityError:       # course rare : un concurrent a pris ce numéro
         raise HTTPException(409, f"Numéro {numero} déjà pris (course d'import) — réessayez.")
+    except DecodeurAbsent as exc:
+        # UX-11 (relecture croisée) — une limite du SERVEUR (un décodeur absent de son
+        # Pillow), pas un fichier abîmé : 503, comme un moteur absent.
+        raise HTTPException(503, phrase_de_refus(exc, nom))
+    except OSError as exc:
+        # UX-11 (relecture croisée) — une ÉCRITURE ratée sur le disque du serveur (disque
+        # plein, droits) n'est pas la faute du fichier : 507, sans le chemin serveur que
+        # porte l'`OSError`, qui va au journal du serveur. L'import en lot s'ARRÊTE sur ce
+        # statut (`lib/import-planches.js`) : le fichier suivant échouerait pareil.
+        logging.getLogger("bd_annotator").error("Import de %s : écriture ratée", nom,
+                                                exc_info=exc)
+        raise HTTPException(507, phrase_d_ecriture_ratee(exc, nom))
     except Exception as exc:
         # UX-11 (2026-10-22) — un refus qui vient du FICHIER se dit en mots et le nomme
         # (« page-3.tif n'est pas une image lisible : … ») : l'import en lot l'affiche tel
@@ -1320,7 +1333,7 @@ def sharedocs_importer(payload: SharedocsImportIn,
     # spaCy n'est pas en jeu ici : les régions qu'une segmentation pose n'ont pas de texte,
     # et `reindex_region` ne l'appelle que sur un texte.
     importes, erreurs = [], []
-    for chemin in payload.chemins:
+    for rang, chemin in enumerate(payload.chemins):
         nom = chemin.rsplit("/", 1)[-1]
         if os.path.splitext(nom)[1].lower() not in IMG_EXTS:
             erreurs.append({"chemin": chemin, "erreur": "type non géré (image attendue)"})
@@ -1349,6 +1362,16 @@ def sharedocs_importer(payload: SharedocsImportIn,
                 remove_planche_files(planche.get("chemin_tiff"), planche.get("chemin_web"))
             if not isinstance(exc, Exception):
                 raise                        # une interruption n'est pas l'échec d'un fichier
+            if isinstance(exc, OSError):
+                # Une écriture ratée sur le disque du serveur : le message ne porte pas le
+                # chemin, et la série s'arrête — le fichier suivant échouerait pareil.
+                logging.getLogger("bd_annotator").error("Import ShareDocs de %s : écriture "
+                                                        "ratée", chemin, exc_info=exc)
+                erreurs.append({"chemin": chemin, "erreur": phrase_d_ecriture_ratee(exc, nom)})
+                erreurs.extend({"chemin": c, "erreur": "non importé : l'import s'est arrêté "
+                                "sur une écriture ratée du serveur"}
+                               for c in payload.chemins[rang + 1:])
+                break
             erreurs.append({"chemin": chemin, "erreur": phrase_de_refus(exc, nom) or str(exc)})
             continue
         importes.append(planche)
@@ -2010,6 +2033,8 @@ def valider_album(album_id: int, conn: sqlite3.Connection = Depends(db),
 # leur opposé dans la même transaction, puis prennent leur place. Gardé comme « Tout
 # valider » — écrire dans l'album —, journalisé sous le DOCUMENT (un acte par geste, les
 # deux ordres en identifiants, aucun nom), hors de Ctrl+Z qui ne défait que l'annotation.
+# Ce n'est pas un TRAVAIL sur l'album (Hugo, 2026-10-22) : la règle de suppression ne le
+# compte pas, reconnu par le marqueur `acte` de sa charge.
 # Deux personnes qui réordonnent en même temps : la seconde reçoit un 409 qui nomme la
 # première (CONC-3 : la version qu'un écran a vue est la VALEUR, ici l'ordre).
 def _par_qui(a: Optional[dict]) -> str:
@@ -2072,9 +2097,14 @@ def ordonner_planches(album_id: int, payload: OrdrePlanchesIn,
         conn.execute("UPDATE planches SET numero = -numero WHERE album_id = ?", (album_id,))
         conn.executemany("UPDATE planches SET numero = ? WHERE id = ?",
                          list(zip(numeros, payload.ordre)))
+        # `acte` est le marqueur que lit la règle de suppression pour NE PAS compter ce
+        # geste comme un travail sur l'album (`autorisation._SQL_ORDRE_DES_PLANCHES`).
+        acte = autorisation.ACTE_ORDRE_DES_PLANCHES
         _journaliser_sur_le_document(conn, album_id,
-                                     {"ordre": payload.ordre, "geste": payload.geste},
-                                     avant={"album_id": album_id, "ordre": actuel})
+                                     {"acte": acte, "ordre": payload.ordre,
+                                      "geste": payload.geste},
+                                     avant={"album_id": album_id, "acte": acte,
+                                            "ordre": actuel})
     conn.commit()
     return {"album_id": album_id, "change": payload.ordre != actuel,
             "planches": [{"id": i, "numero": n} for i, n in zip(payload.ordre, numeros)]}

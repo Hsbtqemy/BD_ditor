@@ -103,7 +103,9 @@ une confirmation qui dit combien de planches changent de place, que les **numér
 éditoriaux et les citations `pl·c·b` qui en dérivent changent**, et ce que deviennent les
 planches sans nom noté : elles restent en tête, dans leur ordre. Et sur chaque ligne, **↑**
 et **↓** montent ou descendent une planche d'un cran, à la souris comme au clavier (le focus
-reste sur la planche déplacée : appuyer encore la déplace encore). Les fichiers, eux, ne
+reste sur la planche déplacée : appuyer encore la déplace encore). Ils sont éteints tant
+qu'un filtre de relecture est posé — il cache des planches, et un cran se compte dans l'album
+entier — ou qu'un import court dans l'album ; leur infobulle le dit. Les fichiers, eux, ne
 bougent pas. Ce geste ne se défait pas par Ctrl+Z — refaites l'ordre inverse — ; si
 quelqu'un a changé l'ordre pendant que vous regardiez, le vôtre est refusé, le message dit
 par qui, et la fiche montre l'ordre actuel.
@@ -905,6 +907,12 @@ fichier et dit *page-3.tif n'est pas une image lisible : son format n'est pas re
 fichier est abîmé.* Un fichier coupé en route (un téléchargement interrompu) dit *le fichier
 est incomplet ou abîmé*, avec entre parenthèses ce que le décodeur a constaté. Dans tous les
 cas rien n'a été enregistré : convertissez en TIFF ou en JPEG et réimportez.
+
+Deux refus ne viennent pas du fichier, et le disent : *ce serveur ne sait pas décoder son
+format* — un décodeur manque à l'installation du serveur, le fichier est peut-être sain — et
+*le disque du serveur est plein* (ou *n'a pas le droit d'écrire ses images*) : rien n'est
+entré, l'import en lot s'arrête là, et c'est à l'administrateur de l'instance d'agir avant de
+réessayer.
 
 Un format accepté peut aussi être refusé pour sa **profondeur** : un scan en entiers 32 bits
 (mode `I`) ou en nombres flottants (mode `F`) n'a pas d'équivalent sûr à l'écran, et le

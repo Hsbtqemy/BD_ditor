@@ -20,8 +20,9 @@
        avant « p10 ») : un nom sans zéros en tête se range comme on le lit.
      · UN ÉCHEC NOMME SON FICHIER ET N'ARRÊTE PAS LES SUIVANTS. Seul un refus qui porte sur
        l'ALBUM et non sur le fichier arrête la série — l'album n'est plus à votre portée
-       (404) ou l'identité manque (401, 403) : les fichiers suivants recevraient la même
-       réponse, et cinquante lignes identiques ne disent rien de plus qu'une.
+       (404) ou l'identité manque (401, 403) —, ou une écriture ratée sur le disque du
+       serveur (507) : les fichiers suivants recevraient la même réponse, et cinquante
+       lignes identiques ne disent rien de plus qu'une.
      · UNE PROGRESSION QUI DIT « n sur N » et le nom en cours, puis UN BILAN — qui dit,
        depuis le 2026-10-22, quel fichier est devenu quelle planche.
 
@@ -46,9 +47,17 @@
       COLLATION.compare(a.name, b.name) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   }
 
-  /* Un refus qui porte sur l'album, et non sur le fichier : la série s'arrête. */
+  /* Un refus qui porte sur l'album, et non sur le fichier : la série s'arrête. Et une
+     écriture ratée sur le disque du SERVEUR (507 : disque plein, droits — relecture
+     croisée d'UX-11) l'arrête aussi : le fichier suivant échouerait pareil. */
   const STATUTS_D_ALBUM = [401, 403, 404];
-  function arreteLaSerie(statut) { return STATUTS_D_ALBUM.includes(statut); }
+  const STATUTS_DU_SERVEUR = [507];
+  function arretDeLaSerie(statut) {
+    if (STATUTS_D_ALBUM.includes(statut)) return "album";
+    if (STATUTS_DU_SERVEUR.includes(statut)) return "serveur";
+    return null;
+  }
+  function arreteLaSerie(statut) { return arretDeLaSerie(statut) !== null; }
 
   /* Envoie les fichiers UN PAR UN, dans l'ordre des noms, et rend le bilan.
      `envoyer(fichier)` : une promesse, rejetée par une erreur qui porte `statut` et un
@@ -76,7 +85,7 @@
         const message = (e && e.message) || "échec de l'envoi";
         bilan.echecs.push({ nom: f.name, message });
         if (e && arreteLaSerie(e.statut)) {
-          bilan.arret = "album";
+          bilan.arret = arretDeLaSerie(e.statut);
           bilan.nonEnvoyes = liste.slice(i + 1).map((x) => x.name);
           break;
         }
@@ -109,7 +118,8 @@
     if (m) {
       phrase += ` — ${pluriel(m, "fichier non envoyé", "fichiers non envoyés")}`
         + (b.arret === "album" ? " : l'album n'accepte plus d'import de votre part"
-                               : " : import arrêté");
+          : b.arret === "serveur" ? " : le serveur ne peut plus enregistrer d'image"
+            : " : import arrêté");
     }
     return phrase;
   }
@@ -217,7 +227,7 @@
     return { confirmer: q, message: null };
   }
 
-  return { ordonner, arreteLaSerie, importerEnLot, libelleProgression, libelleBilan, tonBilan,
+  return { ordonner, arreteLaSerie, arretDeLaSerie, STATUTS_DU_SERVEUR, importerEnLot, libelleProgression, libelleBilan, tonBilan,
            STATUTS_D_ALBUM, libellePlanche, correspondances, ligneEchec, deplacer, ordreParNom,
            phraseRangerParNom };
 });

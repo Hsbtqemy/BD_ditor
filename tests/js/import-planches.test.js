@@ -173,9 +173,22 @@ for (const [cas, bilan, libelle, ton] of BILANS) {
   });
 }
 
-test("les refus qui arrêtent la série sont ceux de l'album, et eux seuls", () => {
+test("les refus qui arrêtent la série sont ceux de l'album et l'écriture ratée du serveur", () => {
   assert.deepEqual(I.STATUTS_D_ALBUM, [401, 403, 404]);
+  assert.deepEqual(I.STATUTS_DU_SERVEUR, [507]);
   for (const s of [400, 409, 413, 422, 500, 503, undefined]) assert.equal(I.arreteLaSerie(s), false);
+  assert.equal(I.arretDeLaSerie(404), "album");
+  assert.equal(I.arretDeLaSerie(507), "serveur");
+});
+
+test("une écriture ratée du serveur (507) arrête la série, et le bilan le dit", async () => {
+  const e = envoyeur({ "b": erreur(507, "b n'a pas été importée : le disque du serveur est plein.") });
+  const bilan = await I.importerEnLot(["a", "b", "c", "d"].map(f), e.envoyer);
+  assert.deepEqual(e.envoyes, ["a", "b"]);
+  assert.deepEqual(bilan.nonEnvoyes, ["c", "d"]);
+  assert.equal(bilan.arret, "serveur");
+  assert.equal(I.libelleBilan(bilan), "1 planche importée, 1 échec — 2 fichiers non envoyés : "
+    + "le serveur ne peut plus enregistrer d'image");
 });
 
 /* ── Quel fichier est devenu quelle planche (UX-11, 2026-10-22) ─────────────────────── */

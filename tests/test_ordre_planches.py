@@ -24,6 +24,8 @@ from PIL import Image
 
 from conftest import ADMIN, make_png
 from pipeline.ingest import nom_du_fichier_d_origine
+from test_fonds import (COLLEGUE, IMPORTEUSE, _albums, decor,  # noqa: F401
+                        _planche as _planche_fonds)
 
 
 # ── Le nom du fichier d'origine ──────────────────────────────────────────────────────────
@@ -185,9 +187,10 @@ def test_un_acte_par_geste_au_journal_sous_le_document_hors_de_ctrl_z(client, al
     assert len(lignes) == 1
     type_, cible, avant, apres = lignes[0]
     assert (type_, cible) == ("modification", "document")
-    assert json.loads(avant) == {"album_id": album["id"], "ordre": ids}
-    assert json.loads(apres) == {"album_id": album["id"], "ordre": ids[::-1],
-                                 "geste": "descendre"}
+    assert json.loads(avant) == {"album_id": album["id"], "acte": "ordre_des_planches",
+                                 "ordre": ids}
+    assert json.loads(apres) == {"album_id": album["id"], "acte": "ordre_des_planches",
+                                 "ordre": ids[::-1], "geste": "descendre"}
     assert "secret" not in avant + apres            # aucun nom de fichier dans la charge
     # Ctrl+Z ne le défait pas : rien d'annulable n'a été fait.
     assert client.get("/api/undo/prochain").json() is None
@@ -307,3 +310,102 @@ def test_un_import_apres_un_reordonnancement_ne_touche_aucun_fichier_d_une_autre
     assert set(avant) <= set(apres)                                     # rien d'effacé
     planches = client.get(f"/api/albums/{album['id']}/planches").json()
     assert [(p["id"], p["largeur_px"]) for p in planches] == [(pb["id"], 320), (pc["id"], 330)]
+
+
+# ── Réordonner n'est pas un travail sur l'album (Hugo, 2026-10-22) ───────────────────────
+
+def test_reordonner_l_album_d_une_autre_ne_lui_interdit_pas_de_le_supprimer_seule(
+        client, db_path, decor):  # noqa: F811
+    """Un ↓ d'une collègue laissait l'importatrice DEMANDER la suppression d'un album où
+    personne d'autre n'avait rien annoté : l'acte, écrit sous le document, comptait comme un
+    travail d'autrui. Il ne compte plus — ni pour la règle, ni dans ce que l'administrateur
+    lit sous une demande —, et une validation, elle, compte toujours."""
+    import autorisation
+    aid = decor["erreur"]
+    _planche_fonds(client, aid, IMPORTEUSE)
+    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is True
+    ids = _ordre(client, aid, COLLEGUE)
+    r = _ordonner(client, aid, ids[::-1], ids, headers=COLLEGUE, geste="descendre")
+    assert r.status_code == 200, r.text
+    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is True
+    n = len(autorisation._sources_du_travail("?"))
+    agents = [r[0] for r in _sql(
+        db_path, f"SELECT agent FROM ({autorisation.sql_actes_sur_album('?')})", [aid] * n)]
+    assert "collegue" not in agents, agents
+    # La règle mord encore : un vrai travail de la collègue compte.
+    r = client.patch(f"/api/planches/{ids[0]}/validation", headers=COLLEGUE,
+                     json={"validee": True})
+    assert r.status_code == 200, r.text
+    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is False
+
+
+# ── Les refus qui ne sont pas la faute du fichier (relecture croisée) ────────────────────
+
+def test_un_decodeur_absent_du_serveur_ne_se_dit_pas_fichier_abime(client, album,
+                                                                   monkeypatch, data_dir):
+    from PIL import Image as Img
+    buf = io.BytesIO()
+    Img.new("RGB", (60, 40), "red").save(buf, "JPEG")
+    monkeypatch.delattr(Img.core, "jpeg_decoder")
+    r = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("page.jpg", buf.getvalue(), "image/jpeg")})
+    assert r.status_code == 503, r.text
+    detail = r.json()["detail"]
+    assert detail.startswith("page.jpg n'est pas importée : ce serveur ne sait pas décoder "
+                             "son format"), detail
+    assert "abîmé" not in detail and "not available" not in detail
+    assert not [f for f in data_dir.rglob("*") if f.is_file()
+                and ("corpus" in f.parts or "derivatives" in f.parts)]
+
+
+@pytest.mark.parametrize("err, cause", [
+    (28, "le disque du serveur est plein"),            # ENOSPC
+    (13, "le serveur n'a pas le droit d'écrire ses images"),   # EACCES
+    (5, "le serveur n'a pas pu écrire l'image sur son disque"),  # EIO
+])
+def test_une_ecriture_ratee_repond_507_sans_chemin_serveur(client, album, monkeypatch,
+                                                            data_dir, err, cause):
+    from pipeline import ingest
+
+    def ratee(*a, **k):
+        raise OSError(err, "No space left on device", "/data/corpus/album_1/secret.jpg")
+    monkeypatch.setattr(ingest, "ecrire_copie_de_travail", ratee)
+    r = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("page.png", make_png(), "image/png")})
+    assert r.status_code == 507, r.text
+    detail = r.json()["detail"]
+    assert detail == (f"page.png n'a pas été importée : {cause}. Rien n'est entré ; "
+                      "prévenez l'administrateur de l'instance avant de réessayer.")
+    assert "/data" not in r.text and "secret" not in r.text
+    assert client.get(f"/api/albums/{album['id']}/planches").json() == []
+    assert not [f for f in data_dir.rglob("*") if f.is_file()
+                and ("corpus" in f.parts or "derivatives" in f.parts)]
+
+
+def test_l_import_sharedocs_s_arrete_sur_une_ecriture_ratee(client, album, monkeypatch):
+    from pipeline import ingest
+    from pipeline import sharedocs as sd
+    monkeypatch.setattr(sd, "download",
+                        lambda path, *, principal, compte=None: make_png())
+
+    def ratee(*a, **k):
+        raise OSError(28, "No space left on device", "/data/corpus/album_1/secret.jpg")
+    monkeypatch.setattr(ingest, "ecrire_copie_de_travail", ratee)
+    r = client.post("/api/sharedocs/importer", json={
+        "chemins": ["BD/p1.tif", "BD/p2.tif", "BD/p3.tif"], "album_id": album["id"]})
+    assert r.status_code == 200, r.text
+    erreurs = r.json()["erreurs"]
+    assert [e["chemin"] for e in erreurs] == ["BD/p1.tif", "BD/p2.tif", "BD/p3.tif"]
+    assert erreurs[0]["erreur"].startswith("p1.tif n'a pas été importée : le disque du "
+                                           "serveur est plein.")
+    assert all(e["erreur"].startswith("non importé") for e in erreurs[1:])
+    assert "/data" not in r.text and "secret" not in r.text
+
+
+def test_une_image_trop_grande_se_dit_en_francais(client, album, monkeypatch):
+    from PIL import Image as Img
+    monkeypatch.setattr(Img, "MAX_IMAGE_PIXELS", 1000)
+    detail = _refus(client, album, "geante.png", make_png(100, 100))
+    assert detail == ("geante.png n'est pas importée : l'image est trop grande pour être "
+                      "ouverte — plus de 2000 pixels, la limite de ce serveur."), detail
+    assert "Image size" not in detail and "decompression" not in detail.lower()

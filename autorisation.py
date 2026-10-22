@@ -761,7 +761,10 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     forcée, par un autre. Ces derniers sont écrits sous le document, qu'une copie SŒUR
     partage (COL-3, tranche 3) : seuls comptent ceux dont la charge nomme CET album — la
     notice retouchée sur une autre copie n'est pas un travail sur celle-ci, et interdirait
-    sinon à la créatrice d'une copie de la supprimer seule. Chaque sous-requête part de
+    sinon à la créatrice d'une copie de la supprimer seule. Changer l'ORDRE des planches
+    n'en est pas un (UX-11, Hugo, 2026-10-22 ; `_SQL_ORDRE_DES_PLANCHES`) : écrit sous le
+    document lui aussi, il n'y compte pas, et l'administrateur ne le lit pas non plus sous
+    une demande. Chaque sous-requête part de
     l'album et descend par les index
     (`idx_evenement_cible`) : la liste des albums la pose album par album.
 
@@ -855,7 +858,8 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
          "albums _ta JOIN evenement _te "
          "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
          f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' "
-         f"AND {_SQL_ALBUM_DE_LA_CHARGE} = _ta.id AND NOT {_SQL_NAISSANCE_D_UNE_COPIE}"),
+         f"AND {_SQL_ALBUM_DE_LA_CHARGE} = _ta.id AND NOT {_SQL_NAISSANCE_D_UNE_COPIE} "
+         f"AND NOT {_SQL_ORDRE_DES_PLANCHES}"),
         ("_te.agent", "_te.cible_table", "_te.date",
          "evenement _te JOIN ("
          + _sql_chaine_des_sources(regions_de_l_album) + "SELECT s, borne, rang FROM _tch"
@@ -885,6 +889,19 @@ _SQL_ALBUM_DE_LA_CHARGE = (
 _SQL_NAISSANCE_D_UNE_COPIE = (
     "(_te.avant IS NULL AND json_valid(_te.apres) "
     "AND json_extract(_te.apres, '$.copie.depuis_album_id') IS NOT NULL)")
+
+
+# L'ORDRE DES PLANCHES changé (UX-11, `PUT /api/albums/{id}/ordre-des-planches`) : ↑ ↓ ou
+# « Ranger par nom de fichier ». Ce n'est pas un travail sur l'album (Hugo, 2026-10-22) :
+# un ↓ d'une collègue ne doit pas obliger l'importatrice à DEMANDER la suppression d'un
+# album où personne d'autre n'a rien annoté. Reconnu par un marqueur EXPLICITE de la charge
+# (`acte`, posé par la route seule), jamais par la forme d'une charge qu'un autre geste
+# pourrait partager. `IS` et le `CASE` ne rendent jamais NULL : une charge vide ou illisible
+# n'est pas un réordonnancement, et reste comptée.
+ACTE_ORDRE_DES_PLANCHES = "ordre_des_planches"
+_SQL_ORDRE_DES_PLANCHES = (
+    "((CASE WHEN json_valid(_te.apres) THEN json_extract(_te.apres, '$.acte') END) "
+    f"IS '{ACTE_ORDRE_DES_PLANCHES}')")
 
 
 def sql_actes_sur_album(alias: str) -> str:

@@ -268,7 +268,8 @@ présence ou un attribut de case, corriger la grammaire, valider une planche, aj
 retirer une planche, modifier la notice ou la paternité, forcer le statut de relecture.
 Ne comptent pas : un travail supprimé depuis ; une passe automatique, même lancée par un
 collègue — elle est attribuée à son moteur, pas à une personne ; ranger l'album dans une
-collection ; déposer une demande. Un geste dont l'auteur n'est pas écrit compte comme celui
+collection ; **changer l'ordre de ses planches** (↑ ↓, *Ranger par nom de fichier* — décision
+du 2026-10-22 : déplacer une page n'est pas y travailler) ; déposer une demande. Un geste dont l'auteur n'est pas écrit compte comme celui
 d'un autre : on ne sait pas que c'est vous. Et un album d'avant le fonds, dont
 l'importateur n'est pas écrit, **se demande toujours** — seul un administrateur le détruit.
 

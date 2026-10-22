@@ -203,3 +203,49 @@ def test_aucun_geste_d_ordre_pour_qui_ne_fait_que_lire(page, live_server):
         .to_have_count(0)
     # L'infobulle, elle, est pour tous ceux qui lisent l'album.
     expect(_lignes(page).nth(0)).to_have_attribute("title", "Fichier : p10.png")
+
+
+def test_les_fleches_s_eteignent_sous_un_filtre_de_relecture(page, live_server):
+    """Le filtre CACHE des planches, et un cran se compte dans l'album entier : ↑ échangerait
+    la planche avec une voisine qu'on ne voit pas (relecture croisée). Éteintes, elles disent
+    pourquoi ; le filtre retiré, elles reviennent."""
+    aid, ids = _decor(live_server, noms=("a.png", "b.png", "c.png"))
+    _ouvrir(page, live_server)
+    page.select_option("#rel-filter", "a_faire")
+    descendre = page.locator(f"[data-descendre='{ids[0]}']")
+    expect(descendre).to_be_disabled()
+    expect(descendre).to_have_attribute("title", re.compile(r"^Retirez le filtre de relecture"))
+    expect(page.locator(f"[data-monter='{ids[1]}']")).to_be_disabled()
+    page.select_option("#rel-filter", "")
+    expect(page.locator(f"[data-descendre='{ids[0]}']")).to_be_enabled()
+    expect(page.locator(f"[data-descendre='{ids[0]}']")).to_have_attribute(
+        "title", "Descendre d'un cran dans l'album")
+
+
+def test_les_fleches_s_eteignent_pendant_un_import_dans_l_album(page, live_server):
+    """Un import en lot ajoute des planches pendant qu'on les déplacerait : ↑ ↓ et « Ranger »
+    s'éteignent tant qu'il court dans CET album. La requête d'import est retenue le temps
+    de regarder."""
+    aid, ids = _decor(live_server, noms=("a.png", "b.png"))
+    _ouvrir(page, live_server)
+    retenues = []
+    page.route(f"**/api/albums/{aid}/import", lambda route: retenues.append(route))
+    with page.expect_file_chooser() as choix:
+        page.locator("#bi-importer").click()
+    choix.value.set_files([{"name": "c.png", "mimeType": "image/png",
+                            "buffer": make_png(330, 200)}])
+    expect(page.locator("#bi-import-arreter")).to_be_visible()
+    descendre = page.locator(f"[data-descendre='{ids[0]}']")
+    expect(descendre).to_be_disabled()
+    expect(descendre).to_have_attribute("title", re.compile(r"^Un import est en cours dans "
+                                                            r"cet album"))
+    expect(page.locator("#bi-ranger-nom")).to_be_disabled()
+    for _ in range(100):                      # la route est interceptée pendant l'attente
+        if retenues:
+            break
+        page.wait_for_timeout(50)
+    assert retenues, "la requête d'import n'a pas été retenue"
+    retenues[0].continue_()
+    expect(page.locator("#bi-import-etat")).to_have_text("1 planche importée", timeout=30000)
+    expect(page.locator(f"[data-descendre='{ids[0]}']")).to_be_enabled()
+    expect(page.locator("#bi-ranger-nom")).to_be_enabled()

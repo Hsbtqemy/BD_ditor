@@ -1389,14 +1389,31 @@ function htmlImport(a) {
    naturel, un cran, la confirmation) vit dans `lib/import-planches.js`. */
 const ORDRE = { enCours: false, focus: null };
 
+/* Pourquoi ↑ ↓ sont éteints sur toute la fiche, ou null s'ils peuvent servir. Le filtre de
+   relecture CACHE des planches : un cran se compte dans l'album entier, et ↑ échangerait la
+   planche avec une voisine qu'on ne voit pas. Un import en lot dans CET album ajoute des
+   planches pendant qu'on les déplacerait : l'ordre envoyé serait périmé à chaque fichier. */
+function ordreEteint(a) {
+  if (state.relFilter) {
+    return "Retirez le filtre de relecture pour changer l'ordre : il cache des planches, "
+      + "et un cran se compte dans l'album entier";
+  }
+  if (IMPORT.enCours && IMPORT.albumId === a.id) {
+    return "Un import est en cours dans cet album : l'ordre se change une fois qu'il a fini";
+  }
+  return null;
+}
+
 function boutonsOrdre(a, p) {
   if (!a.ecrivable) return "";
   const i = state.planches.findIndex((x) => x.id === p.id);
   const nom = esc(plancheNomLu(p));
-  return `<button type="button" class="icon-btn" data-monter="${p.id}" title="Monter d'un cran dans l'album" `
-    + `aria-label="Monter ${nom}" ${i <= 0 || ORDRE.enCours ? "disabled" : ""}>↑</button>`
-    + `<button type="button" class="icon-btn" data-descendre="${p.id}" title="Descendre d'un cran dans l'album" `
-    + `aria-label="Descendre ${nom}" ${i < 0 || i >= state.planches.length - 1 || ORDRE.enCours ? "disabled" : ""}>↓</button> `;
+  const eteint = ordreEteint(a);
+  const titre = (t) => esc(eteint || t);
+  return `<button type="button" class="icon-btn" data-monter="${p.id}" title="${titre("Monter d'un cran dans l'album")}" `
+    + `aria-label="Monter ${nom}" ${eteint || i <= 0 || ORDRE.enCours ? "disabled" : ""}>↑</button>`
+    + `<button type="button" class="icon-btn" data-descendre="${p.id}" title="${titre("Descendre d'un cran dans l'album")}" `
+    + `aria-label="Descendre ${nom}" ${eteint || i < 0 || i >= state.planches.length - 1 || ORDRE.enCours ? "disabled" : ""}>↓</button> `;
 }
 
 /* Après un ↑ ↓, le focus reste sur le bouton de la planche DÉPLACÉE, qui a changé de ligne :
@@ -1431,7 +1448,8 @@ async function envoyerOrdre(albumId, ordre, geste, focus) {
 }
 
 async function deplacerPlanche(pid, sens) {
-  if (ORDRE.enCours) return;
+  const a = state.albums.find((x) => x.id === state.openId);
+  if (ORDRE.enCours || !a || ordreEteint(a)) return;
   const albumId = state.openId;
   const ordre = BDImport.deplacer(state.planches.map((p) => p.id), pid, sens);
   if (!ordre) return;

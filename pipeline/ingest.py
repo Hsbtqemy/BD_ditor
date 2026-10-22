@@ -23,6 +23,7 @@ croise avec des coordonnées applique l'échelle `largeur de l'image ouverte / l
 """
 from __future__ import annotations
 
+import errno
 import io
 import os
 import re
@@ -179,15 +180,36 @@ class ImageRefusee(ValueError):
     <_io.BytesIO object at 0x…> », où le seul mot utile était le nom qui manquait."""
 
 
+class DecodeurAbsent(ImageRefusee):
+    """Le fichier est peut-être juste, mais le Pillow de CE serveur n'a pas le décodeur de
+    son format (« decoder jpeg2k not available ») : une limite du serveur, pas du fichier
+    (relecture croisée d'UX-11). Le dire « abîmé » enverrait réparer un fichier sain."""
+
+
 def phrase_de_refus(exc: BaseException, nom: str) -> str | None:
     """La phrase qui dit pourquoi le fichier `nom` n'est pas entré, si le refus vient du
-    fichier lui-même ; None sinon — l'appelant garde alors le message de l'exception, qui
-    peut nommer une panne du serveur (un dossier qui ne se crée pas, un disque plein)."""
+    fichier lui-même ou d'un décodeur absent ; None sinon. Une ÉCRITURE ratée sur le disque
+    du serveur a sa phrase à elle (`phrase_d_ecriture_ratee`)."""
     if isinstance(exc, ImageRefusee):
         return f"{nom} {exc}"
     if isinstance(exc, ModeImageRefuse):
         return f"{nom} n'est pas importée : {exc}"
     return None
+
+
+def phrase_d_ecriture_ratee(exc: OSError, nom: str) -> str:
+    """Ce qu'on dit d'une écriture ratée sur le disque du SERVEUR (disque plein, droits) :
+    la cause en mots, et JAMAIS le chemin — le message d'une `OSError` le porte
+    (`/data/corpus/album_3/…`), et il ne regarde que l'administrateur, qui le lit dans le
+    journal du serveur. Rien n'est entré : l'ingest a retiré ce qu'il avait écrit."""
+    cause = {errno.ENOSPC: "le disque du serveur est plein",
+             getattr(errno, "EDQUOT", -1): "le quota du disque du serveur est atteint",
+             errno.EACCES: "le serveur n'a pas le droit d'écrire ses images",
+             errno.EPERM: "le serveur n'a pas le droit d'écrire ses images",
+             errno.EROFS: "le disque du serveur est en lecture seule"}.get(
+        exc.errno, "le serveur n'a pas pu écrire l'image sur son disque")
+    return (f"{nom} n'a pas été importée : {cause}. Rien n'est entré ; prévenez "
+            "l'administrateur de l'instance avant de réessayer.")
 
 
 def _bits_portes(img: Image.Image) -> int:
@@ -424,21 +446,34 @@ def _decoder(flux) -> Image.Image:
     `UnidentifiedImageError` à l'ouverture ; un PNG, un JPEG ou un TIFF coupés en deux,
     `OSError: image file is truncated` au décodage — sa cause, gardée entre parenthèses,
     est la seule information que Pillow ait à ajouter."""
-    trop_grande = ("n'est pas importée : l'image est trop grande pour être ouverte ({}).")
+    # En mots, sans le texte anglais de Pillow (décision de la session, 2026-10-22). Pillow
+    # ne refuse qu'au-delà du DOUBLE de sa limite (entre les deux, il avertit) : c'est ce
+    # seuil-là qui est dit.
+    pixels = 2 * (Image.MAX_IMAGE_PIXELS or MAX_IMAGE_PIXELS)
+    limite = (f"{pixels // 1_000_000} millions de pixels" if pixels >= 1_000_000
+              else f"{pixels} pixels")
+    trop_grande = (f"n'est pas importée : l'image est trop grande pour être ouverte — plus "
+                   f"de {limite}, la limite de ce serveur.")
     try:
         img = Image.open(flux, formats=PILLOW_FORMATS)
     except UnidentifiedImageError:
         raise ImageRefusee("n'est pas une image lisible : son format n'est pas reconnu, ou "
                            "le fichier est abîmé.") from None
     except Image.DecompressionBombError as exc:     # levée dès l'ouverture, sur la taille
-        raise ImageRefusee(trop_grande.format(exc)) from exc
+        raise ImageRefusee(trop_grande) from exc
     try:
         img.load()
     except Image.DecompressionBombError as exc:
         img.close()
-        raise ImageRefusee(trop_grande.format(exc)) from exc
+        raise ImageRefusee(trop_grande) from exc
     except (OSError, SyntaxError, ValueError) as exc:
         img.close()
+        if re.search(r"(de|en)coder \S+ not available", str(exc)):
+            raise DecodeurAbsent(
+                "n'est pas importée : ce serveur ne sait pas décoder son format (le décodeur "
+                "manque à son installation). Ce n'est pas le fichier qui est en cause : "
+                "prévenez l'administrateur de l'instance, ou convertissez-le en TIFF ou en "
+                "JPEG.") from exc
         raise ImageRefusee(f"n'est pas une image lisible : le fichier est incomplet ou "
                            f"abîmé ({exc}).") from exc
     return img
