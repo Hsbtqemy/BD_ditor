@@ -574,6 +574,11 @@ OUTILS_HORS = {
         "par identifiant, le NOM d'un personnage du registre et l'IDENTIFIANT d'une valeur "
         "de situation — jamais un terme de vocabulaire ni une charge du journal. Sans "
         "périmètre de collection : il porte sur la base entière.",
+    "tags_hors_collection.py":
+        "Lecture seule (ANN-8) : il NOMME des tags locaux, leur collection et des albums, "
+        "sur la base entière — c'est son objet : dire à l'exploitant, dans la console du "
+        "serveur, où un tag local est posé hors de sa collection. Aucun fichier, aucune "
+        "charge du journal, rien qui parte au titre d'une collection.",
     "semer_demo.py": "SÈME un corpus de démonstration par l'API : il écrit, il ne "
                      "sort rien.",
     "regenerer_exemples.py":
@@ -611,6 +616,7 @@ ENTREES_HORS = {
     "normaliser_casse.py": {"--album", "--dry-run", "--planche"},
     "retirer_locuteurs_muets.py": {"--appliquer"},
     "retirer_liens_caches.py": {"--appliquer"},
+    "tags_hors_collection.py": set(),
     "semer_demo.py": set(),
     "regenerer_exemples.py": set(),
     "fabriquer_base_de_version.py": {"commit", "sortie", "--copie"},

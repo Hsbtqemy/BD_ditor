@@ -253,26 +253,97 @@ def test_le_lecteur_n_apprend_rien_de_l_emploi(client, db_path, decor):
     assert reponses == {"Ce tag est en lecture seule pour vous."}
 
 
-def test_un_tag_local_se_pose_hors_de_sa_collection(client, db_path, decor):
-    """Le CONSTAT (2026-10-22), joué par la route : qui LIT « Étude A » et ÉCRIT dans
-    « Étude B » pose un tag local à A sur une région de B — `_ensure_tags` attache tout tag
-    qu'on lit. La prémisse « un tag local n'est porté que dans sa collection » est fausse ;
-    d'où la garde `_exiger_tout_ecrit` des deux tests suivants."""
+def test_un_tag_local_ne_se_pose_plus_hors_de_sa_collection(client, db_path, decor):
+    """Le CONSTAT du 2026-10-22 — qui LIT « Étude A » et ÉCRIT dans « Étude B » posait un
+    tag local à A sur une région de B — est fermé à la saisie (décision de Hugo du même
+    jour) : 422 qui nomme le tag et sa collection, rien n'est posé, la note envoyée avec lui
+    non plus. Sous toute portée : c'est une propriété des données."""
     t = _tag(db_path, "local-a", decor["c1"])
     for coll, niveau in (("c1", "lecture"), ("c2", "ecriture")):
         r = client.put(f"/api/collections/{decor[coll]}/acces", headers=ADMIN, json={
             "genre": "utilisateur", "principal": "passeur", "niveau": niveau})
         assert r.status_code == 200, r.text
-    r = client.put(f"/api/regions/{decor['r2']}/annotation",
-                   json={"tags_ajoutes": ["local-a"]}, headers={"Remote-User": "passeur"})
+    for qui in ({"Remote-User": "passeur"}, ADMIN):
+        for corps in ({"note": "n", "tags_ajoutes": ["local-a"]},
+                      {"note": "n", "tags": ["local-a"]}):
+            r = client.put(f"/api/regions/{decor['r2']}/annotation", json=corps, headers=qui)
+            assert r.status_code == 422, r.text
+            assert r.json()["detail"] == ("Le tag « local-a » est propre à la collection "
+                                          "« Étude A » : il ne se pose que sur les albums "
+                                          "qu'elle range.")
+    assert _porteurs(db_path, t) == []
+    assert not _sql(db_path, "SELECT 1 FROM annotations WHERE region_id = ?", (decor["r2"],))
+    # Sur un album de sa collection, il se pose.
+    r = client.put(f"/api/regions/{decor['r1']}/annotation",
+                   json={"tags_ajoutes": ["local-a"]}, headers=ADMIN)
+    assert r.status_code == 200, r.text
+    assert _porteurs(db_path, t) == [decor["r1"]]
+
+
+def test_ce_qui_est_deja_pose_hors_de_sa_collection_reste(client, db_path, decor):
+    """L'existant n'est pas refusé : une liste renvoyée entière, qui le contient, passe ; il
+    se retire ; il ne revient pas une fois retiré."""
+    t = _tag(db_path, "ancien-a", decor["c1"])
+    _poser(db_path, decor["r2"], t, note="n")
+    r = client.put(f"/api/regions/{decor['r2']}/annotation", headers=ADMIN,
+                   json={"note": "m", "tags": ["ancien-a"]})
     assert r.status_code == 200, r.text
     assert _porteurs(db_path, t) == [decor["r2"]]
+    r = client.put(f"/api/regions/{decor['r2']}/annotation", headers=ADMIN,
+                   json={"tags_retires": ["ancien-a"]})
+    assert r.status_code == 200, r.text
+    r = client.put(f"/api/regions/{decor['r2']}/annotation", headers=ADMIN,
+                   json={"tags_ajoutes": ["ancien-a"]})
+    assert r.status_code == 422, r.text
+
+
+def test_l_atelier_ne_propose_que_les_tags_qui_se_posent_sur_l_album(client, db_path, decor):
+    """`GET /api/tags?album=` : les tags globaux et ceux d'une collection qui range l'album.
+    Sans `album`, la liste reste celle de la portée (la Recherche, l'Exploration)."""
+    _tag(db_path, "global")
+    _tag(db_path, "local-a", decor["c1"])
+    _tag(db_path, "local-b", decor["c2"])
+    labels = lambda url, qui=ADMIN: {t["label"] for t in client.get(url, headers=qui).json()}
+    a1 = _sql(db_path, "SELECT album_id FROM collection_album WHERE collection_id = ?",
+              (decor["c1"],))[0]["album_id"]
+    a2 = _sql(db_path, "SELECT album_id FROM collection_album WHERE collection_id = ?",
+              (decor["c2"],))[0]["album_id"]
+    assert labels(f"/api/tags?album={a1}") == {"global", "local-a"}
+    assert labels(f"/api/tags?album={a2}") == {"global", "local-b"}
+    assert labels("/api/tags") == {"global", "local-a", "local-b"}
+    assert labels(f"/api/tags?album={a1}", ECRIVAIN) == {"global", "local-a"}
+    assert client.get(f"/api/tags?album={a2}", headers=ECRIVAIN).status_code == 404
+
+
+def test_l_outil_dit_l_existant_sans_rien_ecrire(client, db_path, decor):
+    """`tools/tags_hors_collection.py` : à blanc, en lecture seule ; il nomme le tag, sa
+    collection et l'album, et compte les régions."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    racine = Path(__file__).resolve().parent.parent
+    env = {**__import__("os").environ, "BD_DB_PATH": str(db_path)}
+    outil = [sys.executable, str(racine / "tools" / "tags_hors_collection.py")]
+    p = subprocess.run(outil, env=env, capture_output=True, cwd=str(racine))
+    assert p.returncode == 0, p.stderr.decode("utf-8", "replace")
+    assert "Aucun tag local" in p.stderr.decode("utf-8")
+    t = _tag(db_path, "deborde-a", decor["c1"])
+    _poser(db_path, decor["r2"], t)
+    _poser(db_path, decor["r1"], t)
+    avant = _sql(db_path, "SELECT COUNT(*) AS n FROM annotation_tags")[0]["n"]
+    p = subprocess.run(outil, env=env, capture_output=True, cwd=str(racine))
+    sortie = p.stderr.decode("utf-8")
+    assert p.returncode == 0, sortie
+    assert "« deborde-a »" in sortie and "« Étude A »" in sortie
+    assert "1 région(s), 1 album(s)" in sortie and "« a2 »" in sortie
+    assert "« a1 »" not in sortie
+    assert _sql(db_path, "SELECT COUNT(*) AS n FROM annotation_tags")[0]["n"] == avant
 
 
 def test_un_tag_local_pose_hors_de_sa_collection_reste_a_l_administrateur(
         client, db_path, decor):
-    """Le constat : un tag LOCAL à « Étude A » peut être posé sur une région d'« Étude B »
-    (ici par l'administrateur ; aussi par quiconque lit A et écrit dans B). Le propriétaire
+    """L'existant : un tag LOCAL à « Étude A » posé sur une région d'« Étude B » (avant la
+    garde de pose du 2026-10-22, ou par un album retiré de A — ici en SQL). Le propriétaire
     de A n'écrit pas dans B : il ne l'en retire pas, ni à blanc — aucun nombre ne lui
     parvient —, et l'administrateur le peut."""
     t = _tag(db_path, "deborde", decor["c1"])
@@ -606,7 +677,8 @@ def test_ctrl_z_d_un_ajout_ne_retire_pas_ce_qui_etait_deja_la(client, db_path, d
 def test_ctrl_z_d_une_suppression_de_region_ne_rend_que_les_tags_vivants(
         client, db_path, decor):
     """La région revient ; son tag renommé revient sous son nouveau nom, son tag supprimé ne
-    revient pas et se compte parmi les liens non rendus."""
+    revient pas et se compte à part (`tags_non_rendus`) ; `liens_non_rendus` garde son
+    sens — les liens de la région (locuteur, personnage, attributs)."""
     renomme = _tag(db_path, "ancien", decor["c1"])
     parti = _tag(db_path, "parti", decor["c1"])
     r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ADMIN,
@@ -618,7 +690,7 @@ def test_ctrl_z_d_une_suppression_de_region_ne_rend_que_les_tags_vivants(
     assert client.delete(f"/api/tags/{parti}", headers=PROPRIO).status_code == 200
     r = client.post("/api/undo", headers=ECRIVAIN)
     assert r.status_code == 200, r.text
-    assert r.json()["liens_non_rendus"] == 1
+    assert r.json()["tags_non_rendus"] == 1 and r.json()["liens_non_rendus"] == 0
     assert _porte(client, decor) == ["nouveau"]
     assert not _sql(db_path, "SELECT 1 FROM tags WHERE label IN ('ancien', 'parti')")
 
@@ -673,3 +745,82 @@ def test_une_note_de_blancs_compte_pour_vide(client, db_path, decor):
     _poser(db_path, decor["r1"], t, note="\n\t ")
     assert client.delete(f"/api/tags/{t}", headers=PROPRIO).status_code == 200
     assert not _sql(db_path, "SELECT 1 FROM annotations WHERE region_id = ?", (decor["r1"],))
+
+
+def _tags_de(db_path, region_id):
+    return sorted((r["id"], r["label"], r["collection_id"]) for r in _sql(
+        db_path, "SELECT t.id, t.label, t.collection_id FROM annotation_tags at "
+                 "JOIN annotations an ON an.id = at.annotation_id "
+                 "JOIN tags t ON t.id = at.tag_id WHERE an.region_id = ?", (region_id,)))
+
+
+def test_cle_partagee_ctrl_z_rend_le_tag_vu_et_non_l_invisible(client, db_path, decor):
+    """Contre-relecture (2026-10-22). Deux lignes d'avant de même clé : « c’est » (globale,
+    lue) et « c'est » (locale à c2, que l'écrivain ne lit pas). Ctrl+Z d'un retrait rend le
+    libellé EXACT de l'instantané, jamais le tag d'une collection qu'il ne lit pas."""
+    a = _tag(db_path, "c’est")
+    _tag(db_path, "c'est", decor["c2"])
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ECRIVAIN,
+                   json={"note": "n", "tags_ajoutes": ["c’est"]})
+    assert r.status_code == 200, r.text
+    assert _tags_de(db_path, decor["r1"]) == [(a, "c’est", None)]
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ECRIVAIN,
+                   json={"tags_retires": ["c’est"]})
+    assert r.status_code == 200, r.text
+    assert client.post("/api/undo", headers=ECRIVAIN).status_code == 200
+    assert _tags_de(db_path, decor["r1"]) == [(a, "c’est", None)]
+
+
+def test_par_la_cle_on_ne_rend_qu_un_tag_qu_on_voit(client, db_path, decor):
+    """Le libellé exact a disparu (renommé vers sa clé, que porte AUSSI un tag local à c2
+    qu'il ne lit pas — le renommage refuse alors : on le pose en SQL). La clé ne rend que le
+    tag qu'il voit ; sinon le tag est perdu, compté, et rien d'illisible n'est posé."""
+    vu = _tag(db_path, "Zorg")
+    _tag(db_path, "zorg", decor["c2"])
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ECRIVAIN,
+                   json={"note": "n", "tags_ajoutes": ["Zorg"]})
+    assert r.status_code == 200, r.text
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ECRIVAIN,
+                   json={"note": "m", "tags_retires": ["Zorg"]})
+    assert r.status_code == 200, r.text
+    _sql(db_path, "DELETE FROM tags WHERE id = ?", (vu,))      # le seul qu'il voyait
+    r = client.post("/api/undo", headers=ECRIVAIN)
+    assert r.status_code == 200, r.text
+    assert r.json()["tags_non_rendus"] == 1
+    assert _tags_de(db_path, decor["r1"]) == []
+
+
+def test_un_tag_actuel_sans_rapport_n_est_pas_remplace_par_la_chaine(client, db_path, decor):
+    """Contre-relecture : l'acte annulé ne touche que la note. Après lui, « x » est renommé
+    « y », puis un NOUVEAU « x » est posé par un autre. Défaire la note ne touche aucun tag :
+    les tags d'aujourd'hui se reposent par leur identifiant."""
+    for note in ("a", "b"):
+        r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ECRIVAIN,
+                       json={"note": note})
+        assert r.status_code == 200, r.text
+    vieux = _tag(db_path, "x")
+    assert client.put(f"/api/tags/{vieux}", json={"label": "y"},
+                      headers=ADMIN).status_code == 200
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ADMIN,
+                   json={"tags_ajoutes": ["x"]})
+    assert r.status_code == 200, r.text
+    neuf = [t for t in _tags_de(db_path, decor["r1"]) if t[1] == "x"][0][0]
+    assert client.post("/api/undo", headers=ECRIVAIN).status_code == 200
+    assert _tags_de(db_path, decor["r1"]) == [(neuf, "x", None)]
+    assert _sql(db_path, "SELECT note FROM annotations WHERE region_id = ?",
+                (decor["r1"],))[0]["note"] == "a"
+
+
+def test_un_tag_cache_revient_par_son_libelle_exact(client, db_path, decor):
+    """Cacher n'est pas saisir : une région rétablie rend aussi le tag qu'elle portait d'une
+    collection que l'agent ne lit pas — par son libellé EXACT, sans passer par la clé, que
+    la portée filtre. Rien n'est perdu."""
+    cache = _tag(db_path, "prive-b", decor["c2"])
+    vu = _tag(db_path, "vu-a", decor["c1"])
+    _poser(db_path, decor["r1"], cache, vu, note="n")
+    _reindexer(client, decor["r1"])
+    assert client.delete(f"/api/regions/{decor['r1']}", headers=ECRIVAIN).status_code in (200, 204)
+    r = client.post("/api/undo", headers=ECRIVAIN)
+    assert r.status_code == 200, r.text
+    assert "tags_non_rendus" not in r.json()
+    assert _porteurs(db_path, cache) == [decor["r1"]] == _porteurs(db_path, vu)

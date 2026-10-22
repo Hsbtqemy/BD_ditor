@@ -474,6 +474,10 @@ NON_BALAYE = {
         "d'un personnage du registre — une entité de corpus, jamais une colonne d'identité. "
         "Le retrait se journalise en `agent_type='moteur'` sous le nom du LOGICIEL "
         "(`retrait-liens-caches`), jamais sous celui de qui le lance."),
+    ("outil", "tags_hors_collection.py"): (
+        "Lecture seule (ANN-8) : dit les tags locaux posés hors de leur collection. Son "
+        "compte rendu nomme des tags, des collections et des albums, et compte des "
+        "régions — des objets du corpus, jamais une colonne d'identité."),
     ("outil", "semer_demo.py"): (
         "Sème un corpus de démonstration. Il écrit `albums.auteur` — l'AUTEUR DE LA BD, "
         "pas un annotateur : dans ce projet le mot désigne les deux, et c'est le seul "

@@ -843,7 +843,8 @@ régions seront touchées ; le message qui suit dit ce qui a été fait. Qui y a
 renommer ou supprimer un tag que plus aucune région ne porte, quiconque peut le modifier ; le
 reste, le propriétaire de la collection du tag s'il est local, l'administrateur s'il est
 global. Ces
-gestes ne s'annulent pas par Ctrl+Z. Cf. [`modele-et-droits.md`](modele-et-droits.md) §4.
+gestes ne s'annulent pas par Ctrl+Z. Un tag propre à une collection ne se pose que sur les
+albums qu'elle range : l'Atelier ne le propose pas ailleurs, et le taper y est refusé. Cf. [`modele-et-droits.md`](modele-et-droits.md) §4.
 
 ---
 

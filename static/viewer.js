@@ -252,6 +252,8 @@ async function selectAlbum(id, autoSelect = true) {
 /* Ouvre un album SANS reposer les gardes : l'appelant les a posées. */
 async function ouvrirAlbum(id, autoSelect = true) {
   state.albumId = id;
+  state.tagVocab = [];            // ANN-8 : les tags qui se posent sur CET album
+  refreshTagVocab();
   state.exportCols = null;        // DROIT-2 : à redemander pour cet album
   chargerExportables();
   state.planches = await apiGet(`/api/albums/${id}/planches`);
@@ -1296,7 +1298,15 @@ async function saveAnnotation(prevu = state.selectedId) {
 }
 
 async function refreshTagVocab() {
-  try { state.tagVocab = await apiGet("/api/tags"); } catch (_) {}
+  // ANN-8 — un tag local ne se pose que sur les albums de sa collection : ne proposer que
+  // ceux qui se posent sur l'album OUVERT, et rien tant qu'aucun ne l'est. Une réponse
+  // arrivée après un changement d'album ne remplace pas la liste du nouveau.
+  const album = state.albumId;
+  if (album == null) { state.tagVocab = []; return; }
+  try {
+    const vocab = await apiGet(`/api/tags?album=${album}`);
+    if (state.albumId === album) state.tagVocab = vocab;
+  } catch (_) {}
 }
 
 /* ===================================================================

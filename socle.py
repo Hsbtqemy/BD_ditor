@@ -111,8 +111,20 @@ def _sans_accents(s: str) -> str:
     return "".join(c for c in s if not unicodedata.combining(c)).lower()
 
 
-def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee) -> list[dict]:
+def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee, *, album_id: int,
+                 deja=frozenset()) -> list[dict]:
     """Crée les tags manquants et renvoie les lignes correspondantes.
+
+    **Un tag LOCAL ne se pose que sur les albums de sa collection** (ANN-8, décision de
+    Hugo du 2026-10-22). `album_id` est l'album de la région qui le recevrait ; un tag local
+    à une collection qui ne range pas cet album est refusé par un 422 qui le nomme, avec sa
+    collection — l'appelant la lit, puisqu'il lit le tag. Refuser plutôt que taire : la note
+    envoyée avec lui n'est pas enregistrée non plus, mais rien ne disparaît sans un mot, et
+    le libellé reste pris (l'unicité) — l'écrire en tag libre ne serait pas possible. Un tag
+    que la région porte DÉJÀ (`deja`, des identifiants) passe : ce qui existe reste, et une
+    liste renvoyée entière ne doit pas buter sur lui (`tools/tags_hors_collection.py` dit
+    l'existant). Le refus vient avant toute création. Les deux paramètres sont nommés et
+    `album_id` n'a pas de défaut : un appelant qui l'oublierait poserait partout.
 
     **Ce qu'on ne LIT pas ne s'attache pas, et ne se crée pas non plus** (AUTH-11,
     demi-mesure tranchée le 2026-09-24). Le libellé d'un tag est unique dans TOUTE
@@ -170,12 +182,23 @@ def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee) -> list[di
         normalized)}
     lisibles = {}
     for r in _rows(conn.execute(
-            f"SELECT t.id, t.label, t.couleur, cle_tag(t.label) AS cle FROM tags t "
+            f"SELECT t.id, t.label, t.couleur, t.collection_id, cle_tag(t.label) AS cle "
+            f"FROM tags t "
             f"WHERE cle_tag(t.label) IN ({marques}) AND {ou_tag} "
             f"ORDER BY (t.label = cle_tag(t.label)) DESC, t.id", (*normalized, *p_tag))):
         cle = r.pop("cle")
         lisibles.setdefault(cle, r)
     lisibles = list(lisibles.values())
+    rangee_dans = {r[0] for r in conn.execute(
+        "SELECT collection_id FROM collection_album WHERE album_id = ?", (album_id,))}
+    for t in lisibles:
+        if (t["collection_id"] is not None and t["collection_id"] not in rangee_dans
+                and t["id"] not in deja):
+            nom = conn.execute("SELECT nom FROM collection WHERE id = ?",
+                               (t["collection_id"],)).fetchone()
+            raise HTTPException(422, f"Le tag « {t['label']} » est propre à la collection "
+                                     f"« {nom[0] if nom else t['collection_id']} » : il ne "
+                                     "se pose que sur les albums qu'elle range.")
     # Un libellé LIBRE se crée (global, comme avant) ; un libellé pris par un terme qu'on
     # ne lit pas ne se crée pas — l'unicité l'en empêche — et ne s'attache pas.
     neufs = [l for l in normalized if l not in pris]

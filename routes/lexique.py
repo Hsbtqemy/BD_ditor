@@ -234,10 +234,11 @@ def patch_tag_lexique(tag_id: int, payload: LexiqueIn,
 # qui nomme le geste et à qui il revient (VOIR n'est pas CHANGER).
 #
 # **Un tag local peut être posé HORS de sa collection** (constaté le 2026-10-22, en lisant
-# `socle._ensure_tags`) : qui lit la collection A du tag et écrit dans un album de B l'y
-# attache, puisqu'il le lit ; un tag rendu local après avoir servi partout, ou un album
-# retiré de A, laissent de même le tag sur des régions que le propriétaire de A ne lit
-# pas. Retirer le tag de ces régions, c'est écrire là où il n'écrit pas : hors d'une portée
+# `socle._ensure_tags`) : qui lisait la collection A du tag et écrivait dans un album de B
+# l'y attachait — la saisie le refuse depuis le même jour (décision de Hugo), mais ce qui
+# existe reste, et un tag rendu local après avoir servi partout, ou un album retiré de A,
+# en laissent encore (`tools/tags_hors_collection.py` le dit) : le tag sur des régions que
+# le propriétaire de A ne lit pas. Retirer le tag de ces régions, c'est écrire là où il n'écrit pas : hors d'une portée
 # totale, retirer et fusionner exigent donc que TOUTES les régions qui portent le tag soient
 # dans des albums où l'appelant écrit (`_exiger_tout_ecrit`), et se refusent sinon par un
 # 403 qui le dit. Ce refus apprend au propriétaire que son tag sert ailleurs, sans dire où

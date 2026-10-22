@@ -55,6 +55,14 @@ def _ecrivable(conn: sqlite3.Connection, portee: autorisation.Portee):
             # pose ne demande que de la voir (`_affecter`) : la même question ici.
             for vid in lieux.get("valeurs", []):
                 _get_valeur(conn, portee, vid)
+            # ANN-8 — un tag que l'annulation retrouverait par sa CLÉ (`undo._tag_a_rendre`)
+            # doit être un tag que l'agent VOIT : sinon, deux lignes de même clé lui feraient
+            # poser celle d'une collection qu'il ne lit pas.
+            ou, params = portee.clause_terme("t.collection_id")
+            for tid in lieux.get("tags", []):
+                if conn.execute(f"SELECT 1 FROM tags t WHERE t.id = ? AND {ou}",
+                                (tid, *params)).fetchone() is None:
+                    return False
         except HTTPException as refus:
             if refus.status_code == 404:
                 return False

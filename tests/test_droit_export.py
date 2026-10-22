@@ -481,10 +481,16 @@ def test_ce_qui_sort_suit_la_portee_d_export_pas_celle_de_lecture(client, db_pat
     part dans aucun des exports : l'album en trois formats, et la Recherche."""
     from conftest import ADMIN
     from test_autorisation import _poser_tag
-    _poser_tag(db_path, "grille-b", sortie["c2"])
+    from test_autorisation import _poser_sql
+    # ANN-8 — un tag local ne se pose plus hors de sa collection : posé global, puis rendu
+    # local à c2, l'état que laisse un tag devenu local après avoir servi.
+    _poser_tag(db_path, "grille-b")
     r1, a1, bob = sortie["r1"]["id"], sortie["a1"]["id"], sortie["bob"]
-    client.put(f"/api/regions/{r1}/annotation", json={"note": "", "tags": ["grille-b"]},
-               headers=ADMIN)
+    r = client.put(f"/api/regions/{r1}/annotation", json={"note": "", "tags": ["grille-b"]},
+                   headers=ADMIN)
+    assert r.status_code == 200, r.text
+    _poser_sql(db_path, "UPDATE tags SET collection_id = ? WHERE label = 'grille-b'",
+               (sortie["c2"],))
     _poser_export(db_path, sortie["c1"], "bob")
     vus = {t["label"] for t in
            client.get(f"/api/regions/{r1}/annotation", headers=bob).json()["tags"]}

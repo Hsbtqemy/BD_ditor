@@ -132,13 +132,19 @@ tapé de travers restait dans le vocabulaire, et dans les propositions de l'Atel
   administrateur ; global → portée totale). L'écran la reçoit par la clé `remaniable`, tag
   par tag, dans `GET /api/lexique` — et non dans `GET /api/tags`, que lisent l'Atelier et la
   Recherche, qui ne remanient rien.
-- **Un tag local peut être posé hors de sa collection** (constaté en écrivant ces gestes :
-  `socle._ensure_tags` attache tout tag qu'on LIT, et l'on peut lire la collection d'un tag
-  en écrivant dans un album d'une autre ; un tag rendu local après avoir servi, un album
-  retiré de la collection, font de même). Hors d'une portée totale, retirer et fusionner
-  exigent donc d'écrire dans TOUS les albums où le tag est posé. Le refus apprend au
-  propriétaire que son tag sert ailleurs — un bit, écrit comme limite ; l'autre voie aurait
-  été d'écrire hors de sa portée.
+- **Un tag local ne se pose que sur les albums de sa collection** (décision de Hugo du
+  2026-10-22). Constaté en écrivant ces gestes : `socle._ensure_tags` attachait tout tag
+  qu'on LIT, et l'on peut lire la collection d'un tag en écrivant dans un album d'une
+  autre. La saisie le refuse désormais par un 422 qui nomme le tag et sa collection — sous
+  toute portée, c'est une propriété des données — et l'Atelier ne le propose plus ailleurs
+  (`GET /api/tags?album=` : les tags globaux et ceux des collections qui rangent l'album).
+  **Ce qui existe reste** — posé avant la garde, un tag rendu local après avoir servi, un
+  album retiré de la collection — : une liste renvoyée entière qui le contient passe, et
+  `tools/tags_hors_collection.py`, à blanc et en lecture seule, le dit. Pour cet existant,
+  hors d'une portée totale, retirer et fusionner exigent d'écrire dans TOUS les albums où le
+  tag est posé ; le refus apprend au propriétaire que son tag sert ailleurs — un bit, écrit
+  comme limite. Ce refus ne se produit donc plus que sur l'existant. Reste un chemin qui en
+  fabrique : rendre local (menu Portée) un tag qui sert déjà hors de cette collection.
 - **Une fusion ne cache rien** : la cible est globale, ou de la même collection que le tag
   fusionné — sous toute portée (409 sinon). Les régions portent la cible une seule fois ; la
   cible garde son libellé, sa définition et sa portée.
@@ -166,8 +172,10 @@ tapé de travers restait dans le vocabulaire, et dans les propositions de l'Atel
   (`journal.snapshot_annotation`). L'annulation ne crée plus jamais de tag
   (`undo._tag_a_rendre`, relecture croisée du 2026-10-22) : elle suit la chaîne du journal
   `tags` après l'acte — renommage et fusion mènent au tag courant, une suppression arrête
-  tout —, puis cherche par la clé ; ce qui ne se résout pas ne revient pas (compté parmi les
-  liens non rendus, ou l'acte est passé s'il ne portait que cela). Cf. `docs/undo.md`.
+  tout —, puis le libellé exact, puis la clé parmi les tags que l'agent voit ; seuls les
+  libellés de l'instantané de l'acte se résolvent, les tags d'aujourd'hui gardent leur
+  identifiant ; ce qui ne se résout pas ne revient pas (`tags_non_rendus`, ou l'acte est
+  passé s'il ne portait que cela). Cf. `docs/undo.md`.
 
 ## Indicateur « % défini »
 

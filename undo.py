@@ -298,14 +298,21 @@ def _inverser_modification_region(conn, region_id, avant, apres, voit=None):
     reindex_region(conn, region_id)
 
 
-# ANN-8 — les tags qu'une annulation n'a pas pu rendre (`_tag_a_rendre`), comptés pour la
-# réponse. Une variable de contexte plutôt qu'un argument de `_inverser` : sa signature
-# `(conn, e)` est un contrat que des tests remplacent tel quel.
-_TAGS_PERDUS: contextvars.ContextVar = contextvars.ContextVar("tags_perdus")
+# ANN-8 — ce que l'inversion d'une annotation doit savoir des TAGS, posé par `annuler` :
+# `perdus`, les libellés qui ne se résolvent plus (rendus en `tags_non_rendus`) ; `lisible`,
+# la question « l'agent voit-il ce tag ? » (`clause_terme`, par le `ecrivable` de la route).
+# Une variable de contexte plutôt qu'un argument de `_inverser` : sa signature `(conn, e)`
+# est un contrat que des tests remplacent tel quel. Absente, rien n'est lisible par la
+# clé : seul le libellé exact de l'instantané revient — la règle qui se ferme.
+_CONTEXTE_TAGS: contextvars.ContextVar = contextvars.ContextVar("contexte_tags")
 
 
-def _tag_a_rendre(conn, label, depuis) -> Optional[dict]:
-    """Le tag qu'un instantané nomme `label`, tel qu'il est AUJOURD'HUI — ou None. ANN-8.
+def _contexte_tags() -> dict:
+    return _CONTEXTE_TAGS.get(None) or {"perdus": [], "lisible": lambda _tag_id: False}
+
+
+def _tag_a_rendre(conn, label, depuis, lisible) -> Optional[dict]:
+    """Le tag qu'un INSTANTANÉ nomme `label`, tel qu'il est aujourd'hui — ou None. ANN-8.
 
     L'instantané d'une annotation nomme ses tags par LIBELLÉ (`journal.snapshot_annotation`),
     et un tag se renomme, se fusionne, se supprime depuis le panneau Lexique. L'annulation
@@ -313,48 +320,51 @@ def _tag_a_rendre(conn, label, depuis) -> Optional[dict]:
     en tag GLOBAL, visible de toute l'instance, et un tag supprimé exprès ressuscitait
     (relecture croisée du 2026-10-22). **Elle ne crée plus jamais de tag.**
 
-    D'abord la chaîne du journal `tags` APRÈS l'acte annulé (`depuis`, son identifiant
-    d'événement — le journal est append-only, ses identifiants ne reviennent pas) : un
-    renommage ou une fusion dont l'`avant` porte ce libellé (par sa clé) mène au libellé
-    suivant ; une suppression arrête tout — le tag a été retiré exprès, et un tag de même
-    nom créé depuis n'est pas lui. La chaîne se suit par les LIBELLÉS des charges, pas par
-    `cible_id` : les identifiants de `tags` se réattribuent. Puis le libellé obtenu se
-    cherche par sa clé (`database.cle_tag`), comme toute saisie. Rien de trouvé : None — ce
-    qui ne se résout pas ne revient pas."""
-    cle = cle_tag(label)
+    1. La chaîne du journal `tags` APRÈS l'acte annulé (`depuis`, son identifiant
+       d'événement — append-only, ses identifiants ne reviennent pas) : un renommage ou une
+       fusion dont l'`avant` porte ce libellé (par sa clé) mène au libellé suivant ; une
+       suppression arrête tout — le tag a été retiré exprès, et un tag du même nom créé
+       depuis n'est pas lui. Elle se suit par les LIBELLÉS des charges, jamais par
+       `cible_id` : les identifiants de `tags` se réattribuent.
+    2. Si la chaîne n'a rien changé, le LIBELLÉ EXACT de l'instantané, lisible ou non : un
+       tag caché revient comme il était — cacher n'est pas saisir (`_tags_caches`).
+    3. Sinon, la clé (`database.cle_tag`), et seulement parmi les tags que l'agent VOIT
+       (`lisible`) : deux lignes d'avant de même clé, l'une globale et l'autre locale à une
+       collection qu'il ne lit pas, ne lui font pas poser la seconde (contre-relecture du
+       2026-10-22). Un tag hors de portée trouvé ainsi compte comme perdu.
+
+    Ne se demande QUE pour un libellé de l'instantané de l'acte : les tags que la région
+    porte aujourd'hui se reposent par leur identifiant, sans passer par la chaîne."""
+    cle, suivi = cle_tag(label), False
     for ev in conn.execute("SELECT type, avant, apres FROM evenement "
                            "WHERE cible_table = 'tags' AND id > ? ORDER BY id", (depuis,)):
         if cle_tag((_charge(ev["avant"]) or {}).get("label")) != cle:
             continue
         if ev["type"] == "suppression":
             return None
-        cle = cle_tag((_charge(ev["apres"]) or {}).get("label"))
+        cle, suivi = cle_tag((_charge(ev["apres"]) or {}).get("label")), True
     if not cle:
         return None
-    row = conn.execute("SELECT id, label FROM tags WHERE cle_tag(label) = ? "
-                       "ORDER BY (label = ?) DESC, id LIMIT 1", (cle, cle)).fetchone()
-    return dict(row) if row else None
+    if not suivi:
+        exact = conn.execute("SELECT id, label FROM tags WHERE label = ?", (label,)).fetchone()
+        if exact is not None:
+            return dict(exact)
+    for row in conn.execute("SELECT id, label FROM tags WHERE cle_tag(label) = ? "
+                            "ORDER BY (label = ?) DESC, id", (cle, cle)):
+        if lisible(row["id"]):
+            return dict(row)
+    return None
 
 
-def _restaurer_annotation(conn, region_id, annot, *, depuis, perdus):
-    """(Re)pose une annotation {note, tags} sur une région (upsert) + réindexe.
-
-    Les libellés passent par `_tag_a_rendre` : ce qui ne se résout plus est COMPTÉ dans
-    `perdus` (une liste, qu'`annuler` rend avec les liens non rendus) et ne revient pas. Une
-    annotation à qui il ne reste rien à porter n'est pas posée (`annotation_vide`)."""
-    tag_ids = []
-    for label in annot.get("tags", []):
-        tag = _tag_a_rendre(conn, label, depuis)
-        if tag is None:
-            perdus.append(label)
-        elif tag["id"] not in tag_ids:
-            tag_ids.append(tag["id"])
-    if annotation_vide(annot.get("note"), len(tag_ids)):
+def _poser_annotation(conn, region_id, note, tag_ids):
+    """Pose une annotation {note, tags par IDENTIFIANT} sur une région (upsert) + réindexe ;
+    la supprime s'il ne lui reste rien à porter (`annotation_vide`)."""
+    if annotation_vide(note, len(tag_ids)):
         _supprimer_annotation(conn, region_id)
         return
     conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, ?) "
                  "ON CONFLICT(region_id) DO UPDATE SET note = excluded.note",
-                 (region_id, annot.get("note")))
+                 (region_id, note))
     ann_id = conn.execute("SELECT id FROM annotations WHERE region_id = ?",
                           (region_id,)).fetchone()["id"]
     conn.execute("DELETE FROM annotation_tags WHERE annotation_id = ?", (ann_id,))
@@ -364,12 +374,28 @@ def _restaurer_annotation(conn, region_id, annot, *, depuis, perdus):
     reindex_region(conn, region_id)
 
 
+def _restaurer_annotation(conn, region_id, annot, *, depuis):
+    """(Re)pose l'annotation d'un INSTANTANÉ {note, tags par libellé} sur une région.
+
+    Les libellés passent par `_tag_a_rendre` : ce qui ne se résout plus est compté dans les
+    `perdus` du contexte et ne revient pas."""
+    ctx = _contexte_tags()
+    tag_ids = []
+    for label in annot.get("tags", []):
+        tag = _tag_a_rendre(conn, label, depuis, ctx["lisible"])
+        if tag is None:
+            ctx["perdus"].append(label)
+        elif tag["id"] not in tag_ids:
+            tag_ids.append(tag["id"])
+    _poser_annotation(conn, region_id, annot.get("note"), tag_ids)
+
+
 def _supprimer_annotation(conn, region_id):
     conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))   # cascade tags
     reindex_region(conn, region_id)
 
 
-def _inverser_annotation(conn, region_id, avant, apres, *, depuis, perdus):
+def _inverser_annotation(conn, region_id, avant, apres, *, depuis):
     """Défait CE QUE l'acte a changé, et rien d'autre (CONC-3).
 
     Restaurer l'instantané `avant` entier défaisait aussi ce qu'une autre personne avait fait
@@ -379,9 +405,11 @@ def _inverser_annotation(conn, region_id, avant, apres, *, depuis, perdus):
     a ajoutés sont retirés, ceux qu'il a retirés sont remis, les autres ne bougent pas. Tant
     que personne d'autre n'a touché l'annotation, c'est exactement l'instantané `avant`.
 
-    ANN-8 — la différence se calcule sur les tags d'AUJOURD'HUI (`_tag_a_rendre`) : un tag
-    ajouté par l'acte puis fusionné se retire sous le nom de sa cible, un tag retiré puis
-    renommé revient sous son nouveau nom. Un tag que l'acte a changé et qui ne se résout plus
+    ANN-8 — la différence se calcule par IDENTIFIANT. Les libellés de l'instantané de l'acte
+    — et eux seuls — passent par `_tag_a_rendre` : un tag ajouté par l'acte puis fusionné se
+    retire sous sa cible, un tag retiré puis renommé revient sous son nouveau nom. Les tags
+    que la région porte aujourd'hui restent ceux qu'ils sont, sans passer par la chaîne :
+    un « x » posé depuis par un autre n'est pas l'ancien « x » renommé. Un tag que l'acte a changé et qui ne se résout plus
     (supprimé depuis) ne revient pas ; si l'acte ne portait QUE sur de tels tags, il n'y a
     rien à rétablir, et l'acte est passé (`Irretablissable`, seconde phrase d'AUTH-14).
     """
@@ -394,27 +422,24 @@ def _inverser_annotation(conn, region_id, avant, apres, *, depuis, perdus):
         conflit.verifier(conn, "annotations", region_id, "note", vu=apres.get("note"),
                          actuel=actuel.get("note"), nouveau=avant.get("note"))
         note = avant.get("note")
+    ctx = _contexte_tags()
     t_avant, t_apres = set(avant.get("tags", [])), set(apres.get("tags", []))
-    actuels = {}
-    for label in t_avant | t_apres:
-        tag = _tag_a_rendre(conn, label, depuis)
-        actuels[label] = tag["label"] if tag else None
-    r_avant = {actuels[l] for l in t_avant} - {None}
-    r_apres = {actuels[l] for l in t_apres} - {None}
-    sans_suite = sorted(l for l in t_avant ^ t_apres if actuels[l] is None)
+    resolus = {l: _tag_a_rendre(conn, l, depuis, ctx["lisible"]) for l in t_avant | t_apres}
+    r_avant = {resolus[l]["id"] for l in t_avant if resolus[l]}
+    r_apres = {resolus[l]["id"] for l in t_apres if resolus[l]}
+    sans_suite = sorted(l for l in t_avant ^ t_apres if resolus[l] is None)
     if (sans_suite and r_avant == r_apres
             and (avant.get("note") or "") == (apres.get("note") or "")):
         raise Irretablissable()
-    perdus.extend(sans_suite)
-    tags = (set(actuel.get("tags", [])) - (r_apres - r_avant)) | (r_avant - r_apres)
-    if annotation_vide(note, len(tags)):
-        _supprimer_annotation(conn, region_id)
-    else:
-        _restaurer_annotation(conn, region_id, {"note": note, "tags": sorted(tags)},
-                              depuis=depuis, perdus=perdus)
+    ctx["perdus"].extend(sans_suite)
+    portes = {r["tag_id"] for r in conn.execute(
+        "SELECT at.tag_id FROM annotation_tags at JOIN annotations an "
+        "ON an.id = at.annotation_id WHERE an.region_id = ?", (region_id,))}
+    _poser_annotation(conn, region_id, note,
+                      sorted((portes - (r_apres - r_avant)) | (r_avant - r_apres)))
 
 
-def _recreer_region_profond(conn, snap, *, depuis, perdus):
+def _recreer_region_profond(conn, snap, *, depuis):
     """Inverse d'une SUPPRESSION : recrée la région, son annotation et son sous-arbre depuis
     l'instantané PROFOND. Réutilise les `id` d'origine (préserve citations / deep-links) ;
     parent créé avant enfants (FK). Lève UndoImpossible si un id a été réattribué depuis.
@@ -429,11 +454,11 @@ def _recreer_region_profond(conn, snap, *, depuis, perdus):
             f"identifiant de région {snap['id']} réattribué depuis la suppression") from exc
     annot = snap.get("annotation")
     if annot is not None:
-        _restaurer_annotation(conn, snap["id"], annot, depuis=depuis, perdus=perdus)
+        _restaurer_annotation(conn, snap["id"], annot, depuis=depuis)
     else:
         reindex_region(conn, snap["id"])
     for enfant in snap.get("enfants", []):
-        _recreer_region_profond(conn, enfant, depuis=depuis, perdus=perdus)
+        _recreer_region_profond(conn, enfant, depuis=depuis)
 
 
 def _rendre_liens(conn, snap, rendables) -> int:
@@ -693,7 +718,6 @@ def _inverser(conn, e, voit=None) -> int:
     réattribué), que `_meme_objet` rend inatteignable en vérifiant les ids d'abord."""
     t, table, cid = e["type"], e["cible_table"], e["cible_id"]
     avant, apres = _charge(e["avant"]), _charge(e["apres"])
-    perdus = _TAGS_PERDUS.get([])     # ANN-8 : les tags qui ne reviennent pas
     try:
         if table == "regions":
             if t == "creation":
@@ -702,10 +726,10 @@ def _inverser(conn, e, voit=None) -> int:
             elif t == "modification":
                 _inverser_modification_region(conn, cid, avant, apres, voit)
             elif t == "suppression":
-                _recreer_region_profond(conn, avant, depuis=e["id"], perdus=perdus)
+                _recreer_region_profond(conn, avant, depuis=e["id"])
             return cid
         if table == "annotations":        # cible_id = region_id (v20 : stable, cf. put_annotation)
-            _inverser_annotation(conn, cid, avant, apres, depuis=e["id"], perdus=perdus)
+            _inverser_annotation(conn, cid, avant, apres, depuis=e["id"])
             return cid
         if table in _LIENS:                # cible_id = region_id
             if t == "lien" and avant is None:
@@ -991,7 +1015,8 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
                  if a_rendre is not None else None)
     non_rendus = 0
     perdus = []                    # ANN-8 : les tags qui ne se résolvent plus (`_tag_a_rendre`)
-    jeton = _TAGS_PERDUS.set(perdus)
+    jeton = _CONTEXTE_TAGS.set({"perdus": perdus, "lisible": lambda tag_id: ecrivable(
+        {"regions": [], "planches": [], "personnages": [], "tags": [tag_id]})})
     try:
         region_id = _inverser(conn, e, voit)
         if rendables is not None:
@@ -1002,7 +1027,7 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
     except Irretablissable:
         raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE, voit)
     finally:
-        _TAGS_PERDUS.reset(jeton)
+        _CONTEXTE_TAGS.reset(jeton)
     planche_id = _planche_de(conn, region_id, e)
     journal.journaliser(conn, "annulation", "evenement", e["id"],
                         avant={"acte": e["type"], "cible_table": e["cible_table"],
@@ -1010,6 +1035,8 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
     res = {"evenement_id": e["id"], "acte": e["type"], "cible_table": e["cible_table"],
            "region_id": region_id, "planche_id": planche_id,
            "description": _description(e, voit)}
-    if rendables is not None or perdus:
-        res["liens_non_rendus"] = non_rendus + len(perdus)
+    if rendables is not None:
+        res["liens_non_rendus"] = non_rendus
+    if perdus:
+        res["tags_non_rendus"] = len(perdus)        # ANN-8 : un tag supprimé depuis l'acte
     return res

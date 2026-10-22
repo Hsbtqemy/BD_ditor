@@ -709,12 +709,15 @@ def test_une_ligne_de_concordance_tait_un_tag_local_illisible(client, db_path, d
     """
     import sqlite3
     from conftest import ADMIN
-    _poser_tag(db_path, "prive", deux_albums["c2"])      # local à la collection interdite
+    _poser_tag(db_path, "prive")         # posé global, rendu local à c2 ensuite (ANN-8)
     r1 = deux_albums["r1"]["id"]
-    client.put(f"/api/regions/{r1}/annotation",
-               json={"note": "", "tags": ["prive", "commun"]}, headers=ADMIN)
+    r = client.put(f"/api/regions/{r1}/annotation",
+                   json={"note": "", "tags": ["prive", "commun"]}, headers=ADMIN)
+    assert r.status_code == 200, r.text
     conn = sqlite3.connect(db_path)                      # APRÈS l'annotation : elle réindexe
     try:
+        conn.execute("UPDATE tags SET collection_id = ? WHERE label = 'prive'",
+                     (deux_albums["c2"],))
         conn.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
                      "VALUES (?, 0, 'DIS', 'dire', 'VERB', '')", (r1,))
         conn.commit()
@@ -741,10 +744,13 @@ def test_un_resultat_de_recherche_tait_un_tag_local_illisible(client, db_path, d
     dans le JSON comme dans le fichier.
     """
     from conftest import ADMIN
-    _poser_tag(db_path, "prive", deux_albums["c2"])      # local à la collection interdite
+    _poser_tag(db_path, "prive")         # posé global, rendu local à c2 ensuite (ANN-8)
     r1 = deux_albums["r1"]["id"]
-    client.put(f"/api/regions/{r1}/annotation",
-               json={"note": "", "tags": ["prive", "commun"]}, headers=ADMIN)
+    r = client.put(f"/api/regions/{r1}/annotation",
+                   json={"note": "", "tags": ["prive", "commun"]}, headers=ADMIN)
+    assert r.status_code == 200, r.text
+    _poser_sql(db_path, "UPDATE tags SET collection_id = ? WHERE label = 'prive'",
+               (deux_albums["c2"],))
 
     def sorties(h):
         rep = client.get("/api/recherche", params={"q": "MOTSECRET"}, headers=h)
@@ -771,12 +777,17 @@ def tag_illisible(client, db_path, deux_albums, derriere_proxy):
     local après avoir été posé, sur un album rangé ailleurs aussi."""
     import sqlite3
     from conftest import ADMIN
-    _poser_tag(db_path, "prive", deux_albums["c2"])
+    # ANN-8 (2026-10-22) — un tag local ne se POSE plus hors de sa collection : l'état se
+    # fabrique comme il naît, un tag global posé puis rendu local à c2.
+    _poser_tag(db_path, "prive")
     r1 = deux_albums["r1"]["id"]
-    client.put(f"/api/regions/{r1}/annotation",
-               json={"note": "", "tags": ["prive", "commun"]}, headers=ADMIN)
+    r = client.put(f"/api/regions/{r1}/annotation",
+                   json={"note": "", "tags": ["prive", "commun"]}, headers=ADMIN)
+    assert r.status_code == 200, r.text
     conn = sqlite3.connect(db_path)                      # APRÈS l'annotation : elle réindexe
     try:
+        conn.execute("UPDATE tags SET collection_id = ? WHERE label = 'prive'",
+                     (deux_albums["c2"],))
         conn.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
                      "VALUES (?, 0, 'DIS', 'dire', 'VERB', '')", (r1,))
         conn.commit()
@@ -1076,7 +1087,11 @@ def test_taper_un_libelle_qu_on_ne_lit_pas_n_attache_rien(client, db_path, tag_i
     # Anti-vacuité 1 : un libellé libre s'attache, et la réponse le rend.
     assert [x["label"] for x in poser("libre-9600", bob)["tags"]] == ["libre-9600"]
 
-    # Anti-vacuité 2 : l'administrateur LIT le terme, donc il l'attache — et le MÊME.
+    # Anti-vacuité 2 : l'administrateur LIT le terme, donc il l'attache — et le MÊME. Un
+    # tag local ne se pose que sur les albums de sa collection (ANN-8) : l'album est donc
+    # aussi rangé dans c2, que Bob ne lit toujours pas.
+    _poser_sql(db_path, "INSERT INTO collection_album (collection_id, album_id) "
+                        "VALUES (?, ?)", (t["c2"], t["a1"]["id"]))
     vus = poser("prive", ADMIN)["tags"]
     assert [x["label"] for x in vus] == ["prive"]
     assert en_base() == {("prive", t["c2"])}, (

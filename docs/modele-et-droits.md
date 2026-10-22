@@ -782,10 +782,14 @@ grilles d'`ANN-7`). Le panneau *📖 Lexique* offre trois gestes sur un tag — 
   ce que d'autres ont posé : un tag **local** se remanie par le propriétaire de sa collection
   et l'administrateur, un tag **global** par l'administrateur seul (et en mono-poste).
 
-Un tag local peut être **posé hors de sa collection** : qui lit la collection du tag et
-écrit dans un album rangé ailleurs l'y pose, puisqu'il le lit. Le propriétaire ne retire
-donc ou ne fusionne un tag que s'il écrit dans tous les albums où il est posé ; sinon, c'est
-un administrateur qui le fait, et le refus dit seulement que le tag est posé là où vous
+**Un tag local ne se pose que sur les albums de sa collection** (décidé par Hugo le
+2026-10-22). L'Atelier ne le propose pas ailleurs, et le taper sur un album qu'elle ne range
+pas est refusé par un message qui nomme le tag et sa collection — pour tout le monde,
+administrateur compris. Ce qui a été posé avant reste (un tag rendu local après avoir servi,
+un album retiré de la collection, en laissent aussi), et l'outil
+`tools/tags_hors_collection.py` le dit. Pour cet existant, le propriétaire ne retire ou ne
+fusionne le tag que s'il écrit dans tous les albums où il est posé ; sinon, c'est un
+administrateur qui le fait, et le refus dit seulement que le tag est posé là où vous
 n'écrivez pas. Le renommage n'y est pas soumis : il change le mot, pas les régions, qui
 suivent.
 

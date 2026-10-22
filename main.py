@@ -1690,7 +1690,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     mélanger aux deux autres serait ambigu, d'où le 422. Deux personnes sur le MÊME champ
     restent en « le dernier gagne » : c'est le second temps du chantier.
     """
-    _region_a_ecrire(conn, portee, region_id)
+    region = _region_a_ecrire(conn, portee, region_id)
     champs = payload.model_fields_set & {"note", "tags", "tags_ajoutes", "tags_retires"}
     if "tags" in champs and champs & {"tags_ajoutes", "tags_retires"}:
         raise HTTPException(422, "« tags » remplace la liste, « tags_ajoutes » et "
@@ -1720,8 +1720,15 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     # c'est ce que l'undo restaure : un instantané filtré lui ferait effacer ce qu'on
     # a caché. Pour la même raison, on ne RETIRE pas un tag caché qu'on nommerait.
     caches = _tags_caches(conn, portee, region_id)
+    # ANN-8 — un tag local ne se pose que sur les albums de sa collection ; ce que la région
+    # porte déjà passe (cf. `_ensure_tags`).
+    pose = {"album_id": conn.execute("SELECT album_id FROM planches WHERE id = ?",
+                                     (region["planche_id"],)).fetchone()[0],
+            "deja": {r["tag_id"] for r in conn.execute(
+                "SELECT at.tag_id FROM annotation_tags at JOIN annotations an "
+                "ON an.id = at.annotation_id WHERE an.region_id = ?", (region_id,))}}
     if "tags" in champs:
-        tag_ids = [t["id"] for t in _ensure_tags(conn, payload.tags, portee)]
+        tag_ids = [t["id"] for t in _ensure_tags(conn, payload.tags, portee, **pose)]
     else:
         tag_ids = [r["tag_id"] for r in conn.execute(
             "SELECT at.tag_id FROM annotation_tags at JOIN annotations an "
@@ -1734,7 +1741,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
             f"({','.join('?' * len(payload.tags_retires))})",
             [_cle_tag(l) for l in payload.tags_retires]))} if payload.tags_retires else set()
         tag_ids = [i for i in tag_ids if i not in retires]
-        tag_ids += [t["id"] for t in _ensure_tags(conn, payload.tags_ajoutes, portee)
+        tag_ids += [t["id"] for t in _ensure_tags(conn, payload.tags_ajoutes, portee, **pose)
                     if t["id"] not in tag_ids]
     # Vider une annotation (note vide ET aucun tag) = SUPPRIMER la ligne, pas
     # laisser une coquille vide : sinon elle fausserait le compteur d'annotées,
@@ -1785,7 +1792,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
 
 
 @app.get("/api/tags")
-def list_tags(conn: sqlite3.Connection = Depends(db),
+def list_tags(album: Optional[int] = None, conn: sqlite3.Connection = Depends(db),
               portee: autorisation.Portee = Depends(portee_courante)):
     """Le vocabulaire de tags, avec sa fréquence d'emploi.
 
@@ -1795,8 +1802,17 @@ def list_tags(conn: sqlite3.Connection = Depends(db),
     disait le volume de travail des autres. Le compter sur les seules régions lisibles est
     du même coup plus JUSTE analytiquement — un nuage doit refléter le sous-corpus qu'on
     regarde, pas la base entière.
+
+    `album` (ANN-8) : les seuls tags qui se POSENT sur cet album — globaux, ou locaux à une
+    collection qui le range. C'est ce que l'Atelier propose ; un tag local ne se pose que sur
+    les albums de sa collection (`socle._ensure_tags`). Un album qu'on ne lit pas : 404.
     """
     ou_terme, p_terme = portee.clause_terme("t.collection_id")
+    if album is not None:
+        _get_album(conn, portee, album)
+        ou_terme = (f"({ou_terme}) AND (t.collection_id IS NULL OR t.collection_id IN "
+                    f"(SELECT collection_id FROM collection_album WHERE album_id = ?))")
+        p_terme = [*p_terme, album]
     ou_album, p_album = portee.clause_album("pl.album_id")
     return _rows(conn.execute(
         f"""SELECT t.id, t.label, t.couleur, t.description,

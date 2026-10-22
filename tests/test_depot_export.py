@@ -510,9 +510,15 @@ def album_partage(client, db_path, vocabulaire_cloisonne):
                     json={"type": "bulle", "x": 1, "y": 1, "w": 3, "h": 3})
     assert r.status_code in (200, 201), r.text
     bulle_id = r.json()["id"]
+    # ANN-8 (2026-10-22) — un tag local ne se POSE plus hors de sa collection : l'état réel
+    # se fabrique comme il naît, le tag de Bravo posé quand il était global, puis rendu local.
+    bravo_du_tag = direct_query(db_path, "SELECT collection_id FROM tags WHERE label = ?",
+                                (T_BRAVO,))[0]["collection_id"]
+    _terme_local(db_path, "tags", "label", T_BRAVO, None)
     r = client.put(f"/api/regions/{bulle_id}/annotation", headers=ADMIN,
                    json={"note": "", "tags": [T_BRAVO]})
     assert r.status_code == 200, r.text
+    _terme_local(db_path, "tags", "label", T_BRAVO, bravo_du_tag)
     # Le décor est RELU : sans la ligne d'annotation, « elle n'est pas dite annotée » ne
     # mesurerait rien.
     lignes = direct_query(db_path,
