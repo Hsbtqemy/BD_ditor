@@ -168,8 +168,19 @@ def _valeur_de_case(client):
     return v.json()["id"]
 
 
+def _case(client, decor):
+    """La case de l'album, posée par l'importatrice à la première demande : depuis ANN-8,
+    seule une case reçoit une situation (422 ailleurs), et la région du décor est une bulle."""
+    if "case" not in decor:
+        r = client.post(f"/api/planches/{decor['planche']}/regions", headers=IMPORTEUSE,
+                        json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9})
+        assert r.status_code == 201, r.text
+        decor["case"] = r.json()["id"]
+    return decor["case"]
+
+
 def _attribut(client, decor, qui=COLLEGUE):
-    r = client.put(f"/api/regions/{decor['region']}/attributs", headers=qui,
+    r = client.put(f"/api/regions/{_case(client, decor)}/attributs", headers=qui,
                    json={"valeur_id": _valeur_de_case(client)})
     assert r.status_code == 200, r.text
 
@@ -272,7 +283,7 @@ def test_un_attribut_pose_puis_retire_par_un_autre_compte_encore(client, db_path
     région qui vit encore, et c'est lui qui compte — il ne reste plus d'attribut à lire."""
     _attribut(client, decor)
     vid = _sql(db_path, "SELECT valeur_id FROM region_attribut")[0]["valeur_id"]
-    assert client.delete(f"/api/regions/{decor['region']}/attributs/{vid}",
+    assert client.delete(f"/api/regions/{decor['case']}/attributs/{vid}",
                          headers=COLLEGUE).status_code == 204
     assert _sql(db_path, "SELECT 1 FROM region_attribut") == []
     assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
@@ -291,19 +302,20 @@ def test_un_attribut_de_case_s_ecrit_sans_rang_ni_annulation(client, db_path, de
         c.row_factory = sqlite3.Row
         return c
 
+    _case(client, decor)                 # posée d'abord : elle compte pour l'importatrice
     rangs = _commun.pseudonymes(conn())
     actes = comptes.traces(conn())[0]
     _attribut(client, decor)
     assert _sql(db_path, "SELECT type, agent, cible_id FROM evenement "
                          "WHERE cible_table = 'region_attribut'") == [
-        {"type": "lien", "agent": "collegue", "cible_id": decor["region"]}]
+        {"type": "lien", "agent": "collegue", "cible_id": decor["case"]}]
     assert _commun.pseudonymes(conn()) == rangs and "collegue" not in rangs
     assert comptes.traces(conn())[0] == {**actes, "collegue": actes.get("collegue", 0) + 1}
     assert client.get("/api/undo/prochain", headers=COLLEGUE).json() is None
     # Retirer s'écrit aussi ; re-retirer ce qui n'est plus là, non.
     vid = _sql(db_path, "SELECT valeur_id FROM region_attribut")[0]["valeur_id"]
     for _ in range(2):
-        client.delete(f"/api/regions/{decor['region']}/attributs/{vid}", headers=COLLEGUE)
+        client.delete(f"/api/regions/{decor['case']}/attributs/{vid}", headers=COLLEGUE)
     assert [e["type"] for e in _sql(db_path, "SELECT type FROM evenement "
                                               "WHERE cible_table = 'region_attribut'")]         == ["lien", "delien"]
 

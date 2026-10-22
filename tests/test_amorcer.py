@@ -63,8 +63,10 @@ def source(client, derriere_proxy, data_dir, db_path):
     perso = _ok(client.post("/api/personnages", headers=LEA, json={"nom": "Tintin"}), 201)["id"]
     _ok(client.put(f"/api/regions/{bulle}/locuteur", headers=LEA,
                    json={"personnage_id": perso}))
-    _ok(client.put(f"/api/regions/{case}/personnage", headers=LEA,
-                   json={"personnage_id": perso}))
+    # La présence se pose sur la CASE, hors route : depuis ANN-8 la route ne montre un
+    # personnage que dans une boîte (422), et tout ce que ce fichier compte suppose ce décor.
+    _sql(db_path, "INSERT INTO personnage_presence (region_id, personnage_id) VALUES (?, ?)",
+         (case, perso))
     dim = _ok(client.post("/api/attributs/dimensions", headers=LEA,
                           json={"cible": "case", "nom": "cadrage"}), 201)["id"]
     globale = _ok(client.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=LEA,
