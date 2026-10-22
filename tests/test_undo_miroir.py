@@ -66,7 +66,10 @@ def test_une_case_devenue_bulle_perd_sa_situation_dans_le_meme_acte(client, plan
     assert _liens(db_path, rid)["attributs"] == []
     avant = json.loads(_dernier_acte(db_path, rid)["avant"])
     assert avant["attributs"] == [lieu]
-    assert avant["liens_vus"] == {"locuteur": None, "presence": None, "attributs": [lieu]}
+    dim = _sql(db_path, "SELECT dimension_id FROM attribut_valeur WHERE id = ?", (lieu,))[0]
+    assert avant["liens_vus"] == {"locuteur": None, "presence": None, "attributs": [lieu],
+                                  "attributs_dimensions": [[lieu, dim["dimension_id"]]]}
+    assert avant["attributs_dimensions"] == [[lieu, dim["dimension_id"]]]
     assert "attributs" not in json.loads(_dernier_acte(db_path, rid)["apres"])
     assert _n(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'delien'") == 0
 
@@ -303,6 +306,54 @@ def test_s1_ctrl_z_rend_la_situation_cachee_que_le_changement_de_type_a_retiree(
     res = _ok(client.post("/api/undo", headers=LETTREUSE), 200).json()
     assert res["liens_non_rendus"] == 0
     assert _liens(db_path, rid)["attributs"] == sorted([visible, cachee])
+
+
+def _reprendre_l_identifiant(db_path, vid, dimension_de_c3=True):
+    """Supprime la valeur `vid` et en crée une neuve qui reprend son identifiant, DANS LA
+    MÊME SECONDE (aucun témoin de date ne la voit) : d'une autre grille, locale à une
+    collection fermée, ou de la même dimension. Rend l'identifiant repris."""
+    c = sqlite3.connect(db_path)
+    c.execute("PRAGMA foreign_keys = ON")
+    dim = c.execute("SELECT dimension_id FROM attribut_valeur WHERE id = ?", (vid,)).fetchone()[0]
+    c.execute("DELETE FROM attribut_valeur WHERE id = ?", (vid,))
+    if dimension_de_c3:
+        c3 = c.execute("INSERT INTO collection (nom) VALUES ('Fermee')").lastrowid
+        dim = c.execute("INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                        "VALUES ('case', 'autre-grille', ?)", (c3,)).lastrowid
+    neuve = c.execute("INSERT INTO attribut_valeur (id, dimension_id, valeur, date_creation) "
+                      "VALUES (?, ?, 'mot-repris', (SELECT date FROM evenement "
+                      "ORDER BY id DESC LIMIT 1))", (vid, dim)).lastrowid
+    c.commit()
+    c.close()
+    return neuve
+
+
+def test_r1_une_valeur_reprise_dans_la_meme_seconde_d_une_autre_grille_ne_revient_pas(
+        client, planche, db_path, derriere_proxy):
+    """La valeur cachée retirée avec le type a été supprimée, et son identifiant repris dans
+    la même seconde par un terme d'une autre grille, d'une collection fermée : Ctrl+Z ne
+    pose pas ce terme sur la région ; le lien se compte parmi les non rendus."""
+    visible, cachee = _decor_cache(client, planche, db_path)
+    rid = _region(client, planche["id"], type="case")
+    _ok(client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": cachee}, headers=BOB), 200)
+    _ok(client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=LETTREUSE), 200)
+    reprise = _reprendre_l_identifiant(db_path, cachee)
+    res = _ok(client.post("/api/undo", headers=LETTREUSE), 200).json()
+    assert reprise not in _liens(db_path, rid)["attributs"]
+    assert res["liens_non_rendus"] == 1
+
+
+def test_r1_ce_qui_reste_ouvert_la_meme_dimension_dans_la_meme_seconde(
+        client, planche, db_path, derriere_proxy):
+    """La limite écrite dans `docs/undo.md`, décrite telle qu'elle est : repris dans la
+    même seconde par une valeur de la MÊME dimension, l'identifiant revient."""
+    visible, cachee = _decor_cache(client, planche, db_path)
+    rid = _region(client, planche["id"], type="case")
+    _ok(client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": cachee}, headers=BOB), 200)
+    _ok(client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=LETTREUSE), 200)
+    reprise = _reprendre_l_identifiant(db_path, cachee, dimension_de_c3=False)
+    _ok(client.post("/api/undo", headers=LETTREUSE), 200)
+    assert reprise in _liens(db_path, rid)["attributs"]
 
 
 def test_s2_le_retrait_ne_compte_que_ce_qu_on_voit(client, planche, db_path, derriere_proxy):

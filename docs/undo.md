@@ -87,7 +87,19 @@ pas née après l'acte, que l'agent la voie ou non. Une suppression rétablie ga
 de la portée. Et ce qu'on ne voit pas ne se dit pas (S2) : la réponse du changement de type
 ne compte que les valeurs visibles (`situation_retiree`), la pile ne dit « retrait de sa
 situation » que si l'agent en voit une, et un 409 causé par une valeur cachée ne rend ni son
-identifiant ni son auteur — « modifiée ailleurs ».
+identifiant ni son auteur — « modifiée ailleurs ». Ce 409 dit pourtant qu'une valeur cachée
+est LÀ (la phrase, avec une `valeur_actuelle` vide) : c'est un oracle de confirmation,
+accepté parce qu'inévitable — ne pas refuser effacerait le travail de l'autre collection —,
+et borné : il ne joue que sur une région que l'agent écrit, et ne nomme rien.
+
+**Une valeur ne revient que de sa dimension d'alors** (R1). `attribut_valeur` n'a pas
+d'`AUTOINCREMENT` : l'identifiant d'une valeur supprimée peut revenir à une valeur neuve, et
+le témoin de la date (`_valeur_nee_apres`) ne voit rien dans la même seconde. Le changement
+de type photographie donc la dimension de chaque valeur (`attributs_dimensions`, dans
+`liens_vus` et avec le retrait), et l'annulation ne rend une valeur — cachée surtout, puisque
+la portée ne la juge plus — que si elle est encore de cette dimension. **Ce qui reste
+ouvert** : un identifiant repris dans la même seconde PAR UNE VALEUR DE LA MÊME DIMENSION ; et,
+pour un changement de type journalisé avant cette photographie, la règle de la date seule.
 
 **Le locuteur est un champ GARDÉ de l'annulation** (relecture croisée de ANN-8, 2026-10-21 ;
 `undo._garder_locuteur`). Deux annulations d'un changement de type écrasaient le geste d'un

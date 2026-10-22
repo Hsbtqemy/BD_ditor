@@ -447,7 +447,11 @@ def _liens_a_rendre(e) -> Optional[dict]:
         return _charge(e["avant"]) or {}
     retires = _liens_retires(e)
     if retires:
-        return {"id": e["cible_id"], **retires}
+        noeud = {"id": e["cible_id"], **retires}
+        dims = (_charge(e["avant"]) or {}).get("attributs_dimensions")
+        if "attributs" in retires and dims:
+            noeud["attributs_dimensions"] = dims
+        return noeud
     return None
 
 
@@ -466,8 +470,22 @@ def _liens_rendables(conn, e, snap, ecrivable) -> dict:
     qui porte la situation locale d'une collection qu'on ne lit pas la retire avec le type,
     et Ctrl+Z la perdait — le travail de l'autre collection effacé par un geste qui ne la
     voyait pas (relecture de la suite d'ANN-8, S1). Une suppression rétablie garde la
-    question de la portée."""
+    question de la portée.
+
+    Et une valeur dont l'acte a photographié la DIMENSION (`attributs_dimensions`, R1) ne se
+    rend que si elle est encore de cette dimension : un identifiant de valeur repris DANS LA
+    MÊME SECONDE échappe au témoin de la date, et Ctrl+Z aurait posé un terme d'une autre
+    grille — peut-être d'une collection fermée — sur la région. Un acte d'avant cette
+    photographie garde la règle de la date seule."""
     retire_par_l_acte = e["type"] == "modification"
+    dimension_d_alors = dict(map(tuple, snap.get("attributs_dimensions") or []))
+
+    def meme_dimension(v) -> bool:
+        if v not in dimension_d_alors:
+            return True
+        r = conn.execute("SELECT dimension_id FROM attribut_valeur WHERE id = ?",
+                         (v,)).fetchone()
+        return r is not None and r["dimension_id"] == dimension_d_alors[v]
     personnages, valeurs = _liens_de_l_instantane(snap)
     ok_p = {p for p in personnages
             if conn.execute("SELECT 1 FROM personnages WHERE id = ?", (p,)).fetchone()
@@ -476,6 +494,7 @@ def _liens_rendables(conn, e, snap, ecrivable) -> dict:
     ok_v = {v for v in valeurs
             if conn.execute("SELECT 1 FROM attribut_valeur WHERE id = ?", (v,)).fetchone()
             and not _valeur_nee_apres(conn, v, e)
+            and meme_dimension(v)
             and (retire_par_l_acte
                  or ecrivable({"regions": [], "planches": [], "personnages": [], "valeurs": [v]}))}
     return {"personnages": ok_p, "valeurs": ok_v}
@@ -520,9 +539,13 @@ def _garder_liens_du_type(conn, region_id, avant, voit=None) -> None:
 
     Une valeur de situation que l'agent ne VOIT pas (`voit`, la portée des termes : une
     valeur locale à une collection qu'il ne lit pas) refuse comme une autre — elle serait
-    cachée par le type rendu —, mais le refus n'en dit rien : ni son identifiant dans
-    `valeur_actuelle`, ni son auteur, et la phrase dit « modifiée ailleurs » (relecture de la
-    suite d'ANN-8, S2)."""
+    cachée par le type rendu. Le refus ne rend ni son identifiant (`valeur_actuelle` ne porte
+    que les valeurs vues), ni son auteur, et sa phrase dit « modifiée ailleurs » (relecture
+    de la suite d'ANN-8, S2). Il dit en revanche qu'une valeur que l'agent ne voit pas est
+    LÀ — « modifiée ailleurs » avec une `valeur_actuelle` vide —, et c'est inévitable :
+    refuser sans le dire, ou passer outre, effacerait le travail de l'autre collection. Un
+    oracle de CONFIRMATION, accepté comme celui de `tags_concat` : il ne joue que sur une
+    région qu'on écrit, et ne nomme rien."""
     vus = avant.get("liens_vus") or {}
     for cle, table, champ, types in _LIENS_DU_TYPE:
         ensemble = table == "region_attribut"

@@ -1792,9 +1792,16 @@ def liens_vus(conn: sqlite3.Connection, region_id: int) -> dict:
         r = conn.execute(f"SELECT personnage_id FROM {table} WHERE region_id = ?",
                          (region_id,)).fetchone()
         vus[cle] = r["personnage_id"] if r else None
-    vus["attributs"] = [r["valeur_id"] for r in conn.execute(
-        "SELECT valeur_id FROM region_attribut WHERE region_id = ? ORDER BY valeur_id",
-        (region_id,))]
+    lignes = conn.execute(
+        "SELECT ra.valeur_id, v.dimension_id FROM region_attribut ra "
+        "JOIN attribut_valeur v ON v.id = ra.valeur_id "
+        "WHERE ra.region_id = ? ORDER BY ra.valeur_id", (region_id,)).fetchall()
+    vus["attributs"] = [r["valeur_id"] for r in lignes]
+    # La DIMENSION de chaque valeur, à côté (relecture de la suite d'ANN-8, R1) :
+    # `attribut_valeur` n'a pas d'AUTOINCREMENT, et un identifiant repris dans la même
+    # seconde échappe au témoin de la date. L'annulation ne rend une valeur que si sa
+    # dimension est encore celle d'alors (`undo._liens_rendables`).
+    vus["attributs_dimensions"] = [[r["valeur_id"], r["dimension_id"]] for r in lignes]
     return vus
 
 
@@ -1802,8 +1809,8 @@ def retirer_liens_caches(conn: sqlite3.Connection, region_id: int) -> dict:
     """Retire d'une région ce que son type ne montre pas — le locuteur hors des zones de
     texte (`TYPES_LOCUTEUR`), le personnage montré hors des boîtes personnage
     (`TYPES_PRESENCE`), la situation hors des cases (`TYPES_SITUATION`) — et rend ce qui est
-    parti : `{"locuteur": id, "presence": id, "attributs": [ids]}`, chaque clé seulement si
-    elle porte quelque chose. NE JOURNALISE PAS et NE COMMITE PAS : le changement de type le
+    parti : `{"locuteur": id, "presence": id, "attributs": [ids], "attributs_dimensions":
+    [[id, dimension]]}`, chaque clé seulement si elle porte quelque chose. NE JOURNALISE PAS et NE COMMITE PAS : le changement de type le
     range dans SON acte (`PUT /api/regions/{id}`).
 
     ANN-8 — le miroir du locuteur, tranché par Hugo le 2026-10-21 (« c'est utile ») : une
@@ -1822,6 +1829,7 @@ def retirer_liens_caches(conn: sqlite3.Connection, region_id: int) -> dict:
     if vus["attributs"] and r["type"] not in TYPES_SITUATION:
         conn.execute("DELETE FROM region_attribut WHERE region_id = ?", (region_id,))
         retires["attributs"] = vus["attributs"]
+        retires["attributs_dimensions"] = vus["attributs_dimensions"]
     return retires
 
 
