@@ -21,6 +21,11 @@ Ce que le balayage couvre, et ce qu'il ne couvre pas, est écrit :
 UX-11 (Hugo, 2026-10-22) — la liste des planches d'un album rend le NOM du fichier
 d'origine, sans dossier ni préfixe, sous une clé à lui (`nom_fichier_origine`) : la fiche
 d'un album de la Bibliothèque le montre au survol et range un album par noms de fichier.
+La recopie qui justifiait de taire la colonne vaut aussi pour ce nom, et c'est ACCEPTÉ
+(relecture croisée, décision de la session) : une copie sœur d'un autre projet recopie
+`master_origine` (`PLANCHE_SCAN`, D6), si bien qu'un lecteur de cet autre projet lit le
+nom de base du fichier — jamais son dossier, qui seul pouvait désigner un espace
+personnel.
 D'où DEUX jetons dans la valeur semée : `JETON` est dans le DOSSIER, et ne doit sortir de
 nulle part, cette route comprise ; `NOM` est le nom du fichier, et ne sort que de la route
 déclarée dans `NOM_SEUL`, sous sa clé et nulle part ailleurs dans la réponse. Les exports

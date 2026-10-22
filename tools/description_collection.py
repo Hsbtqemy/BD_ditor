@@ -482,7 +482,7 @@ CATALOGUE = [
     ("album", "pid", "DOI/ARK", "système", "absent — à prévoir", "DataCite", "ouvert"),
     ("planche", "id", "identifiant", "système", "structuré", "—", "ouvert"),
     ("planche", "album_id", "rattachement", "système", "structuré", "—", "ouvert"),
-    ("planche", "numero", "ordre d'import (page physique)", "système", "structuré", "—", "ouvert"),
+    ("planche", "numero", "rang dans l'album (ordre d'import, puis rangé à la main)", "système/humain", "structuré", "—", "ouvert"),
     ("planche", "role", "statut éditorial", "humain", "structuré", "—", "ouvert"),
     ("planche", "numero_editorial", "rang parmi les récits", "dérivé", "dérivé", "—", "ouvert"),
     ("planche", "chemin_tiff", "pointeur copie de travail (master avant v34)", "système", "structuré", "—", "restreint"),

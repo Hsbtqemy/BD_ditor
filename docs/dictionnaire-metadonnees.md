@@ -255,7 +255,7 @@ Source : table `planches`. Couche **éditoriale + technique + matérielle + cycl
 |---|---|---|---|---|---|---|
 | `id` | identifiant interne de la planche | entier (PK) | système | structuré | — | ouvert |
 | `album_id` | rattachement à l'œuvre | entier (FK) | système | structuré | — | ouvert |
-| `numero` | ordre d'import (page **physique**) | entier (unique/album) | système | structuré | — | ouvert |
+| `numero` | rang dans l'album (page **physique**) : l'ordre d'import, puis rangé à la main (↑ ↓, « Ranger par nom de fichier », UX-11) | entier (unique/album) | système/humain | structuré | — | ouvert |
 | `role` | statut éditorial | contrôlé : `recit` \| paratexte | humain | structuré | — | ouvert |
 | `numero_editorial` | rang cité parmi les planches `recit` | entier \| ∅ (paratexte) | dérivé | dérivé | — | ouvert |
 | `chemin_tiff` | pointeur vers la copie de travail (le master avant la v34, IMG-1) | chemin relatif POSIX | système | structuré | — | **restreint** |

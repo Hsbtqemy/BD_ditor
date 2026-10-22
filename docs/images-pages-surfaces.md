@@ -82,8 +82,11 @@ facettes. L'essentiel :
   `viewBox` à l'Atelier et à la Recherche, de `@lrx/@lry` à la TEI, de dimensions au Canvas
   IIIF ; `webScale = naturalWidth / largeur_px` suppose un seul dérivé.
 - **Page et image sont liées par un seul fil, mais structurant** : les fichiers master et
-  dérivé sont nommés d'après `numero`, l'ordre d'import (`pipeline/ingest.py`) — d'où
-  `_allouer_numero`, qui alloue le numéro avant d'écrire le fichier.
+  dérivé sont nommés d'après `numero` AU MOMENT DE L'IMPORT (`pipeline/ingest.py`) — d'où
+  `_allouer_numero`, qui alloue le numéro avant d'écrire le fichier. Depuis UX-11
+  (2026-10-22), le numéro est un rang qui se change ensuite (↑ ↓, « Ranger par nom de
+  fichier ») sans que les fichiers suivent : le fil ne tient plus qu'à l'import, et
+  `ingest.numero_occupe` regarde les fichiers, pas les numéros.
 - **Environ 60 % des sites sont mécaniques** : une quarantaine de jointures région → album
   pour la portée, dans une quinzaine de fichiers ; `numeros_editoriaux` et ses consommateurs
   (exports, recherche, concordance, écrans), qui ne lisent que `id`, `role` et `numero` ; les
@@ -103,8 +106,8 @@ facettes. L'essentiel :
   - **le cliquet des colonnes exportables** obligera à classer chaque colonne neuve, et c'est
     voulu.
 - **Des incohérences qui existent déjà**, à régler en passant : l'Atelier affiche l'ordre
-  d'import (`numero`) dans l'arbre, le fil d'Ariane et la navigation de transcription, mais le
-  numéro éditorial dans la liste ; l'Exploration affiche l'ordre d'import sous l'étiquette
+  d'import (`numero`, le rang dans l'album depuis UX-11) dans l'arbre, le fil d'Ariane et la navigation de transcription, mais le
+  numéro éditorial dans la liste ; l'Exploration affiche ce rang sous l'étiquette
   « pl. » quand la citation manque ; `nombre_pages` compte des planches ; `dimensions_cm`
   présente la taille d'un scan comme la taille d'une page.
 
