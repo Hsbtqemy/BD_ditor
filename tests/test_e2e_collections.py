@@ -304,8 +304,10 @@ def test_prendre_le_nom_du_repli_est_refuse_la_ou_l_on_a_agi(page, decor):
     item.locator("[data-enregistrer]").click()
     message = _message_du_geste(page, item, "réservé")
     assert "réserv" in message.lower(), message
-    assert page.locator("#biblio .col-msg.erreur").count() == 1, (
-        "le refus se lit, mais pas comme un refus : la classe `erreur` manque")
+    # Une ATTENTE, pas un compte immédiat : la fiche se redessine après le geste.
+    expect(page.locator("#biblio .col-msg.erreur"),
+           "le refus se lit, mais pas comme un refus : la classe `erreur` manque"
+           ).to_have_count(1)
 
     with _client(decor["base"]) as c:
         nom = next(x["nom"] for x in c.get("/api/collections").json() if x["id"] == cid)
@@ -327,8 +329,8 @@ def test_creer_ne_demande_aucun_droit_mais_decrire_si(page, decor):
     page.set_extra_http_headers({"Remote-User": "carole", "Remote-Groups": "etudiants"})
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_selector("#col-body .col-note", timeout=3000)   # la liste est rendue… vide
-    assert page.locator("#col-body .col-item").count() == 0, (
-        "une collection qu'elle ne lit pas ne doit pas lui apparaître")
+    expect(page.locator("#col-body .col-item"),
+           "une collection qu'elle ne lit pas ne doit pas lui apparaître").to_have_count(0)
     assert page.locator("#col-creer").is_visible(), "le bouton de création lui est masqué"
 
     _creer(page, "Espace de Carole")
@@ -337,7 +339,7 @@ def test_creer_ne_demande_aucun_droit_mais_decrire_si(page, decor):
     expect(fiche.locator('.droits [data-acte="administrer"]')).to_have_class("oui")
     fiche.locator('[role="tab"][data-onglet="description"]').click()
     expect(fiche.locator('[data-modifier="description"]')).to_be_visible()
-    assert page.locator("#col-body .col-item").count() == 1
+    expect(page.locator("#col-body .col-item")).to_have_count(1)
 
 
 def test_un_refus_d_acces_survit_au_rechargement_de_la_collection(page, decor):
@@ -473,15 +475,15 @@ def test_un_geste_efface_le_message_d_une_autre_collection(page, decor):
     item_a.locator('[data-champ="nom"]').fill(repli)
     item_a.locator("[data-enregistrer]").click()
     _message_du_geste(page, item_a, "réservé")
-    assert page.locator("#biblio .col-msg", has_text="créée").count() == 0, (
-        "« créée » reste affiché après un geste dans une autre collection")
+    expect(page.locator("#biblio .col-msg", has_text="créée"),
+           "« créée » reste affiché après un geste dans une autre collection").to_have_count(0)
 
     item_b = _modifier(page, b, "diffusion")
     item_b.locator('[data-champ="licence_defaut"]').fill("CC-BY-4.0")
     _message_du_geste(page, _enregistrer(page, b), "enregistrée")
-    assert page.locator("#biblio .col-msg", has_text="réservé").count() == 0, (
-        "le refus d'« Espace A » est reposé après l'enregistrement d'« Espace B » : il "
-        "parle d'un nom que le formulaire redessiné ne contient plus")
+    expect(page.locator("#biblio .col-msg", has_text="réservé"),
+           "le refus d'« Espace A » est reposé après l'enregistrement d'« Espace B » : il "
+           "parle d'un nom que le formulaire redessiné ne contient plus").to_have_count(0)
 
 
 def test_une_relecture_ratee_ne_cache_pas_l_enregistrement(page, decor):
@@ -532,8 +534,9 @@ def test_un_geste_d_acces_efface_le_refus_d_une_autre_collection(page, decor):
     item_b.locator(".qe-qui, .qe-table th[scope=row]", has_text="annotateurs").first.wait_for(
         timeout=5000)
     item_b.locator(".qe-msg", has_text="entre dans").wait_for(timeout=5000)
-    assert page.locator("#biblio .col-msg", has_text="compte ou un groupe").count() == 0, (
-        "le refus d'« Espace A » est resté affiché après un accès accordé dans « Espace B »")
+    expect(page.locator("#biblio .col-msg", has_text="compte ou un groupe"),
+           "le refus d'« Espace A » est resté affiché après un accès accordé dans « Espace B »"
+           ).to_have_count(0)
 
 
 def test_un_refus_d_acces_survit_a_une_relecture_ratee(page, decor):
@@ -650,7 +653,7 @@ def test_une_liste_vide_ne_promet_la_propriete_qu_a_qui_la_recevra(page, live_se
     if not derriere_proxy:
         page.goto(live_server + "/corpus", wait_until="networkidle")
         page.locator("#col-body .col-item").first.wait_for(timeout=5000)
-        assert page.locator("#col-body .col-note").count() == 0
+        expect(page.locator("#col-body .col-note")).to_have_count(0)
         return
     page.set_extra_http_headers({"Remote-User": "nadia"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
@@ -813,13 +816,18 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     _ligne(page, "Seul").wait_for(timeout=5000)
     for titre in ("Partagé", "Triple", "Seul", "Erreur"):
         expect(_ligne(page, titre)).to_be_visible()
-        assert _gestes_de_l_album(page, titre).count() == 0, titre
+        # Des ATTENTES, pas des comptes immédiats : la fiche se redessine à l'ouverture, et
+        # « Sur les collections » se remplit après elle (un compte tombé une fois, dans une
+        # passe chargée, sur des cases de l'entre-deux).
+        expect(_gestes_de_l_album(page, titre), titre).to_have_count(0)
         # « Sur les collections » se lit, et aucune case ne s'offre : elle n'écrit nulle part.
         expect(page.locator("#album-range-cases input[data-ranger]").first).to_be_visible()
-        assert page.locator("#album-range-cases input[data-ranger]:enabled").count() == 0, titre
-    assert page.locator("#album-detail [data-delp], #album-detail [data-delp-refus]").count() == 0
-    assert page.locator("#album-detail button[data-val]").count() == 0, (
-        "un bouton de validation offert à qui ne fait que lire")
+        expect(page.locator("#album-range-cases input[data-ranger]:enabled"), titre
+               ).to_have_count(0)
+    expect(page.locator("#album-detail [data-delp], #album-detail [data-delp-refus]")
+           ).to_have_count(0)
+    expect(page.locator("#album-detail button[data-val]"),
+           "un bouton de validation offert à qui ne fait que lire").to_have_count(0)
 
     # ── qui écrit dans DEUX de ses collections sans les tenir : un aller simple ──────────
     _comme(page, live_server, "paz")
@@ -888,7 +896,7 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     assert len(demandes) == 2
     # Redevenue lectrice de cet album : plus rien ne lui est offert dessus.
     expect(page.locator('#album-detail [data-act="supprimer"]')).to_have_count(0)
-    assert page.locator("#album-range-cases input[data-ranger]:enabled").count() == 0
+    expect(page.locator("#album-range-cases input[data-ranger]:enabled")).to_have_count(0)
 
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
         rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Triple']}/collections").json()]
@@ -916,9 +924,9 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
 
     # Les planches suivent la règle du document.
     _ouvrir_detail(page, "Erreur")
-    assert page.locator("#album-detail button[data-delp]").count() == 1
+    expect(page.locator("#album-detail button[data-delp]")).to_have_count(1)
     _ouvrir_detail(page, "Seul")
-    assert page.locator("#album-detail button[data-delp]").count() == 0
+    expect(page.locator("#album-detail button[data-delp]")).to_have_count(0)
     eteinte = page.locator("#album-detail button[data-delp-refus]")
     expect(eteinte).to_have_count(1)
     assert eteinte.get_attribute("aria-disabled") == "true"
