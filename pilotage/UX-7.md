@@ -271,6 +271,21 @@ PANNEAU qui distingue, et le test est paramétré sur les deux depuis.
 
 ## Reste
 
+### Rouvert le 2026-10-22 — le zoom d'interface fait déborder les tiroirs et le menu « Aa »
+- [ ] **À 320 px et à tout zoom d'interface de 100 à 200 %, le tiroir des planches se referme** —
+  attendu : il tient dans la largeur visible et laisse une bande de voile cliquable. Mesuré le
+  2026-10-22 (relevé par Hugo à la passe du lot 1, présent en production sur `16c6127`) : 336 px
+  à 140 %, 480 à 200 %, pour un écran de 320 — il recouvre le voile et sa bascule, seul Échap
+  le ferme. `static/theme.js` pose `zoom` sur la racine, et `min(var(--sidebar-w), 86vw)` ne
+  suit plus la largeur visible
+- [ ] **Même chose pour le tiroir de structure** — attendu : idem. Mesuré : il déborde par la
+  gauche dès 120 % (353 px), `min(var(--panel-w), 92vw)`
+- [ ] **Le menu « Aa » reste atteignable à 200 %, sur les cinq surfaces** — attendu : A−, A+ et
+  ↺ toujours atteignables. Mesuré : à 180 %, dans l'Atelier, son panneau descend jusqu'à
+  y=756 dans une fenêtre de 640, et l'Atelier ne défile pas : on ne peut plus réduire le zoom
+- [ ] **La passe `lot-1` rejoue ses deux cases « À l'étroit et à grande police »** — attendu :
+  cochées par Hugo, sur l'état `apres-lot1` de la recette, une fois ce correctif poussé
+
 ### Rouvert le 2026-10-09 — une fenêtre plus BASSE que le chrome écrase la bande 1
 
 - [ ] **Quand la hauteur de la fenêtre ne suffit plus aux bandes, la bande 1 est écrasée et sa dernière rangée en sort** — attendu : à 320 × 440 px sous une préférence de police de 24, « Aa », la pastille d'identité et « ← » restent DANS `#site-nav`, quitte à ce que la page défile. Vu par Hugo sous Firefox pendant la passe de police (« Aa » à cheval sur le bord bas de la bande, compte `lectrice`), puis mesuré sous le Firefox de Playwright : à 320 px de large sous 24 le chrome demande environ 505 px de haut (bande 1 242, bande 2 179, barre d'état 83) ; à 320 × 520 la rangée `1fr` du canevas tombe à 16 px et tout tient encore, à 320 × 440 elle est à 0 et la rangée `auto` de la bande 1 est réduite à 178 px pour 242 de contenu — « ← », la pastille et « Aa » dépassent de 6 à 57 px. **Antérieur à `5a4a62f`, et identique avant lui** (`22cc644` : bande 1 à 174 px, mêmes éléments dehors) : la somme des bandes n'a pas changé, la bande 2 a pris ce que la barre d'état a rendu. Une taille MINIMALE de police de 24 le produit dès 600 px de haut. Non reproduit sous Chromium à 850 px de haut ; Chromium n'a pas été mesuré à faible hauteur. Cause non établie : pourquoi une rangée `auto` passe sous son contenu (hypothèse : `#site-nav` porte un `min-height` explicite, qui remplace le minimum automatique de l'item de grille) — ce qui trancherait : retirer ce `min-height`, ou donner à `#app` une hauteur MINIMALE et non fixe, et rejouer la sonde `test_tmp_bande1_ff.py` du 2026-10-09. C'est le paysage de téléphone que `petites-largeurs` dit n'avoir jamais été mesuré (« moins de 400 px de hauteur ») **Aggravé le 2026-10-10 par le nom du projet dans la bande (`COL-3`, `9eec56e`), et mesuré avant et après, sous Firefox et Chromium, à 320 px de large sur l'Atelier.** Cas ordinaire sous une préférence de 24 — un projet, « Projet principal » : la hauteur demandée ne change pas (235 px), mais à 320 × 440 la pastille d'identité a glissé sur la rangée qui dépasse — dehors de 56 px au lieu de 5. Pire cas — vingt et une capitales, deux projets, le nom de compte le plus long : la bande demande 347 px au lieu de 284, et la hauteur sous laquelle elle est écrasée passe d'environ 553 à 610 px ; à 320 × 600, où tout tenait, « Aa » dépasse de 9 px (Firefox) à 13 (Chromium). Une piste non prise, la décision disant « libellé Projet » : masquer ce libellé à l'œil sous 28em rendrait une rangée dans le pire cas
