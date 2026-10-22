@@ -20,6 +20,7 @@ from __future__ import annotations
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 import autorisation
 import conflit
@@ -79,7 +80,8 @@ def _agent_undo(portee: autorisation.Portee):
 def undo_prochain(conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     """Aperçu : ce que ferait la prochaine annulation (ou `null` s'il n'y a rien à annuler)."""
-    return undo.apercu(conn, agent=_agent_undo(portee))
+    return undo.apercu(conn, agent=_agent_undo(portee),
+                       voit=undo.voit_valeur(_ecrivable(conn, portee)))
 
 
 @router.post("/api/undo")
@@ -124,8 +126,12 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db),
     except conflit.Perime as exc:
         # CONC-3 (Q4) — annuler écraserait ce qu'un autre a changé depuis : même 409 nommé
         # qu'un enregistrement périmé, et rien n'est défait (la dépendance `db` roule en
-        # arrière ce que l'inversion avait commencé).
-        raise HTTPException(409, exc.detail())
+        # arrière ce que l'inversion avait commencé). ANN-8 — le corps dit QUEL acte reste en
+        # tête de la pile, pour que l'écran offre de le passer (`POST /api/undo/passer`).
+        detail = exc.detail()
+        if prochain is not None:
+            detail["passable"] = {"evenement_id": prochain["id"]}
+        raise HTTPException(409, detail)
     if res is None:
         # Sous un compte partagé, « rien » peut vouloir dire « rien d'assez récent » (AUTH-6) :
         # le dire, sans quoi on croirait l'historique vide. Le message garde « Rien à
@@ -137,3 +143,54 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db),
         raise HTTPException(404, "Rien à annuler.")
     conn.commit()
     return res
+
+class PasserIn(BaseModel):
+    evenement_id: int
+
+
+@router.post("/api/undo/passer")
+def undo_passer(payload: PasserIn, conn: sqlite3.Connection = Depends(db),
+                portee: autorisation.Portee = Depends(portee_courante)):
+    """« Passer ce geste » — ANN-8, décision de Hugo du 2026-10-22.
+
+    Quand Ctrl+Z est refusé par un conflit (CONC-3 : l'annuler écraserait ce qu'un autre a
+    fait depuis), l'acte RESTE en tête de la pile, et chaque Ctrl+Z redonne le même refus :
+    les gestes plus anciens étaient hors de portée (`docs/undo.md`). À la demande de la
+    personne, cette route pose la trace `abandon` d'AUTH-14 (`undo.ecarter`) : l'acte sort de
+    la pile, le Ctrl+Z suivant remonte au geste d'avant, et le travail de l'autre reste.
+
+    Deux gardes, posées sous le verrou d'écriture :
+    - l'acte est bien le PROCHAIN que CET agent annulerait — on ne passe ni l'acte d'un autre,
+      ni un acte enfoui sous un geste plus récent (409 sinon) ;
+    - le conflit TIENT au moment du clic : l'annulation est rejouée, puis défaite. Si elle
+      passe désormais — l'autre a défait son geste —, rien n'est passé : 409, « refaites
+      Ctrl+Z ». Un acte qui ne s'annule plus du tout (AUTH-14) est passé, comme Ctrl+Z
+      l'aurait fait."""
+    if not portee.peut_ecrire_quelque_part():
+        raise HTTPException(403, "Annuler demande un droit d'écriture.")
+    agent = _agent_undo(portee)
+    prochain = undo.derniere_action_annulable(conn, agent)
+    if prochain is not None and undo.reindexe(prochain):
+        nlp.ensure_loaded()
+    conflit.verrouiller(conn)
+    e = undo.derniere_action_annulable(conn, agent)
+    if e is None or e["id"] != payload.evenement_id:
+        raise HTTPException(409, "Ce geste n'est plus le prochain à annuler : refaites Ctrl+Z.")
+    ecrivable = _ecrivable(conn, portee)
+    conn.execute("SAVEPOINT passer_un_geste")
+    try:
+        undo.annuler(conn, e["id"], agent=agent, ecrivable=ecrivable)
+    except (conflit.Perime, undo.NeSAnnulePlus):
+        pass                                 # le refus tient : on passe
+    except undo.UndoImpossible as exc:
+        conn.execute("ROLLBACK TO passer_un_geste")
+        raise HTTPException(409, f"Annulation impossible : {exc}")
+    else:
+        conn.execute("ROLLBACK TO passer_un_geste")
+        raise HTTPException(409, "Ce geste s'annule maintenant : refaites Ctrl+Z.")
+    conn.execute("ROLLBACK TO passer_un_geste")
+    conn.execute("RELEASE passer_un_geste")
+    undo.ecarter(conn, e)
+    conn.commit()
+    return {"evenement_id": e["id"],
+            "description": undo.apercu_de(e, voit=undo.voit_valeur(ecrivable))}

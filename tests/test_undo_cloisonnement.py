@@ -625,7 +625,7 @@ def test_ce_que_l_inversion_a_commence_d_ecrire_ne_part_pas_avec_la_trace(
     _ok(client.put(f"/api/regions/{decor['rg']}", headers=COLLEGUE,
                    json={"ocr_texte": "DE LA COLLEGUE"}), 200)
 
-    def inversion_qui_ecrit_puis_leve(conn, e):
+    def inversion_qui_ecrit_puis_leve(conn, e, *_):
         conn.execute("UPDATE regions SET ocr_texte = 'ECRIT PUIS DEFAIT' WHERE id = ?",
                      (e["cible_id"],))
         raise undo.Irretablissable()

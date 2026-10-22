@@ -3619,8 +3619,12 @@ async function undoLast() {
     res = await apiSend("POST", "/api/undo");
   } catch (e) {
     if (e.statut === 409 && e.detail && e.detail.conflit) {
-      // CONC-3 : annuler écraserait ce qu'un autre a changé depuis.
-      toast(BDConflit.messageAnnulationRefusee(e.detail.conflit), "error", 8000);
+      // CONC-3 : annuler écraserait ce qu'un autre a changé depuis. ANN-8 — l'acte reste en
+      // tête de la pile ; le message offre de le PASSER, pour que Ctrl+Z remonte au geste
+      // d'avant (décision de Hugo du 2026-10-22).
+      const message = BDConflit.messageAnnulationRefusee(e.detail.conflit);
+      if (e.detail.passable) offrirDePasser(message, e.detail.passable.evenement_id);
+      else toast(message, "error", 8000);
       return;
     }
     toast(e.message, /rien à annuler/i.test(e.message) ? "" : "error");
@@ -3643,6 +3647,42 @@ async function undoLast() {
   } else if (res.planche_id && state.planches.some((p) => p.id === res.planche_id)) {
     selectPlanche(res.planche_id);           // l'action touchait une autre planche de l'album
   }
+}
+
+/* ANN-8 — « Passer ce geste » : Ctrl+Z refusé par un conflit laisse l'acte en tête de la
+   pile, et chaque Ctrl+Z redonnait le même refus. Le message offre de le passer : le
+   serveur pose la trace qui le sort de la pile (`POST /api/undo/passer`), le travail de
+   l'autre reste, et le Ctrl+Z suivant remonte au geste d'avant. Le serveur revérifie que
+   l'acte est encore le prochain et que le conflit tient. */
+const PASSER_DUREE_MS = 15000;
+
+function offrirDePasser(message, evenementId) {
+  const box = document.getElementById("toasts");
+  if (!box) { toast(message, "error", 8000); return; }
+  const el = document.createElement("div");
+  el.className = "toast error toast-action";
+  const texte = document.createElement("span");
+  texte.textContent = message + " ";
+  const bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.textContent = "Passer ce geste";
+  bouton.title = "Ctrl+Z remontera au geste d'avant ; le travail de l'autre reste.";
+  const fermer = () => el.remove();
+  const minuterie = setTimeout(fermer, PASSER_DUREE_MS);
+  bouton.onclick = async () => {
+    clearTimeout(minuterie);
+    bouton.disabled = true;
+    try {
+      const res = await apiSend("POST", "/api/undo/passer", { evenement_id: evenementId });
+      fermer();
+      toast(`Geste passé : ${res.description}. Ctrl+Z remonte au geste d'avant.`, "", 6000);
+    } catch (err) {
+      fermer();
+      toast(err.message, "error", 8000);
+    }
+  };
+  el.append(texte, bouton);
+  box.appendChild(el);
 }
 
 function setupKeyboard() {

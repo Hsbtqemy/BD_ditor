@@ -69,9 +69,9 @@ class NeSAnnulePlus(Exception):
     de bloquer la pile. Le message ne dit rien de l'objet présent, qu'on ne lit peut-être
     pas."""
 
-    def __init__(self, e, phrase: str = PHRASE_NE_S_ANNULE_PLUS):
+    def __init__(self, e, phrase: str = PHRASE_NE_S_ANNULE_PLUS, voit=None):
         self.evenement = e
-        self.description = _description(e)
+        self.description = _description(e, voit)
         super().__init__(phrase.format(description=self.description))
 
 
@@ -86,8 +86,15 @@ _RETRAITS = (("locuteur", "de son locuteur"), ("presence", "du personnage montr�
              ("attributs", "de sa situation"))
 
 
-def _description(e) -> str:
+def _description(e, voit=None) -> str:
+    """La phrase d'un acte. `voit(valeur_id) -> bool` : la situation retirée ne se nomme que
+    si l'agent en voit au moins une valeur — dire « retrait de sa situation » d'une case dont
+    il ne lit aucune valeur lui apprendrait qu'il y en avait une (relecture de la suite
+    d'ANN-8, S2). Sans `voit`, tout se nomme."""
     retires = _liens_retires(e)
+    if voit is not None and "attributs" in retires \
+            and not any(voit(v) for v in retires["attributs"]):
+        del retires["attributs"]
     if retires:
         quoi = [nom for cle, nom in _RETRAITS if cle in retires]
         quoi = quoi[0] if len(quoi) == 1 else ", ".join(quoi[:-1]) + " et " + quoi[-1]
@@ -196,10 +203,11 @@ def reindexe(e) -> bool:
     return not (e["cible_table"] == "regions" and e["type"] == "creation")
 
 
-def apercu(conn: sqlite3.Connection, agent=TOUS) -> Optional[dict]:
-    """Ce que ferait la prochaine annulation (sans l'exécuter) : {evenement_id, description}."""
+def apercu(conn: sqlite3.Connection, agent=TOUS, voit=None) -> Optional[dict]:
+    """Ce que ferait la prochaine annulation (sans l'exécuter) : {evenement_id, description}.
+    `voit` : cf. `_description`."""
     e = derniere_action_annulable(conn, agent)
-    return {"evenement_id": e["id"], "description": _description(e)} if e else None
+    return {"evenement_id": e["id"], "description": _description(e, voit)} if e else None
 
 
 # --------------------------------------------------------------------------- #
@@ -254,7 +262,7 @@ def _supprimer_region(conn, region_id):
     conn.execute("DELETE FROM regions WHERE id = ?", (region_id,))
 
 
-def _inverser_modification_region(conn, region_id, avant, apres):
+def _inverser_modification_region(conn, region_id, avant, apres, voit=None):
     """Inverse d'une MODIFICATION de région : défait CE QUE l'acte a changé, rien d'autre.
 
     CONC-3 (Q4) — lu le 2026-09-17 et vu rouge sur le code d'avant : toutes les colonnes
@@ -271,7 +279,7 @@ def _inverser_modification_region(conn, region_id, avant, apres):
     # ANN-8 — défaire un changement de type, c'est aussi décider de ses liens : les gardes
     # passent AVANT toute écriture (`_garder_liens_du_type`).
     if "type" in changees:
-        _garder_liens_du_type(conn, region_id, avant)
+        _garder_liens_du_type(conn, region_id, avant, voit)
     # AUTH-14 — le parent qu'on rend se valide comme la route le valide (`_validate_parent`) :
     # présent, dans la MÊME planche, sans cycle. Sans quoi Ctrl+Z rattachait une bulle à une
     # case d'une autre collection (relecture croisée, S1).
@@ -450,7 +458,16 @@ def _liens_rendables(conn, e, snap, ecrivable) -> dict:
     désigné existe-t-il encore ; est-il celui de l'acte (né avant lui) ; l'agent le voit-il
     MAINTENANT (`ecrivable`, la question de la route : un personnage par ses apparitions,
     une valeur par la portée des termes). Ce qui échoue n'est pas reposé, en silence pour
-    l'objet — l'écran apprend seulement COMBIEN de liens ne sont pas revenus."""
+    l'objet — l'écran apprend seulement COMBIEN de liens ne sont pas revenus.
+
+    Sauf une : la valeur de situation que CE changement de type a retirée se rend même si
+    l'agent ne la voit pas — elle existe encore et n'est pas née après l'acte suffit.
+    « Cacher n'est pas saisir » (`_tags_caches`, `docs/undo.md`) : passer en bulle une case
+    qui porte la situation locale d'une collection qu'on ne lit pas la retire avec le type,
+    et Ctrl+Z la perdait — le travail de l'autre collection effacé par un geste qui ne la
+    voyait pas (relecture de la suite d'ANN-8, S1). Une suppression rétablie garde la
+    question de la portée."""
+    retire_par_l_acte = e["type"] == "modification"
     personnages, valeurs = _liens_de_l_instantane(snap)
     ok_p = {p for p in personnages
             if conn.execute("SELECT 1 FROM personnages WHERE id = ?", (p,)).fetchone()
@@ -459,7 +476,8 @@ def _liens_rendables(conn, e, snap, ecrivable) -> dict:
     ok_v = {v for v in valeurs
             if conn.execute("SELECT 1 FROM attribut_valeur WHERE id = ?", (v,)).fetchone()
             and not _valeur_nee_apres(conn, v, e)
-            and ecrivable({"regions": [], "planches": [], "personnages": [], "valeurs": [v]})}
+            and (retire_par_l_acte
+                 or ecrivable({"regions": [], "planches": [], "personnages": [], "valeurs": [v]}))}
     return {"personnages": ok_p, "valeurs": ok_v}
 
 
@@ -472,7 +490,7 @@ _LIENS_DU_TYPE = (("locuteur", "bulle_locuteur", "locuteur", TYPES_LOCUTEUR),
                   ("attributs", "region_attribut", "situation", TYPES_SITUATION))
 
 
-def _garder_liens_du_type(conn, region_id, avant) -> None:
+def _garder_liens_du_type(conn, region_id, avant, voit=None) -> None:
     """Les liens sont des champs GARDÉS de l'annulation d'un changement de type (ANN-8,
     CONC-3). Lien par lien, ce que la région porte au moment de défaire doit être ce que
     l'acte y avait LAISSÉ — la photographie `liens_vus`, moins ce qu'il a retiré —, ou ce que
@@ -498,7 +516,13 @@ def _garder_liens_du_type(conn, region_id, avant) -> None:
       que l'acte avait laissé.
 
     Un acte d'avant la photographie n'a pas `liens_vus` : la garde y suppose ce qu'elle
-    supposait alors, qu'aucun lien n'était laissé — et le 409 faux de c3 y reste possible."""
+    supposait alors, qu'aucun lien n'était laissé — et le 409 faux de c3 y reste possible.
+
+    Une valeur de situation que l'agent ne VOIT pas (`voit`, la portée des termes : une
+    valeur locale à une collection qu'il ne lit pas) refuse comme une autre — elle serait
+    cachée par le type rendu —, mais le refus n'en dit rien : ni son identifiant dans
+    `valeur_actuelle`, ni son auteur, et la phrase dit « modifiée ailleurs » (relecture de la
+    suite d'ANN-8, S2)."""
     vus = avant.get("liens_vus") or {}
     for cle, table, champ, types in _LIENS_DU_TYPE:
         ensemble = table == "region_attribut"
@@ -515,7 +539,14 @@ def _garder_liens_du_type(conn, region_id, avant) -> None:
             f"SELECT {colonne} FROM {table} WHERE region_id = ?", (region_id,))}
         if actuel <= admis:
             continue
-        pose = min(actuel - admis)          # nommer qui a posé ce qui n'était pas admis
+        de_trop = actuel - admis
+        if ensemble and voit is not None:
+            vues = {v for v in actuel if voit(v)}
+            de_trop_vues = de_trop & vues
+            qui = (conflit.auteur_du_champ(conn, table, region_id, colonne, min(de_trop_vues))
+                   if de_trop_vues else None)
+            raise conflit.Perime(table, region_id, champ, sorted(vues), qui)
+        pose = min(de_trop)                 # nommer qui a posé ce qui n'était pas admis
         valeur = sorted(actuel) if ensemble else pose
         raise conflit.Perime(table, region_id, champ, valeur,
                              conflit.auteur_du_champ(conn, table, region_id, colonne, pose))
@@ -564,7 +595,7 @@ def _retirer_lien(conn, table, region_id):
 # --------------------------------------------------------------------------- #
 # Aiguillage + orchestration
 # --------------------------------------------------------------------------- #
-def _inverser(conn, e) -> int:
+def _inverser(conn, e, voit=None) -> int:
     """Applique l'inverse de l'événement `e` et renvoie la région concernée (pour l'UI).
 
     Toute violation de contrainte (FK d'un personnage supprimé entre-temps…) rend l'acte
@@ -580,7 +611,7 @@ def _inverser(conn, e) -> int:
                 _garder_creation(conn, cid, apres)
                 _supprimer_region(conn, cid)
             elif t == "modification":
-                _inverser_modification_region(conn, cid, avant, apres)
+                _inverser_modification_region(conn, cid, avant, apres, voit)
             elif t == "suppression":
                 _recreer_region_profond(conn, avant)
             return cid
@@ -801,6 +832,17 @@ def lieux(conn, e) -> dict:
     return {"regions": [e["cible_id"]], "planches": [], "personnages": []}
 
 
+def apercu_de(e, voit=None) -> str:
+    """La phrase d'un acte donné, pour la réponse de « Passer ce geste »."""
+    return _description(e, voit)
+
+
+def voit_valeur(ecrivable):
+    """La question « l'agent voit-il cette valeur de situation ? », tirée d'`ecrivable` —
+    celle de la route qui la pose (`_affecter` : la voir suffit)."""
+    return lambda v: ecrivable({"regions": [], "planches": [], "personnages": [], "valeurs": [v]})
+
+
 def ecarter(conn: sqlite3.Connection, e) -> int:
     """PASSE un acte qui ne s'annule plus : une trace au journal, append-only, qui le sort
     de la pile (`derniere_action_annulable`). Rien d'autre n'est écrit. NE COMMITE PAS.
@@ -839,8 +881,9 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
             e = None
     if e is None:
         return None
+    voit = voit_valeur(ecrivable)
     if not _meme_objet(conn, e) or not ecrivable(lieux(conn, e)):
-        raise NeSAnnulePlus(e)
+        raise NeSAnnulePlus(e, voit=voit)
     # Le personnage qu'on reposerait : créé après l'acte, ou invisible pour l'agent, ce n'est
     # plus celui de l'acte, ou pas un à lui montrer. Seconde phrase : elle ne dit pas s'il
     # existe. Absent, c'est la clé étrangère qui le dira, pendant l'inversion.
@@ -849,7 +892,7 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
                                           (perso,)).fetchone():
         if _personnage_ne_apres(conn, perso, e) or not ecrivable(
                 {"regions": [], "planches": [], "personnages": [perso]}):
-            raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE)
+            raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE, voit)
     # ANN-8 — une suppression rend aussi les liens de ses régions, et un changement de type
     # le locuteur qu'il avait emporté : ceux qui sont rendables.
     # Celui qu'un autre a posé depuis n'est pas écrasé : `_garder_liens_du_type`, dans
@@ -859,20 +902,21 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
                  if a_rendre is not None else None)
     non_rendus = 0
     try:
-        region_id = _inverser(conn, e)
+        region_id = _inverser(conn, e, voit)
         if rendables is not None:
             try:
                 non_rendus = _rendre_liens(conn, a_rendre, rendables)
             except sqlite3.IntegrityError as exc:
                 raise Irretablissable() from exc
     except Irretablissable:
-        raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE)
+        raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE, voit)
     planche_id = _planche_de(conn, region_id, e)
     journal.journaliser(conn, "annulation", "evenement", e["id"],
                         avant={"acte": e["type"], "cible_table": e["cible_table"],
                                "cible_id": e["cible_id"]})
     res = {"evenement_id": e["id"], "acte": e["type"], "cible_table": e["cible_table"],
-           "region_id": region_id, "planche_id": planche_id, "description": _description(e)}
+           "region_id": region_id, "planche_id": planche_id,
+           "description": _description(e, voit)}
     if rendables is not None:
         res["liens_non_rendus"] = non_rendus
     return res

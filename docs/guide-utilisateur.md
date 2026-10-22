@@ -296,7 +296,10 @@ le dit, votre saisie reste dans le champ, et refaire le geste part sans attendre
 bandeau dit « depuis un autre écran de ce même compte », c'est vous dans un autre onglet, ou un collègue sous le même compte partagé. Si c'est la position d'une
 région qui a changé ailleurs, elle se recharge simplement ; si la région a été supprimée, un
 message dit par qui, et elle disparaît de votre écran. Ctrl+Z refuse de même de défaire un
-geste que quelqu'un a modifié après vous.
+geste que quelqu'un a modifié après vous. Le message porte alors **« Passer ce geste »** :
+votre geste reste fait, le travail de l'autre aussi, et le Ctrl+Z suivant défait votre geste
+d'avant. Ne retirez pas à la main ce que l'autre a fait pour pouvoir annuler : ce retrait
+serait votre geste le plus récent, et Ctrl+Z le déferait d'abord.
 
 Sur le choix « tag ou dimension ? », voir [`modele-et-droits.md`](modele-et-droits.md) §4 :
 un tag se cherche, un attribut se compte.

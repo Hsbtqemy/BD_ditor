@@ -72,9 +72,22 @@ quand le type rendu la montre, ses valeurs reviennent par différence, à côté
 qu'un autre a mises entre-temps, comme les tags d'une annotation — rien n'est écrasé, donc
 pas de garde ; quand il ne la montre pas, ce que la région porte doit être une partie de ce
 que l'acte avait laissé, sinon 409 nommé, champ `situation`. Ce que la base portait déjà,
-`tools/retirer_liens_caches.py` le montre et le retire. Leurs routes, elles, ne gardent pas
-le type (à la différence de celle du locuteur) : c'est l'écran qui n'offre le bloc
-Personnage qu'à la boîte, et le bloc Situation qu'à la case.
+`tools/retirer_liens_caches.py` le montre et le retire. Leurs routes d'attribution gardent
+le type depuis le 2026-10-22 (422 nommé), comme celle du locuteur ; lire et retirer restent
+ouverts à tout type, pour nettoyer ce qu'une base d'avant porte.
+
+**Une situation CACHÉE retirée par un changement de type revient avec Ctrl+Z** (relecture
+de la suite d'ANN-8, S1 ; la doctrine des tags cachés, ci-dessous). Une case peut porter une
+valeur locale à une collection que l'agent ne lit pas : passer la case en bulle la retire
+avec le reste — la règle du type ne regarde pas la portée —, et le Ctrl+Z la perdait, la
+valeur échouant à la question « l'agent la voit-il ? ». Le travail d'une autre collection
+disparaissait par un geste qui ne le voyait pas. Pour l'annulation d'un changement de type,
+une valeur que CE même acte a retirée est donc rendable dès qu'elle existe encore et n'est
+pas née après l'acte, que l'agent la voie ou non. Une suppression rétablie garde la question
+de la portée. Et ce qu'on ne voit pas ne se dit pas (S2) : la réponse du changement de type
+ne compte que les valeurs visibles (`situation_retiree`), la pile ne dit « retrait de sa
+situation » que si l'agent en voit une, et un 409 causé par une valeur cachée ne rend ni son
+identifiant ni son auteur — « modifiée ailleurs ».
 
 **Le locuteur est un champ GARDÉ de l'annulation** (relecture croisée de ANN-8, 2026-10-21 ;
 `undo._garder_locuteur`). Deux annulations d'un changement de type écrasaient le geste d'un
@@ -129,7 +142,8 @@ n'est pas saisir. Le journal garde l'annotation ENTIÈRE, cachés compris, préc
 Ctrl+Z ne fasse pas disparaître le travail d'une collection qu'on ne lit pas — la même raison
 qui fait remettre ce qu'on cache à l'enregistrement (`_tags_caches`). Poser la garde de saisie
 ici ferait de l'annulation l'outil qui efface ce que l'enregistrement protège ; un test le
-verrouille dans les deux sens.
+verrouille dans les deux sens. La même doctrine vaut pour la situation cachée qu'un
+changement de type a retirée (cf. le miroir du locuteur, plus haut) : Ctrl+Z la rend.
 
 **Une annulation qui écraserait le geste d'un autre est refusée** (CONC-3, second temps,
 2026-09-17). Annuler une modification de région réécrivait TOUTES ses colonnes depuis
@@ -157,16 +171,22 @@ portée de Ctrl+Z. C'est vrai de tout refus de ce paragraphe, pas seulement du l
 retaper à la main le texte qu'un autre a remplacé, remettre une position, recrée le même
 cercle.
 
-Ce qui en sort, aujourd'hui :
+Ce qui en sort :
 
-- **faire à la main ce que Ctrl+Z aurait fait** — remettre le type, la note, la position —,
-  sachant que c'est un geste neuf, écrit au journal sous son nom, et qu'il ne débloque pas la
-  pile : deux Ctrl+Z plus loin, le même refus ;
+- **« Passer ce geste »** (décision de Hugo du 2026-10-22) : le message du refus, dans
+  l'Atelier, porte ce bouton. Le serveur (`POST /api/undo/passer`, avec l'acte que le 409 a
+  désigné sous `passable`) pose la trace `abandon` d'AUTH-14 — l'acte sort de la pile, le
+  Ctrl+Z suivant remonte au geste d'avant, et le travail de l'autre RESTE. Deux gardes, sous
+  le verrou : l'acte est bien le prochain que CET agent annulerait (ni celui d'un autre, ni
+  un acte enfoui sous un plus récent) ; et le conflit tient au moment du clic — l'annulation
+  est rejouée puis défaite, et si elle passe désormais, rien n'est passé : « refaites
+  Ctrl+Z ». Passer est définitif, comme tout acte passé ;
 - **que l'autre défasse son propre geste** : son Ctrl+Z à lui (ou le retrait qu'il fait) n'est
   pas un acte d'Alice, et le Ctrl+Z suivant d'Alice passe — la valeur n'est plus là ;
+- **faire à la main ce que Ctrl+Z aurait fait** — remettre le type, la note, la position —,
+  sachant que c'est un geste neuf, écrit au journal sous son nom, et qu'il ne débloque pas la
+  pile : deux Ctrl+Z plus loin, le même refus — sauf à passer ensuite l'acte refusé ;
 - sinon, laisser l'acte : un 409 ne change rien à la base.
-
-Rien, à l'écran, ne permet de PASSER volontairement un acte refusé.
 
 **Recréation à l'identique** : l'instantané profond porte les `id` d'origine → citations,
 deep-links et références restent valides. Si un `id` a été **réattribué** depuis (une nouvelle

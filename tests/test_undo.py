@@ -412,6 +412,72 @@ def test_apres_un_409_le_ctrl_z_de_l_autre_debloque_la_pile(client, planche, db_
     assert _type_et_locuteur(db_path, rid) == ("case", None)
 
 
+# --------------------------------------------------------------------------- #
+# « Passer ce geste » (Hugo, 2026-10-22) — après un 409 de conflit, à la demande.
+# --------------------------------------------------------------------------- #
+def _h2_refuse(client, planche, avant_alice=True):
+    """Alice crée une case (un geste d'avant), la passe en bulle ; Bob donne un locuteur à
+    la bulle ; le Ctrl+Z d'Alice est refusé. Rend (rid, y, réponse du refus)."""
+    rid = _creer_region(client, planche["id"], headers=ALICE, type="case")["id"]
+    y = client.post("/api/personnages", json={"nom": "Haddock"}, headers=ADMIN).json()["id"]
+    client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=ALICE)
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": y}, headers=BOB)
+    refus = client.post("/api/undo", headers=ALICE)
+    assert refus.status_code == 409, refus.text
+    return rid, y, refus
+
+
+def _abandons(db_path):
+    return direct_query(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'abandon' "
+                                 "AND cible_table = 'annulation'")[0]["n"]
+
+
+def test_passer_un_geste_refuse_le_sort_de_la_pile(client, planche, db_path, derriere_proxy):
+    """Le 409 dit quel acte reste en tête ; « Passer » pose la trace `abandon`, le travail de
+    Bob reste, et le Ctrl+Z suivant d'Alice remonte à son geste d'avant (la création)."""
+    rid, y, refus = _h2_refuse(client, planche)
+    ev = refus.json()["detail"]["passable"]["evenement_id"]
+    assert ev == client.get("/api/undo/prochain", headers=ALICE).json()["evenement_id"]
+
+    rep = client.post("/api/undo/passer", json={"evenement_id": ev}, headers=ALICE)
+    assert rep.status_code == 200, rep.text
+    assert rep.json() == {"evenement_id": ev, "description": "modification d'une région"}
+    assert _abandons(db_path) == 1
+    assert _type_et_locuteur(db_path, rid) == ("bulle", y)          # le travail de Bob reste
+    assert client.get("/api/undo/prochain", headers=ALICE).json()["description"] == \
+        "création d'une région"
+
+
+def test_passer_ne_passe_rien_si_le_conflit_ne_tient_plus(client, planche, db_path,
+                                                          derriere_proxy):
+    """Bob a défait son geste entre le refus et le clic : le geste d'Alice s'annule de
+    nouveau. Rien n'est passé ni défait — « refaites Ctrl+Z »."""
+    rid, y, refus = _h2_refuse(client, planche)
+    ev = refus.json()["detail"]["passable"]["evenement_id"]
+    assert client.post("/api/undo", headers=BOB).status_code == 200
+    n = _ev_count(db_path)
+    rep = client.post("/api/undo/passer", json={"evenement_id": ev}, headers=ALICE)
+    assert rep.status_code == 409, rep.text
+    assert "refaites Ctrl+Z" in rep.json()["detail"]
+    assert _ev_count(db_path) == n
+    assert _type_et_locuteur(db_path, rid) == ("bulle", None)
+    assert client.post("/api/undo", headers=ALICE).status_code == 200
+
+
+def test_on_ne_passe_que_son_prochain_geste(client, planche, db_path, derriere_proxy):
+    """Ni le geste d'un autre, ni un geste enfoui sous un plus récent : 409, rien d'écrit."""
+    rid, y, refus = _h2_refuse(client, planche)
+    ev = refus.json()["detail"]["passable"]["evenement_id"]
+    n = _ev_count(db_path)
+    assert client.post("/api/undo/passer", json={"evenement_id": ev},
+                       headers=BOB).status_code == 409
+    creation = direct_query(db_path, "SELECT id FROM evenement WHERE type = 'creation' "
+                                     "AND cible_table = 'regions' AND cible_id = ?", (rid,))[0]["id"]
+    assert client.post("/api/undo/passer", json={"evenement_id": creation},
+                       headers=ALICE).status_code == 409
+    assert _ev_count(db_path) == n
+
+
 def test_h2_seul_les_deux_ctrl_z_rendent_la_case_muette(client, planche, db_path):
     """Seul à son poste, le même enchaînement se défait sans conflit : le Ctrl+Z du
     locuteur passe d'abord, et la case revient sans rien."""
@@ -600,13 +666,15 @@ def test_un_acte_d_avant_la_photographie_garde_la_regle_d_alors(client, planche,
     assert _type_et_locuteur(db_path, rid) == ("bulle", z)
 
 
-def test_undo_presence(client, region, db_path):
+def test_undo_presence(client, planche, db_path):
+    boite = _creer_region(client, planche["id"], type="personnage")
     p = client.post("/api/personnages", json={"nom": "Haddock"}).json()
-    client.put(f"/api/regions/{region['id']}/personnage", json={"personnage_id": p["id"]})
+    assert client.put(f"/api/regions/{boite['id']}/personnage",
+                      json={"personnage_id": p["id"]}).status_code == 200
     res = client.post("/api/undo").json()
     assert res["acte"] == "lien" and res["cible_table"] == "personnage_presence"
     assert _un(db_path, "SELECT 1 FROM personnage_presence WHERE region_id = ?",
-               (region["id"],)) is None
+               (boite["id"],)) is None
 
 
 # --------------------------------------------------------------------------- #

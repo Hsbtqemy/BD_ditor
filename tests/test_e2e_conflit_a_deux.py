@@ -558,6 +558,39 @@ def test_ctrl_z_refuse_dit_qui_a_change_la_note(page, decor):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_un_ctrl_z_refuse_se_passe_d_un_clic(page, decor):
+    """ANN-8 (Hugo, 2026-10-22) — le refus porte « Passer ce geste ». Le clic PART vers le
+    serveur, le message le dit, la note de Bob reste, et la pile d'Alice ne retombe plus sur
+    ce geste."""
+    s = decor
+    ctx_a, a = _contexte(page, ALICE)
+    try:
+        _ouvrir(a, s["url_bulle"], "annotation")
+        a.fill("#note-input", "à défaire")
+        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "à défaire") == "à défaire"
+        with _client(s["base"]) as c:
+            c.get("/api/moi", headers=BOB)
+            r = c.put(f"/api/regions/{s['bulle']}/annotation", headers=BOB,
+                      json={"note": "changée par Bob", "note_vue": "à défaire"})
+            assert r.status_code == 200, r.text
+        a.evaluate("document.activeElement.blur()")
+        a.keyboard.press("Control+z")
+        bouton = a.locator("#toasts .toast button", has_text="Passer ce geste")
+        expect(bouton).to_be_visible(timeout=15000)
+        with a.expect_response(lambda r: r.url.endswith("/api/undo/passer")
+                               and r.request.method == "POST") as reponse:
+            bouton.click()
+        assert reponse.value.status == 200, reponse.value.text()
+        expect(a.locator("#toasts .toast", has_text="Geste passé")).to_be_visible(timeout=15000)
+        expect(bouton).to_have_count(0)
+        assert _note_en_base(s["base"], s["bulle"]) == "changée par Bob"
+        with _client(s["base"]) as c:
+            assert c.get("/api/undo/prochain", headers=ALICE).json() is None
+    finally:
+        ctx_a.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_le_meme_compte_ne_se_nomme_pas(page, decor):
     """Compte collectif, ou deux onglets d'une même personne : « un autre écran »."""
     s = decor

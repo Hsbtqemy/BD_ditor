@@ -1093,7 +1093,16 @@ def update_region(region_id: int, patch: RegionUpdate,
             res[champ] = _row(conn.execute(
                 "SELECT id, nom, serie FROM personnages WHERE id = ?", (retires[cle],)))
     if "attributs" in retires:
-        res["situation_retiree"] = len(retires["attributs"])
+        # Seulement celles que l'appelant VOIT (la portée des termes) : une valeur locale à
+        # une collection qu'il ne lit pas part avec le type — Ctrl+Z la rend —, mais le
+        # compte ne lui apprend pas qu'elle existait (relecture de la suite d'ANN-8, S2).
+        ou, params = portee.clause_terme("t.collection_id")
+        vues = conn.execute(
+            f"SELECT COUNT(*) FROM attribut_valeur t WHERE t.id IN "
+            f"({', '.join('?' * len(retires['attributs']))}) AND {ou}",
+            (*retires["attributs"], *params)).fetchone()[0]
+        if vues:
+            res["situation_retiree"] = vues
     return res
 
 
