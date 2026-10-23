@@ -514,6 +514,14 @@ def test_le_plancher_du_cadre_ne_depasse_jamais_la_fenetre_visible(
 # mise en page qui le garantit. ShareDocs est SIMULÉ (`page.route`) : aucun réseau réel. Les
 # deux comptes sont ouverts, pour que la barre d'outils porte son choix de compte : c'est sa
 # forme la plus large.
+#
+# Ces mesures datent d'AVANT la borne du zoom selon la largeur (`static/lib/zoom.js`) : dans
+# l'Atelier, 1280 px n'admet plus que 151 % et 375 px que 117 %. Chacune se rejoue donc là où
+# son zoom reste PERMIS — 200 % à 900 px, 140 % à 448 px (la plus petite largeur qui
+# l'admet) — et 1280 × 640 se garde sous son zoom MAXIMAL (`"max"`, 151 %). Rejoué sur le
+# code d'avant le correctif : « Importer » sortait de la boîte à 900 et à 448 px (869 et 708
+# px pour une boîte qui finit à 595) ; à 1280 × 640 sous 151 %, il y tenait encore, et le
+# cas ne tombait que sur son libellé — il garde la plus grande fenêtre qu'on zoome.
 SD_ETAT = {"connecte": True, "actif": {"compte": "perso", "user": "hugo@webdav"},
            "perso": {"user": "hugo@webdav"}, "instance": {"user": "instance@webdav"}}
 
@@ -559,7 +567,7 @@ SD_MESURE = """() => {
 
 
 @pytest.mark.parametrize("zoom,largeur,hauteur", [
-    ("2", 1280, 640), ("1.4", 375, 640), ("1", 768, 400), ("1", 320, 640)])
+    ("2", 900, 640), ("1.4", 448, 640), ("max", 1280, 640), ("1", 768, 400), ("1", 320, 640)])
 @pytest.mark.parametrize("nb_fichiers", [3, 200], ids=["court", "long"])
 def test_l_explorateur_sharedocs_garde_importer_dans_la_boite(
         live_server, page, album, zoom, largeur, hauteur, nb_fichiers):
@@ -590,11 +598,18 @@ def test_l_explorateur_sharedocs_garde_son_aspect_a_100_dans_une_grande_fenetre(
 
 
 def test_une_fenetre_plus_basse_que_la_boite_la_fait_defiler_entiere(live_server, page, album):
-    """Le dernier filet. À 320 × 640 sous un zoom de 2, l'en-tête, la barre d'outils et le
-    pied prennent à eux seuls plus que les 86 % de la fenêtre que la boîte peut occuper :
-    aucune mise en page ne les y fait tenir ensemble. La boîte défile alors ENTIÈRE, à la
-    molette, au lieu de couper ce qui dépasse — « Importer » s'y atteint encore."""
-    _sd_ouvrir(page, live_server, album, "2", 320, 640, 3)
+    """Le dernier filet. Dans une fenêtre BASSE et large, 900 × 360 sous un zoom de 2 (que la
+    borne de largeur admet), l'en-tête, la barre d'outils et le pied prennent à eux seuls plus
+    que les 86 % de la fenêtre que la boîte peut occuper : aucune mise en page ne les y fait
+    tenir ensemble. La boîte défile alors ENTIÈRE, à la molette, au lieu de couper ce qui
+    dépasse — « Importer » s'y atteint encore. Le cas se mesurait d'abord à 320 × 640 sous 2,
+    que la borne ramène désormais à 100 %."""
+    _sd_ouvrir(page, live_server, album, "2", 900, 360, 3)
+    # Le cas existe encore : sans débordement de la boîte, ce test ne mesurerait rien.
+    deborde = page.evaluate(
+        "(() => { const b = document.querySelector('.sd-dialog');"
+        " return b.scrollHeight > b.clientHeight + 1; })()")
+    assert deborde, "900 × 360 sous 2 : la boîte tient dans la fenêtre, le cas n'est plus mesuré"
     t = page.evaluate(BOITE, ".sd-head")
     page.mouse.move((t["x"] + t["r"]) / 2, (t["y"] + t["b"]) / 2)
     for _ in range(10):
