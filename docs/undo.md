@@ -167,7 +167,9 @@ d'avant l'acte comme une modification faite « depuis », et — sous la numéro
 v30, où un identifiant se reprenait — l'auteur d'un ANCIEN objet, dans une collection que
 l'agent ne lit pas : l'instantané d'une suppression porte le locuteur de la région
 supprimée. Rien trouvé après l'acte : « modifié ailleurs ». La même borne vaut pour la garde
-d'un changement de type, d'une création et d'une modification de région, et pour la note.
+d'un changement de type, d'une création (son annotation et l'enfant qui y est rattaché
+compris — un enfant né avant l'acte et rattaché depuis se dit donc « modifié ailleurs ») et
+d'une modification de région, et pour la note.
 
 **Une fusion de personnages faite depuis l'acte fait refuser l'annulation d'un lien
 qu'elle a réaffecté — c'est assumé** (2026-10-23). La fusion réaffecte les locuteurs du

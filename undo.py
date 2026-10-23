@@ -255,9 +255,12 @@ def _garder_creation(conn, region_id, apres, depuis=None):
     enfant = conn.execute("SELECT id FROM regions WHERE parent_id = ? ORDER BY id DESC LIMIT 1",
                           (region_id,)).fetchone()
     if enfant is not None:
+        # La même borne pour l'enfant : une création sous son identifiant d'AVANT l'acte est
+        # celle d'un autre objet, avant la v30 (contre-relecture de la garde des liens). Un
+        # enfant né avant l'acte et rattaché depuis se dit donc « modifié ailleurs ».
         e = conn.execute("SELECT * FROM evenement WHERE cible_table = 'regions' AND "
-                         "type = 'creation' AND cible_id = ? ORDER BY id DESC LIMIT 1",
-                         (enfant["id"],)).fetchone()
+                         "type = 'creation' AND cible_id = ? AND id > ? "
+                         "ORDER BY id DESC LIMIT 1", (enfant["id"], depuis or 0)).fetchone()
         raise conflit.Perime("regions", region_id, "enfants", None,
                              conflit.auteur(conn, e) if e else None)
 

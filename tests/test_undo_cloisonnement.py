@@ -813,6 +813,30 @@ def test_les_autres_refus_d_annulation_ne_nomment_pas_l_auteur_d_un_ancien_objet
     assert "secretaire" not in rep.text
 
 
+def test_l_enfant_d_une_creation_ne_nomme_pas_l_auteur_d_un_ancien_objet(client, db_path,
+                                                                        decor):
+    """La borne vaut aussi pour l'ENFANT de `_garder_creation` (contre-relecture de la garde
+    des liens). « secretaire » crée deux régions dans l'Incubateur et supprime la première
+    (k1) ; la collègue crée R dans Principale ; une bulle d'identifiant k1 naît sous R sans
+    acte de création (une ligne posée à la main). Le Ctrl+Z de la création de R est refusé —
+    sans nommer « secretaire », dont la création de k1 est d'avant l'acte : « modifié
+    ailleurs »."""
+    _accorder(client, decor["i"], "secretaire", "ecriture")
+    pi = _planche(client, _album(client, "Incub", decor["i"], IMPORTEUSE), IMPORTEUSE)
+    k1 = _region(client, pi, SECRETAIRE)
+    _region(client, pi, SECRETAIRE)
+    _ok(client.delete(f"/api/regions/{k1}", headers=SECRETAIRE), 204)
+    r = _region(client, decor["pe"], COLLEGUE, type="case")
+    _sql(db_path, "INSERT INTO regions (id, planche_id, type, x, y, w, h, parent_id) "
+                  "VALUES (?, ?, 'bulle', 0, 0, 5, 5, ?)", (k1, decor["pe"], r))
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.status_code == 409, rep.text
+    conflit = rep.json()["detail"]["conflit"]
+    assert (conflit["champ"], conflit["auteur"]) == ("enfants", None)
+    assert "secretaire" not in rep.text
+    assert _sql(db_path, "SELECT 1 FROM regions WHERE id = ?", (r,))       # rien d'effacé
+
+
 def test_un_ancien_parent_supprime_depuis_ne_bloque_plus_la_pile(client, db_path, decor):
     """Même chose pour le parent : rendre un parent supprimé depuis (sans reprise)."""
     _geste_ancien(client, decor)
