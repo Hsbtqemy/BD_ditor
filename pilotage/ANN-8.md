@@ -144,7 +144,11 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   *À moitié, 2026-10-21, `d87bbdc`* : `theme.js` pose la région vide au chargement des cinq
   surfaces, et `toast()` la retrouve ; l'Atelier pose de même celle de l'annonce d'un conflit.
   Un test relève l'ordre des naissances. Ce qu'un lecteur d'écran prononce n'est pas mesuré :
-  c'est l'attendu, et il reste
+  c'est l'attendu, et il reste *Mesuré par Hugo le 2026-10-23 avec Narrateur*
+  (`qa/region-des-messages`) : dans l'Atelier, le premier message est lu ; dans la
+  Bibliothèque, il se perdait parce que le focus tombait en haut de la page à la fermeture de la
+  modale (corrigé par `4a999d1`, cf. `A11Y-3`, à rejouer) ; dans le Lexique, il se perd encore
+  (case ouverte dans `A11Y-3`)
 - [x] **Pendant que la liste du registre se recharge, ↓ puis Entrée ne prend pas un nom de la
   liste d'avant** — attendu : tranché. Entre une frappe et le retour de sa liste, ↓ puis
   Entrée prend la proposition surlignée de la liste précédente : elle est à l'écran, le

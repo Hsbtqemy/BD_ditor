@@ -6,7 +6,9 @@ audit: AUDIT.md
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-10-23, `456c4b9` : **le zoom d'interface s'arrête avant que la page casse**
+**Arrêté sur** — 2026-10-23, `8b96f8f` : le cadre liste-et-fiche borné à la fenêtre visible
+(`61d648d`) et l'explorateur ShareDocs qui garde « Importer » dans sa boîte (`8b96f8f`), après
+**le zoom d'interface qui s'arrête avant que la page casse**
 (décision de Hugo du 2026-10-23, à la passe du push : « le zoom ×200 en 320 px, c'est toujours
 n'importe quoi »). Le maximum vaut largeur ÷ 320, plafonné à 200 % (`1610238`) ; dans l'Atelier,
 des planchers MESURÉS, en `em`, gardent sa bande d'outils sur sa ligne (`456c4b9`) — d'où un
@@ -310,21 +312,21 @@ PANNEAU qui distingue, et le test est paramétré sur les deux depuis.
   quel que soit le zoom. Le remède est dans la feuille — des seuils qui lisent la largeur UTILE
   (requêtes de conteneur) — ; il rendrait aussi aux media queries le zoom qu'elles ignorent.
   Accepté en attendant par Hugo le 2026-10-23
-- [ ] **Le plancher d'un cadre liste-et-fiche ne dépasse jamais la fenêtre visible** — attendu :
+- [x] **Le plancher d'un cadre liste-et-fiche ne dépasse jamais la fenêtre visible** — attendu :
   sous un zoom de 200 %, dans une fenêtre de 400 px de haut, le cadre de la Bibliothèque et
   celui de l'Administration tiennent dans la fenêtre. Mesuré le 2026-10-22 : 572 px pour la
   Bibliothèque (`min-height: 22rem`, multiplié par le zoom), 416 pour les projets (`16rem`).
   Corrigé sur une copie le 2026-10-23 (borne `min(…, calc(100 * var(--vh-visible) - 2.5rem))`,
   12 cas de test, mutants tombés), à intégrer après le push en cours, qui est certifié sans
-  lui (branche `suite-cadre-biblio` du scratchpad de pilotage)
-- [ ] **« Importer la sélection → » de l'explorateur ShareDocs s'atteint toujours** — attendu :
+  lui (branche `suite-cadre-biblio` du scratchpad de pilotage) **Fait le 2026-10-23, `61d648d`**, intégré au push en cours
+- [x] **« Importer la sélection → » de l'explorateur ShareDocs s'atteint toujours** — attendu :
   à tout zoom et à toute taille de fenêtre, le bouton reste dans la boîte ou s'atteint en la
   faisant défiler. Mesuré le 2026-10-23 : `.sd-list` a un plancher de `16.9231rem` dans
   `.sd-dialog` (`max-height: 86%`, `overflow: hidden`), et le bouton finit SOUS le bas de la
   boîte, qui le coupe — à 200 % en 1280 × 640 (773 px pour une boîte qui finit à 595), à 140 %
   en 375 × 640, et **même à 100 %** en 768 × 400 (391 pour 372). Une borne en CSS dépendrait de
   la barre d'outils, qui passe sur plusieurs lignes en fenêtre étroite : il faut probablement une
-  boîte qui défile — à trancher
+  boîte qui défile — à trancher **Tranché par Hugo le 2026-10-23 et fait, `8b96f8f`** : le bouton dit « Importer » ; la liste prend la place qui reste et défile seule ; la barre passe à la ligne (« Déconnexion » sortait à 320 px). Reste, venu de la fenêtre plus basse que le chrome : à 320 × 640 sous un fort zoom — désormais impossible, la borne du zoom l'interdit — la boîte entière défile
 
 ### Rouvert le 2026-10-09 — une fenêtre plus BASSE que le chrome écrase la bande 1
 
