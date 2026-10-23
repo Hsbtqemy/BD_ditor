@@ -45,7 +45,7 @@ DOC_GRAMMAIRE = {"cle": "grammaire", "titre": "La grammaire", "role": "exemple",
                  "cran": "grammaire",
                  "planches": [{"fichier": "p3.png", "regions": [
                      {"type": "bulle", "x": 1, "y": 1, "w": 50, "h": 20, "texte": "OTAGE",
-                      "corrections": [{"ordre": 0, "forme": "OTAGE", "lemme": "otage",
+                      "corrections": [{"ordre": 0, "forme": "otage", "lemme": "otage",
                                        "pos": "NOUN"}]}]}]}
 
 

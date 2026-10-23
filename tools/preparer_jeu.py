@@ -31,7 +31,9 @@ n'a pas la part du serveur (la recette) retirerait du jeu tout ce qui en vient.
                relatif au dossier de la source ; une région : `type`, `x`, `y`, `w`, `h`
                (pixels du SCAN), `ordre`, `texte`, `enfants` (des régions dans celle-ci),
                `corrections` (`[{"ordre", "forme", "lemme", "pos", "morph"}]`, la couche
-               grammaticale de son texte)
+               grammaticale de son texte : `forme` est le mot tel que l'analyse le
+               découpe — en minuscules —, `ordre` son rang ; sans moteur de langue, aucun
+               mot n'est découpé et la correction reste inerte)
 
 Le travail du jeu n'est à PERSONNE : aucun événement par région, des corrections sans
 auteur. La naissance de chaque référence s'écrit sous son document (cible `document`,
@@ -236,9 +238,12 @@ def planifier(conn, sources: dict) -> dict:
 # --------------------------------------------------------------------------- #
 # Appliquer
 # --------------------------------------------------------------------------- #
-def _poser_les_regions(conn, planche_id: int, regions, parent=None) -> list[int]:
+def _poser_les_regions(conn, planche_id: int, regions, parent=None) -> list[tuple]:
     """Les régions décrites, et leurs enfants, sous `parent` ; rend celles qui portent un
-    texte, à indexer. Aucun événement : le travail du jeu n'est à personne."""
+    texte, à indexer, chacune avec ses corrections — posées APRÈS l'index, qui les ré-ancre
+    sur les mots qu'il vient de découper (`database._reancrer_corrections` : posées avant,
+    elles ne s'aligneraient sur aucun mot, et partiraient orphelines). Aucun événement : le
+    travail du jeu n'est à personne."""
     a_indexer = []
     for i, r in enumerate(regions or ()):
         rid = conn.execute(
@@ -246,13 +251,8 @@ def _poser_les_regions(conn, planche_id: int, regions, parent=None) -> list[int]
             "source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'jeu')",
             (planche_id, parent, r["type"], r["x"], r["y"], r["w"], r["h"],
              r.get("ordre", i + 1), r.get("texte"))).lastrowid
-        for c in r.get("corrections") or ():
-            conn.execute(
-                "INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, morph, "
-                "etat, auteur) VALUES (?, ?, ?, ?, ?, ?, 'corrige', NULL)",
-                (rid, c["ordre"], c["forme"], c.get("lemme"), c.get("pos"), c.get("morph")))
         if r.get("texte"):
-            a_indexer.append(rid)
+            a_indexer.append((rid, r.get("corrections") or ()))
         a_indexer += _poser_les_regions(conn, planche_id, r.get("enfants"), rid)
     return a_indexer
 
@@ -281,8 +281,14 @@ def _creer_une_reference(conn, d: dict) -> tuple[int, int]:
         a_indexer = _poser_les_regions(conn, planche["id"], pl.get("regions"))
         if pl.get("regions"):
             database.avancer_statut(conn, planche["id"], "segmentee")
-        for rid in a_indexer:
+        for rid, corrections in a_indexer:
             database.reindex_region(conn, rid)
+            for c in corrections:
+                conn.execute(
+                    "INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, "
+                    "morph, etat, auteur) VALUES (?, ?, ?, ?, ?, ?, 'corrige', NULL)",
+                    (rid, c["ordre"], c["forme"], c.get("lemme"), c.get("pos"),
+                     c.get("morph")))
         conn.commit()
     return document_id, album_id
 

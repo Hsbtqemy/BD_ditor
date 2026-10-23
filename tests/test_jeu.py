@@ -336,3 +336,18 @@ def test_les_noms_des_natures_sont_reserves(client, nom):
 def test_un_nom_ordinaire_reste_unique(client):
     assert client.post("/api/projets", json={"nom": "Étude"}).status_code == 201
     assert client.post("/api/projets", json={"nom": "étude"}).status_code == 409
+
+
+def test_les_corrections_du_jeu_s_ancrent_sur_les_mots(client, db_path, tmp_path):
+    """Posées avant l'index, elles ne s'aligneraient sur aucun mot et partiraient
+    orphelines (`obsolete`) : l'accord et la règle de suppression les liraient de travers."""
+    doc = {"cle": "g", "titre": "G", "role": "exemple", "cran": "grammaire",
+           "planches": [{"fichier": "p1.png", "regions": [
+               {"type": "bulle", "x": 1, "y": 1, "w": 50, "h": 20, "texte": "OTAGE",
+                "corrections": [{"ordre": 0, "forme": "otage", "lemme": "otage",
+                                 "pos": "NOUN"}]}]}]}
+    preparer(depot=ecrire_jeu(tmp_path / "g", [doc]))
+    if not _sql(db_path, "SELECT 1 FROM tokens"):
+        pytest.skip("sans moteur de langue, aucun mot n'est découpé")
+    assert _sql(db_path, "SELECT ordre, obsolete FROM token_correction") == [
+        {"ordre": 0, "obsolete": 0}]
