@@ -28,12 +28,15 @@ toute la hauteur : `#body` y reçoit 30 px sous 1,8, 0 sous 2. C'est la « fenê
 que le chrome » du `Reste` d'UX-7, qui attend une décision de forme ; ces tests ne la
 tranchent pas. Le menu, lui, se mesure à 640 : c'est là que le défaut a été vu.
 
-**Depuis le 2026-10-23, le zoom se borne SELON LA LARGEUR** (décision de Hugo) : jamais plus
-que largeur ÷ 320, ni 200 % (`static/lib/zoom.js`). Sous 1,4 ou 2 à 320 px, ce que ces tests
-mesuraient d'abord, la largeur utile tombait à 228 ou 160 px, et aucune page n'y tenait. Chaque
-mesure se rejoue donc à la plus petite largeur qui admet son zoom — 448 px sous 1,4, 576 sous
-1,8, 640 sous 2 —, là où la largeur utile vaut de nouveau 320 px CSS : le cas le plus étroit
-qui reste possible. La borne elle-même a ses tests, en fin de fichier.
+**Depuis le 2026-10-23, le zoom se borne SELON LA FENÊTRE** (décision de Hugo) : il s'arrête
+avant que la page casse, et jamais au-delà de 200 % (`static/lib/zoom.js`). Sous 1,4 ou 2 à
+320 px, ce que ces tests mesuraient d'abord, la largeur utile tombait à 228 ou 160 px, et
+aucune page n'y tenait. La largeur utile ne descend plus sous 320 px CSS — et, dans l'Atelier,
+sous les planchers MESURÉS de ses seuils : sa bande 2 débordait à 640 px sous 2. Chaque mesure
+se rejoue donc à la plus petite largeur qui admet son zoom — 448 px sous 1,4, 576 sous 1,8,
+640 sous 2 —, et l'Atelier, là où son plancher le borne, sous le zoom MAXIMAL de la largeur
+(`"max"`) : le cas le plus étroit qui reste possible. La borne elle-même a ses tests, en fin
+de fichier, dont celui de la frontière : à chaque zoom maximal, aucune bande ne déborde.
 
 Le défilement de la page est évité exprès dans les mesures : `click()` de Playwright fait
 défiler l'élément visé dans la vue, racine comprise malgré `overflow: hidden`, ce qu'aucun
@@ -74,18 +77,25 @@ def album(live_server):
     return aid
 
 
-# La plus petite largeur qui admet chaque zoom : largeur ÷ 320 = zoom.
+# La plus petite largeur qui admet chaque zoom sous la règle de base : largeur ÷ 320 = zoom.
 LARGEUR_DU_ZOOM = {"1": 320, "1.4": 448, "1.8": 576, "2": 640}
 
 
 def _ouvrir(page, url, zoom, largeur, hauteur):
+    """Ouvre `url` sous le zoom demandé, et rend le zoom POSÉ. `"max"` pose une préférence de
+    200 % : s'applique alors le plafond de la largeur, quel qu'il soit."""
     page.set_viewport_size({"width": largeur, "height": hauteur})
-    page.add_init_script(f"try {{ localStorage.setItem('bd-zoom', '{zoom}') }} catch (e) {{}}")
+    stocke = "2" if zoom == "max" else zoom
+    page.add_init_script(f"try {{ localStorage.setItem('bd-zoom', '{stocke}') }} catch (e) {{}}")
     page.goto(url, wait_until="networkidle")
     # Le zoom a bien été POSÉ : sans lui, chaque test passerait à 100 % sans rien mesurer —
     # et c'est aussi ce qui arriverait à une largeur où la borne le réduit.
     pose = page.evaluate("document.documentElement.style.zoom")
-    assert pose == ("" if zoom == "1" else zoom), f"zoom attendu {zoom}, posé « {pose} »"
+    if zoom == "max":
+        assert pose and 1 < float(pose) <= 2, f"zoom maximal attendu au-dessus de 1, posé « {pose} »"
+    else:
+        assert pose == ("" if zoom == "1" else zoom), f"zoom attendu {zoom}, posé « {pose} »"
+    return float(pose or 1)
 
 
 def _ouvrir_tiroir(page, bascule):
@@ -96,23 +106,13 @@ def _ouvrir_tiroir(page, bascule):
     page.wait_for_timeout(300)                     # la transition du tiroir
 
 
-# À 640 px sous 2, la bande 2 de l'Atelier DÉBORDE, et ce n'est pas le tiroir : les seuils de
-# la feuille sont en `em` de FENÊTRE, que le zoom ne change pas — la page y prend sa
-# disposition de 640 px dans 320 px CSS. Mesuré le 2026-10-23 sous Chromium : `.header-
-# actions` finit à 708 px pour une fenêtre de 640, `#btn-tiroir-panneau` à 662 (à cheval
-# sur le bord) ; ouvrir le tiroir de structure y pose le focus, et `body` défile alors de
-# 34 px CSS — toute l'application glisse de 68 px vers la gauche, le tiroir sort de 17 px.
-# 11,7 px CSS à 600 px sous 1,8 ; rien à 448 px sous 1,4. Antérieur à la borne : 2 s'y
-# appliquait déjà, à toute largeur. Le cas reste mesuré, déclaré en échec STRICT — il
-# repassera au rouge le jour où la bande tiendra, pour qu'on retire la déclaration — et
-# 768 px sous 2 garde la propriété du tiroir mesurée au vert. Le tiroir des planches, à
-# gauche, n'est pas touché : le focus qu'on y pose ne fait pas défiler vers la droite.
-BANDE_2_DEBORDE = pytest.mark.xfail(strict=True, reason=(
-    "UX-7 : à 640 px sous 2, la bande 2 de l'Atelier déborde de la fenêtre (seuils en em de "
-    "fenêtre, que le zoom ne change pas) ; le focus posé dans le tiroir fait défiler `body`"))
-CAS_TIROIR = [pytest.param(*t, largeur, zoom, id=f"{t[1]}-{largeur}-{zoom}",
-                           marks=BANDE_2_DEBORDE if (t[1], largeur) == ("#panel", 640) else ())
-              for t in TIROIRS for largeur, zoom in [(448, "1.4"), (640, "2"), (768, "2")]]
+# 640 px : 200 % y faisait déborder la bande 2 de l'Atelier — `.header-actions` à 708 px pour
+# une fenêtre de 640, la bascule du tiroir de structure à cheval sur le bord, et le focus posé
+# dans le tiroir faisait défiler `body` de 34 px CSS, l'application entière glissant de 68 px
+# vers la gauche. Le plancher de l'Atelier (22,5em au-dessus de 34.9375em) y arrête le zoom à
+# 640 ÷ 360 ≈ 1,78 : c'est ce zoom maximal qui se mesure, et le tiroir y tient.
+CAS_TIROIR = [pytest.param(*t, largeur, zoom, id=f"{t[1]}-{largeur}-{zoom}")
+              for t in TIROIRS for largeur, zoom in [(448, "1.4"), (640, "max"), (768, "2")]]
 
 
 @pytest.mark.parametrize("bascule,tiroir,classe,largeur,zoom", CAS_TIROIR)
@@ -144,19 +144,19 @@ def test_un_tiroir_ouvert_tient_dans_la_fenetre_et_le_voile_le_referme(
 # Ce test comparait la largeur VISIBLE d'un tiroir sous 1, 1,4 et 2 dans la même fenêtre
 # de 320 px, là où son plafond le borne. La borne du zoom a retiré ces cas : à 320 px seul
 # 100 % reste possible. Ce qu'il tenait — un plafond en pourcentage de `#body`, pas en `vw`,
-# que le zoom multiplierait — se rejoue là où chaque zoom est À SON MAXIMUM : à largeur ÷
-# zoom = 320, la page est la copie agrandie de 320 px à 100 %, et un tiroir doit y occuper
-# la même PART de la fenêtre. Un plafond en `vw` s'y calcule contre la fenêtre non zoomée,
-# puis le zoom le multiplie : sa part grandirait avec le zoom. Le tiroir de structure
-# (`--panel-w`, 300 px) est borné par son plafond aux trois zooms ; celui des planches
-# (`--sidebar-w`, 240 px) ne l'est plus à aucun — sous la borne, 240 px tiennent toujours
-# dans 86 % de 320 —, et il se mesure quand même : sa part ne doit pas bouger non plus.
+# que le zoom multiplierait — se rejoue là où chaque zoom laisse 320 px CSS utiles : la page
+# y est la copie agrandie de 320 px à 100 %, et un tiroir doit y occuper la même PART de la
+# fenêtre. Un plafond en `vw` s'y calcule contre la fenêtre non zoomée, puis le zoom le
+# multiplie : sa part grandirait avec le zoom. Dans l'Atelier, 320 px utiles ne s'obtiennent
+# que jusqu'à 497 px (au-delà, le palier de son plancher) : 1 à 320 px, 1,4 à 448, 1,55 à
+# 496. Le tiroir de structure (`--panel-w`, 300 px) est borné par son plafond aux trois ;
+# celui des planches (`--sidebar-w`, 240 px) ne l'est à aucun — 240 px tiennent toujours dans
+# 86 % de 320 —, et il se mesure quand même : sa part ne doit pas bouger non plus.
 @pytest.mark.parametrize("bascule,tiroir,classe", TIROIRS)
 def test_un_tiroir_occupe_la_meme_part_de_la_fenetre_a_chaque_zoom_maximal(
         live_server, page, album, bascule, tiroir, classe):
     parts = {}
-    for zoom in ("1", "1.4", "2"):
-        largeur = LARGEUR_DU_ZOOM[zoom]
+    for zoom, largeur in (("1", 320), ("1.4", 448), ("1.55", 496)):
         _ouvrir(page, f"{live_server}/?album={album}", zoom, largeur, 900)
         _ouvrir_tiroir(page, bascule)
         parts[zoom] = page.evaluate(BOITE, tiroir)["w"] / largeur
@@ -193,7 +193,9 @@ def _dans_la_fenetre(m):
 @pytest.mark.parametrize("zoom", ["1.8", "2"])
 @pytest.mark.parametrize("surface", SURFACES)
 def test_le_menu_aa_tient_dans_la_fenetre_et_ramene_a_100(live_server, page, album, surface, zoom):
-    _ouvrir(page, live_server + surface, zoom, LARGEUR_DU_ZOOM[zoom], 640)
+    # L'Atelier n'admet pas 1,8 à 576 px ni 2 à 640 (son plancher) : son zoom maximal.
+    _ouvrir(page, live_server + surface, "max" if surface == "/" else zoom,
+            LARGEUR_DU_ZOOM[zoom], 640)
     m = _menu(page)
     assert _dans_la_fenetre(m), (
         f"{surface}, zoom {zoom} : le menu « Aa » sort de la fenêtre {m['fenetre']} : {m['avant']}")
@@ -206,9 +208,9 @@ def test_le_menu_aa_tient_dans_la_fenetre_et_ramene_a_100(live_server, page, alb
 
 def test_le_menu_aa_reste_dans_la_fenetre_quand_on_zoome_menu_ouvert(live_server, page, album):
     """A+ est DANS le menu : chaque clic l'agrandit sous le doigt. Borné à l'ouverture
-    seulement, il ressortait de la fenêtre au deuxième clic. 640 px : la largeur où 2 est
-    le maximum, celle où A+ s'éteint au dernier cran."""
-    _ouvrir(page, f"{live_server}/?album={album}", "1.6", 640, 640)
+    seulement, il ressortait de la fenêtre au deuxième clic. 768 px : la plus étroite où
+    l'Atelier admet 2 (22,5em utiles), celle où A+ s'éteint au dernier cran."""
+    _ouvrir(page, f"{live_server}/?album={album}", "1.6", 768, 640)
     m = _menu(page)
     assert _dans_la_fenetre(m)
     for attendu in ("1.7", "1.8", "1.9", "2"):
@@ -220,6 +222,7 @@ def test_le_menu_aa_reste_dans_la_fenetre_quand_on_zoome_menu_ouvert(live_server
         assert page.evaluate("document.documentElement.style.zoom") == attendu
         p = page.evaluate(BOITE, ".display-panel")
         assert p["b"] <= 640.5 and p["y"] >= -0.5, f"zoom {attendu}, menu ouvert : il sort de la fenêtre : {p}"
+    assert page.get_attribute('[aria-label="Augmenter le zoom"]', "aria-disabled") == "true"
 
 
 # ---------- Les modales, et les cadres d'une page qui défile (seconde passe, 2026-10-22) ----------
@@ -404,3 +407,66 @@ def test_a_plus_se_rallume_quand_la_fenetre_admet_plus(live_server, page):
         f"à 800 px sous 1,5, A+ reste éteint : {e}")
     _cliquer_a_plus(page)
     assert page.evaluate(ETAT)["pose"] == "1.6"
+
+
+# ---------- La frontière de l'Atelier : à chaque zoom maximal, aucune bande ne déborde ----------
+# Les seuils de la feuille (28em, 34.9375em, 63.9375em) et les planchers de
+# `BDZoom.PALIERS_ATELIER`, de part et d'autre, sous les préférences de police 16 et 24 (les
+# seuils suivent la police : 34.9375em vaut 559 px sous 16, 838 sous 24). Préférence de
+# 200 % : s'applique le zoom maximal de chaque largeur. La sonde du reflow
+# (`tools/mesurer_reflow.py`), qui compare chaque rectangle à la fenêtre VISIBLE — sous le zoom
+# d'interface, `clientWidth` ne la dit pas.
+import sys                                  # noqa: E402
+from pathlib import Path                    # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from tools.mesurer_reflow import SONDE      # noqa: E402
+
+SONDE_VISIBLE = SONDE.replace("const large = r.clientWidth;", "const large = innerWidth;")
+assert SONDE_VISIBLE != SONDE, "la sonde a changé : sa largeur de référence n'est plus lue ici"
+
+FRONTIERE = {
+    16: [448, 449, 496, 500, 559, 560, 600, 640, 720, 1023, 1024, 1280, 1696],
+    24: [672, 673, 838, 839, 1000, 1534, 1535],
+}
+
+
+@pytest.mark.parametrize("police", list(FRONTIERE))
+def test_a_chaque_zoom_maximal_aucune_bande_de_l_atelier_ne_deborde(live_server, page, album, police):
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Page.setFontSizes", {"fontSizes": {"standard": police, "fixed": police}})
+    echecs, poses = [], {}
+    for largeur in FRONTIERE[police]:
+        page.set_viewport_size({"width": largeur, "height": 900})
+        page.add_init_script("try { localStorage.setItem('bd-zoom', '2') } catch (e) {}")
+        page.goto(f"{live_server}/?album={album}", wait_until="networkidle")
+        page.wait_for_timeout(300)
+        z = float(page.evaluate("document.documentElement.style.zoom") or 1)
+        poses[largeur] = round(z, 3)
+        perdus = [f"<{c['tag']}>{'#' + c['id'] if c['id'] else '.' + (c['cls'] or '')} +{c['depasse']} px"
+                  for c in page.evaluate(SONDE_VISIBLE)["coupables"]
+                  if not c["cadre"] and c["id"] != "canvas" and "sr-only" not in (c["cls"] or "")]
+        if perdus:
+            echecs.append(f"{largeur} px, zoom {z:.3f} : {perdus}")
+        # Le maximum est atteint : A+ éteint, sauf là où rien ne s'agrandit (zoom 1).
+        if z > 1 and page.get_attribute('[aria-label="Augmenter le zoom"]', "aria-disabled") != "true":
+            echecs.append(f"{largeur} px, zoom {z:.3f} : A+ n'est pas éteint au maximum")
+    assert not echecs, (f"police {police} — une bande déborde au zoom maximal :\n  "
+                        + "\n  ".join(echecs) + f"\nzooms posés : {poses}")
+    # Le seul SAUT, au seuil des libellés (63.9375em) : le zoom maximal y baisse, assumé.
+    seuil = int(63.9375 * police)
+    if seuil in poses and seuil + 1 in poses:
+        assert poses[seuil + 1] < poses[seuil], poses
+    # Aux seuils étroits, il ne baisse pas.
+    for avant, apres in ((448, 449), (559, 560), (672, 673), (838, 839)):
+        if avant in poses and apres in poses:
+            assert poses[apres] >= poses[avant], f"le zoom maximal baisse de {avant} à {apres} : {poses}"
+
+
+def test_les_autres_surfaces_gardent_200_quand_l_atelier_plafonne(live_server, page):
+    """Le plancher de l'Atelier est le sien : à 1 280 px, la Bibliothèque admet 200 %, et ses
+    bandes y tiennent (mesuré de 540 à 1 920 px, sous 16, 20 et 24)."""
+    _ouvrir(page, live_server + "/corpus", "2", 1280, 900)
+    perdus = [c for c in page.evaluate(SONDE_VISIBLE)["coupables"]
+              if not c["cadre"] and "sr-only" not in (c["cls"] or "")]
+    assert not perdus, perdus

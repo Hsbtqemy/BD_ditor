@@ -24,9 +24,28 @@
     if (v === "high" || v === "normal") return v;
     return mqContrast.matches ? "high" : "normal";
   }
-  // La PRÉFÉRENCE stockée, et le zoom APPLIQUÉ, qu'en tire la largeur de la fenêtre.
+  // La PRÉFÉRENCE stockée, et le zoom APPLIQUÉ, qu'en tire la fenêtre.
   function curZoom() { return Z.preference(get(KEY.zoom)); }
-  function zoomApplique() { return Z.applique(curZoom(), window.innerWidth); }
+  function zoomApplique() { return Z.applique(curZoom(), laFenetre()); }
+
+  // Ce que la borne lit de la fenêtre : sa largeur, la taille de l'`em` des `@media` —
+  // la préférence de police du navigateur, valeur initiale de `font-size` (`medium`) —, et
+  // les planchers de la surface. L'Atelier seul en a au-dessus de 320 px (cf. lib/zoom.js).
+  // L'`em` se relit à chaque fois : la préférence peut changer sans rechargement.
+  var PALIERS = location.pathname === "/" ? Z.PALIERS_ATELIER : [];
+  function emDesMedias() {
+    try {
+      var s = document.createElement("span");
+      s.style.fontSize = "medium";
+      root.appendChild(s);
+      var em = parseFloat(getComputedStyle(s).fontSize);
+      root.removeChild(s);
+      return em > 0 ? em : 16;
+    } catch (e) { return 16; }
+  }
+  function laFenetre() {
+    return { largeur: window.innerWidth, em: emDesMedias(), paliers: PALIERS };
+  }
   // Pas de préférence système pour le confort de lecture → « normal » par défaut.
   function curLecture() { return get(KEY.lecture) === "confort" ? "confort" : "normal"; }
 
@@ -34,12 +53,13 @@
   function applyContrast(c) {
     if (c === "high") root.dataset.contrast = "high"; else delete root.dataset.contrast;
   }
-  // Le zoom reçu est déjà BORNÉ par la largeur (`zoomApplique`) : jamais plus que largeur
-  // de la fenêtre ÷ 320, ni 200 % (UX-7, Hugo, 2026-10-23). Le zoom d'interface divise la
-  // largeur utile, et 320 px CSS est la base des règles de reflow : sous elle, aucune page
-  // n'est faite pour tenir — 200 % à 320 px n'en laissait que 160. La préférence stockée
+  // Le zoom reçu est déjà BORNÉ par la fenêtre (`zoomApplique`) : il s'arrête avant que la
+  // page casse, et jamais au-delà de 200 % (UX-7, Hugo, 2026-10-23). Le zoom d'interface
+  // divise la largeur utile : elle ne descend pas sous 320 px CSS, la base des règles de
+  // reflow — 200 % à 320 px n'en laissait que 160 —, ni, dans l'Atelier, sous les planchers
+  // MESURÉS de ses seuils (sa bande 2 débordait à 640 px sous 2). La préférence stockée
   // n'est pas touchée, et revient quand la fenêtre s'élargit (cf. `resize`, plus bas). La
-  // règle et ses raisons vivent dans `static/lib/zoom.js`.
+  // règle, ses mesures et ses raisons vivent dans `static/lib/zoom.js`.
   //
   // `--ui-zoom` accompagne `zoom`, et c'est son SEUL propriétaire : la feuille en tire
   // `--vw-visible` / `--vh-visible`, une unité de fenêtre que le zoom ne multiplie pas
@@ -86,7 +106,7 @@
     var high = root.dataset.contrast === "high";
     var comfort = root.dataset.lecture === "confort";
     var z = zoomApplique();
-    var raison = Z.raisonMaximum(curZoom(), window.innerWidth);
+    var raison = Z.raisonMaximum(curZoom(), laFenetre());
     menus.forEach(function (m) {
       m.cb.checked = high;
       m.lecCb.checked = comfort;
@@ -105,7 +125,7 @@
   function setZoom(z) {
     put(KEY.zoom, String(z)); applyZoom(zoomApplique()); sync(); rebornerTout();
   }
-  function cranZoom(sens) { setZoom(Z.cran(curZoom(), window.innerWidth, sens)); }
+  function cranZoom(sens) { setZoom(Z.cran(curZoom(), laFenetre(), sens)); }
 
   // A+ ÉTEINT au maximum, et qui dit pourquoi : `aria-disabled` et non `disabled`, comme
   // ↑ ↓ et la corbeille éteints de la Bibliothèque — il garde le focus, son infobulle, et
