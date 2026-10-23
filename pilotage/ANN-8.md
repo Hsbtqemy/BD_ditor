@@ -5,7 +5,15 @@ statut: interrompu
 
 # ANN-8 — l'annotation d'aujourd'hui : les défauts que l'usage a relevés
 
-**Arrêté sur** — 2026-10-22, `a77a93f` : **les cases du push qui suit le lot 1 sont faites**, sur
+**Arrêté sur** — 2026-10-23, `65e4a7e` : **Ctrl+Z d'un lien ne retire plus le geste d'un autre.**
+Trouvé par Hugo à la passe du push (zone « Passer ce geste ») : annuler la pose d'un locuteur
+retirait celui qu'une collègue avait mis depuis — défaut ancien, présent en production depuis
+D1. Garde CONC-3 sur l'annulation d'un `lien`/`delien` de locuteur et de personnage montré
+(`a59e610`), puis ce que la relecture croisée et sa contre-relecture y ont trouvé — une fuite
+du nom d'un ancien auteur sous la numérotation d'avant la v30, un auteur faux, des refus à tort
+en travaillant seul (`5c749d5`, `65e4a7e`). Sur `dev` en local, dans le push en cours.
+
+**Jusqu'au 2026-10-23** — `a77a93f` : **les cases du push qui suit le lot 1 sont faites**, sur
 `dev` en local — le miroir du type (situation et personnage montré partent avec lui, un Ctrl+Z
 les rend), la photographie des liens vus, « Passer ce geste », l'accent qui ne distingue pas deux
 personnages, l'infobulle de « Citation » (`0f09de5` … `4e8610b`), `BD_NLP_PREWARM` réglable
@@ -104,6 +112,19 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   tranché autrement. Après un refus, retirer à la main le locuteur de l'autre pour pouvoir
   annuler : le Ctrl+Z suivant défait d'abord ce retrait, et le même 409 revient. Vrai de tout
   conflit de CONC-3 sur une annulation (l'acte reste en tête de pile), direct pour le locuteur **Fait le 2026-10-22, `c605387`, puis `9ef0374`** : écrit dans `docs/undo.md`, puis « Passer ce geste » (Hugo, 2026-10-22) — le refus offre de sortir l'acte de la pile (`POST /api/undo/passer`, trace `abandon`), et Ctrl+Z remonte au geste d'avant
+
+- [x] **Ctrl+Z d'une pose de locuteur ne retire pas celui qu'un autre a mis depuis** — attendu :
+  refusé par un conflit nommé, avec « Passer ce geste ». Trouvé par Hugo à la passe du push le
+  2026-10-23 ; il le veut dans ce push **Fait le 2026-10-23, `a59e610`, `5c749d5`, `65e4a7e`** :
+  même garde pour le personnage montré ; l'auteur nommé n'est cherché que parmi les gestes
+  postérieurs à l'acte (toutes les gardes de `undo.py`) ; un personnage supprimé depuis, ou un
+  geste passé du même agent, ne bloquent plus son propre Ctrl+Z ; une FUSION de personnages
+  faite depuis fait refuser l'annulation d'un lien qu'elle a réaffecté — assumé, écrit dans
+  `docs/undo.md`. Relecture croisée et contre-relecture faites
+- [ ] **La fusion de deux personnages reprend aussi leurs « personnages montrés »** — attendu :
+  les présences du doublon passent au personnage gardé. Relevé le 2026-10-23 par la relecture
+  croisée : la fusion réaffecte `bulle_locuteur` mais pas `personnage_presence`, dont les lignes
+  du doublon partent par CASCADE — une boîte personnage perd son personnage sans rien dire
 
 ### Les champs à propositions — laissé ouvert par le correctif du 2026-10-13
 - [x] **Un nom tapé sans ses accents trouve l'homonyme accentué** — attendu : tranché par Hugo.

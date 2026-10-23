@@ -6,7 +6,14 @@ audit: AUDIT.md
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-10-22, `6e3320b` : **sous le zoom d'interface, tiroirs, menu « Aa »,
+**Arrêté sur** — 2026-10-23, `456c4b9` : **le zoom d'interface s'arrête avant que la page casse**
+(décision de Hugo du 2026-10-23, à la passe du push : « le zoom ×200 en 320 px, c'est toujours
+n'importe quoi »). Le maximum vaut largeur ÷ 320, plafonné à 200 % (`1610238`) ; dans l'Atelier,
+des planchers MESURÉS, en `em`, gardent sa bande d'outils sur sa ligne (`456c4b9`) — d'où un
+saut, inévitable sans requêtes de conteneur : 200 % à 1 023 px, 121 % à 1 024, 151 % à 1 280.
+A+ s'éteint au maximum et dit pourquoi ; la préférence est gardée. Sur `dev` en local.
+
+**Jusqu'au 2026-10-23** — `6e3320b` : **sous le zoom d'interface, tiroirs, menu « Aa »,
 modales et cadres de page tiennent dans la fenêtre visible** (`fc0f952`, `6e3320b`), sur `dev` en
 local, pour le push qui suit le lot 1 ; rien ne bouge à 100 %. Relevé en route, non touché :
 au-delà de 160 % à 320 × 640, l'Atelier n'a presque plus de place pour la planche (la fenêtre
@@ -293,6 +300,16 @@ PANNEAU qui distingue, et le test est paramétré sur les deux depuis.
   y=756 dans une fenêtre de 640, et l'Atelier ne défile pas : on ne peut plus réduire le zoom **Fait le 2026-10-22, `fc0f952`** : hauteur bornée en JS, le panneau défile
 - [ ] **La passe `lot-1` rejoue ses deux cases « À l'étroit et à grande police »** — attendu :
   cochées par Hugo, sur l'état `apres-lot1` de la recette, une fois ce correctif poussé
+- [x] **Le zoom d'interface ne descend jamais sous une page qui tient** — attendu : tranché par
+  Hugo le 2026-10-23, « selon la largeur ». **Fait le 2026-10-23, `1610238`, `456c4b9`** :
+  `static/lib/zoom.js` ; largeur ÷ 320 sur quatre surfaces, des planchers en `em` dans
+  l'Atelier (20em, 22,5em, 53em selon ses seuils), mesurés dans l'image sous DejaVu Sans
+- [ ] **Le zoom maximal ne saute plus à 1 024 px dans l'Atelier** — attendu : 200 % partout où
+  la fenêtre le permet, comme les autres surfaces. Le saut vient des seuils de la bande 2, en
+  `em` de FENÊTRE : au-delà de 63.9375em elle affiche ses libellés et demande 52,3em utiles,
+  quel que soit le zoom. Le remède est dans la feuille — des seuils qui lisent la largeur UTILE
+  (requêtes de conteneur) — ; il rendrait aussi aux media queries le zoom qu'elles ignorent.
+  Accepté en attendant par Hugo le 2026-10-23
 - [ ] **Le plancher d'un cadre liste-et-fiche ne dépasse jamais la fenêtre visible** — attendu :
   sous un zoom de 200 %, dans une fenêtre de 400 px de haut, le cadre de la Bibliothèque et
   celui de l'Administration tiennent dans la fenêtre. Mesuré le 2026-10-22 : 572 px pour la
