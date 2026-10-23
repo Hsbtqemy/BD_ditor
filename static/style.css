@@ -1620,9 +1620,23 @@ h3.collapsible:hover { color: var(--text); }
 #sharedocs[hidden] { display: none; }
 /* `hidden` doit l'emporter sur les `display:flex` des sections internes. */
 #sharedocs [hidden] { display: none; }
+/* **La LISTE rétrécit avec la place qui reste, et c'est elle qui défile** (UX-7, 2026-10-23).
+   La liste avait un plancher brut de 16.9231rem, et la boîte coupait ce qui passait sous son
+   bas : « Importer » finissait à 773 px pour une boîte qui finissait à 595 sous un zoom de 2
+   (1280 × 640), et même à 100 %, à 391 pour 372 dans une fenêtre de 768 × 400. Aucune
+   hauteur écrite ne pouvait le borner — la barre d'outils passe sur plusieurs lignes en
+   fenêtre étroite, autant que la police l'exige. C'est la mise en page qui le garantit :
+   la boîte est une colonne flex plafonnée à 86 % du voile, la barre d'outils et le pied
+   gardent leur hauteur, et la liste (`min-height: 0`) prend ce qui reste. L'aspect d'avant,
+   à 100 % dans une grande fenêtre, vient d'un plancher posé sur la BOÎTE et non sur la
+   liste, borné par ce même plafond (`min(…, 86%)`) : il ne peut donc jamais la faire
+   déborder. Il ne vaut que pour l'explorateur — la connexion et le formulaire d'import
+   gardent la hauteur de leur contenu. Dernier filet, `overflow-y: auto` : une fenêtre plus
+   basse que le seul chrome de la boîte (320 × 640 sous un zoom de 2) la fait défiler
+   entière, au lieu de couper ce qui dépasse. */
 .sd-dialog {
   width: min(58.4615rem, 92%); max-height: 86%;   /* % de `#sharedocs`, fixe et plein écran : cf. `.modal-box` */
-  display: flex; flex-direction: column; overflow: hidden;
+  display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: 10px; box-shadow: 0 12px 48px var(--shadow-strong);
 }
@@ -1632,6 +1646,9 @@ h3.collapsible:hover { color: var(--text); }
 }
 .sd-title { font-weight: 600; }
 #sd-conn-state { margin-left: auto; }
+/* 28.7692rem : la hauteur qu'avait la boîte à 100 %, barres sur une ligne et liste à son
+   plancher d'avant (16.9231rem). Ce n'est qu'un aspect : la borne, c'est le 86 %. */
+.sd-dialog:has(> .sd-browser:not([hidden])) { min-height: min(28.7692rem, 86%); }
 
 .sd-login, .sd-import-form { padding: 1.2308rem; display: flex; flex-direction: column; gap: .9231rem; }
 .sd-login label, .sd-import-form label {
@@ -1646,8 +1663,11 @@ h3.collapsible:hover { color: var(--text); }
 .sd-check { flex-direction: row !important; align-items: center; gap: .6154rem !important; color: var(--text) !important; }
 
 .sd-browser { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+/* La barre passe à la ligne plutôt que de pousser ses boutons hors de la boîte : sans
+   `flex-wrap`, à 320 px, « Déconnexion » finissait à 530 px pour une boîte de 307, et le
+   fil d'Ariane était écrasé à zéro. */
 .sd-toolbar {
-  display: flex; align-items: center; gap: .7692rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .7692rem;
   padding: .7692rem 1.2308rem; border-bottom: 1px solid var(--border);
 }
 .sd-breadcrumb { display: flex; flex-wrap: wrap; gap: .3077rem; align-items: center; font-size: 1rem; min-width: 0; flex: 1 1 auto; }
@@ -1655,7 +1675,7 @@ h3.collapsible:hover { color: var(--text); }
 .sd-breadcrumb .sep { color: var(--text-muted); }
 #sd-disconnect { margin-left: auto; }
 
-.sd-list { flex: 1; overflow-y: auto; padding: .4615rem .6154rem; min-height: 16.9231rem; }
+.sd-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: .4615rem .6154rem; }
 .sd-item {
   display: flex; align-items: center; gap: .7692rem; padding: .4615rem .6154rem;
   border-radius: 5px; cursor: pointer; white-space: nowrap;
@@ -1669,7 +1689,7 @@ h3.collapsible:hover { color: var(--text); }
 .sd-size { color: var(--text-muted); font-size: .8462rem; flex: 0 0 auto; }
 
 .sd-footer {
-  display: flex; align-items: center; gap: .9231rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .9231rem;
   padding: .7692rem 1.2308rem; border-top: 1px solid var(--border);
 }
 #sd-import { margin-left: auto; }
@@ -2912,7 +2932,10 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 #fig-msg.erreur { color: var(--ink-red); }
 
 /* ── Compte ShareDocs (SHARE-1) ───────────────────────────────────────────────────── */
-.sd-compte { display: inline-flex; align-items: center; gap: .35rem; }
+.sd-compte { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; max-width: 100%; }
+/* Le `<select>` prend la largeur de sa plus longue option : sans borne, il sortait de la
+   boîte en fenêtre étroite (UX-7). */
+.sd-compte select { min-width: 0; max-width: 100%; }
 
 /* ── Référent d'une collection (AUTH-4) ───────────────────────────────────────────── */
 .col-referent { border: 1px solid var(--border); border-radius: 4px; padding: .4rem .6rem;

@@ -502,3 +502,104 @@ def test_le_plancher_du_cadre_ne_depasse_jamais_la_fenetre_visible(
     assert m["haut"] <= m["h"] + 0.5, (
         f"{surface}, {largeur} × {hauteur}, zoom {zoom} : {cadre} fait {m['haut']:.0f} px de "
         f"haut pour une fenêtre de {m['h']}")
+
+
+# L'explorateur ShareDocs de l'Atelier : la LISTE rétrécit avec la place qui reste, et c'est
+# elle qui défile ; la barre d'outils et « Importer » restent dans la boîte (UX-7,
+# 2026-10-23). Mesuré avant : la liste avait un plancher brut de 16.9231rem, et la boîte
+# (`max-height: 86%`, `overflow: hidden`) coupait le bouton sous son bas — à 773 px pour une
+# boîte qui finissait à 595 sous un zoom de 2 en 1280 × 640, à 669 pour 595 sous 1,4 en
+# 375 × 640, et même à 100 %, à 391 pour 372 en 768 × 400. La barre d'outils passant sur
+# plusieurs lignes en fenêtre étroite, aucune borne écrite en CSS ne tiendrait : c'est la
+# mise en page qui le garantit. ShareDocs est SIMULÉ (`page.route`) : aucun réseau réel. Les
+# deux comptes sont ouverts, pour que la barre d'outils porte son choix de compte : c'est sa
+# forme la plus large.
+SD_ETAT = {"connecte": True, "actif": {"compte": "perso", "user": "hugo@webdav"},
+           "perso": {"user": "hugo@webdav"}, "instance": {"user": "instance@webdav"}}
+
+
+def _sd_ouvrir(page, live_server, album, zoom, largeur, hauteur, nb_fichiers):
+    import json
+    entrees = [{"name": f"planche-{i:03d}.tif", "path": f"corpus/planche-{i:03d}.tif",
+                "is_dir": False, "size": 1_234_567} for i in range(nb_fichiers)]
+    page.route("**/api/sharedocs/etat", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps(SD_ETAT)))
+    page.route("**/api/sharedocs/liste**", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps(entrees)))
+    _ouvrir(page, f"{live_server}/?album={album}", zoom, largeur, hauteur)
+    # `sdOpen` est ce que fait le bouton du menu « Données » ; l'appeler évite d'aller
+    # chercher ce menu, qui se range ailleurs selon la largeur et n'est pas mesuré ici.
+    page.evaluate("sdOpen()")
+    page.wait_for_selector("#sd-list .sd-item", state="attached")
+    page.wait_for_timeout(200)
+    # Une sélection, pour que « Importer » soit actif : le premier fichier, cliqué par
+    # programme — la liste peut être assez courte pour qu'il soit sous la barre.
+    page.evaluate("document.querySelector('#sd-list .sd-item').click()")
+    assert page.evaluate("!document.querySelector('#sd-import').disabled")
+
+
+SD_MESURE = """() => {
+  const r = (s) => document.querySelector(s).getBoundingClientRect();
+  const touche = (s) => { const e = document.querySelector(s), b = e.getBoundingClientRect();
+    const t = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
+    return !!t && (t === e || e.contains(t)); };
+  const l = document.querySelector('#sd-list');
+  return {boite: r('.sd-dialog').bottom, bouton: r('#sd-import').bottom,
+          haut: r('.sd-dialog').top,
+          liste: l.clientHeight, defile: l.scrollHeight > l.clientHeight + 1,
+          zoom: document.querySelector('#sd-list').currentCSSZoom || 1,
+          atteint: touche('#sd-import'),
+          // Toute la barre : le fil d'Ariane (sans lui, plus de retour au dossier parent),
+          // le choix du compte, et les deux boutons. Sans `flex-wrap`, la barre écrasait le
+          // fil à zéro de large et poussait ses boutons hors de la boîte.
+          barre: Object.fromEntries(['#sd-breadcrumb a', '#sd-compte', '#sd-deposer',
+                                     '#sd-disconnect'].map((s) => [s, touche(s)])),
+          libelle: document.querySelector('#sd-import').textContent.trim(),
+          h: innerHeight}; }"""
+
+
+@pytest.mark.parametrize("zoom,largeur,hauteur", [
+    ("2", 1280, 640), ("1.4", 375, 640), ("1", 768, 400), ("1", 320, 640)])
+@pytest.mark.parametrize("nb_fichiers", [3, 200], ids=["court", "long"])
+def test_l_explorateur_sharedocs_garde_importer_dans_la_boite(
+        live_server, page, album, zoom, largeur, hauteur, nb_fichiers):
+    _sd_ouvrir(page, live_server, album, zoom, largeur, hauteur, nb_fichiers)
+    m = page.evaluate(SD_MESURE)
+    cas = f"zoom {zoom}, {largeur} × {hauteur}, {nb_fichiers} fichiers"
+    assert m["haut"] >= -0.5 and m["boite"] <= m["h"] + 0.5, f"{cas} : la boîte sort de la fenêtre : {m}"
+    assert m["bouton"] <= m["boite"] + 0.5, (
+        f"{cas} : « Importer » finit à {m['bouton']:.0f} px, la boîte à {m['boite']:.0f}")
+    assert m["atteint"], f"{cas} : « Importer » est dans la boîte mais un clic ne l'atteint pas : {m}"
+    assert all(m["barre"].values()), f"{cas} : la barre d'outils ne s'atteint plus : {m['barre']}"
+    # Le libellé court (Hugo, 2026-10-23) : « Importer la sélection → » prenait la place
+    # que la barre du bas n'a pas en fenêtre étroite ; le compteur à côté dit quoi.
+    assert m["libelle"] == "Importer", f"{cas} : le bouton dit « {m['libelle']} »"
+    if nb_fichiers == 200:
+        # Deux cents fichiers ne tiennent nulle part : c'est la liste, et elle seule, qui défile.
+        assert m["defile"], f"{cas} : la liste longue ne défile pas : {m}"
+
+
+def test_l_explorateur_sharedocs_garde_son_aspect_a_100_dans_une_grande_fenetre(
+        live_server, page, album):
+    """À 100 % dans une grande fenêtre, la liste garde le plancher qu'elle avait (16.9231rem,
+    220 px) : la règle ne mord que là où la place manque."""
+    _sd_ouvrir(page, live_server, album, "1", 1280, 900, 3)
+    m = page.evaluate(SD_MESURE)
+    rem = page.evaluate("parseFloat(getComputedStyle(document.documentElement).fontSize)")
+    assert m["liste"] + 0.5 >= 16.9231 * rem, f"la liste a rétréci dans une grande fenêtre : {m}"
+
+
+def test_une_fenetre_plus_basse_que_la_boite_la_fait_defiler_entiere(live_server, page, album):
+    """Le dernier filet. À 320 × 640 sous un zoom de 2, l'en-tête, la barre d'outils et le
+    pied prennent à eux seuls plus que les 86 % de la fenêtre que la boîte peut occuper :
+    aucune mise en page ne les y fait tenir ensemble. La boîte défile alors ENTIÈRE, à la
+    molette, au lieu de couper ce qui dépasse — « Importer » s'y atteint encore."""
+    _sd_ouvrir(page, live_server, album, "2", 320, 640, 3)
+    t = page.evaluate(BOITE, ".sd-head")
+    page.mouse.move((t["x"] + t["r"]) / 2, (t["y"] + t["b"]) / 2)
+    for _ in range(10):
+        page.mouse.wheel(0, 400)
+    page.wait_for_timeout(300)
+    m = page.evaluate(SD_MESURE)
+    assert m["bouton"] <= m["boite"] + 0.5 and m["atteint"], (
+        f"défilée à la molette, la boîte ne laisse pas atteindre « Importer » : {m}")
