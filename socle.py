@@ -42,9 +42,9 @@ from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DE
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
                       clause_appartenance, cle_tag, collection_row, creer_copie,
-                      demandes_vers_collection, etat_des_reponses, get_connection,
-                      rangement_traverse, retirer_document_sans_copie, sql_projet_de,
-                      unindex_region)
+                      demandes_vers_collection, est_jeu, etat_des_reponses, get_connection,
+                      projet_d_album, projet_de_collection, rangement_traverse,
+                      retirer_document_sans_copie, sql_projet_de, unindex_region)
 from pipeline.ingest import (chemin_d_image_sur, dossiers_d_album, elaguer_dossier_d_album,
                              remove_album_files, remove_planche_files)
 
@@ -468,6 +468,29 @@ def _get_projet(conn, portee: autorisation.Portee, projet_id: int, *,
 
 
 # --------------------------------------------------------------------------- #
+# Le JEU des bacs à sable (COL-4) — une référence qui ne se touche que par son outil
+# --------------------------------------------------------------------------- #
+# Le projet de jeu porte les copies de RÉFÉRENCE dont chaque bac à sable prend les siennes.
+# Une portée totale le lit, comme tout ; elle n'y range rien, n'y détruit rien, ne le règle
+# pas : ce qu'on y changerait, chaque bac à sable créé ensuite le recevrait. Un 409 et non
+# un 403 : il ne parle que de l'objet, à qui le lit déjà. `tools/preparer_jeu.py` est le
+# seul chemin d'écriture.
+_MOTIF_JEU = ("C'est le jeu des bacs à sable : chaque bac à sable en prend sa copie, et il "
+              "ne se change que par son outil (`tools/preparer_jeu.py`).")
+
+
+def _refuser_le_jeu(conn, *, projet_id=None, collection_id=None, album_id=None) -> None:
+    """409 nommé si le projet — dit, ou lu sur la collection ou sur l'album — est le projet de
+    jeu. Sans effet sur tout autre projet."""
+    if projet_id is None and collection_id is not None:
+        projet_id = projet_de_collection(conn, collection_id)
+    if projet_id is None and album_id is not None:
+        projet_id = projet_d_album(conn, album_id)
+    if est_jeu(conn, projet_id):
+        raise HTTPException(409, _MOTIF_JEU)
+
+
+# --------------------------------------------------------------------------- #
 # DÉTRUIRE n'est pas écrire (AUTH-10), et « supprimer » a deux réponses (COL-3)
 # --------------------------------------------------------------------------- #
 # Comme pour l'export, ce helper ne tranche rien : `Portee.clause_suppression_directe` dit
@@ -492,10 +515,16 @@ _MOTIF_DESTRUCTION_PLANCHE = ("D'autres se servent de cet album, ou ce n'est pas
 
 
 def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int, *,
-                        planche: bool = False) -> None:
+                        planche: bool = False, reference_du_jeu: bool = False) -> None:
     """403 si l'on ne peut pas supprimer DÉFINITIVEMENT cet album — ou, `planche`, l'une
     de ses planches : on supprime une planche là où l'on pourrait supprimer le document
-    (décision B4 de Hugo, 2026-10-11)."""
+    (décision B4 de Hugo, 2026-10-11).
+
+    COL-4 — une copie de RÉFÉRENCE du jeu ne se détruit pas, quelle que soit la portée : 409
+    nommé (`_refuser_le_jeu`). `reference_du_jeu` lève ce seul refus, et seul l'outil du jeu
+    le passe — quand plus aucun bac à sable ne tient de copie d'un document retiré du jeu."""
+    if not reference_du_jeu:
+        _refuser_le_jeu(conn, album_id=album_id)
     ou, params = portee.clause_suppression_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                     (album_id, *params)).fetchone() is None:
@@ -503,7 +532,8 @@ def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int, *,
                             else _MOTIF_DESTRUCTION)
 
 
-def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
+def _detruire_album(conn, portee: autorisation.Portee, album_id: int, *,
+                    reference_du_jeu: bool = False) -> None:
     """DÉTRUIT un album — sa ligne, son travail, son document s'il n'a plus d'autre copie,
     ses images —, garde comprise. Le seul chemin de la destruction d'un album : la route
     `DELETE /api/albums/{id}` et la réponse « accepter » à une demande (`routes/fonds.py`)
@@ -527,7 +557,7 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
     passer un travail validé entre la garde et le `DELETE` : il partait avec l'album, sans
     que personne l'ait demandé (relecture croisée de la tranche 2, sonde S9)."""
     conflit.verrouiller(conn)
-    _exiger_destruction(conn, portee, album_id)
+    _exiger_destruction(conn, portee, album_id, reference_du_jeu=reference_du_jeu)
     a = _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
     # Désindexe les régions du FTS (le CASCADE SQL ne touche pas la table FTS).
     for r in conn.execute(

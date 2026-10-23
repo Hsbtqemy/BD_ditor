@@ -39,12 +39,14 @@ from config import STATUTS_DIFFUSION
 from database import (DEMANDE_REJOINDRE, NATURES, clore_rejoindre_d_une_copie_au_fonds,
                       collection_row, collections,
                       etat_embargo, nom_reserve, poser_projet_de_copie, projet_de_collection,
-                      projet_par_defaut, ranger_copie, un_proprietaire_tient_toute_la_copie)
+                      projet_de_jeu, projet_par_defaut, ranger_copie,
+                      un_proprietaire_tient_toute_la_copie)
 
 from socle import (
     DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn,
     _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
-    _get_album, _get_collection, _get_projet, _plan_rejoindre, _rows, db, portee_courante,
+    _get_album, _get_collection, _get_projet, _plan_rejoindre, _refuser_le_jeu, _rows, db,
+    portee_courante,
 )
 
 router = APIRouter()
@@ -189,9 +191,14 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
     COL-3 — chaque collection dit son PROJET (`projet_id`, `projet_nom`), lu par la règle
     de `database.sql_projet_de` : jamais vide, une collection sans projet nommé étant du
     projet de repli. Le filtre ne change pas : on liste ce qu'on LIT, quel que soit le
-    projet, et être d'un projet n'y ajoute aucune ligne."""
-    vues = collections(conn) if portee.tout else [
-        c for c in collections(conn) if c["id"] in portee.lecture]
+    projet, et être d'un projet n'y ajoute aucune ligne.
+
+    COL-4 — la collection du JEU n'y paraît pour personne, pas même pour la portée totale,
+    la seule qui la lise : elle ne se règle que par l'outil du jeu."""
+    jeu = projet_de_jeu(conn)
+    vues = [c for c in collections(conn)
+            if (portee.tout or c["id"] in portee.lecture)
+            and (jeu is None or c["projet_id"] != jeu)]
     for c in vues:
         c["mon_niveau"] = _niveau_dans(portee, c["id"])
         c["administrable"] = portee.peut_administrer(c["id"])
@@ -263,6 +270,7 @@ def create_collection(payload: CollectionIn, conn: sqlite3.Connection = Depends(
     projet_id = projet_par_defaut(conn)
     if payload.projet_id is not None and payload.projet_id != projet_id:
         projet_id = _get_projet(conn, portee, payload.projet_id)["id"]
+        _refuser_le_jeu(conn, projet_id=projet_id)        # COL-4 : on n'y range rien
         if not portee.est_du_projet(projet_id):
             raise HTTPException(403, "Créer une collection dans ce projet demande d'en "
                                      "être membre.")
@@ -296,6 +304,7 @@ def update_collection(collection_id: int, payload: CollectionUpdate,
     est un vocabulaire contrôlé — il ne l'était que du côté de l'outil headless.
     """
     c = _get_collection(conn, portee, collection_id, administrer=True)
+    _refuser_le_jeu(conn, collection_id=collection_id)
     fields = payload.model_dump(exclude_unset=True)
     if "nom" in fields:
         fields["nom"] = (fields["nom"] or "").strip()
@@ -581,6 +590,7 @@ def accorder_acces(collection_id: int, payload: AccesIn,
     est tracé avec le niveau, dans le même événement du journal.
     """
     _get_collection(conn, portee, collection_id, administrer=True)
+    _refuser_le_jeu(conn, collection_id=collection_id)    # COL-4 : personne n'y entre
     if payload.genre not in autorisation.GENRES:
         raise HTTPException(422, f"Genre invalide : {payload.genre} (utilisateur | groupe).")
     if payload.niveau not in autorisation.NIVEAUX:
@@ -665,6 +675,7 @@ def retirer_acces(collection_id: int, genre: str, principal: str,
     administrable que par un administrateur, et ce chantier existe pour ne plus en dépendre.
     """
     _get_collection(conn, portee, collection_id, administrer=True)
+    _refuser_le_jeu(conn, collection_id=collection_id)
     ligne = conn.execute(
         "SELECT niveau, exporter FROM collection_acces WHERE collection_id = ? "
         "AND genre = ? AND principal = ?", (collection_id, genre, principal)).fetchone()
@@ -732,6 +743,9 @@ def ranger_album(album_id: int, collection_id: int,
     collection = collection_row(conn, collection_id)
     if collection is None or not portee.peut_ecrire(collection_id):
         raise HTTPException(404, f"Collection {collection_id} introuvable")
+    # COL-4 — on ne range rien dans le jeu, et la référence ne se range nulle part.
+    _refuser_le_jeu(conn, collection_id=collection_id)
+    _refuser_le_jeu(conn, album_id=album_id)
     conflit.verrouiller(conn)
     plan = _plan_rejoindre(conn, portee, album_id, collection_id)
     if plan["etat"] == REFUSE:
@@ -786,6 +800,7 @@ def sortir_album(album_id: int, collection_id: int,
     _get_album(conn, portee, album_id, ecriture=True)
     if not portee.peut_ecrire(collection_id):
         raise HTTPException(404, f"Collection {collection_id} introuvable")
+    _refuser_le_jeu(conn, album_id=album_id)              # COL-4 : la référence reste
     # L'APPARTENANCE d'abord, la contrainte ensuite. Sans ce test, sortir un album d'une
     # collection dont il ne fait pas partie déclenchait le garde-fou du dessous et
     # répondait « c'est la dernière collection de cet album » — une phrase fausse, sur une

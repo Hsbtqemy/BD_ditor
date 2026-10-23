@@ -60,7 +60,8 @@ from socle import (
     DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _clore_demandes,
     _deposer, _detruire_album, _en_attente_vers,
     _get_album, _get_collection, _get_projet, _nouvelle_copie, _plan_rejoindre,
-    _retour_en_attente, _rows, _sans_accents, _supprimer_projet, db, portee_courante,
+    _refuser_le_jeu, _retour_en_attente, _rows, _sans_accents, _supprimer_projet, db,
+    portee_courante,
 )
 
 router = APIRouter()
@@ -1011,6 +1012,7 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
     collection = collection_row(conn, collection_id)
     if collection is None or not portee.peut_ecrire(collection_id):
         raise HTTPException(404, f"Collection {collection_id} introuvable")
+    _refuser_le_jeu(conn, collection_id=collection_id)    # COL-4 : rien n'entre dans le jeu
     lignes = payload.documents
     if not lignes:
         raise HTTPException(422, "Quels documents ? La liste est vide.")

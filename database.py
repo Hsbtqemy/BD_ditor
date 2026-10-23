@@ -2194,6 +2194,117 @@ def collections_sans_projet(conn: sqlite3.Connection) -> list[int]:
 
 
 # --------------------------------------------------------------------------- #
+# Les NATURES de projet (v35, COL-4) — le bac à sable, et le jeu dont il se remplit
+# --------------------------------------------------------------------------- #
+# Deux drapeaux sur `projet`, à côté de `repli` : `bac_a_sable_de` (le login de qui l'a
+# ouvert) et `jeu`. Un projet de l'une ou l'autre nature est ISOLÉ : rien n'en sort, rien
+# n'y entre — c'est la nature du projet qui le tient, jamais la portée de qui frappe (Hugo,
+# 2026-10-22 : une portée totale n'y ouvre rien de plus). La règle de lecture vit ICI, une
+# fois, comme `sql_projet_de` : deux écritures finiraient par ne plus répondre pareil.
+
+# Le nom STOCKÉ de tout bac à sable — ce que la bande affiche est rendu par la route
+# (`routes/projets._vue`) — et celui sous lequel naît le projet de jeu. Hors de l'unicité
+# des noms de projet : soixante-quinze bacs à sable portent le même.
+NOM_BAC_A_SABLE = "Bac à sable"
+NOM_PROJET_DE_JEU = "Jeu des bacs à sable"
+# Les noms qu'un projet ORDINAIRE ne prend pas, en préfixe et sans égard à la casse : un
+# projet « Bac à sable de Léa » créé par un administrateur serait pris pour le sien.
+PREFIXES_RESERVES = ("bac à sable", "mon bac à sable", "jeu des bacs à sable")
+
+# Les rôles d'un document du jeu (S4 du cadrage) : le parcours où l'on suit toutes les étapes
+# au même endroit, d'autres possibilités, un stock pour s'amuser. Le wizard (lot 4) trouvera
+# la planche du parcours par son rôle, jamais par un identifiant.
+ROLE_PAS_A_PAS, ROLE_EXEMPLE, ROLE_STOCK = "pas-a-pas", "exemple", "stock"
+ROLES_JEU = (ROLE_PAS_A_PAS, ROLE_EXEMPLE, ROLE_STOCK)
+# D'où viennent ses images : dans le dépôt (licence libre, domaine public), ou posées à la
+# main sur le serveur (scans sous droits). L'export suit la part, document par document.
+PART_DEPOT, PART_SERVEUR = "depot", "serveur"
+PARTS_JEU = (PART_DEPOT, PART_SERVEUR)
+
+
+def nom_de_projet_reserve(nom: str) -> bool:
+    """Ce nom est-il réservé aux natures de projet (préfixe, sans égard à la casse) ?"""
+    n = " ".join((nom or "").split()).casefold()
+    return any(n.startswith(p) for p in PREFIXES_RESERVES)
+
+
+def sql_est_bac_a_sable(expr: str) -> str:
+    """Fragment SQL VRAI si le projet `expr` (une expression d'identifiant de projet,
+    écrite par le code appelant) est un bac à sable."""
+    return (f"EXISTS (SELECT 1 FROM projet _pbs WHERE _pbs.id = ({expr}) "
+            "AND _pbs.bac_a_sable_de IS NOT NULL)")
+
+
+def sql_est_jeu(expr: str) -> str:
+    """Fragment SQL VRAI si le projet `expr` est le projet de jeu."""
+    return f"EXISTS (SELECT 1 FROM projet _pjx WHERE _pjx.id = ({expr}) AND _pjx.jeu = 1)"
+
+
+def sql_est_isole(expr: str) -> str:
+    """Fragment SQL VRAI si le projet `expr` est ISOLÉ — un bac à sable, ou le projet de jeu.
+    C'est ce que les surfaces qui traversent les projets écartent (S8), et ce que la prise,
+    les notices et les demandes refusent de traverser (S3)."""
+    return (f"EXISTS (SELECT 1 FROM projet _pis WHERE _pis.id = ({expr}) "
+            "AND (_pis.bac_a_sable_de IS NOT NULL OR _pis.jeu = 1))")
+
+
+def sql_album_isole(alias: str = "a") -> str:
+    """Fragment SQL VRAI si la copie `alias` (un alias de la table `albums`) est d'un projet
+    isolé, par la règle de `sql_projet_d_album` — écrit ou lu dans ses collections."""
+    return sql_est_isole(sql_projet_d_album(alias))
+
+
+def nature_du_projet(conn: sqlite3.Connection, projet_id) -> dict | None:
+    """`{"bac_a_sable_de": login ou None, "jeu": bool, "efface_le": …}`, None pour un
+    projet qui n'existe pas (ou un identifiant None)."""
+    if projet_id is None:
+        return None
+    r = conn.execute("SELECT bac_a_sable_de, jeu, efface_le FROM projet WHERE id = ?",
+                     (projet_id,)).fetchone()
+    if r is None:
+        return None
+    return {"bac_a_sable_de": r[0], "jeu": bool(r[1]), "efface_le": r[2]}
+
+
+def est_bac_a_sable(conn: sqlite3.Connection, projet_id) -> bool:
+    n = nature_du_projet(conn, projet_id)
+    return bool(n and n["bac_a_sable_de"] is not None)
+
+
+def est_jeu(conn: sqlite3.Connection, projet_id) -> bool:
+    n = nature_du_projet(conn, projet_id)
+    return bool(n and n["jeu"])
+
+
+def est_isole(conn: sqlite3.Connection, projet_id) -> bool:
+    n = nature_du_projet(conn, projet_id)
+    return bool(n and (n["jeu"] or n["bac_a_sable_de"] is not None))
+
+
+def projet_de_jeu(conn: sqlite3.Connection) -> int | None:
+    """Id du projet de jeu, None tant que `tools/preparer_jeu.py` ne l'a pas créé. Le plus
+    petit si une base retouchée en portait deux."""
+    r = conn.execute("SELECT id FROM projet WHERE jeu = 1 ORDER BY id LIMIT 1").fetchone()
+    return r[0] if r else None
+
+
+def creer_projet_de_jeu(conn: sqlite3.Connection) -> int:
+    """Id du projet de jeu, CRÉÉ s'il n'existe pas, avec sa collection de base — où vivent
+    les copies de référence. Sans membre, base PROTÉGÉE : personne n'en est, seule une
+    portée totale le lit. N'écrit rien au journal ; ne commite pas."""
+    pid = projet_de_jeu(conn)
+    if pid is not None:
+        return pid
+    pid = conn.execute(
+        "INSERT INTO projet (nom, description, jeu) VALUES (?, ?, 1)",
+        (NOM_PROJET_DE_JEU, "Créé par l'outil du jeu : les copies de référence dont chaque "
+                            "bac à sable prend les siennes. Caché ; il ne se règle que par "
+                            "`tools/preparer_jeu.py`.")).lastrowid
+    creer_collection_de_base(conn, pid, nom=NOM_PROJET_DE_JEU, acces_membres=None)
+    return pid
+
+
+# --------------------------------------------------------------------------- #
 # La collection de BASE d'un projet (v31, COL-3, tranche 3, D10 — Hugo, 2026-10-17)
 # --------------------------------------------------------------------------- #
 # « Le fonds commence avec le projet » : tout projet naît avec UNE collection de base, où

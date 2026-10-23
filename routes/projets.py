@@ -37,11 +37,12 @@ from fastapi.responses import Response
 import autorisation
 import journal
 from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, collection_de_base,
-                      creer_collection_de_base, sql_projet_de)
+                      creer_collection_de_base, nom_de_projet_reserve, sql_est_jeu,
+                      sql_projet_de)
 
 from socle import (
-    AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate, _get_projet, _rows, _supprimer_projet,
-    db, portee_courante,
+    AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate, _get_projet, _refuser_le_jeu, _rows,
+    _supprimer_projet, db, portee_courante,
 )
 
 router = APIRouter()
@@ -134,7 +135,14 @@ def _nom_valide(conn, nom, *, sauf: int | None = None) -> str:
             422, f"Le nom d'un projet tient en {LONGUEUR_NOM_PROJET} caractères au plus "
                  f"(« {nom} » en fait {len(nom)}) : il se lit en haut de chaque page, où "
                  "il ne doit pas se couper.")
-    for r in conn.execute("SELECT id, nom FROM projet"):
+    # COL-4 — les noms des natures de projet (bac à sable, jeu) ne se prennent pas, en
+    # préfixe : un projet « Bac à sable de Léa » serait pris pour le sien. Et l'unicité ne
+    # se compare qu'aux projets ORDINAIRES — soixante-quinze bacs à sable portent le même nom.
+    if nom_de_projet_reserve(nom):
+        raise HTTPException(409, f"« {nom} » est réservé aux bacs à sable et à leur jeu : "
+                                 "choisissez un autre nom.")
+    for r in conn.execute("SELECT id, nom FROM projet "
+                          "WHERE bac_a_sable_de IS NULL AND jeu = 0"):
         if r["id"] != sauf and r["nom"].strip().casefold() == nom.casefold():
             raise HTTPException(409, f"Un projet s'appelle déjà « {r['nom']} ».")
     return nom
@@ -191,10 +199,13 @@ def list_projets(conn: sqlite3.Connection = Depends(db),
 
     C'est ce que la barre du haut lira pour dire dans quel projet on travaille. Une
     portée vide rend une liste vide, comme partout ; une portée totale les rend tous.
-    Aucune identité n'en sort : la liste ne nomme ni membres ni responsables."""
+    Aucune identité n'en sort : la liste ne nomme ni membres ni responsables.
+
+    COL-4 — le projet de JEU n'y paraît pour personne, pas même pour la portée totale : il
+    ne se règle que par son outil."""
     ou, params = portee.clause_projet("p.id")
     lignes = _rows(conn.execute(
-        f"SELECT p.* FROM projet p WHERE {ou} "
+        f"SELECT p.* FROM projet p WHERE {ou} AND NOT {sql_est_jeu('p.id')} "
         "ORDER BY p.repli DESC, p.nom COLLATE NOCASE, p.id", params))
     return [_vue(conn, portee, p) for p in lignes]
 
@@ -242,6 +253,7 @@ def update_projet(projet_id: int, payload: ProjetUpdate,
     Le projet de repli se renomme comme un autre : il est désigné par son drapeau."""
     p = _get_projet(conn, portee, projet_id)
     _exiger_de_decider(portee)
+    _refuser_le_jeu(conn, projet_id=projet_id)
     fields = payload.model_dump(exclude_unset=True)
     if "nom" in fields:
         # Un nom INCHANGÉ ne se revalide pas : baisser le plafond un jour ne doit pas rendre
@@ -271,6 +283,7 @@ def delete_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
     traverse aussi (`routes/fonds.py`) : deux chemins, une règle."""
     p = _get_projet(conn, portee, projet_id)
     _exiger_de_decider(portee)
+    _refuser_le_jeu(conn, projet_id=projet_id)
     _supprimer_projet(conn, portee, p)
     conn.commit()
     return Response(status_code=204)
@@ -294,6 +307,7 @@ def regler_acces_membres(projet_id: int, payload: AccesMembresIn,
     _get_projet(conn, portee, projet_id, gerer=True,
                 motif="Régler ce que les membres d'un projet peuvent dans sa collection "
                       "de base revient à son responsable.")
+    _refuser_le_jeu(conn, projet_id=projet_id)
     position = _position_valide(payload.acces_membres)
     base = collection_de_base(conn, projet_id)
     if base is None:
@@ -340,6 +354,7 @@ def poser_membre(projet_id: int, payload: MembreIn,
     ligne d'accès écrite. Être du projet permet aussi d'y créer une collection ; lire l'une
     des autres se règle dans son « Qui entre »."""
     _get_projet(conn, portee, projet_id, gerer=True)
+    _refuser_le_jeu(conn, projet_id=projet_id)            # COL-4 : personne n'en est
     if payload.genre not in autorisation.GENRES:
         raise HTTPException(422, f"Genre invalide : {payload.genre} (utilisateur | groupe).")
     if payload.role not in autorisation.ROLES_PROJET:
@@ -383,6 +398,7 @@ def retirer_membre(projet_id: int, genre: str, principal: str,
     entre », et rien n'est détruit : le journal lui attribue toujours son travail. Refus
     sur le dernier responsable."""
     _get_projet(conn, portee, projet_id, gerer=True)
+    _refuser_le_jeu(conn, projet_id=projet_id)
     ligne = conn.execute(
         "SELECT role FROM projet_acces WHERE projet_id = ? AND genre = ? AND principal = ?",
         (projet_id, genre, principal)).fetchone()

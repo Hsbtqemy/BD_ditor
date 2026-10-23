@@ -449,6 +449,11 @@ NON_BALAYE = {
         "écrit `planches.chemin_tiff`/`master_origine`. Son compte rendu est un décompte, "
         "des chemins de fichier, des identifiants de planche, des tailles et, en cas "
         "d'échec, le message de l'exception — jamais une colonne d'identité."),
+    ("outil", "preparer_jeu.py"): (
+        "Maintenance (COL-4) : écrit le jeu des bacs à sable depuis ses descriptions (des "
+        "notices, des images, des régions). Son compte rendu dit des clés de document, des "
+        "identifiants et des noms de fichier — jamais une colonne d'identité ; ce qu'il "
+        "écrit n'est à personne (aucun agent)."),
     ("outil", "reindex_nlp.py"): (
         "Maintenance : régénère les tokens et l'index FTS. Son compte rendu est un "
         "décompte de régions."),

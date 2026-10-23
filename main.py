@@ -29,7 +29,7 @@ from database import (DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT, annotatio
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
                       liens_vus, relecture_planches, reindex_region, retirer_liens_caches,
-                      sql_projet_d_album, unindex_region)
+                      sql_est_jeu, sql_projet_d_album, unindex_region)
 import autorisation
 import conflit
 import journal
@@ -58,6 +58,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     OrdrePlanchesIn, ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
+    _MOTIF_JEU, _refuser_le_jeu,
     _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
     _clore_demandes_vers, _clore_lignes_d_une_copie_detruite, _deposer, _en_attente_vers,
@@ -460,6 +461,10 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     #     totale) : la case « Sur les collections » se dessine « demandée » au lieu d'offrir
     #     un geste que le serveur refuserait par un 409. Ni qui a demandé, ni pour quelle
     #     collection hors de son écriture.
+    #
+    # COL-4 — les copies de RÉFÉRENCE du jeu n'apparaissent dans aucune liste, même pour une
+    # portée totale, la seule qui les lise : elles ne sont le travail de personne, et une
+    # copie qu'on y retoucherait partirait dans chaque bac à sable créé ensuite.
     detruire, p_detruire = portee.clause_suppression_directe("a.id")
     ecrire, p_ecrire = portee.clause_album("a.id", ecriture=True)
     if portee.tout:
@@ -493,7 +498,7 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                   (SELECT COUNT(*) FROM planches p
                      WHERE p.album_id = a.id AND p.validee IS NOT NULL) AS nb_validees
            FROM albums a
-           WHERE {ou}
+           WHERE {ou} AND NOT {sql_est_jeu(sql_projet_d_album('a'))}
            ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""",
         (*p_detruire, *p_ecrire, *p_ailleurs, *p_ecrire, *params)
     ))
@@ -583,6 +588,7 @@ def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db),
         if not portee.peut_ecrire(cid) or conn.execute(
                 "SELECT 1 FROM collection WHERE id = ?", (cid,)).fetchone() is None:
             raise HTTPException(404, f"Collection {cid} introuvable")
+        _refuser_le_jeu(conn, collection_id=cid)          # COL-4 : on n'y range rien
     else:
         cid = collection_par_defaut(conn)
         # Ici un 403 ne fuit rien : il parle des droits de l'appelant, pas du corpus.
@@ -790,6 +796,7 @@ def import_planche(
     portee: autorisation.Portee = Depends(portee_courante),
 ):
     _get_album(conn, portee, album_id, ecriture=True)
+    _refuser_le_jeu(conn, album_id=album_id)              # COL-4 : la référence ne bouge pas
     nom = file.filename or "planche.tif"
     # IMG-1 — le NOM est filtré comme depuis ShareDocs. Sans ce contrôle, l'import rangeait
     # le master sous le suffixe reçu : un `planche_0001.dat` entrait dans `corpus/`. Le
@@ -1326,6 +1333,7 @@ def sharedocs_importer(payload: SharedocsImportIn,
         raise HTTPException(422, "Album cible manquant (`album_id`).")
     # AUTH-2 : importer des planches, c'est écrire dans l'album.
     _get_album(conn, portee, payload.album_id, ecriture=True)
+    _refuser_le_jeu(conn, album_id=payload.album_id)      # COL-4 : la référence ne bouge pas
     album_id = payload.album_id
 
     # UX-11 (Hugo, 2026-10-21) — UNE TRANSACTION PAR PLANCHE, validée dès qu'elle est entrée.
