@@ -6,6 +6,8 @@
      • à l'ouverture, déplace le focus dans la boîte (sauf si la page l'a déjà placé) ;
      • PIÈGE le focus clavier (Tab / Maj+Tab bouclent dans la boîte) ;
      • ferme sur Échap ;
+     • GARDE le focus dans la boîte au clic sur ce qui ne le prend pas, et rend le
+       clavier à la modale du dessus quand le focus est perdu sur `body` ;
      • à la fermeture, REND le focus à l'élément d'où l'on venait (le déclencheur).
    Source unique → même comportement clavier/lecteur d'écran partout.
    UMD minimal (require()-able par les tests Node, comme nav.js) : aucun accès au DOM
@@ -110,6 +112,15 @@
   var roots = [];                 // conteneurs enregistrés (pour reconnaître « hors modale »)
   var lastExternalFocus = null;   // dernier focus HORS de toute modale = cible du retour
   var tracking = false;
+  var ouvertes = [];              // modales ouvertes, la plus récemment ouverte en dernier
+
+  /* Le focus est-il PERDU — sur `body`, ou nulle part ? C'est là qu'il retombe quand
+     l'élément focalisé quitte le document (un bouton qu'un rendu remplace) : un événement
+     clavier part alors de `body` et ne traverse aucune modale. */
+  function focusPerdu() {
+    var a = document.activeElement;
+    return !a || a === document.body || a === document.documentElement;
+  }
 
   function insideAnyDialog(node) {
     return roots.some(function (r) { return r.contains(node); });
@@ -136,6 +147,16 @@
       document.addEventListener("focusin", function (e) {
         if (!insideAnyDialog(e.target)) lastExternalFocus = e.target;
       });
+      /* Filet du focus PERDU (cf. `focusPerdu`) : la touche part de `body`, donc
+         l'écouteur de la modale ne l'entend pas, et Échap ne fermait plus rien. On la
+         rend à la modale du DESSUS — la dernière ouverte —, et à elle seule. En capture,
+         pour passer avant les raccourcis globaux, comme `stopPropagation` le fait pour un
+         focus resté dans la boîte. Un focus posé AILLEURS que sur `body` n'est pas
+         touché : il a été mis là par quelqu'un. */
+      document.addEventListener("keydown", function (e) {
+        if (!ouvertes.length || !focusPerdu()) return;
+        ouvertes[ouvertes.length - 1].clavier(e);
+      }, true);
       tracking = true;
     }
     roots.push(toggleEl);
@@ -147,13 +168,21 @@
     box.setAttribute("aria-modal", "true");
     if (opts.labelledby) box.setAttribute("aria-labelledby", opts.labelledby);
     else if (opts.label) box.setAttribute("aria-label", opts.label);
+    /* Un clic sur ce qui ne prend pas le focus — du vide, un titre, un texte — le
+       retirait au champ qui l'avait, et il retombait sur `body`, HORS de la boîte : Échap
+       ne fermait plus rien, Tab repartait du début de la page (trouvé par Hugo à la QA du
+       2026-10-23). Focalisable par programme, la boîte reçoit ce clic : le focus reste
+       chez elle, et le clavier avec. `-1` la garde hors de la tabulation ; l'anneau de
+       `[tabindex]:focus-visible` ne s'allume pas au pointeur (mesuré par l'e2e). */
+    if (!box.hasAttribute("tabindex")) box.setAttribute("tabindex", "-1");
 
     var close = opts.onClose || function () { toggleEl.hidden = true; };
 
     // Échap ferme · Tab/Maj+Tab bouclent. Écouteur sur l'élément basculé : les
     // événements clavier de la boîte y remontent ; stopPropagation évite que les
     // gestionnaires globaux (raccourcis, fermeture des dropdowns) ne s'en mêlent.
-    toggleEl.addEventListener("keydown", function (e) {
+    // Le filet du focus perdu (plus haut) appelle la même fonction.
+    function clavier(e) {
       if (toggleEl.hidden) return;
       // stopPropagation : neutralise les raccourcis/fermetures de menus globaux. Pas
       // de preventDefault — Échap n'a pas d'action par défaut utile et le supprimer
@@ -165,9 +194,15 @@
       if (!f.length) { e.preventDefault(); return; }   // rien à focaliser : on ne s'échappe pas
       // Le focus est lu sur l'ARRÊT de son groupe : un bouton radio non coché, où un clic
       // de script ou Chromium à reculons peut le poser, ne figure pas parmi les arrêts.
-      var t = trapTarget(f, stop(all, document.activeElement), e.shiftKey, precede);
+      // Il ne se SITUE que dans la boîte (elle comprise : Tab y entre, Maj+Tab boucle au
+      // dernier) ; perdu sur `body`, qui contient tout, il irait sinon au début de la
+      // page — on le ramène à l'extrémité d'entrée.
+      var actif = stop(all, document.activeElement);
+      var t = trapTarget(f, actif, e.shiftKey, box.contains(actif) ? precede : null);
       if (t) { t.focus(); e.preventDefault(); }
-    });
+    }
+    toggleEl.addEventListener("keydown", clavier);
+    var moi = { clavier: clavier };
 
     // Bascule de `hidden`, peu importe qui la déclenche (bouton, clic sur le fond,
     // code) : ouverture → focus dans la boîte (sauf si la page l'a déjà posé) ;
@@ -177,7 +212,10 @@
       var open = !toggleEl.hidden;
       if (open === wasOpen) return;
       wasOpen = open;
+      var rang = ouvertes.indexOf(moi);
+      if (rang !== -1) ouvertes.splice(rang, 1);
       if (open) {
+        ouvertes.push(moi);
         if (!box.contains(document.activeElement)) {
           var f = stops(focusables(box));
           if (f.length) f[0].focus();
@@ -188,7 +226,7 @@
     }
     new MutationObserver(onToggle)
       .observe(toggleEl, { attributes: true, attributeFilter: ["hidden"] });
-    if (wasOpen) onToggle();   // déjà ouverte au câblage (rare) : pose le focus
+    if (wasOpen) { ouvertes.push(moi); onToggle(); }   // déjà ouverte au câblage (rare)
   }
 
   return { register: register, _trapTarget: trapTarget, _stop: stop, _stops: stops };

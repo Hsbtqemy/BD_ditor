@@ -26,6 +26,7 @@ import httpx
 import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
+from playwright.sync_api import expect  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from conftest import ECRITURE, make_png         # noqa: E402
@@ -398,3 +399,132 @@ def test_un_groupe_radio_sans_coche_ne_laisse_pas_sortir(page, decor, touche):
     for attendu in ("export-go", "export-close", "export-col", "tete", "queue"):
         assert any(v.startswith(attendu) for v in vus), (
             f"{touche} ne dessert jamais « {attendu} » en {pas} pas — {' → '.join(vus)}")
+
+
+# ── Un clic sur ce qui ne prend pas le focus ne le sort pas de la boîte ─────────────────
+#
+# Trouvé par Hugo à la QA du 2026-10-23, dans la fiche d'un album : un clic sur du vide, un
+# titre ou un texte de la boîte retirait le focus au champ qui l'avait, et il retombait sur
+# `body`. L'écouteur clavier de `dialog.js` vit sur la modale, et une touche partie de
+# `body` ne la traverse pas : Échap ne fermait plus rien, et Tab repartait du début de la
+# page, derrière le voile. Deux causes mènent le focus sur `body`, et deux remèdes y
+# répondent : le clic (la boîte est focalisable par programme, elle le reçoit) et
+# l'élément focalisé qui quitte le document (un rendu qui remplace un bouton : le filet du
+# focus perdu rend la touche à la modale du dessus). Un test par cause — chacun tombe sans
+# son remède, l'autre restant en place.
+
+# Où ramène la fermeture : le geste d'ouverture de chaque modale. `None` : le déclencheur
+# vit dans un menu qui se replie avec la modale ouverte, et `dialog.js` ne rend pas le
+# focus à un élément qu'on ne voit plus (`canFocus`) — on n'exige alors que la fermeture.
+RETOUR = {
+    "#lexique-modal": "#btn-lexique",
+    "#accord-modal": "#btn-accord",
+    "#accord-inter-modal": "#btn-accord-inter",
+    "#album-modal": "#detail-edit",
+    "#suppr-modal": '#album-detail [data-act="supprimer"]',
+    "#sharedocs": None,
+    "#figure-modal": "#btn-fig-open",
+    "#export-modal": None,
+}
+
+# Ce qui, dans chaque boîte, ne prend pas le focus : son titre (le nom de la boîte), et sa
+# marge — un clic dans le coin haut-gauche, sur la boîte elle-même.
+_TITRE = {
+    "#lexique-modal": "#lexique-title", "#accord-modal": "#accord-title",
+    "#accord-inter-modal": "#accord-inter-title", "#album-modal": "#modal-title",
+    "#suppr-modal": "#sp-titre", "#sharedocs": "#sd-title",
+    "#figure-modal": "#figure-title", "#export-modal": "#export-title",
+}
+
+_FOCUS = """(sel) => {
+  const a = document.activeElement, b = document.querySelector(sel);
+  return {dedans: b.contains(a), boite: a === b,
+          nom: a ? a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') : 'rien',
+          anneau: b.matches(':focus-visible'),
+          contour: getComputedStyle(b).outlineStyle};
+}"""
+
+
+def _cliquer_dans_le_vide(page, modale, endroit):
+    boite = MODALES[modale]["boite"]
+    if endroit == "titre":
+        page.locator(_TITRE[modale]).click()
+    else:
+        page.locator(boite).click(position={"x": 8, "y": 8})
+    etat = page.evaluate(_FOCUS, boite)
+    assert etat["dedans"], (
+        f"{modale} : un clic sur {endroit} sort le focus de la boîte — il est sur "
+        f"{etat['nom']}, et le clavier n'atteint plus la modale.")
+    assert not etat["anneau"] and etat["contour"] == "none", (
+        f"{modale} : la boîte focalisée au clic porte un anneau de focus ({etat}) — "
+        "`:focus-visible` ne doit s'allumer qu'au clavier.")
+    return boite
+
+
+def _exiger_la_fermeture(page, modale):
+    page.keyboard.press("Escape")
+    expect(page.locator(modale)).to_be_hidden(timeout=3000)
+    retour = RETOUR[modale]
+    if retour:
+        expect(page.locator(retour)).to_be_focused()
+
+
+@pytest.mark.parametrize("endroit", ["titre", "marge"])
+@pytest.mark.parametrize("modale", list(MODALES))
+def test_un_clic_dans_le_vide_garde_echap(page, decor, modale, endroit):
+    """Le défaut tel que Hugo l'a relevé : un clic dans la boîte, puis Échap ferme, et le
+    focus revient au déclencheur."""
+    MODALES[modale]["ouvrir"](page, decor)
+    _cliquer_dans_le_vide(page, modale, endroit)
+    _exiger_la_fermeture(page, modale)
+
+
+@pytest.mark.parametrize("touche", ["Tab", "Shift+Tab"])
+@pytest.mark.parametrize("modale", ["#album-modal", "#lexique-modal"])
+def test_un_clic_dans_le_vide_garde_tab_dans_la_boite(page, decor, modale, touche):
+    """Après le même clic, Tab entre dans la boîte par son premier arrêt, Maj+Tab par son
+    dernier : la boîte focalisée n'est pas un arrêt, et rien ne sort derrière le voile."""
+    MODALES[modale]["ouvrir"](page, decor)
+    boite = _cliquer_dans_le_vide(page, modale, "marge")
+    noms = page.evaluate(_ARRETS, boite)
+    page.keyboard.press(touche)
+    attendu = 0 if touche == "Tab" else len(noms) - 1
+    obtenu = page.evaluate(_OU)
+    assert obtenu == attendu, (
+        f"{modale} — {touche} après un clic dans le vide mène à "
+        f"{noms[obtenu] if isinstance(obtenu, int) else obtenu}, et non à {noms[attendu]}.")
+
+
+_PERDRE = """(sel) => {
+  const b = document.createElement('button');
+  b.textContent = 'éphémère';
+  document.querySelector(sel).append(b);
+  b.focus();
+  b.remove();
+  return document.activeElement === document.body;
+}"""
+
+
+@pytest.mark.parametrize("touche", ["Escape", "Tab", "Shift+Tab"])
+@pytest.mark.parametrize("modale", ["#album-modal", "#lexique-modal"])
+def test_un_focus_perdu_rend_le_clavier_a_la_modale(page, decor, modale, touche):
+    """L'élément focalisé quitte le document — le sort d'un bouton qu'un rendu remplace :
+    le focus retombe sur `body` sans aucun clic. Échap ferme toujours, Tab et Maj+Tab
+    rentrent dans la boîte par ses extrémités."""
+    MODALES[modale]["ouvrir"](page, decor)
+    boite = MODALES[modale]["boite"]
+    # Les arrêts AVANT de perdre le focus : `_ARRETS` focalise chaque élément, et rendre
+    # le focus à `body` ne le retire pas au dernier qu'il a touché.
+    noms = page.evaluate(_ARRETS, boite)
+    assert page.evaluate(_PERDRE, boite), (
+        "le bouton planté retiré, le focus n'est pas sur `body` : ce test ne mesure plus "
+        "ce pour quoi il existe.")
+    if touche == "Escape":
+        _exiger_la_fermeture(page, modale)
+        return
+    page.keyboard.press(touche)
+    attendu = 0 if touche == "Tab" else len(noms) - 1
+    obtenu = page.evaluate(_OU)
+    assert obtenu == attendu, (
+        f"{modale} — {touche}, focus perdu, mène à "
+        f"{noms[obtenu] if isinstance(obtenu, int) else obtenu}, et non à {noms[attendu]}.")
