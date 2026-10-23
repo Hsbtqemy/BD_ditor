@@ -2,7 +2,7 @@
 passe: La région des messages, entendue au lecteur d'écran
 chantier: ANN-8
 duree: 10 min
-derniere: —
+derniere: 2026-10-23
 ---
 
 # QA — le premier message d'une page est annoncé par un lecteur d'écran
@@ -27,7 +27,7 @@ qu'elle est ; les fenêtres privées de la passe en cours.
 
 ### Trois surfaces, un premier message chacune — Narrateur allumé
 
-- [ ] Sous `lectrice`, Atelier, F5, attendre que la planche s'affiche, puis Ctrl+Z : la bulle « Rien à annuler. » apparaît, et Narrateur la LIT, sans qu'on ait déplacé le focus
+- [x] Sous `lectrice`, Atelier, F5, attendre que la planche s'affiche, puis Ctrl+Z : la bulle « Rien à annuler. » apparaît, et Narrateur la LIT, sans qu'on ait déplacé le focus
 - [ ] Sous `proprio`, Bibliothèque, fiche de « Lot TIFF QA », F5, « Modifier », *Enregistrer* sans rien changer : la bulle « Album enregistré » apparaît, et Narrateur la lit
 - [ ] Sous `proprio`, Exploration, F5, « 📖 Lexique », déplier un tag, changer un mot de sa définition puis Tab (le champ s'enregistre en perdant le focus) : la bulle « Enregistré » apparaît, et Narrateur la lit
-- [ ] Narrateur éteint (Ctrl + Windows + Entrée) à la fin
+- [x] Narrateur éteint (Ctrl + Windows + Entrée) à la fin
