@@ -484,6 +484,18 @@ def test_index_sert_le_shell_html(client):
         assert marqueur in r.text, f"shell HTML sans {marqueur}"
 
 
+@pytest.mark.parametrize("surface", ["/", "/corpus", "/recherche", "/exploration",
+                                     "/administration"])
+def test_la_borne_du_zoom_est_chargee_avant_theme(client, surface):
+    """`theme.js` applique le zoom d'interface dans le <head>, avant le rendu, et lit sa
+    borne dans `static/lib/zoom.js` (UX-7). Chargé après lui, ou oublié sur une surface,
+    le module manquerait au premier appel : thème, navigation et menu « Aa » tomberaient
+    avec lui sur cette page."""
+    html = client.get(surface).text
+    borne, theme = html.find('src="/static/lib/zoom.js"'), html.find('src="/static/theme.js"')
+    assert 0 <= borne < theme, f"{surface} : lib/zoom.js absent ou chargé après theme.js"
+
+
 def test_sante_expose_kumiko(client):
     r = client.get("/api/sante")
     assert r.status_code == 200 and isinstance(r.json()["kumiko"], bool)

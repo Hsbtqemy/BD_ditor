@@ -10,6 +10,7 @@
   var KEY = { theme: "bd-theme", contrast: "bd-contrast", zoom: "bd-zoom", lecture: "bd-lecture" };
   var mqLight = window.matchMedia("(prefers-color-scheme: light)");
   var mqContrast = window.matchMedia("(prefers-contrast: more)");
+  var Z = window.BDZoom;              // static/lib/zoom.js, chargé juste avant ce fichier
 
   function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function put(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -23,10 +24,9 @@
     if (v === "high" || v === "normal") return v;
     return mqContrast.matches ? "high" : "normal";
   }
-  function curZoom() {
-    var z = parseFloat(get(KEY.zoom));
-    return (z >= 0.8 && z <= 2.0) ? z : 1;
-  }
+  // La PRÉFÉRENCE stockée, et le zoom APPLIQUÉ, qu'en tire la largeur de la fenêtre.
+  function curZoom() { return Z.preference(get(KEY.zoom)); }
+  function zoomApplique() { return Z.applique(curZoom(), window.innerWidth); }
   // Pas de préférence système pour le confort de lecture → « normal » par défaut.
   function curLecture() { return get(KEY.lecture) === "confort" ? "confort" : "normal"; }
 
@@ -34,6 +34,13 @@
   function applyContrast(c) {
     if (c === "high") root.dataset.contrast = "high"; else delete root.dataset.contrast;
   }
+  // Le zoom reçu est déjà BORNÉ par la largeur (`zoomApplique`) : jamais plus que largeur
+  // de la fenêtre ÷ 320, ni 200 % (UX-7, Hugo, 2026-10-23). Le zoom d'interface divise la
+  // largeur utile, et 320 px CSS est la base des règles de reflow : sous elle, aucune page
+  // n'est faite pour tenir — 200 % à 320 px n'en laissait que 160. La préférence stockée
+  // n'est pas touchée, et revient quand la fenêtre s'élargit (cf. `resize`, plus bas). La
+  // règle et ses raisons vivent dans `static/lib/zoom.js`.
+  //
   // `--ui-zoom` accompagne `zoom`, et c'est son SEUL propriétaire : la feuille en tire
   // `--vw-visible` / `--vh-visible`, une unité de fenêtre que le zoom ne multiplie pas
   // (cf. `:root` dans style.css). Les deux se posent et se retirent ensemble.
@@ -49,7 +56,7 @@
   // 1) Application immédiate (pas de FOUC).
   applyTheme(curTheme());
   applyContrast(curContrast());
-  applyZoom(curZoom());
+  applyZoom(zoomApplique());
   applyLecture(curLecture());
 
   // 2) Suit l'OS tant qu'aucun choix explicite n'a été mémorisé.
@@ -66,7 +73,7 @@
     if (e.key !== null && clefs.indexOf(e.key) === -1) return;
     applyTheme(curTheme());
     applyContrast(curContrast());
-    applyZoom(curZoom());
+    applyZoom(zoomApplique());
     applyLecture(curLecture());
     sync();
     rebornerTout();
@@ -78,11 +85,13 @@
     var light = root.dataset.theme === "light";
     var high = root.dataset.contrast === "high";
     var comfort = root.dataset.lecture === "confort";
-    var z = curZoom();
+    var z = zoomApplique();
+    var raison = Z.raisonMaximum(curZoom(), window.innerWidth);
     menus.forEach(function (m) {
       m.cb.checked = high;
       m.lecCb.checked = comfort;
       m.zoomVal.textContent = Math.round(z * 100) + " %";
+      eteindre(m.zPlus, m.zRaison, raison);
       m.bL.setAttribute("aria-pressed", String(light));
       m.bD.setAttribute("aria-pressed", String(!light));
     });
@@ -91,9 +100,27 @@
   function setTheme(t) { put(KEY.theme, t); applyTheme(t); sync(); }
   function setContrast(h) { put(KEY.contrast, h ? "high" : "normal"); applyContrast(h ? "high" : "normal"); sync(); }
   function setLecture(on) { put(KEY.lecture, on ? "confort" : "normal"); applyLecture(on ? "confort" : "normal"); sync(); }
+  // Un cran de A+ (1) ou de A− (−1) écrit une PRÉFÉRENCE, et applique ce que la fenêtre
+  // en admet. ↺ écrit 1.
   function setZoom(z) {
-    z = Math.min(2.0, Math.max(0.8, Math.round(z * 10) / 10));
-    put(KEY.zoom, String(z)); applyZoom(z); sync(); rebornerTout();
+    put(KEY.zoom, String(z)); applyZoom(zoomApplique()); sync(); rebornerTout();
+  }
+  function cranZoom(sens) { setZoom(Z.cran(curZoom(), window.innerWidth, sens)); }
+
+  // A+ ÉTEINT au maximum, et qui dit pourquoi : `aria-disabled` et non `disabled`, comme
+  // ↑ ↓ et la corbeille éteints de la Bibliothèque — il garde le focus, son infobulle, et
+  // sa raison comme description (`aria-describedby`). `disabled` le sortirait de la
+  // tabulation et tairait la raison. Le clic, lui, ne fait rien (cf. `buildMenu`).
+  function eteindre(bouton, ligne, raison) {
+    if (raison) {
+      bouton.setAttribute("aria-disabled", "true");
+      bouton.title = raison;
+      ligne.textContent = raison;
+    } else {
+      bouton.removeAttribute("aria-disabled");
+      bouton.removeAttribute("title");
+      ligne.textContent = "";
+    }
   }
 
   function el(tag, cls, txt) {
@@ -132,14 +159,27 @@
   function bornerALaFenetre(panel) {
     panel.style.maxHeight = "";
     if (panel.hidden) return;
-    var z = typeof panel.currentCSSZoom === "number" ? panel.currentCSSZoom : curZoom();
+    var z = typeof panel.currentCSSZoom === "number" ? panel.currentCSSZoom : zoomApplique();
     var haut = panel.getBoundingClientRect().top;
     var marge = 6;                              // pixels du panneau, sous son bord bas
     var dispo = (window.innerHeight - haut) / z - marge;
     panel.style.maxHeight = Math.max(dispo, 0) + "px";
   }
   function rebornerTout() { bornes.forEach(function (b) { b(); }); }
-  window.addEventListener("resize", rebornerTout);
+
+  // La fenêtre change de taille (on l'élargit, une tablette tourne) : le plafond du zoom
+  // change avec elle. On RÉAPPLIQUE la préférence sous le nouveau plafond — une préférence
+  // de 200 % revient dès que la fenêtre l'admet —, puis on reborne les menus ouverts. Une
+  // fois par image au plus : `resize` arrive en rafale pendant qu'on tire un bord.
+  var redimEnAttente = false;
+  window.addEventListener("resize", function () {
+    if (redimEnAttente) return;
+    redimEnAttente = true;
+    window.requestAnimationFrame(function () {
+      redimEnAttente = false;
+      applyZoom(zoomApplique()); sync(); rebornerTout();
+    });
+  });
 
   function menuDeroulant(wrap, btn, panel, detail) {
     btn.setAttribute("aria-haspopup", "true");
@@ -203,15 +243,19 @@
     zM.setAttribute("aria-label", "Réduire le zoom");
     zP.setAttribute("aria-label", "Augmenter le zoom");
     zR.setAttribute("aria-label", "Zoom 100 %");
-    zM.onclick = function () { setZoom(curZoom() - 0.1); };
-    zP.onclick = function () { setZoom(curZoom() + 0.1); };
+    var zRaison = el("span", "sr-only");
+    zRaison.id = "dm-zoom-raison-" + (menus.length + 1);
+    zP.setAttribute("aria-describedby", zRaison.id);
+    zM.onclick = function () { cranZoom(-1); };
+    zP.onclick = function () { if (zP.getAttribute("aria-disabled") !== "true") cranZoom(1); };
     zR.onclick = function () { setZoom(1); };
-    rZ.appendChild(zM); rZ.appendChild(zV); rZ.appendChild(zP); rZ.appendChild(zR); panel.appendChild(rZ);
+    rZ.appendChild(zM); rZ.appendChild(zV); rZ.appendChild(zP); rZ.appendChild(zR);
+    rZ.appendChild(zRaison); panel.appendChild(rZ);
 
     wrap.appendChild(panel);
     menuDeroulant(wrap, btn, panel, "display");
 
-    menus.push({ cb: cb, lecCb: lecCb, zoomVal: zV, bL: bL, bD: bD });
+    menus.push({ cb: cb, lecCb: lecCb, zoomVal: zV, zPlus: zP, zRaison: zRaison, bL: bL, bD: bD });
   }
 
   /* ---- Navigation transverse unifiée (source unique) ----

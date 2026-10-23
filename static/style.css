@@ -180,6 +180,13 @@
 .display-panel button[aria-pressed="true"] {
   border-color: var(--accent-blue); color: var(--accent-blue); font-weight: 600;
 }
+/* A+ éteint au zoom maximal que la fenêtre admet (UX-7) : focalisable, il dit pourquoi
+   (infobulle et description). Le dessin des boutons éteints de la Bibliothèque : un contour
+   pointillé à l'encre atténuée. */
+.display-panel button[aria-disabled="true"] {
+  border-style: dashed; border-color: var(--text-muted); color: var(--text-muted); cursor: not-allowed;
+}
+.display-panel button[aria-disabled="true"]:hover { background: transparent; }
 
 /* La racine est en POURCENTAGE, et c'est ce qui rend `rem` vivant (A11Y-2).
    Elle portait `font: 13px/1.4`, donc `1rem` valait 13 px FIGÉS : les valeurs déjà
