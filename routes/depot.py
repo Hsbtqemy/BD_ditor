@@ -55,7 +55,8 @@ from fastapi.responses import Response
 
 import autorisation
 from config import BASE_DIR
-from socle import _exiger_export, _get_collection, db, portee_courante
+from socle import (_exiger_export, _get_collection, _refuser_le_bac_a_sable, db,
+                   portee_courante)
 
 # `tools/` n'est pas un paquet et ne s'importe pas depuis la racine : les scripts s'y
 # importent entre eux à plat (`import metadonnees_collection as mc`), donc c'est le dossier
@@ -153,6 +154,11 @@ def produire(conn, portee, collection_id: int, quoi: str, format: str, *,
                                  f"« {quoi} » (attendu : {', '.join(_FORMATS[quoi])}).")
 
     _get_collection(conn, portee, collection_id)
+    # COL-4 — une collection de bac à sable ne se dépose pas : ce qui s'y fait s'efface
+    # chaque lundi, et l'export s'y décide document par document (`_collection_d_export`).
+    _refuser_le_bac_a_sable(conn, "Une collection de bac à sable ne se dépose pas : ce qui "
+                                  "s'y fait s'efface chaque semaine.",
+                            collection_id=collection_id)
     _exiger_export(portee, collection_id)
     if quoi == "description":
         data, ext = _faire_description(conn, collection_id, format)

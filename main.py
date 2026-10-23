@@ -59,6 +59,10 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     OrdrePlanchesIn, ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
     _MOTIF_JEU, _refuser_le_jeu,
+    _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_ISOLE, _MOTIF_BAC_PROPRIETAIRE,
+    _MOTIF_EXPORT_BAC, _bac_a_sable_de, _collection_locale_d_un_bac, _creer_bac_a_sable,
+    _exiger_l_export_hors_bac, _exiger_le_plafond, _planches_importees_du_bac,
+    _refuser_le_bac_a_sable,
     _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
     _clore_demandes_vers, _clore_lignes_d_une_copie_detruite, _deposer, _en_attente_vers,
@@ -80,6 +84,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
 # continuent de les voir.
 from routes import analyse as _routes_analyse
 from routes import annulation as _routes_annulation
+from routes import bac_a_sable as _routes_bac_a_sable
 from routes import collections as _routes_collections
 from routes import depot as _routes_depot
 from routes import figures as _routes_figures
@@ -153,6 +158,7 @@ app.include_router(_routes_depot.router)
 app.include_router(_routes_lexique.router)
 app.include_router(_routes_projets.router)
 app.include_router(_routes_fonds.router)
+app.include_router(_routes_bac_a_sable.router)
 
 
 # --------------------------------------------------------------------------- #
@@ -797,6 +803,7 @@ def import_planche(
 ):
     _get_album(conn, portee, album_id, ecriture=True)
     _refuser_le_jeu(conn, album_id=album_id)              # COL-4 : la référence ne bouge pas
+    _exiger_le_plafond(conn, album_id)                    # COL-4 : un bac à sable est borné
     nom = file.filename or "planche.tif"
     # IMG-1 — le NOM est filtré comme depuis ShareDocs. Sans ce contrôle, l'import rangeait
     # le master sous le suffixe reçu : un `planche_0001.dat` entrait dans `corpus/`. Le
@@ -1335,6 +1342,17 @@ def sharedocs_importer(payload: SharedocsImportIn,
     _get_album(conn, portee, payload.album_id, ecriture=True)
     _refuser_le_jeu(conn, album_id=payload.album_id)      # COL-4 : la référence ne bouge pas
     album_id = payload.album_id
+    # COL-4 (S2) — dans un bac à sable, on importe sous SON compte ShareDocs : celui de
+    # l'instance est le repli de tout le monde, et soixante-quinze essais ne s'y versent
+    # pas. Un compte d'instance demandé, ou faute de session personnelle, est un 403 nommé.
+    compte = payload.compte
+    bac, _proprietaire = _bac_a_sable_de(conn, album_id=album_id)
+    if bac is not None:
+        if (payload.compte == sharedocs.INSTANCE
+                or sharedocs.perso(_principal_sharedocs(portee)) is None):
+            raise HTTPException(403, "Dans un bac à sable, on importe sous son propre compte "
+                                     "ShareDocs : connectez le vôtre.")
+        compte = sharedocs.PERSO
 
     # UX-11 (Hugo, 2026-10-21) — UNE TRANSACTION PAR PLANCHE, validée dès qu'elle est entrée.
     # Le lot entier tenait jusque-là dans une seule, validée à la fin : la première planche
@@ -1355,8 +1373,9 @@ def sharedocs_importer(payload: SharedocsImportIn,
             continue
         planche = None
         try:
+            _exiger_le_plafond(conn, album_id)            # COL-4 : un bac à sable est borné
             data = sharedocs.download(
-                chemin, principal=_principal_sharedocs(portee), compte=payload.compte)
+                chemin, principal=_principal_sharedocs(portee), compte=compte)
             if not data:
                 raise ShareDocsError("fichier vide")
             # IMG-1 — la copie de travail, comme l'import de fichiers ; la planche note le
@@ -2868,9 +2887,11 @@ def _etat_export(portee: autorisation.Portee) -> str:
     donc égaux — se lirait « tout »."""
     if portee.tout:
         return "tout"
-    if not portee.export:
+    # COL-4 — sans les bacs à sable, que les exports transversaux ne voient pas.
+    export = portee.export - portee.collections_bac
+    if not export:
         return "rien"
-    return "tout" if portee.export == portee.lecture else "partiel"
+    return "tout" if export == portee.lecture - portee.collections_bac else "partiel"
 
 
 @app.get("/api/moi")
@@ -2895,9 +2916,15 @@ def moi(request: Request, conn: sqlite3.Connection = Depends(db),
     nom = (request.headers.get("Remote-Name") or "").strip() or utilisateur
     return {"utilisateur": utilisateur, "nom": nom,
             "groupes": _groupes(request),
+            # COL-4 (S2) — les collections d'un BAC À SABLE ne comptent pas : l'arrivant
+            # qui n'a accès à rien d'autre doit encore lire, au bandeau de portée vide,
+            # pourquoi il ne voit aucun corpus. Son bac à sable se lit à part
+            # (`GET /api/bac-a-sable`).
             "acces": {"total": portee.tout, "admin": portee.admin,
-                      "collections": None if portee.tout else len(portee.lecture),
-                      "ecriture": None if portee.tout else len(portee.ecriture),
+                      "collections": (None if portee.tout
+                                      else len(portee.lecture - portee.collections_bac)),
+                      "ecriture": (None if portee.tout
+                                   else len(portee.ecriture - portee.collections_bac)),
                       # AUTH-4 — les noms des groupes d'administration. Ce ne sont pas des
                       # secrets : ils sont en clair dans `deploy/docker-compose.yml`. Mais
                       # aucune route ne les disait, si bien qu'une personne admise ne

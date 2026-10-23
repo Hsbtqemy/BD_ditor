@@ -49,6 +49,15 @@ WEB_JPEG_QUALITY = 82
 TRAVAIL_DPI = 300
 TRAVAIL_JPEG_QUALITY = 80
 
+# Les BACS À SABLE (COL-4). Ils s'effacent tous au même moment, le lundi à 4 h, heure de
+# Paris, sans exception (Hugo, 2026-10-22) : `BAC_A_SABLE_JOUR` (0 = lundi, la numérotation de
+# `datetime.weekday`) et `BAC_A_SABLE_HEURE`, lus par `database.prochain_effacement`. Et ils
+# portent une cinquantaine de planches IMPORTÉES au plus (Hugo, 2026-10-21) — les copies du
+# jeu ne comptent pas.
+BAC_A_SABLE_JOUR = 0
+BAC_A_SABLE_HEURE = 4
+BAC_A_SABLE_PLAFOND_PLANCHES = 50
+
 # Déconnexion (INFRA-1). Derrière le proxy d'authentification (Authelia), l'URL de
 # logout vit sur le sous-domaine du PORTAIL, cible comprise :
 # https://auth.example.fr/logout?rd=https://bd.example.fr/ — sans `rd`, on se

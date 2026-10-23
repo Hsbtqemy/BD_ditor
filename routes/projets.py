@@ -36,13 +36,15 @@ from fastapi.responses import Response
 
 import autorisation
 import journal
-from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, collection_de_base,
+from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, NOM_BAC_A_SABLE,
+                      collection_de_base,
                       creer_collection_de_base, nom_de_projet_reserve, sql_est_jeu,
                       sql_projet_de)
 
 from socle import (
-    AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate, _get_projet, _refuser_le_jeu, _rows,
-    _supprimer_projet, db, portee_courante,
+    AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate,
+    _bac_a_sable_de, _get_projet, _refuser_le_jeu, _rows, _supprimer_projet, db,
+    portee_courante,
 )
 
 router = APIRouter()
@@ -82,12 +84,19 @@ def _vue(conn, portee: autorisation.Portee, p: dict) -> dict:
     le total dirait à un membre combien d'études existent hors de sa portée, ce que
     « 404, jamais 403 » existe pour ne pas dire."""
     gerable = portee.peut_gerer_projet(p["id"])
+    # COL-4 — dans un bac à sable, seul son propriétaire le règle (`_exiger_le_proprietaire`),
+    # une portée totale comprise : `gerable` le dit, pour que l'écran n'offre pas un geste
+    # que le serveur refuserait.
+    if p.get("bac_a_sable_de") is not None:
+        gerable = bool(portee.utilisateur) and portee.utilisateur == p["bac_a_sable_de"]
     ids = [r[0] for r in conn.execute(
         f"SELECT c.id FROM collection c WHERE {sql_projet_de('c')} = ?", (p["id"],))]
     vue = {"id": p["id"], "nom": p["nom"], "description": p["description"],
            "repli": bool(p["repli"]), "date_creation": p["date_creation"],
            "mon_role": _role_dans(portee, p["id"]), "gerable": gerable,
            "nb_collections": sum(1 for i in ids if portee.peut_lire(i))}
+    if p.get("bac_a_sable_de") is not None:
+        vue.update(_vue_du_bac(portee, p))
     if gerable:
         vue["justification"] = p["justification"]
         # COL-3, tranche 2 — la demande de suppression qui attend, pour qui gère : sans
@@ -120,6 +129,40 @@ def _vue(conn, portee: autorisation.Portee, p: dict) -> dict:
     return vue
 
 
+# COL-4 — ce que la bande affiche d'un bac à sable : « Mon bac à sable » à son propriétaire,
+# « Bac à sable · <login> » à qui y est invité, borné au plafond des noms de projet — un login
+# long se coupe ICI, jamais à l'écran (la mesure de `LONGUEUR_NOM_PROJET`). La forme exacte
+# se tranchera sur la maquette de l'écran (S6).
+NOM_AFFICHE_MIEN = "Mon bac à sable"
+
+
+def _vue_du_bac(portee: autorisation.Portee, p: dict) -> dict:
+    """Ce qu'un bac à sable ajoute à sa ligne : `nom` devient le nom AFFICHÉ, et
+    `bac_a_sable` dit s'il est le mien, sa date d'effacement, et — à qui n'est pas son
+    propriétaire, c'est-à-dire à un invité ou à une portée totale — le LOGIN de son
+    propriétaire : on lit de qui est le bac à sable où l'on travaille. Personne d'autre ne
+    voit un bac à sable dans cette liste."""
+    mien = bool(portee.utilisateur) and portee.utilisateur == p["bac_a_sable_de"]
+    bac = {"mien": mien, "efface_le": p["efface_le"]}
+    if mien:
+        nom = NOM_AFFICHE_MIEN
+    else:
+        bac["proprietaire"] = p["bac_a_sable_de"]
+        nom = f"{NOM_BAC_A_SABLE} · {p['bac_a_sable_de']}"[:LONGUEUR_NOM_PROJET]
+    return {"nom": nom, "bac_a_sable": bac}
+
+
+def _exiger_le_proprietaire(conn, portee: autorisation.Portee, projet_id: int) -> str | None:
+    """Dans un bac à sable, régler qui y entre (et ce que sa base leur ouvre) revient à son
+    PROPRIÉTAIRE seul — une portée totale n'y ouvre rien de plus (Hugo, 2026-10-22). 403
+    nommé sinon. Rend le login du propriétaire, None hors d'un bac à sable."""
+    _pid, proprietaire = _bac_a_sable_de(conn, projet_id=projet_id)
+    if proprietaire is not None and portee.utilisateur != proprietaire:
+        raise HTTPException(403, "Dans un bac à sable, c'est son propriétaire qui fait entrer "
+                                 "qui il veut.")
+    return proprietaire
+
+
 def _nom_valide(conn, nom, *, sauf: int | None = None) -> str:
     """Le nom d'un projet, nettoyé, ou le refus qui dit pourquoi.
 
@@ -148,7 +191,7 @@ def _nom_valide(conn, nom, *, sauf: int | None = None) -> str:
     return nom
 
 
-def _membres_de(conn, projet_id: int) -> list[dict]:
+def _membres_de(conn, projet_id: int, *, sans_signal: bool = False) -> list[dict]:
     """Les membres d'un projet, responsables d'abord. Le jumeau de `_acces_de`.
 
     `jamais_vu` RAPPORTE et n'explique rien : un login absent du miroir `utilisateur` est
@@ -169,6 +212,11 @@ def _membres_de(conn, projet_id: int) -> list[dict]:
     for m in lignes:
         m["jamais_vu"] = (m["principal"] not in connus
                           if m["genre"] == autorisation.UTILISATEUR else None)
+        if sans_signal:
+            # COL-4 (S2) — dans un bac à sable, le miroir `utilisateur` ne dit pas si un
+            # login tapé est venu : l'oracle d'existence fermé le 2026-09-18 pour les
+            # propriétaires se rouvrirait pour chaque arrivant.
+            m.pop("jamais_vu")
     return lignes
 
 
@@ -254,6 +302,8 @@ def update_projet(projet_id: int, payload: ProjetUpdate,
     p = _get_projet(conn, portee, projet_id)
     _exiger_de_decider(portee)
     _refuser_le_jeu(conn, projet_id=projet_id)
+    if p["bac_a_sable_de"] is not None:
+        raise HTTPException(409, "C'est un bac à sable : il ne se renomme pas.")
     fields = payload.model_dump(exclude_unset=True)
     if "nom" in fields:
         # Un nom INCHANGÉ ne se revalide pas : baisser le plafond un jour ne doit pas rendre
@@ -284,6 +334,9 @@ def delete_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
     p = _get_projet(conn, portee, projet_id)
     _exiger_de_decider(portee)
     _refuser_le_jeu(conn, projet_id=projet_id)
+    if p["bac_a_sable_de"] is not None:
+        raise HTTPException(409, "C'est un bac à sable : il ne se supprime pas, il se remet à "
+                                 "neuf, et s'efface avec les autres chaque lundi.")
     _supprimer_projet(conn, portee, p)
     conn.commit()
     return Response(status_code=204)
@@ -308,6 +361,7 @@ def regler_acces_membres(projet_id: int, payload: AccesMembresIn,
                 motif="Régler ce que les membres d'un projet peuvent dans sa collection "
                       "de base revient à son responsable.")
     _refuser_le_jeu(conn, projet_id=projet_id)
+    _exiger_le_proprietaire(conn, portee, projet_id)
     position = _position_valide(payload.acces_membres)
     base = collection_de_base(conn, projet_id)
     if base is None:
@@ -335,7 +389,8 @@ def list_membres(projet_id: int, conn: sqlite3.Connection = Depends(db),
     membres est une donnée sur des PERSONNES, et un simple membre n'a pas à savoir qui
     d'autre en est, ni qui en répond."""
     _get_projet(conn, portee, projet_id, gerer=True)
-    return _membres_de(conn, projet_id)
+    bac, _ = _bac_a_sable_de(conn, projet_id=projet_id)
+    return _membres_de(conn, projet_id, sans_signal=bac is not None)
 
 
 @router.put("/api/projets/{projet_id}/membres")
@@ -355,6 +410,7 @@ def poser_membre(projet_id: int, payload: MembreIn,
     des autres se règle dans son « Qui entre »."""
     _get_projet(conn, portee, projet_id, gerer=True)
     _refuser_le_jeu(conn, projet_id=projet_id)            # COL-4 : personne n'en est
+    proprietaire = _exiger_le_proprietaire(conn, portee, projet_id)
     if payload.genre not in autorisation.GENRES:
         raise HTTPException(422, f"Genre invalide : {payload.genre} (utilisateur | groupe).")
     if payload.role not in autorisation.ROLES_PROJET:
@@ -363,6 +419,8 @@ def poser_membre(projet_id: int, payload: MembreIn,
     principal = (payload.principal or "").strip()
     if not principal:
         raise HTTPException(422, "Le principal (login ou nom de groupe) est requis.")
+    if proprietaire is not None:
+        _inviter_dans_un_bac(proprietaire, payload, principal)
     avant = conn.execute(
         "SELECT role FROM projet_acces WHERE projet_id = ? AND genre = ? AND principal = ?",
         (projet_id, payload.genre, principal)).fetchone()
@@ -386,7 +444,24 @@ def poser_membre(projet_id: int, payload: MembreIn,
                         apres={"genre": payload.genre, "principal": principal,
                                "role": payload.role})
     conn.commit()
-    return _membres_de(conn, projet_id)
+    return _membres_de(conn, projet_id, sans_signal=proprietaire is not None)
+
+
+def _inviter_dans_un_bac(proprietaire: str, payload, principal: str) -> None:
+    """Les bornes de l'invitation dans un bac à sable (S11 ; Q6, Hugo, 2026-10-21) : un
+    COMPTE, jamais un groupe — trente étudiants d'un coup, dans un espace qu'une seule
+    personne remet à neuf —, au rôle de MEMBRE — un invité responsable retirerait le
+    propriétaire, qui garderait `bac_a_sable_de` sans plus rien y voir —, et jamais la ligne
+    du propriétaire, inamovible. 409 nommés."""
+    if payload.genre != autorisation.UTILISATEUR:
+        raise HTTPException(409, "Dans un bac à sable, on invite un compte par son login, "
+                                 "pas un groupe.")
+    if principal == proprietaire:
+        raise HTTPException(409, "C'est le propriétaire de ce bac à sable : il en reste "
+                                 "le seul responsable.")
+    if payload.role != autorisation.MEMBRE:
+        raise HTTPException(409, "Dans un bac à sable, on invite au rôle de membre : son "
+                                 "propriétaire en reste le seul responsable.")
 
 
 @router.delete("/api/projets/{projet_id}/membres/{genre}/{principal}", status_code=204)
@@ -399,6 +474,11 @@ def retirer_membre(projet_id: int, genre: str, principal: str,
     sur le dernier responsable."""
     _get_projet(conn, portee, projet_id, gerer=True)
     _refuser_le_jeu(conn, projet_id=projet_id)
+    proprietaire = _exiger_le_proprietaire(conn, portee, projet_id)
+    if proprietaire is not None and genre == autorisation.UTILISATEUR \
+            and principal == proprietaire:
+        raise HTTPException(409, "C'est le propriétaire de ce bac à sable : il ne se retire "
+                                 "pas — le bac à sable se remet à neuf, et s'efface.")
     ligne = conn.execute(
         "SELECT role FROM projet_acces WHERE projet_id = ? AND genre = ? AND principal = ?",
         (projet_id, genre, principal)).fetchone()

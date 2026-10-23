@@ -53,11 +53,12 @@ from database import (CRAN_IMAGES, CRANS, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUME
                       GENRES_CONSENTIS, GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
                       REPONSE_REFUSEE, REPONSES_DEMANDE, collection_de_base, collection_row,
                       compter_le_travail, etat_des_reponses, noms_lisibles, projet_d_album, projet_de_collection,
-                      ranger_copie, rangement_traverse, sql_projet_d_album,
+                      ranger_copie, rangement_traverse, sql_album_isole, sql_projet_d_album,
                       un_proprietaire_tient_toute_la_copie)
 
 from socle import (
-    DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _clore_demandes,
+    DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _MOTIF_BAC_ISOLE,
+    _MOTIF_BAC_PROPRIETAIRE, _bac_a_sable_de, _clore_demandes,
     _deposer, _detruire_album, _en_attente_vers,
     _get_album, _get_collection, _get_projet, _nouvelle_copie, _plan_rejoindre,
     _refuser_le_jeu, _retour_en_attente, _rows, _sans_accents, _supprimer_projet, db,
@@ -187,6 +188,12 @@ def _demander_un_document(conn, portee, album_id, motif):
                     (album_id, *params)).fetchone():
         raise HTTPException(409, "Vous pouvez supprimer cet album définitivement vous-même : "
                                  "il n'y a rien à demander.")
+    # COL-4 (S3) — dans un bac à sable, son propriétaire supprime lui-même (règle de
+    # `clause_suppression_directe`, reçue juste au-dessus) ; un invité ne demande rien à
+    # un administrateur.
+    bac, _ = _bac_a_sable_de(conn, album_id=album_id)
+    if bac is not None:
+        raise HTTPException(403, _MOTIF_BAC_PROPRIETAIRE)
     if a["document_id"] is None:
         # Un album posé hors de tout chemin d'écriture (base retouchée) : la demande ne
         # saurait pas quel document elle vise.
@@ -222,6 +229,10 @@ def _demander_un_projet(conn, portee, projet_id, motif):
     if p["repli"]:
         raise HTTPException(409, "C'est le projet de repli : il se renomme, il ne se "
                                  "supprime pas.")
+    if p["bac_a_sable_de"] is not None:
+        # COL-4 (S3) — un bac à sable ne se supprime pas, et rien ne s'y demande.
+        raise HTTPException(409, "C'est un bac à sable : il ne se supprime pas, il se remet à "
+                                 "neuf, et s'efface avec les autres chaque lundi.")
     if portee.peut_decider_des_projets():
         raise HTTPException(409, "Vous pouvez supprimer ce projet vous-même : il n'y a rien "
                                  "à demander.")
@@ -808,10 +819,14 @@ def lire_les_notices(q: str = "", offset: int = 0, limit: int = _NOTICES_PAR_PAG
                     motif="Ce que ce projet a déjà se lit par son responsable.")
     limit = max(1, min(int(limit), _NOTICES_PAGE_MAX))
     offset = max(0, int(offset))
+    # COL-4 (S3) — un document né dans un BAC À SABLE, ou du JEU, n'existe pour aucun autre
+    # projet : seules comptent les copies hors des projets isolés, et la notice est celle de
+    # la plus ancienne d'entre elles. Pour toute portée.
     lignes = conn.execute(
         "SELECT a.document_id, a.titre, a.serie, a.auteur FROM albums a "
-        "WHERE a.document_id IS NOT NULL AND a.id = (SELECT MIN(b.id) FROM albums b "
-        "                                             WHERE b.document_id = a.document_id) "
+        "WHERE a.document_id IS NOT NULL "
+        "AND a.id = (SELECT MIN(b.id) FROM albums b WHERE b.document_id = a.document_id "
+        f"            AND NOT {sql_album_isole('b')}) "
         "ORDER BY a.titre COLLATE NOCASE, a.document_id").fetchall()
     cherche = _sans_accents((q or "").strip())
     if cherche:
@@ -883,10 +898,34 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
     tout document du fonds — ils en lisent les notices ; tout autre écrivain de la
     collection ne nomme qu'un document dont il LIT déjà une copie dans ce projet."""
     doc = ligne.document_id
-    copies = _copies_du_document(conn, doc)
-    lues = _lues(conn, portee, [c["id"] for c in copies])
+    toutes = _copies_du_document(conn, doc)
+    # COL-4 (S3) — un bac à sable est un cul-de-sac, et c'est la NATURE du projet qui le
+    # tient, pour toute portée : une copie d'un projet ISOLÉ (bac à sable, jeu) n'est la
+    # source de rien dans un autre projet, et rien n'entre dans un bac à sable qui ne lui
+    # appartienne déjà. Ce qui reste est tout ce que la prise peut nommer.
+    isoles = _projets_isoles(conn)
+    bac_arrivee = projet_id in isoles["bacs"]
+    copies = [c for c in toutes
+              if c["projet_id"] == projet_id
+              or (not bac_arrivee and c["projet_id"] not in isoles["tous"])]
+    lues = _lues(conn, portee, [c["id"] for c in toutes])
+    nommee = next((c for c in toutes if c["id"] == ligne.album_id), None)
+    if (ligne.album_id is not None and nommee is not None and nommee not in copies
+            and (portee.tout or nommee["id"] in lues)):
+        return {"document_id": doc, "reponse": ligne.reponse, "etat": REFUSE,
+                "motif": _MOTIF_BAC_ISOLE}
+    if not copies and toutes and portee.tout:
+        return {"document_id": doc, "reponse": ligne.reponse, "etat": REFUSE,
+                "motif": _MOTIF_BAC_ISOLE}
     du_projet_lues = [c for c in copies if c["id"] in lues and c["projet_id"] == projet_id]
-    if not copies or not (portee.tout or gere or du_projet_lues):
+    # COL-4 — la propriétaire d'un bac à sable nomme aussi une copie GARDÉE au fonds de son
+    # bac à sable, qu'elle ne lit plus (une copie hors de toute collection) : la rendre est
+    # son geste (S3), sans rien demander.
+    proprio_bac = (bac_arrivee and bool(portee.utilisateur)
+                   and isoles["bacs"][projet_id] == portee.utilisateur)
+    gardee_du_bac = proprio_bac and any(not c["range"] and c["projet_id"] == projet_id
+                                        for c in copies)
+    if not copies or not (portee.tout or gere or du_projet_lues or gardee_du_bac):
         raise _introuvable(doc)
     plan = {"document_id": doc, "reponse": ligne.reponse}
 
@@ -941,7 +980,11 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
     # Le droit AVANT l'objet (relecture croisée) : à qui n'est ni responsable du projet ni
     # administrateur, le même refus, qu'une copie y soit gardée ou non — sinon la réponse
     # disait l'existence d'une copie gardée au fonds, que seul le fonds montre.
-    if not (portee.tout or gere):
+    if bac_arrivee and not proprio_bac:
+        # COL-4 (S3) — dans un bac à sable, rendre une copie gardée est le geste de son
+        # propriétaire, sans rien demander ; un invité ne le demande à personne.
+        return {**plan, "etat": REFUSE, "motif": _MOTIF_BAC_PROPRIETAIRE}
+    if not (portee.tout or gere or proprio_bac):
         return {**plan, "etat": REFUSE,
                 "motif": "Reprendre une copie gardée au fonds se demande par un responsable "
                          "du projet."}
@@ -951,7 +994,7 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
         return {**plan, "etat": REFUSE,
                 "motif": "Aucune copie de ce document n'est gardée au fonds pour ce projet."}
     plan["album_id"], plan["titre"] = gardees[0]["id"], gardees[0]["titre"]
-    if portee.tout:
+    if portee.tout or proprio_bac:
         plan["etat"] = FAIT
     else:
         # Un RETOUR, et non une ligne d'entrée (écran de la 3a, Hugo, 2026-10-17) : la copie
@@ -959,6 +1002,19 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
         # fonds », et la demande s'attend une fois par copie.
         plan["etat"], plan["genre"] = DEMANDE, DEMANDE_RENDRE
     return plan
+
+
+def _projets_isoles(conn) -> dict:
+    """`{"tous": {ids des projets isolés}, "bacs": {id d'un bac à sable: son
+    propriétaire}}` — COL-4, une requête."""
+    tous, bacs = set(), {}
+    for pid, de, jeu in conn.execute(
+            "SELECT id, bac_a_sable_de, jeu FROM projet "
+            "WHERE bac_a_sable_de IS NOT NULL OR jeu = 1"):
+        tous.add(pid)
+        if de is not None:
+            bacs[pid] = de
+    return {"tous": tous, "bacs": bacs}
 
 
 def _cran_d_amorce(cran) -> str:
@@ -1026,7 +1082,11 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
             raise HTTPException(422, f"Réponse inconnue : {x.reponse} "
                                      f"({' | '.join(REPONSES_PRISE)}).")
     projet_id = projet_de_collection(conn, collection_id)
-    gere = portee.peut_gerer_projet(projet_id)
+    # COL-4 (S2) — être responsable de son bac à sable ne fait nommer AUCUN document du
+    # fonds : seuls ceux dont on lit déjà une copie dans le bac à sable (le jeu, ce qu'on y
+    # a importé).
+    bac_arrivee, _ = _bac_a_sable_de(conn, projet_id=projet_id)
+    gere = portee.peut_gerer_projet(projet_id) and bac_arrivee is None
     # En partir recopie l'index des régions, et peut en recalculer les lemmes : spaCy se
     # charge HORS de la transaction d'écriture (CLAUDE.md § Concurrence).
     if any(x.reponse == REPONSE_AMORCER for x in lignes):
@@ -1049,6 +1109,14 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
                               p.get("album_id")):
             p.update(etat=REFUSE, motif="Déjà demandé pour cette collection : la demande "
                                         "attend sa réponse.")
+    if bac_arrivee is not None:
+        # COL-4 (S3) — aucune demande n'atteint l'administrateur depuis un bac à sable : un
+        # « rejoindre » ou un « en partir » que seul un administrateur pourrait consentir
+        # (aucun propriétaire ne tient toute la copie) y est refusé.
+        for p in plans:
+            if (p["etat"] == DEMANDE and p["genre"] in GENRES_CONSENTIS
+                    and not un_proprietaire_tient_toute_la_copie(conn, p["album_id"])):
+                p.update(etat=REFUSE, motif=_MOTIF_BAC_PROPRIETAIRE)
     entrees = [p for p in plans if p["etat"] == DEMANDE
                and p["genre"] == DEMANDE_ENTREE_DOCUMENTS]
     if entrees:
@@ -1310,6 +1378,10 @@ def apercu_d_amorce(album_id: int, collection: int, cran: str,
     source, refus = _source_d_amorce(conn, portee, copies, {album_id}, projet_id, album_id)
     if refus:
         raise HTTPException(409, refus)
+    isoles = _projets_isoles(conn)
+    if source["projet_id"] != projet_id and (source["projet_id"] in isoles["tous"]
+                                             or projet_id in isoles["bacs"]):
+        raise HTTPException(409, _MOTIF_BAC_ISOLE)   # COL-4 (S3), pour toute portée
     ou, params = portee.clause_rejoindre_directe("a.id")
     directe = conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                            (album_id, *params)).fetchone() is not None

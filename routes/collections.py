@@ -45,8 +45,9 @@ from database import (DEMANDE_REJOINDRE, NATURES, clore_rejoindre_d_une_copie_au
 from socle import (
     DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn,
     _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
-    _get_album, _get_collection, _get_projet, _plan_rejoindre, _refuser_le_jeu, _rows, db,
-    portee_courante,
+    _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_PROPRIETAIRE, _bac_a_sable_de,
+    _get_album, _get_collection, _get_projet, _plan_rejoindre, _refuser_le_bac_a_sable,
+    _refuser_le_jeu, _rows, db, portee_courante,
 )
 
 router = APIRouter()
@@ -74,7 +75,7 @@ def _niveau_dans(portee: autorisation.Portee, collection_id: int):
     return autorisation.LECTURE if collection_id in portee.lecture else None
 
 
-def _acces_de(conn, collection_id: int) -> list[dict]:
+def _acces_de(conn, collection_id: int, *, sans_signal: bool = False) -> list[dict]:
     """Les accès accordés sur une collection, propriétaires d'abord.
 
     **`jamais_vu` RAPPORTE une observation et n'explique aucune cause** (AUTH-6,
@@ -124,7 +125,15 @@ def _acces_de(conn, collection_id: int) -> list[dict]:
                            or acc["niveau"] == autorisation.PROPRIETAIRE)
         acc["jamais_vu"] = (acc["principal"] not in connus
                             if acc["genre"] == autorisation.UTILISATEUR else None)
+        if sans_signal:
+            acc.pop("jamais_vu")        # COL-4 : pas d'oracle dans un bac à sable
     return lignes
+
+
+def _acces_rendus(conn, collection_id: int) -> list[dict]:
+    """`_acces_de`, sans le signal `jamais_vu` sur une collection de bac à sable."""
+    bac, _ = _bac_a_sable_de(conn, collection_id=collection_id)
+    return _acces_de(conn, collection_id, sans_signal=bac is not None)
 
 
 def _ligne(conn, collection_id: int) -> dict:
@@ -286,7 +295,7 @@ def create_collection(payload: CollectionIn, conn: sqlite3.Connection = Depends(
     journal.journaliser(conn, "creation", "collection", cid,
                         apres={"nom": nom, "proprietaire": portee.utilisateur})
     conn.commit()
-    return {**_ligne(conn, cid), "acces": _acces_de(conn, cid)}
+    return {**_ligne(conn, cid), "acces": _acces_rendus(conn, cid)}
 
 
 @router.patch("/api/collections/{collection_id}")
@@ -482,7 +491,7 @@ def list_acces(collection_id: int, conn: sqlite3.Connection = Depends(db),
     """Qui a accès à cette collection, et à quel niveau. Réservé au propriétaire : la liste
     des membres d'une étude est une donnée sur des PERSONNES, pas sur le corpus."""
     _get_collection(conn, portee, collection_id, administrer=True)
-    return _acces_de(conn, collection_id)
+    return _acces_rendus(conn, collection_id)
 
 
 @router.get("/api/collections/{collection_id}/acces-du-projet")
@@ -531,6 +540,7 @@ def annuaire_de_la_collection(collection_id: int, conn: sqlite3.Connection = Dep
     d'un accès, et y lire l'annuaire ferait attendre chaque geste d'accès un annuaire en
     panne. Ici, la liste s'affiche tout de suite et les marques arrivent après."""
     _get_collection(conn, portee, collection_id, administrer=True)
+    _refuser_le_bac_a_sable(conn, _MOTIF_BAC_ANNUAIRE, 403, collection_id=collection_id)
     return comptes.choix_des_acces(conn, collection_id, annuaire.lire())
 
 
@@ -549,6 +559,7 @@ def choix_des_membres_du_projet(projet_id: int, conn: sqlite3.Connection = Depen
     pour la raison qui sépare `…/annuaire` de `…/acces` : aucun geste sur un membre
     n'attend un annuaire en panne."""
     _get_projet(conn, portee, projet_id, gerer=True)
+    _refuser_le_bac_a_sable(conn, _MOTIF_BAC_ANNUAIRE, 403, projet_id=projet_id)
     return comptes.choix_des_membres(conn, projet_id, annuaire.lire())
 
 
@@ -591,6 +602,7 @@ def accorder_acces(collection_id: int, payload: AccesIn,
     """
     _get_collection(conn, portee, collection_id, administrer=True)
     _refuser_le_jeu(conn, collection_id=collection_id)    # COL-4 : personne n'y entre
+    _refuser_le_bac_a_sable(conn, _MOTIF_BAC_ACCES, collection_id=collection_id)
     if payload.genre not in autorisation.GENRES:
         raise HTTPException(422, f"Genre invalide : {payload.genre} (utilisateur | groupe).")
     if payload.niveau not in autorisation.NIVEAUX:
@@ -660,7 +672,7 @@ def accorder_acces(collection_id: int, payload: AccesIn,
                        apres={"genre": payload.genre, "principal": principal,
                               "niveau": payload.niveau, "exporter": exporter})
     conn.commit()
-    return _acces_de(conn, collection_id)
+    return _acces_rendus(conn, collection_id)
 
 
 @router.delete("/api/collections/{collection_id}/acces/{genre}/{principal}", status_code=204)
@@ -676,6 +688,7 @@ def retirer_acces(collection_id: int, genre: str, principal: str,
     """
     _get_collection(conn, portee, collection_id, administrer=True)
     _refuser_le_jeu(conn, collection_id=collection_id)
+    _refuser_le_bac_a_sable(conn, _MOTIF_BAC_ACCES, collection_id=collection_id)
     ligne = conn.execute(
         "SELECT niveau, exporter FROM collection_acces WHERE collection_id = ? "
         "AND genre = ? AND principal = ?", (collection_id, genre, principal)).fetchone()
@@ -760,6 +773,10 @@ def ranger_album(album_id: int, collection_id: int,
                                      "administrateur.")
         qui = ("son propriétaire" if un_proprietaire_tient_toute_la_copie(conn, album_id)
                else "un administrateur")
+        if qui == "un administrateur":
+            # COL-4 (S3) — dans un bac à sable, aucune demande n'atteint l'administrateur.
+            _refuser_le_bac_a_sable(conn, _MOTIF_BAC_PROPRIETAIRE, 403,
+                                    collection_id=collection_id)
         if _en_attente_vers(conn, DEMANDE_REJOINDRE, collection_id, a["document_id"],
                             album_id):
             raise HTTPException(409, "Rejoindre ce travail depuis cette collection est déjà "

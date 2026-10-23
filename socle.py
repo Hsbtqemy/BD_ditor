@@ -41,10 +41,13 @@ import journal
 from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
-                      clause_appartenance, cle_tag, collection_row, creer_copie,
+                      NOM_BAC_A_SABLE, clause_appartenance, cle_tag, collection_de_base,
+                      collection_row, creer_collection_de_base, creer_copie,
                       demandes_vers_collection, est_jeu, etat_des_reponses, get_connection,
-                      projet_d_album, projet_de_collection, rangement_traverse,
-                      retirer_document_sans_copie, sql_projet_de, unindex_region)
+                      nature_du_projet, prochain_effacement, projet_d_album,
+                      projet_de_collection, rangement_traverse, retirer_document_sans_copie,
+                      sql_projet_d_album, sql_projet_de, unindex_region)
+from config import BAC_A_SABLE_PLAFOND_PLANCHES
 from pipeline.ingest import (chemin_d_image_sur, dossiers_d_album, elaguer_dossier_d_album,
                              remove_album_files, remove_planche_files)
 
@@ -201,11 +204,17 @@ def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee, *, album_i
                                      "se pose que sur les albums qu'elle range.")
     # Un libellé LIBRE se crée (global, comme avant) ; un libellé pris par un terme qu'on
     # ne lit pas ne se crée pas — l'unicité l'en empêche — et ne s'attache pas.
+    #
+    # COL-4 (S2) — sur un album de BAC À SABLE, le libellé libre naît LOCAL à une collection
+    # du bac à sable qui range l'album : global, il survivrait à l'effacement chez tout le
+    # monde ; local, l'effacement l'emporte avec le reste.
     neufs = [l for l in normalized if l not in pris]
+    locale = _collection_locale_d_un_bac(conn, album_id)
     for label in neufs:
         conn.execute(
-            "INSERT INTO tags (label) VALUES (?) ON CONFLICT(label) DO NOTHING",
-            (label,),
+            "INSERT INTO tags (label, collection_id) VALUES (?, ?) "
+            "ON CONFLICT(label) DO NOTHING",
+            (label, locale),
         )
     if neufs:
         marques_neufs = ",".join("?" * len(neufs))
@@ -213,6 +222,22 @@ def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee, *, album_i
             f"SELECT id, label, couleur FROM tags WHERE label IN ({marques_neufs})",
             neufs))
     return sorted(lisibles, key=lambda r: r["label"])
+
+
+def _collection_locale_d_un_bac(conn, album_id: int):
+    """La collection où naît un tag libre tapé sur cet album s'il vit dans un BAC À SABLE —
+    sa base s'il y est rangé, sinon sa plus petite collection, sinon la base (une copie
+    gardée au fonds) ; None hors d'un bac à sable. COL-4."""
+    projet_id, _ = _bac_a_sable_de(conn, album_id=album_id)
+    if projet_id is None:
+        return None
+    base = collection_de_base(conn, projet_id)
+    rangees = [r[0] for r in conn.execute(
+        "SELECT collection_id FROM collection_album WHERE album_id = ? ORDER BY collection_id",
+        (album_id,))]
+    if base in rangees or not rangees:
+        return base
+    return rangees[0]
 
 
 def _annotation_selon(conn: sqlite3.Connection, clause_tag: tuple[str, list],
@@ -488,6 +513,120 @@ def _refuser_le_jeu(conn, *, projet_id=None, collection_id=None, album_id=None) 
         projet_id = projet_d_album(conn, album_id)
     if est_jeu(conn, projet_id):
         raise HTTPException(409, _MOTIF_JEU)
+
+
+# --------------------------------------------------------------------------- #
+# Le BAC À SABLE (COL-4) — naître, se borner
+# --------------------------------------------------------------------------- #
+# Un bac à sable est ISOLÉ par sa NATURE (`projet.bac_a_sable_de`), jamais par la portée de
+# qui frappe : une portée totale n'y ouvre rien de plus (Hugo, 2026-10-22). Rien n'en sort
+# vers un autre projet, rien n'y entre, aucune demande n'atteint l'administrateur depuis lui
+# (S3) ; et ce qu'il donne à son propriétaire — responsable d'un projet, qui « écrit quelque
+# part » — ne compte pour rien ailleurs (S2, dans `autorisation.Portee`).
+_MOTIF_BAC_PROPRIETAIRE = ("Dans un bac à sable, c'est son propriétaire qui le fait : rien "
+                           "ne s'y demande à un administrateur.")
+_MOTIF_BAC_ISOLE = ("Un bac à sable est un cul-de-sac : rien n'en sort vers un autre projet, "
+                    "et rien n'y entre d'ailleurs.")
+_MOTIF_BAC_ANNUAIRE = ("Dans un bac à sable, on fait entrer un compte par son login, sans "
+                       "lire l'annuaire.")
+_MOTIF_BAC_ACCES = ("Dans un bac à sable, on fait entrer des comptes par le projet, au rôle "
+                    "de membre — aucun accès ne se pose collection par collection.")
+_MOTIF_EXPORT_BAC = ("Ce document ne sort pas d'un bac à sable : seuls les documents du jeu "
+                     "dont les images vivent dans le dépôt s'en exportent.")
+
+
+def _bac_a_sable_de(conn, *, projet_id=None, collection_id=None, album_id=None):
+    """`(projet_id, propriétaire)` si le projet — dit, ou lu sur la collection ou l'album —
+    est un bac à sable ; `(None, None)` sinon."""
+    if projet_id is None and collection_id is not None:
+        projet_id = projet_de_collection(conn, collection_id)
+    if projet_id is None and album_id is not None:
+        projet_id = projet_d_album(conn, album_id)
+    n = nature_du_projet(conn, projet_id)
+    if n is None or n["bac_a_sable_de"] is None:
+        return None, None
+    return projet_id, n["bac_a_sable_de"]
+
+
+def _creer_bac_a_sable(conn, login: str) -> int:
+    """Fait naître le bac à sable de `login` et rend son id : le projet (nom stocké « Bac à
+    sable », la date de son effacement), son propriétaire RESPONSABLE dans `projet_acces` —
+    pour que tout ce qui lit les membres marche sans branche —, sa collection de base
+    OUVERTE en écriture à ses membres (l'invité écrit là où est le jeu), et une copie de
+    chaque document du jeu, jusqu'à son cran (`database.creer_copie` : aucune image copiée).
+    S'écrit au journal comme une création de projet. À appeler SOUS le verrou d'écriture,
+    après avoir relu qu'il n'en a pas ; ne commite pas."""
+    efface_le = prochain_effacement()
+    pid = conn.execute(
+        "INSERT INTO projet (nom, description, bac_a_sable_de, efface_le) VALUES (?, ?, ?, ?)",
+        (NOM_BAC_A_SABLE, "Un bac à sable : on y apprend l'outil. Il s'efface chaque semaine.",
+         login, efface_le)).lastrowid
+    journal.journaliser(conn, "creation", "projet", pid,
+                        apres={"nom": NOM_BAC_A_SABLE, "bac_a_sable": True,
+                               "efface_le": efface_le})
+    conn.execute("INSERT INTO projet_acces (projet_id, genre, principal, role) "
+                 "VALUES (?, ?, ?, ?)",
+                 (pid, autorisation.UTILISATEUR, login, autorisation.RESPONSABLE))
+    journal.journaliser(conn, "lien", "projet_acces", pid,
+                        apres={"genre": autorisation.UTILISATEUR, "principal": login,
+                               "role": autorisation.RESPONSABLE})
+    base = creer_collection_de_base(conn, pid, nom=NOM_BAC_A_SABLE,
+                                    acces_membres=autorisation.ECRITURE)
+    journal.journaliser(conn, "creation", "collection", base,
+                        apres={"nom": NOM_BAC_A_SABLE, "proprietaire": None, "base": True,
+                               "projet_id": pid, "acces_membres": autorisation.ECRITURE})
+    for document_id, reference, cran in conn.execute(
+            "SELECT jd.document_id, jd.album_reference, jd.cran FROM jeu_document jd "
+            "JOIN albums a ON a.id = jd.album_reference AND a.document_id = jd.document_id "
+            "ORDER BY jd.rang, jd.document_id").fetchall():
+        creer_copie(conn, document_id, base, par=login, depuis=reference, cran=cran)
+    return pid
+
+
+def _planches_importees_du_bac(conn, projet_id: int) -> int:
+    """Combien d'IMAGES ont été importées dans ce bac à sable (S9) : les fichiers distincts
+    que désignent les planches de ses albums, hors des copies du jeu — qui n'ont rien
+    importé. Une copie faite dans le bac à sable d'un album importé ne compte pas deux fois."""
+    return conn.execute(
+        "SELECT COUNT(DISTINCT p.chemin_tiff) FROM planches p JOIN albums a ON a.id = p.album_id "
+        f"WHERE {sql_projet_d_album('a')} = ? AND (a.document_id IS NULL OR "
+        "a.document_id NOT IN "
+        "(SELECT document_id FROM jeu_document))", (projet_id,)).fetchone()[0]
+
+
+def _exiger_le_plafond(conn, album_id: int, ajout: int = 1) -> None:
+    """409 nommé si importer `ajout` planche(s) dans cet album dépasse le plafond du bac à
+    sable qui le porte (S9 ; Hugo, 2026-10-21 : « une cinquantaine »). Sans effet hors d'un
+    bac à sable."""
+    projet_id, _ = _bac_a_sable_de(conn, album_id=album_id)
+    if projet_id is None:
+        return
+    deja = _planches_importees_du_bac(conn, projet_id)
+    if deja + ajout > BAC_A_SABLE_PLAFOND_PLANCHES:
+        raise HTTPException(409, f"Un bac à sable porte {BAC_A_SABLE_PLAFOND_PLANCHES} "
+                                 f"planches importées au plus ({deja} déjà) : remettez-le à "
+                                 "neuf pour recommencer.")
+
+
+def _exiger_l_export_hors_bac(conn, album_id: int) -> None:
+    """403 nommé si l'album vit dans un bac à sable et n'est pas la copie d'un document du
+    jeu dont l'export est ouvert (`jeu_document.exportable` : la part du dépôt). L'export se
+    décide DOCUMENT par document, jamais par bac à sable (Hugo, 2026-10-22) ; ce qu'on y a
+    importé soi-même n'en sort pas non plus — à trancher, fermé d'ici là."""
+    projet_id, _ = _bac_a_sable_de(conn, album_id=album_id)
+    if projet_id is None:
+        return
+    if conn.execute("SELECT 1 FROM albums a JOIN jeu_document jd ON jd.document_id = "
+                    "a.document_id WHERE a.id = ? AND jd.exportable = 1",
+                    (album_id,)).fetchone() is None:
+        raise HTTPException(403, _MOTIF_EXPORT_BAC)
+
+
+def _refuser_le_bac_a_sable(conn, motif: str, status: int = 409, **objet) -> None:
+    """Le refus d'un geste qui n'a pas cours dans un bac à sable, quelle que soit la portée."""
+    projet_id, _ = _bac_a_sable_de(conn, **objet)
+    if projet_id is not None:
+        raise HTTPException(status, motif)
 
 
 # --------------------------------------------------------------------------- #
@@ -997,7 +1136,12 @@ def _portee_d_export(portee: autorisation.Portee) -> autorisation.Portee:
 
 def _exiger_export_region(conn, portee: autorisation.Portee, region_id: int) -> None:
     """403 si la région — qu'on LIT, l'accesseur gardé l'a vérifié avant — appartient à
-    un album qu'aucune des collections qu'on peut exporter ne contient."""
+    un album qu'aucune des collections qu'on peut exporter ne contient. COL-4 — ou à un
+    album de bac à sable qui n'est pas la copie d'un document exportable du jeu."""
+    album = conn.execute("SELECT pl.album_id FROM regions r JOIN planches pl "
+                         "ON pl.id = r.planche_id WHERE r.id = ?", (region_id,)).fetchone()
+    if album is not None:
+        _exiger_l_export_hors_bac(conn, album[0])
     ou, params = portee.pour_export().clause_album("pl.album_id")
     if conn.execute(f"SELECT 1 FROM regions r JOIN planches pl ON pl.id = r.planche_id "
                     f"WHERE r.id = ? AND {ou}", (region_id, *params)).fetchone() is None:
@@ -1031,7 +1175,12 @@ def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
     rangé dans AUCUNE collection — une copie gardée au FONDS depuis COL-3 (tranche 2),
     supprimée de sa dernière collection ou importée au fonds ; seule une portée totale lit
     alors l'album. Il répond 409 en nommant l'état : un 403 « droit d'exporter » mentirait
-    à qui a tous les droits, et le laisser sortir rouvrirait l'export sans titre."""
+    à qui a tous les droits, et le laisser sortir rouvrirait l'export sans titre.
+
+    COL-4 — un album de BAC À SABLE ne sort qu'à une condition de plus, et pour toute
+    portée : être la copie d'un document du jeu dont l'export est ouvert
+    (`_exiger_l_export_hors_bac`, la part du dépôt). Document par document."""
+    _exiger_l_export_hors_bac(conn, album_id)
     rows = _rows(conn.execute(
         "SELECT c.id, c.nom FROM collection_album ca "
         "JOIN collection c ON c.id = ca.collection_id "

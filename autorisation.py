@@ -68,7 +68,8 @@ from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
 from database import (CRAN_ANNOTATIONS, GENRES_CONSENTIS, NATURE_COLLECTIF, rang_du_cran,
-                      sql_projet_de, sql_rang_du_cran)
+                      sql_est_bac_a_sable, sql_projet_d_album, sql_projet_de,
+                      sql_rang_du_cran)
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
 # modifie pas ce qu'on ne voit pas, et on n'administre pas ce qu'on ne peut pas modifier.
@@ -244,16 +245,33 @@ class Portee:
     """
 
     __slots__ = ("tout", "admin", "lecture", "ecriture", "propriete", "export",
-                 "projets", "projets_geres", "utilisateur", "groupes")
+                 "projets", "projets_geres", "utilisateur", "groupes",
+                 "bacs_a_sable", "bacs_a_soi", "collections_bac", "hors_isoles")
 
     def __init__(self, *, tout: bool = False, admin: bool = False,
                  lecture: frozenset = frozenset(), ecriture: frozenset = frozenset(),
                  propriete: frozenset = frozenset(), export: frozenset = frozenset(),
                  projets: frozenset = frozenset(), projets_geres: frozenset = frozenset(),
                  bases: tuple = (),
-                 utilisateur: Optional[str] = None, groupes: tuple = ()):
+                 utilisateur: Optional[str] = None, groupes: tuple = (),
+                 bacs_a_sable: frozenset = frozenset(), bacs_a_soi: frozenset = frozenset(),
+                 collections_bac: frozenset = frozenset(), hors_isoles: bool = False):
         self.tout = tout
         self.admin = admin
+        # COL-4 — les BACS À SABLE dont on est (`bacs_a_sable`), ceux qu'on a ouverts
+        # (`bacs_a_soi`, `projet.bac_a_sable_de` = son login), et les collections qu'on
+        # atteint et qui vivent dans un bac à sable (`collections_bac`). Lus par `resoudre`.
+        # Ils ne changent AUCUNE question ponctuelle (`peut_lire`, `peut_ecrire(c)`,
+        # `clause_album`…) : dans son bac à sable, on travaille comme ailleurs. Ils retirent
+        # des questions TRANSVERSES ce qu'un bac à sable donnerait hors de lui — écrire
+        # « quelque part », être responsable d'un projet (S2 du cadrage). `hors_isoles` :
+        # une portée « pour le corpus » (`pour_le_corpus`, S8), qui ne voit ni bac à sable ni
+        # jeu.
+        self.bacs_a_sable = frozenset(bacs_a_sable)
+        self.bacs_a_soi = frozenset(bacs_a_soi) & self.bacs_a_sable if not tout \
+            else frozenset(bacs_a_soi)
+        self.collections_bac = frozenset(collections_bac)
+        self.hors_isoles = hors_isoles
         # COL-3 — les projets dont on EST, et ceux qu'on GÈRE. Le responsable est membre :
         # cumulé ici pour la même raison que les niveaux, plus bas.
         self.projets_geres = frozenset(projets_geres)
@@ -329,8 +347,12 @@ class Portee:
     def peut_exporter_quelque_part(self) -> bool:
         """A-t-on le droit d'exporter, où que ce soit ? Sert aux exports qui traversent
         plusieurs collections (Recherche, Exploration) : sans aucun droit, le fichier
-        serait vide, et un refus qui dit pourquoi vaut mieux qu'un fichier qui se tait."""
-        return self.tout or bool(self.export)
+        serait vide, et un refus qui dit pourquoi vaut mieux qu'un fichier qui se tait.
+
+        COL-4 (S2, S8) — un BAC À SABLE n'y compte pas : les exports qui traversent les
+        collections ne le voient pas (`pour_le_corpus`), et son propriétaire, qui l'exporte
+        d'office, recevrait sinon un fichier vide au lieu du refus de qui n'exporte rien."""
+        return self.tout or bool(self.export - self.collections_bac)
 
     def pour_export(self) -> "Portee":
         """La même personne, réduite à ce qu'elle peut SORTIR.  DROIT-2.
@@ -347,7 +369,26 @@ class Portee:
                       ecriture=self.ecriture & self.export,
                       propriete=self.propriete & self.export, export=self.export,
                       projets=self.projets, projets_geres=self.projets_geres,
-                      utilisateur=self.utilisateur, groupes=self.groupes)
+                      utilisateur=self.utilisateur, groupes=self.groupes,
+                      bacs_a_sable=self.bacs_a_sable, bacs_a_soi=self.bacs_a_soi,
+                      collections_bac=self.collections_bac, hors_isoles=self.hors_isoles)
+
+    # -- le bac à sable (COL-4) ------------------------------------------------ #
+    def peut_ouvrir_un_bac_a_sable(self) -> bool:
+        """Peut-on ouvrir SON bac à sable — un projet à soi, dont on est responsable ?
+        COL-4 (S1 du cadrage ; Hugo, 2026-10-21).
+
+        Une question NEUVE, et non un trou dans `peut_decider_des_projets`, qui garde son
+        sens — décider quels projets existent reste à la portée totale. Un login, derrière le
+        proxy : un compte ordinaire comme un administrateur (Hugo, 2026-10-22 : il en a un
+        aussi). Ni le mono-poste — sans login, il n'y a ni « mien » ni personne à inviter —,
+        ni une requête sans identité (portée vide). Le compte PARTAGÉ est refusé à la route,
+        qui lit sa nature en base : un bac à sable est à une personne."""
+        return bool(AUTH_PROXY) and bool(self.utilisateur)
+
+    def _ecriture_hors_bac(self) -> frozenset:
+        """Les collections où l'on écrit, hors des bacs à sable."""
+        return self.ecriture - self.collections_bac
 
     # -- les projets (COL-3) -------------------------------------------------- #
     def est_du_projet(self, projet_id: int) -> bool:
@@ -507,18 +548,33 @@ class Portee:
             return "1", []
         if not self.utilisateur:
             return "0", []
+        # COL-4 (S5 du cadrage) — un cinquième chemin, disjoint des quatre moitiés : le
+        # PROPRIÉTAIRE d'un bac à sable détruit tout album de son bac à sable, sans rien
+        # demander, quel que soit qui y a travaillé — rien ne s'y demande à un
+        # administrateur (S3), et le travail d'un invité s'y efface de toute façon chaque
+        # lundi. Le projet de l'album (écrit, ou lu dans ses collections) est l'un des bacs à
+        # sable qu'il a ouverts ; et il n'est pas un compte PARTAGÉ, la quatrième moitié
+        # gardée telle quelle. Un INVITÉ garde la règle commune.
+        bac, p_bac = "0", []
+        if self.bacs_a_soi:
+            ids = sorted(self.bacs_a_soi)
+            bac = (f"(EXISTS (SELECT 1 FROM albums _sbs WHERE _sbs.id = {alias} "
+                   f"AND {sql_projet_d_album('_sbs')} IN ({', '.join('?' * len(ids))})) "
+                   f"AND NOT EXISTS (SELECT 1 FROM utilisateur _sbu WHERE _sbu.login = ? "
+                   f"AND _sbu.nature = ?))")
+            p_bac = [*ids, self.utilisateur, NATURE_COLLECTIF]
         detruire, p_detruire = self.clause_destruction(alias)
         if detruire == "0":
-            return "0", []
+            return bac, p_bac
         autrui, p_autrui = _sql_travail_d_autrui(alias, self.utilisateur)
-        return (f"({detruire} "
+        return (f"(({detruire} "
                 f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = {alias} "
                 f"AND _sc.creee_par = ?) "
                 f"AND NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
                 f"AND _su.nature = ?) "
-                f"AND NOT {autrui})",
+                f"AND NOT {autrui}) OR {bac})",
                 [*p_detruire, self.utilisateur, self.utilisateur, NATURE_COLLECTIF,
-                 *p_autrui])
+                 *p_autrui, *p_bac])
 
     def peut_tenir_le_fonds(self) -> bool:
         """A-t-on le droit de tenir le FONDS — le voir, rendre une copie gardée, répondre
@@ -551,8 +607,12 @@ class Portee:
         Ce que la question n'ouvre PAS, et que la route doit tenir par une requête à elle
         (`GET /api/fonds/notices`, colonnes nommées) : ni images, ni travail, ni qui a
         importé, ni les copies, leurs projets ou leurs collections, ni la demande qui
-        attend, ni le nombre de planches. Le fonds entier reste à `peut_tenir_le_fonds`."""
-        return self.tout or bool(self.projets_geres)
+        attend, ni le nombre de planches. Le fonds entier reste à `peut_tenir_le_fonds`.
+
+        COL-4 (S2) — être responsable de son BAC À SABLE n'y compte pas : chaque compte en
+        ouvrirait un, et les notices de tout le fonds s'ouvriraient à soixante-quinze
+        comptes d'un coup. Seuls comptent les projets ordinaires."""
+        return self.tout or bool(self.projets_geres - self.bacs_a_sable)
 
     def clause_rejoindre_directe(self, alias: str = "a.id") -> tuple[str, list]:
         """Fragment SQL restreignant `alias` (un id d'album) aux copies qu'on peut REJOINDRE
@@ -696,7 +756,9 @@ class Portee:
         if self.tout:
             return True
         if collection_id is None:
-            return bool(self.ecriture)
+            # COL-4 (S2) — écrire dans son bac à sable ne fait pas modifier le vocabulaire
+            # GLOBAL : il survivrait à l'effacement, chez tout le monde.
+            return bool(self._ecriture_hors_bac())
         return collection_id in self.ecriture
 
     def peut_remanier_tag(self, collection_id) -> bool:
@@ -729,8 +791,13 @@ class Portee:
     def peut_ecrire_quelque_part(self) -> bool:
         """A-t-on le droit d'écrire, où que ce soit ? Sert aux gestes qui ne visent aucune
         collection en particulier — enrichir le vocabulaire, par exemple. Sans cela, une
-        personne en lecture seule pourrait polluer un vocabulaire partagé par tous."""
-        return self.tout or bool(self.ecriture)
+        personne en lecture seule pourrait polluer un vocabulaire partagé par tous.
+
+        COL-4 (S2) — écrire dans un BAC À SABLE n'y compte pas : chaque arrivant en ouvrirait
+        un, et ces gestes (vocabulaire global, registre des personnages, rôles de
+        contribution) survivraient à son effacement, chez tout le monde. La même réponse
+        que sans bac à sable."""
+        return self.tout or bool(self._ecriture_hors_bac())
 
     def __repr__(self) -> str:                  # diagnostic uniquement
         if self.tout:
@@ -1011,6 +1078,35 @@ def bases_des_projets(conn: sqlite3.Connection, projets) -> tuple:
         ids))
 
 
+def bacs_du_principal(conn: sqlite3.Connection, login: str, projets,
+                      collections) -> tuple[frozenset, frozenset, frozenset]:
+    """(bacs à sable dont on est, ceux qu'on a ouverts, collections atteintes qui vivent
+    dans un bac à sable) — COL-4. Deux requêtes, au plus, à chaque requête HTTP d'un compte
+    ordinaire.
+
+    Les collections se lisent sur TOUT ce qu'on atteint, et non sur les seuls bacs à sable
+    dont on est : un invité qui y a créé une collection en reste propriétaire
+    (`collection_acces`) après en être sorti, et cette collection est toujours celle d'un
+    bac à sable. Ce que la fonction ne décide pas : ce que ces ensembles retirent, qui est
+    écrit dans `Portee`."""
+    bacs, a_soi = set(), set()
+    if projets:
+        ids = sorted(projets)
+        for pid, de in conn.execute(
+                f"SELECT id, bac_a_sable_de FROM projet WHERE bac_a_sable_de IS NOT NULL "
+                f"AND id IN ({', '.join('?' * len(ids))})", ids):
+            bacs.add(pid)
+            if de == login:
+                a_soi.add(pid)
+    cols = set()
+    if collections:
+        ids = sorted(collections)
+        cols = {r[0] for r in conn.execute(
+            f"SELECT c.id FROM collection c WHERE c.id IN ({', '.join('?' * len(ids))}) "
+            f"AND {sql_est_bac_a_sable(sql_projet_de('c'))}", ids)}
+    return frozenset(bacs), frozenset(a_soi), frozenset(cols)
+
+
 def acces_derives(conn: sqlite3.Connection, collection_id: int) -> list[dict]:
     """Les accès que le PROJET tient sur cette collection — ceux que `Portee.__init__` dérive
     de `projet_acces` pour une collection de BASE (D10), dits ligne par ligne pour qui
@@ -1066,7 +1162,11 @@ def resoudre(conn: sqlite3.Connection, request) -> Portee:
     # portée sans toucher la base (mono-poste, sans identité, administrateur), et aucune
     # n'en a besoin — une portée totale est de tous les projets, une portée vide d'aucun.
     projets, projets_geres = projets_du_principal(conn, login, noms_groupes)
+    bases = bases_des_projets(conn, projets | projets_geres)
+    bacs, a_soi, cols_bac = bacs_du_principal(
+        conn, login, projets | projets_geres,
+        lecture | ecriture | propriete | {b[1] for b in bases})
     return Portee(lecture=lecture, ecriture=ecriture, propriete=propriete, export=export,
-                  projets=projets, projets_geres=projets_geres,
-                  bases=bases_des_projets(conn, projets | projets_geres),
-                  utilisateur=login, groupes=tuple(noms_groupes))
+                  projets=projets, projets_geres=projets_geres, bases=bases,
+                  utilisateur=login, groupes=tuple(noms_groupes),
+                  bacs_a_sable=bacs, bacs_a_soi=a_soi, collections_bac=cols_bac)

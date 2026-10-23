@@ -3144,6 +3144,55 @@ LONGUEUR_MOTIF = 2000
 _ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+# --------------------------------------------------------------------------- #
+# Le moment de l'effacement des bacs à sable (COL-4, Q2 — Hugo, 2026-10-22)
+# --------------------------------------------------------------------------- #
+def _dernier_dimanche(annee: int, mois: int) -> _dt.date:
+    """Le dernier dimanche d'un mois (mars ou octobre)."""
+    fin = (_dt.date(annee, mois + 1, 1) - _dt.timedelta(days=1))
+    return fin - _dt.timedelta(days=(fin.weekday() - 6) % 7)
+
+
+def decalage_de_paris(instant_utc: _dt.datetime) -> _dt.timedelta:
+    """Le décalage de l'heure de Paris sur UTC à cet instant : +2 h en heure d'été, +1 h
+    sinon. La règle de l'Union européenne (depuis 1996) : l'été commence le dernier dimanche
+    de mars à 1 h UTC, finit le dernier dimanche d'octobre à 1 h UTC. Écrite ici plutôt que
+    lue dans `zoneinfo`, qui demande une base des fuseaux que le poste Windows n'a pas
+    (mesuré : `tzdata` absent du venv) — deux sources de l'heure ne diraient pas la même
+    chose. `instant_utc` : naïf, ou conscient de son fuseau."""
+    t = instant_utc.replace(tzinfo=None) if instant_utc.tzinfo is None else \
+        instant_utc.astimezone(_dt.timezone.utc).replace(tzinfo=None)
+    debut = _dt.datetime.combine(_dernier_dimanche(t.year, 3), _dt.time(1))
+    fin = _dt.datetime.combine(_dernier_dimanche(t.year, 10), _dt.time(1))
+    return _dt.timedelta(hours=2 if debut <= t < fin else 1)
+
+
+def prochain_effacement(maintenant: _dt.datetime | None = None) -> str:
+    """Le PROCHAIN moment d'effacement des bacs à sable, strictement après `maintenant`
+    (UTC, l'heure du serveur par défaut), dit en UTC sous la forme des dates SQLite
+    (`AAAA-MM-JJ HH:MM:SS`) — celle que l'écran lit en heure locale.
+
+    Le jour et l'heure sont ceux de Paris (`config.BAC_A_SABLE_JOUR`, `BAC_A_SABLE_HEURE` :
+    le lundi à 4 h), pour tous et SANS exception (Hugo, 2026-10-22, revenant sur le délai de
+    grâce de 24 h proposé le 2026-10-21) : un bac à sable ouvert le dimanche soir part le
+    lendemain matin. Posé à la naissance du bac à sable (`projet.efface_le`) : la date qu'on
+    affiche est celle qu'on applique, et la minuterie n'est qu'un battement."""
+    from config import BAC_A_SABLE_HEURE, BAC_A_SABLE_JOUR
+    if maintenant is None:
+        maintenant = _dt.datetime.now(_dt.timezone.utc)
+    if maintenant.tzinfo is not None:
+        maintenant = maintenant.astimezone(_dt.timezone.utc).replace(tzinfo=None)
+    local = maintenant + decalage_de_paris(maintenant)
+    jour = local.date() + _dt.timedelta(days=(BAC_A_SABLE_JOUR - local.weekday()) % 7)
+    candidat = _dt.datetime.combine(jour, _dt.time(BAC_A_SABLE_HEURE))
+    if candidat <= local:
+        candidat += _dt.timedelta(days=7)
+    # Le lundi à 4 h n'est jamais à moins d'un jour d'un changement d'heure (le dimanche à
+    # 2 h ou 3 h, heure locale) : le décalage d'une heure avant le moment est le sien.
+    utc = candidat - decalage_de_paris(candidat - _dt.timedelta(hours=1))
+    return utc.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def etat_embargo(bloc, aujourdhui: str | None = None) -> str | None:
     """Où en est la date d'embargo d'une collection — DÉRIVÉ, jamais stocké (DROIT-1).
 
