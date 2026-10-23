@@ -27,6 +27,16 @@ const INITIAL_QS = location.search;
 // D'où l'on vient (drill Recherche/Exploration), validé (page interne seulement,
 // cf. static/lib/nav.js) : conservé toute la session pour le bouton « ← Retour ».
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));
+// UX-12 — le mode voyage dans l'adresse avec le reste (`?…&mode=annotation`), pour qu'un
+// rechargement rouvre dans le mode où l'on était. La Navigation, mode d'arrivée, ne s'écrit
+// pas : les liens des autres surfaces n'en portent aucun, et n'ont pas à s'allonger.
+const MODES_ATELIER = ["navigation", "edition", "annotation", "transcription"];
+const MODE_PAR_DEFAUT = "navigation";
+/* Le mode que nomme une adresse ; un mode inconnu, ou aucun, donne la Navigation. */
+function modeDeLAdresse(params) {
+  const m = params.get("mode");
+  return MODES_ATELIER.includes(m) ? m : MODE_PAR_DEFAUT;
+}
 
 /* ---------------- État global ---------------- */
 /* Le login courant, pour distinguer « verrouillée par vous » de « par X » (AUTH-1).
@@ -544,13 +554,15 @@ function renderParentOptions(r) {
 /* ===================================================================
    Panneau droit
    =================================================================== */
-/* Reflète album/planche/région dans l'URL (replaceState : sans polluer l'historique)
-   → recharger la page rouvre exactement au même endroit (cf. applyDeepLink). */
+/* Reflète album/planche/région et le mode dans l'URL (replaceState : sans polluer
+   l'historique) → recharger la page rouvre au même endroit ET dans le même mode (cf.
+   applyDeepLink). La Navigation ne s'écrit pas : c'est le mode d'arrivée (UX-12). */
 function syncUrl() {
   const p = new URLSearchParams();
   if (state.albumId) p.set("album", state.albumId);
   if (state.planche) p.set("planche", state.planche.id);
   if (state.selectedId != null) p.set("region", state.selectedId);
+  if (state.mode !== MODE_PAR_DEFAUT) p.set("mode", state.mode);
   if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit au reload
   const qs = p.toString();
   history.replaceState(null, "", qs ? "?" + qs : location.pathname);
@@ -1118,6 +1130,7 @@ function setMode(mode) {
   $("#transcription").hidden = mode !== "transcription";
   renderOverlay();
   renderPanel();
+  syncUrl();   // UX-12 : le mode est dans l'adresse (renderPanel l'y met aussi, sans le promettre)
   if (mode === "annotation" && state.selectedId != null) loadAnnotation(state.selectedId);
   if (mode === "transcription") enterTranscription();
 }
@@ -1597,9 +1610,8 @@ function renderTranscription() {
   // montrent bien une bulle, simplement pas la même.
   // Effet voulu en quittant le mode : `setMode` re-rend l'overlay et le panneau, donc
   // l'Atelier retrouve la bulle qu'on éditait, et non celle par laquelle on est entré.
-  // Ce que cela ne répare PAS, et c'est assumé : `applyDeepLink` force `navigation` dès
-  // qu'une région est nommée, si bien qu'un rechargement rouvre sur la bonne bulle mais
-  // pas en Transcription. Rétablir le MODE demanderait de le porter dans l'URL aussi.
+  // Depuis UX-12 le MODE est dans l'adresse aussi : un rechargement rouvre en Transcription,
+  // sur cette bulle (`applyDeepLink`).
   if (r) { state.selectedId = r.id; syncUrl(); }
   // Un bandeau ne survit pas à la bulle qu'il concerne ; il survit à un nouveau rendu d'ELLE.
   if (state.conflit && (!r || state.conflit.regionId !== r.id)) fermerConflit();
@@ -3754,7 +3766,7 @@ function setupKeyboard() {
    Démarrage
    =================================================================== */
 /* Ouvre la visionneuse pile sur une région (lien venant de la recherche) :
-   ?album=&planche=&region=. */
+   ?album=&planche=&region=, et `&mode=` (UX-12) — le mode d'un rechargement. */
 async function applyDeepLink() {
   const p = new URLSearchParams(INITIAL_QS);   // URL d'origine (avant que syncUrl ne l'ait modifiée)
 
@@ -3769,7 +3781,14 @@ async function applyDeepLink() {
   if (p.get("sharedocs")) sdOpen();
 
   const album = p.get("album"), planche = p.get("planche"), region = p.get("region");
-  if (!planche && !region) return;
+  const mode = modeDeLAdresse(p);
+  if (!planche && !region) {
+    // Sans planche nommée, `loadAlbums` a ouvert la première sans l'attendre : le mode
+    // l'attend, sans quoi la Transcription compterait les bulles d'une planche à demi chargée.
+    if (mode !== MODE_PAR_DEFAUT && state.planche) await selectPlanche(state.planche.id);
+    entrerDansLeModeDeLAdresse(mode, null);
+    return;
+  }
   try {
     if (album && Number(album) !== state.albumId) {
       // UX-19 — jamais un album ouvert hors de la liste. `loadAlbums` a déjà changé de
@@ -3789,12 +3808,26 @@ async function applyDeepLink() {
         return;
       }
     }
-    if (region) {
-      setMode("navigation");
-      if (!selectAndCenter(Number(region)))
-        toast("Région du lien introuvable sur cette planche.", "error");
-    }
-  } catch (e) { toast("Lien : " + e.message, "error"); }
+    if (region && !selectAndCenter(Number(region)))
+      toast("Région du lien introuvable sur cette planche.", "error");
+  } catch (e) { toast("Lien : " + e.message, "error"); return; }
+  // Le mode en DERNIER, une fois l'album, la planche et la région posés : chaque mode fait
+  // en entrant ce qu'il ferait au clavier, sur ce qui est déjà là. Un lien dont l'album ou
+  // la planche manque s'arrête plus haut, en Navigation, sur son message.
+  entrerDansLeModeDeLAdresse(mode, region ? Number(region) : null);
+}
+
+/* UX-12 — entre dans le mode que nomme l'adresse, par `setMode` et ses gardes : l'Annotation
+   charge celle de la région choisie, la Transcription prend la planche (ou rend la main à la
+   Navigation s'il n'y en a pas) et le focus de sa zone de saisie. Elle commence à la PREMIÈRE
+   bulle, comme au clavier ; la seule chose propre au lien est d'aller ensuite à la bulle
+   qu'il nomme, si c'en est une — sans quoi F5 changerait de bulle. */
+function entrerDansLeModeDeLAdresse(mode, regionId) {
+  if (mode === state.mode) return;
+  setMode(mode);
+  if (state.mode !== "transcription" || regionId == null) return;
+  const i = state.trRegions.findIndex((r) => r.id === regionId);
+  if (i > 0) { state.trIndex = i; renderTranscription(); }
 }
 
 

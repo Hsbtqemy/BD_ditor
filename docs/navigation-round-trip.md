@@ -20,7 +20,7 @@ mémoire de session de l'invariant 3 n'est qu'un confort, jamais une condition).
 
 | Surface | Paramètres encodés | Écrit l'URL | Restaure au chargement |
 |---|---|---|---|
-| Visionneuse (`/`) | `album`, `planche`, `region`, `retour` | `syncUrl()` | `applyDeepLink()` |
+| Visionneuse (`/`) | `album`, `planche`, `region`, `mode` (sauf la Navigation, UX-12), `retour` | `syncUrl()` | `applyDeepLink()` |
 | Recherche (`/recherche`) | `q`, `album`, `type`, `pos`, `lemme`, `morph`, `provenance`, `tags`, `retour` | `search()` | `restoreFromUrl()` |
 | Exploration (`/exploration`) | `champ`, `compare`, filtres A (nus) + B (`b_*`), `retour` | `run()` via `stateParams()` | `restoreFromUrl()` |
 

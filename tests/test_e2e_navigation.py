@@ -795,3 +795,120 @@ def test_le_champ_collection_disparait_a_l_edition(page, seeded):
     expect(page.locator("#album-modal")).to_be_visible(timeout=15000)
     expect(page.locator("#m-collection-wrap")).to_be_hidden()
     expect(page.locator("#m-collection-note")).to_be_hidden()
+
+
+# ---------------------------------------------------------------------------
+# UX-12 — le MODE de l'Atelier voyage dans l'adresse (décision de Hugo du 2026-10-23) :
+# F5 rouvre dans le mode où l'on était, sur la même planche et la même région.
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def seeded_modes(live_server):
+    """Une case et DEUX bulles océrisées : la seconde permet de voir qu'un rechargement en
+    Transcription ne retombe pas sur la première, par où ce mode commence."""
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                     headers=ECRITURE)
+    try:
+        aid = c.post("/api/albums", json={"titre": "E2E modes"}).json()["id"]
+        pid = c.post(f"/api/albums/{aid}/import",
+                     files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+        cid = c.post(f"/api/planches/{pid}/regions",
+                     json={"type": "case", "x": 10, "y": 10, "w": 80, "h": 60}).json()["id"]
+        b1 = c.post(f"/api/planches/{pid}/regions",
+                    json={"type": "bulle", "x": 15, "y": 15, "w": 20, "h": 15,
+                          "parent_id": cid, "ocr_texte": "PREMIERE"}).json()["id"]
+        b2 = c.post(f"/api/planches/{pid}/regions",
+                    json={"type": "bulle", "x": 55, "y": 40, "w": 20, "h": 15,
+                          "parent_id": cid, "ocr_texte": "SECONDE"}).json()["id"]
+    finally:
+        c.close()
+    return {"base": live_server, "album": aid, "planche": pid, "case": cid,
+            "b1": b1, "b2": b2}
+
+
+def _atelier(s, region, extra=""):
+    return f"{s['base']}/?album={s['album']}&planche={s['planche']}&region={region}{extra}"
+
+
+def _dans_le_mode(page, mode, libelle):
+    expect(page.locator("#stat-mode")).to_have_text("Mode : " + libelle, timeout=15000)
+    expect(page.locator(f'.mode-btn[data-mode="{mode}"]')).to_have_attribute(
+        "aria-pressed", "true")
+
+
+@pytest.mark.parametrize("touche, mode, libelle", [
+    ("a", "annotation", "Annotation"),
+    ("e", "edition", "Édition"),
+])
+def test_f5_rouvre_dans_le_mode_ou_l_on_etait(page, seeded_modes, touche, mode, libelle):
+    s = seeded_modes
+    page.goto(_atelier(s, s["b2"]), wait_until="networkidle")
+    expect(page.locator("#region-id")).to_have_text(f"#{s['b2']}", timeout=15000)
+    _dans_le_mode(page, "navigation", "Navigation")
+    assert "mode=" not in page.url, page.url        # la Navigation ne s'écrit pas
+    page.keyboard.press(touche)
+    _dans_le_mode(page, mode, libelle)
+    expect(page).to_have_url(re.compile(rf"[?&]mode={mode}(?:&|$)"))
+
+    page.reload(wait_until="networkidle")
+    _dans_le_mode(page, mode, libelle)
+    expect(page.locator("#region-id")).to_have_text(f"#{s['b2']}")
+    expect(page.locator(f'#planche-list li.active[data-id="{s["planche"]}"]')).to_have_count(1)
+    expect(page).to_have_url(re.compile(rf"region={s['b2']}(?:&|$)"))
+
+
+def test_f5_en_annotation_recharge_l_annotation_de_la_region(page, seeded_modes):
+    """L'Annotation entre comme au clavier : elle charge l'annotation de la région."""
+    s = seeded_modes
+    c = httpx.Client(base_url=s["base"], trust_env=False, timeout=30, headers=ECRITURE)
+    try:
+        r = c.put(f"/api/regions/{s['b2']}/annotation",
+                  json={"note": "note gardée"})
+        assert r.status_code < 300, r.text
+    finally:
+        c.close()
+    page.goto(_atelier(s, s["b2"], "&mode=annotation"), wait_until="networkidle")
+    _dans_le_mode(page, "annotation", "Annotation")
+    expect(page.locator("#note-input")).to_have_value("note gardée")
+
+
+def test_f5_en_transcription_rouvre_sur_la_meme_bulle(page, seeded_modes):
+    s = seeded_modes
+    page.goto(_atelier(s, s["b1"]), wait_until="networkidle")
+    expect(page.locator("#region-id")).to_have_text(f"#{s['b1']}", timeout=15000)
+    page.keyboard.press("t")
+    _dans_le_mode(page, "transcription", "Transcription")
+    expect(page.locator("#tr-progress")).to_have_text("Bulle 1 / 2")
+    page.locator("#tr-next").click()                 # la seconde bulle
+    expect(page.locator("#tr-progress")).to_have_text("Bulle 2 / 2")
+    expect(page).to_have_url(re.compile(rf"region={s['b2']}&mode=transcription(?:&|$)"))
+
+    page.reload(wait_until="networkidle")
+    _dans_le_mode(page, "transcription", "Transcription")
+    expect(page.locator("#transcription")).to_be_visible()
+    expect(page.locator("#tr-progress")).to_have_text("Bulle 2 / 2")
+    expect(page.locator("#tr-text")).to_have_value("SECONDE")
+    expect(page.locator("#tr-text")).to_be_focused()
+    expect(page).to_have_url(re.compile(rf"planche={s['planche']}&region={s['b2']}&mode="))
+
+
+def test_un_mode_inconnu_donne_la_navigation(page, seeded_modes):
+    s = seeded_modes
+    page.goto(_atelier(s, s["b2"], "&mode=bidule"), wait_until="networkidle")
+    expect(page.locator("#region-id")).to_have_text(f"#{s['b2']}", timeout=15000)
+    _dans_le_mode(page, "navigation", "Navigation")
+    expect(page.locator("#transcription")).to_be_hidden()
+    assert "mode=" not in page.url, page.url
+
+
+@pytest.mark.parametrize("avec_planche", [True, False])
+def test_un_lien_en_transcription_sans_region(page, seeded_modes, avec_planche):
+    """Sans région, la Transcription fait ce qu'elle fait au clavier : elle commence à la
+    première bulle de la planche, et l'adresse la nomme alors."""
+    s = seeded_modes
+    planche = f"&planche={s['planche']}" if avec_planche else ""
+    page.goto(f"{s['base']}/?album={s['album']}{planche}&mode=transcription",
+              wait_until="networkidle")
+    _dans_le_mode(page, "transcription", "Transcription")
+    expect(page.locator("#tr-progress")).to_have_text("Bulle 1 / 2")
+    expect(page.locator("#tr-text")).to_have_value("PREMIERE")
+    expect(page).to_have_url(re.compile(rf"region={s['b1']}&mode=transcription(?:&|$)"))
