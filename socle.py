@@ -1022,6 +1022,118 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Le BAC À SABLE (COL-4) — s'effacer
+# --------------------------------------------------------------------------- #
+_MOTIF_PAS_UN_BAC = ("Ce projet n'est pas un bac à sable : seul un bac à sable s'efface ainsi. "
+                     "Un projet ordinaire ne se supprime que vide.")
+# Le vocabulaire qu'un bac à sable peut porter en propre, dans l'ordre où il se supprime :
+# les valeurs avant leurs dimensions, les dimensions avant leurs domaines.
+_VOCABULAIRE_LOCAL = ("attribut_valeur", "attribut_dimension", "domaine", "tags")
+
+
+def _passer_les_gestes_du_bac(conn, projet_id: int) -> int:
+    """Le témoin de l'annulation (S5) : les gestes humains encore annulables faits sur les
+    régions de ce bac à sable sont PASSÉS (`undo.ecarter`, la trace append-only d'AUTH-14),
+    avant que leurs objets partent. Sans lui, Ctrl+Z refusait ces gestes un par un après
+    l'effacement — « ne s'annule plus », autant de fois qu'il y en avait. Ceux qu'il voit :
+    les actes sur une région VIVANTE du bac à sable, ceux dont la charge nomme l'une de ses
+    planches (une région créée, modifiée ou supprimée). Ne commite pas ; rend le nombre."""
+    import undo                                  # import paresseux : `undo` ne dépend de rien ici
+    planches = [r[0] for r in conn.execute(
+        f"SELECT p.id FROM planches p JOIN albums a ON a.id = p.album_id "
+        f"WHERE {sql_projet_d_album('a')} = ?", (projet_id,))]
+    if not planches:
+        return 0
+    marques = ", ".join("?" * len(planches))
+    tables = ", ".join("?" * len(undo._TABLES))
+    gestes = conn.execute(
+        f"SELECT * FROM evenement e WHERE e.agent_type = 'humain' "
+        f"AND e.cible_table IN ({tables}) "
+        f"AND (e.cible_id IN (SELECT r.id FROM regions r WHERE r.planche_id IN ({marques})) "
+        f"     OR (json_valid(e.apres) AND json_extract(e.apres, '$.planche_id') IN ({marques})) "
+        f"     OR (json_valid(e.avant) AND json_extract(e.avant, '$.planche_id') IN ({marques}))) "
+        f"AND e.id NOT IN (SELECT cible_id FROM evenement "
+        f"                 WHERE ((type = 'annulation' AND cible_table = 'evenement') "
+        f"                     OR (type = 'abandon' AND cible_table = 'annulation')) "
+        f"                   AND cible_id IS NOT NULL) ORDER BY e.id",
+        (*undo._TABLES, *planches, *planches, *planches)).fetchall()
+    for e in gestes:
+        undo.ecarter(conn, e)
+    return len(gestes)
+
+
+def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
+                         motif: str) -> dict:
+    """EFFACE un bac à sable et tout ce qu'il porte — le chemin de la remise à neuf et de
+    l'effacement hebdomadaire (S5 du cadrage). Distinct de `_supprimer_projet`, qui n'accepte
+    qu'un projet vide et doit le rester pour les vrais.
+
+    Sa première garde, relue SOUS le verrou d'écriture : le projet est un bac à sable
+    (`projet.bac_a_sable_de`) — jamais un projet ordinaire, jamais le jeu, jamais le repli
+    (409 nommé). La DROIT de l'appelant reste chez lui : la route ne l'appelle que pour le
+    bac à sable de qui frappe, l'outil avec une portée totale. Puis, dans l'ordre :
+
+    1. les gestes encore annulables faits sur ses régions sont PASSÉS (le témoin de Ctrl+Z) ;
+    2. chaque album dont le projet est ce bac à sable — rangé, ou gardé au fonds — est
+       détruit par `_detruire_album`, le seul chemin de la destruction d'un album : fin des
+       emplois au journal, demandes closes, document parti avec sa dernière copie (ce qu'on
+       y a importé), images effacées PAR RÉFÉRENCE — celles du jeu restent, la référence et
+       les autres bacs à sable les désignent. Un commit par album ;
+    3. son vocabulaire local (tags d'abord nés là, S2 ; dimensions, valeurs, domaines) est
+       supprimé AVANT ses collections — supprimées d'abord, elles le rendraient GLOBAL
+       (`ON DELETE SET NULL`) ; ses collections, base comprise, avec leurs accès (cascade),
+       en refusant les demandes qui les nomment comme arrivée ;
+    4. le projet, ses membres avec lui (cascade), et l'acte s'écrit : `suppression` sous
+       `projet`, charge `{bac_a_sable: true, motif}`.
+
+    Les PERSONNAGES ne sont pas touchés : un compte qui n'écrit que dans des bacs à sable
+    n'en crée aucun (S2, `peut_ecrire_quelque_part`), et un personnage global créé par un
+    autre ne se détruit pas parce qu'il est passé par un bac à sable.
+
+    Idempotent : un arrêt au milieu laisse un bac à sable à moitié effacé, que l'appel
+    suivant finit ; un projet déjà parti rend `efface: False`. Le journal garde tout,
+    append-only. Rend `{efface, albums, gestes_passes}`."""
+    conflit.verrouiller(conn)
+    n = nature_du_projet(conn, projet_id)
+    if n is None:
+        conn.rollback()
+        return {"efface": False, "albums": 0, "gestes_passes": 0}
+    if n["bac_a_sable_de"] is None:
+        conn.rollback()
+        raise HTTPException(409, _MOTIF_PAS_UN_BAC)
+    passes = _passer_les_gestes_du_bac(conn, projet_id)
+    conn.commit()
+    albums = [r[0] for r in conn.execute(
+        f"SELECT a.id FROM albums a WHERE {sql_projet_d_album('a')} = ? ORDER BY a.id",
+        (projet_id,))]
+    for album_id in albums:
+        _detruire_album(conn, portee, album_id)
+    conflit.verrouiller(conn)
+    if nature_du_projet(conn, projet_id) is None:           # un autre l'a fini entre-temps
+        conn.rollback()
+        return {"efface": False, "albums": len(albums), "gestes_passes": passes}
+    collections = [(r[0], r[1]) for r in conn.execute(
+        f"SELECT c.id, c.nom FROM collection c WHERE {sql_projet_de('c')} = ? ORDER BY c.id",
+        (projet_id,))]
+    ids = [c for c, _nom in collections]
+    if ids:
+        marques = ", ".join("?" * len(ids))
+        for table in _VOCABULAIRE_LOCAL:
+            conn.execute(f"DELETE FROM {table} WHERE collection_id IN ({marques})", ids)
+    for collection_id, nom in collections:
+        _clore_demandes_vers(conn, portee, collection_id)
+        conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
+        journal.journaliser(conn, "suppression", "collection", collection_id,
+                            avant={"nom": nom, "bac_a_sable": True})
+    nom = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()[0]
+    conn.execute("DELETE FROM projet WHERE id = ?", (projet_id,))
+    journal.journaliser(conn, "suppression", "projet", projet_id,
+                        avant={"nom": nom, "bac_a_sable": True, "motif": motif})
+    conn.commit()
+    return {"efface": True, "albums": len(albums), "gestes_passes": passes}
+
+
+# --------------------------------------------------------------------------- #
 # Prendre et rejoindre (COL-3, tranche 3a) — ce que partagent la prise et « + Ranger ici »
 # --------------------------------------------------------------------------- #
 # Ce que devient une ligne d'une prise, ou un rangement demandé : fait tout de suite,

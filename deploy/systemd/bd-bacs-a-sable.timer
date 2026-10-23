@@ -1,0 +1,17 @@
+# Le battement de l'effacement des bacs à sable : TOUTES LES HEURES. La date d'effacement
+# est en base ; ce timer ne fait que regarder si elle est passée, et un battement manqué
+# (machine arrêtée, conteneur en redémarrage) se rattrape au suivant.
+[Unit]
+Description=BeDediteur — regarde toutes les heures si des bacs a sable sont a effacer
+
+[Timer]
+# Au démarrage de la machine, laisser la pile Docker se lever avant de regarder.
+OnBootSec=10min
+# À l'heure pile, pour qu'un effacement prévu à 4 h passe à 4 h et non à 4 h 55.
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=60
+Unit=bd-bacs-a-sable.service
+
+[Install]
+WantedBy=timers.target

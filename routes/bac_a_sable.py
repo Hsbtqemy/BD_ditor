@@ -31,7 +31,8 @@ from config import BAC_A_SABLE_PLAFOND_PLANCHES
 from database import NATURE_COLLECTIF, ROLES_JEU, collection_de_base
 from pipeline import nlp
 
-from socle import _creer_bac_a_sable, _planches_importees_du_bac, db, portee_courante
+from socle import (_creer_bac_a_sable, _effacer_bac_a_sable, _planches_importees_du_bac,
+                   db, portee_courante)
 
 router = APIRouter()
 
@@ -130,6 +131,27 @@ def ouvrir_mon_bac_a_sable(response: Response, conn: sqlite3.Connection = Depend
         conn.rollback()
         response.status_code = 200
         return _vue(conn, p)
+    _creer_bac_a_sable(conn, portee.utilisateur)
+    conn.commit()
+    return _vue(conn, _mien(conn, portee.utilisateur))
+
+
+@router.post("/api/bac-a-sable/remise-a-neuf")
+def remettre_a_neuf(conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Remet MON bac à sable à son jeu de départ : tout ce qui y a été fait part — le
+    travail des invités aussi —, et un bac à sable neuf naît, avec une date d'effacement
+    neuve. Au propriétaire seul : on ne remet à neuf que le sien (404 nommé si l'on n'en a
+    pas). Les albums partent un par un (`socle._detruire_album` commite par album) : un arrêt
+    au milieu laisse un bac à sable à moitié effacé, qu'une nouvelle remise à neuf finit."""
+    _exiger_d_ouvrir(conn, portee)
+    p = _mien(conn, portee.utilisateur)
+    if p is None:
+        raise HTTPException(404, "Vous n'avez pas de bac à sable à remettre à neuf.")
+    if _jeu_a_un_travail(conn):
+        nlp.ensure_loaded()
+    _effacer_bac_a_sable(conn, portee, p["id"], motif="remise à neuf")
+    conflit.verrouiller(conn)
     _creer_bac_a_sable(conn, portee.utilisateur)
     conn.commit()
     return _vue(conn, _mien(conn, portee.utilisateur))

@@ -561,6 +561,9 @@ OUTILS_HORS = {
     "convertir_en_copies_de_travail.py":
         "Maintenance (IMG-1) : remplace les masters par des copies de travail. Compte "
         "rendu = décompte, chemins de fichier et tailles ; jamais un terme ni une charge.",
+    "effacer_bacs_a_sable.py":
+        "Maintenance (COL-4) : EFFACE les bacs à sable échus. Compte rendu = identifiants, "
+        "dates et décomptes ; aucun fichier produit, aucun terme ni charge du journal.",
     "preparer_jeu.py":
         "Maintenance (COL-4) : ÉCRIT le jeu des bacs à sable depuis ses descriptions. "
         "Compte rendu = clés de document, identifiants, noms de fichier ; aucun fichier "
@@ -617,6 +620,7 @@ ENTREES_HORS = {
     "reindex_materiel.py": {"--dry-run", "--force"},
     "regenerer_derives.py": {"--album", "--dry-run", "--mode", "--planche", "--toutes"},
     "convertir_en_copies_de_travail.py": {"--album", "--appliquer"},
+    "effacer_bacs_a_sable.py": {"--appliquer", "--maintenant", "--tous"},
     "preparer_jeu.py": {"--appliquer", "--depot", "--serveur"},
     "normaliser_casse.py": {"--album", "--dry-run", "--planche"},
     "retirer_locuteurs_muets.py": {"--appliquer"},
