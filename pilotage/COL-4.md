@@ -39,6 +39,20 @@ wizard en session dédiée.
   code : le jeu a donc une part hors dépôt, que l'outil d'amorçage doit savoir trouver ou
   ignorer ; l'export, permis sur les deux premières parts, doit rester FERMÉ sur la troisième —
   par document, pas par bac à sable ; et qui choisit les planches de chaque part
+  **Première composition, tranchée par Hugo le 2026-10-23**, sur sept planches qu'il a choisies
+  sur Digital Comic Museum (qui juge le domaine public selon le droit AMÉRICAIN ; l'instance est
+  en France). *Dans le dépôt* : une gravure de Girin, « L'École de Saint-Cyr » (XIXᵉ, une image
+  et sa légende, sans cases), une planche de « Bibi Fricotin chez les Chinois » (texte en bulles
+  ET sous les images — libre si elle est bien de Louis Forton, mort en 1934, à vérifier avant de
+  la verser), deux pages de *Lightning Comics* n° 6 (Ace, 1941) et une de *Modern Comics* n° 76
+  (Quality, 1948), en couleur et en anglais — elles montrent ce que l'outil, réglé pour le
+  français, ne fait pas : le stock, pas le parcours. *Sur le serveur seulement*, comme les scans
+  du corpus : une planche de « Moustache et Trottinette » (Calvo, mort en 1957 : protégée en
+  France jusqu'au 31 décembre 2027, droits américains restaurés en 1996), et une page signée
+  « Stevson » de la revue *Radar* (vers 1950), tant que l'auteur n'est pas identifié. *Le
+  parcours guidé* : la planche de Bibi Fricotin. *Les planches dessinées exprès* : plus tard
+  (Hugo). Les fichiers sont chez Hugo, hors du dépôt ; rien n'y est versé avant la vérification
+  de Forton
 
 ### À cadrer avant le code
 - [x] **Une note de cadrage** — attendu : écrite et rendue à Hugo, lue dans le code : qui crée un projet aujourd'hui (`peut_decider_des_projets`, la portée totale seule) et l'exception écrite qu'est un bac à sable créé par son propre utilisateur ; comment on le reconnaît (un drapeau sur `projet`, à côté de `repli`) et ce qu'il NE donne PAS ailleurs ; comment l'effacement hebdomadaire détruit un projet et tout ce qu'il porte (albums, copies, collections, demandes, journal — append-only, donc il reste) sans toucher aux autres ; ce qui empêche un album du bac à sable de sortir vers un vrai projet (le rangement ne traverse pas les projets ; « en partir », E7, à décider) ; la minuterie (le patron de `bd-deploiement.timer`) ; et ce que la liste des projets de l'Administration fait de 75 bacs à sable **Écrite le 2026-10-21 : `docs/col4-bac-a-sable-cadrage.md`**, S1 à S12, rendue à Hugo le même jour. Elle relève que le bac à sable fait de chaque arrivant un responsable de projet qui « écrit quelque part », deux qualités qui ouvrent aujourd'hui beaucoup hors de lui (notices du fonds, vocabulaire et personnages globaux, annuaire, bandeau de portée vide) : la responsabilité d'un bac à sable ne doit compter pour rien d'autre (S2), d'où l'estimation portée à 5 à 6 jours et demi
