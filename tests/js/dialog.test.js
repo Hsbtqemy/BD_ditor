@@ -5,7 +5,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { _trapTarget } = require("../../static/lib/dialog.js");
+const { _trapTarget, _signature } = require("../../static/lib/dialog.js");
 
 // Focusables fictifs : seule l'identité (référence) compte pour le calcul.
 const A = { id: "a" }, B = { id: "b" }, C = { id: "c" };
@@ -134,4 +134,36 @@ test("groupe sans coché : le focus posé sur n'importe lequel de ses boutons es
   const tous = [t1, t2, go, q1, q2];
   assert.equal(_trapTarget(_stops(tous), _stop(tous, t2), true), q1);   // Chromium à reculons
   assert.equal(_trapTarget(_stops(tous), _stop(tous, q2), false), t1);
+});
+
+/* Le retour du focus RETROUVE un déclencheur que l'écran a redessiné : « Modifier »
+   remplacé par le rendu de la fiche après l'enregistrement (QA du 2026-10-23). La
+   signature est ce que le remplaçant porte de stable. `echap` double de `CSS.escape`. */
+const echap = (v) => v.replace(/["\\]/g, "\\$&");
+const elt = (tag, attrs) => ({
+  tagName: tag.toUpperCase(),
+  id: attrs.id || "",
+  attributes: Object.entries(attrs).map(([name, value]) => ({ name, value })),
+});
+
+test("signature : l'id d'abord, seul", () => {
+  assert.equal(_signature(elt("button", { id: "detail-edit", "data-act": "x" }), echap),
+               "#detail-edit");
+});
+
+test("signature : sans id, la balise et TOUS ses data-*, rien d'autre", () => {
+  const b = elt("button", { class: "ghost", "data-act": "supprimer", "data-id": "5",
+                            "aria-label": "Supprimer…" });
+  assert.equal(_signature(b, echap), 'button[data-act="supprimer"][data-id="5"]');
+});
+
+test("signature : la valeur et l'id passent par l'échappement reçu", () => {
+  assert.equal(_signature(elt("button", { id: 'a"b' }), echap), '#a\\"b');
+  const b = elt("button", { "data-nom": 'L\'album "X"' });
+  assert.equal(_signature(b, echap), 'button[data-nom="L\'album \\"X\\""]');
+});
+
+test("signature : ni id ni data-* — rien à retrouver, l'hôte dit où aller", () => {
+  assert.equal(_signature(elt("button", { class: "ghost" }), echap), null);
+  assert.equal(_signature(null, echap), null);
 });

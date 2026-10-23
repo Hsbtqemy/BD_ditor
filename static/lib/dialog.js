@@ -8,7 +8,8 @@
      • ferme sur Échap ;
      • GARDE le focus dans la boîte au clic sur ce qui ne le prend pas, et rend le
        clavier à la modale du dessus quand le focus est perdu sur `body` ;
-     • à la fermeture, REND le focus à l'élément d'où l'on venait (le déclencheur).
+     • à la fermeture, REND le focus à l'élément d'où l'on venait (le déclencheur) —
+       ou à son REMPLAÇANT quand l'écran l'a redessiné, à défaut à `opts.retour()`.
    Source unique → même comportement clavier/lecteur d'écran partout.
    UMD minimal (require()-able par les tests Node, comme nav.js) : aucun accès au DOM
    au chargement, uniquement à l'appel de register(). Cf. docs/navigation-round-trip.md. */
@@ -139,6 +140,82 @@
     return !!el && el.isConnected && el.getClientRects().length > 0;
   }
 
+  /* De quoi RETROUVER un déclencheur que l'écran redessine — LOGIQUE PURE (testée sous
+     Node). Enregistrer la fiche d'un album la redessine : le « Modifier » d'où l'on venait
+     n'existe plus, le focus rendu tombait sur `body`, et Narrateur relisait le haut de la
+     page en taisant la bulle « Album enregistré » (Hugo, QA du 2026-10-23). Le remplaçant
+     porte ce que le gabarit lui donne de stable : son `id`, sinon ses attributs `data-*`
+     (`[data-act="supprimer"][data-id="5"]`). Rien de tout cela : pas de signature, et
+     l'hôte dit où aller (`opts.retour`). `echapper` est `CSS.escape`, passé en argument
+     pour que Node s'en passe. */
+  function signature(el, echapper) {
+    if (!el || !el.tagName) return null;
+    if (el.id) return "#" + echapper(el.id);
+    var sel = el.tagName.toLowerCase(), n = 0;
+    for (var i = 0; i < el.attributes.length; i++) {
+      var a = el.attributes[i];
+      if (a.name.indexOf("data-") !== 0) continue;
+      sel += "[" + a.name + '="' + echapper(a.value) + '"]';
+      n++;
+    }
+    return n ? sel : null;
+  }
+
+  // Le premier élément visible, hors de toute modale, qui porte la signature.
+  function retrouver(sig) {
+    if (!sig) return null;
+    var tous = document.querySelectorAll(sig);
+    for (var i = 0; i < tous.length; i++)
+      if (canFocus(tous[i]) && !insideAnyDialog(tous[i])) return tous[i];
+    return null;
+  }
+
+  /* Rendre le focus, et VEILLER : l'écran redessine souvent APRÈS la fermeture (la fiche
+     d'un album se relit au serveur une fois la modale close). Tant que personne n'a posé
+     le focus ailleurs, et pendant `VEILLE_MS`, un rendu qui détache l'élément rendu — le
+     focus retombant sur `body` — le reporte sur son remplaçant, à défaut sur `secours()`.
+     Dans la tâche du rendu (un `MutationObserver`) : le focus est posé AVANT que l'hôte
+     n'émette son message, et la bulle n'est pas couverte par un changement de focus. */
+  var VEILLE_MS = 10000;
+  var veille = null;
+
+  function finirVeille() {
+    if (!veille) return;
+    veille.mo.disconnect();
+    clearTimeout(veille.minuterie);
+    document.removeEventListener("focusin", veille.ailleurs, true);
+    veille = null;
+  }
+
+  function remplacant(sig, secours) {
+    var el = retrouver(sig);
+    if (!el && secours) {
+      el = secours();
+      if (!canFocus(el)) el = null;
+    }
+    return el;
+  }
+
+  function rendreFocus(cible, secours) {
+    finirVeille();
+    var sig = signature(cible, CSS.escape);
+    var el = canFocus(cible) ? cible : remplacant(sig, secours);
+    if (!el) return;
+    el.focus();
+    var v = veille = { el: el };
+    v.ailleurs = function (e) { if (e.target !== v.el) finirVeille(); };
+    v.mo = new MutationObserver(function () {
+      if (v.el.isConnected || !focusPerdu() || ouvertes.length) return;
+      var neuf = remplacant(sig, secours);
+      if (!neuf) return;
+      v.el = neuf;
+      neuf.focus();
+    });
+    v.mo.observe(document.body, { childList: true, subtree: true });
+    v.minuterie = setTimeout(finirVeille, VEILLE_MS);
+    document.addEventListener("focusin", v.ailleurs, true);
+  }
+
   function register(toggleEl, opts) {
     opts = opts || {};
 
@@ -177,6 +254,8 @@
     if (!box.hasAttribute("tabindex")) box.setAttribute("tabindex", "-1");
 
     var close = opts.onClose || function () { toggleEl.hidden = true; };
+    // Où rendre le focus quand ni le déclencheur ni son remplaçant ne se voient plus.
+    var secours = typeof opts.retour === "function" ? opts.retour : null;
 
     // Échap ferme · Tab/Maj+Tab bouclent. Écouteur sur l'élément basculé : les
     // événements clavier de la boîte y remontent ; stopPropagation évite que les
@@ -215,13 +294,14 @@
       var rang = ouvertes.indexOf(moi);
       if (rang !== -1) ouvertes.splice(rang, 1);
       if (open) {
+        finirVeille();
         ouvertes.push(moi);
         if (!box.contains(document.activeElement)) {
           var f = stops(focusables(box));
           if (f.length) f[0].focus();
         }
-      } else if (canFocus(lastExternalFocus)) {
-        lastExternalFocus.focus();
+      } else {
+        rendreFocus(lastExternalFocus, secours);
       }
     }
     new MutationObserver(onToggle)
@@ -229,5 +309,6 @@
     if (wasOpen) { ouvertes.push(moi); onToggle(); }   // déjà ouverte au câblage (rare)
   }
 
-  return { register: register, _trapTarget: trapTarget, _stop: stop, _stops: stops };
+  return { register: register, _trapTarget: trapTarget, _stop: stop, _stops: stops,
+           _signature: signature };
 });

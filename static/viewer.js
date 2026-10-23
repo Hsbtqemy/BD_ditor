@@ -3318,7 +3318,8 @@ function setupSharedocs() {
   // Modale accessible : role=dialog, piège à focus, Échap, retour du focus (source unique).
   if (window.BDDialog)
     BDDialog.register($("#sharedocs"),
-      { box: ".sd-dialog", labelledby: "sd-title", onClose: sdClose });
+      { box: ".sd-dialog", labelledby: "sd-title", onClose: sdClose,
+        retour: () => $("#btn-donnees") });   // le déclencheur vit dans ce menu, replié
 }
 
 /* Télécharge une sauvegarde de la base (zip horodaté). */
@@ -3546,7 +3547,8 @@ function setupControls() {
   });
   if (window.BDDialog)
     BDDialog.register($("#export-modal"),
-      { box: ".modal-box", labelledby: "export-title", onClose: fermerChoixExport });
+      { box: ".modal-box", labelledby: "export-title", onClose: fermerChoixExport,
+        retour: () => $("#btn-donnees") });   // le déclencheur vit dans ce menu, replié
   $("#zoom-in").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
   $("#zoom-out").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
   $("#zoom-fit").onclick = fitView;

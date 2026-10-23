@@ -842,7 +842,15 @@ async function colEnregistrer(panneau, c, onglet) {
   if (await colTenter(ligne, () => apiSend("PATCH", `/api/collections/${c.id}`, modifs))) {
     const msg = { texte: `« ${modifs.nom || c.nom} » enregistrée.`, erreur: false, onglet };
     colMsg(ligne, msg.texte);
-    if (await chargerCollections()) { B.edition = null; rendreFiche(msg); }
+    if (await chargerCollections()) {
+      B.edition = null;
+      rendreFiche(msg);
+      // Le formulaire redessiné emporte « Enregistrer » et le focus avec lui : il revient
+      // au « Modifier » du même panneau, comme après « Annuler » — dans la même tâche que
+      // le message de la fiche.
+      const m = document.querySelector(`#panneau-${onglet} [data-modifier]`);
+      if (m) m.focus();
+    }
   }
 }
 
@@ -2917,9 +2925,12 @@ async function prendreDansProjet(bouton) {
    suivant sans revenir (le motif de « Comptes et groupes »). */
 function focaliserFiche(depuisListe) {
   if (depuisListe && !ETROIT.matches) return;
-  const t = $("#biblio-fiche h3[tabindex]");
+  const t = titreDeFiche();
   if (t) t.focus();
 }
+
+// Le titre de la fiche ouverte : là où le focus revient quand son geste a disparu.
+function titreDeFiche() { return $("#biblio-fiche h3[tabindex]"); }
 
 function ouvrirCollection(id, onglet, depuisListe) {
   if (state.openId !== null) {
@@ -3415,9 +3426,12 @@ function setup() {
     if (e.target.id === "album-modal") closeModal();
   });
   // Modale accessible : role=dialog, piège à focus, Échap, retour du focus (source unique).
+  // `retour` : la fiche redessinée sans le geste d'où l'on venait (l'album parti d'une
+  // collection, ou du projet), son titre plutôt que `body`.
   if (window.BDDialog)
     BDDialog.register($("#album-modal"),
-      { box: ".modal-box", labelledby: "modal-title", onClose: closeModal });
+      { box: ".modal-box", labelledby: "modal-title", onClose: closeModal,
+        retour: titreDeFiche });
   // COL-3, tranche 2 — « Supprimer… », ses deux réponses.
   $("#sp-annuler").onclick = fermerSuppression;
   $("#sp-def").onclick = spDefinitif;
@@ -3430,7 +3444,8 @@ function setup() {
   });
   if (window.BDDialog)
     BDDialog.register($("#suppr-modal"),
-      { box: ".modal-box", labelledby: "sp-titre", onClose: fermerSuppression });
+      { box: ".modal-box", labelledby: "sp-titre", onClose: fermerSuppression,
+        retour: titreDeFiche });
   brancherListe();
   brancherFiche();
   // COL-3, tranche 3a — le compteur des demandes reçues mène à la première collection qui

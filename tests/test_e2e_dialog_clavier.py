@@ -413,18 +413,18 @@ def test_un_groupe_radio_sans_coche_ne_laisse_pas_sortir(page, decor, touche):
 # focus perdu rend la touche à la modale du dessus). Un test par cause — chacun tombe sans
 # son remède, l'autre restant en place.
 
-# Où ramène la fermeture : le geste d'ouverture de chaque modale. `None` : le déclencheur
-# vit dans un menu qui se replie avec la modale ouverte, et `dialog.js` ne rend pas le
-# focus à un élément qu'on ne voit plus (`canFocus`) — on n'exige alors que la fermeture.
+# Où ramène la fermeture : le geste d'ouverture de chaque modale. ShareDocs et l'export
+# s'ouvrent depuis le menu « Données », replié avec la modale ouverte : leur déclencheur ne
+# se voit plus, et l'hôte désigne le bouton du menu (`retour`).
 RETOUR = {
     "#lexique-modal": "#btn-lexique",
     "#accord-modal": "#btn-accord",
     "#accord-inter-modal": "#btn-accord-inter",
     "#album-modal": "#detail-edit",
     "#suppr-modal": '#album-detail [data-act="supprimer"]',
-    "#sharedocs": None,
+    "#sharedocs": "#btn-donnees",
     "#figure-modal": "#btn-fig-open",
-    "#export-modal": None,
+    "#export-modal": "#btn-donnees",
 }
 
 # Ce qui, dans chaque boîte, ne prend pas le focus : son titre (le nom de la boîte), et sa
@@ -528,3 +528,72 @@ def test_un_focus_perdu_rend_le_clavier_a_la_modale(page, decor, modale, touche)
     assert obtenu == attendu, (
         f"{modale} — {touche}, focus perdu, mène à "
         f"{noms[obtenu] if isinstance(obtenu, int) else obtenu}, et non à {noms[attendu]}.")
+
+
+# ── Le déclencheur redessiné : le focus va à son REMPLAÇANT ──────────────────────────────
+#
+# Trouvé par Hugo avec Narrateur le 2026-10-23. « Modifier », puis Enregistrer : la fiche
+# de l'album se relit au serveur APRÈS la fermeture et se redessine, le « Modifier » d'où
+# l'on venait n'existe plus, et le focus que `dialog.js` venait de lui rendre tombait sur
+# `body`. Narrateur relisait le haut de la page, et la bulle « Album enregistré » se
+# perdait. On exige le NOUVEAU « Modifier », dans le document, et qu'il ait reçu le focus
+# AVANT la bulle : l'annonce polie ne doit pas être couverte par un changement de focus.
+
+_GUETTER = """([sel, texte]) => {
+  window.__ancien = document.querySelector(sel);
+  window.__focus_avant_bulle = null;
+  document.addEventListener('focusin', (e) => {
+    if (!e.target.matches(sel) || e.target === window.__ancien) return;
+    const bulle = [...document.querySelectorAll('#toasts .toast')]
+      .some((t) => t.textContent.includes(texte));
+    if (window.__focus_avant_bulle === null) window.__focus_avant_bulle = !bulle;
+  }, true);
+}"""
+
+_OU_EST = """(sel) => {
+  const a = document.activeElement;
+  return {nom: a ? a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') : 'rien',
+          bon: !!a && a.matches(sel), relie: !!a && a.isConnected,
+          neuf: !!a && a !== window.__ancien,
+          ancien_detache: !!window.__ancien && !window.__ancien.isConnected,
+          avant_bulle: window.__focus_avant_bulle};
+}"""
+
+
+def test_enregistrer_un_album_rend_le_focus_au_nouveau_modifier(page, decor):
+    _album(page, decor)
+    page.evaluate(_GUETTER, ["#detail-edit", "Album enregistré"])
+    page.fill("#m-desc", "Une description, pour enregistrer quelque chose.")
+    page.click("#m-save")
+    expect(page.locator("#album-modal")).to_be_hidden(timeout=5000)
+    expect(page.locator("#toasts .toast", has_text="Album enregistré")).to_have_count(1)
+    etat = page.evaluate(_OU_EST, "#detail-edit")
+    assert etat["ancien_detache"], (
+        f"la fiche n'a pas été redessinée ({etat}) : ce test ne mesure plus ce pour quoi "
+        "il existe.")
+    assert etat["bon"] and etat["relie"] and etat["neuf"], (
+        f"après l'enregistrement, le focus est sur {etat['nom']} — et non sur le nouveau "
+        f"« Modifier » de la fiche ({etat}).")
+    assert etat["avant_bulle"] is True, (
+        f"le nouveau « Modifier » a reçu le focus APRÈS la bulle ({etat}) : un changement "
+        "de focus couvrirait son annonce.")
+
+
+def test_enregistrer_la_description_d_une_collection_rend_le_focus_a_modifier(page, decor):
+    """Le même défaut hors modale, dans la fiche d'une collection : le formulaire redessiné
+    emportait « Enregistrer », et le focus avec lui. Il revient au « Modifier » du panneau,
+    comme après « Annuler »."""
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30,
+                      headers=ECRITURE) as c:
+        cid = next(x["id"] for x in c.get("/api/collections").json()
+                   if x["nom"] == "Seconde étude")
+    page.goto(f"{decor['base']}/corpus?collection={cid}&onglet=description",
+              wait_until="networkidle")
+    sel = '#panneau-description [data-modifier]'
+    page.locator(sel).click()
+    champ = page.locator("#panneau-description [data-champ]").first
+    expect(champ).to_be_focused()
+    champ.fill(champ.input_value() + " (revue)")
+    page.locator("#panneau-description [data-enregistrer]").click()
+    expect(page.locator(sel)).to_be_visible(timeout=5000)
+    expect(page.locator(sel)).to_be_focused()
