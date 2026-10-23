@@ -9,6 +9,7 @@ La garde rejoue le geste tel quel, dans deux contextes de navigateur ouverts AVA
 enregistrement : c'est ce qui rend l'état de chacun périmé. Elle juge par l'API, pas par
 l'écran : ce qui compte est ce qui reste en base.
 """
+import re
 import time
 
 import httpx
@@ -70,6 +71,13 @@ def _ouvrir(page, url):
     page.goto(url, wait_until="networkidle")
     page.click('.mode-btn[data-mode="annotation"]')
     expect(page.locator("#note-input")).to_be_visible(timeout=15000)
+    # Passer en Annotation CHARGE l'annotation de la bulle (`loadAnnotation`), et ce
+    # chargement repart d'un état propre : un tag posé avant son retour est oublié, et rien
+    # ne part. Le champ est visible bien avant. Sous la charge de la passe entière, le tag de
+    # B est tombé dans cette fenêtre (« jamais enregistré : set() ») ; retarder ce GET de
+    # 1,5 s le reproduit à chaque coup. On attend donc la classe `saved`, que pose la fin du
+    # chargement — pas le texte « Enregistré », que le gabarit porte dès l'origine.
+    expect(page.locator("#save-state")).to_have_class(re.compile(r"\bsaved\b"), timeout=15000)
 
 
 def test_la_note_de_l_une_n_efface_pas_le_tag_de_l_autre(page, bulle):
