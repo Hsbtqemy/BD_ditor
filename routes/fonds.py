@@ -403,13 +403,20 @@ def _vue_demande(conn, demande_id: int) -> dict:
 
 
 @router.get("/api/demandes")
-def list_demandes(conn: sqlite3.Connection = Depends(db),
+def list_demandes(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     """Toutes les demandes, en attente ou répondues — une demande répondue RESTE : c'est
     ce qui permet de dire qu'une même suppression a déjà été refusée. Réservée à qui tient
-    le fonds : elle nomme qui demande, et dit pourquoi."""
+    le fonds : elle nomme qui demande, et dit pourquoi.
+
+    COL-4 (S3) — sans celles des BACS À SABLE, qui se répondent entre leurs comptes et
+    rendraient « À faire » illisible ; `bacs_a_sable=1` les rend aussi."""
     _exiger_le_fonds(portee)
-    return _vues_demandes(conn, detail=True)
+    vues = _vues_demandes(conn, detail=True)
+    if bacs_a_sable:
+        return vues
+    isoles = _projets_isoles(conn)["tous"]
+    return [d for d in vues if d["projet_id"] not in isoles]
 
 
 @router.post("/api/demandes/{demande_id}/reponse")
@@ -696,7 +703,7 @@ def _accepter_un_retour(conn, portee, d: dict) -> None:
 # Le fonds
 # --------------------------------------------------------------------------- #
 @router.get("/api/fonds")
-def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
+def lire_le_fonds(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     """Les documents de l'instance : d'où chacun vient (qui l'a importé, quand, dans quel
     projet d'abord), ses copies de travail avec leur projet et leurs collections, s'il est
@@ -776,6 +783,19 @@ def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
                 d["demande"] = {**a["demande"], "album_id": a["album_id"]}
     sans = [r[0] for r in conn.execute(
         "SELECT id FROM albums WHERE document_id IS NULL ORDER BY id")]
+    if not bacs_a_sable:
+        # COL-4 (S3) — les copies des BACS À SABLE et du JEU sont masquées par défaut : un
+        # document qui n'a de copie que là (le jeu, ce qu'on a importé dans un bac à sable)
+        # disparaît de la liste, les autres perdent ces copies. `bacs_a_sable=1` les rend.
+        isoles = _projets_isoles(conn)["tous"]
+        for d in documents:
+            d["copies"] = [a for a in d["copies"] if a["projet_id"] not in isoles]
+            d["appele"] = any(a["collections"] for a in d["copies"])
+            if d["demande"] is not None and all(a["album_id"] != d["demande"]["album_id"]
+                                                 for a in d["copies"]):
+                d["demande"] = None
+        documents = [d for d in documents
+                     if d["copies"] or d["projet_origine_id"] not in isoles]
     return {"documents": documents, "copies_sans_document": sans}
 
 

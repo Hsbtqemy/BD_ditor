@@ -43,7 +43,8 @@ from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, NOM_BAC_A
 
 from socle import (
     AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate,
-    _bac_a_sable_de, _get_projet, _refuser_le_jeu, _rows, _supprimer_projet, db,
+    _bac_a_sable_de, _clause_bacs_d_autrui, _get_projet, _refuser_le_jeu, _rows,
+    _supprimer_projet, db,
     portee_courante,
 )
 
@@ -240,7 +241,7 @@ def _position_valide(niveau) -> str | None:
 # Les projets
 # --------------------------------------------------------------------------- #
 @router.get("/api/projets")
-def list_projets(conn: sqlite3.Connection = Depends(db),
+def list_projets(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
     """Les projets qu'on peut NOMMER : ceux dont on est, et ceux d'une collection qu'on
     lit. Le projet de repli d'abord, puis par nom.
@@ -250,11 +251,18 @@ def list_projets(conn: sqlite3.Connection = Depends(db),
     Aucune identité n'en sort : la liste ne nomme ni membres ni responsables.
 
     COL-4 — le projet de JEU n'y paraît pour personne, pas même pour la portée totale : il
-    ne se règle que par son outil."""
+    ne se règle que par son outil.
+
+    COL-4 (S6) — une portée TOTALE ne reçoit, des bacs à sable, que le SIEN et ceux où elle
+    est invitée : sans quoi le sélecteur de projet de l'administrateur en porterait
+    soixante-quinze. `bacs_a_sable=1` les rend tous — la vue Projets de l'Administration,
+    qui les filtre à part. Une portée ordinaire voit ses bacs à sable par ses accès, comme
+    tout projet."""
     ou, params = portee.clause_projet("p.id")
+    cache, p_cache = _clause_bacs_d_autrui(conn, portee, "p.id", tous=bacs_a_sable)
     lignes = _rows(conn.execute(
-        f"SELECT p.* FROM projet p WHERE {ou} AND NOT {sql_est_jeu('p.id')} "
-        "ORDER BY p.repli DESC, p.nom COLLATE NOCASE, p.id", params))
+        f"SELECT p.* FROM projet p WHERE {ou} AND NOT {sql_est_jeu('p.id')} AND {cache} "
+        "ORDER BY p.repli DESC, p.nom COLLATE NOCASE, p.id", (*params, *p_cache)))
     return [_vue(conn, portee, p) for p in lignes]
 
 

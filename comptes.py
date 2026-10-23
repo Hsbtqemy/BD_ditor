@@ -25,7 +25,7 @@ from typing import Optional
 
 import autorisation
 from annuaire import GROUPES_DE_ROLE, Lecture
-from database import NOM_COLLECTION_DEFAUT, collections
+from database import NOM_COLLECTION_DEFAUT, collections, sql_est_isole
 
 # Tranché par Hugo le 2026-09-17 : une reprise d'identité ne s'efface jamais du journal, et un
 # mariage laisse la même trace. Sans fenêtre, le signal ne s'éteindrait jamais, et une liste
@@ -105,9 +105,12 @@ def traces(conn) -> tuple[dict, dict, dict, dict]:
         if login:
             n, derniere = reprises.get(login, (0, None))
             reprises[login] = (n + 1, max(filter(None, (derniere, r["date"])), default=None))
+    # COL-4 (S2) — une entrée dans un BAC À SABLE n'est pas une entrée de projet : elle part
+    # avec lui chaque lundi, et le verdict de départ ne la compte pas.
     projets = {r["principal"]: r["n"] for r in conn.execute(
         "SELECT principal, COUNT(*) AS n FROM projet_acces "
-        "WHERE genre = ? GROUP BY principal", (autorisation.UTILISATEUR,))}
+        f"WHERE genre = ? AND NOT {sql_est_isole('projet_id')} GROUP BY principal",
+        (autorisation.UTILISATEUR,))}
     return actes, acces, reprises, projets
 
 
@@ -167,10 +170,19 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
 
     utilisateurs = {r["login"]: r for r in conn.execute(
         "SELECT login, nom, email, nature, premiere_vue, derniere_vue FROM utilisateur")}
-    cols = {c["id"]: c for c in collections(conn)}
+    # COL-4 (S2, S6) — ni les BACS À SABLE ni le JEU : soixante-quinze bases d'arrivants,
+    # chacune « seule propriétaire par le projet », rendraient la vue illisible et ses
+    # signaux faux. Un compte dit seulement s'il a un bac à sable (`bac_a_sable`).
+    isoles = {r[0] for r in conn.execute(
+        "SELECT id FROM projet WHERE bac_a_sable_de IS NOT NULL OR jeu = 1")}
+    a_un_bac = {r[0] for r in conn.execute(
+        "SELECT bac_a_sable_de FROM projet WHERE bac_a_sable_de IS NOT NULL")}
+    cols = {c["id"]: c for c in collections(conn) if c["projet_id"] not in isoles}
     acces = []
     for r in conn.execute("SELECT collection_id, genre, principal, niveau, exporter "
                           "FROM collection_acces"):
+        if r["collection_id"] not in cols:
+            continue                                # une collection de bac à sable
         a = dict(r)
         # DROIT-2 — le droit EFFECTIF, comme `_acces_de` : un propriétaire exporte d'office.
         a["exporter"] = bool(a["exporter"]) or a["niveau"] == autorisation.PROPRIETAIRE
@@ -272,6 +284,7 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
             "reprises": n_rep,
             "derniere_reprise": _iso(derniere_reprise),
             "signaux": _ordonner(signaux),
+            "bac_a_sable": login in a_un_bac,
         })
 
     # ---- Groupes ---------------------------------------------------------- #
@@ -397,8 +410,11 @@ def _demandes_en_attente(conn) -> list:
     # serveur de la prise (qui ne laissait passer que les suppressions, faute d'écran pour
     # les autres) est levé avec cet écran. Le genre voyage avec la ligne : l'écran ne dit
     # « suppression » que d'une suppression.
+    # COL-4 (S3) — aucune demande d'un bac à sable n'atteint l'administrateur : celles qui
+    # s'y échangent entre comptes (rejoindre, en partir) se répondent par son propriétaire.
     return [(r[0], r[1]) for r in conn.execute(
-        "SELECT id, genre FROM demande WHERE reponse IS NULL ORDER BY id")]
+        "SELECT id, genre FROM demande WHERE reponse IS NULL "
+        f"AND (projet_id IS NULL OR NOT {sql_est_isole('projet_id')}) ORDER BY id")]
 
 
 def a_regarder(comptes: list, groupes: list, collections_sortie: list,

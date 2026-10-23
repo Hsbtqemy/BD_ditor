@@ -48,7 +48,11 @@ def get_lexique(conn: sqlite3.Connection = Depends(db),
 
     AUTH-2 — c'est le read model qui agrège TOUT le vocabulaire : quatre requêtes, quatre
     filtres, et l'oubli d'un seul rendrait vain le cloisonnement des routes unitaires
-    ci-dessus, puisque le panneau Lexique passe par ici et non par elles."""
+    ci-dessus, puisque le panneau Lexique passe par ici et non par elles.
+
+    COL-4 (S8) — le panneau vit dans l'Exploration : ni bac à sable ni jeu, ni dans ses
+    termes ni dans ses compteurs (`Portee.pour_le_corpus`)."""
+    portee = portee.pour_le_corpus()
     ou_dom, p_dom = portee.clause_terme("domaine.collection_id")
     ou_dimx, p_dimx = portee.clause_terme("x.collection_id")
     ou_dim, p_dim = portee.clause_terme("d.collection_id")

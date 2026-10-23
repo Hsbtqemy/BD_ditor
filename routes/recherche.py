@@ -49,7 +49,10 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
     Une requête plein texte non filtrée renverrait donc le contenu de tout le corpus,
     quelle que soit la rigueur des routes de lecture par identifiant. Le filtre passe par
     la jointure `albums a` déjà présente, pas par la table FTS.
+
+    COL-4 (S8) — ni bac à sable ni jeu, pour personne (`Portee.pour_le_corpus`).
     """
+    portee = portee.pour_le_corpus()
     where, params = [], []
     ou, params_portee = portee.clause_album("a.id")
     where.append(ou)
@@ -274,7 +277,9 @@ def recherche_export(q: str = "", album: Optional[int] = None,
 @router.get("/api/corpus")
 def corpus_stats(conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
-    """Compteurs globaux du corpus (pour l'aperçu de la page de recherche)."""
+    """Compteurs globaux du corpus (pour l'aperçu de la page de recherche). COL-4 (S8) : ni
+    bac à sable ni jeu."""
+    portee = portee.pour_le_corpus()
     # AUTH-2 : des compteurs GLOBAUX diraient combien d'albums et de planches existent
     # ailleurs — la composition du corpus fuit par les nombres aussi bien que par les
     # titres. Chaque sous-requête est donc rattachée à son album, puis filtrée.

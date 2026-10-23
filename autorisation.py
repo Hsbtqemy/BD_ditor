@@ -68,8 +68,8 @@ from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
 from database import (CRAN_ANNOTATIONS, GENRES_CONSENTIS, NATURE_COLLECTIF, rang_du_cran,
-                      sql_est_bac_a_sable, sql_projet_d_album, sql_projet_de,
-                      sql_rang_du_cran)
+                      sql_album_isole, sql_est_bac_a_sable, sql_est_isole,
+                      sql_projet_d_album, sql_projet_de, sql_rang_du_cran)
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
 # modifie pas ce qu'on ne voit pas, et on n'administre pas ce qu'on ne peut pas modifier.
@@ -373,6 +373,30 @@ class Portee:
                       bacs_a_sable=self.bacs_a_sable, bacs_a_soi=self.bacs_a_soi,
                       collections_bac=self.collections_bac, hors_isoles=self.hors_isoles)
 
+    def pour_le_corpus(self) -> "Portee":
+        """La même personne, sans les BACS À SABLE ni le JEU — ce que voient les surfaces
+        qui traversent les projets : la Recherche, l'Exploration, leurs exports, l'accord
+        modèle↔humain et inter-annotateurs, le lexique (COL-4, S8 ; Q4, Hugo, 2026-10-21 :
+        « pour personne, d'ici la tranche 4 »). Les mesures du corpus restent celles du vrai
+        corpus : soixante-quinze copies du jeu ne s'y comptent pas.
+
+        Le patron de `pour_export` : une Portee de plus plutôt qu'une clause que chaque cœur
+        devrait apprendre. Pour une portée ordinaire, les collections des bacs à sable
+        sortent de ses ensembles ; pour une portée TOTALE, qui ne matérialise aucun
+        ensemble, `hors_isoles` fait écarter par `clause_album` et `clause_terme` ce qui vit
+        dans un projet isolé — la nature du projet, jamais la portée, tient l'isolement."""
+        if self.tout:
+            return Portee(tout=True, admin=self.admin, utilisateur=self.utilisateur,
+                          groupes=self.groupes, bacs_a_sable=self.bacs_a_sable,
+                          bacs_a_soi=self.bacs_a_soi, hors_isoles=True)
+        cb = self.collections_bac
+        return Portee(admin=self.admin, lecture=self.lecture - cb,
+                      ecriture=self.ecriture - cb, propriete=self.propriete - cb,
+                      export=self.export - cb, projets=self.projets - self.bacs_a_sable,
+                      projets_geres=self.projets_geres - self.bacs_a_sable,
+                      utilisateur=self.utilisateur, groupes=self.groupes,
+                      hors_isoles=True)
+
     # -- le bac à sable (COL-4) ------------------------------------------------ #
     def peut_ouvrir_un_bac_a_sable(self) -> bool:
         """Peut-on ouvrir SON bac à sable — un projet à soi, dont on est responsable ?
@@ -460,6 +484,9 @@ class Portee:
         d'ids reste donc courte quel que soit le corpus.
         """
         if self.tout:
+            if self.hors_isoles:                # COL-4, S8 : `pour_le_corpus`
+                return (f"NOT EXISTS (SELECT 1 FROM albums _hia WHERE _hia.id = {alias} "
+                        f"AND {sql_album_isole('_hia')})", [])
             return "1", []
         ids = sorted(self.ecriture if ecriture else self.lecture)
         if not ids:
@@ -738,6 +765,9 @@ class Portee:
         serait un état plus déroutant qu'utile.
         """
         if self.tout:
+            if self.hors_isoles:                # COL-4, S8 : `pour_le_corpus`
+                return (f"({alias} IS NULL OR {alias} NOT IN (SELECT _hic.id FROM collection "
+                        f"_hic WHERE {sql_est_isole(sql_projet_de('_hic'))}))", [])
             return "1", []
         ids = sorted(self.lecture)
         if not ids:

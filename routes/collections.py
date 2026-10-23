@@ -46,6 +46,7 @@ from socle import (
     DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn,
     _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_PROPRIETAIRE, _bac_a_sable_de,
+    _bacs_vus,
     _get_album, _get_collection, _get_projet, _plan_rejoindre, _refuser_le_bac_a_sable,
     _refuser_le_jeu, _rows, db, portee_courante,
 )
@@ -187,7 +188,7 @@ def _journaliser_acces(conn, collection_id: int, type: str, *, avant=None, apres
 
 
 @router.get("/api/collections")
-def list_collections(conn: sqlite3.Connection = Depends(db),
+def list_collections(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(db),
                      portee: autorisation.Portee = Depends(portee_courante)):
     """Collections (espace de travail ET unité de dépôt) + nombre d'albums + le niveau de
     l'appelant. Sert le menu « portée » du lexique, le sélecteur de la Bibliothèque et
@@ -205,9 +206,16 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
     COL-4 — la collection du JEU n'y paraît pour personne, pas même pour la portée totale,
     la seule qui la lise : elle ne se règle que par l'outil du jeu."""
     jeu = projet_de_jeu(conn)
+    # COL-4 (S6) — et une portée totale n'y reçoit, des bacs à sable, que le sien et ceux où
+    # elle est invitée (`bacs_a_sable=1` : tous).
+    autrui = set()
+    if portee.tout and not bacs_a_sable:
+        vus = _bacs_vus(conn, portee)
+        autrui = {r[0] for r in conn.execute(
+            "SELECT id FROM projet WHERE bac_a_sable_de IS NOT NULL")} - vus
     vues = [c for c in collections(conn)
             if (portee.tout or c["id"] in portee.lecture)
-            and (jeu is None or c["projet_id"] != jeu)]
+            and (jeu is None or c["projet_id"] != jeu) and c["projet_id"] not in autrui]
     for c in vues:
         c["mon_niveau"] = _niveau_dans(portee, c["id"])
         c["administrable"] = portee.peut_administrer(c["id"])

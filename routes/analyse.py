@@ -20,7 +20,7 @@ import accord_inter
 import autorisation
 import journal
 from config import UPOS_TAGS
-from database import citations_regions, reindex_region
+from database import citations_regions, reindex_region, sql_album_isole
 from pipeline import nlp
 from vraisemblance import log_vraisemblance
 
@@ -60,7 +60,11 @@ def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=No
     Les filtrer une par une aurait été quatre occasions d'oublier ; la jointure
     `planches p` est déjà là, le cloisonnement se pose donc au seul endroit qu'elles
     partagent toutes.
+
+    COL-4 (S8) — ni bac à sable ni jeu, pour personne (`Portee.pour_le_corpus`) : les
+    fréquences et les concordances restent celles du vrai corpus.
     """
+    portee = portee.pour_le_corpus()
     # La clause de PORTÉE est posée d'office et à part : `n_criteres` (3e valeur de
     # retour) compte les clauses qui viennent réellement de l'utilisateur, pour que
     # « aucun critère effectif » reste distinguable de « la portée a filtré ».
@@ -714,8 +718,16 @@ def _albums_portee(conn, portee: autorisation.Portee, *, ecriture: bool):
 
     `None` n'est pas « aucun » mais « pas de restriction » : les cœurs d'analyse
     (`accord`, `accord_inter`) l'entendent ainsi, et matérialiser la liste complète
-    reviendrait à figer un corpus qui bouge."""
-    if portee.tout:
+    reviendrait à figer un corpus qui bouge.
+
+    COL-4 (S8) — ni bac à sable ni jeu : l'accord modèle↔humain, étalon de NLP-1,
+    compterait sinon soixante-quinze fois les corrections du jeu."""
+    portee = portee.pour_le_corpus()
+    if portee.tout and not conn.execute(
+            f"SELECT 1 FROM albums a WHERE {sql_album_isole('a')} LIMIT 1").fetchone():
+        # Une portée totale sur une instance sans bac à sable ni jeu : aucune restriction,
+        # comme avant — `None` garde aux cœurs leur lecture du corpus ENTIER, y compris ce
+        # que le journal nomme sans album encore vivant.
         return None
     ou, params = portee.clause_album("a.id", ecriture=ecriture)
     return [r[0] for r in conn.execute(f"SELECT a.id FROM albums a WHERE {ou}", params)]
