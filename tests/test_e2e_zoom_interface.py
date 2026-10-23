@@ -273,9 +273,10 @@ def test_une_modale_tient_dans_la_fenetre_et_tout_s_y_atteint(
 
 # Une fenêtre BASSE (sous 26.9375em de haut) : la page défile entière, et le cadre liste-et-
 # fiche se compte sur la fenêtre (`calc(100vh - …)` avant, `--vh-visible` depuis). 420 px et
-# non 400 : sous 1,4, le plancher de `.lf.bi` (22rem) donne 400 px à l'écran, et le test
-# doit dire « tient », pas « tient au pixel près ». 768 px de large : sous 33em la page
-# défait le cadre (une colonne, sans hauteur), et la règle ne s'applique plus.
+# non 400 : sous 1,4, le plancher de `.lf.bi` (22rem) donnait 400 px à l'écran, et le test
+# devait dire « tient », pas « tient au pixel près » — ce plancher est borné depuis (cf. plus
+# bas). 768 px de large : sous 33em la page défait le cadre (une colonne, sans hauteur), et
+# la règle ne s'applique plus.
 @pytest.mark.parametrize("surface,cadre,propriete", [
     ("/corpus", "#biblio", "height"),
     ("/administration?vue=projets", "#projets-bloc", "minHeight"),
@@ -470,3 +471,34 @@ def test_les_autres_surfaces_gardent_200_quand_l_atelier_plafonne(live_server, p
     perdus = [c for c in page.evaluate(SONDE_VISIBLE)["coupables"]
               if not c["cadre"] and "sr-only" not in (c["cls"] or "")]
     assert not perdus, perdus
+
+
+# Le PLANCHER d'un cadre liste-et-fiche ne dépasse jamais la fenêtre visible. Écrit en `rem`,
+# il grandissait avec le zoom : celui de `.lf.bi` (22rem) faisait 572 px de haut sous 2 dans
+# une fenêtre de 400, et celui des cadres de l'Administration (16rem) 416. Le cadre passait
+# sous le bas de la fenêtre, et ce qu'il porte en bas ne s'atteignait plus qu'en faisant
+# défiler la page. Mesuré là où il commande : la hauteur du cadre (qui vaut le plancher dès
+# que celui-ci l'emporte) et le plancher calculé lui-même, tous deux à l'écran. 1280 × 500
+# est une fenêtre qui n'est PAS basse : `.lf.bi` y suit sa zone, et le plancher l'emportait.
+# Sous 40em de large le cadre se défait (une colonne, sans hauteur ni plancher) : la règle
+# ne se mesure qu'au-dessus.
+CADRES = [("/corpus", "#biblio"), ("/administration?vue=projets", "#pj")]
+
+
+@pytest.mark.parametrize("zoom", ["1.4", "2"])
+@pytest.mark.parametrize("largeur,hauteur", [(768, 400), (1280, 400), (1280, 500)])
+@pytest.mark.parametrize("surface,cadre", CADRES, ids=["bibliotheque", "administration"])
+def test_le_plancher_du_cadre_ne_depasse_jamais_la_fenetre_visible(
+        live_server, page, album, surface, cadre, largeur, hauteur, zoom):
+    _ouvrir(page, live_server + surface, zoom, largeur, hauteur)
+    page.wait_for_selector(cadre, state="visible")
+    m = page.evaluate("""(C) => { const e = document.querySelector(C);
+      return {haut: e.getBoundingClientRect().height,
+              plancher: parseFloat(getComputedStyle(e).minHeight) * (e.currentCSSZoom || 1),
+              h: innerHeight}; }""", cadre)
+    assert 0 < m["plancher"] <= m["h"] + 0.5, (
+        f"{surface}, {largeur} × {hauteur}, zoom {zoom} : le plancher de {cadre} vaut "
+        f"{m['plancher']:.0f} px à l'écran pour une fenêtre de {m['h']}")
+    assert m["haut"] <= m["h"] + 0.5, (
+        f"{surface}, {largeur} × {hauteur}, zoom {zoom} : {cadre} fait {m['haut']:.0f} px de "
+        f"haut pour une fenêtre de {m['h']}")

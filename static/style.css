@@ -2130,8 +2130,20 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    Le cadre a la hauteur de la zone qui défile (`main`), comme le bloc de « Comptes et
    groupes » : amené en tête de la zone, il y tient entier, la ligne du projet et les lots
    défilés au-dessus — et liste et fiche défilent chacune SEULE. Sous 40em il n'y a plus
-   qu'une colonne, sans hauteur fixe. */
-.lf.bi { height: 100%; min-height: 22rem; margin-top: 0; }
+   qu'une colonne, sans hauteur fixe.
+
+   **Le plancher se borne à la fenêtre VISIBLE** (UX-7, 2026-10-23). Écrit en `rem`, il
+   grandit avec le zoom d'interface comme tout le reste : 22rem faisaient 572 px à l'écran
+   sous un zoom de 2, dans une fenêtre de 400 — et de 500, alors même que la fenêtre n'y est
+   pas basse et que le cadre suit sa zone. Le cadre passait sous le bas de la fenêtre, et ce
+   qu'il porte en bas ne s'atteignait plus qu'en faisant défiler la page, quand liste et
+   fiche devaient défiler chacune seule. La borne est la hauteur que le cadre prend dans une
+   fenêtre basse (ci-dessous) : la fenêtre visible moins un rembourrage de chaque côté.
+   Elle n'est pas réglée sur une police — elle ne lit que la fenêtre — et ne mord que là où
+   22rem ne tiennent plus : à 100 %, sous 318 px de haut. Ailleurs rien ne change. Les
+   cadres de l'Administration ont la même borne, sur leur plancher de 16rem (`.lf`). */
+.lf.bi { height: 100%; min-height: min(22rem, calc(100 * var(--vh-visible) - 2.5rem));
+         margin-top: 0; }
 /* Fenêtre BASSE : la page défile entière (cf. plus bas), `100%` n'y désigne plus rien. Le
    cadre se compte alors sur la fenêtre, comme le bloc de « Comptes et groupes ». */
 @supports selector(html:has(body)) {
@@ -3018,8 +3030,11 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 }
 .lf-bloc > h2 { margin-bottom: 0; }
 .lf-bloc > .col-note { margin: 0; }
+/* Le plancher de 16rem se borne à la fenêtre VISIBLE, comme celui de la Bibliothèque (cf.
+   `.lf.bi`) : sous un zoom de 2 il faisait 416 px à l'écran dans une fenêtre de 400. */
 .lf { display: grid; grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr); flex: 1 1 0; min-height: 16rem;
+      grid-template-rows: minmax(0, 1fr); flex: 1 1 0;
+      min-height: min(16rem, calc(100 * var(--vh-visible) - 2.5rem));
       border: 1px solid var(--border); border-radius: 8px; margin-top: .6rem;
       background: var(--bg-panel); }
 /* La liste défile SEULE : trois cents comptes ne doivent pas repousser la fiche sous
