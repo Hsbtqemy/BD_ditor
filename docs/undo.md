@@ -147,18 +147,40 @@ de Proprio retirait Yann, et la bulle n'avait plus aucun locuteur — présent d
 même trou pour le personnage montré. L'annulation compare désormais ce que la région porte à
 ce que l'acte y avait LAISSÉ — le personnage d'un `lien`, aucun pour un `delien` — et à ce
 qu'elle laissera : l'un ou l'autre, rien ne se perd, et elle passe (Stagiaire est revenue à
-Zed, ou a déjà retiré le locuteur). Sinon, le 409 nommé de CONC-3 — champ `locuteur` ou
-`presence`, le personnage présent, l'auteur du dernier acte qui l'a posé ou ôté, changements
-de type compris (`conflit.auteur_des_champs` lit `bulle_locuteur` et `regions` ensemble) —, rien
-n'est écrit, et l'Atelier offre « Passer ce geste ». L'ordre des gardes ne change pas : un
+Zed, ou a déjà retiré le locuteur). Deux autres états sont admis (relecture croisée du
+2026-10-23). AUCUN, quand le personnage que l'acte avait laissé a été supprimé depuis : la
+suppression l'a ôté par cascade, sans rien écrire au journal, et ce n'est le geste de
+personne sur cette région — refuser bloquait une personne seule sur son propre Ctrl+Z. Et
+ce qu'a laissé un geste PLUS RÉCENT du MÊME agent sur ce lien, PASSÉ depuis (« Ne s'annule
+plus », ou « Passer ce geste »), si rien n'a touché le lien ensuite : sans quoi chacun de
+ses gestes d'avant se refusait à son tour, face à son propre travail. Un geste passé après
+le conflit d'un AUTRE n'y entre pas — le dernier geste sur le lien est alors celui de
+l'autre, et le refus continue de le nommer. Hors de ces cas, le 409 nommé de CONC-3 — champ
+`locuteur` ou `presence`, le personnage présent, l'auteur du dernier acte qui l'a posé ou
+ôté, changements de type compris (`conflit.auteur_des_champs` lit `bulle_locuteur` et
+`regions` ensemble) —, rien n'est écrit, et l'Atelier offre « Passer ce geste ».
+
+**L'auteur d'un refus d'annulation ne se cherche qu'APRÈS l'acte défait** (relecture croisée
+du 2026-10-23 ; le `depuis` de `conflit.auteur_du_champ`, passé par toutes les gardes de
+`undo.py`). La recherche remontait tout le journal de l'identifiant : elle nommait un geste
+d'avant l'acte comme une modification faite « depuis », et — sous la numérotation d'avant la
+v30, où un identifiant se reprenait — l'auteur d'un ANCIEN objet, dans une collection que
+l'agent ne lit pas : l'instantané d'une suppression porte le locuteur de la région
+supprimée. Rien trouvé après l'acte : « modifié ailleurs ». La même borne vaut pour la garde
+d'un changement de type, d'une création et d'une modification de région, et pour la note.
+
+**Une fusion de personnages faite depuis l'acte fait refuser l'annulation d'un lien
+qu'elle a réaffecté — c'est assumé** (2026-10-23). La fusion réaffecte les locuteurs du
+doublon à sa cible sans rien écrire sous `bulle_locuteur` : l'annulation voit un autre
+personnage que celui que l'acte avait laissé, et refuse — « modifié ailleurs », même pour
+une personne seule. Journaliser la fusion lien par lien rendrait chacun de ces liens
+annulable un par un par Ctrl+Z, ce qui serait pire. Le geste se passe (« Passer ce geste »),
+et le locuteur fusionné reste. L'ordre des gardes ne change pas : un
 acte dont la région a quitté la portée de l'agent, a disparu ou n'est plus le même objet est
 PASSÉ par la phrase d'AUTH-14, sans rien dire de ce qu'elle porte ; un lien qui ne se repose
 plus sur le type de la région est passé (« l'état d'avant ne peut plus être rétabli ») avant
 toute comparaison. Le refus ne joue donc que sur une région que l'agent écrit, dont il lit le
-locuteur et son auteur. Une conséquence, de la même règle que tout champ gardé : quand un
-geste plus récent de l'agent sur le même lien a été passé (« Ne s'annule plus », ou « Passer
-ce geste »), le Ctrl+Z du geste d'avant voit le lien que l'acte passé a laissé, et se refuse
-— « depuis un autre écran de ce même compte » ; on le passe à son tour.
+locuteur et son auteur.
 
 **Une annotation se défait par différence, et non par instantané** (CONC-3, 2026-09-16).
 Restaurer `avant` entier défaisait aussi ce qu'une autre personne avait fait sur l'AUTRE
@@ -233,7 +255,8 @@ Ce qui en sort :
 
 - **« Passer ce geste »** (décision de Hugo du 2026-10-22) : le message du refus, dans
   l'Atelier, porte ce bouton. Le serveur (`POST /api/undo/passer`, avec l'acte que le 409 a
-  désigné sous `passable`) pose la trace `abandon` d'AUTH-14 — l'acte sort de la pile, le
+  désigné sous `passable` — l'acte que l'annulation a relu et refusé sous le verrou
+  d'écriture, joint au refus) pose la trace `abandon` d'AUTH-14 — l'acte sort de la pile, le
   Ctrl+Z suivant remonte au geste d'avant, et le travail de l'autre RESTE. Deux gardes, sous
   le verrou : l'acte est bien le prochain que CET agent annulerait (ni celui d'un autre, ni
   un acte enfoui sous un plus récent) ; et le conflit tient au moment du clic — l'annulation

@@ -135,10 +135,13 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db),
         # CONC-3 (Q4) — annuler écraserait ce qu'un autre a changé depuis : même 409 nommé
         # qu'un enregistrement périmé, et rien n'est défait (la dépendance `db` roule en
         # arrière ce que l'inversion avait commencé). ANN-8 — le corps dit QUEL acte reste en
-        # tête de la pile, pour que l'écran offre de le passer (`POST /api/undo/passer`).
+        # tête de la pile, pour que l'écran offre de le passer (`POST /api/undo/passer`) :
+        # celui que `annuler` a relu SOUS le verrou et joint au refus, et non `prochain`, lu
+        # avant lui — un geste arrivé entre-temps aurait fait désigner le mauvais acte.
         detail = exc.detail()
-        if prochain is not None:
-            detail["passable"] = {"evenement_id": prochain["id"]}
+        refuse = getattr(exc, "evenement", None)
+        if refuse is not None:
+            detail["passable"] = {"evenement_id": refuse["id"]}
         raise HTTPException(409, detail)
     if res is None:
         # Sous un compte partagé, « rien » peut vouloir dire « rien d'assez récent » (AUTH-6) :

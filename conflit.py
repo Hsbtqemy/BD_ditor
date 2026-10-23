@@ -110,17 +110,25 @@ def auteur(conn: sqlite3.Connection, e) -> dict:
 
 
 def auteur_du_champ(conn: sqlite3.Connection, cible_table: str, cible_id: int, champ: str,
-                    valeur: Any) -> Optional[dict]:
+                    valeur: Any, *, depuis: Optional[int] = None) -> Optional[dict]:
     """Le dernier acte du journal qui a posé `champ` à `valeur`, ou None si aucun.
 
     Les annulations comptent : elles sont journalisées sur l'acte qu'elles défont
     (`cible_table = 'evenement'`), et ce qu'elles posent est l'`avant` de cet acte.
+
+    `depuis` : l'identifiant d'un événement — seuls comptent les actes POSTÉRIEURS. C'est ce
+    que demande une annulation, dont le refus dit « modifié depuis » l'acte qu'elle défait
+    (ANN-8, relecture croisée de la garde des liens). Sans borne, la recherche remontait
+    tout le journal du `cible_id` : elle nommait un geste d'avant l'acte comme une
+    modification faite depuis, et — sous la numérotation d'avant la v30, où un identifiant
+    se reprenait — l'auteur d'un ANCIEN objet, dans une collection que l'agent ne lit pas.
+    Rien trouvé après l'acte : None, « modifié ailleurs ».
     """
-    return auteur_des_champs(conn, ((cible_table, champ),), cible_id, valeur)
+    return auteur_des_champs(conn, ((cible_table, champ),), cible_id, valeur, depuis=depuis)
 
 
 def auteur_des_champs(conn: sqlite3.Connection, sources, cible_id: int,
-                      valeur: Any) -> Optional[dict]:
+                      valeur: Any, *, depuis: Optional[int] = None) -> Optional[dict]:
     """`auteur_du_champ` pour une valeur que plusieurs sortes d'actes écrivent : `sources`,
     des couples (table, clé de la charge), lus ensemble dans l'ordre du journal — le dernier
     acte qui a posé la valeur, quelle que soit sa table.
@@ -140,6 +148,8 @@ def auteur_des_champs(conn: sqlite3.Connection, sources, cible_id: int,
         "   OR (e.cible_table = 'evenement' AND e.type = 'annulation' "
         f"       AND a.cible_table IN ({marques}) AND a.cible_id = ?) "
         "ORDER BY e.id DESC", (*tables, cible_id, *tables, cible_id)).fetchall()
+    if depuis is not None:                         # cf. `auteur_du_champ`
+        lignes = [e for e in lignes if e["id"] > depuis]
     for e in lignes:
         champ = cle[e["source"]]
         if e["cible_table"] == "evenement":        # une annulation va d'« après » à « avant »
@@ -152,16 +162,17 @@ def auteur_des_champs(conn: sqlite3.Connection, sources, cible_id: int,
 
 
 def verifier(conn: sqlite3.Connection, cible_table: str, cible_id: int, champ: str, *,
-             vu: Any, actuel: Any, nouveau: Any) -> None:
+             vu: Any, actuel: Any, nouveau: Any, depuis: Optional[int] = None) -> None:
     """Lève `Perime` si `champ` ne porte plus la valeur `vu` et que l'écriture l'écraserait.
 
     Trois cas passent. L'écran avait vu la valeur actuelle. L'écriture pose la valeur déjà
     en base : rien ne se perd. Et le dernier changement vient d'un MOTEUR (Q2) — l'OCR n'est
     qu'un pré-remplissage, l'humain l'emporte, et le texte du moteur reste au journal.
+    `depuis` : cf. `auteur_du_champ` — une annulation le passe, une route non.
     """
     if egal(vu, actuel) or egal(nouveau, actuel):
         return
-    qui = auteur_du_champ(conn, cible_table, cible_id, champ, actuel)
+    qui = auteur_du_champ(conn, cible_table, cible_id, champ, actuel, depuis=depuis)
     if qui is not None and qui["agent_type"] == "moteur":
         return
     raise Perime(cible_table, cible_id, champ, actuel, qui)

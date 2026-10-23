@@ -13,6 +13,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+import conflit  # noqa: E402
 import undo  # noqa: E402
 from conftest import ADMIN, direct_query  # noqa: E402
 
@@ -858,6 +859,241 @@ def test_un_type_qui_ne_montre_plus_le_lien_passe_l_acte_avant_la_garde(
     assert detail["message"] == ("Ne s'annule plus : attribution d'un locuteur — "
                                  "l'état d'avant ne peut plus être rétabli.")
     assert _type_et_locuteur(db_path, rid) == ("case", None)
+
+
+# Relecture croisée de la garde des liens (2026-10-23) — ses constats, devenus des tests.
+def _effacer_personnage(client, pid, qui=ADMIN):
+    assert client.delete(f"/api/personnages/{pid}", headers=qui).status_code == 204
+
+
+def test_le_refus_ne_nomme_pas_un_geste_d_avant_l_acte(client, planche, db_path,
+                                                      derriere_proxy):
+    """R1 — l'auteur ne se cherche qu'APRÈS l'acte défait. Stagiaire a retiré un locuteur
+    bien avant ; Proprio passe de Zed à Yann ; l'administrateur remplace Yann par W, puis
+    supprime W (CASCADE, rien au journal). Le Ctrl+Z de Proprio est refusé — et le refus dit
+    « modifié ailleurs », pas « par stagiaire », qui n'a rien fait depuis l'acte."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    x, zed, yann, w = _personnages(client, "X", "Zed QA", "Yann QA", "W")
+    _poser(client, rid, "locuteur", x, STAGIAIRE)
+    _retirer(client, rid, "locuteur", STAGIAIRE)
+    _poser(client, rid, "locuteur", zed, PROPRIO)
+    _poser(client, rid, "locuteur", yann, PROPRIO)
+    _poser(client, rid, "locuteur", w, ADMIN)
+    _effacer_personnage(client, w)
+    res = client.post("/api/undo", headers=PROPRIO)
+    assert res.status_code == 409, res.text
+    conflit = res.json()["detail"]["conflit"]
+    assert (conflit["champ"], conflit["valeur_actuelle"], conflit["auteur"]) == \
+        ("locuteur", None, None)
+    assert "stagiaire" not in res.text and "modifié ailleurs" in res.text
+    assert _lien(db_path, "bulle_locuteur", rid) is None
+
+
+def test_un_personnage_laisse_puis_supprime_ne_bloque_pas_le_ctrl_z(client, planche, db_path,
+                                                                   derriere_proxy):
+    """R2 — Proprio, seule : Zed, puis Yann, puis elle supprime le personnage Yann (CASCADE).
+    La bulle ne porte plus rien, et ce n'est le geste de personne sur elle : « aucun » est
+    admis, et Ctrl+Z rend Zed, comme avant la garde. Même chose quand l'historique de la
+    région porte les gestes d'un autre, d'avant l'acte (le décor de R1)."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    zed, yann = _personnages(client, "Zed QA", "Yann QA")
+    _poser(client, rid, "locuteur", zed, PROPRIO)
+    _poser(client, rid, "locuteur", yann, PROPRIO)
+    _effacer_personnage(client, yann, PROPRIO)
+    res = client.post("/api/undo", headers=PROPRIO)
+    assert res.status_code == 200, res.text
+    assert _lien(db_path, "bulle_locuteur", rid) == zed
+
+    autre = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    x, a, b = _personnages(client, "X", "A", "B")
+    _poser(client, autre, "locuteur", x, STAGIAIRE)
+    _retirer(client, autre, "locuteur", STAGIAIRE)
+    _poser(client, autre, "locuteur", a, STAGIAIRE)
+    _poser(client, autre, "locuteur", b, PROPRIO)
+    _effacer_personnage(client, b, PROPRIO)
+    res = client.post("/api/undo", headers=PROPRIO)
+    assert res.status_code == 200, res.text
+    assert _lien(db_path, "bulle_locuteur", autre) == a
+
+
+def test_un_personnage_montre_laisse_puis_supprime_ne_bloque_pas_le_ctrl_z(
+        client, planche, db_path, derriere_proxy):
+    """R2, pour la présence : le personnage montré laissé par l'acte a été supprimé."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="personnage")["id"]
+    zed, yann = _personnages(client, "Zed QA", "Yann QA")
+    _poser(client, rid, "personnage", zed, PROPRIO)
+    _poser(client, rid, "personnage", yann, PROPRIO)
+    _effacer_personnage(client, yann, PROPRIO)
+    assert client.post("/api/undo", headers=PROPRIO).status_code == 200
+    assert _lien(db_path, "personnage_presence", rid) == zed
+
+
+def test_une_fusion_faite_depuis_fait_refuser_l_annulation_du_lien(client, planche, db_path,
+                                                                  derriere_proxy):
+    """R3, ASSUMÉ (`docs/undo.md`) : la fusion de personnages réaffecte les locuteurs sans
+    rien écrire sous `bulle_locuteur` — la journaliser rendrait chaque lien réaffecté
+    annulable un par un par Ctrl+Z, ce qui serait pire. Une fusion faite depuis l'acte fait
+    donc refuser l'annulation du lien qu'elle a réaffecté, « modifié ailleurs », même seule ;
+    le geste se passe, et le locuteur fusionné reste."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    doublon, cible = _personnages(client, "Haddok", "Haddock")
+    _poser(client, rid, "locuteur", doublon, PROPRIO)
+    rep = client.post(f"/api/personnages/{doublon}/fusion", json={"cible_id": cible},
+                      headers=PROPRIO)
+    assert rep.status_code == 200, rep.text
+    assert _lien(db_path, "bulle_locuteur", rid) == cible
+    res = client.post("/api/undo", headers=PROPRIO)
+    assert res.status_code == 409, res.text
+    detail = res.json()["detail"]
+    assert (detail["conflit"]["valeur_actuelle"], detail["conflit"]["auteur"]) == (cible, None)
+    passe = client.post("/api/undo/passer", json=detail["passable"], headers=PROPRIO)
+    assert passe.status_code == 200, passe.text
+    assert _lien(db_path, "bulle_locuteur", rid) == cible
+
+
+def test_apres_un_geste_passe_les_gestes_d_avant_s_annulent(client, planche, db_path,
+                                                           derriere_proxy):
+    """R4 — Proprio : A, puis B, puis C ; B est supprimé. Le Ctrl+Z de C est passé (B ne peut
+    plus revenir). Les gestes d'avant se refusaient alors un à un, face à C — le travail de
+    Proprio elle-même. Ce qu'a laissé un geste plus récent de la même personne, PASSÉ, et que
+    rien n'a changé depuis, est admis : B ne revient pas (supprimé), A revient, puis rien."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    a, b, c = _personnages(client, "A", "B", "C")
+    for pid in (a, b, c):
+        _poser(client, rid, "locuteur", pid, PROPRIO)
+    _effacer_personnage(client, b, PROPRIO)
+    r3 = client.post("/api/undo", headers=PROPRIO)
+    assert r3.status_code == 409 and "ecarte" in r3.json()["detail"], r3.text
+    assert client.post("/api/undo", headers=PROPRIO).status_code == 200      # e2 : A revient
+    assert _lien(db_path, "bulle_locuteur", rid) == a
+    assert client.post("/api/undo", headers=PROPRIO).status_code == 200      # e1 : plus rien
+    assert _lien(db_path, "bulle_locuteur", rid) is None
+    assert client.get("/api/undo/prochain", headers=PROPRIO).json() is None
+
+
+def test_passer_apres_le_conflit_d_un_autre_ne_debloque_pas_le_geste_d_avant(
+        client, planche, db_path, derriere_proxy):
+    """L'admission de R4 ne couvre pas le conflit d'un AUTRE : Proprio, Zed puis Yann ;
+    Stagiaire met Milou ; Proprio passe le refus de son Yann. Son Ctrl+Z suivant (Zed) est
+    refusé à son tour, et nomme Stagiaire : le dernier geste sur le lien est le sien."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    zed, yann, milou = _personnages(client, "Zed QA", "Yann QA", "Milou")
+    _poser(client, rid, "locuteur", zed, PROPRIO)
+    _poser(client, rid, "locuteur", yann, PROPRIO)
+    _poser(client, rid, "locuteur", milou, STAGIAIRE)
+    refus = client.post("/api/undo", headers=PROPRIO)
+    assert refus.status_code == 409, refus.text
+    assert client.post("/api/undo/passer", json=refus.json()["detail"]["passable"],
+                       headers=PROPRIO).status_code == 200
+    _refus_de_lien(client.post("/api/undo", headers=PROPRIO), rid, "bulle_locuteur",
+                   "locuteur", milou, "stagiaire")
+    assert _lien(db_path, "bulle_locuteur", rid) == milou
+
+
+def test_la_valeur_d_un_geste_passe_remise_par_un_autre_n_est_pas_admise(
+        client, planche, db_path, derriere_proxy):
+    """L'admission de R4 exige que RIEN n'ait touché le lien depuis le geste passé : Proprio,
+    Zed puis Yann ; Stagiaire met Milou, Proprio passe le refus de son Yann ; Stagiaire remet
+    Yann. Le Ctrl+Z de Proprio (Zed) retirerait le Yann de Stagiaire : refusé, et le refus
+    nomme Stagiaire, même si la valeur est celle du geste passé."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    zed, yann, milou = _personnages(client, "Zed QA", "Yann QA", "Milou")
+    _poser(client, rid, "locuteur", zed, PROPRIO)
+    _poser(client, rid, "locuteur", yann, PROPRIO)
+    _poser(client, rid, "locuteur", milou, STAGIAIRE)
+    refus = client.post("/api/undo", headers=PROPRIO)
+    assert client.post("/api/undo/passer", json=refus.json()["detail"]["passable"],
+                       headers=PROPRIO).status_code == 200
+    _poser(client, rid, "locuteur", yann, STAGIAIRE)
+    _refus_de_lien(client.post("/api/undo", headers=PROPRIO), rid, "bulle_locuteur",
+                   "locuteur", yann, "stagiaire")
+    assert _lien(db_path, "bulle_locuteur", rid) == yann
+
+
+def test_un_geste_plus_recent_non_passe_n_est_pas_admis(client, planche, db_path,
+                                                       derriere_proxy):
+    """L'admission de R4 demande un geste PASSÉ (`abandon`), pas seulement un geste du même
+    agent. Par les routes, un geste plus récent non passé est d'abord en tête de la pile, si
+    bien que l'exigence ne se voit pas ; `annuler(evenement_id=…)`, qui nomme un acte, la
+    rend visible : Proprio, Zed puis Yann ; viser l'acte de Zed retirerait Yann, que rien n'a
+    passé — refusé, et rien n'est écrit."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    zed, yann = _personnages(client, "Zed QA", "Yann QA")
+    _poser(client, rid, "locuteur", zed, PROPRIO)
+    acte = direct_query(db_path, "SELECT MAX(id) id FROM evenement")[0]["id"]
+    _poser(client, rid, "locuteur", yann, PROPRIO)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        try:
+            undo.annuler(conn, evenement_id=acte, agent="proprio",
+                         ecrivable=lambda lieux: True)
+        except conflit.Perime as exc:
+            assert (exc.champ, exc.valeur_actuelle) == ("locuteur", yann)
+        else:
+            raise AssertionError("l'annulation a retiré un geste plus récent, non passé")
+    finally:
+        conn.rollback()
+        conn.close()
+    assert _lien(db_path, "bulle_locuteur", rid) == yann
+
+
+def test_le_geste_passe_d_un_autre_agent_n_est_pas_admis(client, planche, db_path,
+                                                        derriere_proxy):
+    """L'admission de R4 est celle du MÊME agent : Proprio donne Zed ; Stagiaire le remplace
+    par Yann ; Zed est supprimé, et le Ctrl+Z de Stagiaire est passé (Zed ne revient pas).
+    Le Ctrl+Z de Proprio retirerait Yann, que Stagiaire a laissé : refusé."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    zed, yann = _personnages(client, "Zed QA", "Yann QA")
+    _poser(client, rid, "locuteur", zed, PROPRIO)
+    _poser(client, rid, "locuteur", yann, STAGIAIRE)
+    _effacer_personnage(client, zed)
+    r = client.post("/api/undo", headers=STAGIAIRE)
+    assert r.status_code == 409 and "ecarte" in r.json()["detail"], r.text
+    _refus_de_lien(client.post("/api/undo", headers=PROPRIO), rid, "bulle_locuteur",
+                   "locuteur", yann, "stagiaire")
+    assert _lien(db_path, "bulle_locuteur", rid) == yann
+
+
+def test_un_lien_rendu_par_une_suppression_retablie_nomme_qui_l_a_retablie(
+        client, planche, db_path, derriere_proxy):
+    """Contrôle de la relecture : Proprio retire Zed ; Stagiaire donne Yann, supprime la
+    région, puis la rétablit (Ctrl+Z, qui rend Yann). Le Ctrl+Z de Proprio est refusé, et
+    nomme Stagiaire — l'annulation d'une suppression compte parmi les gestes d'après."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    zed, yann = _personnages(client, "Zed QA", "Yann QA")
+    _poser(client, rid, "locuteur", zed, PROPRIO)
+    _retirer(client, rid, "locuteur", PROPRIO)
+    _poser(client, rid, "locuteur", yann, STAGIAIRE)
+    assert client.delete(f"/api/regions/{rid}", headers=STAGIAIRE).status_code == 204
+    assert client.post("/api/undo", headers=STAGIAIRE).status_code == 200
+    assert _lien(db_path, "bulle_locuteur", rid) == yann
+    _refus_de_lien(client.post("/api/undo", headers=PROPRIO), rid, "bulle_locuteur",
+                   "locuteur", yann, "stagiaire")
+
+
+def test_passable_designe_l_acte_relu_sous_le_verrou(client, planche, db_path, derriere_proxy,
+                                                    monkeypatch):
+    """R6 — `passable` venait de l'acte lu AVANT le verrou d'écriture : un geste arrivé entre
+    les deux aurait fait désigner le mauvais. La lecture d'avant le verrou est ici faussée
+    (la première seulement) : le refus désigne l'acte que l'annulation a relu et refusé."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    zed, yann = _personnages(client, "Zed QA", "Yann QA")
+    _poser(client, rid, "locuteur", zed, PROPRIO)
+    acte = direct_query(db_path, "SELECT MAX(id) id FROM evenement")[0]["id"]
+    _poser(client, rid, "locuteur", yann, STAGIAIRE)
+    vraie, appels = undo.derniere_action_annulable, []
+
+    def faussee(conn, agent=undo.TOUS):
+        appels.append(1)
+        if len(appels) == 1:
+            return {"id": acte + 1000, "type": "lien", "cible_table": "bulle_locuteur"}
+        return vraie(conn, agent)
+    monkeypatch.setattr(undo, "derniere_action_annulable", faussee)
+    res = client.post("/api/undo", headers=PROPRIO)
+    assert res.status_code == 409, res.text
+    assert len(appels) >= 2
+    assert res.json()["detail"]["passable"] == {"evenement_id": acte}
 
 
 def test_undo_presence(client, planche, db_path):

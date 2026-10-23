@@ -227,12 +227,16 @@ def _descendants(conn, region_id):
 _SANS_GARDE = ("ordre", "source", "planche_id")
 
 
-def _garder_creation(conn, region_id, apres):
+def _garder_creation(conn, region_id, apres, depuis=None):
     """Refuse d'annuler la création d'une région que QUELQU'UN D'AUTRE a travaillée depuis.
 
     Supprimer la région emporterait ce travail sans instantané : l'annulation est une
     mutation brute, qui ne journalise que l'acte `annulation`. Ses propres gestes plus récents
     sont annulés AVANT celui-ci, si bien que ce qui reste ici vient d'un autre.
+
+    `depuis` : l'acte de création — l'auteur ne se cherche qu'APRÈS lui (ANN-8, cf.
+    `conflit.auteur_du_champ`) : avant la v30, ce qui précède dans le journal du même
+    identifiant est un autre objet.
     """
     actuel = journal.snapshot_region(conn, region_id)
     if actuel is None:
@@ -241,10 +245,11 @@ def _garder_creation(conn, region_id, apres):
         if c not in _SANS_GARDE and not conflit.egal(actuel.get(c), (apres or {}).get(c)):
             raise conflit.Perime("regions", region_id, c, actuel.get(c),
                                  conflit.auteur_du_champ(conn, "regions", region_id, c,
-                                                         actuel.get(c)))
+                                                         actuel.get(c), depuis=depuis))
     if journal.snapshot_annotation(conn, region_id) is not None:
         e = conn.execute("SELECT * FROM evenement WHERE cible_table = 'annotations' "
-                         "AND cible_id = ? ORDER BY id DESC LIMIT 1", (region_id,)).fetchone()
+                         "AND cible_id = ? AND id > ? ORDER BY id DESC LIMIT 1",
+                         (region_id, depuis or 0)).fetchone()
         raise conflit.Perime("annotations", region_id, "annotation", None,
                              conflit.auteur(conn, e) if e else None)
     enfant = conn.execute("SELECT id FROM regions WHERE parent_id = ? ORDER BY id DESC LIMIT 1",
@@ -264,7 +269,7 @@ def _supprimer_region(conn, region_id):
     conn.execute("DELETE FROM regions WHERE id = ?", (region_id,))
 
 
-def _inverser_modification_region(conn, region_id, avant, apres, voit=None):
+def _inverser_modification_region(conn, region_id, avant, apres, voit=None, depuis=None):
     """Inverse d'une MODIFICATION de région : défait CE QUE l'acte a changé, rien d'autre.
 
     CONC-3 (Q4) — lu le 2026-09-17 et vu rouge sur le code d'avant : toutes les colonnes
@@ -281,7 +286,7 @@ def _inverser_modification_region(conn, region_id, avant, apres, voit=None):
     # ANN-8 — défaire un changement de type, c'est aussi décider de ses liens : les gardes
     # passent AVANT toute écriture (`_garder_liens_du_type`).
     if "type" in changees:
-        _garder_liens_du_type(conn, region_id, avant, voit)
+        _garder_liens_du_type(conn, region_id, avant, voit, depuis)
     # AUTH-14 — le parent qu'on rend se valide comme la route le valide (`_validate_parent`) :
     # présent, dans la MÊME planche, sans cycle. Sans quoi Ctrl+Z rattachait une bulle à une
     # case d'une autre collection (relecture croisée, S1).
@@ -291,7 +296,7 @@ def _inverser_modification_region(conn, region_id, avant, apres, voit=None):
     for c in changees:
         if c not in _SANS_GARDE:
             conflit.verifier(conn, "regions", region_id, c, vu=apres.get(c),
-                             actuel=actuel[c], nouveau=avant.get(c))
+                             actuel=actuel[c], nouveau=avant.get(c), depuis=depuis)
     if changees:
         conn.execute(f"UPDATE regions SET {', '.join(f'{c} = ?' for c in changees)} "
                      "WHERE id = ?", (*[avant.get(c) for c in changees], region_id))
@@ -420,7 +425,8 @@ def _inverser_annotation(conn, region_id, avant, apres, *, depuis):
         # Second temps (Q4) : si la note a changé depuis l'acte, la rendre écraserait celle
         # écrite ensuite par un autre. Les tags n'ont pas de garde : ils vont par différence.
         conflit.verifier(conn, "annotations", region_id, "note", vu=apres.get("note"),
-                         actuel=actuel.get("note"), nouveau=avant.get("note"))
+                         actuel=actuel.get("note"), nouveau=avant.get("note"),
+                         depuis=depuis)
         note = avant.get("note")
     ctx = _contexte_tags()
     t_avant, t_apres = set(avant.get("tags", [])), set(apres.get("tags", []))
@@ -599,7 +605,7 @@ _LIENS_DU_TYPE = (("locuteur", "bulle_locuteur", "locuteur", TYPES_LOCUTEUR),
                   ("attributs", "region_attribut", "situation", TYPES_SITUATION))
 
 
-def _garder_liens_du_type(conn, region_id, avant, voit=None) -> None:
+def _garder_liens_du_type(conn, region_id, avant, voit=None, depuis=None) -> None:
     """Les liens sont des champs GARDÉS de l'annulation d'un changement de type (ANN-8,
     CONC-3). Lien par lien, ce que la région porte au moment de défaire doit être ce que
     l'acte y avait LAISSÉ — la photographie `liens_vus`, moins ce qu'il a retiré —, ou ce que
@@ -635,7 +641,10 @@ def _garder_liens_du_type(conn, region_id, avant, voit=None) -> None:
     LÀ — « modifiée ailleurs » avec une `valeur_actuelle` vide —, et c'est inévitable :
     refuser sans le dire, ou passer outre, effacerait le travail de l'autre collection. Un
     oracle de CONFIRMATION, accepté comme celui de `tags_concat` : il ne joue que sur une
-    région qu'on écrit, et ne nomme rien."""
+    région qu'on écrit, et ne nomme rien.
+
+    `depuis` : le changement de type défait — l'auteur ne se cherche qu'APRÈS lui (cf.
+    `conflit.auteur_du_champ`)."""
     vus = avant.get("liens_vus") or {}
     for cle, table, champ, types in _LIENS_DU_TYPE:
         ensemble = table == "region_attribut"
@@ -656,13 +665,15 @@ def _garder_liens_du_type(conn, region_id, avant, voit=None) -> None:
         if ensemble and voit is not None:
             vues = {v for v in actuel if voit(v)}
             de_trop_vues = de_trop & vues
-            qui = (conflit.auteur_du_champ(conn, table, region_id, colonne, min(de_trop_vues))
+            qui = (conflit.auteur_du_champ(conn, table, region_id, colonne, min(de_trop_vues),
+                                           depuis=depuis)
                    if de_trop_vues else None)
             raise conflit.Perime(table, region_id, champ, sorted(vues), qui)
         pose = min(de_trop)                 # nommer qui a posé ce qui n'était pas admis
         valeur = sorted(actuel) if ensemble else pose
         raise conflit.Perime(table, region_id, champ, valeur,
-                             conflit.auteur_du_champ(conn, table, region_id, colonne, pose))
+                             conflit.auteur_du_champ(conn, table, region_id, colonne, pose,
+                                                     depuis=depuis))
 
 
 def _en_liste(valeur) -> list:
@@ -710,35 +721,98 @@ def _retirer_lien(conn, table, region_id):
 _CHAMP_DU_LIEN = {"bulle_locuteur": "locuteur", "personnage_presence": "presence"}
 
 
-def _garder_lien(conn, table, region_id, *, laisse, rendu) -> None:
+def _garder_lien(conn, e, *, laisse, rendu) -> None:
     """L'annulation d'un `lien` ou d'un `delien` est GARDÉE (ANN-8, CONC-3 ; trouvé par Hugo
     à la QA du lot 1, 2026-10-23, présent depuis D1). Proprio donne Zed à une bulle ;
     Stagiaire le remplace par Yann ; le Ctrl+Z de Proprio retirait Yann — la bulle n'avait
     plus aucun locuteur, et le geste de Stagiaire disparaissait sans un mot.
 
-    Ce que la région porte au moment de défaire doit être ce que l'acte y avait LAISSÉ
-    (`laisse` : le personnage d'un `lien`, aucun pour un `delien`), ou ce que l'annulation
-    laissera (`rendu`) — rien ne se perd alors. Sinon quelqu'un l'a changé depuis l'acte, et
-    l'annulation est refusée par le même 409 nommé qu'un enregistrement périmé : le champ
-    (`locuteur`, `presence`), le personnage présent, l'auteur du dernier acte qui l'a posé.
-    Rien n'est écrit : la garde passe avant l'inversion.
+    Ce que la région porte au moment de défaire doit être l'un de ceux-ci, sans quoi
+    quelqu'un l'a changé depuis l'acte et l'annulation est refusée par le même 409 nommé
+    qu'un enregistrement périmé — le champ (`locuteur`, `presence`), le personnage présent,
+    l'auteur du dernier acte, POSTÉRIEUR à celui qu'on défait, qui l'a posé ou ôté. Rien
+    n'est écrit : la garde passe avant l'inversion.
+
+    - ce que l'acte y avait LAISSÉ (`laisse` : le personnage d'un `lien`, aucun pour un
+      `delien`), ou ce que l'annulation laissera (`rendu`) : rien ne se perd ;
+    - AUCUN, quand le personnage que l'acte avait laissé n'existe plus — sa suppression a
+      emporté le lien par CASCADE, sans rien écrire au journal, et ce n'est le geste de
+      personne sur cette région (relecture croisée, R2) ;
+    - ce qu'a laissé un geste PLUS RÉCENT du même agent sur ce lien, PASSÉ depuis (`abandon`
+      — « Ne s'annule plus », ou « Passer ce geste »), si rien ne l'a changé ensuite
+      (`_laisse_par_un_geste_passe`, R4). Sans quoi chaque geste d'avant sur le même lien se
+      refusait à son tour, face au travail de l'agent lui-même. Un geste passé après le
+      conflit d'un AUTRE n'y entre pas : le dernier geste sur le lien est alors celui de
+      l'autre, et le refus le nomme.
 
     Elle ne joue qu'APRÈS les questions d'AUTH-14 (`annuler` : l'objet est le même, l'agent
     l'écrit maintenant, le personnage rendu est le sien) et après le « passé » d'un type qui
     ne montre plus le lien (`_inverser`) : un refus nommé ne se rend que sur une région que
     l'agent écrit — dont il lit donc le locuteur et son auteur, comme ceux de tout champ
-    gardé —, jamais sur une région qui a quitté sa portée.
+    gardé —, jamais sur une région qui a quitté sa portée. Et l'auteur ne se cherche
+    qu'après l'acte : sous la numérotation d'avant la v30, ce qui précède dans le journal
+    du même identifiant est un autre objet, peut-être dans une collection qu'il ne lit pas
+    (R5).
 
     L'auteur se cherche aussi dans les changements de type (`regions`, sous `locuteur` ou
     `presence`), qui retirent le lien et dont l'annulation le repose."""
+    table, region_id = e["cible_table"], e["cible_id"]
     ligne = conn.execute(f"SELECT personnage_id FROM {table} WHERE region_id = ?",
                          (region_id,)).fetchone()
     actuel = ligne["personnage_id"] if ligne is not None else None
-    if actuel == laisse or actuel == rendu:
+    admis = {laisse, rendu}
+    if laisse is not None and conn.execute("SELECT 1 FROM personnages WHERE id = ?",
+                                           (laisse,)).fetchone() is None:
+        admis.add(None)
+    passe = _laisse_par_un_geste_passe(conn, e)
+    if passe is not _AUCUN_GESTE_PASSE:
+        admis.add(passe)
+    if actuel in admis:
         return
     champ = _CHAMP_DU_LIEN[table]
     raise conflit.Perime(table, region_id, champ, actuel, conflit.auteur_des_champs(
-        conn, ((table, "personnage_id"), ("regions", champ)), region_id, actuel))
+        conn, ((table, "personnage_id"), ("regions", champ)), region_id, actuel,
+        depuis=e["id"]))
+
+
+_AUCUN_GESTE_PASSE = object()
+
+
+def _laisse_par_un_geste_passe(conn, e):
+    """Ce qu'a laissé sur le lien de `e` le DERNIER geste qui l'a touché depuis, si c'est un
+    `lien` ou un `delien` du même agent, PASSÉ (`abandon`) : son personnage, ou None pour un
+    retrait. Sinon `_AUCUN_GESTE_PASSE`.
+
+    « Le dernier geste qui l'a touché » : sur la table du lien, une annulation d'un acte sur
+    cette table, ou un acte sur `regions` (ou son annulation) dont la charge porte le lien —
+    un changement de type qui l'ôte, une suppression rétablie qui le rend. Un geste plus
+    récent, de qui que ce soit, fait que ce n'est plus la valeur du geste passé qui est là."""
+    table, region_id = e["cible_table"], e["cible_id"]
+    cle = _CHAMP_DU_LIEN[table]
+    for ev in conn.execute(
+            "SELECT ev.*, a.cible_table AS acte_table, a.avant AS acte_avant, "
+            "       a.apres AS acte_apres FROM evenement ev "
+            "LEFT JOIN evenement a ON ev.cible_table = 'evenement' AND a.id = ev.cible_id "
+            "WHERE ev.id > ? AND ((ev.cible_table IN (?, 'regions') AND ev.cible_id = ?) "
+            "   OR (ev.cible_table = 'evenement' AND ev.type = 'annulation' "
+            "       AND a.cible_table IN (?, 'regions') AND a.cible_id = ?)) "
+            "ORDER BY ev.id DESC", (e["id"], table, region_id, table, region_id)):
+        annulation = ev["cible_table"] == "evenement"
+        if (ev["acte_table"] if annulation else ev["cible_table"]) == "regions":
+            charges = ((ev["acte_avant"], ev["acte_apres"]) if annulation
+                       else (ev["avant"], ev["apres"]))
+            if not any(cle in (_charge(c) or {}) for c in charges):
+                continue                    # un geste sur la région qui n'a pas touché le lien
+        if annulation or ev["cible_table"] != table or ev["type"] not in ("lien", "delien") \
+                or ev["agent"] != e["agent"]:
+            return _AUCUN_GESTE_PASSE
+        if conn.execute("SELECT 1 FROM evenement WHERE type = 'abandon' "
+                        "AND cible_table = 'annulation' AND cible_id = ?",
+                        (ev["id"],)).fetchone() is None:
+            return _AUCUN_GESTE_PASSE
+        return (_charge(ev["apres"]) or {}).get("personnage_id") if ev["type"] == "lien" \
+            else None
+    return _AUCUN_GESTE_PASSE
 
 
 # --------------------------------------------------------------------------- #
@@ -757,10 +831,10 @@ def _inverser(conn, e, voit=None) -> int:
     try:
         if table == "regions":
             if t == "creation":
-                _garder_creation(conn, cid, apres)
+                _garder_creation(conn, cid, apres, depuis=e["id"])
                 _supprimer_region(conn, cid)
             elif t == "modification":
-                _inverser_modification_region(conn, cid, avant, apres, voit)
+                _inverser_modification_region(conn, cid, avant, apres, voit, depuis=e["id"])
             elif t == "suppression":
                 _recreer_region_profond(conn, avant, depuis=e["id"])
             return cid
@@ -769,14 +843,14 @@ def _inverser(conn, e, voit=None) -> int:
             return cid
         if table in _LIENS:                # cible_id = region_id
             if t == "lien" and avant is None:
-                _garder_lien(conn, table, cid, laisse=apres["personnage_id"], rendu=None)
+                _garder_lien(conn, e, laisse=apres["personnage_id"], rendu=None)
                 _retirer_lien(conn, table, cid)
             else:                         # lien (avec avant) ou delien → rétablir l'ancien lien
                 # Le « passé » d'un type qui ne montre plus le lien prime sur la garde : il ne
                 # dit rien de ce que la région porte (ANN-8).
                 if not _montre(conn, table, cid):
                     raise Irretablissable()
-                _garder_lien(conn, table, cid,
+                _garder_lien(conn, e,
                              laisse=(apres or {}).get("personnage_id") if t == "lien" else None,
                              rendu=avant["personnage_id"])
                 _poser_lien(conn, table, cid, avant["personnage_id"])
@@ -1070,6 +1144,11 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
                 raise Irretablissable() from exc
     except Irretablissable:
         raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE, voit)
+    except conflit.Perime as exc:
+        # ANN-8 — l'acte refusé, tel que l'annulation l'a relu sous le verrou d'écriture :
+        # c'est lui que « Passer ce geste » doit désigner (`passable`, dans la route).
+        exc.evenement = e
+        raise
     finally:
         _CONTEXTE_TAGS.reset(jeton)
     planche_id = _planche_de(conn, region_id, e)

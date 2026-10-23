@@ -661,17 +661,10 @@ def test_un_personnage_supprime_depuis_ne_bloque_plus_la_pile(client, db_path, d
         "ecarte": {"evenement_id": acte, "description": "attribution d'un locuteur"}}
     assert "FOREIGN" not in rep.text and _locuteur(db_path, decor["rg"]) == milou
     assert _marques(db_path, "collegue") == [acte]
-    # La pile a avancé : le Ctrl+Z suivant porte sur le geste d'AVANT, l'attribution de
-    # Haddock. Défaire celle-ci retirerait Milou, que l'acte passé laisse en place : la garde
-    # des liens (ANN-8) la refuse comme tout champ changé depuis, et offre de la passer.
-    suivant = client.post("/api/undo", headers=COLLEGUE)
-    assert suivant.status_code == 409, suivant.text
-    premier = _sql(db_path, "SELECT MIN(id) AS id FROM evenement WHERE agent = 'collegue' "
-                            "AND type = 'lien' AND cible_table = 'bulle_locuteur' "
-                            "AND cible_id = ?", (decor["rg"],))[0]["id"]
-    assert suivant.json()["detail"]["passable"] == {"evenement_id": premier}
-    assert suivant.json()["detail"]["conflit"]["champ"] == "locuteur"
-    assert _locuteur(db_path, decor["rg"]) == milou
+    _ok(client.post("/api/undo", headers=COLLEGUE), 200)        # la pile a avancé
+    # … sans buter sur Milou : la garde des liens admet ce qu'a laissé un geste PLUS RÉCENT
+    # de la même personne, passé depuis (ANN-8, relecture croisée R4).
+    assert _locuteur(db_path, decor["rg"]) is None
 
 
 @pytest.mark.parametrize("apres", ["retire", "lecture"])
@@ -704,6 +697,120 @@ def test_la_garde_des_liens_ne_parle_pas_d_une_region_hors_de_portee(client, db_
     assert _marques(db_path, "collegue") == [acte]
     rep = _ok(client.post("/api/undo", headers=COLLEGUE), 200)       # la pile a avancé
     assert rep.json()["region_id"] == decor["rg"]
+
+
+SECRETAIRE = {"Remote-User": "secretaire"}     # n'écrit QUE dans l'Incubateur
+
+
+def _ancien_objet_de_l_incubateur(client, decor, **kw):
+    """Une région de l'Incubateur, avec un locuteur posé par « secretaire » — qui n'entre
+    que là —, puis supprimée par elle : son identifiant se libère. Rend (id, personnage)."""
+    _accorder(client, decor["i"], "secretaire", "ecriture")
+    pi = _planche(client, _album(client, "Incub", decor["i"], IMPORTEUSE), IMPORTEUSE)
+    r_old = _region(client, pi, SECRETAIRE, **kw)
+    s = _perso(client, "Perso secret", SECRETAIRE)
+    _ok(client.put(f"/api/regions/{r_old}/locuteur", headers=SECRETAIRE,
+                   json={"personnage_id": s}), 200)
+    _ok(client.delete(f"/api/regions/{r_old}", headers=SECRETAIRE), 204)
+    return r_old, s
+
+
+def test_le_refus_d_un_lien_ne_nomme_pas_l_auteur_d_un_ancien_objet(client, db_path, decor):
+    """R5 (relecture croisée de la garde des liens) — la FUITE. Sous la numérotation d'avant
+    la v30, la bulle de la collègue reprend l'identifiant d'une région de l'Incubateur
+    supprimée par « secretaire ». La collègue : Zed puis Yann ; l'importatrice remplace Yann
+    par W, puis supprime W. Le Ctrl+Z de la collègue est refusé — sans nommer « secretaire » :
+    l'auteur ne se cherche qu'APRÈS l'acte, et l'instantané de la suppression de l'ancien
+    objet (qui porte `locuteur`) est avant lui."""
+    r_old, _ = _ancien_objet_de_l_incubateur(client, decor)
+    r = _region(client, decor["pe"], COLLEGUE)
+    assert r == r_old, (r, r_old)                       # identifiant repris
+    zed, yann = _perso(client, "Zed", COLLEGUE), _perso(client, "Yann", COLLEGUE)
+    for pid in (zed, yann):
+        _ok(client.put(f"/api/regions/{r}/locuteur", headers=COLLEGUE,
+                       json={"personnage_id": pid}), 200)
+    w = _perso(client, "W", IMPORTEUSE)
+    _ok(client.put(f"/api/regions/{r}/locuteur", headers=IMPORTEUSE,
+                   json={"personnage_id": w}), 200)
+    _ok(client.delete(f"/api/personnages/{w}", headers=IMPORTEUSE), 204)
+
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.status_code == 409, rep.text
+    assert rep.json()["detail"]["conflit"]["auteur"] is None
+    assert "secretaire" not in rep.text and "Perso secret" not in rep.text
+
+
+def test_le_refus_d_un_changement_de_type_ne_nomme_pas_l_auteur_d_un_ancien_objet(
+        client, db_path, decor):
+    """La même fuite dans `_garder_liens_du_type`, qui cherchait l'auteur dans tout le
+    journal du `cible_id`. La case de la collègue reprend l'identifiant de la bulle de
+    l'Incubateur où « secretaire » avait posé S. La collègue la passe en bulle ;
+    l'importatrice lui donne D, puis fusionne D dans S (une réaffectation sans acte sous
+    `bulle_locuteur`). Le Ctrl+Z de la collègue rendrait une case qui parle : refusé — sans
+    nommer « secretaire », dont le `lien` vers S est d'avant l'acte."""
+    r_old, s = _ancien_objet_de_l_incubateur(client, decor)
+    r = _region(client, decor["pe"], COLLEGUE, type="case")
+    assert r == r_old, (r, r_old)
+    _ok(client.put(f"/api/regions/{r}", headers=COLLEGUE, json={"type": "bulle"}), 200)
+    d = _perso(client, "D", IMPORTEUSE)
+    _ok(client.put(f"/api/regions/{r}/locuteur", headers=IMPORTEUSE,
+                   json={"personnage_id": d}), 200)
+    _ok(client.post(f"/api/personnages/{d}/fusion", headers=IMPORTEUSE,
+                    json={"cible_id": s}), 200)
+    assert _locuteur(db_path, r) == s
+
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.status_code == 409, rep.text
+    conflit = rep.json()["detail"]["conflit"]
+    assert (conflit["champ"], conflit["auteur"]) == ("locuteur", None)
+    assert "secretaire" not in rep.text
+
+
+def test_les_autres_refus_d_annulation_ne_nomment_pas_l_auteur_d_un_ancien_objet(
+        client, db_path, decor):
+    """La borne vaut pour toutes les gardes de `undo.py`, pas seulement celle des liens
+    (relecture croisée de la garde des liens). Une région de l'Incubateur reçoit de
+    « secretaire » un texte et une note, puis elle la supprime ; la collègue reprend son
+    identifiant. Une valeur posée sans acte au journal — une ligne retouchée à la main, ce
+    contre quoi la garde d'AUTH-14 reste en défense — égale à celle de l'ancien objet ne fait
+    plus nommer « secretaire » : la recherche de l'auteur s'arrête à l'acte défait."""
+    _accorder(client, decor["i"], "secretaire", "ecriture")
+    pi = _planche(client, _album(client, "Incub", decor["i"], IMPORTEUSE), IMPORTEUSE)
+
+    def ancien():
+        r_old = _region(client, pi, SECRETAIRE)
+        _ok(client.put(f"/api/regions/{r_old}", headers=SECRETAIRE,
+                       json={"ocr_texte": SECRET}), 200)
+        _ok(client.put(f"/api/regions/{r_old}/annotation", headers=SECRETAIRE,
+                       json={"note": "note secrète"}), 200)
+        _ok(client.delete(f"/api/regions/{r_old}", headers=SECRETAIRE), 204)
+        return r_old
+
+    # La modification d'une région (`conflit.verifier`).
+    r_old = ancien()
+    r = _region(client, decor["pe"], COLLEGUE)
+    assert r == r_old, (r, r_old)
+    _ok(client.put(f"/api/regions/{r}", headers=COLLEGUE, json={"ocr_texte": "BONJOUR"}), 200)
+    _sql(db_path, "UPDATE regions SET ocr_texte = ? WHERE id = ?", (SECRET, r))
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.status_code == 409, rep.text
+    assert rep.json()["detail"]["conflit"]["auteur"] is None
+    assert "secretaire" not in rep.text
+    _ok(client.post("/api/undo/passer", headers=COLLEGUE,
+                    json=rep.json()["detail"]["passable"]), 200)
+    _ok(client.post("/api/undo", headers=COLLEGUE), 409)     # la création, gardée à son tour
+    _ok(client.delete(f"/api/regions/{r}", headers=ADMIN), 204)
+
+    # La création d'une région, et l'annotation qu'elle porte (`_garder_creation`).
+    r_old = ancien()
+    r = _region(client, decor["pe"], COLLEGUE)
+    assert r == r_old, (r, r_old)
+    _sql(db_path, "INSERT INTO annotations (region_id, note) VALUES (?, ?)", (r, "posée"))
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.status_code == 409, rep.text
+    assert rep.json()["detail"]["conflit"]["champ"] == "annotation"
+    assert rep.json()["detail"]["conflit"]["auteur"] is None
+    assert "secretaire" not in rep.text
 
 
 def test_un_ancien_parent_supprime_depuis_ne_bloque_plus_la_pile(client, db_path, decor):
