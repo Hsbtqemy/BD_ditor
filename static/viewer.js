@@ -1567,9 +1567,25 @@ function enterTranscription() {
   // Ordre « case par case » via le parcours d'arbre (les rangs `ordre` sont
   // relatifs aux frères, pas globaux).
   state.trRegions = readingSequence().filter((r) => TEXT_TYPES.has(r.type));
-  state.trIndex = 0;
+  state.trIndex = bulleDArrivee(state.trRegions, state.selectedId);
   buildTrMini();
   renderTranscription();
+}
+
+/* Où la Transcription s'ouvre (Hugo, 2026-10-23) : sur la région sélectionnée si elle est
+   de celles qu'elle parcourt ; sur une CASE, sa première bulle ; sinon — rien de
+   sélectionné, une boîte personnage, une case sans texte — sur la première de la planche.
+   La première bulle de la case est la première de ses descendantes DANS la liste : celle-ci
+   suit `readingSequence`, un parcours en profondeur, donc les régions d'une case s'y
+   suivent, dans l'ordre de lecture. Un seul chemin pour le clavier, le bouton du mode et le
+   lien de l'adresse, qui sélectionne sa région avant d'entrer dans le mode. */
+function bulleDArrivee(liste, selectedId) {
+  if (selectedId == null) return 0;
+  const ici = liste.findIndex((r) => r.id === selectedId);
+  if (ici >= 0) return ici;
+  const dedans = descendantIds(selectedId);
+  const premiere = liste.findIndex((r) => dedans.has(r.id));
+  return premiere >= 0 ? premiere : 0;
 }
 
 function buildTrMini() {
@@ -3786,7 +3802,7 @@ async function applyDeepLink() {
     // Sans planche nommée, `loadAlbums` a ouvert la première sans l'attendre : le mode
     // l'attend, sans quoi la Transcription compterait les bulles d'une planche à demi chargée.
     if (mode !== MODE_PAR_DEFAUT && state.planche) await selectPlanche(state.planche.id);
-    entrerDansLeModeDeLAdresse(mode, null);
+    entrerDansLeModeDeLAdresse(mode);
     return;
   }
   try {
@@ -3814,20 +3830,15 @@ async function applyDeepLink() {
   // Le mode en DERNIER, une fois l'album, la planche et la région posés : chaque mode fait
   // en entrant ce qu'il ferait au clavier, sur ce qui est déjà là. Un lien dont l'album ou
   // la planche manque s'arrête plus haut, en Navigation, sur son message.
-  entrerDansLeModeDeLAdresse(mode, region ? Number(region) : null);
+  entrerDansLeModeDeLAdresse(mode);
 }
 
-/* UX-12 — entre dans le mode que nomme l'adresse, par `setMode` et ses gardes : l'Annotation
-   charge celle de la région choisie, la Transcription prend la planche (ou rend la main à la
-   Navigation s'il n'y en a pas) et le focus de sa zone de saisie. Elle commence à la PREMIÈRE
-   bulle, comme au clavier ; la seule chose propre au lien est d'aller ensuite à la bulle
-   qu'il nomme, si c'en est une — sans quoi F5 changerait de bulle. */
-function entrerDansLeModeDeLAdresse(mode, regionId) {
-  if (mode === state.mode) return;
-  setMode(mode);
-  if (state.mode !== "transcription" || regionId == null) return;
-  const i = state.trRegions.findIndex((r) => r.id === regionId);
-  if (i > 0) { state.trIndex = i; renderTranscription(); }
+/* UX-12 — entre dans le mode que nomme l'adresse, par `setMode` et ses gardes, exactement
+   comme au clavier : l'Annotation charge celle de la région choisie, la Transcription prend
+   la planche (ou rend la main à la Navigation s'il n'y en a pas), s'ouvre sur la région que
+   le lien a sélectionnée (`bulleDArrivee`) et prend le focus de sa zone de saisie. */
+function entrerDansLeModeDeLAdresse(mode) {
+  if (mode !== state.mode) setMode(mode);
 }
 
 

@@ -912,3 +912,87 @@ def test_un_lien_en_transcription_sans_region(page, seeded_modes, avec_planche):
     expect(page.locator("#tr-progress")).to_have_text("Bulle 1 / 2")
     expect(page.locator("#tr-text")).to_have_value("PREMIERE")
     expect(page).to_have_url(re.compile(rf"region={s['b1']}&mode=transcription(?:&|$)"))
+
+
+# ---------------------------------------------------------------------------
+# Où la Transcription s'ouvre (Hugo, 2026-10-23) : sur la bulle sélectionnée ; sur une case,
+# sa première bulle ; rien de sélectionné, la première de la planche. Le clavier, le bouton
+# du mode et le lien de l'adresse suivent la même règle.
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def seeded_cases(live_server):
+    """Deux cases l'une sous l'autre : la première porte trois bulles, la seconde deux.
+    La première bulle de la seconde case est donc la 4e sur 5, ni la 1re ni la 3e."""
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                     headers=ECRITURE)
+    try:
+        aid = c.post("/api/albums", json={"titre": "E2E cases"}).json()["id"]
+        pid = c.post(f"/api/albums/{aid}/import",
+                     files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+
+        def region(**corps):
+            r = c.post(f"/api/planches/{pid}/regions", json=corps)
+            assert r.status_code < 300, r.text
+            return r.json()["id"]
+
+        haut = region(type="case", x=10, y=10, w=380, h=220)
+        bas = region(type="case", x=10, y=260, w=380, h=220)
+        bulles = [region(type="bulle", x=20 + 120 * i, y=30, w=80, h=40,
+                         parent_id=haut, ocr_texte=f"HAUT {i + 1}") for i in range(3)]
+        bulles += [region(type="bulle", x=20 + 120 * i, y=280, w=80, h=40,
+                          parent_id=bas, ocr_texte=f"BAS {i + 1}") for i in range(2)]
+        assert c.post(f"/api/planches/{pid}/reordonner").status_code < 300
+    finally:
+        c.close()
+    return {"base": live_server, "album": aid, "planche": pid, "haut": haut,
+            "bas": bas, "bulles": bulles}
+
+
+def _planche(s, extra=""):
+    return f"{s['base']}/?album={s['album']}&planche={s['planche']}{extra}"
+
+
+def test_la_transcription_s_ouvre_sur_la_bulle_selectionnee(page, seeded_cases):
+    s = seeded_cases
+    troisieme = s["bulles"][2]
+    page.goto(_planche(s, f"&region={troisieme}"), wait_until="networkidle")
+    expect(page.locator("#region-id")).to_have_text(f"#{troisieme}", timeout=15000)
+    page.keyboard.press("t")
+    _dans_le_mode(page, "transcription", "Transcription")
+    expect(page.locator("#tr-progress")).to_have_text("Bulle 3 / 5")
+    expect(page.locator("#tr-text")).to_have_value("HAUT 3")
+    expect(page.locator("#tr-text")).to_be_focused()
+    expect(page).to_have_url(re.compile(rf"region={troisieme}&mode=transcription(?:&|$)"))
+
+
+def test_sur_une_case_la_transcription_s_ouvre_sur_sa_premiere_bulle(page, seeded_cases):
+    """Par le BOUTON du mode, cette fois : même règle que le clavier."""
+    s = seeded_cases
+    page.goto(_planche(s, f"&region={s['bas']}"), wait_until="networkidle")
+    expect(page.locator("#region-id")).to_have_text(f"#{s['bas']}", timeout=15000)
+    page.locator('.mode-btn[data-mode="transcription"]').click()
+    _dans_le_mode(page, "transcription", "Transcription")
+    expect(page.locator("#tr-progress")).to_have_text("Bulle 4 / 5")
+    expect(page.locator("#tr-text")).to_have_value("BAS 1")
+    expect(page).to_have_url(re.compile(rf"region={s['bulles'][3]}&mode=transcription"))
+
+
+def test_sans_selection_la_transcription_s_ouvre_sur_la_premiere_bulle(page, seeded_cases):
+    s = seeded_cases
+    page.goto(_planche(s), wait_until="networkidle")
+    expect(page.locator(f'#planche-list li.active[data-id="{s["planche"]}"]')).to_have_count(
+        1, timeout=15000)
+    page.keyboard.press("t")
+    _dans_le_mode(page, "transcription", "Transcription")
+    expect(page.locator("#tr-progress")).to_have_text("Bulle 1 / 5")
+    expect(page.locator("#tr-text")).to_have_value("HAUT 1")
+
+
+def test_le_lien_d_une_case_en_transcription_suit_la_meme_regle(page, seeded_cases):
+    """L'adresse et le clavier ne disent pas deux choses : une case nommée par le lien
+    ouvre la Transcription sur sa première bulle, comme une case sélectionnée."""
+    s = seeded_cases
+    page.goto(_planche(s, f"&region={s['bas']}&mode=transcription"), wait_until="networkidle")
+    _dans_le_mode(page, "transcription", "Transcription")
+    expect(page.locator("#tr-progress")).to_have_text("Bulle 4 / 5")
+    expect(page.locator("#tr-text")).to_have_value("BAS 1")
