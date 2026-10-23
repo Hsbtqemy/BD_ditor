@@ -705,6 +705,42 @@ def _retirer_lien(conn, table, region_id):
     conn.execute(f"DELETE FROM {table} WHERE region_id = ?", (region_id,))
 
 
+# Le champ qu'un refus nomme pour chaque table de lien, et la clé sous laquelle un
+# changement de type range le lien qu'il retire (`database.retirer_liens_caches`).
+_CHAMP_DU_LIEN = {"bulle_locuteur": "locuteur", "personnage_presence": "presence"}
+
+
+def _garder_lien(conn, table, region_id, *, laisse, rendu) -> None:
+    """L'annulation d'un `lien` ou d'un `delien` est GARDÉE (ANN-8, CONC-3 ; trouvé par Hugo
+    à la QA du lot 1, 2026-10-23, présent depuis D1). Proprio donne Zed à une bulle ;
+    Stagiaire le remplace par Yann ; le Ctrl+Z de Proprio retirait Yann — la bulle n'avait
+    plus aucun locuteur, et le geste de Stagiaire disparaissait sans un mot.
+
+    Ce que la région porte au moment de défaire doit être ce que l'acte y avait LAISSÉ
+    (`laisse` : le personnage d'un `lien`, aucun pour un `delien`), ou ce que l'annulation
+    laissera (`rendu`) — rien ne se perd alors. Sinon quelqu'un l'a changé depuis l'acte, et
+    l'annulation est refusée par le même 409 nommé qu'un enregistrement périmé : le champ
+    (`locuteur`, `presence`), le personnage présent, l'auteur du dernier acte qui l'a posé.
+    Rien n'est écrit : la garde passe avant l'inversion.
+
+    Elle ne joue qu'APRÈS les questions d'AUTH-14 (`annuler` : l'objet est le même, l'agent
+    l'écrit maintenant, le personnage rendu est le sien) et après le « passé » d'un type qui
+    ne montre plus le lien (`_inverser`) : un refus nommé ne se rend que sur une région que
+    l'agent écrit — dont il lit donc le locuteur et son auteur, comme ceux de tout champ
+    gardé —, jamais sur une région qui a quitté sa portée.
+
+    L'auteur se cherche aussi dans les changements de type (`regions`, sous `locuteur` ou
+    `presence`), qui retirent le lien et dont l'annulation le repose."""
+    ligne = conn.execute(f"SELECT personnage_id FROM {table} WHERE region_id = ?",
+                         (region_id,)).fetchone()
+    actuel = ligne["personnage_id"] if ligne is not None else None
+    if actuel == laisse or actuel == rendu:
+        return
+    champ = _CHAMP_DU_LIEN[table]
+    raise conflit.Perime(table, region_id, champ, actuel, conflit.auteur_des_champs(
+        conn, ((table, "personnage_id"), ("regions", champ)), region_id, actuel))
+
+
 # --------------------------------------------------------------------------- #
 # Aiguillage + orchestration
 # --------------------------------------------------------------------------- #
@@ -733,8 +769,16 @@ def _inverser(conn, e, voit=None) -> int:
             return cid
         if table in _LIENS:                # cible_id = region_id
             if t == "lien" and avant is None:
+                _garder_lien(conn, table, cid, laisse=apres["personnage_id"], rendu=None)
                 _retirer_lien(conn, table, cid)
             else:                         # lien (avec avant) ou delien → rétablir l'ancien lien
+                # Le « passé » d'un type qui ne montre plus le lien prime sur la garde : il ne
+                # dit rien de ce que la région porte (ANN-8).
+                if not _montre(conn, table, cid):
+                    raise Irretablissable()
+                _garder_lien(conn, table, cid,
+                             laisse=(apres or {}).get("personnage_id") if t == "lien" else None,
+                             rendu=avant["personnage_id"])
                 _poser_lien(conn, table, cid, avant["personnage_id"])
             return cid
     except sqlite3.IntegrityError as exc:  # entité référencée disparue, contrainte violée…

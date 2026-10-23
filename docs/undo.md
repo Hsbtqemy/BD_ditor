@@ -36,8 +36,8 @@ rollback en cas d'échec.
 | `modification` région qui rend un type sans locuteur (case, boîte personnage) | comme toute modification — **refusé** (409 nommé) si la région porte aujourd'hui un locuteur AUTRE que celui que l'acte avait laissé (sa photographie, `liens_vus`) |
 | `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) — **passé** si un `id` a été repris, si une planche ou le parent n'est plus le même, ou si l'on n'écrit plus dans l'une des planches |
 | `creation` / `modification` / `suppression` annotation | défaire ce que l'acte a CHANGÉ, sur l'état actuel : la note revient à `avant` si l'acte l'a changée ; les tags qu'il a ajoutés partent, ceux qu'il a retirés reviennent ; vide, l'annotation est supprimée |
-| `lien` locuteur/présence (avant ∅) | retirer le lien |
-| `lien` (avant présent) / `delien` | rétablir l'ancien lien — **passé** si la région n'est plus d'un type qui le montre : un locuteur hors d'une zone de texte, un personnage montré hors d'une boîte personnage (ANN-8) |
+| `lien` locuteur/présence (avant ∅) | retirer le lien — **refusé** (409 nommé, champ `locuteur` ou `presence`) si la région porte aujourd'hui un AUTRE personnage que celui que l'acte avait posé (ANN-8) |
+| `lien` (avant présent) / `delien` | rétablir l'ancien lien — **passé** si la région n'est plus d'un type qui le montre : un locuteur hors d'une zone de texte, un personnage montré hors d'une boîte personnage (ANN-8) ; sinon **refusé** (409 nommé) si elle porte aujourd'hui autre chose que ce que l'acte avait laissé (son personnage, ou aucun pour un `delien`) et que l'ancien lien |
 
 **Un locuteur part avec le type, et revient avec lui** (ANN-8, tranché par Hugo le
 2026-10-21). Une bulle, un cartouche ou une zone de texte qui devient case ou boîte
@@ -102,7 +102,7 @@ ouvert** : un identifiant repris dans la même seconde PAR UNE VALEUR DE LA MÊM
 pour un changement de type journalisé avant cette photographie, la règle de la date seule.
 
 **Le locuteur est un champ GARDÉ de l'annulation** (relecture croisée de ANN-8, 2026-10-21 ;
-`undo._garder_locuteur`). Deux annulations d'un changement de type écrasaient le geste d'un
+`undo._garder_liens_du_type`). Deux annulations d'un changement de type écrasaient le geste d'un
 autre, sans 409. Alice passe la bulle de Tintin en case ; Bob la repasse en bulle et lui
 donne Haddock ; le Ctrl+Z d'Alice remplaçait Haddock par Tintin — la garde du type passait,
 le type étant déjà celui qu'elle rendait. Et Alice passe une case en bulle ; Bob lui donne
@@ -138,6 +138,27 @@ locuteur caché, et c'est `tools/retirer_locuteurs_muets.py` qui la nettoie — 
 rôle d'un Ctrl+Z. **Un changement de type journalisé avant la photographie n'a pas
 `liens_vus`** : la garde y suppose, comme avant, qu'aucun locuteur n'était laissé, et le 409
 faux y reste possible. Il ne disparaît, pour ces actes, qu'une fois l'outil passé.
+
+**L'annulation d'une attribution est gardée elle aussi** (trouvé par Hugo à la QA du lot 1,
+2026-10-23 ; `undo._garder_lien`). La garde ne valait que pour l'annulation d'un changement
+de type : celle d'un `lien` ou d'un `delien` retirait ou reposait le lien sans regarder ce que
+la région portait. Proprio donne Zed à une bulle ; Stagiaire le remplace par Yann ; le Ctrl+Z
+de Proprio retirait Yann, et la bulle n'avait plus aucun locuteur — présent depuis D1, et le
+même trou pour le personnage montré. L'annulation compare désormais ce que la région porte à
+ce que l'acte y avait LAISSÉ — le personnage d'un `lien`, aucun pour un `delien` — et à ce
+qu'elle laissera : l'un ou l'autre, rien ne se perd, et elle passe (Stagiaire est revenue à
+Zed, ou a déjà retiré le locuteur). Sinon, le 409 nommé de CONC-3 — champ `locuteur` ou
+`presence`, le personnage présent, l'auteur du dernier acte qui l'a posé ou ôté, changements
+de type compris (`conflit.auteur_des_champs` lit `bulle_locuteur` et `regions` ensemble) —, rien
+n'est écrit, et l'Atelier offre « Passer ce geste ». L'ordre des gardes ne change pas : un
+acte dont la région a quitté la portée de l'agent, a disparu ou n'est plus le même objet est
+PASSÉ par la phrase d'AUTH-14, sans rien dire de ce qu'elle porte ; un lien qui ne se repose
+plus sur le type de la région est passé (« l'état d'avant ne peut plus être rétabli ») avant
+toute comparaison. Le refus ne joue donc que sur une région que l'agent écrit, dont il lit le
+locuteur et son auteur. Une conséquence, de la même règle que tout champ gardé : quand un
+geste plus récent de l'agent sur le même lien a été passé (« Ne s'annule plus », ou « Passer
+ce geste »), le Ctrl+Z du geste d'avant voit le lien que l'acte passé a laissé, et se refuse
+— « depuis un autre écran de ce même compte » ; on le passe à son tour.
 
 **Une annotation se défait par différence, et non par instantané** (CONC-3, 2026-09-16).
 Restaurer `avant` entier défaisait aussi ce qu'une autre personne avait fait sur l'AUTRE

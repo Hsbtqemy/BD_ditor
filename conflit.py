@@ -116,14 +116,32 @@ def auteur_du_champ(conn: sqlite3.Connection, cible_table: str, cible_id: int, c
     Les annulations comptent : elles sont journalisées sur l'acte qu'elles défont
     (`cible_table = 'evenement'`), et ce qu'elles posent est l'`avant` de cet acte.
     """
+    return auteur_des_champs(conn, ((cible_table, champ),), cible_id, valeur)
+
+
+def auteur_des_champs(conn: sqlite3.Connection, sources, cible_id: int,
+                      valeur: Any) -> Optional[dict]:
+    """`auteur_du_champ` pour une valeur que plusieurs sortes d'actes écrivent : `sources`,
+    des couples (table, clé de la charge), lus ensemble dans l'ordre du journal — le dernier
+    acte qui a posé la valeur, quelle que soit sa table.
+
+    ANN-8 — un locuteur se pose et se retire par `bulle_locuteur` (`personnage_id`), mais un
+    changement de type le retire aussi, dans un acte sur `regions` qui le range sous
+    `locuteur` (et son annulation le repose) : nommer qui l'a ôté demande de lire les deux.
+    """
+    tables = [t for t, _ in sources]
+    cle = dict(sources)
+    marques = ", ".join("?" * len(tables))
     lignes = conn.execute(
-        "SELECT e.*, a.avant AS acte_avant, a.apres AS acte_apres FROM evenement e "
+        "SELECT e.*, a.avant AS acte_avant, a.apres AS acte_apres, "
+        "       COALESCE(a.cible_table, e.cible_table) AS source FROM evenement e "
         "LEFT JOIN evenement a ON e.cible_table = 'evenement' AND a.id = e.cible_id "
-        "WHERE (e.cible_table = ? AND e.cible_id = ?) "
+        f"WHERE (e.cible_table IN ({marques}) AND e.cible_id = ?) "
         "   OR (e.cible_table = 'evenement' AND e.type = 'annulation' "
-        "       AND a.cible_table = ? AND a.cible_id = ?) "
-        "ORDER BY e.id DESC", (cible_table, cible_id, cible_table, cible_id)).fetchall()
+        f"       AND a.cible_table IN ({marques}) AND a.cible_id = ?) "
+        "ORDER BY e.id DESC", (*tables, cible_id, *tables, cible_id)).fetchall()
     for e in lignes:
+        champ = cle[e["source"]]
         if e["cible_table"] == "evenement":        # une annulation va d'« après » à « avant »
             avant, apres = _charge(e["acte_apres"]), _charge(e["acte_avant"])
         else:

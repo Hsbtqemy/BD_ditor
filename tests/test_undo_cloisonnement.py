@@ -661,7 +661,49 @@ def test_un_personnage_supprime_depuis_ne_bloque_plus_la_pile(client, db_path, d
         "ecarte": {"evenement_id": acte, "description": "attribution d'un locuteur"}}
     assert "FOREIGN" not in rep.text and _locuteur(db_path, decor["rg"]) == milou
     assert _marques(db_path, "collegue") == [acte]
-    _ok(client.post("/api/undo", headers=COLLEGUE), 200)        # la pile a avancé
+    # La pile a avancé : le Ctrl+Z suivant porte sur le geste d'AVANT, l'attribution de
+    # Haddock. Défaire celle-ci retirerait Milou, que l'acte passé laisse en place : la garde
+    # des liens (ANN-8) la refuse comme tout champ changé depuis, et offre de la passer.
+    suivant = client.post("/api/undo", headers=COLLEGUE)
+    assert suivant.status_code == 409, suivant.text
+    premier = _sql(db_path, "SELECT MIN(id) AS id FROM evenement WHERE agent = 'collegue' "
+                            "AND type = 'lien' AND cible_table = 'bulle_locuteur' "
+                            "AND cible_id = ?", (decor["rg"],))[0]["id"]
+    assert suivant.json()["detail"]["passable"] == {"evenement_id": premier}
+    assert suivant.json()["detail"]["conflit"]["champ"] == "locuteur"
+    assert _locuteur(db_path, decor["rg"]) == milou
+
+
+@pytest.mark.parametrize("apres", ["retire", "lecture"])
+def test_la_garde_des_liens_ne_parle_pas_d_une_region_hors_de_portee(client, db_path, decor,
+                                                                    apres):
+    """ANN-8 — la garde d'un `lien` (le locuteur changé depuis par un autre) ne joue
+    qu'APRÈS les questions d'AUTH-14. La collègue donne Haddock à une bulle de l'Incubateur ;
+    l'importatrice le remplace par Tintin ; la collègue perd l'Incubateur (ou n'y garde que
+    la lecture). Son Ctrl+Z ne rend pas le conflit — qui nommerait l'importatrice et Tintin —
+    mais la phrase d'AUTH-14 : l'acte est passé, rien n'est écrit, la pile avance."""
+    _geste_ancien(client, decor)
+    _accorder(client, decor["i"], "collegue", "ecriture")
+    pi = _planche(client, _album(client, "Incub", decor["i"], IMPORTEUSE), IMPORTEUSE)
+    r = _region(client, pi, IMPORTEUSE)
+    _ok(client.put(f"/api/regions/{r}/locuteur", headers=COLLEGUE,
+                   json={"personnage_id": _perso(client, "Haddock", COLLEGUE)}), 200)
+    acte = _acte(db_path, "collegue", "lien", "bulle_locuteur", r)
+    tintin = _perso(client, "Tintin", IMPORTEUSE)
+    _ok(client.put(f"/api/regions/{r}/locuteur", headers=IMPORTEUSE,
+                   json={"personnage_id": tintin}), 200)
+    if apres == "retire":
+        _retirer(client, decor["i"], "collegue")
+    else:
+        _accorder(client, decor["i"], "collegue", "lecture")
+
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert _passe(rep, "attribution d'un locuteur",
+                  interdits=("importeuse", "Tintin", "passable")) == acte
+    assert _locuteur(db_path, r) == tintin
+    assert _marques(db_path, "collegue") == [acte]
+    rep = _ok(client.post("/api/undo", headers=COLLEGUE), 200)       # la pile a avancé
+    assert rep.json()["region_id"] == decor["rg"]
 
 
 def test_un_ancien_parent_supprime_depuis_ne_bloque_plus_la_pile(client, db_path, decor):

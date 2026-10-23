@@ -591,6 +591,49 @@ def test_un_ctrl_z_refuse_se_passe_d_un_clic(page, decor):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_un_ctrl_z_de_locuteur_refuse_dit_qui_l_a_change_et_se_passe(page, decor):
+    """ANN-8 — le cas de Hugo (QA du lot 1, 2026-10-23). Alice donne Zed à la bulle ; Bob le
+    remplace par Yann ; le Ctrl+Z d'Alice retirait Yann. L'écran dit maintenant qui a changé
+    le locuteur et offre de passer le geste ; passé, le locuteur de Bob reste."""
+    s = decor
+    with _client(s["base"]) as c:
+        c.get("/api/moi", headers=BOB)
+        zed = c.post("/api/personnages", json={"nom": "Zed QA"}).json()["id"]
+        yann = c.post("/api/personnages", json={"nom": "Yann QA"}).json()["id"]
+        for qui, pid in ((ALICE, zed), (BOB, yann)):
+            r = c.put(f"/api/regions/{s['bulle']}/locuteur", headers=qui,
+                      json={"personnage_id": pid})
+            assert r.status_code == 200, r.text
+
+    def locuteur():
+        with _client(s["base"]) as c:
+            return (c.get(f"/api/regions/{s['bulle']}/locuteur").json()["locuteur"]
+                    or {}).get("id")
+
+    ctx_a, a = _contexte(page, ALICE)
+    try:
+        _ouvrir(a, s["url_planche"], "navigation")
+        a.evaluate("document.activeElement.blur()")
+        a.keyboard.press("Control+z")
+        toast = a.locator("#toasts .toast", has_text="Annulation impossible")
+        expect(toast).to_be_visible(timeout=15000)
+        expect(toast).to_contain_text("le locuteur a été modifié depuis par Bob Martin")
+        bouton = toast.locator("button", has_text="Passer ce geste")
+        expect(bouton).to_be_visible()
+        assert locuteur() == yann
+        with a.expect_response(lambda r: r.url.endswith("/api/undo/passer")
+                               and r.request.method == "POST") as reponse:
+            bouton.click()
+        assert reponse.value.status == 200, reponse.value.text()
+        expect(a.locator("#toasts .toast", has_text="Geste passé")).to_be_visible(timeout=15000)
+        assert locuteur() == yann                         # le travail de Bob reste
+        with _client(s["base"]) as c:
+            assert c.get("/api/undo/prochain", headers=ALICE).json() is None
+    finally:
+        ctx_a.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_le_meme_compte_ne_se_nomme_pas(page, decor):
     """Compte collectif, ou deux onglets d'une même personne : « un autre écran »."""
     s = decor

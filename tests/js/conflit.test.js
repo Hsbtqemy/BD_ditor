@@ -84,3 +84,11 @@ test("une annulation refusée dit ce qui a changé, et depuis quand", () => {
   assert.equal(C.messageAnnulationRefusee({ champ: "x", auteur: null }, MAINTENANT),
                "Annulation impossible : la position a été modifiée depuis ailleurs.");
 });
+
+test("une annulation de locuteur ou de présence refusée nomme le lien (ANN-8)", () => {
+  const auteur = { nom: "Stagiaire QA", le: iso(local(2026, 9, 17, 14, 32)) };
+  assert.equal(C.messageAnnulationRefusee({ champ: "locuteur", auteur }, MAINTENANT),
+               "Annulation impossible : le locuteur a été modifié depuis par Stagiaire QA à 14 h 32.");
+  assert.equal(C.messageAnnulationRefusee({ champ: "presence", auteur }, MAINTENANT),
+               "Annulation impossible : le personnage montré a été modifié depuis par Stagiaire QA à 14 h 32.");
+});
