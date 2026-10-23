@@ -293,6 +293,21 @@ PANNEAU qui distingue, et le test est paramétré sur les deux depuis.
   y=756 dans une fenêtre de 640, et l'Atelier ne défile pas : on ne peut plus réduire le zoom **Fait le 2026-10-22, `fc0f952`** : hauteur bornée en JS, le panneau défile
 - [ ] **La passe `lot-1` rejoue ses deux cases « À l'étroit et à grande police »** — attendu :
   cochées par Hugo, sur l'état `apres-lot1` de la recette, une fois ce correctif poussé
+- [ ] **Le plancher d'un cadre liste-et-fiche ne dépasse jamais la fenêtre visible** — attendu :
+  sous un zoom de 200 %, dans une fenêtre de 400 px de haut, le cadre de la Bibliothèque et
+  celui de l'Administration tiennent dans la fenêtre. Mesuré le 2026-10-22 : 572 px pour la
+  Bibliothèque (`min-height: 22rem`, multiplié par le zoom), 416 pour les projets (`16rem`).
+  Corrigé sur une copie le 2026-10-23 (borne `min(…, calc(100 * var(--vh-visible) - 2.5rem))`,
+  12 cas de test, mutants tombés), à intégrer après le push en cours, qui est certifié sans
+  lui (branche `suite-cadre-biblio` du scratchpad de pilotage)
+- [ ] **« Importer la sélection → » de l'explorateur ShareDocs s'atteint toujours** — attendu :
+  à tout zoom et à toute taille de fenêtre, le bouton reste dans la boîte ou s'atteint en la
+  faisant défiler. Mesuré le 2026-10-23 : `.sd-list` a un plancher de `16.9231rem` dans
+  `.sd-dialog` (`max-height: 86%`, `overflow: hidden`), et le bouton finit SOUS le bas de la
+  boîte, qui le coupe — à 200 % en 1280 × 640 (773 px pour une boîte qui finit à 595), à 140 %
+  en 375 × 640, et **même à 100 %** en 768 × 400 (391 pour 372). Une borne en CSS dépendrait de
+  la barre d'outils, qui passe sur plusieurs lignes en fenêtre étroite : il faut probablement une
+  boîte qui défile — à trancher
 
 ### Rouvert le 2026-10-09 — une fenêtre plus BASSE que le chrome écrase la bande 1
 
