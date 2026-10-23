@@ -387,6 +387,51 @@ portent sur tout ce qu'il lit, et il lit tout. Ce double compte vaut pour quicon
 copies d'un même document — une copie vierge prise dans le même projet, par exemple —, jusqu'à
 la tranche 4.
 
+### Le bac à sable : un projet à soi, remis à neuf chaque lundi
+
+Depuis COL-4, **chaque compte peut ouvrir son bac à sable** : un projet à lui, dont il est
+le seul responsable, rempli d'un **jeu** — quelques planches où suivre toutes les étapes,
+d'autres qui montrent ce que l'outil sait faire, un stock pour s'amuser. On y apprend
+l'outil sans rien risquer : ce qu'on y fait **s'efface pour tous le lundi à 4 h** (heure de
+Paris), sans exception, et l'on reclique pour en retrouver un neuf. La date du prochain
+effacement se lit dans le bac à sable.
+
+- **Un bac à sable par compte**, qui s'ouvre au premier clic et y ramène ensuite. Un compte
+  partagé n'en a pas : remettre à neuf y effacerait le travail d'un autre. L'administrateur
+  a le sien, comme les autres.
+- **Son propriétaire y invite des comptes**, par leur login, au rôle de membre : ils
+  écrivent dans le jeu, pour essayer le travail à plusieurs. Pas de groupe, pas de second
+  responsable, et l'annuaire ne s'y consulte pas. Personne d'autre ne règle un bac à sable,
+  pas même un administrateur.
+- **Son propriétaire le remet à neuf quand il veut** : tout ce qui y a été fait part, le
+  travail des invités aussi, et le jeu revient. Il y supprime aussi tout album sans rien
+  demander ; un invité garde la règle commune (sa copie, que personne d'autre n'a touchée).
+- **On y importe ses propres images**, une cinquantaine de planches au plus ; elles partent
+  avec le reste. Depuis ShareDocs, sous son propre compte seulement.
+
+**Un bac à sable est un cul-de-sac**, et c'est sa nature qui le tient, pour tout le monde,
+administrateur compris :
+
+- **rien n'en sort** : une de ses copies ne se range dans aucun autre projet et n'est la
+  source d'aucune copie ailleurs ; un document importé dans un bac à sable n'a pas de notice
+  au fonds. Une collection de bac à sable ne se dépose pas ; un album n'en sort par l'export
+  que s'il est la copie d'un document du jeu dont les images vivent dans le dépôt — les
+  scans sous droits du jeu, et ce qu'on y a importé soi-même, ne s'exportent pas ;
+- **rien n'y entre** : aucun document du fonds n'y est pris, pas même par un administrateur ;
+- **aucune demande n'en part vers un administrateur** : ce qui s'y demanderait, son
+  propriétaire le fait lui-même ; seules restent les demandes échangées entre ses comptes ;
+- **il ne compte pour rien ailleurs** : en être responsable n'ouvre pas les notices du
+  fonds ; y écrire ne permet ni de toucher au vocabulaire global, ni de créer un personnage,
+  ni de compter comme « écrire quelque part » ; un tag tapé dans un bac à sable y naît local
+  et part avec lui ; le bandeau « vous n'avez accès à aucune collection » reste allumé pour
+  qui n'a que lui ;
+- **la Recherche et l'Exploration ne le voient pour personne**, ni son propriétaire ni un
+  administrateur : leurs mesures restent celles du vrai corpus.
+
+Ce que la liste des projets en montre : à son propriétaire « Mon bac à sable », à un invité
+« Bac à sable · » suivi du login de son propriétaire. Un administrateur n'y voit que le sien
+et ceux où il est invité ; la vue Projets de l'Administration peut les montrer tous.
+
 ---
 
 ## 3. Qui peut quoi

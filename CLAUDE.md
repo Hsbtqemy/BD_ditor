@@ -215,7 +215,8 @@ déclaré dans `pilotage/journal.config.mjs`. Le découpage s'est fait **par dom
 `personnages`, `annulation`, `collections`, `lexique`. Deux s'y sont ajoutés depuis, nés
 dans `routes/` sans avoir été des blocs de `main.py` : `depot` (EXP-1), puis `projets`
 (COL-3, 2026-10-10) — neuf le 2026-10-10 —, puis `fonds` (COL-3, tranche 2, 2026-10-16 : le
-fonds et les demandes) — dix aujourd'hui. **Un module de `routes/` n'est pas toujours tout
+fonds et les demandes) — dix le 2026-10-16 —, puis `bac_a_sable` (COL-4, 2026-10-24) — onze
+aujourd'hui. **Un module de `routes/` n'est pas toujours tout
 son domaine** : `GET /api/projets/{id}/membres/choix` vit dans `collections` et non dans
 `projets`, parce qu'elle lit l'annuaire et que `tests/test_annuaire.py` exige PAR ÉGALITÉ
 que les lecteurs de l'annuaire tiennent dans ce module-là. La ranger avec les siennes
@@ -766,7 +767,8 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   (`clause_suppression_directe` / `peut_tenir_le_fonds` / `peut_nommer_le_demandeur`,
   COL-3, tranche 2), et les trois de la prise (`peut_lire_les_notices` /
   `clause_rejoindre_directe` / `peut_repondre_a`, COL-3, tranche 3a), vingt jusqu'au
-  2026-10-22, où s'ajoute `peut_remanier_tag` (ANN-8) ; la 3a donne aussi à
+  2026-10-22, où s'ajoute `peut_remanier_tag` (ANN-8), vingt et une depuis le 2026-10-24
+  avec `peut_ouvrir_un_bac_a_sable` (COL-4) ; la 3a donne aussi à
   `peut_nommer_le_demandeur` un second usage, nommer qui demande à qui doit CONSENTIR à un
   `rejoindre` (`consentement`). Le client en reçoit neuf par une clé — six jusqu'au
   2026-10-16, sept jusqu'au 2026-10-17, huit jusqu'au 2026-10-22 —, et trois par la FORME d'une réponse (ci-dessous). Une projet
@@ -823,6 +825,32 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   sécurité et la pire réponse d'usage ». Le cliquet de `test_autorisation.py` ne couvre pas
   ce cas : il exige qu'une ROUTE ait été tranchée, rien n'exige qu'un bloc d'écran dise
   quelle question il pose.
+- **Le BAC À SABLE : un projet à soi, isolé par sa NATURE, jamais par la portée** (COL-4,
+  v35, 2026-10-24 ; décisions de Hugo des 2026-10-21 et 2026-10-22, cadrage
+  `docs/col4-bac-a-sable-cadrage.md`). `projet.bac_a_sable_de` (le login de qui l'a
+  ouvert) en fait un : un par compte, créé par `POST /api/bac-a-sable` sous une question
+  NEUVE, `peut_ouvrir_un_bac_a_sable` (un login, derrière le proxy ; le compte partagé est
+  refusé à la route) — `peut_decider_des_projets` garde son sens. Son propriétaire en est
+  le seul responsable (`projet_acces`, inamovible) ; il y invite des COMPTES, au rôle de
+  membre (`PUT …/membres`, 409 nommés pour un groupe, un responsable, sa propre ligne), et
+  personne d'autre ne le règle, pas même un administrateur. Il naît avec une copie de
+  chaque document du JEU (`projet.jeu`, caché, `jeu_document`, préparé par
+  `tools/preparer_jeu.py`), et `efface_le` porte le lundi à 4 h de Paris, sans exception —
+  l'effacement passe par `socle._effacer_bac_a_sable`, que traversent la remise à neuf et
+  `tools/effacer_bacs_a_sable.py`. Trois ensembles de plus dans `Portee`
+  (`bacs_a_sable`, `bacs_a_soi`, `collections_bac`), qui ne changent AUCUNE question
+  ponctuelle — dans son bac à sable on travaille comme ailleurs — et retirent des
+  questions TRANSVERSES ce qu'il donnerait hors de lui (S2) : `peut_ecrire_quelque_part`,
+  `peut_ecrire_terme(None)`, `peut_exporter_quelque_part`, `peut_lire_les_notices` ne le
+  comptent pas, ni le bandeau de portée vide ; un tag tapé y naît LOCAL. Un disjoint dans
+  `clause_suppression_directe` : son propriétaire y détruit tout album sans rien demander.
+  Rien n'en sort, rien n'y entre, aucune demande n'en part vers un administrateur (S3) :
+  pour TOUTE portée, la prise, l'aperçu d'« en partir », les notices, les demandes et le
+  dépôt d'une collection le refusent ou l'ignorent ; l'export n'en sort qu'une copie d'un
+  document du jeu de la part du dépôt (`jeu_document.exportable`, document par document).
+  `Portee.pour_le_corpus` (S8) est ce que reçoivent la Recherche, l'Exploration, l'accord
+  et le lexique : ni bac à sable ni jeu, pour personne. Une portée totale ne reçoit, dans
+  les listes, que son bac à sable et ceux où elle est invitée (`bacs_a_sable=1` : tous).
 - **Sans `BD_AUTH_PROXY`, portée TOTALE** (mono-poste inchangé) ; **avec le drapeau mais
   sans identité, portée VIDE** — fermeture par défaut, panne bruyante plutôt que fuite.
 - Trois accesseurs GARDÉS sont la seule façon d'atteindre un objet : `_get_album`,
@@ -974,9 +1002,9 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 34). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 35). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - **Chaque migration se vérifie sur une VRAIE base de la version précédente** — règle posée par Hugo le 2026-10-16. Une base « défaite » à la main (une base neuve dont on retire colonnes et tables, puis qu'on ramène en arrière par `user_version`) n'a ni destructions, ni journal, ni dossiers d'images : la v30 passait toute sa suite sur de telles bases, et la relecture croisée l'a prise en défaut deux fois sur une base faite par le code v29 — une planche détruite que seule une activité nommait, un album détruit dont seul le dossier d'images restait, deux identifiants rendus après migration. La vraie base se fabrique par `tools/fabriquer_base_de_version.py <commit> tests/bases/v<N>-<commit>.sql`, qui fait tourner le code du commit lui-même — ses routes, sous trois comptes, avec des destructions en haut de chaque table — et vide la base en SQL ; le test de la migration suivante la charge et migre (`tests/test_identifiants_v30.py` lit `tests/bases/v29-10a3a90.sql`). Le commit est le dernier état de la version précédente — la tête de `main` avant la migration.
-- **Des identifiants qui ne reviennent jamais** (v30, décision de Hugo du 2026-10-15) : `albums`, `planches`, `regions`, `personnages` portent `AUTOINCREMENT`, comme les tables neuves `document` et `demande`. Sans lui SQLite rend au suivant l'identifiant du dernier détruit, et le journal, qui désigne ses cibles par identifiant et leur survit, mêlait deux objets. `projet` le porte depuis la v31 (D8), par la même reconstruction, son compteur amorcé au-dessus de ce que le journal, `demande.projet_id` et `document.projet_origine_id` ont nommé (`database._HORS_JOURNAL`). `collection` n'en porte PAS : ses identifiants se réattribuent encore (mesuré), d'où le NOM gardé à côté de l'identifiant dans une demande (`demande.collection_nom`, `demande_document.titre`) et dans la charge d'un emploi (`journal.journaliser_emploi`) ; `demande.projet_nom` et `document.projet_origine_nom` gardent celui d'un projet supprimé, que son identifiant ne nomme plus. La vraie base de la v30 est `tests/bases/v30-5e7f56b.sql` (`tests/test_migration_v31.py`).
+- **Des identifiants qui ne reviennent jamais** (v30, décision de Hugo du 2026-10-15) : `albums`, `planches`, `regions`, `personnages` portent `AUTOINCREMENT`, comme les tables neuves `document` et `demande`. Sans lui SQLite rend au suivant l'identifiant du dernier détruit, et le journal, qui désigne ses cibles par identifiant et leur survit, mêlait deux objets. `projet` le porte depuis la v31 (D8), par la même reconstruction, son compteur amorcé au-dessus de ce que le journal, `demande.projet_id` et `document.projet_origine_id` ont nommé (`database._HORS_JOURNAL`). `collection` le porte depuis la v35 (COL-4) : les bacs à sable en font naître et mourir chaque semaine, et ses identifiants se réattribuaient — son compteur est amorcé au-dessus de ce que le journal et `demande.collection_id` ont nommé ; le NOM gardé à côté de l'identifiant dans une demande (`demande.collection_nom`, `demande_document.titre`) et dans la charge d'un emploi (`journal.journaliser_emploi`) reste, pour une collection supprimée qui ne se lit plus ; `demande.projet_nom` et `document.projet_origine_nom` gardent celui d'un projet supprimé, que son identifiant ne nomme plus. La vraie base de la v30 est `tests/bases/v30-5e7f56b.sql` (`tests/test_migration_v31.py`) ; celle de la v34, `tests/bases/v34-35cc4a3.sql` (`tests/test_migration_v35.py`).
 - **La v30 RECONSTRUIT des tables** (`_reconstruire_avec_autoincrement`) : on ne pose pas `AUTOINCREMENT` par `ALTER`. Table neuve, lignes copiées avec leurs identifiants, ancienne détruite, neuve renommée, index et vues recréés, dans une transaction, **clés étrangères SUSPENDUES** pendant qu'elle tourne — actives, détruire `albums` effacerait par cascade toutes les planches ; la moindre référence orpheline NEUVE défait tout (celles qu'une base portait déjà ne ferment pas l'instance). Le compteur de chaque table repart au-dessus du plus grand identifiant que le journal ait jamais nommé — `evenement` ET `activite` (cible, clés des charges, portée d'une passe automatique sans effet) —, et celui des albums en plus au-dessus du plus grand dossier `album_N` présent dans `corpus/` ou `derivatives/` : le journal d'une base v29 ne nomme aucun album. Un identifiant détruit que rien ne nomme plus peut revenir une fois. Gardée par la version et idempotente (une table qui porte déjà `AUTOINCREMENT` n'est pas touchée) ; une table d'une autre forme arrête tout avant la première reconstruction. Elle valide la transaction en cours avant de commencer (`PRAGMA foreign_keys` ne change pas dans une transaction) : une reconstruction qui échoue laisse la base en v29, prête à rejouer.
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
