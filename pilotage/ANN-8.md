@@ -190,6 +190,13 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   table Node ; l'écran garde ce qui dépend du temps
 
 ### Les tags et la Note, tant que les grilles n'existent pas
+- [ ] **Un tag tapé pendant que l'annotation d'une bulle se charge n'est pas perdu** — attendu :
+  le tag posé juste après l'entrée en mode Annotation est enregistré. Trouvé le 2026-10-23 par
+  la certification du push (un e2e fragile, durci par `2e4ed20`) : entrer en Annotation lance
+  `loadAnnotation`, qui REMET À ZÉRO ce qui attend d'être envoyé (`state.annotSale`,
+  `currentTags`) ; si sa réponse arrive après le tag et avant l'envoi (500 ms), le tag se perd
+  sans message. Présent en production depuis CONC-3. Remède probable : fusionner ce qui attend
+  au lieu de l'effacer
 - [x] **Un tag LOCAL ne se pose que sur les albums de sa collection** — attendu : tranché par
   Hugo le 2026-10-22 : empêché dès la saisie (`_ensure_tags`, et les propositions de l'Atelier
   ne l'offrent pas ailleurs) ; ce qui existe déjà reste, et un outil à blanc le dit. Constaté
