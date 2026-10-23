@@ -19,7 +19,7 @@ from config import DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUA
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 34
+SCHEMA_VERSION = 35
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -109,7 +109,10 @@ SCHEMA_SQL = """
 -- règle de suppression lisait l'acte d'un ancien album comme un travail sur une région
 -- neuve, et Ctrl+Z écrivait à travers le cloisonnement (AUTH-14 l'a fermé à part). Une
 -- base d'avant la v30 est reconstruite par `_reconstruire_avec_autoincrement`, compteur
--- amorcé au-dessus de tout identifiant que le journal a jamais nommé.
+-- amorcé au-dessus de tout identifiant que le journal a jamais nommé. `collection` le porte
+-- depuis la v35 (COL-4) : les bacs à sable en font naître et mourir des dizaines chaque
+-- semaine, et le journal (`collection`, `collection_acces`, les emplois) mêlait deux
+-- collections sous le même identifiant.
 CREATE TABLE IF NOT EXISTS albums (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     titre        TEXT NOT NULL,
@@ -421,7 +424,7 @@ CREATE TABLE IF NOT EXISTS region_attribut (
 -- ils ne l'IMPOSENT pas (l'accès est géré par l'auth / l'entrepôt). `responsables` est un
 -- JSON [{nom, role, orcid?}] — même forme que la future `contribution` (N0), pour converger.
 CREATE TABLE IF NOT EXISTS collection (
-    id                INTEGER PRIMARY KEY,
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
     nom               TEXT NOT NULL,
     description       TEXT,
     licence_defaut    TEXT,                         -- ex. « CC-BY-4.0 » (tier ouvert)
@@ -500,7 +503,20 @@ CREATE TABLE IF NOT EXISTS projet (
     description    TEXT,
     justification  TEXT,
     repli          INTEGER NOT NULL DEFAULT 0,     -- 1 = le projet de repli
-    date_creation  TEXT DEFAULT (datetime('now'))
+    date_creation  TEXT DEFAULT (datetime('now')),
+    bac_a_sable_de TEXT,
+    efface_le      TEXT,
+    jeu            INTEGER NOT NULL DEFAULT 0
+    -- v35 (COL-4) — deux natures de projet de plus, chacune un DRAPEAU comme `repli`.
+    -- `bac_a_sable_de` : le LOGIN de qui l'a ouvert, NULL pour un projet ordinaire. Une
+    -- colonne dit à la fois « c'est un bac à sable » et « de qui » ; la règle de lecture vit
+    -- à UN endroit (`sql_est_bac_a_sable`). Un par login, tenu par le code sous le verrou
+    -- d'écriture et non par un index unique partiel, pour la raison écrite sur
+    -- `collection.base`. `efface_le` : le moment de son effacement (UTC, la forme des dates
+    -- SQLite), posé à la naissance — celui qu'on affiche est celui qu'on applique.
+    -- `jeu` = 1 désigne LE projet de jeu, caché : il porte les copies de RÉFÉRENCE dont
+    -- chaque bac à sable prend les siennes (`jeu_document`). Personne n'en est membre.
+    -- Commentaires SOUS la dernière colonne (cf. celui de `collection.projet_id`).
 );
 
 -- QUI EST D'UN PROJET (v29, COL-3) — le patron de `collection_acces`, un étage plus haut :
@@ -574,6 +590,31 @@ CREATE TABLE IF NOT EXISTS copie (
     depuis_album_id    INTEGER,
     cran               TEXT NOT NULL DEFAULT 'origine',
     depuis_projet_nom  TEXT
+);
+
+-- JEU_DOCUMENT (v35, COL-4) — les documents du JEU dont chaque bac à sable prend une copie
+-- à sa naissance. Une ligne par document : sa copie de RÉFÉRENCE (dans le projet de jeu,
+-- `projet.jeu`), le cran jusqu'où chaque bac à sable en recopie le travail, son RÔLE
+-- (`pas-a-pas` — la planche où l'on suit toutes les étapes, copiée vierge —, `exemple`,
+-- `stock`), son rang dans le rôle. `cle` : l'identifiant stable que lui donne la
+-- description du jeu (`tools/preparer_jeu.py`), `empreinte` ce que la description disait
+-- ce jour-là — un document changé est un document NEUF. `part` : d'où viennent ses images,
+-- `depot` (dans le dépôt, sous licence libre ou du domaine public) ou `serveur` (posées à
+-- la main sur le serveur, sous droits) ; `exportable` en découle à la préparation, et
+-- c'est LUI que lit l'export dans un bac à sable — document par document, jamais par bac à
+-- sable. `album_reference` SANS clé étrangère : la référence ne se détruit que par l'outil
+-- du jeu. Pas de `CHECK`, pour la raison écrite sur `utilisateur.nature`.
+CREATE TABLE IF NOT EXISTS jeu_document (
+    document_id      INTEGER PRIMARY KEY,
+    album_reference  INTEGER NOT NULL,
+    cran             TEXT NOT NULL,
+    role             TEXT NOT NULL,
+    rang             INTEGER NOT NULL DEFAULT 0,
+    cle              TEXT NOT NULL,
+    empreinte        TEXT,
+    part             TEXT NOT NULL,
+    exportable       INTEGER NOT NULL DEFAULT 0,
+    date_creation    TEXT DEFAULT (datetime('now'))
 );
 
 -- REGION_ORIGINE (v32, COL-3, tranche 3b, E2) — ce qu'une région COPIÉE doit à une région
@@ -1321,6 +1362,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
         for colonne, sorte in colonnes:
             if colonne not in _cols(table):
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} {sorte}")
+    # v34 → v35 (COL-4) : les natures de projet — bac à sable, jeu —, posées par PRÉSENCE,
+    # NULL ou 0 pour tout l'existant : aucun projet n'en devient un. Table `jeu_document`
+    # NOUVELLE (SCHEMA_SQL).
+    if "projet" in _tables:
+        for colonne, sorte in (("bac_a_sable_de", "TEXT"), ("efface_le", "TEXT"),
+                               ("jeu", "INTEGER NOT NULL DEFAULT 0")):
+            if colonne not in _cols("projet"):
+                conn.execute(f"ALTER TABLE projet ADD COLUMN {colonne} {sorte}")
     if version < 31:
         # Migrations de DONNÉES, donc gatées par la VERSION, et IDEMPOTENTES (des tests
         # ramènent `user_version` en arrière sur une base courante) : elles ne touchent que
@@ -1353,6 +1402,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # v30, qui ne touche que les tables à qui `AUTOINCREMENT` manque encore — une base
         # migrée depuis la v29 l'a déjà reçu par l'étape du dessus.
         _reconstruire_avec_autoincrement(conn)
+    # v34 → v35 (COL-4) : des identifiants de COLLECTION qui ne reviennent plus — la
+    # machinerie de la v30, sur la seule table à qui `AUTOINCREMENT` manque encore. Une base
+    # migrée depuis une version plus ancienne l'a déjà reçu par les étapes du dessus.
+    if version < 35:
+        _reconstruire_avec_autoincrement(conn)
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -1373,6 +1427,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
 # clé `projet_id` des charges ; et deux colonnes HORS du journal, sans clé étrangère, le
 # nomment encore après sa suppression — une demande, et l'origine d'un document
 # (`_HORS_JOURNAL`).
+#
+# v35 (COL-4) : `collection`. Le journal la nomme par deux cibles (`collection`, ses accès
+# sous `collection_acces`) et par la clé `collection_id` des charges — un emploi
+# (`journaliser_emploi`), une copie, une demande ; hors du journal, `demande.collection_id`
+# (la collection d'arrivée d'une entrée ou d'un rejoindre), sans clé étrangère.
 _AUTOINCREMENT = {
     "albums": ((), ("album_id",)),
     "planches": (("planches",), ("planche_id",)),
@@ -1380,11 +1439,13 @@ _AUTOINCREMENT = {
                  "region_attribut"), ("region_id", "parent_id")),
     "personnages": ((), ("personnage_id",)),
     "projet": (("projet", "projet_acces"), ("projet_id",)),
+    "collection": (("collection", "collection_acces"), ("collection_id",)),
 }
 # Ce qui nomme une ligne de ces tables HORS du journal, et lui survit faute de clé
 # étrangère : (table, colonne). Lu par `_jamais_nommes` quand la colonne existe.
 _HORS_JOURNAL = {
     "projet": (("demande", "projet_id"), ("document", "projet_origine_id")),
+    "collection": (("demande", "collection_id"),),
 }
 
 

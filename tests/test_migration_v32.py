@@ -24,9 +24,9 @@ import pytest
 import database
 
 BASE_V31 = Path(__file__).resolve().parent / "bases" / "v31-16c6127.sql"
-TABLES_NEUVES = {"region_origine"}
+TABLES_NEUVES = {"region_origine", "jeu_document"}
 COLONNES_NEUVES = {"demande": ("cran",), "albums": ("tome", "lieu_masters"),
-                   "planches": ("master_origine",)}
+                   "planches": ("master_origine",), "projet": ("bac_a_sable_de", "efface_le", "jeu")}
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
           "copie", "demande", "demande_document", "evenement", "activite")
@@ -110,7 +110,8 @@ def test_une_vraie_base_v31_migre_sans_rien_perdre(vraie_v31):
     assert apres["comptes"]["region_origine"] == 0
     assert apres["lignes"] == avant["lignes"]
     assert set(avant["index"]) <= set(apres["index"])
-    assert apres["sequence"] == avant["sequence"]
+    # v35 (COL-4) : `collection` reçoit AUTOINCREMENT, donc une ligne de compteur.
+    assert [s for s in apres["sequence"] if s["name"] != "collection"] == avant["sequence"]
     assert apres["recherche"] == avant["recherche"]
     assert _sql(vraie_v31, "SELECT COUNT(*) AS n FROM demande WHERE cran IS NOT NULL")[0][
         "n"] == 0

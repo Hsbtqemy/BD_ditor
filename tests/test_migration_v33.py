@@ -25,7 +25,10 @@ import pytest
 import database
 
 BASE_V32 = Path(__file__).resolve().parent / "bases" / "v32-0b4f1ef.sql"
-COLONNES_NEUVES = {"albums": ("tome", "lieu_masters"), "planches": ("master_origine",)}
+COLONNES_NEUVES = {"albums": ("tome", "lieu_masters"), "planches": ("master_origine",),
+                   "projet": ("bac_a_sable_de", "efface_le", "jeu")}
+# Ce que la v35 ajoute (COL-4), que la migration traverse aussi.
+TABLES_NEUVES = {"jeu_document"}
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
           "copie", "demande", "demande_document", "region_origine", "contribution",
@@ -132,13 +135,15 @@ def test_une_vraie_base_v32_migre_sans_rien_perdre(vraie_v32):
     apres = _etat(vraie_v32)
     assert _sql(vraie_v32, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     # Aucune table de plus ni de moins, aucune ligne de plus ni de moins.
-    assert apres["tables"] == avant["tables"]
-    assert apres["comptes"] == avant["comptes"]
+    assert [t for t in apres["tables"] if t not in TABLES_NEUVES] == avant["tables"]
+    assert {t: n for t, n in apres["comptes"].items()
+            if t not in TABLES_NEUVES} == avant["comptes"]
     # Les lignes, colonne neuve mise à part, sont celles d'avant — titres et séries compris.
     assert apres["lignes"] == avant["lignes"]
     assert set(avant["index"]) <= set(apres["index"])
     # Les compteurs AUTOINCREMENT ne bougent pas : un identifiant détruit ne revient pas.
-    assert apres["sequence"] == avant["sequence"]
+    # v35 (COL-4) : `collection` reçoit AUTOINCREMENT, donc une ligne de compteur.
+    assert [s for s in apres["sequence"] if s["name"] != "collection"] == avant["sequence"]
     assert apres["recherche"] == avant["recherche"]
     assert _sql(vraie_v32, "PRAGMA foreign_key_check") == []
     assert _sql(vraie_v32, "PRAGMA integrity_check")[0]["integrity_check"] == "ok"

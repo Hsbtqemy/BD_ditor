@@ -30,7 +30,8 @@ import database
 
 BASE_V30 = Path(__file__).resolve().parent / "bases" / "v30-5e7f56b.sql"
 # `region_origine` est celle de la v32 (COL-3, tranche 3b), que la migration traverse aussi.
-TABLES_NEUVES = {"copie", "region_origine"}
+# `jeu_document` est celle de la v35 (COL-4).
+TABLES_NEUVES = {"copie", "region_origine", "jeu_document"}
 
 
 def _sql(db, q, p=()):
@@ -69,7 +70,8 @@ COLONNES_NEUVES = {"albums": ("tome", "lieu_masters"), "planches": ("master_orig
                    "collection": ("base", "acces_membres"),
                    "document": ("projet_origine_nom",),
                    "demande": ("collection_id", "collection_nom", "cran"),
-                   "demande_document": ("copie_id",)}
+                   "demande_document": ("copie_id",),
+                   "projet": ("bac_a_sable_de", "efface_le", "jeu")}
 LIGNES = ("albums", "planches", "regions", "personnages", "projet", "projet_acces",
           "collection", "collection_acces", "collection_album", "document", "demande",
           "demande_document", "evenement", "activite")

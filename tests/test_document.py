@@ -405,7 +405,10 @@ def test_un_projet_et_une_collection_rendent_leur_identifiant(client):
     (v31, COL-3, tranche 3, D8) : son identifiant ne revient plus, et cette moitié du test a
     été relue. `demande.projet_nom` garde une raison, moindre : un projet supprimé ne se lit
     plus, et son nom est alors tout ce qui dit de quoi parlait la demande — comme
-    `document.projet_origine_nom` pour l'origine d'un document."""
+    `document.projet_origine_nom` pour l'origine d'un document. Puis à la COLLECTION (v35,
+    COL-4) : les bacs à sable en font naître et mourir des dizaines par semaine, et son
+    identifiant ne revient plus non plus ; `demande.collection_nom` et le nom d'un emploi
+    gardent la même raison moindre que `demande.projet_nom`."""
     projets = []
     for nom in ("Éphémère", "Tout autre"):
         projets.append(client.post("/api/projets", json={"nom": nom}).json()["id"])
@@ -417,7 +420,7 @@ def test_un_projet_et_une_collection_rendent_leur_identifiant(client):
         collections.append(client.post("/api/collections", json={"nom": nom}).json()["id"])
         if nom == "Une étude":
             assert client.delete(f"/api/collections/{collections[0]}").status_code == 204
-    assert collections[0] == collections[1]
+    assert collections[1] > collections[0]
 
 
 def test_les_tables_de_demande_naissent_vides_et_rien_ne_les_ecrit(client, db_path, decor,

@@ -362,6 +362,8 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
     neuves = {"document", "demande", "demande_document", "copie"}
     # La v32 (COL-3, tranche 3b) aussi : `region_origine`, vide.
     neuves |= {"region_origine"}
+    # La v35 (COL-4) aussi : `jeu_document`, vide.
+    neuves |= {"jeu_document"}
     # Et la base NEUVE du projet de repli (D10 ; Hugo, 2026-10-17) : une collection de plus.
     assert apres["comptes"]["collection"] == avant["comptes"]["collection"] + 1
     neuves |= {"collection"}
