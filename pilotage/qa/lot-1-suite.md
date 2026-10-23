@@ -78,12 +78,12 @@ dernière zone rend la recette.
 - [x] Première bulle : champ du locuteur, taper « Élodie QA », Entrée → le locuteur devient « Élodie QA » (un personnage neuf)
 - [x] Seconde bulle : taper « elodie qa » → la liste propose « Élodie QA » ; Entrée : c'est « Élodie QA » qui est posé ; la liste du registre ne montre aucun « elodie qa »
 
-### « Passer ce geste » — comptes `proprio` et `stagiaire` (qui écrit dans « Collection Test »), Atelier, « Lot TIFF QA », « pl.2 »
+### « Passer ce geste » — comptes `proprio` et `stagiaire` (qui écrit dans « Collection Test »), Atelier, « Lot TIFF QA », « pl.2 » — REJOUÉE sur la recette reconstruite (le premier essai a trouvé un défaut de Ctrl+Z, corrigé)
 
-- [x] Sous `proprio`, la bulle de « pl.2 », mode Annotation : poser le locuteur « Zed QA »
-- [x] Sous `stagiaire`, même album, même bulle (F5) : remplacer le locuteur par « Yann QA » (un personnage neuf)
-- [ ] Sous `proprio`, F5, Ctrl+Z : une bulle rouge dit « Annulation impossible : le locuteur a été modifié depuis par … » (le nom de `stagiaire`, et quand) suivie d'un bouton « Passer ce geste », dont l'infobulle dit « Ctrl+Z remontera au geste d'avant ; le travail de l'autre reste. » ; Ctrl+Z une seconde fois redonne le même refus
-- [ ] « Passer ce geste » : « Geste passé : … . Ctrl+Z remonte au geste d'avant. » ; la bulle a toujours « Yann QA » ; Ctrl+Z défait maintenant un geste d'avant (la zone précédente : le locuteur « Élodie QA » de la seconde bulle de « pl.3 »)
+- [ ] Sous `proprio`, la bulle de « pl.2 », mode Annotation : poser le locuteur « Zed QA »
+- [ ] Sous `stagiaire`, même album, même bulle (F5) : remplacer le locuteur par « Yann QA »
+- [ ] Sous `proprio`, F5, Ctrl+Z : une bulle rouge dit « Annulation impossible : le locuteur a été modifié depuis par … » (le nom de `stagiaire`, et l'heure) suivie d'un bouton « Passer ce geste », dont l'infobulle dit « Ctrl+Z remontera au geste d'avant ; le travail de l'autre reste. » ; la bulle porte toujours « Yann QA » ; Ctrl+Z une seconde fois redonne le même refus
+- [ ] « Passer ce geste » : « Geste passé : … . Ctrl+Z remonte au geste d'avant. » ; la bulle a toujours « Yann QA » ; Ctrl+Z suivant : il ne parle plus de ce locuteur — il défait un geste plus ancien de `proprio`, ou dit qu'il n'y a rien à annuler
 - [ ] Refaire un refus (poser, changer sous `stagiaire`, Ctrl+Z sous `proprio`) et ne pas toucher le bouton : la bulle disparaît d'elle-même au bout d'une quinzaine de secondes
 
 ### L'infobulle de « Citation » — compte `proprio`, Atelier
@@ -106,15 +106,15 @@ dernière zone rend la recette.
 - [x] Sous `admin-bd`, Lexique, « exemple cours » (posé sur 2 régions) → *Fusionner dans…* « variation », *Fusionner* : la confirmation dit « Fusionner « exemple cours » dans « variation » ? 2 régions passeront à « variation » » (avec « (… le portent déjà) » si c'est le cas) « , et « exemple cours » disparaîtra. » ; *OK* : « « exemple cours » fusionné dans « variation » (2 régions). », et « exemple cours » a quitté le Lexique
 - [x] Sous `admin-bd`, « grille-b » (posé sur 1 région) → *Supprimer* : « Supprimer le tag « grille-b » ? Il sera retiré de 1 région. » ; *OK* : « Tag « grille-b » supprimé et retiré de 1 région. »
 
-### Le zoom d'interface — compte `proprio`, outils de développement en mode appareil
+### Le zoom d'interface, borné par la largeur — compte `proprio`, outils de développement en mode appareil (largeur réglable), réécrite le 2026-10-23 après la décision de Hugo
 
-- [ ] 320 px, menu « Aa » → « A+ » jusqu'au plus grand (200 %) : le panneau du menu reste dans la fenêtre — « A− » et « ↺ » s'atteignent, au besoin en faisant défiler le panneau ; « A− » une fois, puis de nouveau « A+ » jusqu'au plus grand
-- [ ] Toujours au plus grand, Atelier, ☰ : le tiroir des planches laisse à sa droite une bande de voile ; un clic sur la bande le ferme
-- [ ] Le tiroir de structure (le bouton du panneau, à droite) : il laisse une bande de voile à sa gauche, et un clic dessus le ferme
-- [ ] *Passe du lot 1, rejouée* — 320 px, toujours au plus grand, ☰ : les deux libellés et les deux listes restent lisibles et ne débordent pas du tiroir, et la liste des planches s'atteint en faisant défiler le tiroir
-- [ ] *Passe du lot 1, rejouée* — 320 px, au plus grand, Atelier, « Lot TIFF QA », « pl.3 », mode Annotation, une bulle sélectionnée : « Attribuer un personnage… » et « Ajouter un tag… » tiennent dans la largeur du tiroir — aucun ne déborde, le tiroir ne défile pas de côté ; même chose sur la case de la situation pour « dimension : valeur… »
-- [ ] Toujours au plus grand, Bibliothèque, fiche de « Lot TIFF QA », « Modifier » (la modale de l'album) : la boîte tient dans la fenêtre, le voile se voit des deux côtés ; son titre et son dernier bouton s'atteignent en faisant défiler la BOÎTE ; Échap la ferme
-- [ ] Toujours au plus grand, Exploration, « 📖 Lexique » : même chose — la boîte dans la fenêtre, le dernier tag atteint en faisant défiler la boîte ; puis « ↺ » : tout revient à 100 %
+- [ ] 320 px, Atelier, menu « Aa » → « A+ » : rien ne grossit ; « A+ » est éteint (contour pointillé), et son infobulle dit « Zoom maximal pour cette largeur de fenêtre. Le zoom du navigateur, lui, réagence la page. » ; aucune barre de défilement de côté
+- [ ] 448 px, Atelier, « A+ » jusqu'à ce qu'il s'éteigne (environ 140 %) : ☰ — le tiroir des planches laisse à sa droite une bande de voile, un clic dessus le ferme ; le tiroir de structure laisse une bande à sa gauche, un clic la ferme
+- [ ] Toujours à 448 px au plus grand, menu « Aa » : son panneau reste dans la fenêtre, « A− » et « ↺ » s'atteignent
+- [ ] *Passe du lot 1, rejouée à la largeur où le zoom reste permis* — 448 px, au plus grand, ☰ : les deux libellés et les deux listes restent lisibles et ne débordent pas du tiroir, et la liste des planches s'atteint en faisant défiler le tiroir
+- [ ] *Passe du lot 1, rejouée de même* — 448 px, au plus grand, « Lot TIFF QA », « pl.3 », mode Annotation, une bulle sélectionnée : « Attribuer un personnage… » et « Ajouter un tag… » tiennent dans la largeur du tiroir — aucun ne déborde, le tiroir ne défile pas de côté ; même chose sur la case de la situation pour « dimension : valeur… »
+- [ ] 1280 px : Bibliothèque, « A+ » jusqu'à 200 % (il s'éteint là) ; puis Atelier : le zoom y est plus petit — « A+ » éteint vers 150 %, la bande d'outils tient sur sa ligne, rien ne sort à droite ; puis 375 px : le zoom tombe vers 117 % ; retour à 1280 px : la Bibliothèque est de nouveau à 200 % — la préférence n'a pas été perdue
+- [ ] 640 px, Bibliothèque au plus grand (200 %), fiche de « Lot TIFF QA », « Modifier » : la boîte tient dans la fenêtre, voile visible des deux côtés, titre et dernier bouton atteints en faisant défiler la BOÎTE, Échap la ferme ; même chose pour Exploration → « 📖 Lexique » ; puis « ↺ » : tout revient à 100 %
 
 ### Rendre la recette — PowerShell
 
