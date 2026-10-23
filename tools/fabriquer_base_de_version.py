@@ -37,7 +37,10 @@ Ce que le parcours pose, et pourquoi :
   le plus grand identifiant de projet n'étant plus nommé que par le journal et une demande ;
 - à partir de la v31 (`_parcours_v31`, COL-3, tranche 3b) : la base d'un projet ouverte ;
   deux copies sœurs d'un document ; un « rejoindre » accepté, un refusé ; un retour qui
-  attend.
+  attend ;
+- à partir de la v34 (`_parcours_v34`, COL-4) : une copie amorcée (`region_origine`) ; deux
+  collections détruites en haut de leur table, la première nommée encore par une demande,
+  la seconde par le seul journal. Les planches du code v34 notent leur `master_origine`.
 
 Le parcours n'emploie que des routes stables depuis la v29. Si une version les change, il
 gagne une branche sur `database.SCHEMA_VERSION` plutôt que de perdre l'ancienne forme :
@@ -160,7 +163,16 @@ def _jouer_le_parcours(main, database, journal) -> dict:
                               json={"note": "vu", "tags": ["dialogue"]}), 200)
                     _ok(c.put(f"/api/regions/{bulle}/locuteur", headers=qui,
                               json={"personnage_id": persos[0]}), 200)
-                    _ok(c.put(f"/api/regions/{case}/personnage", headers=qui,
+                    # La présence d'un personnage se montre sur une BOÎTE personnage
+                    # depuis un commit de la v34 (422 sur une case) : la branche garde
+                    # l'ancienne forme, et chaque fichier refabricable à l'identique.
+                    montre = case
+                    if database.SCHEMA_VERSION >= 34:
+                        montre = _ok(c.post(f"/api/planches/{pl}/regions", headers=qui,
+                                            json={"type": "personnage", "x": 2, "y": 2,
+                                                  "w": 5, "h": 5, "parent_id": case}),
+                                     201)["id"]
+                    _ok(c.put(f"/api/regions/{montre}/personnage", headers=qui,
                               json={"personnage_id": persos[1]}), 200)
                     _ok(c.put(f"/api/regions/{case}/attributs", headers=qui,
                               json={"valeur_id": valeur}), 200)
@@ -195,6 +207,8 @@ def _jouer_le_parcours(main, database, journal) -> dict:
             faits.update(_parcours_v30(c, principal, albums[0]))
         if database.SCHEMA_VERSION >= 31:
             faits.update(_parcours_v31(c, principal, albums[1], faits))
+        if database.SCHEMA_VERSION >= 34:
+            faits.update(_parcours_v34(c, albums[1], faits))
     return faits
 
 
@@ -355,6 +369,43 @@ def _parcours_v31(c, principal: int, album_de_sam: int, faits: dict) -> dict:
                              "retour": retour}}
 
 
+def _parcours_v34(c, album_de_sam: int, faits: dict) -> dict:
+    """Ce qu'une base v34 doit porter pour que la v35 ait de quoi se tromper (COL-4) : des
+    COLLECTIONS détruites en haut de leur table — la v35 leur donne `AUTOINCREMENT`, et
+    leur compteur doit repartir au-dessus de ce que le journal et une demande nomment
+    encore —, et une copie AMORCÉE (tranche 3b : `region_origine`). Les planches importées
+    par le code v34 notent déjà le nom du fichier reçu (`master_origine`, IMG-1) ; les
+    copies sœurs viennent de `_parcours_v31`. Par les routes du code v34.
+
+    Deux collections détruites, et dans cet ordre : la première est nommée, après sa
+    destruction, par une demande de « rejoindre » refusée (`demande.collection_id`, sans
+    clé étrangère) ; la seconde, la plus haute, par le seul journal."""
+    # Une copie amorcée jusqu'au cran `transcription` : la source a du texte, et la
+    # responsable tient ses deux collections (immédiat, `clause_rejoindre_directe`).
+    source = faits["album_source_des_soeurs"]
+    document = next(a["document_id"] for a in _ok(c.get("/api/albums", headers=ADMIN), 200)
+                    if a["id"] == source)
+    prise = _ok(c.post(f"/api/collections/{faits['collection_c']}/prendre", headers=LEA,
+                       json={"documents": [{"document_id": document, "reponse": "amorcer",
+                                            "album_id": source,
+                                            "cran": "transcription"}]}), 200)
+    amorcee = prise["documents"][0]["copie_id"]
+    assert amorcee and prise["documents"][0]["etat"] == "fait", prise
+    # Les deux naissent d'abord — en v34 l'identifiant d'une collection détruite revient au
+    # suivant, et la seconde reprendrait celui de la première. La première : un
+    # « rejoindre » la vise, refusé par sa destruction. La seconde, la plus haute : le
+    # journal seul la nomme.
+    visee = _ok(c.post("/api/collections", headers=LEA,
+                       json={"nom": "Arrivée détruite"}), 201)["id"]
+    haute = _ok(c.post("/api/collections", headers=LEA,
+                       json={"nom": "Éphémère"}), 201)["id"]
+    assert haute > visee
+    _ok(c.put(f"/api/albums/{album_de_sam}/collections/{visee}", headers=LEA), 202)
+    _ok(c.delete(f"/api/collections/{visee}", headers=LEA), 204)
+    _ok(c.delete(f"/api/collections/{haute}", headers=LEA), 204)
+    return {"album_amorce": amorcee, "collections_detruites": [visee, haute]}
+
+
 def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict) -> None:
     conn = sqlite3.connect(base)
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -383,6 +434,11 @@ def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict)
                                  for t in ("copie",)})
         faits["demandes_par_genre"] = dict(conn.execute(
             "SELECT genre, COUNT(*) FROM demande GROUP BY genre ORDER BY genre").fetchall())
+    if version >= 34:
+        faits["comptes"].update({t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                                 for t in ("region_origine",)})
+        faits["planches_avec_master_origine"] = conn.execute(
+            "SELECT COUNT(*) FROM planches WHERE master_origine IS NOT NULL").fetchone()[0]
     try:
         relatif = sortie.relative_to(RACINE).as_posix()
     except ValueError:
