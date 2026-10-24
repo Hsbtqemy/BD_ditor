@@ -138,6 +138,23 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
                json={"acces_membres": "ecriture"})
     base = next(c for c in client.get("/api/collections", headers=ident).json()
                 if c["base"] and c["projet_id"] == projet["id"])
+    # COL-4 — un BAC À SABLE d'un AUTRE compte, où la sentinelle est invitée : `GET
+    # /api/projets` y rend le login de son propriétaire (l'invité doit savoir chez qui il
+    # est). Le propriétaire porte la sentinelle dans son login — un autre compte que celle
+    # qui balaie, sans quoi la liste dirait « Mon bac à sable » et passerait pour muette.
+    # Posé en SQL : ouvrir un bac à sable par l'API le donnerait à qui frappe.
+    hote = SENTINELLES["login"] + "hote"
+    conn = sqlite3.connect(db_path)
+    try:
+        bac = conn.execute("INSERT INTO projet (nom, bac_a_sable_de, efface_le) VALUES "
+                           "('Bac à sable', ?, '2099-01-05 03:00:00')", (hote,)).lastrowid
+        conn.executemany("INSERT INTO projet_acces (projet_id, genre, principal, role) "
+                         "VALUES (?, 'utilisateur', ?, ?)",
+                         [(bac, hote, "responsable"),
+                          (bac, SENTINELLES["login"], "membre")])
+        conn.commit()
+    finally:
+        conn.close()
 
     # Ce que l'API ne produit pas d'elle-même hors multi-utilisateur.
     conn = sqlite3.connect(db_path)
@@ -273,7 +290,19 @@ SORTIES_DECLAREES = {
         "GÈRE le projet — son responsable, ou un administrateur ; un simple membre reçoit "
         "un 403. Même forme que `…/acces` un étage plus bas : aucune colonne d'identité n'y "
         "est jointe, ni nom lisible, ni dernière visite. `GET /api/projets`, elle, ne nomme "
-        "ni membres ni responsables, et reste muette."),
+        "ni membres ni responsables — seulement le propriétaire d'un bac à sable (COL-4)."),
+    ("route", "/api/projets"): (
+        {"login"},
+        "COL-4 — le login du PROPRIÉTAIRE d'un bac à sable (`bac_a_sable.proprietaire`, et le "
+        "nom affiché « Bac à sable · <login> »), rendu à qui le lit sans en être le "
+        "propriétaire : l'INVITÉ, qui doit savoir chez qui il travaille — ce qu'on y fait "
+        "s'efface quand ce compte le remet à neuf ; et l'ADMINISTRATEUR dans la vue Projets "
+        "(`bacs_a_sable=1`), qui doit savoir à qui il est — il y voit qu'il existe, sa date "
+        "d'effacement et son propriétaire, et rien de ce qu'il porte (Hugo, 2026-10-24). À "
+        "son propriétaire, « Mon bac à sable », sans login. C'est le seul login de la liste : "
+        "elle ne nomme ni membres ni responsables d'un projet. Aucun nom lisible, aucun "
+        "courriel ; elle ne sort de l'instance par aucun artefact. Balayée sur un bac à "
+        "sable d'un AUTRE compte où la sentinelle est invitée (le semis)."),
     ("route", "/api/projets/{projet_id}/membres/choix"): (
         {"login"},
         "La vérification des membres DÉJÀ posés sur ce projet (COL-3) : mêmes logins que "
