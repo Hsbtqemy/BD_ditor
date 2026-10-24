@@ -372,7 +372,8 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
     assert apres["comptes"]["document"] == avant["comptes"]["albums"]
     for t in TABLES:
         retire = {"albums": ("document_id", "projet_id", "tome", "lieu_masters"),
-                  "planches": ("master_origine",)}.get(t, ())
+                  "planches": ("master_origine",),
+                  "personnages": ("bac_a_sable_id",), "tags": ("espace",)}.get(t, ())
         assert [{k: v for k, v in r.items() if k not in retire} for r in apres["lignes"][t]] \
             == avant["lignes"][t], t
     assert set(avant["index"]) <= set(apres["index"])

@@ -29,7 +29,8 @@ import database
 
 BASE_V33 = Path(__file__).resolve().parent / "bases" / "v33-e5d2e73.sql"
 COLONNES_NEUVES = {"albums": ("lieu_masters",), "planches": ("master_origine",),
-                   "projet": ("bac_a_sable_de", "efface_le", "jeu")}
+                   "projet": ("bac_a_sable_de", "efface_le", "jeu"),
+                   "personnages": ("bac_a_sable_id",), "tags": ("espace",)}
 # Ce que la v35 ajoute (COL-4), que la migration traverse aussi.
 TABLES_NEUVES = {"jeu_document"}
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
