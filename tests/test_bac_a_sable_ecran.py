@@ -136,11 +136,20 @@ def test_les_tags_comptes_sont_ceux_de_l_espace_du_bac(client, decor):
         if region:
             break
     assert region, "le décor ne porte aucune région"
-    avant = _compte(client, LEA, bac["id"]).json()["tags"]
+    # Deux tags de l'INSTANCE (espace 0), globaux — donc lisibles de lea — : ils ne sont pas
+    # ceux du bac, et le compte ne doit pas les voir. Une mesure d'ÉCART ne le dirait pas :
+    # sans le filtre de l'espace, les deux comptes bougent ensemble (relecture, mutant).
+    for label in ("instance-a", "instance-b"):
+        assert client.post("/api/tags", headers=ADMIN, json={"label": label}).status_code in (200, 201)
     r = client.put(f"/api/regions/{region}/annotation", headers=LEA,
                    json={"note": "", "tags": ["essai-du-bac"]})
     assert r.status_code == 200, r.text
-    assert _compte(client, LEA, bac["id"]).json()["tags"] == avant + 1
+    from test_bac_a_sable import _sql
+    du_bac = _sql(decor["db"], "SELECT label FROM tags WHERE espace = ?", (bac["id"],))
+    assert [t["label"] for t in du_bac] == ["essai-du-bac"]
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM tags WHERE espace = 0 "
+                             "AND collection_id IS NULL")[0]["n"] >= 2
+    assert _compte(client, LEA, bac["id"]).json()["tags"] == 1
     # Le corpus ne le compte pas : il est né dans le bac.
     assert all(t["label"] != "essai-du-bac"
                for t in client.get("/api/tags", headers=ADMIN).json())

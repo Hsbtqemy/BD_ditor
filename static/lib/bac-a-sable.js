@@ -26,7 +26,10 @@
 
   const FUSEAU = "Europe/Paris";
   /* Les bacs à sable vus à la dernière page : de quoi dire, à la suivante, qu'il a été
-     effacé. Stockage local, lu et écrit sous try/catch. */
+     effacé. Stockage local, lu et écrit sous try/catch, RANGÉ PAR LOGIN : deux comptes se
+     succèdent sur un même navigateur, et le souvenir de l'un ne doit jamais parler à
+     l'autre — il lui annoncerait un faux effacement, ou lui apprendrait qui est invité chez
+     qui (relecture de l'écran, 2026-10-24). Sans login, rien n'est ni lu ni écrit. */
   const CLE_SOUVENIRS = "bd-bacs-a-sable";
 
   /* L'aide, dans l'infobulle du nom (« sans phrases à l'écran »). */
@@ -78,13 +81,14 @@
     return `${p.weekday} ${p.day} ${p.month} à ${heure(d)}`;
   }
 
-  /* « lun. 26 oct., 4 h » — l'en-tête de la liste des bacs à sable de l'Administration. */
+  /* « lun. 26 oct., 4 h » — l'en-tête de la liste des bacs à sable de l'Administration.
+     Les abréviations sont celles d'`Intl`, telles quelles : « mars », « mai », « juin »,
+     « août » n'en ont pas, et un point ajouté d'office les doublait (« 3 mai., 4 h »). */
   function jourCourt(s) {
     const d = instant(s);
     if (!d) return null;
     const p = parties(d, { weekday: "short", day: "numeric", month: "short" });
-    const sansPoint = (x) => String(x).replace(/\.$/, "");
-    return `${sansPoint(p.weekday)}. ${p.day} ${sansPoint(p.month)}., ${heure(d)}`;
+    return `${p.weekday} ${p.day} ${p.month}, ${heure(d)}`;
   }
 
   /* « 24/10 » — « ouvert le » d'une ligne de la liste. */
@@ -252,31 +256,60 @@
     try { return root.localStorage || null; } catch (e) { return null; }
   }
 
-  function lireSouvenirs(depuis) {
+  /* Toute la mémoire : `{ login: [souvenirs] }`. Une forme d'avant (une liste nue, qui ne
+     dit pas de qui elle est) ne vaut pour personne. */
+  function tous(s) {
+    const v = s ? JSON.parse(s.getItem(CLE_SOUVENIRS) || "{}") : {};
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  }
+
+  function lireSouvenirs(login, depuis) {
     const s = depuis === undefined ? stockage() : depuis;
+    if (!login) return [];
     try {
-      const v = s ? JSON.parse(s.getItem(CLE_SOUVENIRS) || "[]") : [];
+      const v = tous(s)[login];
       return Array.isArray(v) ? v.filter((x) => x && Number.isInteger(x.id)) : [];
     } catch (e) { return []; }
   }
 
-  function retenirSouvenirs(liste, dans) {
+  function retenirSouvenirs(login, liste, dans) {
     const s = dans === undefined ? stockage() : dans;
+    if (!login) return false;
     try {
       if (!s) return false;
-      s.setItem(CLE_SOUVENIRS, JSON.stringify(liste || []));
+      let t;
+      try { t = tous(s); } catch (e) { t = {}; }
+      t[login] = liste || [];
+      s.setItem(CLE_SOUVENIRS, JSON.stringify(t));
       return true;
     } catch (e) { return false; }
+  }
+
+  /* Les bacs à sable que CE compte avait vus et qui manquent : rien sans login, rien sur
+     une liste illisible. Une liste VIDE, lue sous une identité, compte : c'est celle de
+     l'arrivant dont le bac à sable était le seul projet, le premier à devoir lire
+     l'effacement ; le souvenir étant rangé par login, elle ne parle jamais d'un autre. */
+  function disparusDe(login, projets, depuis) {
+    if (!login || !Array.isArray(projets)) return [];
+    return disparus(lireSouvenirs(login, depuis), projets);
   }
 
   /* ── L'Administration : la liste des bacs à sable ──────────────────────────────────
      Par login du propriétaire, filtre sur le login, tri A → Z ou récents d'abord ; la date
      d'effacement une fois en tête (elle est la même pour tous). */
-  function trierBacs(bacs, tri, filtre) {
+  /* Le login du propriétaire d'un bac à sable : rendu par le serveur pour les autres, et
+     pour le sien — qu'il ne nomme pas — celui de qui regarde (`monLogin`). */
+  function proprietaire(p, monLogin) {
+    const b = p && p.bac_a_sable;
+    if (!b) return "";
+    return String(b.proprietaire || (b.mien ? monLogin || "" : ""));
+  }
+
+  function trierBacs(bacs, tri, filtre, monLogin) {
     const f = String(filtre || "").trim().toLowerCase();
+    const login = (p) => proprietaire(p, monLogin);
     const l = (Array.isArray(bacs) ? bacs : []).filter((p) => p && p.bac_a_sable
-      && (!f || String(p.bac_a_sable.proprietaire || "").toLowerCase().includes(f)));
-    const login = (p) => String(p.bac_a_sable.proprietaire || "");
+      && (!f || login(p).toLowerCase().includes(f)));
     if (tri === "recents") {
       // Ouverts dans la même seconde : le dernier né d'abord (les identifiants ne
       // reviennent pas, v31).
@@ -304,12 +337,26 @@
     return `Vous n'y entrez pas. Pour aider ${b.proprietaire}, faites-vous inviter.`;
   }
 
+  /* L'axe « Bacs à sable » de l'Administration ne paraît que là où un bac à sable peut
+     exister : derrière le proxy (une identité) — jamais en mono-poste, où personne n'en
+     ouvre —, ou s'il y en a déjà (une base copiée d'une instance). */
+  function axeBacsVisible(moi, bacs) {
+    return !!(moi && moi.utilisateur) || (Array.isArray(bacs) && bacs.length > 0);
+  }
+
+  /* Après « Remettre à neuf » : dans l'Atelier, la planche du parcours, comme au premier
+     clic ; ailleurs, la même surface, sans son adresse (Hugo, 2026-10-24). */
+  function adresseApresRemise(vue, chemin) {
+    return chemin === "/" ? adresseApresOuverture(vue) : chemin;
+  }
+
   /* « samedi 24 octobre à 14 h 30 » — « Ouvert », dans la fiche. */
   function dateLongue(s) { return jourEtHeure(s); }
 
   return { CLE_SOUVENIRS, AIDE_MIEN, aide, instant, jourEtHeure, jourCourt, jjmm, jour,
            heure, mien, offrir, offrirPageVide, estBac, ligne, libelleInviter, plafond,
            raisonImportEteint, remiseANeuf, enumeration, adresseApresOuverture,
-           souvenirsDe, disparus, messageDisparu, lireSouvenirs, retenirSouvenirs,
+           souvenirsDe, disparus, disparusDe, messageDisparu, lireSouvenirs,
+           retenirSouvenirs, proprietaire, axeBacsVisible, adresseApresRemise,
            trierBacs, enteteBacs, phraseFicheBac, dateLongue };
 });

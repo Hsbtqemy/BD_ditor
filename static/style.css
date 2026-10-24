@@ -103,6 +103,9 @@
   --accent-green:#6bf59c; --accent-violet:#dcb0ff; --accent-cyan:#63e7ff; --accent-pink:#ff95cb;
   --ink-red: var(--accent-red);   /* l'accent HC est déjà AAA en texte */
   --focus:#fff;
+  /* COL-4 — la rayure de la ligne du bac à sable : le voile de survol (22 % de blanc) y
+     faisait tomber l'encre d'alerte à 4,28:1, sous le seuil de 4,5:1 ; à 12 %, 6,18:1. */
+  --bac-rayure: rgba(255,255,255,.12);
 }
 :root[data-theme="light"][data-contrast="high"] {
   --bg-deep:#fff; --bg-panel:#fff; --bg-input:#fff;
@@ -111,6 +114,7 @@
   --accent-blue:#0a39c0; --accent-red:#b3002a; --accent-amber:#6f4500;
   --accent-green:#0a6b30; --accent-violet:#5a1aa0; --accent-cyan:#055f78; --accent-pink:#9c0f5e;
   --focus:#000;
+  --bac-rayure: var(--hover);     /* COL-4 — 14 % de noir : 5,14:1 pour l'encre d'alerte */
 }
 
 * { box-sizing: border-box; }
@@ -571,8 +575,10 @@ kbd {
    sur sa rangée quelle que soit la largeur, et ses marges négatives la font courir d'un
    bord à l'autre, sous le rembourrage de la bande. Rayée, pour qu'on la reconnaisse d'une
    surface à l'autre sans la lire. La rayure est un fond DÉCORATIF : le texte reste sur les
-   encres normales, et ses deux teintes sont `--bg-panel` et `--hover` (qui n'en est qu'un
-   voile de quelques pour cent), où ces encres passent l'AA. Ses parties passent à la ligne
+   encres normales, et ses deux teintes sont `--bg-panel` et `--bac-rayure` — le voile de
+   survol, sauf en contraste élevé sombre, où il est trop clair pour l'encre d'alerte —, où
+   ces encres passent l'AA ; axe ne mesure pas un fond en dégradé, un test e2e le fait
+   (`test_e2e_bac_a_sable`). Ses parties passent à la ligne
    plutôt que de sortir ; les gestes se rangent à droite de LEUR rangée. */
 .bac-ouvrir-bande { white-space: nowrap; flex: 0 0 auto; }
 .bac-ligne {
@@ -581,7 +587,7 @@ kbd {
   min-height: 2.1538rem; margin: 0 -1.0769rem; padding: .2308rem 1.0769rem;
   border-top: 1px solid var(--border);
   background:
-    repeating-linear-gradient(135deg, transparent 0 10px, var(--hover) 10px 20px),
+    repeating-linear-gradient(135deg, transparent 0 10px, var(--bac-rayure, var(--hover)) 10px 20px),
     var(--bg-panel);
   font-size: .9231rem; color: var(--text);
 }

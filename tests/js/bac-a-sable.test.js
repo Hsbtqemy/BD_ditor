@@ -54,6 +54,22 @@ test("une date illisible ne s'écrit pas", () => {
   assert.equal(B.jjmm(""), null);
 });
 
+test("la forme courte, sur les douze mois : jamais de point doublé", () => {
+  // Les lundis de 2027, un par mois, 4 h de Paris (heure d'hiver jusqu'au 28 mars, d'été
+  // jusqu'au 31 octobre).
+  const lundis = [["2027-01-04 03:00:00", "lun. 4 janv., 4 h"], ["2027-02-01 03:00:00", "lun. 1 févr., 4 h"],
+    ["2027-03-01 03:00:00", "lun. 1 mars, 4 h"], ["2027-04-05 02:00:00", "lun. 5 avr., 4 h"],
+    ["2027-05-03 02:00:00", "lun. 3 mai, 4 h"], ["2027-06-07 02:00:00", "lun. 7 juin, 4 h"],
+    ["2027-07-05 02:00:00", "lun. 5 juil., 4 h"], ["2027-08-02 02:00:00", "lun. 2 août, 4 h"],
+    ["2027-09-06 02:00:00", "lun. 6 sept., 4 h"], ["2027-10-04 02:00:00", "lun. 4 oct., 4 h"],
+    ["2027-11-01 03:00:00", "lun. 1 nov., 4 h"], ["2027-12-06 03:00:00", "lun. 6 déc., 4 h"]];
+  for (const [utc, attendu] of lundis) {
+    const dit = B.jourCourt(utc);
+    assert.equal(dit, attendu, utc);
+    assert.ok(!dit.includes("..") && !/(mars|mai|juin|août)\./.test(dit), dit);
+  }
+});
+
 test("les formes courtes : l'en-tête de la liste de l'Administration, « ouvert le »", () => {
   assert.equal(B.jourCourt("2026-10-26 03:00:00"), "lun. 26 oct., 4 h");
   assert.equal(B.jjmm("2026-10-24 22:30:00"), "25/10", "minuit passé à Paris");
@@ -211,19 +227,47 @@ test("avant sa date, un bac à sable disparu a été remis à neuf, ou effacé h
   assert.equal(B.messageDisparu(invite, AVANT), "Vous n'êtes plus dans le bac à sable de hsemil01.");
 });
 
+function memoire() {
+  const m = new Map();
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v) };
+}
+
 test("les souvenirs : lus et écrits sous try/catch, jamais une exception", () => {
   const leve = { getItem() { throw new Error("refusé"); }, setItem() { throw new Error("refusé"); } };
-  assert.deepEqual(B.lireSouvenirs(leve), []);
-  assert.equal(B.retenirSouvenirs([{ id: 1 }], leve), false);
-  assert.deepEqual(B.lireSouvenirs(null), []);
-  const m = new Map();
-  const ok = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v) };
-  assert.equal(B.retenirSouvenirs(B.souvenirsDe([MIEN]), ok), true);
-  assert.deepEqual(B.lireSouvenirs(ok).map((s) => s.id), [7]);
+  assert.deepEqual(B.lireSouvenirs("camille", leve), []);
+  assert.equal(B.retenirSouvenirs("camille", [{ id: 1 }], leve), false);
+  assert.deepEqual(B.lireSouvenirs("camille", null), []);
+  const ok = memoire();
+  assert.equal(B.retenirSouvenirs("camille", B.souvenirsDe([MIEN]), ok), true);
+  assert.deepEqual(B.lireSouvenirs("camille", ok).map((s) => s.id), [7]);
   ok.setItem(B.CLE_SOUVENIRS, "{pas du json");
-  assert.deepEqual(B.lireSouvenirs(ok), []);
-  ok.setItem(B.CLE_SOUVENIRS, JSON.stringify([{ id: "x" }, null, { id: 3 }]));
-  assert.deepEqual(B.lireSouvenirs(ok).map((s) => s.id), [3]);
+  assert.deepEqual(B.lireSouvenirs("camille", ok), []);
+  assert.equal(B.retenirSouvenirs("camille", [{ id: 4 }], ok), true, "réécrit par-dessus");
+  ok.setItem(B.CLE_SOUVENIRS, JSON.stringify({ camille: [{ id: "x" }, null, { id: 3 }] }));
+  assert.deepEqual(B.lireSouvenirs("camille", ok).map((s) => s.id), [3]);
+  // La forme d'avant — une liste nue, de personne — ne vaut pour personne.
+  ok.setItem(B.CLE_SOUVENIRS, JSON.stringify([{ id: 7 }]));
+  assert.deepEqual(B.lireSouvenirs("camille", ok), []);
+});
+
+test("les souvenirs sont rangés par login : un compte ne lit jamais ceux d'un autre", () => {
+  // Relecture de l'écran : camille ouvre le sien, puis lea se connecte sur le même
+  // navigateur et lisait « Votre bac à sable a été effacé » ; dominique invitée chez
+  // camille, puis lea lisait « Vous n'êtes plus dans le bac à sable de camille ».
+  const nav = memoire();
+  B.retenirSouvenirs("camille", B.souvenirsDe([MIEN]), nav);
+  B.retenirSouvenirs("dominique", B.souvenirsDe([INVITE]), nav);
+  assert.deepEqual(B.disparusDe("lea", [ORDINAIRE], nav), [], "lea n'avait rien vu");
+  assert.deepEqual(B.lireSouvenirs("lea", nav), []);
+  // Ceux des deux autres restent les leurs.
+  assert.deepEqual(B.disparusDe("camille", [ORDINAIRE], nav).map((s) => s.id), [7]);
+  assert.deepEqual(B.disparusDe("dominique", [], nav).map((s) => s.id), [9],
+                   "une liste vide, lue sous une identité, compte : son seul projet est parti");
+  // Sans identité, rien ; sur une liste illisible, rien.
+  assert.deepEqual(B.disparusDe(null, [ORDINAIRE], nav), []);
+  assert.deepEqual(B.disparusDe("camille", null, nav), []);
+  assert.equal(B.retenirSouvenirs(null, [{ id: 1 }], nav), false);
+  assert.deepEqual(B.lireSouvenirs(null, nav), []);
 });
 
 /* ── L'Administration ────────────────────────────────────────────────────────────────── */
@@ -244,6 +288,31 @@ test("la liste des bacs à sable : par login, A → Z ou récents d'abord, filtr
   assert.deepEqual(B.trierBacs(BACS, "alpha", "BRU").map((p) => p.id), [3]);
   assert.deepEqual(B.trierBacs(BACS, "alpha", "personne"), []);
   assert.deepEqual(B.trierBacs([ORDINAIRE, ...BACS], "alpha").length, 3, "un projet n'y entre pas");
+});
+
+test("le bac de l'administrateur se trie et se filtre par SON login", () => {
+  // Le serveur ne nomme pas le propriétaire du sien (« mien ») : c'est le login de qui
+  // regarde qui le désigne.
+  const sien = { id: 4, date_creation: "2026-10-22 08:00:00",
+                 bac_a_sable: { mien: true, efface_le: "2026-10-26 03:00:00" } };
+  const l = [...BACS, sien];
+  assert.deepEqual(B.trierBacs(l, "alpha", "", "carla").map((p) => p.id), [2, 3, 4, 1]);
+  assert.deepEqual(B.trierBacs(l, "alpha", "car", "carla").map((p) => p.id), [4]);
+  assert.equal(B.proprietaire(sien, "carla"), "carla");
+  assert.equal(B.proprietaire(BACS[0], "carla"), "zoe");
+});
+
+test("l'axe des bacs à sable : là où un bac à sable peut exister", () => {
+  assert.equal(B.axeBacsVisible({ utilisateur: "hugo" }, []), true, "derrière le proxy");
+  assert.equal(B.axeBacsVisible({ utilisateur: null }, []), false, "mono-poste");
+  assert.equal(B.axeBacsVisible(null, []), false);
+  assert.equal(B.axeBacsVisible({ utilisateur: null }, BACS), true, "une base qui en porte");
+});
+
+test("après « Remettre à neuf » : la planche du parcours dans l'Atelier, sur place ailleurs", () => {
+  assert.equal(B.adresseApresRemise(VUE, "/"), "/?album=31&planche=310");
+  assert.equal(B.adresseApresRemise(VUE, "/corpus"), "/corpus");
+  assert.equal(B.adresseApresRemise(VUE, "/administration"), "/administration");
 });
 
 test("la date d'effacement UNE fois en tête de la liste", () => {

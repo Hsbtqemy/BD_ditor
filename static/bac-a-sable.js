@@ -29,7 +29,8 @@
   const DUREE_MESSAGE = 10000;
 
   const E = { moi: null, projets: null, vue: null, courant: null, lu: false };
-  let tour = 0;                // une lecture dépassée par une plus récente ne dessine pas
+  let tour = 0;
+  let tranche = false;         // la première lecture a répondu (ou échoué) : le bandeau suit                // une lecture dépassée par une plus récente ne dessine pas
 
   function el(tag, cls, txt) {
     const e = document.createElement(tag);
@@ -61,11 +62,16 @@
     return E;
   }
 
-  /* Un bac à sable vu à la page précédente et absent de la liste : le message, une fois.
-     Seulement sur une liste LUE — une panne de lecture ne fait disparaître personne. */
+  function login() { return (E.moi && E.moi.utilisateur) || null; }
+
+  /* Un bac à sable que CE compte avait vu à la page précédente, et absent de la liste : le
+     message, une fois. Seulement sur une liste LUE et non vide, et sous une identité — la
+     mémoire est rangée par login (`lib/bac-a-sable.js`). */
   function direLesDisparus(projets) {
-    const partis = L.disparus(L.lireSouvenirs(), projets);
-    L.retenirSouvenirs(L.souvenirsDe(projets));
+    const qui = login();
+    if (!qui) return;
+    const partis = L.disparusDe(qui, projets);
+    L.retenirSouvenirs(qui, L.souvenirsDe(projets));
     const maintenant = new Date();
     partis.forEach((s) => {
       const m = L.messageDisparu(s, maintenant, projets);
@@ -81,9 +87,9 @@
       const vue = await apiSend("POST", "/api/bac-a-sable");
       P.retenir(vue.id);
       // La page suivante le connaît déjà : son absence ne s'y lira pas comme un effacement.
-      L.retenirSouvenirs([...L.lireSouvenirs().filter((s) => s.id !== vue.id),
-                          { id: vue.id, mien: true, proprietaire: null,
-                            efface_le: vue.efface_le }]);
+      L.retenirSouvenirs(login(), [...L.lireSouvenirs(login()).filter((s) => s.id !== vue.id),
+                                   { id: vue.id, mien: true, proprietaire: null,
+                                     efface_le: vue.efface_le }]);
       location.assign(L.adresseApresOuverture(vue));
     } catch (e) {
       toast(e.message || "Le bac à sable n'a pas pu s'ouvrir.", "error", 8000);
@@ -117,6 +123,9 @@
   }
 
   /* ── Le bandeau de portée vide ───────────────────────────────────────────────────── */
+  /* `theme.js` fait naître le bandeau CACHÉ quand ce script est là (sans quoi il paraîtrait
+     un instant avant d'être masqué dans un bac à sable) : c'est ici, la question tranchée,
+     qu'il se montre — même si la liste n'a pas pu se lire. */
   function ajusterBandeau() {
     const box = document.getElementById("portee-vide");
     if (!box) return;
@@ -287,13 +296,14 @@
       const [act, msg, non] = actions("Remettre à neuf", "danger", async () => {
         const vue = await apiSend("POST", "/api/bac-a-sable/remise-a-neuf");
         P.retenir(vue.id);
-        L.retenirSouvenirs([...L.lireSouvenirs().filter((s) => s.mien !== true),
-                            { id: vue.id, mien: true, proprietaire: null,
-                              efface_le: vue.efface_le }]);
-        // Le projet a changé d'identifiant : la page repart sur le neuf, sur la même
-        // surface et sans son adresse — elle nommait des objets du bac d'avant.
+        L.retenirSouvenirs(login(), [...L.lireSouvenirs(login()).filter((s) => s.mien !== true),
+                                     { id: vue.id, mien: true, proprietaire: null,
+                                       efface_le: vue.efface_le }]);
+        // Le projet a changé d'identifiant. Dans l'Atelier, la planche du parcours, comme
+        // au premier clic ; ailleurs, la même surface, sans son adresse — elle nommait des
+        // objets du bac d'avant (Hugo, 2026-10-24).
         garderMessage("Bac à sable remis à neuf.");
-        location.assign(location.pathname);
+        location.assign(L.adresseApresRemise(vue, location.pathname));
       });
       b.appendChild(act);
       b.appendChild(msg);
@@ -311,7 +321,7 @@
       b.appendChild(el("p", null, `${qui} pourra vous inviter à nouveau.`));
       const [act, msg, non] = actions("Quitter", "danger", async () => {
         await apiSend("POST", `/api/bac-a-sable/${p.id}/quitter`);
-        L.retenirSouvenirs(L.lireSouvenirs().filter((s) => s.id !== p.id));
+        L.retenirSouvenirs(login(), L.lireSouvenirs(login()).filter((s) => s.id !== p.id));
         garderMessage(`Vous avez quitté le bac à sable de ${qui}.`);
         // La page retombe sur le projet suivant, ou vide : un rechargement le fait sur
         // toutes les surfaces, qui lisent leur projet au chargement — sans l'adresse, qui
@@ -376,7 +386,7 @@
       const partis = L.disparus(L.souvenirsDe([E.courant]), projets);
       if (!partis.length) return;
       const m = L.messageDisparu(partis[0], new Date(), projets);
-      L.retenirSouvenirs(L.souvenirsDe(projets));
+      L.retenirSouvenirs(login(), L.souvenirsDe(projets));
       if (m) garderMessage(m);
       // Sans l'adresse : un lien vers un album du bac à sable effacé n'a plus d'objet, et
       // l'Atelier dirait « introuvable » par-dessus le message.
@@ -425,7 +435,8 @@
 
   function demarrer() {
     messageGarde();
-    pret.then(dessiner);
+    pret.then(() => { tranche = true; dessiner(); },
+              () => { tranche = true; ajusterBandeau(); });
     // La liste a changé (ici, dans l'Administration) : `theme.js` relit `BDProjets`
     // pendant l'envoi de l'événement, on relit derrière lui.
     document.addEventListener("bd:projets-maj", () => { lire().then(dessiner); });
@@ -435,7 +446,7 @@
       E.courant = courantDe(E.projets);
       dessiner();
     });
-    document.addEventListener("bd:portee-vide", () => { if (E.lu) ajusterBandeau(); });
+    document.addEventListener("bd:portee-vide", () => { if (tranche) ajusterBandeau(); });
     document.addEventListener("bd:introuvable", verifierApresUnRefus);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer);

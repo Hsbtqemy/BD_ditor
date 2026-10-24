@@ -408,6 +408,24 @@ def test_remettre_a_neuf_dit_ce_qui_part_et_ce_qui_revient(page, jeu):
     expect(_ligne(page).locator("#bac-inviter")).to_have_text("Inviter…")
     expect(page.locator("#projet-nom")).to_have_text("Mon bac à sable")
     assert len([v for v in vues if v[1] == "/api/bac-a-sable/remise-a-neuf"]) == 1
+    # Dans l'Atelier, la planche du parcours, comme au premier clic, et le message (Hugo,
+    # 2026-10-24).
+    page.goto(jeu["base"] + "/", wait_until="networkidle")
+    _ligne(page).locator("#bac-remettre").click()
+    # L'Atelier récrit déjà son adresse sur l'album ouvert : on attend la NAVIGATION.
+    with page.expect_navigation() as nav:
+        _dialogue(page).get_by_role("button", name="Remettre à neuf").click()
+    page.wait_for_load_state("networkidle")
+    encore = _api(jeu["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    parcours = next(j for j in encore["jeu"] if j["role"] == "pas-a-pas")
+    assert encore["id"] != neuf["id"]
+    # L'adresse DEMANDÉE, et non celle que l'Atelier récrit ensuite sur l'album ouvert —
+    # qui peut être le parcours par défaut et masquer un retour sur « / ».
+    cible = f"/?album={parcours['album_id']}&planche={parcours['planche_ids'][0]}"
+    assert nav.value.url.endswith(cible), nav.value.url
+    assert page.url.endswith(cible)
+    expect(page.locator("#toasts")).to_contain_text("Bac à sable remis à neuf.")
+    expect(page.locator("#planche-info")).to_contain_text("Le parcours")
 
 
 # ── Inviter ────────────────────────────────────────────────────────────────────────────
@@ -497,8 +515,22 @@ def test_le_plafond_eteint_l_import_la_raison_en_infobulle(page, jeu):
     page.goto(jeu["base"] + f"/?album={album}", wait_until="networkidle")
     for sel in ("#btn-import-menu", "#btn-import"):
         b = page.locator(sel)
-        expect(b).to_be_disabled()
+        # Éteint et non désactivé : il garde le focus, et sa raison est sa DESCRIPTION.
+        expect(b).to_have_attribute("aria-disabled", "true")
+        assert b.get_attribute("disabled") is None, sel
         assert b.get_attribute("title").startswith("Plafond atteint"), sel
+        expect(b).to_have_accessible_description(re.compile(r"^Plafond atteint : 50 planches"))
+        # Une description ÉCRITE, joignable au clavier — pas la seule infobulle, que le
+        # navigateur lit aussi en description et qui disparaîtrait avec elle.
+        desc = b.get_attribute("aria-describedby")
+        assert desc, sel
+        expect(page.locator(f"#{desc}")).to_have_text(re.compile(r"^Plafond atteint : 50 planches"))
+        b.dispatch_event("click")
+    expect(page.locator("#btn-import")).to_have_accessible_name("Importer une planche")
+    page.locator("#btn-import").focus()
+    expect(page.locator("#btn-import")).to_be_focused()
+    page.wait_for_timeout(300)
+    assert not ouverts, "le sélecteur de fichiers s'est ouvert depuis l'Atelier au plafond"
     # Le serveur, lui, refuse de toute façon.
     with httpx.Client(base_url=jeu["base"], trust_env=False, timeout=30,
                       headers={**CAMILLE, **ECRIRE}) as c:
@@ -892,3 +924,247 @@ def test_a11y_la_ligne_ses_dialogues_et_l_administration(page, jeu, theme):
     expect(page.locator(".pj-bac-phrase")).to_be_visible()
     auditer("Administration, bacs à sable")
     assert not rapports, "\n".join(rapports)
+
+
+
+# ── Relecture de l'écran (2026-10-24) ──────────────────────────────────────────────────
+
+def _messages(page):
+    page.wait_for_timeout(500)
+    return page.locator("#toasts").inner_text() if page.locator("#toasts").count() else ""
+
+
+@pytestmark_proxy
+def test_un_autre_compte_sur_le_meme_navigateur_ne_lit_pas_un_faux_effacement(page, jeu):
+    """Le souvenir des bacs à sable est rangé par login : camille ouvre le sien, puis lea se
+    connecte sur le même navigateur — rien ne lui est dit. Et camille, revenue, ne lit rien
+    non plus : son bac à sable est toujours là."""
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    page.goto(jeu["base"] + "/corpus", wait_until="networkidle")
+    _ligne(page)
+    _projet_de_lea(jeu)
+    _sous(page, LEA)
+    page.goto(jeu["base"] + "/corpus", wait_until="networkidle")
+    assert "effacé" not in _messages(page)
+    _sous(page, CAMILLE)
+    page.goto(jeu["base"] + "/", wait_until="networkidle")
+    _ligne(page)
+    assert "effacé" not in _messages(page)
+
+
+@pytestmark_proxy
+def test_un_autre_compte_ne_lit_pas_le_lien_d_invitation_d_un_autre(page, jeu):
+    """dominique, invitée chez camille, puis lea sur le même navigateur : lea ne lit rien
+    d'une relation entre deux autres comptes."""
+    bac = _ouvrir(jeu, CAMILLE)
+    _inviter(jeu, CAMILLE, bac["id"], "dominique")
+    _sous(page, DOMINIQUE)
+    page.goto(jeu["base"] + "/corpus", wait_until="networkidle")
+    _ligne(page)
+    _projet_de_lea(jeu)
+    _sous(page, LEA)
+    page.goto(jeu["base"] + "/corpus", wait_until="networkidle")
+    assert "camille" not in _messages(page)
+
+
+# Le bandeau de portée vide, à sa naissance : jamais affiché dans un bac à sable, pas même
+# un instant. Un observateur posé AVANT les scripts de la page note chaque état visible.
+_GUET_BANDEAU = """
+window.__bandeauVu = false;
+new MutationObserver(() => {
+  const b = document.getElementById('portee-vide');
+  if (b && !b.hidden && getComputedStyle(b).display !== 'none') window.__bandeauVu = true;
+}).observe(document, { childList: true, subtree: true, attributes: true,
+                       attributeFilter: ['hidden'] });
+"""
+
+
+@pytestmark_proxy
+def test_le_bandeau_ne_parait_pas_un_instant_dans_un_bac(page, jeu):
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    page.add_init_script(_GUET_BANDEAU)
+    for surface in SURFACES_AUDITEES:
+        page.goto(jeu["base"] + surface, wait_until="networkidle")
+        _ligne(page)
+        expect(page.locator("#portee-vide")).to_be_hidden()
+        assert page.evaluate("() => window.__bandeauVu") is False, surface
+    # Hors du bac à sable, il paraît : la garde ne le cache pas pour tout le monde.
+    _sous(page, {"Remote-User": "arrivant"})
+    page.goto(jeu["base"] + "/", wait_until="networkidle")
+    expect(page.locator("#portee-vide")).to_be_visible()
+
+
+@pytest.mark.parametrize("live_server", [False], indirect=True)
+def test_en_mono_poste_l_administration_n_a_pas_d_axe_des_bacs(page, live_server):
+    """Aucun bac à sable n'existe en mono-poste : l'axe ne paraît pas, la liste des projets
+    est celle d'avant."""
+    page.goto(live_server + "/administration?vue=projets", wait_until="networkidle")
+    expect(page.locator("#pj-objets .pj-objet").first).to_be_visible()
+    expect(page.locator("#pj-axes")).to_be_hidden()
+    expect(page.locator("#pj-creer-ouvrir")).to_be_visible()
+
+
+@pytestmark_proxy
+def test_le_bac_de_l_administrateur_se_trie_et_se_filtre_par_son_login(page, jeu):
+    for qui in (CAMILLE, LEA):
+        _ouvrir(jeu, qui)
+    _ouvrir(jeu, HUGO)
+    _sous(page, HUGO)
+    page.goto(jeu["base"] + "/administration?vue=projets&bacs", wait_until="networkidle")
+    noms = page.locator("#pj-objets .pj-objet .pj-nom")
+    expect(noms).to_have_text(["camille", "hugo", "lea"])
+    page.locator("#pj-filtre").fill("hug")
+    expect(noms).to_have_text(["hugo"])
+    page.locator("#pj-objets .pj-objet").first.click()
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Votre bac à sable")
+    expect(page.locator("#pj-fiche a[data-pj-compte]")).to_have_text("hugo")
+
+
+# Le contraste de la ligne sur SA rayure, que axe ne mesure pas (un fond en dégradé lui
+# est « incomplet ») : chaque encre de la ligne contre les DEUX teintes de la rayure, dans
+# les quatre thèmes — le plafond atteint compris, en encre d'alerte.
+_CONTRASTES = """() => {
+  const rgb = (c) => { const m = c.match(/rgba?\(([^)]+)\)/)[1].split(',').map(Number);
+                       return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 }; };
+  const sonde = (prop, val) => { const s = document.createElement('span'); s.style[prop] = val;
+    document.body.appendChild(s); const v = getComputedStyle(s)[prop]; s.remove(); return rgb(v); };
+  const fond = sonde('color', 'var(--bg-panel)');
+  const voile = sonde('color', 'var(--bac-rayure, var(--hover))');
+  const sur = { r: voile.r * voile.a + fond.r * (1 - voile.a), g: voile.g * voile.a + fond.g * (1 - voile.a),
+                b: voile.b * voile.a + fond.b * (1 - voile.a) };
+  const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+                       return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  return [...document.querySelectorAll('#bac-ligne .bac-nom, #bac-ligne .bac-date, #bac-ligne .bac-plafond, #bac-ligne .bac-sep')]
+    .map((e) => { const c = rgb(getComputedStyle(e).color);
+                  return { quoi: e.className, fond: ratio(c, fond), rayure: ratio(c, sur) }; });
+}"""
+
+
+@pytestmark_proxy
+def test_les_encres_de_la_ligne_passent_l_aa_sur_la_rayure_dans_les_quatre_themes(page, jeu):
+    bac = _ouvrir(jeu, CAMILLE)
+    album = _api(jeu["base"], CAMILLE, "POST", "/api/albums",
+                 {"titre": "Mes essais", "collection_id": bac["base"]["id"]})["id"]
+    for i in range(50):
+        _api(jeu["base"], CAMILLE, "POST", f"/api/albums/{album}/import",
+             fichier=(f"p{i:02d}.png", make_png(60, 80), "image/png"))
+    _sous(page, CAMILLE)
+    echecs = []
+    for theme in ("dark", "light"):
+        for contraste in ("normal", "high"):
+            page.goto(jeu["base"] + "/corpus", wait_until="networkidle")
+            page.evaluate(f"() => {{ localStorage.setItem('bd-theme', '{theme}'); "
+                          f"localStorage.setItem('bd-contrast', '{contraste}'); }}")
+            page.goto(jeu["base"] + "/corpus", wait_until="networkidle")
+            expect(_ligne(page).locator(".bac-plafond.est-plein")).to_be_visible()
+            for m in page.evaluate(_CONTRASTES):
+                # Le séparateur « · » est décoratif (`aria-hidden`) : le seuil graphique.
+                seuil = 3 if "bac-sep" in m["quoi"] else 4.5
+                if min(m["fond"], m["rayure"]) < seuil:
+                    echecs.append(f"{theme}/{contraste} {m['quoi']} : fond {m['fond']:.2f}, "
+                                  f"rayure {m['rayure']:.2f} (seuil {seuil})")
+    assert not echecs, "\n".join(echecs)
+
+
+# ── La relectrice : la bande à 320 px avec un projet, un sélecteur, un login long ────────
+
+def _mesurer_320(page, base, cas_nom, echecs, attendre=".bac-ouvrir-bande"):
+    for police in POLICES:
+        _preference_police(page, police)
+        page.set_viewport_size({"width": 320, "height": 800})
+        for surface in SURFACES_AUDITEES:
+            page.goto(base + surface, wait_until="networkidle")
+            if attendre:
+                expect(page.locator(attendre).first).to_be_visible()
+            cas = f"{cas_nom}, {surface}, police {police}"
+            perdus = _perdus(page)
+            if perdus:
+                echecs.append(f"{cas} : {perdus[:3]}")
+            ecrase = decrire_ecrasement(page.evaluate(ECRASEMENT, "#site-nav"))
+            if ecrase:
+                echecs.append(f"{cas} : bande ÉCRASÉE\n" + "\n".join(ecrase))
+            v = page.evaluate(_RECOUVRE)
+            if v and v["bas"] > v["haut"] + 1:
+                echecs.append(f"{cas} : la bande 1 recouvre la bande 2")
+            large = page.evaluate("() => document.documentElement.scrollWidth")
+            if large > 321:
+                echecs.append(f"{cas} : défilement horizontal ({large} px)")
+
+
+@pytestmark_proxy
+def test_bande_projet_long_et_bouton_a_320_px(page, jeu):
+    """Le bouton « Mon bac à sable » à côté d'un projet au nom de 21 caractères."""
+    if page.context.browser.browser_type.name != "chromium":
+        pytest.skip("CDP")
+    pid = _api(jeu["base"], HUGO, "POST", "/api/projets", {"nom": "Corpus franco-belge X"})["id"]
+    _api(jeu["base"], HUGO, "PUT", f"/api/projets/{pid}/membres",
+         {"genre": "utilisateur", "principal": "lea", "role": "membre"})
+    _sous(page, LEA)
+    echecs = []
+    _mesurer_320(page, jeu["base"], "lea (un projet)", echecs)
+    assert not echecs, "\n".join(echecs)
+
+
+@pytestmark_proxy
+def test_bande_selecteur_et_bouton_a_320_px(page, jeu):
+    """Deux projets (donc le <select>) ET le bouton."""
+    if page.context.browser.browser_type.name != "chromium":
+        pytest.skip("CDP")
+    for nom in ("Corpus franco-belge X", "Incubateur des stagi"):
+        pid = _api(jeu["base"], HUGO, "POST", "/api/projets", {"nom": nom})["id"]
+        _api(jeu["base"], HUGO, "PUT", f"/api/projets/{pid}/membres",
+             {"genre": "utilisateur", "principal": "lea", "role": "membre"})
+    _sous(page, LEA)
+    echecs = []
+    _mesurer_320(page, jeu["base"], "lea (deux projets)", echecs)
+    assert not echecs, "\n".join(echecs)
+
+
+@pytestmark_proxy
+def test_ligne_d_un_login_long_avec_selecteur_a_320_px(page, jeu):
+    """Propriétaire au login long, ligne avec sélecteur (deux projets), « Inviter… (3) »."""
+    if page.context.browser.browser_type.name != "chromium":
+        pytest.skip("CDP")
+    long = {"Remote-User": "hsemil01-abcdef"}
+    _api(jeu["base"], long, "GET", "/api/moi")
+    pid = _api(jeu["base"], HUGO, "POST", "/api/projets", {"nom": "Corpus franco-belge X"})["id"]
+    _api(jeu["base"], HUGO, "PUT", f"/api/projets/{pid}/membres",
+         {"genre": "utilisateur", "principal": "hsemil01-abcdef", "role": "membre"})
+    bac = _ouvrir(jeu, long)
+    for i in range(3):
+        _inviter(jeu, long, bac["id"], f"invite-{i}")
+    _sous(page, long)
+    page.goto(jeu["base"] + "/", wait_until="networkidle")
+    page.evaluate(f"localStorage.setItem('bd-projet', '{bac['id']}')")
+    echecs = []
+    _mesurer_320(page, jeu["base"], "propriétaire long + sélecteur", echecs, attendre="#bac-ligne")
+    assert not echecs, "\n".join(echecs)
+
+
+@pytestmark_proxy
+def test_un_404_ordinaire_ne_fait_rien_hors_d_un_bac(page, jeu):
+    """Hors d'un bac à sable, un 404 ordinaire ne relit rien et ne navigue pas ; dans un bac
+    à sable encore là, il relit la liste UNE fois et ne navigue pas. Sur les cinq surfaces."""
+    _projet_de_lea(jeu)
+    _sous(page, LEA)
+    vues = _requetes(page)
+    for surface in SURFACES_AUDITEES:
+        page.goto(jeu["base"] + surface + "?x=1", wait_until="networkidle")
+        url, n = page.url, len(vues)
+        page.evaluate("() => apiGet('/api/albums/999999/planches').catch(() => null)")
+        page.wait_for_timeout(600)
+        assert page.url == url, surface
+        assert not [v for v in vues[n:] if v[1] == "/api/projets"], (surface, vues[n:])
+    bac = _ouvrir(jeu, LEA)
+    page.evaluate(f"localStorage.setItem('bd-projet', '{bac['id']}')")
+    for surface in SURFACES_AUDITEES:
+        page.goto(jeu["base"] + surface + "?x=1", wait_until="networkidle")
+        _ligne(page)
+        url, n = page.url, len(vues)
+        page.evaluate("() => apiGet('/api/albums/999999/planches').catch(() => null)")
+        page.wait_for_timeout(600)
+        assert page.url == url, surface
+        assert len([v for v in vues[n:] if v[1] == "/api/projets"]) == 1, (surface, vues[n:])

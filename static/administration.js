@@ -1010,6 +1010,8 @@ const PJ = {
   bacSel: null,          // l'identifiant du bac à sable dont la fiche est ouverte
   filtreBacs: "",
   triBacs: "alpha",      // « alpha » | « recents »
+  axeBacs: false,        // l'axe paraît : là où un bac à sable peut exister
+  moi: null,             // le login de qui regarde : il désigne son propre bac à sable
 };
 
 /* UN message à la fois dans le bloc : celui de la création, celui d'un geste de la fiche,
@@ -1073,7 +1075,10 @@ async function pjLire() {
   // axe, à qui décide des projets.
   const ordinaires = projets.filter((p) => !p.bac_a_sable);
   PJ.bacs = PJ.decide ? projets.filter((p) => p.bac_a_sable) : [];
-  if (!PJ.decide) PJ.axe = "projets";
+  PJ.moi = (moi && moi.utilisateur) || null;
+  // L'axe ne paraît que là où un bac à sable peut exister : jamais en mono-poste.
+  PJ.axeBacs = PJ.decide && BDBac.axeBacsVisible(moi, PJ.bacs);
+  if (!PJ.axeBacs) PJ.axe = "projets";
   PJ.projets = ordinaires.filter((p) => p.gerable);
   // Les collections ne servent qu'à NOMMER celles de chaque projet : sans elles, la fiche le
   // dit, et rien d'autre n'en dépend.
@@ -1106,7 +1111,7 @@ async function pjCharger() {
   vueMajLiens();
   if (!lu) return;
   PJ.lu = true;
-  $("#pj-axes").hidden = !PJ.decide;
+  $("#pj-axes").hidden = !PJ.axeBacs;
   $("#pj-creer-ouvrir").hidden = !PJ.decide || PJ.axe === "bacs";
   pjRendre();
 }
@@ -1167,7 +1172,7 @@ function bacProjet() {
 
 function bacRendre() {
   if (!bacProjet()) {
-    const l = BDBac.trierBacs(PJ.bacs, PJ.triBacs, PJ.filtreBacs);
+    const l = BDBac.trierBacs(PJ.bacs, PJ.triBacs, PJ.filtreBacs, PJ.moi);
     PJ.bacSel = l.length ? l[0].id : null;
   }
   bacRendreListe();
@@ -1176,7 +1181,7 @@ function bacRendre() {
 }
 
 function bacRendreListe() {
-  const l = BDBac.trierBacs(PJ.bacs, PJ.triBacs, PJ.filtreBacs);
+  const l = BDBac.trierBacs(PJ.bacs, PJ.triBacs, PJ.filtreBacs, PJ.moi);
   const actif = document.activeElement;
   const garde = actif && actif.closest && actif.closest("#pj-objets") && actif.dataset.pjBac
     ? actif.dataset.pjBac : null;
@@ -1189,7 +1194,7 @@ function bacRendreListe() {
       const ouvert = BDBac.jjmm(p.date_creation);
       return `<li><button type="button" class="lf-objet pj-objet" data-pj-bac="${p.id}"`
         + `${p.id === PJ.bacSel ? ' aria-current="true"' : ""}>`
-        + `<span class="lf-nom pj-nom">${esc(p.bac_a_sable.proprietaire || "vous")}</span>`
+        + `<span class="lf-nom pj-nom">${esc(BDBac.proprietaire(p, PJ.moi))}</span>`
         + (ouvert ? `<span class="lf-etat pj-etat">ouvert le ${esc(ouvert)}</span>` : "")
         + `</button></li>`;
     }).join("")
@@ -1210,7 +1215,7 @@ function bacRendreFiche() {
   const retour = `<button type="button" class="ghost small lf-retour" data-pj-retour="1">← Liste</button>`;
   const p = bacProjet();
   if (!p) { box.innerHTML = ""; return; }
-  const qui = p.bac_a_sable.proprietaire;
+  const qui = BDBac.proprietaire(p, PJ.moi);
   const nom = p.bac_a_sable.mien ? "Votre bac à sable" : `Bac à sable de ${qui}`;
   const lienCompte = qui
     ? `<a href="/administration?vue=comptes&amp;compte=${encodeURIComponent(qui)}" data-pj-compte="${esc(qui)}"
@@ -1246,7 +1251,7 @@ function bacOuvrir(id, depuisListe) {
 }
 
 function pjChangerAxe(axe) {
-  if (axe === PJ.axe || (axe === "bacs" && !PJ.decide)) return;
+  if (axe === PJ.axe || (axe === "bacs" && !PJ.axeBacs)) return;
   PJ.axe = axe;
   PJ.vueFiche = false;
   PJ.creer = false;

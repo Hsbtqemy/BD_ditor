@@ -399,6 +399,10 @@
     var box = el("div", "portee-vide");
     box.id = "portee-vide";
     box.setAttribute("role", "status");
+    // COL-4 — caché jusqu'à ce que `static/bac-a-sable.js` ait tranché : dans un bac à
+    // sable il ne paraît pas, et le montrer un instant faisait sauter la grille. Sans ce
+    // script sur la page, il naît visible, comme avant.
+    if (window.BDBacEcran) box.hidden = true;
 
     /* Le corps se REPLIE derrière son titre, et ce qui décide n'est pas la place gagnée
        (212 px mesurés) : c'est que le titre suffit à répondre à la question qui amène

@@ -2831,27 +2831,49 @@ async function lancerOCR() {
 
 /* COL-4 — dans un album de SON bac à sable dont le plafond d'import est atteint, les deux
    déclencheurs s'éteignent, la raison en infobulle (« au même endroit du geste », Hugo,
-   2026-10-24). `disabled`, comme l'entrée « Importer un PDF… » du même menu, que le menu
-   saute au clavier. La règle est dans `lib/bac-a-sable.js` ; le serveur refuse de toute
-   façon, en le disant. Relu à chaque album ouvert et après chaque import. */
+   2026-10-24). ÉTEINTS et non désactivés, comme ⤓ dans la Bibliothèque : `aria-disabled`,
+   qui garde le bouton au clavier, et la raison en DESCRIPTION (`aria-describedby`, un
+   texte caché à l'œil) — `disabled` le sortait de la tabulation et taisait la raison. Le
+   nom reste celui du geste (« Importer une planche ») : l'infobulle seule change. Le clic
+   ne fait rien (`trigger`). La règle est dans `lib/bac-a-sable.js` ; le serveur refuse de
+   toute façon, en le disant. Relu à chaque album ouvert et après chaque import. */
 const TITRES_IMPORT = { "btn-import": "Importer une planche",
                         "btn-import-menu": "Importer une image dans l'album courant" };
 function majImportPlafond() {
   const album = state.albums.find((a) => a.id === state.albumId);
   const raison = window.BDBacEcran && album
     ? BDBacEcran.raisonImport(album.projet_id) : null;
+  let desc = document.getElementById("import-plafond-raison");
+  if (!desc) {
+    desc = document.createElement("span");
+    desc.id = "import-plafond-raison";
+    desc.className = "sr-only";
+    document.body.appendChild(desc);
+  }
+  desc.textContent = raison || "";
   for (const [id, titre] of Object.entries(TITRES_IMPORT)) {
     const b = document.getElementById(id);
     if (!b) continue;
-    b.disabled = !!raison;
+    // Le NOM ne suit pas l'infobulle : ⤓ n'a pas de lettre, et son nom venait du titre.
+    if (id === "btn-import") b.setAttribute("aria-label", titre);
     b.title = raison || titre;
+    if (raison) {
+      b.setAttribute("aria-disabled", "true");
+      b.setAttribute("aria-describedby", desc.id);
+    } else {
+      b.removeAttribute("aria-disabled");
+      b.removeAttribute("aria-describedby");
+    }
   }
 }
+
+function importEteint(b) { return !!b && b.getAttribute("aria-disabled") === "true"; }
 
 function setupImport() {
   // Deux déclencheurs (sidebar : accès rapide ; menu Import/Export : découvrable) →
   // même action : ouvrir le sélecteur de fichier sur l'album courant.
-  const trigger = () => {
+  const trigger = (ev) => {
+    if (ev && importEteint(ev.currentTarget)) return;
     if (!state.albumId) { toast(SANS_ALBUM, "error"); return; }
     $("#file-input").click();
   };
