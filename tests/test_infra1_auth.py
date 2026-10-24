@@ -81,6 +81,10 @@ def test_moi_sans_auth_local_renvoie_null(client, monkeypatch):
                            # de droit et non une identité — d'où il entre ici sans que
                            # l'égalité se relâche.
                            "exporter": "tout"},
+                 # COL-4 : `False`, et c'est un ÉTAT de droit, pas une identité — en
+                 # mono-poste il n'y a pas de « mien » : aucun login, donc aucun bac à
+                 # sable à ouvrir, et l'écran n'offre pas « Mon bac à sable ».
+                 "bac_a_sable_ouvrable": False,
                  "deconnexion_url": None}
 
 
