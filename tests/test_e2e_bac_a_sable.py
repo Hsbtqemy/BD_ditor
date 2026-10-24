@@ -1192,3 +1192,130 @@ def test_un_404_ordinaire_ne_fait_rien_hors_d_un_bac(page, jeu):
         page.wait_for_timeout(600)
         assert page.url == url, surface
         assert len([v for v in vues[n:] if v[1] == "/api/projets"]) == 1, (surface, vues[n:])
+
+
+# ── La Recherche et l'Exploration, dans un bac à sable (Hugo, 2026-10-24) ──────────────
+
+# Les deux surfaces qui ne voient pas le bac à sable, et l'élément au-dessus duquel la
+# phrase se pose : au-dessus de leurs RÉSULTATS.
+HORS_RECHERCHE = {"/recherche": ".results-head", "/exploration": ".dist-barre"}
+PHRASE_MIENNE = ("Votre bac à sable n'est ni cherché ni exploré : on y voit le corpus de "
+                 "vos autres projets.")
+PHRASE_INVITEE = ("Ce bac à sable n'est ni cherché ni exploré : on y voit le corpus de vos "
+                  "autres projets.")
+
+
+def _phrase(page, surface, texte):
+    """La phrase est VISIBLE (pas seulement présente : `to_have_text` lit aussi un élément
+    caché), porte le texte, et se pose juste au-dessus des résultats."""
+    loc = page.locator("#bac-hors-recherche")
+    expect(loc).to_be_visible()
+    expect(loc).to_have_text(texte)
+    assert page.evaluate("(s) => document.getElementById('bac-hors-recherche')"
+                         ".nextElementSibling === document.querySelector(s)",
+                         HORS_RECHERCHE[surface]), surface
+    return loc
+
+
+@pytestmark_proxy
+def test_la_recherche_et_l_exploration_disent_qu_elles_ne_voient_pas_le_bac(page, jeu):
+    """camille, qui n'a que son bac à sable : la phrase « Votre bac à sable… » au-dessus des
+    résultats, sans geste — elle tient lieu de liste vide. dominique, invitée : « Ce bac à
+    sable… ». Ni masquée, ni repliable : aucun bouton, aucun `<details>` en elle."""
+    bac = _ouvrir(jeu, CAMILLE)
+    _inviter(jeu, CAMILLE, bac["id"], "dominique")
+    for qui, texte in ((CAMILLE, PHRASE_MIENNE), (DOMINIQUE, PHRASE_INVITEE)):
+        _sous(page, qui)
+        for surface in HORS_RECHERCHE:
+            page.goto(jeu["base"] + surface, wait_until="networkidle")
+            loc = _phrase(page, surface, texte)
+            assert loc.locator("button, details, summary, a").count() == 0
+            # Une seule, et elle ne bouge pas quand la bande se redessine.
+            page.evaluate("() => document.dispatchEvent(new CustomEvent('bd:projets-maj'))")
+            page.wait_for_load_state("networkidle")
+            expect(page.locator("#bac-hors-recherche")).to_have_count(1)
+            _phrase(page, surface, texte)
+    # Sur les trois autres surfaces, elle n'existe pas.
+    _sous(page, CAMILLE)
+    for surface in ("/", "/corpus", "/administration"):
+        page.goto(jeu["base"] + surface, wait_until="networkidle")
+        _ligne(page)
+        expect(page.locator("#bac-hors-recherche")).to_have_count(0)
+
+
+@pytestmark_proxy
+def test_hors_d_un_bac_la_phrase_n_existe_pas(page, jeu):
+    """lea, sur son vrai projet : rien. Elle passe sur son bac à sable par le sélecteur, la
+    phrase paraît ; elle revient sur son projet, la phrase part — sans recharger."""
+    pid = _projet_de_lea(jeu)
+    bac = _ouvrir(jeu, LEA)
+    _sous(page, LEA)
+    page.goto(jeu["base"] + "/recherche", wait_until="networkidle")
+    page.locator("#projet-choix").select_option(str(pid))
+    for surface in HORS_RECHERCHE:
+        page.goto(jeu["base"] + surface, wait_until="networkidle")
+        expect(page.locator("#bac-ligne")).to_have_count(0)
+        expect(page.locator("#bac-hors-recherche")).to_have_count(0)
+        page.locator("#projet-choix").select_option(str(bac["id"]))
+        _phrase(page, surface, PHRASE_MIENNE)
+        page.locator("#projet-choix").select_option(str(pid))
+        expect(page.locator("#bac-hors-recherche")).to_have_count(0)
+
+
+@pytestmark_proxy
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_la_phrase_de_la_recherche_et_de_l_exploration(page, jeu, theme):
+    """axe, sur les deux surfaces où la phrase vit, en contraste normal ET élevé : elle se lit
+    en AA. Le contraste élevé est vérifié POSÉ avant l'audit, et la phrase visible."""
+    bac = _ouvrir(jeu, CAMILLE)
+    _inviter(jeu, CAMILLE, bac["id"], "dominique")
+    rapports = []
+    for contraste in ("normal", "high"):
+        for qui, texte in ((CAMILLE, PHRASE_MIENNE), (DOMINIQUE, PHRASE_INVITEE)):
+            _sous(page, qui)
+            for surface in HORS_RECHERCHE:
+                page.goto(jeu["base"] + surface, wait_until="networkidle")
+                page.evaluate(f"() => {{ localStorage.setItem('bd-theme', '{theme}'); "
+                              f"localStorage.setItem('bd-contrast', '{contraste}'); }}")
+                page.goto(jeu["base"] + surface, wait_until="networkidle")
+                etat = page.evaluate("() => ({c: document.documentElement.dataset.contrast"
+                                     " || 'normal', t: document.documentElement.dataset.theme})")
+                assert etat == {"c": contraste, "t": theme}, etat
+                _phrase(page, surface, texte)
+                v, f = _audit_axe(page)
+                if v:
+                    rapports.append(f"{surface} [{theme}/{contraste}] :\n{f}")
+    assert not rapports, "\n".join(rapports)
+
+
+@pytestmark_proxy
+def test_la_phrase_tient_a_320_px_sous_grande_police(page, jeu):
+    """À 320 px, sous des préférences de 16, 20 et 24 : la phrase passe à la ligne, ne perd
+    rien, et la page ne défile pas de côté — chez le propriétaire au login long et chez
+    l'invitée."""
+    if page.context.browser.browser_type.name != "chromium":
+        pytest.skip("la préférence de police se pose par CDP")
+    long = {"Remote-User": "hsemil01-abcdef"}
+    _api(jeu["base"], long, "GET", "/api/moi")
+    bac = _ouvrir(jeu, long)
+    _inviter(jeu, long, bac["id"], "dominique")
+    echecs = []
+    for qui, texte in ((long, PHRASE_MIENNE), (DOMINIQUE, PHRASE_INVITEE)):
+        _sous(page, qui)
+        for police in POLICES:
+            _preference_police(page, police)
+            page.set_viewport_size({"width": 320, "height": 800})
+            for surface in HORS_RECHERCHE:
+                page.goto(jeu["base"] + surface, wait_until="networkidle")
+                loc = _phrase(page, surface, texte)
+                cas = f"{qui['Remote-User']}, {surface}, police {police}"
+                perdus = _perdus(page)
+                if perdus:
+                    echecs.append(f"{cas} : {perdus[:3]}")
+                b = loc.bounding_box()
+                if b["x"] < 0 or b["x"] + b["width"] > 321:
+                    echecs.append(f"{cas} : la phrase sort de la fenêtre ({b})")
+                large = page.evaluate("() => document.documentElement.scrollWidth")
+                if large > 321:
+                    echecs.append(f"{cas} : défilement horizontal ({large} px)")
+    assert not echecs, "\n".join(echecs)

@@ -105,6 +105,21 @@ test("le bandeau de portée vide se masque dans un bac à sable, et seulement l�
   assert.equal(B.estBac(null), false);
 });
 
+/* ── La Recherche et l'Exploration, dans un bac à sable ──────────────────────────────── */
+
+test("la phrase de la Recherche et de l'Exploration : seulement dans un bac à sable", () => {
+  assert.equal(B.horsRecherche(MIEN),
+    "Votre bac à sable n'est ni cherché ni exploré : on y voit le corpus de vos autres "
+    + "projets.");
+  // Chez un invité, il n'est pas le sien.
+  assert.equal(B.horsRecherche(INVITE),
+    "Ce bac à sable n'est ni cherché ni exploré : on y voit le corpus de vos autres "
+    + "projets.");
+  assert.equal(B.horsRecherche(ORDINAIRE), null, "hors d'un bac à sable, elle n'existe pas");
+  assert.equal(B.horsRecherche(null), null, "aucun projet courant");
+  assert.equal(B.horsRecherche({ id: 3, bac_a_sable: null }), null);
+});
+
 /* ── La ligne ────────────────────────────────────────────────────────────────────────── */
 
 test("la ligne du propriétaire : nom, date, plafond, Inviter et Remettre à neuf", () => {

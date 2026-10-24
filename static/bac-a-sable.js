@@ -13,6 +13,9 @@
        est un : son nom (l'aide en infobulle), sa date, le compte des planches importées, et
        ses gestes — « Inviter… (n) » et « Remettre à neuf… », ou « Quitter… » ;
      · le bandeau « Aucune collection ne vous est ouverte » masqué dans un bac à sable ;
+     · sur la Recherche et l'Exploration, dans un bac à sable, la phrase qui dit qu'elles ne
+       le voient pas, au-dessus de leurs résultats (l'élément `[data-bac-hors-recherche]`
+       de leur gabarit) ;
      · l'effacement du lundi, dit par un message à la requête suivante.
 
    Chargé APRÈS `common.js`, `projet.js`, `dialog.js`, `membres-projet.js` et
@@ -201,10 +204,30 @@
     bar.appendChild(box);
   }
 
+  /* ── La Recherche et l'Exploration : la phrase, dans un bac à sable ─────────────────
+     Juste avant l'élément que le gabarit désigne (`data-bac-hors-recherche`), au-dessus des
+     résultats ; ni masquable ni repliable. Hors d'un bac à sable elle n'existe pas, et elle
+     part dès qu'on en sort. Le même texte n'est pas redessiné : la ligne reste en place. */
+  function dessinerHorsRecherche() {
+    const ancre = document.querySelector("[data-bac-hors-recherche]");
+    const ancienne = document.getElementById("bac-hors-recherche");
+    const texte = ancre ? L.horsRecherche(E.courant) : null;
+    if (!texte) {
+      if (ancienne) ancienne.remove();
+      return;
+    }
+    if (ancienne && ancienne.textContent === texte) return;
+    const p = ancienne || el("p", "bac-hors-recherche");
+    p.id = "bac-hors-recherche";
+    p.textContent = texte;
+    if (!ancienne) ancre.parentNode.insertBefore(p, ancre);
+  }
+
   function dessiner() {
     dessinerBouton();
     ajusterBandeau();
     dessinerLigne();
+    dessinerHorsRecherche();
     document.dispatchEvent(new CustomEvent("bd:bac-a-sable-maj"));
   }
 

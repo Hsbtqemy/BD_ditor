@@ -12,7 +12,8 @@
      · ce qui part et ce qui revient à la remise à neuf (`remiseANeuf`) ;
      · quand le geste d'import s'éteint (`raisonImportEteint`) ;
      · ce qu'on dit d'un bac à sable qui a disparu depuis la dernière page (`disparus`,
-       `messageDisparu`) — l'effacement du lundi se dit à la requête suivante.
+       `messageDisparu`) — l'effacement du lundi se dit à la requête suivante ;
+     · la phrase de la Recherche et de l'Exploration dans un bac à sable (`horsRecherche`).
 
    Le serveur reste seul à trancher : il refuse ce que l'écran aurait offert à tort, et ce
    module n'invente aucun droit — il lit `bac_a_sable` dans `GET /api/projets`, la vue de
@@ -131,6 +132,19 @@
      il contredisait ce qu'on voit ; la ligne du bac à sable en tient lieu. Il revient dès
      que le projet courant n'en est plus un. */
   function estBac(projet) { return !!(projet && projet.bac_a_sable); }
+
+  /* ── La Recherche et l'Exploration, dans un bac à sable ────────────────────────────
+     Elles ne le voient pas (S2 : leurs chiffres restent ceux du vrai corpus). Quand le
+     projet courant en est un, une ligne au-dessus de leurs résultats le dit (Hugo,
+     2026-10-24) — stable, visible sans geste, et qui tient lieu de liste vide à l'arrivant
+     qui n'a que lui. Chez un invité, le bac à sable n'est pas le sien : « Ce bac à
+     sable ». `null` hors d'un bac à sable : la ligne n'existe pas. */
+  function horsRecherche(projet) {
+    const b = projet && projet.bac_a_sable;
+    if (!b) return null;
+    return `${b.mien ? "Votre" : "Ce"} bac à sable n'est ni cherché ni exploré : on y voit `
+      + "le corpus de vos autres projets.";
+  }
 
   /* ── La ligne du bac à sable ───────────────────────────────────────────────────────
      Une rangée sous la bande, sur toutes les surfaces, quand le projet courant est un bac
@@ -354,7 +368,8 @@
   function dateLongue(s) { return jourEtHeure(s); }
 
   return { CLE_SOUVENIRS, AIDE_MIEN, aide, instant, jourEtHeure, jourCourt, jjmm, jour,
-           heure, mien, offrir, offrirPageVide, estBac, ligne, libelleInviter, plafond,
+           heure, mien, offrir, offrirPageVide, estBac, horsRecherche, ligne,
+           libelleInviter, plafond,
            raisonImportEteint, remiseANeuf, enumeration, adresseApresOuverture,
            souvenirsDe, disparus, disparusDe, messageDisparu, lireSouvenirs,
            retenirSouvenirs, proprietaire, axeBacsVisible, adresseApresRemise,

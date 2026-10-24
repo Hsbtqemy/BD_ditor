@@ -602,6 +602,13 @@ kbd {
 .bac-gestes { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: .4615rem;
               max-width: 100%; }
 
+/* La phrase de la Recherche et de l'Exploration, dans un bac à sable : une ligne d'encre
+   discrète au-dessus des résultats, sans fond ni cadre — pas un bandeau. `--text-muted`
+   passe l'AA sur `--bg` dans les quatre thèmes ; elle passe à la ligne plutôt que de sortir
+   à 320 px. */
+.bac-hors-recherche { margin: 0 0 .6154rem; color: var(--text-muted); font-size: .9231rem;
+                      overflow-wrap: anywhere; min-width: 0; }
+
 /* Le dialogue de la ligne — remettre à neuf, quitter, inviter : le voile de la modale d'un
    album, la boîte partagée (`.modal-box`). */
 .bac-modal {

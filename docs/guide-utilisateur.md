@@ -427,7 +427,9 @@ Dans la liste *Projet*, ce bac à sable se nomme *Bac ·* suivi de ce login.
 Dans un bac à sable, le bandeau *Aucune collection ne vous est ouverte* ne s'affiche pas —
 la ligne en tient lieu — et revient dès que vous passez sur un autre projet. La
 Bibliothèque y compte ses albums et ses planches à lui ; *+ Prendre du fonds…* n'y est pas
-offert.
+offert. La Recherche et l'Exploration, qui ne le voient pas, le disent au-dessus de leurs
+résultats : « Votre bac à sable n'est ni cherché ni exploré : on y voit le corpus de vos
+autres projets. » (« Ce bac à sable… » chez un invité).
 
 **Les planches qu'on importe soi-même** comptent, jusqu'à **cinquante** par bac à sable ;
 celles du jeu ne comptent pas. Au plafond, le compte passe en rouge et le geste d'import
