@@ -39,7 +39,7 @@ from config import STATUTS_DIFFUSION
 from database import (DEMANDE_REJOINDRE, NATURES, clore_rejoindre_d_une_copie_au_fonds,
                       collection_row, collections,
                       etat_embargo, nom_reserve, poser_projet_de_copie, projet_de_collection,
-                      projet_de_jeu, projet_par_defaut, ranger_copie,
+                      collection_de_base, projet_de_jeu, projet_par_defaut, ranger_copie,
                       un_proprietaire_tient_toute_la_copie)
 
 from socle import (
@@ -48,6 +48,7 @@ from socle import (
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS,
     _bac_a_sable_de,
     _get_album, _get_collection, _get_projet, _plan_rejoindre, _refuser_le_bac_a_sable,
+    _rive_d_un_terme,
     _refuser_le_jeu, _rows, db, portee_courante,
 )
 
@@ -395,6 +396,15 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
     # COL-3, tranche 3 — les demandes qui la nomment comme ARRIVÉE sont refusées : son
     # identifiant se réattribue, et une demande acceptée plus tard rangerait ailleurs.
     _clore_demandes_vers(conn, portee, collection_id)
+    # COL-4 — dans un bac à sable, ses termes ne deviennent pas GLOBAUX (`ON DELETE SET
+    # NULL`) : ils passeraient la frontière, et survivraient à l'effacement chez tout le
+    # monde. Ils rejoignent la base du bac à sable, où ils restent locaux.
+    projet = projet_de_collection(conn, collection_id)
+    if _rive_d_un_terme(conn, collection_id):
+        base = collection_de_base(conn, projet)
+        for table in ("tags", "domaine", "attribut_dimension", "attribut_valeur"):
+            conn.execute(f"UPDATE {table} SET collection_id = ? WHERE collection_id = ?",
+                         (base, collection_id))
     conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
     journal.journaliser(conn, "suppression", "collection", collection_id,
                         avant={"nom": c["nom"]})

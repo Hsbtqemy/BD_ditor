@@ -579,6 +579,37 @@ _SQL_IMAGES_DU_JEU = ("SELECT _ij.chemin_tiff FROM planches _ij JOIN jeu_documen
 _SQL_IMAGES_EXPORTABLES = _SQL_IMAGES_DU_JEU + " WHERE _jj.exportable = 1"
 
 
+# La FRONTIÈRE d'un projet isolé, pour le vocabulaire (relecture croisée : un tag global
+# rangé dans la base d'un bac à sable partait avec lui, et la région du vrai corpus qui le
+# portait le perdait). Un terme a une RIVE : 0 s'il est global ou local à une collection
+# ordinaire, l'identifiant du projet isolé s'il est local à l'une de ses collections. Un
+# geste qui ferait passer un terme d'une rive à l'autre — le ranger, le fusionner, le
+# rattacher, le poser — est refusé, pour toute portée : c'est une propriété des données.
+_MOTIF_TERME_FRONTIERE = ("Un terme ne passe pas la frontière d'un bac à sable : ce qui y naît "
+                          "y reste, et rien du vrai corpus n'y entre.")
+
+
+def _rive_d_un_terme(conn, collection_id) -> int:
+    """0 pour un terme global ou d'une collection ordinaire ; l'id du projet ISOLÉ (bac à
+    sable, jeu) pour un terme local à l'une de ses collections."""
+    if collection_id is None:
+        return 0
+    projet = projet_de_collection(conn, collection_id)
+    return projet if est_isole(conn, projet) else 0
+
+
+def _rive_d_un_album(conn, album_id) -> int:
+    """La rive d'un album : l'id de son projet s'il est isolé, 0 sinon."""
+    projet = projet_d_album(conn, album_id)
+    return projet if est_isole(conn, projet) else 0
+
+
+def _exiger_une_rive(conn, *rives) -> None:
+    """409 nommé si ces rives ne sont pas toutes la même."""
+    if len(set(rives)) > 1:
+        raise HTTPException(409, _MOTIF_TERME_FRONTIERE)
+
+
 def _bac_a_sable_de(conn, *, projet_id=None, collection_id=None, album_id=None):
     """`(projet_id, propriétaire)` si le projet — dit, ou lu sur la collection ou l'album —
     est un bac à sable ; `(None, None)` sinon."""
@@ -1082,9 +1113,50 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
 # --------------------------------------------------------------------------- #
 _MOTIF_PAS_UN_BAC = ("Ce projet n'est pas un bac à sable : seul un bac à sable s'efface ainsi. "
                      "Un projet ordinaire ne se supprime que vide.")
-# Le vocabulaire qu'un bac à sable peut porter en propre, dans l'ordre où il se supprime :
-# les valeurs avant leurs dimensions, les dimensions avant leurs domaines.
-_VOCABULAIRE_LOCAL = ("attribut_valeur", "attribut_dimension", "domaine", "tags")
+
+
+def _supprimer_le_vocabulaire_du_bac(conn, projet_id: int, collections: list) -> None:
+    """Supprime le vocabulaire LOCAL aux collections de ce bac à sable — SAUF ce qui est
+    employé hors de lui (relecture croisée : un terme du vrai corpus rangé là partait avec
+    le bac à sable, et les régions du corpus qui le portaient le perdaient). Les gestes qui
+    feraient passer un terme la frontière sont refusés (`_exiger_une_rive`) ; ceci est la
+    défense de l'état qu'aurait laissé une base retouchée. Ce qui reste devient GLOBAL quand
+    sa collection part (`ON DELETE SET NULL`) : employé dans le corpus, le détruire
+    détruirait du travail du corpus.
+
+    Employé dehors : un tag posé sur une région d'un album d'un autre projet ; une valeur
+    posée sur une telle région, ou sur un personnage ;
+    une dimension qui porte une telle valeur (elle reste avec TOUTES ses valeurs) ; un
+    domaine qui porte une dimension qui n'est pas du bac à sable.
+    Les valeurs avant leurs dimensions, les dimensions avant leurs domaines."""
+    marques = ", ".join("?" * len(collections))
+    dehors = (f"EXISTS (SELECT 1 FROM regions _r JOIN planches _p ON _p.id = _r.planche_id "
+              f"JOIN albums _a ON _a.id = _p.album_id WHERE _r.id = {{region}} "
+              f"AND {sql_projet_d_album('_a')} IS NOT ?)")
+    valeurs_dehors = (
+        f"SELECT v.id FROM attribut_valeur v WHERE "
+        f"(EXISTS (SELECT 1 FROM region_attribut ra WHERE ra.valeur_id = v.id AND "
+        f"{dehors.format(region='ra.region_id')}) "
+        f"OR EXISTS (SELECT 1 FROM personnage_attribut pa WHERE pa.valeur_id = v.id))")
+    dims_gardees = (f"SELECT d.id FROM attribut_dimension d WHERE d.collection_id IN "
+                    f"({marques}) AND d.id IN (SELECT dimension_id FROM attribut_valeur "
+                    f"WHERE id IN ({valeurs_dehors}))")
+    p_dims = [*collections, projet_id]
+    conn.execute(f"DELETE FROM attribut_valeur WHERE collection_id IN ({marques}) "
+                 f"AND id NOT IN ({valeurs_dehors}) AND dimension_id NOT IN ({dims_gardees})",
+                 [*collections, projet_id, *p_dims])
+    conn.execute(f"DELETE FROM attribut_dimension WHERE collection_id IN ({marques}) "
+                 f"AND id NOT IN ({dims_gardees})", [*collections, *p_dims])
+    conn.execute(f"DELETE FROM domaine WHERE collection_id IN ({marques}) AND NOT EXISTS "
+                 f"(SELECT 1 FROM attribut_dimension d WHERE d.domaine_id = domaine.id "
+                 f"AND (d.collection_id IS NULL OR d.collection_id NOT IN ({marques})))",
+                 [*collections, *collections])
+    # (Les dimensions gardées sont encore locales au bac à sable à cet instant : un domaine
+    # qui n'a qu'elles part, et elles deviennent « hors domaine » — leur portée suit, globale.)
+    conn.execute(f"DELETE FROM tags WHERE collection_id IN ({marques}) AND NOT EXISTS "
+                 f"(SELECT 1 FROM annotation_tags at JOIN annotations an "
+                 f"ON an.id = at.annotation_id WHERE at.tag_id = tags.id "
+                 f"AND {dehors.format(region='an.region_id')})", [*collections, projet_id])
 
 
 def _passer_les_gestes_du_bac(conn, projet_id: int) -> int:
@@ -1173,9 +1245,7 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
         (projet_id,))]
     ids = [c for c, _nom in collections]
     if ids:
-        marques = ", ".join("?" * len(ids))
-        for table in _VOCABULAIRE_LOCAL:
-            conn.execute(f"DELETE FROM {table} WHERE collection_id IN ({marques})", ids)
+        _supprimer_le_vocabulaire_du_bac(conn, projet_id, ids)
     for collection_id, nom in collections:
         _clore_demandes_vers(conn, portee, collection_id)
         conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
@@ -1626,6 +1696,13 @@ def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definit
     # d'origine : sans cela, on rangerait son vocabulaire dans l'étude d'un autre.
     if "collection_id" in updates:
         cible = updates["collection_id"]
+        # COL-4 — ni dans un bac à sable, ni hors de lui : la rive d'arrivée est celle de
+        # départ. Après les gardes d'écriture sur le terme (la route) ; avant celles de la
+        # cible, qui ne parlent qu'à qui pourrait ranger.
+        actuel = conn.execute(f"SELECT collection_id FROM {table} WHERE id = ?",
+                              (oid,)).fetchone()
+        _exiger_une_rive(conn, _rive_d_un_terme(conn, actuel[0] if actuel else None),
+                         _rive_d_un_terme(conn, cible))
         if cible is None:
             if not portee.peut_ecrire_quelque_part():
                 raise HTTPException(403, "Promouvoir un terme en global demande un droit "

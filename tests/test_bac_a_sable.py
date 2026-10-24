@@ -559,6 +559,160 @@ def test_invite_ailleurs_l_administrateur_est_un_invite(client, decor):
 
 
 # --------------------------------------------------------------------------- #
+# Le vocabulaire et la frontière d'un bac à sable (relecture croisée)
+# --------------------------------------------------------------------------- #
+def _region_reelle(client, decor, type_="bulle"):
+    pl = client.post(f"/api/albums/{decor['reel']}/import", headers=RESP,
+                     files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+    return client.post(f"/api/planches/{pl}/regions", headers=RESP,
+                       json={"type": type_, "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
+
+
+def _region_du_bac(client, decor, qui=LEA):
+    planche = _copie(decor, "exemple")["planche_ids"][0]
+    return client.get(f"/api/planches/{planche}/regions", headers=qui).json()[0]["id"]
+
+
+def test_un_terme_ne_passe_pas_la_frontiere(client, decor):
+    """resp écrit dans « Corpus » ET a son bac à sable : elle ne range pas un tag du corpus
+    dans la base de son bac (qui partait avec lui, et la région du corpus le perdait), ni
+    une dimension locale à « Corpus » ; et un tag né dans un bac à sable n'en sort pas —
+    ni vers le global, ni vers le corpus. Entre deux collections du même bac à sable, si."""
+    reg = _region_reelle(client, decor)
+    client.put(f"/api/regions/{reg}/annotation", headers=RESP,
+               json={"note": "n", "tags": ["colere"]})
+    tag = _sql(decor["db"], "SELECT id FROM tags WHERE label = 'colere'")[0]["id"]
+    bac = client.post("/api/bac-a-sable", headers=RESP).json()
+    r = client.patch(f"/api/tags/{tag}/lexique", headers=RESP,
+                     json={"collection_id": bac["base"]["id"]})
+    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
+    d = client.post("/api/attributs/dimensions", headers=RESP,
+                    json={"cible": "case", "nom": "cadrage"}).json()
+    assert client.patch(f"/api/attributs/dimensions/{d['id']}/lexique", headers=RESP,
+                        json={"collection_id": decor["col"]}).status_code == 200
+    r = client.patch(f"/api/attributs/dimensions/{d['id']}/lexique", headers=RESP,
+                     json={"collection_id": bac["base"]["id"]})
+    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
+    # Un tag né dans le bac de resp n'en sort pas.
+    planche = next(j for j in bac["jeu"] if j["role"] == "exemple")["planche_ids"][0]
+    breg = client.get(f"/api/planches/{planche}/regions", headers=RESP).json()[0]["id"]
+    client.put(f"/api/regions/{breg}/annotation", headers=RESP,
+               json={"note": "", "tags": ["du-bac"]})
+    du_bac = _sql(decor["db"], "SELECT id FROM tags WHERE label = 'du-bac'")[0]["id"]
+    for cible in (None, decor["col"]):
+        r = client.patch(f"/api/tags/{du_bac}/lexique", headers=RESP,
+                         json={"collection_id": cible})
+        assert r.status_code == 409 and "frontière" in r.json()["detail"], (cible, r.text)
+    autre = client.post("/api/collections", headers=RESP,
+                        json={"nom": "Ailleurs", "projet_id": bac["id"]}).json()["id"]
+    assert client.patch(f"/api/tags/{du_bac}/lexique", headers=RESP,
+                        json={"collection_id": autre}).status_code == 200
+    # Ni par une fusion, dans un sens ou dans l'autre.
+    r = client.post(f"/api/tags/{du_bac}/fusion", headers=RESP, json={"cible_id": tag})
+    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
+    # Rien n'a bougé : la remise à neuf n'emporte que ce qui est né dans le bac à sable.
+    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=RESP).status_code == 200
+    tags = client.get(f"/api/regions/{reg}/annotation", headers=RESP).json()["tags"]
+    assert [t["label"] for t in tags] == ["colere"]
+    assert _sql(decor["db"], "SELECT id FROM tags WHERE label = 'du-bac'") == []
+
+
+def test_l_effacement_garde_le_vocabulaire_employe_hors_du_bac(client, decor):
+    """L'état qu'aurait laissé une base retouchée : un tag et une dimension du corpus,
+    rangés dans la base du bac à sable de lea et employés dans le corpus. L'effacement ne
+    les emporte pas (ils deviennent globaux, leur collection partie) ; ce qui n'est employé
+    que dans le bac à sable part."""
+    reg, case = _region_reelle(client, decor), _region_reelle(client, decor, "case")
+    client.put(f"/api/regions/{reg}/annotation", headers=RESP,
+               json={"note": "", "tags": ["dehors"]})
+    d = client.post("/api/attributs/dimensions", headers=RESP,
+                    json={"cible": "case", "nom": "cadrage"}).json()["id"]
+    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=RESP,
+                    json={"valeur": "gros plan"}).json()["id"]
+    assert client.put(f"/api/regions/{case}/attributs", headers=RESP,
+                      json={"valeur_id": v}).status_code in (200, 201)
+    base = decor["base"]
+    for q in ("UPDATE tags SET collection_id = ? WHERE label = 'dehors'",
+              "UPDATE attribut_dimension SET collection_id = ? WHERE nom = 'cadrage'",
+              "UPDATE attribut_valeur SET collection_id = ? WHERE valeur = 'gros plan'"):
+        _sql(decor["db"], q, (base,))
+    _sql(decor["db"], "INSERT INTO tags (label, collection_id) VALUES ('seul-ici', ?)",
+         (base,))
+    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=LEA).status_code == 200
+    assert _sql(decor["db"], "SELECT collection_id FROM tags WHERE label = 'dehors'") == [
+        {"collection_id": None}]
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM region_attribut WHERE region_id = ?",
+                (case,)) == [{"n": 1}]
+    assert _sql(decor["db"], "SELECT id FROM tags WHERE label = 'seul-ici'") == []
+
+
+def test_chacun_voit_le_vocabulaire_de_ses_bacs_a_sable(client, decor):
+    """Le 📖 Lexique (Hugo, 2026-10-24) : lea et son invité y lisent le tag né dans le bac
+    à sable — l'administrateur et resp, non. Il se remanie comme ailleurs : par la
+    propriétaire de sa collection. Ses chiffres restent ceux du vrai corpus (0 emploi)."""
+    client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
+               json={"note": "", "tags": ["du-bac"]})
+    for qui, voit, remanie in ((LEA, True, True), (SAM, True, False), (HUGO, False, None),
+                               (RESP, False, None)):
+        tags = {t["label"]: t for t in client.get("/api/lexique", headers=qui).json()["tags"]}
+        assert ("du-bac" in tags) is voit, qui
+        if voit:
+            assert tags["du-bac"]["remaniable"] is remanie and tags["du-bac"]["frequence"] == 0
+    tag = _sql(decor["db"], "SELECT id FROM tags WHERE label = 'du-bac'")[0]["id"]
+    assert client.put(f"/api/tags/{tag}", headers=LEA,
+                      json={"label": "renomme"}).status_code == 200
+    assert client.put(f"/api/tags/{tag}", headers=SAM,
+                      json={"label": "autre"}).status_code == 403
+
+
+def test_une_collection_supprimee_dans_un_bac_y_garde_ses_termes(client, decor):
+    """Ses termes ne deviennent pas globaux (`ON DELETE SET NULL`) : ils rejoignent la base."""
+    pid = decor["bac"]["id"]
+    chez_lea = client.post("/api/collections", headers=LEA,
+                           json={"nom": "Chez Léa", "projet_id": pid}).json()["id"]
+    _sql(decor["db"], "INSERT INTO tags (label, collection_id) VALUES ('a-moi', ?)",
+         (chez_lea,))
+    assert client.delete(f"/api/collections/{chez_lea}", headers=LEA).status_code == 204
+    assert _sql(decor["db"], "SELECT collection_id FROM tags WHERE label = 'a-moi'") == [
+        {"collection_id": decor["base"]}]
+
+
+def test_on_n_importe_pas_de_vocabulaire_dans_un_bac_a_sable(client, decor):
+    csv = "domaine;dimension;cible;valeur\nemotions;humeur;case;joie\n".encode("utf-8")
+    r = client.post("/api/lexique/importer", headers=LEA,
+                    data={"collection_id": str(decor["base"])},
+                    files={"file": ("v.csv", csv, "text/csv")})
+    assert r.status_code == 409 and "bac à sable" in r.json()["detail"], r.text
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM domaine") == [{"n": 0}]
+
+
+def test_une_valeur_d_un_bac_ne_se_pose_pas_dans_le_corpus(client, decor):
+    """Posée en base (une valeur locale au bac à sable, sous une dimension du corpus) : elle
+    ne se pose pas sur une case du corpus, ni sous un domaine de l'autre rive."""
+    case = _region_reelle(client, decor, "case")
+    d = client.post("/api/attributs/dimensions", headers=RESP,
+                    json={"cible": "case", "nom": "cadrage"}).json()["id"]
+    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=RESP,
+                    json={"valeur": "gros plan"}).json()["id"]
+    _sql(decor["db"], "UPDATE attribut_valeur SET collection_id = ? WHERE id = ?",
+         (decor["base"], v))
+    client.put(f"/api/projets/{decor['bac']['id']}/membres", headers=LEA,
+               json={"genre": "utilisateur", "principal": "resp", "role": "membre"})
+    r = client.put(f"/api/regions/{case}/attributs", headers=RESP, json={"valeur_id": v})
+    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
+    # Ni fondue dans une valeur du corpus, de la même dimension.
+    w = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=RESP,
+                    json={"valeur": "plan large"}).json()["id"]
+    r = client.post(f"/api/attributs/valeurs/{v}/fusion", headers=RESP, json={"cible_id": w})
+    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
+    dom = client.post("/api/domaines", headers=RESP, json={"nom": "regard"}).json()["id"]
+    _sql(decor["db"], "UPDATE domaine SET collection_id = ? WHERE id = ?", (decor["base"], dom))
+    r = client.patch(f"/api/attributs/dimensions/{d}/domaine", headers=RESP,
+                     json={"domaine_id": dom})
+    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
+
+
+# --------------------------------------------------------------------------- #
 # S11 — l'invitation
 # --------------------------------------------------------------------------- #
 def test_l_invitation_est_bornee(client, decor):

@@ -33,7 +33,8 @@ import lexique_import
 from database import annotation_vide, cle_tag, lexique_resume, reindex_tags_regions
 
 from socle import (
-    LexiqueIn, _clause_personnage, _get_dimension, _get_valeur, _patch_lexique, _row, _rows,
+    LexiqueIn, _clause_personnage, _exiger_une_rive, _get_dimension, _get_valeur,
+    _patch_lexique, _rive_d_un_terme, _row, _rows,
     db, portee_courante,
 )
 
@@ -50,16 +51,21 @@ def get_lexique(conn: sqlite3.Connection = Depends(db),
     filtres, et l'oubli d'un seul rendrait vain le cloisonnement des routes unitaires
     ci-dessus, puisque le panneau Lexique passe par ici et non par elles.
 
-    COL-4 (S8) — le panneau vit dans l'Exploration : ni bac à sable ni jeu, ni dans ses
-    termes ni dans ses compteurs (`Portee.pour_le_corpus`)."""
-    portee = portee.pour_le_corpus()
+    COL-4 — chacun y voit les termes de SES bacs à sable, et pas ceux des autres (Hugo,
+    2026-10-24) : les TERMES se filtrent par la portée de l'appelant, qui lit ses bacs à
+    sable — et une portée totale, bornée, ne lit pas ceux des autres. Les CHIFFRES, eux,
+    restent ceux du vrai corpus (S8, `Portee.pour_le_corpus`) : fréquences, usages et
+    « % défini » ne comptent ni bac à sable ni jeu — le panneau vit dans l'Exploration.
+    Un tag d'un bac à sable s'y lit donc avec 0 emploi ; ce que toucherait son remaniement,
+    les routes `a_blanc` le disent."""
+    corpus = portee.pour_le_corpus()
     ou_dom, p_dom = portee.clause_terme("domaine.collection_id")
     ou_dimx, p_dimx = portee.clause_terme("x.collection_id")
     ou_dim, p_dim = portee.clause_terme("d.collection_id")
     ou_val, p_val = portee.clause_terme("v.collection_id")
     ou_tag, p_tag = portee.clause_terme("t.collection_id")
-    ou_album, p_album = portee.clause_album("pl.album_id")
-    ou_perso, p_perso = _clause_personnage(portee)
+    ou_album, p_album = corpus.clause_album("pl.album_id")
+    ou_perso, p_perso = _clause_personnage(corpus)
     domaines = _rows(conn.execute(
         f"SELECT id, nom, definition, note_portee, etat, collection_id, "
         f"       (SELECT COUNT(*) FROM attribut_dimension x "
@@ -105,7 +111,7 @@ def get_lexique(conn: sqlite3.Connection = Depends(db),
     # terme, mais les COMPTAIT tous : « 3 définis sur 41 » à qui n'en voit que trois dit le
     # volume de vocabulaire des autres, et rend le pourcentage faux pour qui le lit.
     return {"domaines": domaines, "dimensions": dims, "tags": tags,
-            "resume": lexique_resume(conn, clause=portee.clause_terme("collection_id"))}
+            "resume": lexique_resume(conn, clause=corpus.clause_terme("collection_id"))}
 
 
 @router.post("/api/lexique/importer")
@@ -129,6 +135,13 @@ def importer_lexique(file: UploadFile = File(...),
     if collection_id is not None and conn.execute(
             "SELECT 1 FROM collection WHERE id = ?", (collection_id,)).fetchone() is None:
         raise HTTPException(404, f"Collection {collection_id} introuvable")
+    # COL-4 — on n'amorce pas de vocabulaire dans un bac à sable : domaines et dimensions
+    # y prendraient des noms UNIQUES dans toute l'instance (le vrai corpus ne pourrait plus
+    # les prendre, et apprendrait qu'ils sont pris). Seuls les tags y ont un espace de
+    # libellés à eux. Option fermée, notée à trancher.
+    if collection_id is not None and _rive_d_un_terme(conn, collection_id):
+        raise HTTPException(409, "On n'importe pas de vocabulaire dans un bac à sable : ses "
+                                 "noms seraient pris pour toute l'instance.")
     data = file.file.read()
     if not data:
         raise HTTPException(400, "Fichier vide")
@@ -400,6 +413,10 @@ def fusionner_tag(tag_id: int, payload: TagFusionIn,
         local="Fusionner ce tag revient au propriétaire de sa collection ou à un "
               "administrateur.",
         global_="Fusionner un tag global revient à un administrateur.")
+    # COL-4 — ni d'un bac à sable vers le corpus, ni l'inverse : ses régions passeraient la
+    # frontière (`_exiger_une_rive`).
+    _exiger_une_rive(conn, _rive_d_un_terme(conn, tag["collection_id"]),
+                     _rive_d_un_terme(conn, cible["collection_id"]))
     if cible["collection_id"] is not None and cible["collection_id"] != tag["collection_id"]:
         raise HTTPException(409, f"Fusionner « {tag['label']} » dans « {cible['label']} » "
                                  "le cacherait à qui ne lit pas la collection de "

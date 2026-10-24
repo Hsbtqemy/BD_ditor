@@ -36,8 +36,9 @@ from config import CIBLES_ATTRIBUT, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUAT
 from socle import (
     AlignementIn, AttributIn, DimensionDomaineIn, DimensionIn, DomaineIn, FusionIn,
     LexiqueIn, LocuteurIn, PersonnageIn, PersonnageUpdate, PresenceIn, ValeurIn,
-    _attributs_de, _clause_personnage, _get_dimension, _get_personnage, _get_region,
-    _get_valeur, _norm_tag, _patch_lexique, _row, _rows, _sans_accents, db, portee_courante,
+    _attributs_de, _clause_personnage, _exiger_une_rive, _get_dimension, _get_personnage,
+    _get_region, _get_valeur, _norm_tag, _patch_lexique, _rive_d_un_album, _rive_d_un_terme,
+    _row, _rows, _sans_accents, db, portee_courante,
 )
 
 router = APIRouter()
@@ -668,6 +669,9 @@ def patch_dimension_domaine(dim_id: int, payload: DimensionDomaineIn,
     dim = _get_dimension(conn, portee, dim_id, ecriture=True)
     if payload.domaine_id is not None:
         dom = _get_domaine(conn, portee, payload.domaine_id, ecriture=True)
+        # COL-4 — ni sous un domaine d'un bac à sable depuis le corpus, ni l'inverse.
+        _exiger_une_rive(conn, _rive_d_un_terme(conn, dim["collection_id"]),
+                         _rive_d_un_terme(conn, dom["collection_id"]))
         if dom["collection_id"] is not None and dim["collection_id"] != dom["collection_id"]:
             raise HTTPException(409, f"Le domaine « {dom['nom']} » est propre à une "
                                      f"collection, et cette dimension n'y est pas rangée. "
@@ -830,6 +834,10 @@ def fusionner_valeur(val_id: int, payload: FusionIn, conn: sqlite3.Connection = 
     cible = _get_valeur(conn, portee, payload.cible_id, ecriture=True)
     if v["dimension_id"] != cible["dimension_id"]:
         raise HTTPException(422, "On ne fusionne que deux valeurs d'une même dimension.")
+    # COL-4 — une valeur d'un bac à sable ne se fond pas dans une valeur du corpus, ni
+    # l'inverse : ses emplois passeraient la frontière.
+    _exiger_une_rive(conn, _rive_d_un_terme(conn, v["collection_id"]),
+                     _rive_d_un_terme(conn, cible["collection_id"]))
     for table, col in (("personnage_attribut", "personnage_id"), ("region_attribut", "region_id")):
         conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) "
                      f"SELECT {col}, ? FROM {table} WHERE valeur_id = ?", (payload.cible_id, val_id))
@@ -854,6 +862,15 @@ def _affecter(conn, portee, table, col, oid, valeur_id, cible_attendue):
     v = _get_valeur(conn, portee, valeur_id)
     if _get_dimension(conn, portee, v["dimension_id"])["cible"] != cible_attendue:
         raise HTTPException(422, f"Cette valeur n'appartient pas à une dimension de {cible_attendue}.")
+    # COL-4 — une valeur d'un bac à sable ne se pose que dans ce bac à sable. Une valeur du
+    # corpus posée dans un bac à sable n'y emporte rien hors de lui : permis.
+    rive = _rive_d_un_terme(conn, v["collection_id"])
+    if rive and table == "region_attribut":
+        album = conn.execute("SELECT pl.album_id FROM regions r JOIN planches pl "
+                             "ON pl.id = r.planche_id WHERE r.id = ?", (oid,)).fetchone()
+        _exiger_une_rive(conn, rive, _rive_d_un_album(conn, album[0]) if album else 0)
+    elif rive:
+        _exiger_une_rive(conn, rive, 0)          # un personnage du registre
     pose = conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) VALUES (?, ?)",
                         (oid, valeur_id)).rowcount
     if pose and table == "region_attribut":
