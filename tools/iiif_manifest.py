@@ -48,8 +48,11 @@ from collections import namedtuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import DB_PATH, WEB_SCALE  # noqa: E402
+from PIL import Image  # noqa: E402
+
+from config import DB_PATH, PILLOW_FORMATS  # noqa: E402
 import database  # noqa: E402  (etat_embargo : le même dérivé que l'écran Collections)
+from pipeline import ingest  # noqa: E402  (la règle du dérivé, et sa racine de données)
 import metadonnees_collection as mc  # noqa: E402  (réutilise l'arbre déjà construit)
 
 CTX = "http://iiif.io/api/presentation/3/context.json"
@@ -107,6 +110,27 @@ def _region_anno(reg, cid, base, aid, verbatim):
     }
 
 
+def _taille_de_l_image(p, W, H):
+    """La taille (largeur, hauteur) du dérivé web peint sur le Canvas : celle du FICHIER,
+    lue dans son en-tête. Un dérivé fait 25 % du scan, mais jamais moins de 1 600 px ni plus
+    que l'image reçue (IMG-1, 2026-10-24) — et ceux d'avant cette règle sont encore à 25 % :
+    aucune formule ne dit à coup sûr la taille d'un fichier déjà écrit. Le manifeste
+    déclarait `WEB_SCALE` × le scan, faux pour toute planche relevée par le plancher. Si le
+    fichier n'est pas lisible (absent, chemin vide), la règle commune
+    (`pipeline.ingest.taille_du_derive`) — la taille qu'il aurait, s'il était fait
+    aujourd'hui. La racine est lue sur `ingest.DATA_DIR` à l'appel : la route du dépôt
+    (`routes/depot.py`) sert ce manifeste depuis l'application, et ses tests redirigent
+    cette racine-là."""
+    if p.get("chemin_web"):
+        try:
+            with Image.open(ingest.DATA_DIR / p["chemin_web"],
+                            formats=PILLOW_FORMATS) as img:
+                return img.size
+        except (OSError, ValueError):
+            pass
+    return ingest.taille_du_derive(W, H)
+
+
 def _canvas(p, aid, base, verbatim, images=True):
     """Un Canvas. `images=False` (DROIT-1) le prive de son AnnotationPage `painting`.
 
@@ -123,15 +147,18 @@ def _canvas(p, aid, base, verbatim, images=True):
     ed = p["numero_editorial"]
     label = f"Planche {p['numero']}" + (f" (pl.{ed})" if ed else " (paratexte)")
 
-    painting = {
-        "id": f"{cid}/painting", "type": "AnnotationPage",
-        "items": [{
-            "id": f"{cid}/painting/image", "type": "Annotation", "motivation": "painting",
-            "body": {"id": f"{base}/{p['chemin_web']}", "type": "Image", "format": "image/jpeg",
-                     "height": round((H or 0) * WEB_SCALE), "width": round((W or 0) * WEB_SCALE)},
-            "target": cid,
-        }],
-    }
+    if images:
+        largeur_image, hauteur_image = _taille_de_l_image(p, W, H)
+        painting = {
+            "id": f"{cid}/painting", "type": "AnnotationPage",
+            "items": [{
+                "id": f"{cid}/painting/image", "type": "Annotation", "motivation": "painting",
+                "body": {"id": f"{base}/{p['chemin_web']}", "type": "Image",
+                         "format": "image/jpeg",
+                         "height": hauteur_image, "width": largeur_image},
+                "target": cid,
+            }],
+        }
     canvas = {"id": cid, "type": "Canvas", "label": _lang(label),
               "height": H, "width": W, "items": [painting] if images else []}
 

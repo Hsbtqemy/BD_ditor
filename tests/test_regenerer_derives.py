@@ -80,7 +80,8 @@ def test_la_regeneration_rattrape_un_derive_ecrete_sans_toucher_la_base(client, 
     regions_avant = conn.execute("SELECT x, y, w, h FROM regions WHERE planche_id = ?",
                                  (pl["id"],)).fetchall()
 
-    assert rd.main(["--planche", str(pl["id"])]) == 0
+    assert rd.main(["--planche", str(pl["id"]), "--meme-a-la-bonne-taille",
+                    "--appliquer"]) == 0
 
     assert abs(_milieu(derive) - 128) <= 8, "le dérivé régénéré ne suit pas le master"
     apres = conn.execute("SELECT * FROM planches WHERE id = ?", (pl["id"],)).fetchone()
@@ -90,11 +91,11 @@ def test_la_regeneration_rattrape_un_derive_ecrete_sans_toucher_la_base(client, 
     assert list(derive.parent.glob("*.regeneration")) == []
 
 
-def test_le_dry_run_n_ecrit_rien(client, album, data_dir, conn):
+def test_a_blanc_par_defaut_rien_n_est_ecrit(client, album, data_dir, conn):
     pl = _importer(client, album["id"], _degrade_16_bits())
     derive = data_dir / pl["chemin_web"]
     _blanchir(derive)
-    assert rd.main(["--toutes", "--dry-run"]) == 0
+    assert rd.main(["--toutes", "--meme-a-la-bonne-taille"]) == 0
     assert _milieu(derive) == 255
 
 
@@ -109,7 +110,8 @@ def test_un_master_refuse_laisse_l_ancien_derive_en_place(client, album, data_di
     flottant = Image.new("F", (LARGEUR, HAUTEUR), 0.5)
     flottant.save(data_dir / pl["chemin_tiff"], "TIFF")
 
-    assert rd.main(["--planche", str(pl["id"])]) == 1
+    assert rd.main(["--planche", str(pl["id"]), "--meme-a-la-bonne-taille",
+                    "--appliquer"]) == 1
     assert derive.read_bytes() == octets_avant
     assert list(derive.parent.glob("*.regeneration")) == []
     assert "« F »" in capsys.readouterr().out
@@ -144,10 +146,11 @@ def test_les_regions_de_moteur_d_un_gris_16_bits_sont_signalees_jamais_effacees(
                               "source": source}, headers=ADMIN)
         assert r.status_code == 201, r.text
 
-    assert rd.main(["--toutes"]) == 0
+    assert rd.main(["--toutes", "--meme-a-la-bonne-taille", "--appliquer"]) == 0
     # Deux régions de moteur sur la planche 16 bits ; la manuelle et la planche RVB, non.
     assert f"planche {pl['id']} : 2 région(s)" in capsys.readouterr().out
-    bilan = rd.regenerer(conn, rd.planches_selectionnees(conn))
+    bilan = rd.regenerer(conn, rd.planches_selectionnees(conn), appliquer=True,
+                         meme_a_la_bonne_taille=True)
     assert bilan["a_resegmenter"] == [(pl["id"], 2)]
     assert conn.execute("SELECT COUNT(*) FROM regions").fetchone()[0] == 4
 
@@ -155,7 +158,8 @@ def test_les_regions_de_moteur_d_un_gris_16_bits_sont_signalees_jamais_effacees(
 def test_une_planche_sans_master_est_sautee(client, album, data_dir, conn):
     pl = _importer(client, album["id"], _degrade_16_bits())
     (data_dir / pl["chemin_tiff"]).unlink()
-    bilan = rd.regenerer(conn, rd.planches_selectionnees(conn, planche=pl["id"]))
+    bilan = rd.regenerer(conn, rd.planches_selectionnees(conn, planche=pl["id"]),
+                         appliquer=True, meme_a_la_bonne_taille=True)
     assert bilan["sans_master"] == [pl["id"]] and bilan["regeneres"] == []
 
 

@@ -5,7 +5,9 @@
      UNE fois — hors de toute transaction d'écriture (un JPEG 2000 sans perte y met ~5 s).
   2. Écrire la COPIE DE TRAVAIL (IMG-1) : JPEG qualité 80 à 300 dpi effectifs — réduite si
      le scan est plus fin, gardée à sa taille sinon ou sans résolution écrite.
-  3. Générer le dérivé web : 25 % (WEB_SCALE) des dimensions du scan, JPEG qualité 82.
+  3. Générer le dérivé web : 25 % (WEB_SCALE) des dimensions du scan, jamais moins de
+     1 600 px de large (WEB_LARGEUR_PLANCHER) ni plus que l'image reçue
+     (`taille_du_derive`), JPEG qualité 82.
   4. Stocker chemins (relatifs, en POSIX), dimensions et matériel du SCAN en base, et ce
      que l'outil sait du master d'archive (`master_origine`).
   5. Retourner la ligne `planches` créée.
@@ -35,7 +37,7 @@ from PIL import Image, UnidentifiedImageError
 
 from config import (CORPUS_DIR, DATA_DIR, DERIVATIVES_DIR, MAX_IMAGE_PIXELS,
                     PILLOW_FORMATS, TRAVAIL_DPI, TRAVAIL_JPEG_QUALITY,
-                    WEB_JPEG_QUALITY, WEB_SCALE)
+                    WEB_JPEG_QUALITY, WEB_LARGEUR_PLANCHER, WEB_SCALE)
 
 # Garde anti-bombe de décompression : on relève la limite Pillow à une valeur
 # large (couvre les scans 400-600 dpi) mais bornée — surtout pas None, qui
@@ -279,35 +281,59 @@ def image_8_bits(img: Image.Image) -> Image.Image:
     return img.convert("RGB")
 
 
+def taille_du_derive(largeur: int, hauteur: int,
+                     largeur_source: int | None = None) -> tuple[int, int]:
+    """Les dimensions du dérivé web d'un scan de `largeur` × `hauteur` pixels. LA règle,
+    écrite ici seulement : l'import, l'import ShareDocs, le jeu des bacs à sable
+    (`tools/preparer_jeu.py`, qui passe par l'import) et `tools/regenerer_derives.py` la
+    lisent, comme `tools/iiif_manifest.py` quand le dérivé n'est pas lisible.
+
+    25 % du scan (`WEB_SCALE`), mais jamais moins de `WEB_LARGEUR_PLANCHER` (1 600 px) de
+    large — IMG-1, décision de Hugo du 2026-10-24 : une planche de 975 px recevait un dérivé
+    de 244 px, flou dans l'Atelier. Et jamais plus large que l'image qu'on a : on
+    n'agrandit pas. `largeur_source` est la largeur de l'image dont on tire le dérivé quand
+    ce n'est plus le scan mais sa copie de travail, parfois réduite (400 dpi → 75 %) ; omise,
+    c'est le scan. UN facteur pour les deux axes : le rapport d'aspect est gardé.
+
+    Le dérivé reste à l'échelle du SCAN, quelle que soit sa taille : le navigateur, les
+    bulles et la segmentation calculent leur échelle par `largeur ouverte / largeur_px`,
+    rien ne suppose 25 %."""
+    plafond = largeur if largeur_source is None else min(largeur, largeur_source)
+    echelle = min(max(WEB_SCALE, WEB_LARGEUR_PLANCHER / largeur), plafond / largeur)
+    return max(1, round(largeur * echelle)), max(1, round(hauteur * echelle))
+
+
 def make_web_derivative(source: Path, dest: Path,
-                        scale: float = WEB_SCALE,
                         quality: int = WEB_JPEG_QUALITY,
                         taille_scan: tuple[int, int] | None = None) -> tuple[int, int]:
     """Génère le dérivé web JPEG et retourne ses dimensions (largeur, hauteur).
 
     `taille_scan` : les dimensions du SCAN (`largeur_px`, `hauteur_px`), à passer quand la
     source n'est plus le scan mais sa copie de travail (IMG-1, `tools/regenerer_derives.py`) :
-    le dérivé fait 25 % du scan, pas 25 % d'une copie déjà réduite. Omis, la source est le
-    scan lui-même.
+    le dérivé se mesure au scan, pas à une copie déjà réduite (`taille_du_derive`). Omis, la
+    source est le scan lui-même.
 
     Lève `ModeImageRefuse` AVANT d'écrire le dérivé si l'image n'a pas de réduction juste
     en 8 bits.
     """
     with Image.open(source, formats=PILLOW_FORMATS) as img:   # SEC-3, cf. read_metadata
         img = image_8_bits(img)
-        return _ecrire_derive(img, dest, taille_scan or img.size, scale, quality)
+        return _ecrire_derive(img, dest, taille_scan or img.size, quality)
+
+
+def image_du_derive(img8: Image.Image, taille_scan: tuple[int, int]) -> Image.Image:
+    """L'image du dérivé web, tirée d'une image déjà ramenée en 8 bits (`taille_du_derive`)."""
+    w, h = taille_du_derive(taille_scan[0], taille_scan[1], img8.width)
+    return img8 if (w, h) == img8.size else img8.resize((w, h), Image.LANCZOS)
 
 
 def _ecrire_derive(img8: Image.Image, dest: Path, taille_scan: tuple[int, int],
-                   scale: float = WEB_SCALE,
                    quality: int = WEB_JPEG_QUALITY) -> tuple[int, int]:
-    """Le dérivé web d'une image déjà ramenée en 8 bits : `scale` des dimensions du scan."""
-    w = max(1, round(taille_scan[0] * scale))
-    h = max(1, round(taille_scan[1] * scale))
-    web = img8.resize((w, h), Image.LANCZOS)
+    """Écrit le dérivé web d'une image déjà ramenée en 8 bits ; rend ses dimensions."""
+    web = image_du_derive(img8, taille_scan)
     dest.parent.mkdir(parents=True, exist_ok=True)
     web.save(dest, "JPEG", quality=quality, optimize=True)
-    return w, h
+    return web.size
 
 
 # --------------------------------------------------------------------------- #

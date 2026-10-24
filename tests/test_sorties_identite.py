@@ -469,8 +469,9 @@ NON_BALAYE = {
         "Maintenance : relit les masters et écrit `planches.dpi_*`/`mode`. Son compte "
         "rendu est un décompte de planches."),
     ("outil", "regenerer_derives.py"): (
-        "Maintenance (IMG-1) : réécrit les dérivés JPEG depuis les masters, sans écrire "
-        "en base. Son compte rendu est un décompte, des identifiants de planche et, en "
+        "Maintenance (IMG-1) : réécrit les dérivés JPEG depuis les copies de travail, "
+        "sans écrire en base. Son compte rendu est un décompte, des identifiants de "
+        "planche, des tailles d'image et de fichier et, en "
         "cas d'échec, le message de l'exception — un chemin de fichier au plus, jamais "
         "une colonne d'identité."),
     ("outil", "convertir_en_copies_de_travail.py"): (

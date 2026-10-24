@@ -23,8 +23,9 @@ from PIL import Image, features
 
 from conftest import ADMIN
 
-# Le dégradé : 1024 colonnes de 0 à la valeur maximale. Au quart (`WEB_SCALE`), le dérivé en
-# garde 256 — la colonne j du dérivé vaut alors j, à la compression JPEG près.
+# Le dégradé : 1024 colonnes de 0 à la valeur maximale. Sous le plancher de 1 600 px
+# (`WEB_LARGEUR_PLANCHER`), le dérivé garde ses 1024 colonnes : la colonne 4j y vaut alors j,
+# à la compression JPEG près.
 LARGEUR, HAUTEUR = 1024, 16
 TOLERANCE = 8          # bruit JPEG sur un dégradé lisse, très en deçà de l'écart mesuré
 COLONNES = (16, 64, 128, 192, 240)
@@ -124,8 +125,8 @@ def test_l_import_donne_un_derive_qui_suit_les_tons_du_master(client, album, dat
     assert r.json()["mode"] == mode              # le matériel décrit le MASTER, pas le dérivé
 
     with Image.open(data_dir / r.json()["chemin_web"]) as derive:
-        assert derive.width == LARGEUR // 4
-        valeurs = _colonnes(derive, 1.0)
+        assert derive.width == LARGEUR           # sous le plancher : ni réduit, ni agrandi
+        valeurs = _colonnes(derive, 0.25)
     ecarts = {j: v for j, v in valeurs.items() if abs(v - j) > TOLERANCE}
     assert not ecarts, (
         f"dérivé qui ne suit pas le dégradé (colonne → valeur, attendu ≈ colonne) : "

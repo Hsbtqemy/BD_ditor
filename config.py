@@ -37,7 +37,12 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 KUMIKO_DIR = BASE_DIR / "lib" / "kumiko"
 
 # Paramètres de dérivation web
-WEB_SCALE = 0.25          # le dérivé fait 25 % de la taille du SCAN (`largeur_px`)
+WEB_SCALE = 0.25          # le dérivé fait 25 % de la taille du SCAN (`largeur_px`)…
+# … mais jamais moins de 1 600 px de large (IMG-1, décision de Hugo du 2026-10-24) : un
+# scan de 975 px donnait un dérivé de 244 px, illisible dans l'Atelier. Et jamais plus que
+# l'image qu'on a : on n'agrandit pas, une image de 975 px donne un dérivé de 975 px. La
+# règle est écrite une fois, `pipeline.ingest.taille_du_derive`.
+WEB_LARGEUR_PLANCHER = 1600
 WEB_JPEG_QUALITY = 82
 
 # La COPIE DE TRAVAIL (IMG-1, décidé par Hugo le 2026-10-21). Le serveur ne garde plus le

@@ -81,9 +81,10 @@ def test_un_tiff_a_400_dpi_devient_un_jpeg_a_300_dpi_effectifs(client, album, da
     assert (ligne["largeur_px"], ligne["hauteur_px"]) == (800, 1000)
     assert (ligne["dpi_x"], ligne["dpi_y"], ligne["mode"]) == (400, 400, "RGB")
     assert ligne["master_origine"] == "Scan 0042.tif"
-    # Le dérivé reste ce qu'il est : 25 % du SCAN.
+    # Le dérivé est tiré du SCAN, pas de la copie réduite : sous le plancher de 1 600 px, il
+    # garde la taille du scan (IMG-1, 2026-10-24).
     with Image.open(data_dir / p["chemin_web"]) as web:
-        assert web.size == (200, 250)
+        assert web.size == (800, 1000)
     # Et le fichier reçu n'est nulle part sur le serveur.
     assert sorted(f.name for f in (data_dir / "corpus").rglob("*") if f.is_file()) == [
         "planche_0001.jpg"]
@@ -319,12 +320,14 @@ def test_kumiko_sur_la_copie_de_travail_pose_ses_cases_en_pixels_du_scan(client,
 def test_regenerer_le_derive_depuis_la_copie_de_travail_garde_25_pourcent_du_scan(
         client, album, data_dir):
     """`tools/regenerer_derives.py` lit la copie de travail : le dérivé doit rester à 25 %
-    du SCAN (200 × 250), pas tomber à 25 % d'une copie déjà réduite (150 × 188)."""
+    du SCAN — 1 750 × 200 pour un scan de 7 000 px —, pas se mesurer à une copie déjà réduite
+    (5 250 px à 300 dpi effectifs), où le plancher de 1 600 px l'aurait relevé à 1 600 × 183.
+    Le scan est une bande, pour rester léger."""
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
     import regenerer_derives as rd
-    p = _importer(client, album["id"], _scan(dpi=(400, 400))[0])
+    p = _importer(client, album["id"], _scan(taille=(7000, 800), dpi=(400, 400))[0])
     web = data_dir / p["chemin_web"]
     web.unlink()
     conn = database.get_connection()
@@ -332,14 +335,15 @@ def test_regenerer_le_derive_depuis_la_copie_de_travail_garde_25_pourcent_du_sca
         rd_data = rd.DATA_DIR
         rd.DATA_DIR = data_dir
         try:
-            bilan = rd.regenerer(conn, rd.planches_selectionnees(conn, planche=p["id"]))
+            bilan = rd.regenerer(conn, rd.planches_selectionnees(conn, planche=p["id"]),
+                                 appliquer=True)
         finally:
             rd.DATA_DIR = rd_data
     finally:
         conn.close()
     assert bilan["regeneres"] == [p["id"]]
     with Image.open(web) as im:
-        assert im.size == (200, 250)
+        assert im.size == (1750, 200)
 
 
 def test_la_regle_de_reduction():

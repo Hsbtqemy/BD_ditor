@@ -9,8 +9,9 @@ import pipeline.ingest as ingest
 from conftest import KUMIKO_SAMPLE, requires_kumiko
 
 
-def test_derive_web_est_au_quart(client, data_dir, album):
-    # master 800x1000 -> web 200x250
+def test_derive_web_d_un_petit_scan_garde_sa_taille(client, data_dir, album):
+    # scan 800x1000 -> web 800x1000 : sous le plancher de 1 600 px, on n'agrandit pas
+    # (IMG-1, 2026-10-24 ; la règle est éprouvée dans `test_plancher_derive.py`)
     buf = io.BytesIO()
     Image.new("RGB", (800, 1000), "white").save(buf, "TIFF", dpi=(300, 300))
     r = client.post(f"/api/albums/{album['id']}/import",
@@ -18,7 +19,7 @@ def test_derive_web_est_au_quart(client, data_dir, album):
     p = r.json()
     assert (p["largeur_px"], p["hauteur_px"]) == (800, 1000)  # dims master
     web = Image.open(data_dir / p["chemin_web"])
-    assert web.size == (200, 250)  # 25 %
+    assert web.size == (800, 1000)  # ni 25 % (200 x 250), ni agrandi
 
 
 def test_metadonnees_master(client, album):
