@@ -46,7 +46,8 @@ from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DE
                       demandes_vers_collection, est_jeu, etat_des_reponses, get_connection,
                       nature_du_projet, prochain_effacement, projet_d_album,
                       projet_de_collection, rangement_traverse, retirer_document_sans_copie,
-                      sql_est_jeu, sql_projet_d_album, sql_projet_de, unindex_region)
+                      sql_album_isole, sql_est_jeu, sql_projet_d_album, sql_projet_de,
+                      unindex_region)
 from config import BAC_A_SABLE_PLAFOND_PLANCHES
 from pipeline.ingest import (chemin_d_image_sur, dossiers_d_album, elaguer_dossier_d_album,
                              remove_album_files, remove_planche_files)
@@ -557,6 +558,18 @@ _MOTIF_BAC_ACCES = ("Dans un bac à sable, on fait entrer des comptes par le pro
                     "de membre — aucun accès ne se pose collection par collection.")
 _MOTIF_EXPORT_BAC = ("Ce document ne sort pas d'un bac à sable : seuls les documents du jeu "
                      "dont les images vivent dans le dépôt s'en exportent.")
+_MOTIF_EXPORT_IMPORTEE = ("Une planche importée dans un bac à sable n'en sort jamais : seules "
+                          "les images du jeu qui vivent dans le dépôt s'exportent.")
+
+# Les images du JEU — les fichiers que désignent les planches de ses copies de référence
+# (`jeu_document.album_reference`). Une copie du jeu désigne les mêmes (D6) ; toute AUTRE
+# image d'un bac à sable y a été IMPORTÉE par quelqu'un. `_SQL_IMAGES_EXPORTABLES` : celles
+# des seuls documents dont l'export est ouvert (la part du dépôt). Lus ICI, une fois, par le
+# plafond d'import et par l'export : un document retiré du jeu par son outil voit ses copies
+# compter dans le plafond et cesser de sortir (accepté, Hugo, 2026-10-24).
+_SQL_IMAGES_DU_JEU = ("SELECT _ij.chemin_tiff FROM planches _ij JOIN jeu_document _jj "
+                      "ON _jj.album_reference = _ij.album_id")
+_SQL_IMAGES_EXPORTABLES = _SQL_IMAGES_DU_JEU + " WHERE _jj.exportable = 1"
 
 
 def _bac_a_sable_de(conn, *, projet_id=None, collection_id=None, album_id=None):
@@ -609,13 +622,15 @@ def _creer_bac_a_sable(conn, login: str) -> int:
 
 def _planches_importees_du_bac(conn, projet_id: int) -> int:
     """Combien d'IMAGES ont été importées dans ce bac à sable (S9) : les fichiers distincts
-    que désignent les planches de ses albums, hors des copies du jeu — qui n'ont rien
-    importé. Une copie faite dans le bac à sable d'un album importé ne compte pas deux fois."""
+    que désignent les planches de ses albums et qui ne sont pas des images du jeu
+    (`_SQL_IMAGES_DU_JEU`). Toute planche importée par quelqu'un compte, QUEL QUE SOIT
+    l'album — un album à soi comme une copie du jeu (relecture croisée : importer dans une
+    copie du jeu contournait le plafond). Une copie faite dans le bac à sable d'un album
+    importé ne compte pas deux fois : elle désigne les mêmes fichiers."""
     return conn.execute(
         "SELECT COUNT(DISTINCT p.chemin_tiff) FROM planches p JOIN albums a ON a.id = p.album_id "
-        f"WHERE {sql_projet_d_album('a')} = ? AND (a.document_id IS NULL OR "
-        "a.document_id NOT IN "
-        "(SELECT document_id FROM jeu_document))", (projet_id,)).fetchone()[0]
+        f"WHERE {sql_projet_d_album('a')} = ? AND p.chemin_tiff NOT IN ({_SQL_IMAGES_DU_JEU})",
+        (projet_id,)).fetchone()[0]
 
 
 def _exiger_le_plafond(conn, album_id: int, ajout: int = 1) -> None:
@@ -632,18 +647,28 @@ def _exiger_le_plafond(conn, album_id: int, ajout: int = 1) -> None:
                                  "neuf pour recommencer.")
 
 
-def _exiger_l_export_hors_bac(conn, album_id: int) -> None:
-    """403 nommé si l'album vit dans un bac à sable et n'est pas la copie d'un document du
-    jeu dont l'export est ouvert (`jeu_document.exportable` : la part du dépôt). L'export se
-    décide DOCUMENT par document, jamais par bac à sable (Hugo, 2026-10-22) ; ce qu'on y a
-    importé soi-même n'en sort pas non plus — à trancher, fermé d'ici là."""
-    projet_id, _ = _bac_a_sable_de(conn, album_id=album_id)
-    if projet_id is None:
+def _exiger_l_export_hors_bac(conn, album_id: int, planche_id: int | None = None) -> None:
+    """403 nommé si l'album vit dans un projet ISOLÉ — un bac à sable, ou le JEU lui-même,
+    pour sa copie de référence — et n'est pas la copie d'un document du jeu dont l'export
+    est ouvert (`jeu_document.exportable` : la part du dépôt). L'export se décide DOCUMENT
+    par document, jamais par bac à sable (Hugo, 2026-10-22), et pour TOUTE portée : la part
+    du serveur ne sort jamais, pas même par l'administrateur qui lit la référence (relecture
+    croisée). Et une planche IMPORTÉE par quelqu'un ne sort jamais, quel que soit l'album
+    (Hugo, 2026-10-24) : l'album entier se refuse s'il en porte une, la figure si elle en
+    est tirée (`planche_id`)."""
+    isole = conn.execute(f"SELECT {sql_album_isole('a')} FROM albums a WHERE a.id = ?",
+                         (album_id,)).fetchone()
+    if isole is None or not isole[0]:
         return
     if conn.execute("SELECT 1 FROM albums a JOIN jeu_document jd ON jd.document_id = "
                     "a.document_id WHERE a.id = ? AND jd.exportable = 1",
                     (album_id,)).fetchone() is None:
         raise HTTPException(403, _MOTIF_EXPORT_BAC)
+    une = (" AND p.id = ?", [planche_id]) if planche_id is not None else ("", [])
+    if conn.execute(f"SELECT 1 FROM planches p WHERE p.album_id = ?{une[0]} "
+                    f"AND p.chemin_tiff NOT IN ({_SQL_IMAGES_EXPORTABLES}) LIMIT 1",
+                    (album_id, *une[1])).fetchone():
+        raise HTTPException(403, _MOTIF_EXPORT_IMPORTEE)
 
 
 def _refuser_le_bac_a_sable(conn, motif: str, status: int = 409, **objet) -> None:
@@ -1274,10 +1299,10 @@ def _exiger_export_region(conn, portee: autorisation.Portee, region_id: int) -> 
     """403 si la région — qu'on LIT, l'accesseur gardé l'a vérifié avant — appartient à
     un album qu'aucune des collections qu'on peut exporter ne contient. COL-4 — ou à un
     album de bac à sable qui n'est pas la copie d'un document exportable du jeu."""
-    album = conn.execute("SELECT pl.album_id FROM regions r JOIN planches pl "
+    album = conn.execute("SELECT pl.album_id, pl.id FROM regions r JOIN planches pl "
                          "ON pl.id = r.planche_id WHERE r.id = ?", (region_id,)).fetchone()
     if album is not None:
-        _exiger_l_export_hors_bac(conn, album[0])
+        _exiger_l_export_hors_bac(conn, album[0], planche_id=album[1])
     ou, params = portee.pour_export().clause_album("pl.album_id")
     if conn.execute(f"SELECT 1 FROM regions r JOIN planches pl ON pl.id = r.planche_id "
                     f"WHERE r.id = ? AND {ou}", (region_id, *params)).fetchone() is None:

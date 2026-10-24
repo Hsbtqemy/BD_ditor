@@ -55,8 +55,8 @@ from fastapi.responses import Response
 
 import autorisation
 from config import BASE_DIR
-from socle import (_exiger_export, _get_collection, _refuser_le_bac_a_sable, db,
-                   portee_courante)
+from socle import (_exiger_export, _get_collection, _refuser_le_bac_a_sable,
+                   _refuser_le_jeu, db, portee_courante)
 
 # `tools/` n'est pas un paquet et ne s'importe pas depuis la racine : les scripts s'y
 # importent entre eux à plat (`import metadonnees_collection as mc`), donc c'est le dossier
@@ -159,6 +159,9 @@ def produire(conn, portee, collection_id: int, quoi: str, format: str, *,
     _refuser_le_bac_a_sable(conn, "Une collection de bac à sable ne se dépose pas : ce qui "
                                   "s'y fait s'efface chaque semaine.",
                             collection_id=collection_id)
+    # Ni la collection du JEU, qu'une portée totale lit : elle n'est pas une unité de dépôt,
+    # et sa part du serveur ne sort jamais (les outils la refusent aussi, `HorsDuCorpus`).
+    _refuser_le_jeu(conn, collection_id=collection_id)
     _exiger_export(portee, collection_id)
     if quoi == "description":
         data, ext = _faire_description(conn, collection_id, format)

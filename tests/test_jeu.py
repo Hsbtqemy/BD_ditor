@@ -479,6 +479,69 @@ def test_aucune_ecriture_ne_touche_la_reference(client, db_path, reference_compl
         assert _empreinte(db_path, ref["album"]) == avant, (m, chemin)
 
 
+@pytest.fixture
+def reference_serveur(client, db_path, jeu, derriere_proxy):
+    """La référence de la part du SERVEUR, avec une bulle « SENTINELLE » et son mot, pour que
+    les portes qui traversent le corpus aient de quoi la laisser sortir."""
+    r = _jeu(db_path)["stock-serveur"]
+    planche = _sql(db_path, "SELECT id FROM planches WHERE album_id = ?",
+                   (r["album_reference"],))[0]["id"]
+    c = sqlite3.connect(db_path)
+    try:
+        rid = c.execute("INSERT INTO regions (planche_id, type, x, y, w, h, ocr_texte) VALUES "
+                        "(?, 'bulle', 1, 1, 9, 9, 'SENTINELLE')", (planche,)).lastrowid
+        c.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                  "VALUES (?, 0, 'SENTINELLE', 'sentinelle', 'NOUN', '')", (rid,))
+        c.commit()
+    finally:
+        c.close()
+    conn = database.get_connection()
+    try:
+        database.reindex_region(conn, rid)
+        conn.commit()
+        pid = database.projet_de_jeu(conn)
+        col = database.collection_de_base(conn, pid)
+    finally:
+        conn.close()
+    return {"album": r["album_reference"], "region": rid, "collection": col}
+
+
+def test_la_part_du_serveur_ne_sort_par_aucune_porte(client, reference_serveur):
+    """Chaque porte de sortie déclarée par le cliquet de DROIT-2 (`test_droit_export.PORTES`),
+    jouée par la portée TOTALE — la seule qui lise la référence : rien de la part du
+    serveur ne sort. Les portes d'un album, d'une collection ou d'une figure refusent ; celles
+    qui traversent le corpus ne portent pas sa bulle (relecture croisée : l'export JSON, CSV
+    et TEI de la référence passait)."""
+    from test_droit_export import PORTES
+    ref = reference_serveur
+    requetes = {
+        "/api/export/json": {"album_id": ref["album"]},
+        "/api/export/csv": {"album_id": ref["album"]},
+        "/api/export/tei": {"album_id": ref["album"]},
+        "/api/recherche/export.csv": {"q": "sentinelle"},
+        "/api/analyse/frequences.csv": {"champ": "lemme"},
+        "/api/analyse/concordance.csv": {"lemme": "sentinelle"},
+        "/api/analyse/comparaison.csv": {"a_album": ref["album"], "b_album": ref["album"]},
+        "/api/analyse/croisement.csv": {"axe_x": "pos", "axe_y": "type"},
+        "/api/analyse/accord.csv": {}, "/api/analyse/accord-inter.csv": {},
+    }
+    refusent = {"/api/export/json", "/api/export/csv", "/api/export/tei", "/api/figures"}
+    for methode, chemin in sorted(PORTES):
+        url = chemin.replace("{collection_id}", str(ref["collection"]))
+        corps = {"/api/figures": {"regions": [ref["region"]]},
+                 "/api/collections/{collection_id}/depot/deposer":
+                     {"quoi": "description", "format": "json"}}.get(chemin)
+        r = client.request(methode, url, params=requetes.get(chemin, {}), json=corps,
+                           headers=ADMIN)
+        if chemin in refusent:
+            assert r.status_code == 403 and "sort" in r.json()["detail"], (chemin, r.text)
+        elif "/depot/" in chemin:
+            _refuse_jeu(r)
+        else:
+            assert r.status_code >= 400 or "sentinelle" not in r.text.lower(), \
+                (chemin, r.status_code, r.text[:300])
+
+
 def test_un_compte_ordinaire_ne_voit_pas_le_jeu(client, reference):
     """Personne n'en est membre : 404, comme un objet qui n'existe pas."""
     assert client.get(f"/api/albums/{reference['album']}/planches",

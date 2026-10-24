@@ -834,6 +834,52 @@ def test_le_plafond_d_import(client, decor, monkeypatch):
                            ).status_code == 201
 
 
+def test_le_plafond_vaut_aussi_dans_une_copie_du_jeu(client, decor, monkeypatch):
+    """Toute planche importée par quelqu'un compte, quel que soit l'album (Hugo,
+    2026-10-24) : importer dans une copie du jeu ne contourne pas le plafond — et ce qu'on
+    importe chez soi s'y ajoute."""
+    monkeypatch.setattr(socle, "BAC_A_SABLE_PLAFOND_PLANCHES", 2)
+    copie = _copie(decor, "exemple")["album_id"]
+
+    def importer(album):
+        return client.post(f"/api/albums/{album}/import", headers=LEA,
+                           files={"file": ("p.png", make_png(), "image/png")})
+
+    assert importer(copie).status_code == 201
+    assert client.get("/api/bac-a-sable", headers=LEA).json()["planches_importees"] == 1
+    a = client.post("/api/albums", headers=LEA,
+                    json={"titre": "Import", "collection_id": decor["base"]}).json()["id"]
+    assert importer(a).status_code == 201
+    r = importer(copie)
+    assert r.status_code == 409 and "2 planches" in r.json()["detail"], r.text
+    assert importer(a).status_code == 409
+
+
+def test_une_planche_importee_ne_sort_jamais(client, decor):
+    """Importée dans la copie d'un document EXPORTABLE du jeu, une image n'en devient pas
+    exportable : ni l'album entier, ni une figure tirée d'elle. Les images du jeu de la
+    même copie, si (la contre-épreuve)."""
+    copie = _copie(decor, "exemple")
+    jeu_region = _sql(decor["db"], "SELECT id FROM regions WHERE planche_id = ? ORDER BY id",
+                      (copie["planche_ids"][0],))[0]["id"]
+    assert client.post("/api/figures", headers=LEA,
+                       json={"regions": [jeu_region]}).status_code == 200
+    assert client.get("/api/export/json", headers=LEA,
+                      params={"album_id": copie["album_id"]}).status_code == 200
+    pl = client.post(f"/api/albums/{copie['album_id']}/import", headers=LEA,
+                     files={"file": ("moi.png", make_png(), "image/png")}).json()["id"]
+    reg = client.post(f"/api/planches/{pl}/regions", headers=LEA,
+                      json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
+    r = client.post("/api/figures", headers=LEA, json={"regions": [reg]})
+    assert r.status_code == 403 and "importée" in r.json()["detail"], r.text
+    for chemin in ("/api/export/json", "/api/export/csv", "/api/export/tei"):
+        r = client.get(chemin, headers=LEA, params={"album_id": copie["album_id"]})
+        assert r.status_code == 403 and "importée" in r.json()["detail"], (chemin, r.text)
+    # Une figure tirée d'une image du jeu, dans la même copie, sort toujours.
+    assert client.post("/api/figures", headers=LEA,
+                       json={"regions": [jeu_region]}).status_code == 200
+
+
 def test_sharedocs_dans_un_bac_a_sable_sous_son_propre_compte(client, decor):
     a = client.post("/api/albums", headers=LEA,
                     json={"titre": "Import", "collection_id": decor["base"]}).json()["id"]
