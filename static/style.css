@@ -293,7 +293,10 @@ kbd {
    EST la condition, et personne n'a à la recopier ailleurs.
    ------------------------------------------------------------------------------ */
 #body > .portee-vide { grid-column: 1 / -1; }
-#body:has(> .portee-vide) { grid-template-rows: auto minmax(0, 1fr); }
+/* COL-4 — `:not([hidden])` : le bandeau MASQUÉ dans un bac à sable ne prend plus de rangée.
+   Sans lui, la grille garderait deux rangées, et les trois panneaux tomberaient dans la
+   première, haute de leur contenu. */
+#body:has(> .portee-vide:not([hidden])) { grid-template-rows: auto minmax(0, 1fr); }
 
 /* ---------- Tiroirs de la Visionneuse (UX-7) ----------------------------------
    `#body` est une grille `240px | 1fr | 300px` : 540 px de chrome FIXE quelle que
@@ -556,6 +559,71 @@ kbd {
   font-family: inherit; color: var(--text); background: var(--bg-panel);
   border: 1px solid var(--border); border-radius: 5px; padding: .1538rem;
 }
+
+/* ── COL-4 — « Mon bac à sable » (maquette tranchée par Hugo le 2026-10-24) ──────────────
+   `static/bac-a-sable.js` les pose, sur les cinq surfaces.
+
+   Le BOUTON se met à côté du projet, dans la bande, tant que le bac à sable n'existe pas ;
+   il ne se coupe pas, et c'est la bande qui passe à la ligne, comme pour tout ce qu'elle
+   porte.
+
+   La LIGNE est une rangée à elle, la dernière de la bande : `flex: 1 0 100%` la met seule
+   sur sa rangée quelle que soit la largeur, et ses marges négatives la font courir d'un
+   bord à l'autre, sous le rembourrage de la bande. Rayée, pour qu'on la reconnaisse d'une
+   surface à l'autre sans la lire. La rayure est un fond DÉCORATIF : le texte reste sur les
+   encres normales, et ses deux teintes sont `--bg-panel` et `--hover` (qui n'en est qu'un
+   voile de quelques pour cent), où ces encres passent l'AA. Ses parties passent à la ligne
+   plutôt que de sortir ; les gestes se rangent à droite de LEUR rangée. */
+.bac-ouvrir-bande { white-space: nowrap; flex: 0 0 auto; }
+.bac-ligne {
+  flex: 1 0 100%; box-sizing: border-box; min-width: 0;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem .9231rem;
+  min-height: 2.1538rem; margin: 0 -1.0769rem; padding: .2308rem 1.0769rem;
+  border-top: 1px solid var(--border);
+  background:
+    repeating-linear-gradient(135deg, transparent 0 10px, var(--hover) 10px 20px),
+    var(--bg-panel);
+  font-size: .9231rem; color: var(--text);
+}
+.bac-nom { font-weight: 600; cursor: help; text-decoration: underline dotted var(--text-muted);
+           text-underline-offset: 3px; }
+.bac-sep { color: var(--text-muted); }
+.bac-date, .bac-plafond { overflow-wrap: anywhere; min-width: 0; }
+.bac-plafond { color: var(--text-muted); }
+/* Au plafond, le compte passe en ENCRE d'alerte (`--ink-red`, AA en petit texte) — jamais
+   l'accent brut — et en gras : la couleur renforce, le poids porte aussi. */
+.bac-plafond.est-plein { color: var(--ink-red); font-weight: 600; cursor: help; }
+.bac-gestes { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: .4615rem;
+              max-width: 100%; }
+
+/* Le dialogue de la ligne — remettre à neuf, quitter, inviter : le voile de la modale d'un
+   album, la boîte partagée (`.modal-box`). */
+.bac-modal {
+  position: fixed; inset: 0; z-index: 100; background: var(--scrim);
+  display: flex; align-items: center; justify-content: center;
+}
+.bac-modal[hidden] { display: none; }
+.bac-boite { width: min(34rem, 92%); }
+/* « Ce qui part » / « Ce qui revient » : côte à côte quand elles tiennent à 12rem chacune,
+   l'une sous l'autre sinon — `min(100%, …)`, sans quoi la piste dépasserait la boîte à
+   320 px sous une grande police. */
+.bac-deux-col { display: grid; gap: .9231rem;
+                grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
+.bac-deux-col > div { display: flex; flex-direction: column; gap: .4615rem; min-width: 0; }
+.bac-deux-col ul { margin: 0; padding-left: 1.3rem; display: flex; flex-direction: column;
+                   gap: .3rem; overflow-wrap: anywhere; }
+.bac-actions { justify-content: flex-end; }
+.bac-membres .mp-role-fixe { font-size: .9231rem; }
+.bac-msg.erreur { color: var(--ink-red); }
+
+/* La page vide : sous « Sélectionnez ou importez une planche pour commencer » (Atelier), et
+   en carte dans la fiche de la Bibliothèque. */
+#stage-empty:has(> .bac-vide-geste) { flex-direction: column; gap: .3077rem; }
+.bac-vide-geste { margin-top: .9231rem; display: flex; flex-direction: column;
+                  align-items: center; gap: .4615rem; }
+.bac-vide-carte { margin: .9231rem 0; padding: .9231rem 1.0769rem; border: 1px dashed var(--border);
+                  border-radius: 8px; display: flex; flex-wrap: wrap; align-items: center;
+                  gap: .6154rem .9231rem; }
 
 /* Les deux bandes d'en-tête restent AU-DESSUS de l'overlay plein écran (#transcription,
    z-index 50) : leurs menus déroulants s'ouvrent vers le bas DANS la zone du corps et
@@ -2776,6 +2844,15 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
    jetait à la ligne, coupant « Référent de cette instance : X — contact » en trois.
    Aucun audit ne l'aurait dit : axe vérifie le contraste et les rôles, pas le sens d'une
    phrase découpée. Viser le `summary` nomme la cible au lieu de l'approcher. */
+/* COL-4 — masqué dans un bac à sable (la ligne du bac à sable en tient lieu), et porteur à
+   droite de « En attendant : Mon bac à sable », visible sans déplier. `display: flex` ne
+   vaut qu'avec le geste ; `[hidden]` l'emporte dans les deux cas. */
+.portee-vide[hidden] { display: none; }
+.portee-vide.avec-geste { display: flex; flex-wrap: wrap; align-items: flex-start;
+                          gap: .6154rem .9231rem; }
+.portee-vide.avec-geste > details { flex: 1 1 16rem; min-width: 0; }
+.portee-vide-geste { display: inline-flex; flex-wrap: wrap; align-items: center;
+                     gap: .4615rem; flex: 0 1 auto; max-width: 100%; }
 .portee-vide summary { cursor: pointer; }
 .portee-vide summary > strong { font-weight: 600; }
 /* Le chevron est ce qui ANNONCE qu'il y a autre chose à lire : sans lui, un titre replié
@@ -3096,6 +3173,9 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
              border: 1px solid var(--border); border-radius: 5px; padding: .35rem .55rem;
              font-size: 1rem; font-family: inherit; }
 .lf-tri { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+/* COL-4 — l'axe et le tri des bacs à sable, dans « Projets », naissent cachés : `display:
+   flex` l'emporterait sur la règle UA `[hidden]`. */
+#pj-axes[hidden], #pj-tri[hidden] { display: none; }
 .lf-tri button { background: none; border: 1px solid var(--border); border-radius: 999px;
                  color: var(--text); padding: .1rem .55rem; cursor: pointer; font-size: .92rem; }
 .lf-tri button[aria-pressed="true"] { border-color: var(--accent-blue); }

@@ -963,8 +963,14 @@ def test_portee_vide_ne_decale_pas_la_grille_de_la_visionneuse(page, seeded, lar
     #    pas dessus, et vaut 321 à 368 px dès qu'elle le fait — un ordre de grandeur au-
     #    dessus du seuil, aux TROIS largeurs. Vrai que le bandeau soit replié ou ouvert,
     #    ce que l'ancienne formulation ne pouvait pas être.
+    #    COL-4 — le bandeau porte aussi, à droite, « En attendant : Mon bac à sable » : son
+    #    contenu est le PLUS HAUT de ses enfants, pli ou geste, et c'est à lui qu'on mesure
+    #    l'écart (sans quoi un bouton plus haut qu'une ligne passerait pour un étirement).
     pli = _geo(page, ".portee-vide > details")
-    assert bandeau["h"] - pli["h"] <= 30, (
+    contenu = page.evaluate("""() => Math.max(...[...document.querySelectorAll(
+      '.portee-vide > *')].map((e) => e.getBoundingClientRect().height))""")
+    assert contenu >= pli["h"]
+    assert bandeau["h"] - contenu <= 30, (
         f"le bandeau est ÉTIRÉ par la grille au lieu de suivre son contenu — pli={pli} "
         + etat)
     assert canevas["h"] > bandeau["h"], \

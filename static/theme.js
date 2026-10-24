@@ -397,6 +397,7 @@
     }
     var main = document.querySelector("main") || document.body;
     var box = el("div", "portee-vide");
+    box.id = "portee-vide";
     box.setAttribute("role", "status");
 
     /* Le corps se REPLIE derrière son titre, et ce qui décide n'est pas la place gagnée
@@ -441,6 +442,10 @@
     if (tech) pli.appendChild(tech);
     box.appendChild(pli);
     main.insertBefore(box, main.firstChild);
+    /* COL-4 — le bac à sable y ajoute son geste (« En attendant : Mon bac à sable ») et le
+       masque quand le projet courant en est un (`static/bac-a-sable.js`) : il est prévenu
+       qu'il existe, sans qu'aucun des deux scripts n'ait à deviner qui répond le premier. */
+    document.dispatchEvent(new CustomEvent("bd:portee-vide", { detail: box }));
   }
 
   /* ---- La ligne technique (AUTH-1) ----
@@ -722,8 +727,11 @@
     }
     // Avant la pastille si elle est déjà là, sinon avant « Aa » : la pastille s'insère
     // elle-même avant « Aa », donc l'ordre est le même quelle que soit la réponse arrivée
-    // la première. Mêmes gardes que pour elle.
-    var ancre = bar.querySelector(".user-chip") || bar.querySelector(".display-menu");
+    // la première. Mêmes gardes que pour elle. COL-4 — et avant « Mon bac à sable », qui se
+    // pose À CÔTÉ du projet (`static/bac-a-sable.js`) : un projet redessiné ne passe pas
+    // derrière lui.
+    var ancre = bar.querySelector(".bac-ouvrir-bande") || bar.querySelector(".user-chip")
+      || bar.querySelector(".display-menu");
     if (ancre && ancre.parentNode === bar) bar.insertBefore(wrap, ancre);
     else bar.appendChild(wrap);
   }

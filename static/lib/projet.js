@@ -157,9 +157,10 @@
   }
 
   /* Le rôle, dans les mots de la maquette validée. Un rôle inconnu se lit tel quel plutôt
-     que d'être maquillé en « membre ». */
-  function libelleRole(role) {
-    if (role === "responsable") return "responsable du projet";
+     que d'être maquillé en « membre ». `court` : « responsable » seul, la forme de « Qui y
+     entre » d'un bac à sable (COL-4, maquette du 2026-10-24), où il n'y a qu'un projet. */
+  function libelleRole(role, court) {
+    if (role === "responsable") return court ? "responsable" : "responsable du projet";
     if (role === "membre") return "membre";
     return String(role);
   }

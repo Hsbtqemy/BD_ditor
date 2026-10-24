@@ -133,13 +133,24 @@
       <p id="pj-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
       <div class="lf pj" id="pj">
         <div class="lf-liste">
+          <!-- COL-4 — les bacs à sable derrière un AXE, la forme de « Comptes et groupes »
+               (Hugo, sur maquette, 2026-10-24) : à qui décide des projets seulement. -->
+          <div class="lf-axes pj-axes" id="pj-axes" role="group" aria-label="Afficher la liste des" hidden>
+            <button type="button" data-pj-axe="projets" aria-pressed="true">Projets</button>
+            <button type="button" data-pj-axe="bacs" aria-pressed="false">Bacs à sable</button>
+          </div>
           <div class="lf-tete-liste">
             <span class="muted small" id="pj-liste-compte"></span>
             <button type="button" class="ghost small" id="pj-creer-ouvrir" hidden>+ Nouveau projet</button>
           </div>
-          <label class="sr-only" for="pj-filtre">Filtrer les projets par nom</label>
+          <label class="sr-only" for="pj-filtre" id="pj-filtre-nom">Filtrer les projets par nom</label>
           <input type="search" id="pj-filtre" class="lf-filtre" placeholder="Nom du projet…"
                  autocomplete="off">
+          <div class="lf-tri pj-tri" id="pj-tri" role="group" aria-label="Trier les bacs à sable" hidden>
+            <span class="muted small" aria-hidden="true">Trier</span>
+            <button type="button" data-pj-tri="alpha" aria-pressed="true">A → Z</button>
+            <button type="button" data-pj-tri="recents" aria-pressed="false">Récents d'abord</button>
+          </div>
           <ul class="lf-objets pj-objets" id="pj-objets" aria-label="Projets que vous réglez"></ul>
         </div>
         <div class="lf-fiche pj-fiche" id="pj-fiche"></div>
@@ -284,6 +295,9 @@
 <script src="/static/lib/qui-entre.js"></script>
 <script src="/static/lib/membres-projet.js"></script>
 <script src="/static/lib/suppression.js"></script>
+<script src="/static/lib/dialog.js"></script>
+<script src="/static/lib/bac-a-sable.js"></script>
+<script src="/static/bac-a-sable.js"></script><!-- COL-4 : « Mon bac à sable » et sa ligne, sur les cinq surfaces -->
 <script src="/static/administration.js"></script>
 </body>
 </html>

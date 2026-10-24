@@ -255,6 +255,14 @@ test("« + Prendre du fonds… » au responsable et à l'administrateur seulemen
   assert.equal(B.offrirPrendreDuFonds({ gerable: false }, { ecrivable: true }), false);
 });
 
+test("COL-4 — « + Prendre du fonds… » n'est pas offert dans un bac à sable (S3)", () => {
+  const bac = { gerable: true, bac_a_sable: { mien: true, efface_le: "2026-10-26 03:00:00" } };
+  assert.equal(B.offrirPrendreDuFonds(bac), false, "en tête de la fiche du projet");
+  assert.equal(B.offrirPrendreDuFonds(bac, { ecrivable: true }), false, "dans une collection");
+  assert.equal(B.offrirPrendreDuFonds({ gerable: true, bac_a_sable: null }), true,
+               "un projet ordinaire, la clé à null");
+});
+
 test("les destinations d'une prise : celles du projet où l'on écrit, la base en tête", () => {
   const cols = [
     { id: 1, nom: "Zeta", projet_id: 7, ecrivable: true },

@@ -68,7 +68,15 @@ SURFACES_HORS_PERIMETRE = {}
 MODULES_MONTES = {
     "lib/qui-entre.js": "monté par la Bibliothèque, dans chaque collection dépliée, et par "
                         "l'Administration, dans la fiche d'une collection (UX-16)",
-    "lib/membres-projet.js": "monté par l'Administration, dans la fiche d'un projet (COL-3)",
+    "lib/membres-projet.js": "monté par l'Administration, dans la fiche d'un projet (COL-3), "
+                             "et par la ligne du bac à sable, dans « Inviter… » (COL-4)",
+}
+
+# COL-4 — un script de surface PARTAGÉ par les cinq pages : la ligne du bac à sable, son
+# bouton et ses dialogues. Il n'appartient à aucune surface, donc à aucune entrée de
+# `SURFACES_AUDITEES` ; lu ici comme un module monté, et joué sur l'Atelier par la sonde.
+SCRIPTS_PARTAGES = {
+    "bac-a-sable.js": "chargé par les cinq gabarits, avant le script de la surface (COL-4)",
 }
 
 DIRECT =re.compile(r'\$\(\s*"#([a-z0-9-]+)"\s*\)\.hidden\s*=')
@@ -98,6 +106,13 @@ NON_RESOLUS = {
         "dans la feuille — vérifié le 2026-09-17 dans les deux sens par deux tests e2e : "
         "`test_ouvrir_une_collection_a_ce_groupe_le_preselectionne` l'exige CACHÉE, "
         "`test_un_annuaire_en_panne_n_empeche_rien` VISIBLE."),
+    ("bac-a-sable.js", "voile"): (
+        "Le voile des dialogues de la ligne du bac à sable (COL-4), créé au premier dialogue "
+        "par `el(\"div\", \"bac-modal\")` : la cible a un identifiant (`#bac-modal`) mais naît "
+        "d'un `createElement`, que la résolution ne remonte pas. Elle pose `display: flex`, "
+        "d'où le garde `.bac-modal[hidden] { display: none; }` dans la feuille — vérifié le "
+        "2026-10-24 par `tests/test_e2e_bac_a_sable.py`, qui exige le dialogue VISIBLE à "
+        "l'ouverture et CACHÉ après « Annuler »."),
     ("lib/membres-projet.js", "libre"): (
         "La saisie libre de « Qui y entre » d'un projet (COL-3), une par partie montée, sur "
         "le patron de celle de « Qui entre » : la cible est la CLASSE `.mp-libre`, cherchée "
@@ -152,6 +167,10 @@ def test_un_element_declare_cache_l_est_vraiment(page, live_server, chemin, scri
     laquelle des deux règles gagne.
     """
     ids, _ = cibles((RACINE / "static" / script).read_text(encoding="utf-8"))
+    # COL-4 — les cibles du script partagé valent sur chaque surface : il y est chargé.
+    for partage in SCRIPTS_PARTAGES:
+        ids = sorted(set(ids) | set(cibles((RACINE / "static" / partage).read_text(
+            encoding="utf-8"))[0]))
     assert ids, (
         f"aucune cible `.hidden` trouvée dans {script} : soit le masquage a changé de "
         "forme, soit ce test ne couvre plus rien — les deux demandent une relecture")
@@ -184,7 +203,7 @@ def test_toute_cible_illisible_est_declaree(chemin, script):
           "avec la raison de l'y laisser ET la vérification faite à la main.")
 
 
-@pytest.mark.parametrize("script", sorted(MODULES_MONTES))
+@pytest.mark.parametrize("script", sorted(MODULES_MONTES) + sorted(SCRIPTS_PARTAGES))
 def test_toute_cible_illisible_d_un_module_monte_est_declaree(script):
     """La même garde, pour ce qu'une surface MONTE au lieu de l'écrire (UX-16).
 
@@ -228,7 +247,7 @@ def test_aucune_declaration_n_est_morte():
     de ce fichier — une exception sans objet est un passe-droit. Une déclaration morte se
     retire, ou suit sa ligne.
     """
-    scripts = set(SURFACES_AUDITEES.values()) | set(MODULES_MONTES)
+    scripts = set(SURFACES_AUDITEES.values()) | set(MODULES_MONTES) | set(SCRIPTS_PARTAGES)
     mortes = []
     for (script, nom) in NON_RESOLUS:
         if script not in scripts:

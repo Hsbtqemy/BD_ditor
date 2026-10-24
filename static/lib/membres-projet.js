@@ -28,6 +28,22 @@
    `options.groupesAdmin` `acces.groupes_admin` de `GET /api/moi`.
    `options.surMessage(ligne)`  appelé chaque fois que le module écrit sa ligne de message.
    `options.surChangement()`    appelé après un geste que le serveur a accepté.
+   `options.bacASable`   FACULTATIF (COL-4) : le projet est un BAC À SABLE, et la partie se
+                         RÉDUIT à ce qu'un bac à sable permet (S11 ; maquette du 2026-10-24) :
+                         des COMPTES, au rôle de membre, par leur login — ni rôle à choisir,
+                         ni groupe, ni annuaire (aucune lecture de `…/membres/choix`), ni la
+                         note des administrateurs, qui n'y ont rien. Le propriétaire y figure
+                         « responsable », sans ✕ ; chaque invité « membre », avec ✕. Un MODE
+                         du module et non un second module : la même liste, les mêmes routes,
+                         les mêmes refus du serveur — un frère de plus aurait recopié tout cela.
+   `options.focaliserAjout` FACULTATIF : le focus va au champ de la ligne d'ajout dès
+                         qu'elle naît (la liste lue), sauf si l'on tape déjà ailleurs — la
+                         partie ouverte DANS un dialogue, où c'est le geste attendu. Le
+                         module seul connaît son balisage : l'hôte ne vise pas le champ.
+   `options.niveauTitre` FACULTATIF : 3 pour un titre `<h3>` — la partie est alors le
+                         contenu d'un dialogue, qui n'a pas de `<h3>` au-dessus d'elle ; un
+                         `<h4>` par défaut, sous le `<h3>` d'une fiche (la règle de
+                         `qui-entre.js`).
    `options.base()`      FACULTATIF : rend la collection de base du projet,
                          `{ nom, acces_membres }`, ou `null` s'il n'en a pas. Lue au moment
                          du message de « + Faire entrer », qui dit alors ce que la base ouvre
@@ -157,6 +173,7 @@
     const etat = m.etat;
     if (etat.erreur) return `<p class="col-note">${esc(etat.erreur)}</p>`;
     if (!etat.membres) return `<p class="col-note">Chargement…</p>`;
+    if (m.options.bacASable) return listeBacHtml(m);
     if (!etat.membres.length) {
       return `<p class="col-note">Personne n'est encore entré dans ce projet.</p>`;
     }
@@ -172,11 +189,31 @@
     }).join("")}</ul>`;
   }
 
+  /* COL-4 — la liste d'un bac à sable : le propriétaire (le seul qui ne soit pas au premier
+     rôle) sans ✕, chaque invité avec ✕ ; le rôle en mots, pas en liste — il n'y a rien à
+     choisir. */
+  function listeBacHtml(m) {
+    const lib = projetLib();
+    return `<ul class="mp-liste">${m.etat.membres.map((a) => {
+      const depuis = esc((a.date_creation || "").slice(0, 10));
+      const invite = a.role === lib.ROLES[0];
+      return `<li class="mp-ligne" ${cle(a)}>
+        <span class="mp-qui">${qui(a)}</span>
+        <span class="mp-role-fixe muted">${esc(lib.libelleRole(a.role, true))}</span>
+        ${invite && depuis ? `<span class="mp-depuis">depuis le ${depuis}</span>` : ""}
+        ${invite ? `<button class="ghost small mp-sortir" type="button" ${cle(a)}
+                aria-label="Faire sortir ${esc(a.principal)} du bac à sable">✕</button>` : ""}</li>`;
+    }).join("")}</ul>`;
+  }
+
   /* Ce que la ligne d'ajout contenait, relevé avant de la redessiner : l'annuaire arrive
      APRÈS l'ouverture, et le nom qu'on a commencé à taper ne doit pas partir avec. */
   function releveAjout(sec) {
     const choix = sec.querySelector(".mp-choix");
-    if (!choix) return null;
+    if (!choix) {
+      const nom = sec.querySelector(".mp-nom");
+      return nom ? { nom: nom.value } : null;
+    }
     return { choix: choix.value, touche: choix.dataset.touche === "1",
              nom: sec.querySelector(".mp-nom").value,
              genre: sec.querySelector(".mp-genre").value };
@@ -190,6 +227,15 @@
     const etat = m.etat;
     if (etat.erreur || !etat.membres) return "";
     const id = m.sfx;
+    if (m.options.bacASable) {
+      // COL-4 — un compte, par son login : « Faire entrer », le champ, le bouton.
+      return `<div class="mp-ajout-ligne">
+      <label for="mp-nom-${id}">Faire entrer</label>
+      <input id="mp-nom-${id}" class="mp-nom" placeholder="login du compte"
+             autocomplete="off" value="${esc(garde && garde.nom ? garde.nom : "")}">
+      <button class="primary small mp-faire-entrer" type="button">+ Faire entrer</button>
+    </div>`;
+    }
     const an = etat.annuaire;
     const groupes = an && Array.isArray(an.groupes) ? an.groupes : [];
     const connues = new Set(["", "autre", ...groupes.map((g) => `groupe:${g}`)]);
@@ -227,6 +273,10 @@
   /* Ce qui vaut TOUJOURS, sous la ligne de message : ce qu'entrer ne fait pas, l'état de
      l'annuaire, le pouvoir des administrateurs. */
   function notesHtml(m) {
+    if (m.options.bacASable) {
+      return `<div class="mp-notes-bloc"><p class="col-note mp-n-ouvre-rien">Un compte, au rôle
+      de membre. Il quitte quand il veut ; vous le faites sortir par ✕.</p></div>`;
+    }
     // COL-3, D10 — le projet a sa collection de BASE, et c'est la seule qu'entrer y ouvre,
     // selon la position que le projet a choisie (« Ce que la base ouvre aux membres »).
     const notes = [`<p class="col-note mp-n-ouvre-rien">Entrer dans le projet n'ouvre que sa
@@ -305,6 +355,8 @@
   }
 
   async function lireAnnuaire(m) {
+    // COL-4 — pas d'annuaire dans un bac à sable : on y invite un compte par son login.
+    if (m.options.bacASable) return null;
     try { m.etat.annuaire = await env.apiGet(`${routeMembres(m)}/choix`); }
     catch (e) {
       m.etat.annuaire = { annuaire: { etat: "erreur", motif: e.message || "échec" },
@@ -318,6 +370,16 @@
     m.etat.annuaire = null;
     await lireMembres(m);
     rendre(m);
+    if (m.options.focaliserAjout && vivant(m)) {
+      const champ = m.sec.querySelector(".mp-nom, .mp-choix");
+      const actif = m.sec.ownerDocument.activeElement;
+      if (champ && !(actif && actif.matches && actif.matches("input, textarea, select"))) {
+        champ.focus();
+      }
+    }
+    // COL-4 — pas d'annuaire dans un bac à sable : rien à redessiner, et un second rendu
+    // remplacerait le champ qui vient de prendre le focus.
+    if (m.options.bacASable) return;
     await lireAnnuaire(m);
     rendre(m);
   }
@@ -364,6 +426,7 @@
   }
 
   async function faireEntrer(m) {
+    if (m.options.bacASable) { await faireEntrerAuBac(m); return; }
     const sec = m.sec, p = m.p;
     const choix = sec.querySelector(".mp-choix").value;
     let genre, principal;
@@ -423,6 +486,32 @@
     changement(m, true);
   }
 
+  /* COL-4 — faire entrer dans un bac à sable : un COMPTE, au premier rôle, par son login.
+     Le serveur refuse un groupe, un autre rôle et le propriétaire lui-même (409 nommés) ;
+     l'écran n'offre que ce qu'il accepte. */
+  async function faireEntrerAuBac(m) {
+    const sec = m.sec;
+    const champ = sec.querySelector(".mp-nom");
+    const principal = champ.value.trim();
+    if (!principal) { dire(m, "Tapez le login du compte à inviter.", true); return; }
+    if ((m.etat.membres || []).some((a) => a.genre === "utilisateur"
+        && a.principal === principal)) {
+      dire(m, `${principal} est déjà dans ce bac à sable.`, true);
+      return;
+    }
+    const premier = projetLib().ROLES[0];
+    const ok = await tenter(m, () => env.apiSend("PUT", routeMembres(m),
+      { genre: "utilisateur", principal, role: premier }));
+    if (!ok) return;
+    if (!vivant(m)) { changement(m, true); return; }
+    sec.querySelector(".mp-nom").value = "";
+    await apres(m, ".mp-nom");
+    if (!vivant(m)) { changement(m, true); return; }
+    dire(m, `${principal} entre dans votre bac à sable, comme `
+         + `${projetLib().libelleRole(premier, true)}.`);
+    changement(m, true);
+  }
+
   /* La collection de base du projet, telle que l'HÔTE la connaît AU MOMENT du message —
      `options.base()` ; sa position peut avoir changé depuis le montage sans que la partie
      soit remontée. Sans l'option, `undefined` : la phrase ne dit que la règle. */
@@ -437,8 +526,9 @@
     sec.classList.add("mp");
     sec.dataset.mp = String(m.p.id);
     sec.setAttribute("aria-labelledby", `mp-titre-${m.sfx}`);
+    const h = m.options.niveauTitre === 3 ? "h3" : "h4";
     sec.innerHTML = `
-      <h4 class="mp-titre" id="mp-titre-${m.sfx}" tabindex="-1">Qui y entre</h4>
+      <${h} class="mp-titre" id="mp-titre-${m.sfx}" tabindex="-1">Qui y entre</${h}>
       <div class="mp-membres"><p class="col-note">Chargement…</p></div>
       <div class="mp-ajout"></div>
       <p class="col-msg muted small mp-msg" role="status" aria-live="polite"></p>
@@ -515,6 +605,7 @@
         if (!vivant(m)) return;
         await lireMembres(m);
         rendre(m);
+        if (m.options.bacASable) return;
         await lireAnnuaire(m);
         rendre(m);
       },
@@ -542,5 +633,18 @@
     return poignee;
   }
 
-  return { monter, noteAdmin, _suffixes: { prendre: prendreSuffixe, rendre: rendreSuffixe } };
+  /* COL-4 — les COMPTES au premier rôle d'un projet (ses invités, dans un bac à sable), lus
+     par la route du module : « Remettre à neuf… » les nomme AVANT d'ouvrir quoi que ce soit,
+     et un hôte n'appelle pas les routes des membres (le cliquet de
+     `tests/test_membres_projet_module.py`). Une liste vide si la route refuse. */
+  async function invites(projetId) {
+    try {
+      const membres = await env.apiGet(`/api/projets/${projetId}/membres`);
+      return membres.filter((a) => a.genre === "utilisateur"
+        && a.role === projetLib().ROLES[0]).map((a) => a.principal);
+    } catch (e) { return []; }
+  }
+
+  return { monter, noteAdmin, invites,
+           _suffixes: { prendre: prendreSuffixe, rendre: rendreSuffixe } };
 });

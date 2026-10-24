@@ -1921,7 +1921,9 @@ def test_le_bloc_dit_ce_qu_il_n_a_pas_pu_lire(page, seminaire):
     expect(partie.locator(".mp-faire-entrer")).to_be_visible()
     page.unroute("**/api/collections")
 
-    page.route("**/api/projets", panne)
+    # COL-4 — qui décide des projets lit la liste AVEC les bacs à sable
+    # (`/api/projets?bacs_a_sable=1`) : la panne vise la route, paramètre ou non.
+    page.route(re.compile(r".*/api/projets(\?.*)?$"), panne)
     page.goto(d["base"] + "/administration?vue=projets", wait_until="networkidle")
     expect(page.locator("#projets-ferme-texte")).to_be_visible()
     expect(page.locator("#projets-ferme-texte")).to_have_text(

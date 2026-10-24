@@ -262,6 +262,7 @@ async function selectAlbum(id, autoSelect = true) {
 /* Ouvre un album SANS reposer les gardes : l'appelant les a posées. */
 async function ouvrirAlbum(id, autoSelect = true) {
   state.albumId = id;
+  majImportPlafond();
   state.tagVocab = [];            // ANN-8 : les tags qui se posent sur CET album
   refreshTagVocab();
   state.exportCols = null;        // DROIT-2 : à redemander pour cet album
@@ -2828,6 +2829,25 @@ async function lancerOCR() {
   } catch (e) { toast("OCR : " + e.message, "error"); }
 }
 
+/* COL-4 — dans un album de SON bac à sable dont le plafond d'import est atteint, les deux
+   déclencheurs s'éteignent, la raison en infobulle (« au même endroit du geste », Hugo,
+   2026-10-24). `disabled`, comme l'entrée « Importer un PDF… » du même menu, que le menu
+   saute au clavier. La règle est dans `lib/bac-a-sable.js` ; le serveur refuse de toute
+   façon, en le disant. Relu à chaque album ouvert et après chaque import. */
+const TITRES_IMPORT = { "btn-import": "Importer une planche",
+                        "btn-import-menu": "Importer une image dans l'album courant" };
+function majImportPlafond() {
+  const album = state.albums.find((a) => a.id === state.albumId);
+  const raison = window.BDBacEcran && album
+    ? BDBacEcran.raisonImport(album.projet_id) : null;
+  for (const [id, titre] of Object.entries(TITRES_IMPORT)) {
+    const b = document.getElementById(id);
+    if (!b) continue;
+    b.disabled = !!raison;
+    b.title = raison || titre;
+  }
+}
+
 function setupImport() {
   // Deux déclencheurs (sidebar : accès rapide ; menu Import/Export : découvrable) →
   // même action : ouvrir le sélecteur de fichier sur l'album courant.
@@ -2853,6 +2873,8 @@ function setupImport() {
       toast("Planche importée", "success");
     } catch (err) { toast("Import : " + err.message, "error"); }
     e.target.value = "";
+    // COL-4 — le compte des planches importées d'un bac à sable a pu changer.
+    if (window.BDBacEcran) BDBacEcran.rafraichir();
   };
 }
 
@@ -3962,6 +3984,9 @@ async function init() {
     PROJET = id;
     loadAlbums().catch((err) => toast("Erreur de chargement : " + err.message, "error"));
   });
+  // COL-4 — la ligne du bac à sable a lu son état (le compte des planches importées) :
+  // l'import suit.
+  document.addEventListener("bd:bac-a-sable-maj", majImportPlafond);
   try {
     await refreshTagVocab();
     await loadAlbums();
@@ -3969,6 +3994,20 @@ async function init() {
   } catch (e) {
     toast("Erreur de chargement : " + e.message, "error");
   }
+  pageVideBacASable();
+}
+
+/* COL-4 — « Mon bac à sable » dans la page vide, sous « Sélectionnez ou importez une planche
+   pour commencer », à qui n'a encore aucun projet (le premier clic d'un arrivant ; Hugo,
+   2026-10-24). Qui offre, et à qui, est la règle de `lib/bac-a-sable.js`. */
+async function pageVideBacASable() {
+  if (!window.BDBacEcran) return;
+  await BDBacEcran.pret;
+  const vide = $("#stage-empty");
+  if (!vide || vide.querySelector(".bac-vide-geste")) return;
+  const g = BDBacEcran.gestePageVide("bac-vide-geste",
+                                     "ou essayez l'outil sur un jeu de planches :");
+  if (g) vide.appendChild(g);
 }
 
 init();

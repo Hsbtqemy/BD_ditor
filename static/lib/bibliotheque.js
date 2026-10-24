@@ -251,6 +251,9 @@
      écrire, puisque c'est elle qui recevra. */
   function offrirPrendreDuFonds(projet, collection) {
     if (!projet || projet.gerable !== true) return false;
+    // COL-4 — rien n'entre dans un bac à sable (S3) : le serveur refuse la prise, l'écran ne
+    // l'offre pas (relevé sur la maquette, 2026-10-24).
+    if (projet.bac_a_sable) return false;
     return collection === undefined || collection === null || collection.ecrivable === true;
   }
 

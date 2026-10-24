@@ -117,7 +117,18 @@
     const err = new Error(messageErreur(corps, r.statusText));
     err.statut = r.status;
     err.detail = corps ? corps.detail : undefined;
+    signalerIntrouvable(r.status);
     return err;
+  }
+
+  /* COL-4 — un 404 est la seule forme sous laquelle une page ouverte apprend que ce qu'elle
+     montre n'existe plus : un bac à sable effacé lundi à 4 h, par exemple. On le SIGNALE à
+     la page (`bd:introuvable`), sans rien en conclure ici ; `static/bac-a-sable.js` relit
+     alors la liste des projets. Hors navigateur, rien. */
+  function signalerIntrouvable(statut) {
+    if (statut !== 404 || typeof document === "undefined"
+        || typeof CustomEvent !== "function") return;
+    document.dispatchEvent(new CustomEvent("bd:introuvable"));
   }
 
   /* Toast accessible (role=status / aria-live=polite), auto-effacé après 4 s — ou après

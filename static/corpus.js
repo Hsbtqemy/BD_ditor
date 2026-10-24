@@ -60,11 +60,20 @@ const pluriel = (n, un, plus) => `${n} ${n > 1 ? (plus || un + "s") : un}`;
 /* La première lecture des albums : l'adresse l'attend avant d'ouvrir un album qu'elle nomme. */
 let ALBUMS_PRETS = Promise.resolve();
 
+/* COL-4 — les chiffres de la Bibliothèque suivent le projet courant QUAND C'EST UN BAC À
+   SABLE (relevé sur la maquette : « 0 albums » dans un bac tout neuf) : `?bac_a_sable=<id>`.
+   Hors d'un bac à sable, ceux du corpus, comme la Recherche et l'Exploration, aveugles aux
+   bacs (S8). */
+function routeCorpus() {
+  const p = PROJETS.find((x) => x.id === PROJET);
+  return p && p.bac_a_sable ? `/api/corpus?bac_a_sable=${p.id}` : "/api/corpus";
+}
+
 /* Stats de corpus en bande 2 (mêmes chips que Recherche / Exploration — source
    /api/corpus). Aperçu non bloquant. */
 async function loadCorpus() {
   try {
-    const c = await apiGet("/api/corpus");
+    const c = await apiGet(routeCorpus());
     $("#corpus-stats").innerHTML = [
       ["albums", "albums"], ["planches", "planches"], ["regions", "régions"],
       ["transcrites", "transcrites"], ["annotees", "annotées"], ["tags", "tags"],
@@ -464,6 +473,7 @@ function rendreAccueil() {
               aria-expanded="${!!(P3A.prise && P3A.prise.ou === "tete")}" aria-controls="bi-prise-zone">+ Prendre du fonds…</button>
     </div>` : ""}</div>
     <div id="bi-prise-zone" class="bi-prise-zone"></div>
+    <div id="bi-bac-carte"></div>
     ${p && p.description ? `<p class="bi-projet-description">${esc(p.description)}</p>` : ""}
     <section id="corpus-synthese" class="corpus-synthese" hidden></section>
     ${cols.length ? `<section class="lf-section">
@@ -476,6 +486,20 @@ function rendreAccueil() {
   P3A.dansProjet = null;
   rendreZonePrise();
   loadSynthese();
+  carteBacASable();
+}
+
+/* COL-4 — « Mon bac à sable » en carte dans la fiche, à qui n'a encore aucun projet (le
+   premier clic d'un arrivant ; Hugo, 2026-10-24). Qui offre, et à qui, est la règle de
+   `lib/bac-a-sable.js`. */
+async function carteBacASable() {
+  if (!window.BDBacEcran) return;
+  await BDBacEcran.pret;
+  const zone = document.getElementById("bi-bac-carte");
+  if (!zone || zone.firstChild) return;
+  const g = BDBacEcran.gestePageVide("bac-vide-carte",
+                                     "Essayez l'outil sur un jeu de planches, dans un projet à vous.");
+  if (g) zone.appendChild(g);
 }
 
 /* Synthèse d'avancement (barre par statut + validées), sur ce qu'on lit. */
@@ -483,7 +507,7 @@ async function loadSynthese() {
   const el = $("#corpus-synthese");
   if (!el) return;
   let c;
-  try { c = await apiGet("/api/corpus"); } catch (e) { return; }
+  try { c = await apiGet(routeCorpus()); } catch (e) { return; }
   const ici = $("#corpus-synthese");
   if (!ici) return;                     // la fiche a changé entre-temps
   const order = ["importee", "segmentee", "corrigee", "annotee"];
@@ -1343,6 +1367,25 @@ function renderDetail() {
 const IMPORT = { albumId: null, titre: "", enCours: false, arreter: false, etat: null,
                  bilan: null, focus: false };
 
+/* COL-4 — la raison d'éteindre l'import dans cet album, ou `null` (`lib/bac-a-sable.js`). */
+function raisonPlafond(a) {
+  return window.BDBacEcran ? BDBacEcran.raisonImport(a.projet_id) : null;
+}
+
+/* Le compte des planches importées a changé (la ligne l'a relu) : la fiche ouverte d'un
+   album redessine son seul bloc d'import, sans rien remonter d'autre. */
+function majImportPlafond() {
+  const a = state.albums.find((x) => x.id === state.openId);
+  const bloc = document.getElementById("bi-import");
+  if (!a || !bloc || IMPORT.enCours) return;
+  const avant = !!bloc.querySelector('#bi-importer[aria-disabled="true"]');
+  if (avant === !!raisonPlafond(a)) return;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = htmlImport(a);
+  const neuf = tmp.querySelector("#bi-import");
+  if (neuf) bloc.replaceWith(neuf);
+}
+
 function htmlImport(a) {
   if (!a.ecrivable) return "";
   const ici = IMPORT.albumId === a.id;
@@ -1374,9 +1417,15 @@ function htmlImport(a) {
     }
   }
   const ton = ici && !IMPORT.enCours && IMPORT.bilan ? ` ton-${BDImport.tonBilan(IMPORT.bilan)}` : "";
+  // COL-4 — plafond d'import atteint dans SON bac à sable : le geste s'éteint, la raison en
+  // infobulle. Éteint et non retiré, et FOCALISABLE (`aria-disabled`, comme ↑ ↓ plus bas) :
+  // il dit pourquoi au clavier comme à la souris.
+  const plafond = IMPORT.enCours ? null : raisonPlafond(a);
   return `<div class="bi-import" id="bi-import">
-    <button class="ghost small" type="button" id="bi-importer" title="${esc(titre)}"
-      ${IMPORT.enCours ? "disabled" : ""}>⤓ Importer des planches…</button>
+    <button class="ghost small" type="button" id="bi-importer" title="${esc(plafond || titre)}"
+      ${IMPORT.enCours ? "disabled" : ""}${plafond
+        ? ` aria-disabled="true" aria-describedby="bi-import-plafond"` : ""}>⤓ Importer des planches…</button>
+    ${plafond ? `<span id="bi-import-plafond" class="sr-only">${esc(plafond)}</span>` : ""}
     <button class="ghost small" type="button" id="bi-ranger-nom"
       title="Remettre les planches dans l'ordre des noms de leurs fichiers d'origine — une confirmation dit d'abord ce qui change"
       ${IMPORT.enCours || ORDRE.enCours ? "disabled" : ""}>⇅ Ranger par nom de fichier</button>
@@ -1545,6 +1594,9 @@ async function importerPlanches(albumId, fichiers) {
   // ouverte sur un autre album n'est pas déplacée : le bilan s'y dit par un toast.
   await loadAlbums();
   loadCorpus();                          // les chiffres de la bande d'outils
+  // COL-4 — le compte des planches importées d'un bac à sable : la ligne le relit, et la
+  // fiche éteint l'import au plafond (`bd:bac-a-sable-maj`).
+  if (window.BDBacEcran) BDBacEcran.rafraichir();
   if (state.openId !== albumId) {
     const texte = `« ${a.titre} » : ${BDImport.libelleBilan(bilan)}`;
     const ton = BDImport.tonBilan(bilan);
@@ -3287,6 +3339,7 @@ function brancherFiche() {
     }
     if (t.closest("#detail-validate-all")) { validateAllAlbum(); return; }
     if (t.closest("#bi-importer")) {
+      if (t.closest("#bi-importer").getAttribute("aria-disabled") === "true") return;
       const champ = $("#bi-import-fichiers");
       champ.dataset.album = String(state.openId);
       champ.click();
@@ -3472,6 +3525,7 @@ function setup() {
     await loadAlbums(false).catch(() => {});
     rendreFiche();
     ecrireAdresse(false);
+    loadCorpus();
     // Une modale « Nouvel album » restée ouverte propose les collections du projet d'AVANT
     // (un autre onglet vient d'en changer) : sa liste suit.
     if (!$("#album-modal").hidden && !state.editingId) remplirCollections(false, null);
@@ -3480,9 +3534,14 @@ function setup() {
   ETROIT.addEventListener("change", rendreVue);
   // AUTH-1 — amorcé ici : `parQui()` a besoin du login courant pour dire « par vous ».
   identite().then((m) => { MOI = m; });
-  loadCorpus();   // stats d'en-tête (bande 2)
   // Les albums, puis l'état ShareDocs AVANT le rendu de la fiche (EXP-1), puis l'adresse.
   ALBUMS_PRETS = loadAlbums(false).catch((e) => toast("Albums : " + e.message, "error"));
+  // Stats d'en-tête (bande 2), une fois le projet courant lu : celles d'un bac à sable sont
+  // les siennes (COL-4).
+  ALBUMS_PRETS.then(loadCorpus);
+  // COL-4 — la ligne du bac à sable a lu son état (le compte des planches importées) : la
+  // fiche d'un album ouverte éteint ou rallume son import.
+  document.addEventListener("bd:bac-a-sable-maj", majImportPlafond);
   loadEtatSharedocs().then(() => ouvrirDepuisAdresse(false));
   pollJobs();     // reprend l'affichage d'un éventuel lot déjà en cours
 }
