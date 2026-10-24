@@ -1197,8 +1197,11 @@ def test_un_404_ordinaire_ne_fait_rien_hors_d_un_bac(page, jeu):
 # ── La Recherche et l'Exploration, dans un bac à sable (Hugo, 2026-10-24) ──────────────
 
 # Les deux surfaces qui ne voient pas le bac à sable, et l'élément au-dessus duquel la
-# phrase se pose : au-dessus de leurs RÉSULTATS.
-HORS_RECHERCHE = {"/recherche": ".results-head", "/exploration": ".dist-barre"}
+# phrase se pose : au-dessus de leurs RÉSULTATS. DÉRIVÉES de `SURFACES_AUDITEES` par leur
+# nom (`test_surfaces.test_aucune_seconde_liste_de_surfaces`).
+_ANCRE_DES_RESULTATS = {"Recherche": ".results-head", "Exploration": ".dist-barre"}
+HORS_RECHERCHE = {s: _ANCRE_DES_RESULTATS[nom] for s, nom in SURFACES_AUDITEES.items()
+                  if nom in _ANCRE_DES_RESULTATS}
 PHRASE_MIENNE = ("Votre bac à sable n'est ni cherché ni exploré : on y voit le corpus de "
                  "vos autres projets.")
 PHRASE_INVITEE = ("Ce bac à sable n'est ni cherché ni exploré : on y voit le corpus de vos "
@@ -1237,7 +1240,7 @@ def test_la_recherche_et_l_exploration_disent_qu_elles_ne_voient_pas_le_bac(page
             _phrase(page, surface, texte)
     # Sur les trois autres surfaces, elle n'existe pas.
     _sous(page, CAMILLE)
-    for surface in ("/", "/corpus", "/administration"):
+    for surface in (s for s in SURFACES_AUDITEES if s not in HORS_RECHERCHE):
         page.goto(jeu["base"] + surface, wait_until="networkidle")
         _ligne(page)
         expect(page.locator("#bac-hors-recherche")).to_have_count(0)
