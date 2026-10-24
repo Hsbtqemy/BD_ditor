@@ -32,7 +32,7 @@ from database import NATURE_COLLECTIF, ROLES_JEU, collection_de_base
 from pipeline import nlp
 
 from socle import (_creer_bac_a_sable, _effacer_bac_a_sable, _planches_importees_du_bac,
-                   db, portee_courante)
+                   _sortir_du_bac, db, portee_courante)
 
 router = APIRouter()
 
@@ -150,6 +150,34 @@ def _naitre_sous_le_verrou(conn, login: str) -> bool:
         if _mien(conn, login) is None:
             raise
         return False
+
+
+@router.post("/api/bac-a-sable/{projet_id}/quitter", status_code=204)
+def quitter_un_bac_a_sable(projet_id: int, conn: sqlite3.Connection = Depends(db),
+                           portee: autorisation.Portee = Depends(portee_courante)):
+    """QUITTER de soi-même le bac à sable où l'on est invité (Hugo, 2026-10-24). On y perd
+    tout ce qu'on y tenait, la propriété des collections qu'on y a créées comprise
+    (`socle._sortir_du_bac`) ; rien n'est détruit, et le journal garde son travail.
+
+    404 si l'on n'y est pas invité — un bac à sable qu'on ne voit pas, ou qui n'en est pas
+    un : la même réponse, rien n'en fuit. 409 nommé à son propriétaire : le sien ne se
+    quitte pas, il se remet à neuf. Un invité l'est par son LOGIN (S11 : on n'invite pas un
+    groupe) ; c'est cette ligne-là qui part."""
+    if not portee.utilisateur:
+        raise HTTPException(403, _MOTIF_OUVRIR)
+    conflit.verrouiller(conn)
+    p = conn.execute("SELECT bac_a_sable_de FROM projet WHERE id = ? "
+                     "AND bac_a_sable_de IS NOT NULL", (projet_id,)).fetchone()
+    if p is not None and p[0] == portee.utilisateur:
+        conn.rollback()
+        raise HTTPException(409, "C'est votre bac à sable : il ne se quitte pas, il se "
+                                 "remet à neuf.")
+    if p is None or not _sortir_du_bac(conn, projet_id, autorisation.UTILISATEUR,
+                                       portee.utilisateur):
+        conn.rollback()
+        raise HTTPException(404, f"Projet {projet_id} introuvable")
+    conn.commit()
+    return Response(status_code=204)
 
 
 @router.post("/api/bac-a-sable/remise-a-neuf")

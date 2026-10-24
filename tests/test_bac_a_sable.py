@@ -968,6 +968,42 @@ def test_l_invitation_est_bornee(client, decor):
     assert poser(LEA).status_code == 200
 
 
+def test_un_invite_quitte_le_bac_a_sable(client, decor):
+    """Hugo, 2026-10-24 : un invité QUITTE de lui-même un bac à sable. Il y perd tout ce qu'il
+    tenait, la propriété de sa collection comprise (l'option fermée) ; rien n'est détruit."""
+    pid = decor["bac"]["id"]
+    chez_sam = client.post("/api/collections", headers=SAM,
+                           json={"nom": "Chez Sam", "projet_id": pid}).json()["id"]
+    a = client.post("/api/albums", headers=SAM,
+                    json={"titre": "À sam", "collection_id": chez_sam}).json()["id"]
+    # Le propriétaire ne quitte pas le sien ; un inconnu ne quitte rien (404).
+    r = client.post(f"/api/bac-a-sable/{pid}/quitter", headers=LEA)
+    assert r.status_code == 409 and "remet à neuf" in r.json()["detail"], r.text
+    assert client.post(f"/api/bac-a-sable/{pid}/quitter", headers=RITA).status_code == 404
+    assert client.post(f"/api/bac-a-sable/{decor['etude']}/quitter",
+                       headers=RESP).status_code == 404
+    assert client.post(f"/api/bac-a-sable/{pid}/quitter", headers=SAM).status_code == 204
+    assert pid not in {p["id"] for p in client.get("/api/projets", headers=SAM).json()}
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM collection_acces "
+                             "WHERE principal = 'sam'") == [{"n": 0}]
+    assert client.get(f"/api/albums/{a}/planches", headers=SAM).status_code == 404
+    assert _sql(decor["db"], "SELECT id FROM albums WHERE id = ?", (a,)) == [{"id": a}]
+    assert client.post(f"/api/bac-a-sable/{pid}/quitter", headers=SAM).status_code == 404
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM evenement WHERE type = 'delien' "
+                             "AND cible_table IN ('projet_acces', 'collection_acces') "
+                             "AND json_extract(avant, '$.principal') = 'sam'") == [{"n": 2}]
+
+
+def test_un_invite_retire_y_perd_ses_collections(client, decor):
+    """Retiré par la propriétaire, l'invité perd aussi la propriété de ce qu'il y a créé."""
+    pid = decor["bac"]["id"]
+    client.post("/api/collections", headers=SAM, json={"nom": "Chez Sam", "projet_id": pid})
+    assert client.delete(f"/api/projets/{pid}/membres/utilisateur/sam",
+                         headers=LEA).status_code == 204
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM collection_acces "
+                             "WHERE principal = 'sam'") == [{"n": 0}]
+
+
 def test_l_invite_travaille_dans_le_jeu(client, decor):
     planche = _copie(decor, "exemple")["planche_ids"][0]
     r = client.post(f"/api/planches/{planche}/regions", headers=SAM,

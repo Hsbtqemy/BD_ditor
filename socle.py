@@ -672,6 +672,35 @@ def _creer_bac_a_sable(conn, login: str) -> int:
     return pid
 
 
+def _sortir_du_bac(conn, projet_id: int, genre: str, principal: str) -> bool:
+    """Fait SORTIR un membre d'un bac à sable — qu'il le quitte de lui-même ou que son
+    propriétaire le retire : il perd ce qu'il tenait dans ce bac à sable, y compris la
+    PROPRIÉTÉ des collections qu'il y a créées (décision du pilotage, l'option fermée). Sa
+    ligne de projet part, et ses accès sur les collections du bac à sable avec elle ; une
+    collection qu'il était seul à tenir n'est plus lue de personne, et part avec le bac à
+    sable. Rien n'est détruit : le journal lui attribue son travail. Chaque retrait s'écrit
+    (`delien`). Ne commite pas ; rend False s'il n'en était pas membre."""
+    ligne = conn.execute("SELECT role FROM projet_acces WHERE projet_id = ? AND genre = ? "
+                         "AND principal = ?", (projet_id, genre, principal)).fetchone()
+    if ligne is None:
+        return False
+    conn.execute("DELETE FROM projet_acces WHERE projet_id = ? AND genre = ? "
+                 "AND principal = ?", (projet_id, genre, principal))
+    journal.journaliser(conn, "delien", "projet_acces", projet_id,
+                        avant={"genre": genre, "principal": principal, "role": ligne[0]})
+    for cid, niveau, exporter in conn.execute(
+            f"SELECT ca.collection_id, ca.niveau, ca.exporter FROM collection_acces ca "
+            f"JOIN collection c ON c.id = ca.collection_id WHERE {sql_projet_de('c')} = ? "
+            f"AND ca.genre = ? AND ca.principal = ?",
+            (projet_id, genre, principal)).fetchall():
+        conn.execute("DELETE FROM collection_acces WHERE collection_id = ? AND genre = ? "
+                     "AND principal = ?", (cid, genre, principal))
+        journal.journaliser(conn, "delien", "collection_acces", cid,
+                            avant={"genre": genre, "principal": principal, "niveau": niveau,
+                                   "exporter": bool(exporter)})
+    return True
+
+
 def _planches_importees_du_bac(conn, projet_id: int) -> int:
     """Combien d'IMAGES ont été importées dans ce bac à sable (S9) : les fichiers distincts
     que désignent les planches de ses albums et qui ne sont pas des images du jeu

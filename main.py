@@ -66,7 +66,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _MOTIF_EXPORT_IMPORTEE, _SQL_IMAGES_DU_JEU, _SQL_IMAGES_EXPORTABLES,
     _refuser_le_bac_a_sable, _MOTIF_PAS_UN_BAC, _TOURS_D_EFFACEMENT, _effacer_bac_a_sable,
     _MOTIF_TERME_FRONTIERE, _rive_d_un_terme, _rive_d_un_album, _exiger_une_rive,
-    _supprimer_le_vocabulaire_du_bac, _rive_d_un_personnage,
+    _supprimer_le_vocabulaire_du_bac, _rive_d_un_personnage, _sortir_du_bac,
     _passer_les_gestes_du_bac,
     _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,

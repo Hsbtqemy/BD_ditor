@@ -43,7 +43,7 @@ from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, NOM_BAC_A
 
 from socle import (
     AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate,
-    _bac_a_sable_de, _get_projet, _refuser_le_jeu, _rows,
+    _bac_a_sable_de, _get_projet, _refuser_le_jeu, _rows, _sortir_du_bac,
     _supprimer_projet, db,
     portee_courante,
 )
@@ -492,6 +492,13 @@ def retirer_membre(projet_id: int, genre: str, principal: str,
             and principal == proprietaire:
         raise HTTPException(409, "C'est le propriétaire de ce bac à sable : il ne se retire "
                                  "pas — le bac à sable se remet à neuf, et s'efface.")
+    if proprietaire is not None:
+        # COL-4 — retiré d'un bac à sable, l'invité y perd tout ce qu'il tenait, la
+        # propriété de ses collections comprise (`socle._sortir_du_bac`).
+        if not _sortir_du_bac(conn, projet_id, genre, principal):
+            raise HTTPException(404, "Ce membre n'existe pas.")
+        conn.commit()
+        return Response(status_code=204)
     ligne = conn.execute(
         "SELECT role FROM projet_acces WHERE projet_id = ? AND genre = ? AND principal = ?",
         (projet_id, genre, principal)).fetchone()
