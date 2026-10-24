@@ -107,7 +107,14 @@ def _verrou_de_l_outil():
 def effacer(conn, *, maintenant: str | None = None, tous: bool = False,
             appliquer: bool = False, arret=None, dire=print) -> dict:
     """Le cœur, pour la ligne de commande et les tests. Rend `{a_effacer, effaces,
-    references, interrompu}`."""
+    references, echecs, interrompu}`.
+
+    Bac à sable PAR bac à sable, ISOLÉS (relecture croisée : une erreur sur un bac à sable
+    arrêtait tout le battement, et les suivants attendaient une semaine de plus) : l'échec
+    de l'un est défait (`rollback`), dit sur la sortie — que le journal du système garde,
+    l'unité systemd la recueillant — et compté dans `echecs` ; l'outil passe au suivant, et
+    sort en erreur à la fin (`main`, code 1). Un bac à sable en échec reste tel quel ou à
+    moitié effacé : le battement suivant le reprend (l'effacement est idempotent)."""
     import socle                                  # le chemin de l'effacement
     import preparer_jeu                           # la purge des références
     maintenant = maintenant or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -118,16 +125,29 @@ def effacer(conn, *, maintenant: str | None = None, tous: bool = False,
         for b in liste:
             dire(f"  − effacerait le bac à sable {b['id']} (prévu le {b['efface_le']} UTC)")
         return bilan
+    bilan["echecs"] = []
     with _verrou_de_l_outil():
         for b in liste:
             if arret is not None and arret.demande:
                 bilan["interrompu"] = True
                 break
-            r = socle._effacer_bac_a_sable(conn, autorisation.TOTALE, b["id"],
-                                           motif="effacement")
+            try:
+                r = socle._effacer_bac_a_sable(conn, autorisation.TOTALE, b["id"],
+                                               motif="effacement")
+            except Exception as exc:                   # isolé : on passe au suivant
+                conn.rollback()
+                cause = getattr(exc, "detail", None) or f"{type(exc).__name__}: {exc}"
+                bilan["echecs"].append({"id": b["id"], "cause": str(cause)})
+                dire(f"  ✗ bac à sable {b['id']} NON effacé — {cause}")
+                continue
             bilan["effaces"].append(b["id"])
             dire(f"  × bac à sable {b['id']} effacé : {r['albums']} album(s)")
-        bilan["references"] = preparer_jeu.purger_les_references(conn)
+        try:
+            bilan["references"] = preparer_jeu.purger_les_references(conn)
+        except Exception as exc:
+            conn.rollback()
+            bilan["echecs"].append({"id": None, "cause": f"{type(exc).__name__}: {exc}"})
+            dire(f"  ✗ purge des références du jeu NON faite — {exc}")
         for a in bilan["references"]:
             dire(f"  × référence {a} du jeu détruite : plus aucune copie ne la tenait")
     return bilan
@@ -191,6 +211,9 @@ def main(argv=None) -> int:
     if bilan["interrompu"]:
         print("  Arrêté avant la fin : le battement suivant finira.")
         return 130
+    if bilan.get("echecs"):
+        print(f"✗ {len(bilan['echecs'])} échec(s) : le battement suivant les reprendra.")
+        return 1
     return 0
 
 

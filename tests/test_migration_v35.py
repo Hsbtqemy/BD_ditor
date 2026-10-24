@@ -153,6 +153,10 @@ def test_les_colonnes_arrivent_vides_aucun_projet_ne_change_de_nature(vraie_v34)
     assert {"bac_a_sable_de", "efface_le", "jeu"} <= set(_colonnes(vraie_v34, "projet"))
     assert _sql(vraie_v34, "SELECT COUNT(*) AS n FROM projet WHERE bac_a_sable_de IS NOT NULL "
                            "OR efface_le IS NOT NULL OR jeu <> 0")[0]["n"] == 0
+    # Un bac à sable par login, garanti par la base (index unique partiel).
+    assert _sql(vraie_v34, "SELECT name FROM sqlite_master WHERE type = 'index' "
+                           "AND name = 'idx_projet_bac_a_sable_de'") == [
+        {"name": "idx_projet_bac_a_sable_de"}]
     # `jeu` est NOT NULL DEFAULT 0 : un projet créé ensuite sans le dire n'est pas le jeu.
     c = sqlite3.connect(vraie_v34)
     pid = c.execute("INSERT INTO projet (nom) VALUES ('Après')").lastrowid

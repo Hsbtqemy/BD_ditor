@@ -203,6 +203,108 @@ def test_un_effacement_interrompu_se_finit(client, decor, monkeypatch):
     assert _effacer(pid)["efface"] is True
 
 
+def test_un_album_ne_pendant_l_effacement_part_avec_le_bac(client, decor, monkeypatch):
+    """Un invité crée un album dans la base pendant que l'effacement détruit les autres
+    (relecture croisée : la liste des albums lue une fois, la suppression du projet tombait
+    sur une clé étrangère — 500, un bac à sable à moitié effacé). Les albums se relisent
+    sous le verrou : celui-là part aussi, et le bac à sable avec."""
+    vrai = socle._detruire_album
+    fait = {}
+
+    def pendant(conn, portee, album_id, **kw):
+        vrai(conn, portee, album_id, **kw)
+        if not fait:
+            r = client.post("/api/albums", headers=SAM,
+                            json={"titre": "Né pendant",
+                                  "collection_id": decor["bac"]["base"]["id"]})
+            assert r.status_code == 201, r.text
+            fait["id"] = r.json()["id"]
+
+    monkeypatch.setattr(socle, "_detruire_album", pendant)
+    r = client.post("/api/bac-a-sable/remise-a-neuf", headers=LEA)
+    assert r.status_code == 200, r.text
+    assert _sql(decor["db"], "SELECT id FROM albums WHERE id = ?", (fait["id"],)) == []
+    assert _sql(decor["db"], "SELECT id FROM projet WHERE id = ?", (decor["bac"]["id"],)) == []
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM projet WHERE bac_a_sable_de = 'lea'"
+                ) == [{"n": 1}]
+
+
+def test_un_effacement_qui_ne_finit_pas_se_refuse_proprement(client, decor, monkeypatch):
+    """Si des albums naissent à chaque tour, l'effacement renonce après ses tours par un
+    409 qui dit de réessayer — jamais un 500."""
+    monkeypatch.setattr(socle, "_TOURS_D_EFFACEMENT", 2)
+    vrai = socle._detruire_album
+
+    def toujours(conn, portee, album_id, **kw):
+        vrai(conn, portee, album_id, **kw)
+        client.post("/api/albums", headers=SAM,
+                    json={"titre": "Encore", "collection_id": decor["bac"]["base"]["id"]})
+
+    monkeypatch.setattr(socle, "_detruire_album", toujours)
+    with pytest.raises(socle.HTTPException) as e:
+        _effacer(decor["bac"]["id"])
+    assert e.value.status_code == 409 and "réessayez" in e.value.detail
+    monkeypatch.setattr(socle, "_detruire_album", vrai)
+    assert _effacer(decor["bac"]["id"])["efface"] is True
+
+
+def test_un_seul_bac_a_sable_par_login(client, decor, monkeypatch):
+    """La remise à neuf relit SOUS le verrou : un clic sur « Mon bac à sable » arrivé entre
+    l'effacement et la création ne fait pas naître un second bac à sable (relecture
+    croisée). Et la base le garantit (index unique partiel)."""
+    import routes.bac_a_sable as module
+    vrai = socle._effacer_bac_a_sable
+
+    def puis_un_clic(conn, portee, pid, *, motif):
+        res = vrai(conn, portee, pid, motif=motif)
+        autre = database.get_connection()
+        try:
+            import conflit
+            conflit.verrouiller(autre)
+            socle._creer_bac_a_sable(autre, "lea")
+            autre.commit()
+        finally:
+            autre.close()
+        return res
+
+    monkeypatch.setattr(module, "_effacer_bac_a_sable", puis_un_clic)
+    tentes = []
+    vrai_creer = module._creer_bac_a_sable
+    monkeypatch.setattr(module, "_creer_bac_a_sable",
+                        lambda conn, login: tentes.append(login) or vrai_creer(conn, login))
+    r = client.post("/api/bac-a-sable/remise-a-neuf", headers=LEA)
+    assert r.status_code == 200, r.text
+    assert tentes == [], "la remise à neuf n'a pas relu sous le verrou"
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM projet WHERE bac_a_sable_de = 'lea'"
+                ) == [{"n": 1}]
+    c = sqlite3.connect(decor["db"])
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            c.execute("INSERT INTO projet (nom, bac_a_sable_de) VALUES ('Bac à sable', 'lea')")
+        c.execute("INSERT INTO projet (nom) VALUES ('Ordinaire 1')")
+        c.execute("INSERT INTO projet (nom) VALUES ('Ordinaire 2')")
+        c.rollback()
+    finally:
+        c.close()
+
+
+def test_l_index_rend_le_bac_qui_existe(client, decor, monkeypatch):
+    """Le dernier mot de l'index : un chemin qui aurait créé son bac à sable sans le verrou
+    (simulé : la relecture sous le verrou ne le voit pas) — `POST /api/bac-a-sable` rend
+    celui qui existe, sans 500."""
+    import routes.bac_a_sable as module
+    vrai = module._mien
+    appels = []
+
+    def aveugle(conn, login):
+        appels.append(login)
+        return None if len(appels) <= 1 else vrai(conn, login)
+
+    monkeypatch.setattr(module, "_mien", aveugle)
+    r = client.post("/api/bac-a-sable", headers=LEA)
+    assert r.status_code == 200 and r.json()["id"] == decor["bac"]["id"], r.text
+
+
 def test_ctrl_z_ne_bute_pas_sur_un_bac_a_sable_efface(client, decor):
     """Le témoin de l'annulation : les gestes de sam dans le bac à sable sont PASSÉS à
     l'effacement ; son prochain Ctrl+Z ne refuse pas l'un après l'autre des gestes dont les
@@ -307,6 +409,32 @@ def test_l_outil_a_blanc_n_ecrit_rien_et_la_ligne_de_commande(client, decor, mon
     assert effacer_bacs_a_sable.main(["--appliquer"]) == 0
     assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM projet WHERE bac_a_sable_de IS NOT NULL"
                 ) == [{"n": 2}]
+
+
+def test_l_outil_isole_chaque_bac_a_sable(client, decor, monkeypatch, capsys):
+    """Une erreur sur un bac à sable n'arrête plus le battement (relecture croisée) : elle
+    est défaite, dite sur la sortie, comptée ; les autres s'effacent ; le code de retour
+    dit l'échec."""
+    vrai = socle._effacer_bac_a_sable
+    casse = decor["bac"]["id"]
+
+    def sauf_un(conn, portee, pid, *, motif):
+        if pid == casse:
+            conn.execute("UPDATE projet SET nom = 'à moitié' WHERE id = ?", (pid,))
+            raise RuntimeError("panne au milieu")
+        return vrai(conn, portee, pid, motif=motif)
+
+    monkeypatch.setattr(socle, "_effacer_bac_a_sable", sauf_un)
+    bilan = _outil(tous=True, appliquer=True)
+    assert sorted(bilan["effaces"]) == sorted([decor["bac_resp"]["id"],
+                                               decor["bac_hugo"]["id"]])
+    assert bilan["echecs"] == [{"id": casse, "cause": "RuntimeError: panne au milieu"}]
+    assert _sql(decor["db"], "SELECT nom FROM projet WHERE id = ?", (casse,)) == [
+        {"nom": "Bac à sable"}]                    # défait, pas à moitié écrit
+    monkeypatch.setattr(database, "DB_PATH", decor["db"])
+    assert effacer_bacs_a_sable.main(["--tous", "--appliquer"]) == 1
+    sortie = capsys.readouterr().out
+    assert "NON effacé" in sortie and "1 échec" in sortie
 
 
 def test_le_verrou_de_l_outil(client, decor):

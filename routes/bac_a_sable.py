@@ -131,9 +131,25 @@ def ouvrir_mon_bac_a_sable(response: Response, conn: sqlite3.Connection = Depend
         conn.rollback()
         response.status_code = 200
         return _vue(conn, p)
-    _creer_bac_a_sable(conn, portee.utilisateur)
-    conn.commit()
+    if not _naitre_sous_le_verrou(conn, portee.utilisateur):
+        response.status_code = 200
     return _vue(conn, _mien(conn, portee.utilisateur))
+
+
+def _naitre_sous_le_verrou(conn, login: str) -> bool:
+    """Fait naître le bac à sable de `login`, le verrou d'écriture TENU et l'absence RELUE
+    par l'appelant ; commite. L'index unique partiel (`idx_projet_bac_a_sable_de`) est le
+    dernier mot : s'il refuse — un autre chemin a créé le sien sans le verrou —, rien n'est
+    écrit et le sien est rendu. Rend True si le bac à sable est né ici."""
+    try:
+        _creer_bac_a_sable(conn, login)
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        if _mien(conn, login) is None:
+            raise
+        return False
 
 
 @router.post("/api/bac-a-sable/remise-a-neuf")
@@ -151,7 +167,12 @@ def remettre_a_neuf(conn: sqlite3.Connection = Depends(db),
     if _jeu_a_un_travail(conn):
         nlp.ensure_loaded()
     _effacer_bac_a_sable(conn, portee, p["id"], motif="remise à neuf")
+    # Relu SOUS le verrou (relecture croisée) : un clic sur « Mon bac à sable », arrivé
+    # entre l'effacement et la création, en a peut-être déjà fait naître un neuf — c'est
+    # lui qu'on rend, sans en créer un second.
     conflit.verrouiller(conn)
-    _creer_bac_a_sable(conn, portee.utilisateur)
-    conn.commit()
+    if _mien(conn, portee.utilisateur) is not None:
+        conn.rollback()
+    else:
+        _naitre_sous_le_verrou(conn, portee.utilisateur)
     return _vue(conn, _mien(conn, portee.utilisateur))

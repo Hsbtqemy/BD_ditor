@@ -1127,6 +1127,9 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
 # --------------------------------------------------------------------------- #
 _MOTIF_PAS_UN_BAC = ("Ce projet n'est pas un bac à sable : seul un bac à sable s'efface ainsi. "
                      "Un projet ordinaire ne se supprime que vide.")
+# Combien de fois l'effacement relit les albums d'un bac à sable avant de renoncer : chaque
+# tour détruit tout ce qu'il a lu, et un tour sans album finit sous le verrou.
+_TOURS_D_EFFACEMENT = 20
 
 
 def _supprimer_le_vocabulaire_du_bac(conn, projet_id: int, collections: list) -> None:
@@ -1251,26 +1254,37 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
 
     Idempotent : un arrêt au milieu laisse un bac à sable à moitié effacé, que l'appel
     suivant finit ; un projet déjà parti rend `efface: False`. Le journal garde tout,
-    append-only. Rend `{efface, albums, gestes_passes}`."""
-    conflit.verrouiller(conn)
-    n = nature_du_projet(conn, projet_id)
-    if n is None:
-        conn.rollback()
-        return {"efface": False, "albums": 0, "gestes_passes": 0}
-    if n["bac_a_sable_de"] is None:
-        conn.rollback()
-        raise HTTPException(409, _MOTIF_PAS_UN_BAC)
-    passes = _passer_les_gestes_du_bac(conn, projet_id)
-    conn.commit()
-    albums = [r[0] for r in conn.execute(
-        f"SELECT a.id FROM albums a WHERE {sql_projet_d_album('a')} = ? ORDER BY a.id",
-        (projet_id,))]
-    for album_id in albums:
-        _detruire_album(conn, portee, album_id)
-    conflit.verrouiller(conn)
-    if nature_du_projet(conn, projet_id) is None:           # un autre l'a fini entre-temps
-        conn.rollback()
-        return {"efface": False, "albums": len(albums), "gestes_passes": passes}
+    append-only. Rend `{efface, albums, gestes_passes}`.
+
+    D'UN SEUL TENANT pour ce qui suit les albums (relecture croisée : un album créé pendant
+    l'effacement — un invité qui travaille — faisait tomber la suppression du projet sur
+    une clé étrangère, 500, et laissait un bac à sable à moitié effacé). Les albums se
+    relisent SOUS le verrou, tour après tour : tant qu'il en reste, ils sont détruits (un
+    commit chacun, comme avant) ; quand il n'en reste aucun, le verrou est GARDÉ jusqu'à la
+    suppression du projet — rien ne peut plus naître entre les deux. Au-delà de
+    `_TOURS_D_EFFACEMENT` tours, un 409 dit de réessayer, sans rien laisser d'incohérent."""
+    detruits, passes = 0, 0
+    for _tour in range(_TOURS_D_EFFACEMENT):
+        conflit.verrouiller(conn)
+        n = nature_du_projet(conn, projet_id)
+        if n is None:                                       # déjà effacé, ou par un autre
+            conn.rollback()
+            return {"efface": False, "albums": detruits, "gestes_passes": passes}
+        if n["bac_a_sable_de"] is None:
+            conn.rollback()
+            raise HTTPException(409, _MOTIF_PAS_UN_BAC)
+        passes += _passer_les_gestes_du_bac(conn, projet_id)
+        albums = [r[0] for r in conn.execute(
+            f"SELECT a.id FROM albums a WHERE {sql_projet_d_album('a')} = ? ORDER BY a.id",
+            (projet_id,))]
+        if not albums:
+            break                                          # le verrou reste TENU
+        conn.commit()
+        for album_id in albums:
+            _detruire_album(conn, portee, album_id)
+            detruits += 1
+    else:
+        raise HTTPException(409, "Ce bac à sable change pendant qu'on l'efface : réessayez.")
     collections = [(r[0], r[1]) for r in conn.execute(
         f"SELECT c.id, c.nom FROM collection c WHERE {sql_projet_de('c')} = ? ORDER BY c.id",
         (projet_id,))]
@@ -1296,7 +1310,7 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
     journal.journaliser(conn, "suppression", "projet", projet_id,
                         avant={"nom": nom, "bac_a_sable": True, "motif": motif})
     conn.commit()
-    return {"efface": True, "albums": len(albums), "gestes_passes": passes}
+    return {"efface": True, "albums": detruits, "gestes_passes": passes}
 
 
 # --------------------------------------------------------------------------- #

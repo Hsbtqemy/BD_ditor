@@ -528,9 +528,9 @@ CREATE TABLE IF NOT EXISTS projet (
     -- v35 (COL-4) — deux natures de projet de plus, chacune un DRAPEAU comme `repli`.
     -- `bac_a_sable_de` : le LOGIN de qui l'a ouvert, NULL pour un projet ordinaire. Une
     -- colonne dit à la fois « c'est un bac à sable » et « de qui » ; la règle de lecture vit
-    -- à UN endroit (`sql_est_bac_a_sable`). Un par login, tenu par le code sous le verrou
-    -- d'écriture et non par un index unique partiel, pour la raison écrite sur
-    -- `collection.base`. `efface_le` : le moment de son effacement (UTC, la forme des dates
+    -- à UN endroit (`sql_est_bac_a_sable`). Un par login : tenu par la base (l'index
+    -- partiel `idx_projet_bac_a_sable_de`, posé par `_migrate`) ET relu sous le verrou
+    -- d'écriture par les routes. `efface_le` : le moment de son effacement (UTC, la forme des dates
     -- SQLite), posé à la naissance — celui qu'on affiche est celui qu'on applique.
     -- `jeu` = 1 désigne LE projet de jeu, caché : il porte les copies de RÉFÉRENCE dont
     -- chaque bac à sable prend les siennes (`jeu_document`). Personne n'en est membre.
@@ -1388,6 +1388,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
                                ("jeu", "INTEGER NOT NULL DEFAULT 0")):
             if colonne not in _cols("projet"):
                 conn.execute(f"ALTER TABLE projet ADD COLUMN {colonne} {sorte}")
+        # UN bac à sable par login, garanti par la BASE (relecture croisée : une remise à
+        # neuf et un clic simultanés en faisaient naître deux) — en plus de la relecture
+        # sous le verrou d'écriture que font les routes. Un index partiel : les projets
+        # ordinaires (NULL) n'y entrent pas. Posé ici, après la colonne ; aucun test ne
+        # retire `bac_a_sable_de` pour défaire la version (la raison écrite sur
+        # `collection.base` ne vaut pas pour elle).
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_projet_bac_a_sable_de "
+                     "ON projet(bac_a_sable_de) WHERE bac_a_sable_de IS NOT NULL")
     # … et la marque de naissance d'un personnage (NULL : le registre, tout l'existant).
     if "personnages" in _tables and "bac_a_sable_id" not in _cols("personnages"):
         conn.execute("ALTER TABLE personnages ADD COLUMN bac_a_sable_id INTEGER")
