@@ -72,7 +72,7 @@ aussi) ; ShareDocs, que la recette n'a pas.
 ### Le compte partagé — `admin-bd` puis `collectif`
 
 - [x] `admin-bd`, Administration → 👥 Comptes et groupes, fiche de `collectif` : sélecteur **Nature** sur « un login partagé » → « Nature enregistrée. »
-- [x] `collectif`, Atelier, F5 : ni le bandeau, ni la bande, ni la page vide n'offrent « Mon bac à sable »
+- [ ] `collectif`, Atelier, F5 : « Mon bac à sable » est offert comme à tout arrivant (un compte partagé a son bac à sable, Hugo, 2026-10-24 — la règle d'avant, « rien n'est offert », a été jouée et cochée le même jour) ; un clic l'ouvre sur la planche du parcours, et la rangée porte « Inviter… » et « Remettre à neuf… »
 
 ### L'effacement du lundi — `invite`, Atelier ouvert dans son bac à sable ; PowerShell
 
@@ -83,3 +83,12 @@ aussi) ; ShareDocs, que la recette n'a pas.
 ### Rendre la recette — PowerShell
 
 - [x] `C:\temp\bd-recette\etat-de-base.ps1 restaurer avant-bac-a-sable` finit par « bd-app : running »
+
+### Suivi, sur la recette reconstruite sur `c27f0d5` — état `avant-suivi-col4`, dérivés refaits
+
+- [ ] `invite`, « Mon bac à sable » : la planche de *Bibi Fricotin* est nette — à l'ajustement, le lettrage des bulles se lit ; zoomée au double (molette ou +), les lettres restent lisses, sans gros pixels
+- [ ] `proprio`, Atelier, « Eau-terre », planche 1, zoom au double sur une bulle : le lettrage reste net (le dérivé fait 1 600 px de large, contre 818 avant)
+- [ ] `invite`, Recherche : au-dessus des résultats, la ligne « Votre bac à sable n'est ni cherché ni exploré : on y voit le corpus de vos autres projets. » ; Exploration : la même ligne, au-dessus des résultats
+- [ ] `invite` invite `lectrice` ; `lectrice`, « Bac · invite » choisi, Recherche : la ligne dit « Ce bac à sable n'est ni cherché ni exploré : … » ; le sélecteur sur un autre projet → la ligne disparaît
+- [ ] `admin-bd` redéclare `collectif` « un login partagé » (Comptes et groupes, sélecteur **Nature**) ; puis la case du compte partagé ci-dessus (`collectif`, « Mon bac à sable » offert et ouvert)
+- [ ] `C:\temp\bd-recette\etat-de-base.ps1 restaurer avant-suivi-col4` finit par « bd-app : running »
