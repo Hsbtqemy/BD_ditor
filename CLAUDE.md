@@ -832,25 +832,58 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   NEUVE, `peut_ouvrir_un_bac_a_sable` (un login, derrière le proxy ; le compte partagé est
   refusé à la route) — `peut_decider_des_projets` garde son sens. Son propriétaire en est
   le seul responsable (`projet_acces`, inamovible) ; il y invite des COMPTES, au rôle de
-  membre (`PUT …/membres`, 409 nommés pour un groupe, un responsable, sa propre ligne), et
-  personne d'autre ne le règle, pas même un administrateur. Il naît avec une copie de
-  chaque document du JEU (`projet.jeu`, caché, `jeu_document`, préparé par
-  `tools/preparer_jeu.py`), et `efface_le` porte le lundi à 4 h de Paris, sans exception —
-  l'effacement passe par `socle._effacer_bac_a_sable`, que traversent la remise à neuf et
-  `tools/effacer_bacs_a_sable.py`. Trois ensembles de plus dans `Portee`
-  (`bacs_a_sable`, `bacs_a_soi`, `collections_bac`), qui ne changent AUCUNE question
-  ponctuelle — dans son bac à sable on travaille comme ailleurs — et retirent des
-  questions TRANSVERSES ce qu'il donnerait hors de lui (S2) : `peut_ecrire_quelque_part`,
-  `peut_ecrire_terme(None)`, `peut_exporter_quelque_part`, `peut_lire_les_notices` ne le
-  comptent pas, ni le bandeau de portée vide ; un tag tapé y naît LOCAL. Un disjoint dans
+  membre (`PUT …/membres`, 409 nommés pour un groupe, un responsable, sa propre ligne) ;
+  un invité le QUITTE de lui-même (`POST /api/bac-a-sable/{id}/quitter`), et qui en sort
+  — ou qu'on retire — y perd tout ce qu'il tenait, la propriété de ses collections
+  comprise (`socle._sortir_du_bac`). Il naît avec une copie de chaque document du JEU
+  (`projet.jeu`, caché, `jeu_document`, préparé par `tools/preparer_jeu.py`), et
+  `efface_le` porte le lundi à 4 h de Paris, sans exception — l'effacement passe par
+  `socle._effacer_bac_a_sable`, que traversent la remise à neuf et
+  `tools/effacer_bacs_a_sable.py`. Un par login : l'index unique partiel
+  `idx_projet_bac_a_sable_de` ET la relecture sous le verrou (la remise à neuf relit
+  après l'effacement). L'effacement est d'un seul tenant : les albums se relisent sous le
+  verrou tour après tour, et un tour sans album garde le verrou jusqu'à la suppression du
+  projet ; l'outil isole chaque bac à sable (un échec défait, dit, compté ; code 1).
+  **L'administrateur n'a RIEN dans le bac à sable d'un autre** (Hugo, 2026-10-24) : sa
+  portée totale est BORNÉE (`Portee.bornee`, dès qu'un bac à sable existe) — dans le
+  périmètre des bacs à sable (`cols_bacs`, `projets_bacs`), ce sont ses ensembles
+  ORDINAIRES qui répondent (`couvre`, `couvre_projet`, `_ordinaire()` dans chaque clause) :
+  404 sur le bac d'un autre, et dans le sien, ou là où il est invité, un arrivant comme les
+  autres. Il voit seulement qu'ils existent : `GET /api/projets?bacs_a_sable=1`, pour qui
+  décide des projets — propriétaire, date d'effacement, rien de ce qu'ils portent ; le
+  paramètre n'existe plus ailleurs. Le mono-poste (`TOTALE`) n'est pas borné. Trois
+  ensembles de plus dans `Portee` (`bacs_a_sable`, `bacs_a_soi`, `collections_bac`), qui
+  ne changent AUCUNE question ponctuelle — dans son bac à sable on travaille comme
+  ailleurs — et retirent des questions TRANSVERSES ce qu'il donnerait hors de lui (S2) :
+  `peut_ecrire_quelque_part`, `peut_ecrire_terme(None)`, `peut_exporter_quelque_part`,
+  `peut_lire_les_notices` ne le comptent pas, ni le bandeau de portée vide (Ctrl+Z, lui, y
+  a son plancher : écrire quelque part, bac à sable compris). Un disjoint dans
   `clause_suppression_directe` : son propriétaire y détruit tout album sans rien demander.
-  Rien n'en sort, rien n'y entre, aucune demande n'en part vers un administrateur (S3) :
-  pour TOUTE portée, la prise, l'aperçu d'« en partir », les notices, les demandes et le
-  dépôt d'une collection le refusent ou l'ignorent ; l'export n'en sort qu'une copie d'un
-  document du jeu de la part du dépôt (`jeu_document.exportable`, document par document).
-  `Portee.pour_le_corpus` (S8) est ce que reçoivent la Recherche, l'Exploration, l'accord
-  et le lexique : ni bac à sable ni jeu, pour personne. Une portée totale ne reçoit, dans
-  les listes, que son bac à sable et ceux où elle est invitée (`bacs_a_sable=1` : tous).
+  Rien n'en sort, rien n'y entre, rien ne s'y demande — pour TOUTE portée : la prise,
+  l'aperçu d'« en partir », les notices et le dépôt le refusent ou l'ignorent ; le
+  rangement n'y fait entrer qu'une copie qui en est déjà (`rangement_traverse`, troisième
+  moitié : pas une copie du fonds) ; AUCUNE demande, d'aucun genre, n'y naît
+  (`socle._deposer`, dernier mot) — ce qui demanderait un consentement, son propriétaire le
+  fait ; rien n'en part au fonds (sortir une copie de sa dernière collection y est refusé :
+  elle se supprime définitivement ou part avec le bac à sable). Le JEU ne s'écrit par
+  aucune route, quelle que soit la portée : `clause_album(…, ecriture=True)` écarte ses
+  copies de référence, et les accesseurs disent pourquoi (409, `_refuser_la_reference`).
+  L'export d'un projet isolé (bac à sable ET jeu) n'en sort qu'une copie d'un document du
+  jeu de la part du dépôt (`jeu_document.exportable`) qui ne porte aucune planche
+  IMPORTÉE — une figure, si sa planche est une image du jeu (`_SQL_IMAGES_EXPORTABLES`) ;
+  le plafond d'import compte toute image d'un bac à sable qui n'est pas une image du jeu,
+  quel que soit l'album. Le vocabulaire a une RIVE (`_rive_d_un_terme` : 0, ou le projet
+  isolé de sa collection) qu'aucun geste ne change (ranger, fusionner, rattacher, poser —
+  409 de la frontière) ; une collection supprimée dans un bac à sable donne ses termes à la
+  base, et l'effacement garde ce qui est employé dehors. Les libellés de TAGS d'un bac à
+  sable vivent dans un ESPACE à part (`tags.espace`, unicité par espace) : le corpus peut
+  avoir le même, et rien ne se voit d'un côté à l'autre. Un PERSONNAGE naît dans un bac à
+  sable (`personnages.bac_a_sable_id`) ou au registre : le premier n'existe que pour ses
+  membres, ne s'attribue que là et part avec lui ; pour le second, les apparitions dans un
+  projet isolé ne comptent pas. `Portee.pour_le_corpus` (S8) est ce que reçoivent la
+  Recherche, l'Exploration, l'accord et les chiffres du lexique : ni bac à sable ni jeu,
+  pour personne ; les TERMES du 📖 Lexique, eux, suivent la portée — chacun y lit ceux de
+  ses bacs à sable. Cf. `docs/modele-et-droits.md`.
 - **Sans `BD_AUTH_PROXY`, portée TOTALE** (mono-poste inchangé) ; **avec le drapeau mais
   sans identité, portée VIDE** — fermeture par défaut, panne bruyante plutôt que fuite.
 - Trois accesseurs GARDÉS sont la seule façon d'atteindre un objet : `_get_album`,
@@ -1006,6 +1039,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 - **Chaque migration se vérifie sur une VRAIE base de la version précédente** — règle posée par Hugo le 2026-10-16. Une base « défaite » à la main (une base neuve dont on retire colonnes et tables, puis qu'on ramène en arrière par `user_version`) n'a ni destructions, ni journal, ni dossiers d'images : la v30 passait toute sa suite sur de telles bases, et la relecture croisée l'a prise en défaut deux fois sur une base faite par le code v29 — une planche détruite que seule une activité nommait, un album détruit dont seul le dossier d'images restait, deux identifiants rendus après migration. La vraie base se fabrique par `tools/fabriquer_base_de_version.py <commit> tests/bases/v<N>-<commit>.sql`, qui fait tourner le code du commit lui-même — ses routes, sous trois comptes, avec des destructions en haut de chaque table — et vide la base en SQL ; le test de la migration suivante la charge et migre (`tests/test_identifiants_v30.py` lit `tests/bases/v29-10a3a90.sql`). Le commit est le dernier état de la version précédente — la tête de `main` avant la migration.
 - **Des identifiants qui ne reviennent jamais** (v30, décision de Hugo du 2026-10-15) : `albums`, `planches`, `regions`, `personnages` portent `AUTOINCREMENT`, comme les tables neuves `document` et `demande`. Sans lui SQLite rend au suivant l'identifiant du dernier détruit, et le journal, qui désigne ses cibles par identifiant et leur survit, mêlait deux objets. `projet` le porte depuis la v31 (D8), par la même reconstruction, son compteur amorcé au-dessus de ce que le journal, `demande.projet_id` et `document.projet_origine_id` ont nommé (`database._HORS_JOURNAL`). `collection` le porte depuis la v35 (COL-4) : les bacs à sable en font naître et mourir chaque semaine, et ses identifiants se réattribuaient — son compteur est amorcé au-dessus de ce que le journal et `demande.collection_id` ont nommé ; le NOM gardé à côté de l'identifiant dans une demande (`demande.collection_nom`, `demande_document.titre`) et dans la charge d'un emploi (`journal.journaliser_emploi`) reste, pour une collection supprimée qui ne se lit plus ; `demande.projet_nom` et `document.projet_origine_nom` gardent celui d'un projet supprimé, que son identifiant ne nomme plus. La vraie base de la v30 est `tests/bases/v30-5e7f56b.sql` (`tests/test_migration_v31.py`) ; celle de la v34, `tests/bases/v34-35cc4a3.sql` (`tests/test_migration_v35.py`).
 - **La v30 RECONSTRUIT des tables** (`_reconstruire_avec_autoincrement`) : on ne pose pas `AUTOINCREMENT` par `ALTER`. Table neuve, lignes copiées avec leurs identifiants, ancienne détruite, neuve renommée, index et vues recréés, dans une transaction, **clés étrangères SUSPENDUES** pendant qu'elle tourne — actives, détruire `albums` effacerait par cascade toutes les planches ; la moindre référence orpheline NEUVE défait tout (celles qu'une base portait déjà ne ferment pas l'instance). Le compteur de chaque table repart au-dessus du plus grand identifiant que le journal ait jamais nommé — `evenement` ET `activite` (cible, clés des charges, portée d'une passe automatique sans effet) —, et celui des albums en plus au-dessus du plus grand dossier `album_N` présent dans `corpus/` ou `derivatives/` : le journal d'une base v29 ne nomme aucun album. Un identifiant détruit que rien ne nomme plus peut revenir une fois. Gardée par la version et idempotente (une table qui porte déjà `AUTOINCREMENT` n'est pas touchée) ; une table d'une autre forme arrête tout avant la première reconstruction. Elle valide la transaction en cours avant de commencer (`PRAGMA foreign_keys` ne change pas dans une transaction) : une reconstruction qui échoue laisse la base en v29, prête à rejouer.
+- **La v35 reconstruit aussi `tags`** (`database._tags_par_espace`, COL-4) : SQLite ne retire pas par `ALTER` l'unicité d'une colonne, et `label` cesse d'être unique dans toute l'instance pour l'être PAR ESPACE (`tags.espace`, 0 pour l'instance, l'identifiant du bac à sable sinon ; `idx_tags_espace_label`). La forme de la v30 — clés étrangères suspendues (actives, détruire `tags` viderait `annotation_tags`), index et vues recréés —, par PRÉSENCE de la colonne. Les index qui nomment une colonne posée par migration (`idx_tags_espace_label`, `idx_projet_bac_a_sable_de`, unique partiel) se posent dans `_migrate`, jamais dans `SCHEMA_SQL`, qui tournerait avant la colonne.
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 - **Le commentaire de la DERNIÈRE colonne d'une table s'écrit SOUS elle, jamais au-dessus** (v29, mesuré sur SQLite 3.49). Pour retirer la dernière colonne, `ALTER TABLE … DROP COLUMN` remonte jusqu'à la première virgule qu'il trouve — celles d'un commentaire `--` comprises — et rend un schéma tronqué : « incomplete input ». `_migrate()` ne retire aucune colonne, mais quatre fichiers de test DÉFONT ainsi une version pour rejouer un upgrade réel (`_ramener_en_v28`, dans `tests/test_projets.py`, en est le dernier) : l'erreur tombe dans le test, loin de la faute. Le commentaire de `collection.projet_id` le dit sur place. Cinq fichiers depuis la v30 (`_ramener_en_v29`, dans `tests/test_document.py`) — et ces bases défaites ne remplacent pas une vraie base de la version précédente (premier point).

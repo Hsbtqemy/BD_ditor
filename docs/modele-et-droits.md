@@ -401,36 +401,60 @@ effacement se lit dans le bac à sable.
   a le sien, comme les autres.
 - **Son propriétaire y invite des comptes**, par leur login, au rôle de membre : ils
   écrivent dans le jeu, pour essayer le travail à plusieurs. Pas de groupe, pas de second
-  responsable, et l'annuaire ne s'y consulte pas. Personne d'autre ne règle un bac à sable,
-  pas même un administrateur.
+  responsable, et l'annuaire ne s'y consulte pas. Personne d'autre ne règle un bac à sable.
+  Un invité peut le **quitter** de lui-même ; qui en sort, ou qu'on retire, y perd tout ce
+  qu'il tenait, y compris les collections qu'il y avait créées.
+- **L'administrateur n'a rien dans le bac à sable d'un autre**, comme qui n'en est pas :
+  il n'y lit ni n'y écrit rien, n'y crée rien, ne voit pas ses invités. Il sait seulement
+  qu'il existe — la vue Projets de l'Administration lui dit son propriétaire et sa date
+  d'effacement. Pour aider quelqu'un, il se fait inviter. Dans le sien, il est un arrivant
+  comme les autres.
 - **Son propriétaire le remet à neuf quand il veut** : tout ce qui y a été fait part, le
   travail des invités aussi, et le jeu revient. Il y supprime aussi tout album sans rien
   demander ; un invité garde la règle commune (sa copie, que personne d'autre n'a touchée).
-- **On y importe ses propres images**, une cinquantaine de planches au plus ; elles partent
-  avec le reste. Depuis ShareDocs, sous son propre compte seulement.
+- **On y importe ses propres images**, une cinquantaine de planches au plus — dans un album
+  à soi comme dans une copie du jeu, tout compte ; elles partent avec le reste. Depuis
+  ShareDocs, sous son propre compte seulement.
+- **On y crée ses personnages** : un personnage né dans un bac à sable n'existe que pour ses
+  membres, ne s'attribue que là, et part avec lui. Un personnage du registre s'y attribue
+  aussi, mais ce qu'on en fait là ne compte pas ailleurs : ni pour le cacher, ni pour le
+  montrer.
+- **Ses tags ont leurs propres libellés** : un libellé tapé dans un bac à sable n'y prend
+  rien au vrai corpus, qui peut avoir le même, et rien ne se voit d'un côté à l'autre. On
+  les lit, les renomme, les fusionne et les supprime dans le 📖 Lexique, comme ailleurs —
+  chacun y voit ceux de ses bacs à sable, pas ceux des autres ; les chiffres du Lexique, eux,
+  restent ceux du vrai corpus.
 
 **Un bac à sable est un cul-de-sac**, et c'est sa nature qui le tient, pour tout le monde,
 administrateur compris :
 
 - **rien n'en sort** : une de ses copies ne se range dans aucun autre projet et n'est la
   source d'aucune copie ailleurs ; un document importé dans un bac à sable n'a pas de notice
-  au fonds. Une collection de bac à sable ne se dépose pas ; un album n'en sort par l'export
-  que s'il est la copie d'un document du jeu dont les images vivent dans le dépôt — les
-  scans sous droits du jeu, et ce qu'on y a importé soi-même, ne s'exportent pas ;
-- **rien n'y entre** : aucun document du fonds n'y est pris, pas même par un administrateur ;
-- **aucune demande n'en part vers un administrateur** : ce qui s'y demanderait, son
-  propriétaire le fait lui-même ; seules restent les demandes échangées entre ses comptes ;
+  au fonds. Une collection de bac à sable ne se dépose pas, et les outils de dépôt ne la
+  voient pas ; un album n'en sort par l'export que s'il est la copie d'un document du jeu
+  dont les images vivent dans le dépôt, et qu'on n'y a importé aucune planche — les scans
+  sous droits du jeu, et toute image importée, ne s'exportent jamais ;
+- **rien n'y entre** : aucun document du fonds n'y est pris ni rangé, pas même par un
+  administrateur, et un terme du vrai corpus ne s'y range pas (ni n'en sort) ;
+- **rien ne s'y demande** : aucune demande, d'aucun genre, n'y naît — ni à un
+  administrateur, ni à son propriétaire ; ce qui demanderait un consentement, son
+  propriétaire le fait lui-même ;
+- **rien n'en part au fonds** : une copie ne se sort pas de sa dernière collection ; elle se
+  supprime définitivement, ou part avec le bac à sable ;
 - **il ne compte pour rien ailleurs** : en être responsable n'ouvre pas les notices du
-  fonds ; y écrire ne permet ni de toucher au vocabulaire global, ni de créer un personnage,
-  ni de compter comme « écrire quelque part » ; un tag tapé dans un bac à sable y naît local
-  et part avec lui ; le bandeau « vous n'avez accès à aucune collection » reste allumé pour
-  qui n'a que lui ;
+  fonds ; y écrire ne permet ni de toucher au vocabulaire global, ni au registre des
+  personnages, ni de compter comme « écrire quelque part » ; le bandeau « vous n'avez accès
+  à aucune collection » reste allumé pour qui n'a que lui ;
 - **la Recherche et l'Exploration ne le voient pour personne**, ni son propriétaire ni un
   administrateur : leurs mesures restent celles du vrai corpus.
 
+Le **jeu** dont chaque bac à sable prend ses copies ne se change que par son outil : aucun
+geste de l'application ne touche ses copies de référence, pas même un administrateur.
+
 Ce que la liste des projets en montre : à son propriétaire « Mon bac à sable », à un invité
 « Bac à sable · » suivi du login de son propriétaire. Un administrateur n'y voit que le sien
-et ceux où il est invité ; la vue Projets de l'Administration peut les montrer tous.
+et ceux où il est invité ; la vue Projets de l'Administration lui dit qu'ils existent tous,
+à qui ils sont et quand ils s'effacent — rien de ce qu'ils portent.
 
 ---
 
