@@ -212,6 +212,148 @@ def portee_albums(album_ids) -> dict | None:
     return {"albums": f"({a})", "planches": planches, "regions": regions}
 
 
+# --------------------------------------------------------------------------- #
+# Ni BAC À SABLE ni JEU ne sortent (COL-4, constat 12 de la relecture croisée)
+# --------------------------------------------------------------------------- #
+# Un bac à sable est un cul-de-sac, et le jeu dont il se remplit ne se règle que par son
+# outil : ni l'un ni l'autre n'est une unité de dépôt, et rien de ce qui s'y fait — un
+# essai, effacé chaque lundi ; des scans dont une part est sous droits — ne part dans un
+# artefact de dépôt. Les routes le tiennent de leur côté ; les outils de `tools/` lisaient
+# la base sans elles, et laissaient tout sortir : le corpus entier sans `--collection`, et
+# la collection d'un bac à sable si on la nommait.
+#
+# La règle est celle des projets ISOLÉS (`database.sql_est_isole`, écrite une fois) :
+# EXCLUS PAR DÉFAUT quand un outil balaie le corpus ; REFUS NOMMÉ quand on les nomme. Le
+# refus est une exception à lui (`HorsDuCorpus`, un `ValueError`) et non un `SystemExit` :
+# la voie du dépôt (`routes/depot.py`) appelle ces mêmes fonctions dans le serveur, où un
+# `SystemExit` traverserait les `except Exception` sans être attrapé. Les CLI en refont un
+# `SystemExit` avec le même message.
+MOTIF_HORS_DU_CORPUS = ("La collection {cid} vit dans un bac à sable ou dans le jeu des bacs "
+                        "à sable : rien n'en sort — ce n'est pas une unité de dépôt (COL-4).")
+
+
+class HorsDuCorpus(ValueError):
+    """On a nommé une collection ou un album d'un projet ISOLÉ (bac à sable, jeu)."""
+
+
+def sql_collection_isolee(alias: str = "c") -> str:
+    """Fragment SQL VRAI si la collection `alias` (un alias de `collection`) vit dans un
+    projet isolé."""
+    return database.sql_est_isole(database.sql_projet_de(alias))
+
+
+def collection_isolee(conn, collection_id) -> bool:
+    """La collection vit-elle dans un bac à sable ou dans le jeu ?"""
+    return conn.execute(
+        f"SELECT 1 FROM collection c WHERE c.id = ? AND {sql_collection_isolee('c')}",
+        (collection_id,)).fetchone() is not None
+
+
+def album_isole(conn, album_id) -> bool:
+    """La copie est-elle d'un projet isolé (écrit, ou lu dans ses collections) ?"""
+    return conn.execute(
+        f"SELECT 1 FROM albums a WHERE a.id = ? AND {database.sql_album_isole('a')}",
+        (album_id,)).fetchone() is not None
+
+
+def exiger_hors_isoles(conn, collection_id) -> None:
+    """`HorsDuCorpus` si la collection NOMMÉE vit dans un projet isolé."""
+    if collection_id is not None and collection_isolee(conn, collection_id):
+        raise HorsDuCorpus(MOTIF_HORS_DU_CORPUS.format(cid=collection_id))
+
+
+def albums_du_corpus(conn) -> list[int] | None:
+    """Le périmètre « corpus entier » d'un outil : `None` (aucun filtre, le contrat
+    d'avant) tant qu'aucune copie n'est d'un projet isolé ; sinon la liste des autres, par
+    id. Garder `None` quand rien n'est à écarter laisse les cœurs (`accord`, le journal)
+    lire le corpus ENTIER comme avant, y compris ce qu'ils nomment sans album vivant — la
+    règle de `routes/analyse._albums_portee`."""
+    if conn.execute(f"SELECT 1 FROM albums a WHERE {database.sql_album_isole('a')} "
+                    "LIMIT 1").fetchone() is None:
+        return None
+    return [r[0] for r in conn.execute(
+        f"SELECT a.id FROM albums a WHERE NOT {database.sql_album_isole('a')} ORDER BY a.id")]
+
+
+def clause_vocabulaire(collection_id, alias: str = "collection_id") -> tuple[str, list]:
+    """L'appartenance d'un terme (`database.clause_appartenance` : global ⊕ local à la
+    collection), SANS ce qui est local à une collection d'un projet isolé. Pour une
+    collection nommée, ordinaire, la seconde moitié ne retire rien ; en corpus entier, elle
+    retire le vocabulaire des bacs à sable et du jeu."""
+    ou, params = database.clause_appartenance(collection_id, alias)
+    return (f"({ou} AND ({alias} IS NULL OR {alias} NOT IN (SELECT _vi.id FROM collection "
+            f"_vi WHERE {sql_collection_isolee('_vi')})))", params)
+
+
+def clause_personnages(alias: str = "personnages") -> str:
+    """Les PERSONNAGES publiables. Aujourd'hui « 1 » — tous : un personnage n'a ni
+    `collection_id` ni projet, et rien en base ne dit qu'il est NÉ dans un bac à sable.
+    C'est la marque de naissance que la v35 posera (constat 3 de la relecture) qui le dira ;
+    ce point d'appel UNIQUE la recevra, et les outils qui l'appellent la suivront."""
+    return "1"
+
+
+# Les cibles du journal qui désignent une RÉGION par leur `cible_id` (« les actes
+# d'annotation ciblent le region_id », `journal.py`) ; `token_correction` la porte dans sa
+# charge, `planches` désigne la planche.
+_CIBLES_PAR_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
+                      "region_attribut")
+
+
+def _json(alias: str, colonne: str, cle: str) -> str:
+    return (f"json_extract(CASE WHEN json_valid({alias}.{colonne}) THEN {alias}.{colonne} "
+            f"END, '$.{cle}')")
+
+
+def _sql_planche_d_evenement(e: str) -> str:
+    cibles = ", ".join(repr(c) for c in _CIBLES_PAR_REGION)
+    region = (f"(CASE WHEN {e}.cible_table IN ({cibles}) THEN {e}.cible_id "
+              f"WHEN {e}.cible_table = 'token_correction' THEN COALESCE("
+              f"{_json(e, 'apres', 'region_id')}, {_json(e, 'avant', 'region_id')}) END)")
+    return (f"COALESCE((SELECT _er.planche_id FROM regions _er WHERE _er.id = {region}), "
+            f"CASE WHEN {e}.cible_table = 'planches' THEN {e}.cible_id END, "
+            f"CASE WHEN {e}.cible_table = 'regions' THEN COALESCE("
+            f"{_json(e, 'apres', 'planche_id')}, {_json(e, 'avant', 'planche_id')}) END)")
+
+
+def _sql_evenement_isole_direct(e: str) -> str:
+    return (f"EXISTS (SELECT 1 FROM planches _ep JOIN albums _ea ON _ea.id = _ep.album_id "
+            f"WHERE _ep.id = {_sql_planche_d_evenement(e)} "
+            f"AND {database.sql_album_isole('_ea')})")
+
+
+def sql_evenement_isole(e: str = "evenement") -> str:
+    """Fragment SQL VRAI si l'acte `e` (un alias de `evenement`) porte sur un objet d'un
+    projet isolé — ce que l'outil sait relier : la région ou la planche visée si elle VIT
+    encore, sinon la planche que nomme la charge d'un acte sur une région ; pour une
+    annulation (`cible_table = 'evenement'`), l'acte qu'elle défait. Ce qu'il ne sait PAS
+    relier, et c'est écrit : un acte dont la région ET la planche ont disparu — un bac à
+    sable déjà effacé —, qui sort alors sans contenu (son type, sa date, sa cible par
+    identifiant, son agent pseudonymisé), comme tout acte d'une cible détruite."""
+    return (f"({_sql_evenement_isole_direct(e)} OR ({e}.cible_table = 'evenement' AND "
+            f"EXISTS (SELECT 1 FROM evenement _e2 WHERE _e2.id = {e}.cible_id "
+            f"AND {_sql_evenement_isole_direct('_e2')})))")
+
+
+def sql_activite_isolee(a: str = "activite") -> str:
+    """Fragment SQL VRAI si le run `a` porte sur une planche (`portee.planche_id`, la portée
+    d'une passe ML) ou un album (`portee.album_id`) d'un projet isolé encore vivant."""
+    return (f"(EXISTS (SELECT 1 FROM planches _ap JOIN albums _aa ON _aa.id = _ap.album_id "
+            f"WHERE _ap.id = {_json(a, 'portee', 'planche_id')} "
+            f"AND {database.sql_album_isole('_aa')}) "
+            f"OR EXISTS (SELECT 1 FROM albums _ab WHERE _ab.id = {_json(a, 'portee', 'album_id')} "
+            f"AND {database.sql_album_isole('_ab')}))")
+
+
+def activites_publiables(conn, colonnes) -> list:
+    """Les runs du journal qui partent au dépôt, par id : tous, sauf ceux d'un projet
+    isolé (`sql_activite_isolee`). Partagé par les deux sérialisations du journal, pour la
+    raison écrite sous `evenements_publiables`."""
+    return conn.execute(
+        f"SELECT {', '.join(colonnes)} FROM activite WHERE NOT {sql_activite_isolee('activite')} "
+        "ORDER BY id").fetchall()
+
+
 @lru_cache(maxsize=None)
 def version_outil(base_dir) -> dict:
     """Provenance de l'outil produisant l'export (paradonnée / PROV).
@@ -421,9 +563,13 @@ def evenements_publiables(conn, ordre: str = "ASC"):
     if ordre not in ("ASC", "DESC"):
         raise ValueError(f"ordre : ASC ou DESC, pas {ordre!r}")
     cibles = tuple(sorted(CIBLES_CORPUS))
+    # COL-4 — et pas les actes faits dans un bac à sable ou sur le jeu : une TROISIÈME
+    # coupure, par PROJET, que ne voient ni la liste blanche ni les colonnes. Ce qu'elle
+    # sait relier est écrit sous `sql_evenement_isole`.
     return conn.execute(
         f"SELECT {', '.join(COLONNES_EVENEMENT_PUBLIEES)} FROM evenement "
         f"WHERE cible_table IN ({','.join('?' * len(cibles))}) "
+        f"AND NOT {sql_evenement_isole('evenement')} "
         f"ORDER BY id {ordre}", cibles)
 
 

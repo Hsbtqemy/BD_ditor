@@ -25,6 +25,9 @@ local à la collection (AUTH-11, `database.clause_appartenance`). Les personnage
 globaux : ce sont des entités, pas des termes. Gérer les collections :
 `gerer_collections.py`.
 
+COL-4 — ni les BACS À SABLE ni le JEU ne sortent : exclus du corpus entier, et une
+collection de l'un d'eux, nommée, est refusée (`_commun.HorsDuCorpus`).
+
 Usage :
     python tools/metadonnees_collection.py --json f.json
     python tools/metadonnees_collection.py --csv-dir tables/
@@ -53,7 +56,10 @@ from _commun import (version_outil, environnement, composants,  # noqa: E402  (p
                      portee_albums, forcer_utf8, pseudonymes,   # partagés + liste blanche
                      evenements_publiables, CIBLES_CORPUS,   # AUTH-1)
                      COLONNES_EVENEMENT_PUBLIEES,            # AUTH-11
-                     COLONNES_ACTIVITE_PUBLIEES)
+                     COLONNES_ACTIVITE_PUBLIEES,
+                     # COL-4 — ni bac à sable ni jeu ne sortent
+                     HorsDuCorpus, activites_publiables, albums_du_corpus,
+                     clause_personnages, clause_vocabulaire, exiger_hors_isoles)
 
 
 def _grouper(conn, sql, cle=0, params=()):
@@ -85,13 +91,15 @@ def _cartes(conn, album_ids=None, collection_id=None) -> dict:
     de `collection_id`, et leur portée dérivée se lit par les apparitions (AUTH-2).
     """
     p = portee_albums(album_ids)
-    ou_terme, p_terme = database.clause_appartenance(collection_id, "t.collection_id")
-    ou_val, p_val = database.clause_appartenance(collection_id, "v.collection_id")
-    ou_dim, p_dim = database.clause_appartenance(collection_id, "d.collection_id")
+    # COL-4 — l'appartenance, sans le vocabulaire local à un bac à sable ou au jeu.
+    ou_terme, p_terme = clause_vocabulaire(collection_id, "t.collection_id")
+    ou_val, p_val = clause_vocabulaire(collection_id, "v.collection_id")
+    ou_dim, p_dim = clause_vocabulaire(collection_id, "d.collection_id")
     w_reg = f" WHERE region_id IN {p['regions']}" if p else ""
     w_pl = f" WHERE album_id IN {p['albums']}" if p else ""
     pl_ids = [r[0] for r in conn.execute("SELECT id FROM planches" + w_pl)]
-    perso_nom = {r["id"]: r["nom"] for r in conn.execute("SELECT id, nom FROM personnages")}
+    perso_nom = {r["id"]: r["nom"] for r in conn.execute(
+        f"SELECT id, nom FROM personnages WHERE {clause_personnages()}")}
     return {
         "perso_nom": perso_nom,
         # Relecture grammaticale (ANN-4/B5) : statut effectif DÉRIVÉ par planche du périmètre.
@@ -218,22 +226,29 @@ def _bloc_collection(row) -> dict | None:
 
 
 def _perimetre(collection_id, row, album_ids) -> dict:
-    """Bloc `perimetre` commun (corpus entier vs collection scopée)."""
+    """Bloc `perimetre` commun (corpus entier vs collection scopée). Le nombre d'albums
+    ne se dit que d'une collection : en corpus entier, `album_ids` peut être la liste qui
+    écarte les bacs à sable (COL-4), et le bloc garde la forme d'avant."""
     per = {"type": "collection", "collection_id": collection_id,
            "portee": row["nom"] if row else "corpus entier"}
-    if album_ids is not None:
+    if row is not None and album_ids is not None:
         per["albums"] = len(album_ids)
     return per
 
 
 def _resoudre(conn, collection_id):
     """(row, album_ids) pour un périmètre. collection_id None → (None, None) = corpus entier.
-    Erreur si la collection est demandée mais absente."""
+    Erreur si la collection est demandée mais absente.
+
+    COL-4 — le corpus entier n'emporte ni les bacs à sable ni le jeu (`album_ids` devient la
+    liste des autres albums dès qu'il y en a, `_commun.albums_du_corpus`), et une collection
+    de l'un d'eux, NOMMÉE, est refusée (`HorsDuCorpus`)."""
     if collection_id is None:
-        return None, None
+        return None, albums_du_corpus(conn)
     row = database.collection_row(conn, collection_id)
     if row is None:
         raise SystemExit(f"Collection {collection_id} introuvable.")
+    exiger_hors_isoles(conn, collection_id)
     return row, database.collection_album_ids(conn, collection_id)
 
 
@@ -253,7 +268,7 @@ def _albums_du_perimetre(conn, album_ids):
 def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
     row, album_ids = _resoudre(conn, collection_id)
     c = _cartes(conn, album_ids, collection_id)
-    ou_app, p_app = database.clause_appartenance(collection_id)   # AUTH-11 (cf. `_cartes`)
+    ou_app, p_app = clause_vocabulaire(collection_id)   # AUTH-11, COL-4 (cf. `_cartes`)
 
     # Domaines (piste B, v20) : champs analytiques émergents qui regroupent les dimensions —
     # même couche SKOS que le reste du vocabulaire. Les émotions ne sont qu'un domaine.
@@ -290,7 +305,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
         "attributs": _paires(c["perso_attr"].get(p["id"])),
         # A5 : alignements d'autorité (skos:exactMatch vers Wikidata/VIAF/IdRef…).
         "alignements": [{"source": s, "uri": u} for s, u in c["perso_align"].get(p["id"], [])],
-    } for p in conn.execute("SELECT id, nom, serie, notes FROM personnages ORDER BY nom")]
+    } for p in conn.execute("SELECT id, nom, serie, notes FROM personnages "
+                            f"WHERE {clause_personnages()} ORDER BY nom")]
 
     tags = [{"label": lbl, "couleur": pr["couleur"], "description": pr["description"],
              "note_portee": pr["note_portee"], "etat": pr["etat"],
@@ -400,7 +416,7 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
 def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     row, album_ids = _resoudre(conn, collection_id)
     c = _cartes(conn, album_ids, collection_id)
-    ou_app, p_app = database.clause_appartenance(collection_id)   # AUTH-11 (cf. `_cartes`)
+    ou_app, p_app = clause_vocabulaire(collection_id)   # AUTH-11, COL-4 (cf. `_cartes`)
     P = portee_albums(album_ids)
     w_pl = f" WHERE album_id IN {P['albums']}" if P else ""          # planches.album_id
     w_rp = f" WHERE p.album_id IN {P['albums']}" if P else ""        # regions ⋈ planches
@@ -500,7 +516,8 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     out["personnages"] = (
         ["id", "nom", "serie", "notes"],
         [[p["id"], p["nom"], p["serie"], p["notes"]]
-         for p in conn.execute("SELECT * FROM personnages ORDER BY nom")])
+         for p in conn.execute(f"SELECT * FROM personnages WHERE {clause_personnages()} "
+                               "ORDER BY nom")])
 
     out["personnage_attributs"] = (
         ["personnage_id", "dimension", "valeur"],
@@ -577,9 +594,7 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
         list(COLONNES_ACTIVITE_PUBLIEES),
         [[pseudo.get(a["agent"], a["agent"]) if col == "agent" else a[col]
           for col in COLONNES_ACTIVITE_PUBLIEES]
-         for a in conn.execute(
-             f"SELECT {', '.join(COLONNES_ACTIVITE_PUBLIEES)} FROM activite "
-             "ORDER BY id")])
+         for a in activites_publiables(conn, COLONNES_ACTIVITE_PUBLIEES)])   # COL-4
     # Les ACTES, sans leurs CHARGES (AUTH-11, 2026-09-24). Les colonnes ne sont plus
     # écrites ici : elles viennent de `COLONNES_EVENEMENT_PUBLIEES`, à côté de la liste
     # blanche des cibles, pour qu'une seule décision gouverne les deux sérialisations. La
@@ -852,12 +867,17 @@ def main(argv=None) -> int:
     cid = args.collection
     with _connexion_ro() as conn:
         besoin_arbre = args.json is not None or bool(args.xlsx)
-        arbre = collecter(conn, verbatim=args.verbatim, collection_id=cid) if besoin_arbre else None
-        tbls = tables(conn, verbatim=args.verbatim, collection_id=cid) if veut_tables else None
-        fiche = None
-        if args.xlsx:
-            import description_collection
-            fiche = description_collection.collecter(conn, collection_id=cid)[0]["description_collection"]
+        try:
+            arbre = (collecter(conn, verbatim=args.verbatim, collection_id=cid)
+                     if besoin_arbre else None)
+            tbls = tables(conn, verbatim=args.verbatim, collection_id=cid) if veut_tables else None
+            fiche = None
+            if args.xlsx:
+                import description_collection
+                fiche = description_collection.collecter(
+                    conn, collection_id=cid)[0]["description_collection"]
+        except HorsDuCorpus as exc:            # COL-4 : refus nommé, code de sortie non nul
+            raise SystemExit(str(exc))
 
     if args.json is not None:
         texte = json.dumps(arbre, ensure_ascii=False, indent=2)

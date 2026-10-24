@@ -146,3 +146,33 @@ def test_crosswalk_corpus_entier(client, album, db_path, data_dir):
     assert cw["albums"], "au moins une notice album"
     noms = [c["name"] for a in cw["albums"] for c in a["datacite"]["creators"]]
     assert "Franquin" in noms
+
+
+# --------------------------------------------------------------------------- #
+# COL-4 — ni bac à sable ni jeu ne sortent (constat 12 de la relecture croisée)
+# --------------------------------------------------------------------------- #
+from test_export_metadonnees import isoles  # noqa: E402,F401  (le décor partagé)
+from test_bac_a_sable import decor, jeu  # noqa: E402,F401  (ses dépendances)
+
+
+def test_crosswalk_n_emporte_ni_bac_a_sable_ni_jeu(isoles):
+    r = _run("crosswalk_depot.py", isoles["db"], isoles["data"])
+    assert r.returncode == 0, r.stderr
+    cw = json.loads(r.stdout)["crosswalk_depot"]
+    assert [a["titre"] for a in cw["albums"]] == ["Réel"]
+    assert cw["perimetre"]["albums"] == 1
+
+
+def test_crosswalk_refuse_une_collection_isolee(isoles):
+    for cid in (isoles["base"], isoles["jeu_col"]):
+        r = _run("crosswalk_depot.py", isoles["db"], isoles["data"], "--collection", str(cid))
+        assert r.returncode != 0 and r.stdout.strip() == "", r.stdout[:200]
+        assert "bac à sable" in r.stderr and "rien n'en sort" in r.stderr, r.stderr
+    # La collection du vrai projet, elle, sort — sans le vocabulaire du bac à sable.
+    r = _run("crosswalk_depot.py", isoles["db"], isoles["data"], "--collection",
+             str(isoles["col"]))
+    assert r.returncode == 0, r.stderr
+    sujets = json.loads(r.stdout)["crosswalk_depot"]["collection"]["datacite"].get(
+        "subjects", [])
+    texte = json.dumps(sujets, ensure_ascii=False)
+    assert "mot-du-corpus" in texte and "mot-du-bac" not in texte, texte

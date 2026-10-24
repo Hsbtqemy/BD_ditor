@@ -2,7 +2,7 @@
 
 Additif, EN LECTURE SEULE, hors-app (comme les autres `tools/`). Produit, pour un
 périmètre (défaut : corpus entier ; `--collection <id>` pour scoper), des notices dans
-les schémas d'entrepôt :
+les schémas d'entrepôt (COL-4 : ni bac à sable ni jeu — exclus par défaut, refusés si nommés) :
 
   • Dublin Core (dcterms + relators MARC), en JSON-LD → fiche descriptive Nakala ;
   • DataCite 4.x (JSON + XML) → demande de DOI (réutilisé par Nakala/HAL).
@@ -39,6 +39,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import database  # noqa: E402  (collection_row / collection_album_ids / contributions_album)
 from config import DB_PATH, BASE_DIR  # noqa: E402
 from _commun import version_outil, forcer_utf8  # noqa: E402  (provenance de l'outil — paradonnée / stdout)
+from _commun import (HorsDuCorpus, clause_vocabulaire,  # noqa: E402  (COL-4 : ni bac à sable
+                     exiger_hors_isoles)                               # ni jeu ne sortent)
 
 
 # --------------------------------------------------------------------------- #
@@ -380,9 +382,10 @@ def _sujets(conn, collection_id=None) -> list:
     vocabulaire se contredisent, et c'est le genre d'écart qu'un entrepôt garde pour
     toujours.
     """
-    ou_val, p_val = database.clause_appartenance(collection_id, "v.collection_id")
-    ou_dim, p_dim = database.clause_appartenance(collection_id, "d.collection_id")
-    ou_tag, p_tag = database.clause_appartenance(collection_id, "t.collection_id")
+    # COL-4 — sans le vocabulaire local à un bac à sable ou au jeu (`clause_vocabulaire`).
+    ou_val, p_val = clause_vocabulaire(collection_id, "v.collection_id")
+    ou_dim, p_dim = clause_vocabulaire(collection_id, "d.collection_id")
+    ou_tag, p_tag = clause_vocabulaire(collection_id, "t.collection_id")
     vals = [r[0] for r in conn.execute(
         f"SELECT DISTINCT v.valeur FROM attribut_valeur v "
         f"JOIN attribut_dimension d ON d.id = v.dimension_id "
@@ -416,13 +419,17 @@ def construire(conn, collection_id=None, publisher="BéDéditeur", annee_depot=N
     row = database.collection_row(conn, collection_id) if collection_id is not None else None
     if collection_id is not None and row is None:
         raise SystemExit(f"Collection {collection_id} introuvable.")
+    exiger_hors_isoles(conn, collection_id)              # COL-4 : refus nommé
     licence = row["licence_defaut"] if row else None
     licence_uri = _licence_uri(licence)
 
     if collection_id is not None:
         album_ids = database.collection_album_ids(conn, collection_id)
     else:
-        album_ids = [r[0] for r in conn.execute("SELECT id FROM albums ORDER BY id")]
+        # COL-4 — le corpus entier, sans les copies des bacs à sable ni du jeu.
+        album_ids = [r[0] for r in conn.execute(
+            f"SELECT a.id FROM albums a WHERE NOT {database.sql_album_isole('a')} "
+            "ORDER BY a.id")]
 
     albums_out, tous_creators, tous_contributors, isbns = [], [], [], []
     for aid in album_ids:
@@ -539,8 +546,11 @@ def main(argv=None) -> int:
         pass
 
     with _connexion_ro() as conn:
-        doc = construire(conn, collection_id=args.collection,
-                         publisher=args.publisher, annee_depot=args.annee_depot)
+        try:
+            doc = construire(conn, collection_id=args.collection,
+                             publisher=args.publisher, annee_depot=args.annee_depot)
+        except HorsDuCorpus as exc:            # COL-4 : refus nommé, code de sortie non nul
+            raise SystemExit(str(exc))
 
     if args.out_dir:
         _ecrire_fichiers(doc, args.out_dir)

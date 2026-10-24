@@ -48,6 +48,10 @@ deux portes l'écrivent, sous la cible `collection_album` — un emploi qui comm
 emploi qui cesse, par `journal.journaliser_emploi`, la fonction même des routes. Un shell
 n'ayant pas d'identité, l'agent de ces actes est vide, comme en mono-poste.
 
+COL-4 — l'outil n'écrit ni dans un BAC À SABLE ni dans le JEU des bacs à sable, et n'y range
+ni n'en sort aucun album : refus nommé, tout ou rien. Il tient la portée totale, que la
+nature de ces projets ne laisse pas passer.
+
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 """
 from __future__ import annotations
@@ -61,6 +65,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import database  # noqa: E402
 import journal  # noqa: E402
+from _commun import album_isole, collection_isolee  # noqa: E402  (COL-4)
 
 # Importé de config : la route d'édition (AUTH-3) valide la MÊME liste. Deux chemins
 # d'écriture sur un champ contrôlé ne peuvent pas avoir chacun la sienne.
@@ -174,6 +179,29 @@ def _albums_isoles(conn, collection_id, album_ids=None) -> list[int]:
     return [r[0] for r in conn.execute(sql + " ORDER BY ca.album_id", params)]
 
 
+# COL-4 — un shell tient la portée TOTALE, et c'est précisément ce qui ne passe pas un bac à
+# sable ni le jeu : la référence ne se change que par son outil (`tools/preparer_jeu.py`),
+# un bac à sable ne s'écrit que de l'intérieur, et rien n'en sort. Les routes le tiennent ;
+# cet outil écrit en base sans elles, d'où ses propres refus, nommés, tout ou rien.
+_MOTIF_ISOLEE = ("Refusé : la collection {cid} vit dans un bac à sable ou dans le jeu des bacs "
+                 "à sable — cet outil n'y écrit pas (le jeu ne se change que par "
+                 "`tools/preparer_jeu.py` ; un bac à sable, de l'intérieur).")
+
+
+def _refuser_collection_isolee(conn, collection_id) -> None:
+    if collection_isolee(conn, collection_id):
+        raise SystemExit(_MOTIF_ISOLEE.format(cid=collection_id))
+
+
+def _refuser_albums_isoles(conn, album_ids) -> None:
+    isoles = [a for a in album_ids if album_isole(conn, a)]
+    if isoles:
+        raise SystemExit(
+            f"Refusé : {len(isoles)} album(s) ({', '.join(map(str, isoles))}) vivent dans un "
+            "bac à sable ou dans le jeu des bacs à sable : rien n'en sort, et cet outil ne "
+            "les range nulle part.")
+
+
 def _ranger(conn, collection_id, album_ids):
     """Ajoute des albums à une collection (INSERT OR IGNORE), `rang` en fin de liste.
     Renvoie le nombre effectivement ajoutés."""
@@ -185,6 +213,8 @@ def _ranger(conn, collection_id, album_ids):
     # et tient la portée TOTALE (il crée des collections sans propriétaire, comme un
     # administrateur) : la règle de rejoindre lui répond « immédiat », et seul le refus de
     # traverser deux projets s'applique.
+    _refuser_collection_isolee(conn, collection_id)
+    _refuser_albums_isoles(conn, album_ids)
     ailleurs = [a for a in album_ids
                 if database.rangement_traverse(conn, a, collection_id)]
     if ailleurs:
@@ -312,6 +342,7 @@ def cmd_modifier(args) -> int:
         c = database.collection_row(conn, args.id)
         if c is None:
             raise SystemExit(f"Collection {args.id} introuvable.")
+        _refuser_collection_isolee(conn, args.id)
         changes = {k: v for k, v in maj.items() if c[k] != v}
         if changes:
             set_sql = ", ".join(f"{k} = ?" for k in changes)
@@ -329,6 +360,7 @@ def cmd_ajouter(args) -> int:
     with database.connect() as conn:
         if database.collection_row(conn, args.id) is None:
             raise SystemExit(f"Collection {args.id} introuvable.")
+        _refuser_collection_isolee(conn, args.id)
         ids = _albums_existants(conn, _albums_ids(args.albums))
         n = _ranger(conn, args.id, ids)
     _checkpoint()
@@ -341,6 +373,8 @@ def cmd_retirer(args) -> int:
     with database.connect() as conn:
         if database.collection_row(conn, args.id) is None:
             raise SystemExit(f"Collection {args.id} introuvable.")
+        _refuser_collection_isolee(conn, args.id)
+        _refuser_albums_isoles(conn, ids)
         n = 0
         if ids:
             qm = ",".join("?" * len(ids))
@@ -372,6 +406,7 @@ def cmd_supprimer(args) -> int:
         c = database.collection_row(conn, args.id)
         if c is None:
             raise SystemExit(f"Collection {args.id} introuvable.")
+        _refuser_collection_isolee(conn, args.id)
         # D10 (COL-3, tranche 3) — comme la route : la collection de base d'un projet part
         # avec lui, elle ne se supprime pas seule.
         if c.get("base"):

@@ -13,6 +13,9 @@ honnête sur la couverture réelle. Périmètre par défaut : le corpus entier ;
 <id>` restreint la couverture aux albums d'une collection et renseigne l'identité depuis
 la ligne `collection` (v14). Gérer les collections : `gerer_collections.py`.
 
+COL-4 — ni les BACS À SABLE ni le JEU ne sortent : exclus du corpus entier, et une
+collection de l'un d'eux, nommée, est refusée (`_commun.HorsDuCorpus`).
+
 Usage :
     python tools/description_collection.py                     # JSON sur stdout
     python tools/description_collection.py --csv               # CSV sur stdout
@@ -39,8 +42,10 @@ import database  # noqa: E402  (collection_row / collection_album_ids — palier
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from config import DB_PATH, BASE_DIR  # noqa: E402
 from _commun import (version_outil, environnement, portee_albums,  # noqa: E402  (provenance /
-                     forcer_utf8, CIBLES_CORPUS)                   # env / portée / stdout
+                     forcer_utf8, CIBLES_CORPUS,                   # env / portée / stdout
                                                                    # + liste blanche AUTH-1
+                     HorsDuCorpus, albums_du_corpus, clause_personnages,   # COL-4 : ni bac
+                     exiger_hors_isoles, sql_collection_isolee)            # à sable ni jeu
 
 
 # --------------------------------------------------------------------------- #
@@ -104,9 +109,16 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     row = database.collection_row(conn, collection_id) if collection_id is not None else None
     if collection_id is not None and row is None:
         raise SystemExit(f"Collection {collection_id} introuvable.")
+    # COL-4 — une collection de bac à sable ou du jeu ne se décrit pas (refus nommé), et le
+    # corpus entier n'en compte rien : ni leurs albums (`albums_du_corpus`), ni leur
+    # vocabulaire (`hors_isole`, ci-dessous), ni leurs personnages (`clause_personnages`).
+    exiger_hors_isoles(conn, collection_id)
     album_ids = (database.collection_album_ids(conn, collection_id)
-                 if collection_id is not None else None)
+                 if collection_id is not None else albums_du_corpus(conn))
     P = portee_albums(album_ids)
+    hors_isole = (f"(collection_id IS NULL OR collection_id NOT IN (SELECT _di.id FROM "
+                  f"collection _di WHERE {sql_collection_isolee('_di')}))")
+    perso_ok = clause_personnages()
     if P is None:                                   # corpus entier : aucun filtre
         W_alb = W_pl = W_reg = W_tok = A_reg = A_tok = W_pose = ""
     else:
@@ -179,32 +191,36 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                       "AND TRIM(note) <> ''" + A_tok)
     # Compté sur TOUTE l'instance : écart assumé avec les enregistrements, qui bornent le
     # vocabulaire par appartenance depuis AUTH-11 (cf. la docstring de `collecter`).
-    tags_n = _un(conn, "SELECT COUNT(*) FROM tags")
+    tags_n = _un(conn, f"SELECT COUNT(*) FROM tags WHERE {hors_isole}")
     poses = _un(conn, "SELECT COUNT(*) FROM annotation_tags" + W_pose)
 
     # --- Entités personnages (entités globales ; LIENS scopés) ------------- #
-    perso = _un(conn, "SELECT COUNT(*) FROM personnages")     # entités canoniques (globales)
+    perso = _un(conn, f"SELECT COUNT(*) FROM personnages WHERE {perso_ok}")   # entités globales
     loc_liens = _un(conn, "SELECT COUNT(*) FROM bulle_locuteur" + W_tok)
     loc_distinct = _un(conn, "SELECT COUNT(DISTINCT personnage_id) FROM bulle_locuteur" + W_tok)
     pres_liens = _un(conn, "SELECT COUNT(*) FROM personnage_presence" + W_tok)
     # A5 : personnages alignés sur ≥1 autorité (skos:exactMatch) — catalogue global.
-    perso_alignes = _un(conn, "SELECT COUNT(DISTINCT personnage_id) FROM personnage_alignement")
+    perso_alignes = _un(conn, "SELECT COUNT(DISTINCT personnage_id) FROM personnage_alignement "
+                              f"WHERE personnage_id IN (SELECT id FROM personnages WHERE {perso_ok})")
 
     # --- Vocabulaire facetté (catalogue global ; poses `ra` scopées) ------- #
     dimensions = []
     for d in conn.execute("SELECT id, cible, nom FROM attribut_dimension "
-                          "ORDER BY cible, nom"):
+                          f"WHERE {hors_isole} ORDER BY cible, nom"):
         vals = [r[0] for r in conn.execute(
-            "SELECT valeur FROM attribut_valeur WHERE dimension_id = ? ORDER BY valeur",
-            (d["id"],))]
+            f"SELECT valeur FROM attribut_valeur WHERE dimension_id = ? AND {hors_isole} "
+            "ORDER BY valeur", (d["id"],))]
         dimensions.append({"cible": d["cible"], "nom": d["nom"],
                            "valeurs": vals, "pct_defini": None})
     # Domaines (piste B) : champs analytiques regroupant les dimensions (émotions n'est qu'un cas).
     domaines = [{"nom": d["nom"], "nb_dimensions": _un(
-                    conn, "SELECT COUNT(*) FROM attribut_dimension WHERE domaine_id = ?", (d["id"],))}
-                for d in conn.execute("SELECT id, nom FROM domaine ORDER BY nom")]
-    val_tot = _un(conn, "SELECT COUNT(*) FROM attribut_valeur")
-    pa = _un(conn, "SELECT COUNT(*) FROM personnage_attribut")   # profils (entité globale)
+                    conn, f"SELECT COUNT(*) FROM attribut_dimension WHERE domaine_id = ? "
+                          f"AND {hors_isole}", (d["id"],))}
+                for d in conn.execute(f"SELECT id, nom FROM domaine WHERE {hors_isole} "
+                                      "ORDER BY nom")]
+    val_tot = _un(conn, f"SELECT COUNT(*) FROM attribut_valeur WHERE {hors_isole}")
+    pa = _un(conn, "SELECT COUNT(*) FROM personnage_attribut "   # profils (entité globale)
+                   f"WHERE personnage_id IN (SELECT id FROM personnages WHERE {perso_ok})")
     ra = _un(conn, "SELECT COUNT(*) FROM region_attribut" + W_tok)
 
     # --- Paradonnée / système ---------------------------------------------- #
@@ -240,7 +256,7 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     # `paires` est reclassé par TAUX : trié par (a, b), l'ordre alphabétique des logins
     # transparaissait encore à travers des noms retirés.
     ai = accord_inter.rapport(conn, album_ids=album_ids)
-    accord_inter_fiche = {"portee": "collection" if album_ids is not None else "corpus",
+    accord_inter_fiche = {"portee": "collection" if row is not None else "corpus",
                           "retouches": ai["retouches"],
                           "nb_auteurs": len(ai["auteurs"]), "champs": ai["champs"],
                           "paires": sorted(
@@ -266,7 +282,7 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
             "schema_version": schema_version,
             "perimetre": {"type": "collection", "collection_id": collection_id,
                           "portee": row["nom"] if row else "corpus entier",
-                          **({"albums_scope": len(album_ids)} if album_ids is not None else {})},
+                          **({"albums_scope": len(album_ids)} if row is not None else {})},
             "identite": {  # renseignée depuis la ligne `collection` (v14) ; None = corpus entier
                 "nom": row["nom"] if row else None,
                 "description": row["description"] if row else None,
@@ -358,7 +374,7 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
             if row else "",
         ("collection", "responsables"): "; ".join(r.get("nom", "") for r in resp),
         ("collection", "dates"): (f"{debut or '?'} → {fin or '?'}") if (debut or fin) else "",
-        ("collection", "collection_album"): (len(album_ids) if album_ids is not None else ""),
+        ("collection", "collection_album"): (len(album_ids) if row is not None else ""),
         ("collection", "couverture_volume"):
             f"{albums} albums; {planches} planches; {regions} régions; {tokens} tokens",
         ("collection", "provenance_globale"):
@@ -425,7 +441,8 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
         ("personnage", "personnage_presence"): pres_liens,
         ("vocabulaire", "domaine"): len(domaines),
         ("vocabulaire", "dimension.domaine"): _un(
-            conn, "SELECT COUNT(*) FROM attribut_dimension WHERE domaine_id IS NOT NULL"),
+            conn, f"SELECT COUNT(*) FROM attribut_dimension WHERE domaine_id IS NOT NULL "
+                  f"AND {hors_isole}"),
         ("vocabulaire", "dimension.nom"): len(dimensions),
         ("vocabulaire", "valeur"): val_tot,
         ("vocabulaire", "personnage_attribut"): pa,
@@ -593,7 +610,10 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     with _connexion_ro() as conn:
-        rollup, agg = collecter(conn, collection_id=args.collection)
+        try:
+            rollup, agg = collecter(conn, collection_id=args.collection)
+        except HorsDuCorpus as exc:            # COL-4 : refus nommé, code de sortie non nul
+            raise SystemExit(str(exc))
 
     if args.json is None and args.csv is None:
         args.json = "-"                      # défaut : JSON sur stdout

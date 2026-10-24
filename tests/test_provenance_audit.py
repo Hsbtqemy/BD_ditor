@@ -792,3 +792,45 @@ def test_un_agent_collectif_sort_sous_collectif_n(client, derriere_proxy, db_pat
     assert pseudo["alice"] == "annotateur-1"
     assert pseudo["promo-l3"] == "collectif-2", (
         "le préfixe déclare la nature, le numéro reste celui de la série commune")
+
+
+# --------------------------------------------------------------------------- #
+# COL-4 — les actes d'un bac à sable ne partent pas (constat 12 de la relecture croisée)
+# --------------------------------------------------------------------------- #
+from test_export_metadonnees import isoles  # noqa: E402,F401  (le décor partagé)
+from test_bac_a_sable import decor, jeu  # noqa: E402,F401  (ses dépendances)
+
+
+def test_la_provenance_n_emporte_pas_les_actes_d_un_bac_a_sable(isoles, client):
+    """Un acte sur une région du bac à sable (sa création, son annotation, une passe ML sur
+    sa planche) ne sort ni en PROV-JSON ni en TEI ; celui d'une région du vrai corpus, si.
+    Et une ANNULATION de l'acte du bac à sable ne le fait pas ressortir par la bande."""
+    import provenance_export
+    conn = _lire(isoles["db"])
+    try:
+        # Un run sur la planche du bac à sable, et l'annulation d'un acte qui y est fait.
+        act = journal.ouvrir_activite(conn, "segmentation", agent="kumiko",
+                                      agent_type="moteur",
+                                      portee={"planche_id": isoles["planche_bac"]})
+        annul = conn.execute(
+            "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
+            "VALUES ('annulation', 'lea', 'humain', 'evenement', ?)",
+            (isoles["evt_bac"],)).lastrowid
+        conn.commit()
+        doc = provenance_export.construire(conn)["provenance_export"]
+    finally:
+        conn.close()
+    acts = doc["prov"]["activity"]
+    assert f"bd:evt/{isoles['evt_reel']}" in acts
+    assert f"bd:evt/{isoles['evt_bac']}" not in acts
+    assert f"bd:evt/{annul}" not in acts
+    assert f"bd:activite/{act}" not in acts
+    assert f"bd:regions/{isoles['reg_bac']}" not in doc["prov"]["entity"]
+    # L'annotation de la région du bac à sable (une cible qui la nomme par son id, sans
+    # planche dans sa charge) ne sort pas non plus ; celle du vrai corpus, si.
+    assert f"bd:annotations/{isoles['reg_bac']}" not in doc["prov"]["entity"]
+    assert f"bd:annotations/{isoles['reg_reel']}" in doc["prov"]["entity"]
+    tei = doc["tei_revision_desc"]
+    assert f'target="regions/{isoles["reg_reel"]}"' in tei
+    assert f'target="regions/{isoles["reg_bac"]}"' not in tei
+    assert doc["resume"]["evenements"] == sum(1 for k in acts if k.startswith("bd:evt/"))

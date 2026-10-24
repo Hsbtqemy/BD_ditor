@@ -27,6 +27,8 @@ l'ajoute en annotation `supplementing` (transcription).
 
 `--collection <id>` restreint aux albums d'une collection (la Collection IIIF prend alors
 son nom) ; sinon, corpus entier. Gérer les collections : `tools/gerer_collections.py`.
+COL-4 — ni les BACS À SABLE ni le JEU ne sortent : exclus du corpus entier, et une
+collection de l'un d'eux, nommée, est refusée (`_commun.HorsDuCorpus`).
 
 Usage :
     python tools/iiif_manifest.py --base-url https://host/iiif           # manifest album 1 → stdout
@@ -442,8 +444,14 @@ def main(argv=None) -> int:
     if _rendre(diagnostic_base_url(base, remis=bool(args.out_dir))):
         return 2
 
+    # COL-4 — `mc.collecter` écarte bacs à sable et jeu du corpus entier, et refuse d'en
+    # nommer une collection : le refus sort ici, nommé, avant le moindre fichier.
     with _connexion_ro() as conn:
-        arbre = mc.collecter(conn, verbatim=args.verbatim, collection_id=args.collection)
+        try:
+            arbre = mc.collecter(conn, verbatim=args.verbatim, collection_id=args.collection)
+        except mc.HorsDuCorpus as exc:
+            print(f"REFUS — {exc}", file=sys.stderr)
+            return 2
     albums = arbre["metadonnees_collection"]["albums"]
     bloc = arbre["metadonnees_collection"].get("collection")   # None = corpus entier
     nom_collection = bloc["nom"] if bloc else None

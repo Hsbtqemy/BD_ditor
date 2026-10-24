@@ -11,7 +11,8 @@ append-only (`activite` = runs ; `evenement` = actes atomiques avant/après, cf.
     éditoriale, insérable dans l'en-tête TEI d'un export de contenu.
 
 Grain CORPUS : le journal n'est pas re-scopable par album (un acte survit à la suppression
-de sa cible). Modèle PRAGMATIQUE : un LOG D'ACTES append-only (chaque `evenement` est une
+de sa cible). COL-4 : sans les actes ni les runs d'un bac à sable ou du jeu, dans la mesure
+de ce que `_commun.sql_evenement_isole` sait relier — une cible encore vivante. Modèle PRAGMATIQUE : un LOG D'ACTES append-only (chaque `evenement` est une
 prov:Activity), non un graphe à versionnement strict d'entités — c'est honnête et suffisant
 pour un entrepôt. Le versionnement fin (`wasRevisionOf` entre versions d'entité) reste une
 extension possible.
@@ -35,7 +36,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_PATH, BASE_DIR  # noqa: E402
 from _commun import (pseudonymes, version_outil,  # noqa: E402  (provenance de l'outil,
-                     evenements_publiables)                     # liste blanche AUTH-1)
+                     evenements_publiables,                     # liste blanche AUTH-1)
+                     activites_publiables)                      # COL-4 : ni bac ni jeu
 
 _PREFIXE = {
     "bd": "https://bedediteur.huma-num.fr/prov/",
@@ -86,7 +88,9 @@ def prov_json(conn) -> dict:
             agents[nom] = atype
 
     # 1) Activités (runs ML / sessions).
-    for a in conn.execute("SELECT * FROM activite ORDER BY id"):
+    # COL-4 — ni les runs ni les actes d'un bac à sable ou du jeu (`_commun`, qui dit ce
+    # qu'il sait relier et ce qu'il ne sait pas).
+    for a in activites_publiables(conn, ("*",)):
         aid = f"bd:activite/{a['id']}"
         act = {"prov:type": a["type"], "bd:agent_type": a["agent_type"]}
         if a["version"]:
@@ -179,7 +183,7 @@ def tei_revision_desc(conn) -> str:
 def construire(conn) -> dict:
     """Document complet : PROV-JSON + TEI revisionDesc + résumé (comptes)."""
     prov = prov_json(conn)
-    nb_act = conn.execute("SELECT COUNT(*) FROM activite").fetchone()[0]
+    nb_act = len(activites_publiables(conn, ("id",)))   # COL-4 : ce que le graphe contient
     # Compter TOUS les événements contredirait la liste blanche : le résumé annoncerait
     # un nombre que le graphe ne contient pas, et l'écart passerait pour une perte.
     nb_evt = sum(1 for _ in evenements_publiables(conn))

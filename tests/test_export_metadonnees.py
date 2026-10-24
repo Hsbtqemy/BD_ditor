@@ -719,3 +719,165 @@ def test_aucun_login_d_annotateur_ne_sort_au_depot(corpus, album, tmp_path):
         if nom in ("csv/evenement.csv", "csv/activite.csv"):
             continue
         assert "alice" not in texte, f"un login d'annotateur sort par {nom}"
+
+
+# --------------------------------------------------------------------------- #
+# COL-4 — ni bac à sable ni jeu ne sortent par les outils (constat 12 de la relecture)
+# --------------------------------------------------------------------------- #
+# Le décor de `test_bac_a_sable` : un vrai projet (« Étude », sa collection « Corpus », un
+# album « Réel »), le jeu (son projet caché, ses copies de référence) et le bac à sable de
+# lea, rempli de ses copies. On y ajoute de quoi voir une fuite : un tag né local au bac
+# à sable, un axe d'analyse local à sa base, une région créée dedans — et, en face, une
+# région annotée du vrai corpus, qui doit sortir. Les autres fichiers d'outils importent
+# cette fixture (`isoles`) avec celles dont elle dépend.
+from test_bac_a_sable import LEA, RESP, _copie, decor, jeu  # noqa: E402,F401
+from conftest import make_png  # noqa: E402
+
+
+@pytest.fixture
+def isoles(client, decor, data_dir):
+    db = decor["db"]
+    planche = _copie(decor, "exemple")["planche_ids"][0]
+    reg_bac = client.post(f"/api/planches/{planche}/regions", headers=LEA,
+                          json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
+    assert client.put(f"/api/regions/{reg_bac}/annotation", headers=LEA,
+                      json={"note": "n", "tags": ["mot-du-bac"]}).status_code == 200
+    # L'axe local à la base, posé en SQL : ce que les routes laissent créer dans un bac à
+    # sable n'est pas l'objet de ce test, seulement ce que les outils en laissent sortir.
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                 "VALUES ('case', 'axe-du-bac', ?)", (decor["base"],))
+    conn.commit()
+    conn.close()
+    pl = client.post(f"/api/albums/{decor['reel']}/import", headers=RESP,
+                     files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+    reg_reel = client.post(f"/api/planches/{pl}/regions", headers=RESP,
+                           json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
+    assert client.put(f"/api/regions/{reg_reel}/annotation", headers=RESP,
+                      json={"note": "n", "tags": ["mot-du-corpus"]}).status_code == 200
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        def evt(rid):
+            return conn.execute("SELECT id FROM evenement WHERE cible_table = 'regions' "
+                                "AND cible_id = ? AND type = 'creation'", (rid,)).fetchone()[0]
+        jeu_col = conn.execute("SELECT c.id FROM collection c JOIN projet p "
+                               "ON p.id = c.projet_id WHERE p.jeu = 1").fetchone()[0]
+        isoles_ids = [r[0] for r in conn.execute(
+            "SELECT id FROM albums WHERE id <> ? ORDER BY id", (decor["reel"],))]
+        out = {**decor, "data": data_dir, "reg_bac": reg_bac, "reg_reel": reg_reel,
+               "evt_bac": evt(reg_bac), "evt_reel": evt(reg_reel), "jeu_col": jeu_col,
+               "albums_isoles": isoles_ids, "planche_bac": planche}
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        conn.close()
+    # Le décor n'est pas vide : une sonde sans fuite à voir serait verte pour rien.
+    assert len(out["albums_isoles"]) >= 6, out["albums_isoles"]
+    return out
+
+
+def test_metadonnees_n_emporte_ni_bac_a_sable_ni_jeu(isoles):
+    r = _run("metadonnees_collection.py", isoles["db"], isoles["data"], "--json", "-")
+    assert r.returncode == 0, r.stderr
+    doc = json.loads(r.stdout)["metadonnees_collection"]
+    assert [a["titre"] for a in doc["albums"]] == ["Réel"]
+    labels = {t["label"] for t in doc["tags"]}
+    assert "mot-du-corpus" in labels and "mot-du-bac" not in labels
+    assert "axe-du-bac" not in {d["nom"] for d in doc["vocabulaire"]}
+    assert "albums" not in doc["perimetre"]         # le corpus entier garde sa forme
+
+
+def test_metadonnees_tables_sans_les_actes_du_bac_a_sable(isoles, tmp_path):
+    out = tmp_path / "tables"
+    r = _run("metadonnees_collection.py", isoles["db"], isoles["data"], "--csv-dir", str(out))
+    assert r.returncode == 0, r.stderr
+
+    def colonne(table, nom):
+        lignes = (out / f"{table}.csv").read_text(encoding="utf-8-sig").splitlines()
+        cols = lignes[0].split(",")
+        return [ligne.split(",")[cols.index(nom)] for ligne in lignes[1:]]
+
+    evts = colonne("evenement", "id")
+    assert str(isoles["evt_reel"]) in evts and str(isoles["evt_bac"]) not in evts
+    assert colonne("albums", "id") == [str(isoles["reel"])]
+    assert str(isoles["reg_bac"]) not in colonne("regions", "id")
+    assert "mot-du-bac" not in colonne("tags", "label")
+
+
+@pytest.mark.parametrize("quelle", ["base", "jeu_col"])
+@pytest.mark.parametrize("outil", ["metadonnees_collection.py", "description_collection.py"])
+def test_une_collection_isolee_nommee_est_refusee(isoles, outil, quelle):
+    r = _run(outil, isoles["db"], isoles["data"], "--json", "-",
+             "--collection", str(isoles[quelle]))
+    assert r.returncode != 0 and r.stdout.strip() == "", (r.returncode, r.stdout[:200])
+    assert "bac à sable" in r.stderr and "rien n'en sort" in r.stderr, r.stderr
+
+
+def test_la_fiche_ne_compte_ni_bac_a_sable_ni_jeu(isoles):
+    r = _run("description_collection.py", isoles["db"], isoles["data"], "--json", "-")
+    assert r.returncode == 0, r.stderr
+    fiche = json.loads(r.stdout)["description_collection"]
+    assert fiche["couverture"]["albums"] == 1
+    assert fiche["couverture"]["annotations"]["tags_distincts"] == 1     # mot-du-corpus
+    assert "axe-du-bac" not in {d["nom"] for d in fiche["vocabulaire"]["dimensions"]}
+    assert "albums_scope" not in fiche["perimetre"]
+
+
+def test_iiif_n_emporte_ni_bac_a_sable_ni_jeu(isoles, tmp_path):
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", isoles["db"], isoles["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out))
+    assert r.returncode == 0, r.stderr
+    assert sorted(p.name for p in out.glob("manifest-*.json")) == [
+        f"manifest-a{isoles['reel']}.json"]
+    r = _run("iiif_manifest.py", isoles["db"], isoles["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(tmp_path / "x"),
+             "--collection", str(isoles["base"]))
+    assert r.returncode == 2 and "REFUS" in r.stderr and "bac à sable" in r.stderr, r.stderr
+    assert not (tmp_path / "x").exists()
+
+
+def _nb(db, sql, params=()):
+    conn = sqlite3.connect(db)
+    try:
+        return conn.execute(sql, params).fetchone()[0]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("cas", ["ajouter-dans-le-bac", "ajouter-une-copie-du-bac",
+                                 "retirer-du-bac", "modifier-le-bac", "supprimer-collection",
+                                 "modifier-le-jeu", "creer-avec-une-copie-du-bac"])
+def test_gerer_collections_n_ecrit_ni_dans_un_bac_a_sable_ni_dans_le_jeu(isoles, cas):
+    copie = str(isoles["albums_isoles"][-1])
+    base, jeu_col, corpus = str(isoles["base"]), str(isoles["jeu_col"]), str(isoles["col"])
+    # Une collection du bac à sable de lea, vide : sans la garde, `supprimer` passerait.
+    conn = sqlite3.connect(isoles["db"])
+    vide = conn.execute("INSERT INTO collection (nom, projet_id) VALUES ('Vide', ?)",
+                        (isoles["bac"]["id"],)).lastrowid
+    conn.commit()
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.close()
+    args = {"ajouter-dans-le-bac": ("ajouter", base, "--albums", str(isoles["reel"])),
+            "ajouter-une-copie-du-bac": ("ajouter", corpus, "--albums", copie),
+            "retirer-du-bac": ("retirer", base, "--albums", copie),
+            "modifier-le-bac": ("modifier", base, "--nom", "Renommée"),
+            "supprimer-collection": ("supprimer", str(vide)),
+            "modifier-le-jeu": ("modifier", jeu_col, "--description", "altérée"),
+            "creer-avec-une-copie-du-bac": ("creer", "--nom", "Neuve", "--albums", copie),
+            }[cas]
+    compter = ("SELECT (SELECT COUNT(*) FROM collection_album), "
+               "(SELECT COUNT(*) FROM collection), (SELECT COUNT(*) FROM evenement)")
+    conn = sqlite3.connect(isoles["db"])
+    avant = conn.execute(compter).fetchone()
+    conn.close()
+    r = _run("gerer_collections.py", isoles["db"], isoles["data"], *args)
+    assert r.returncode != 0, (cas, r.stderr)
+    assert "Refusé" in r.stderr and "bac à sable" in r.stderr, r.stderr
+    conn = sqlite3.connect(isoles["db"])
+    try:
+        assert conn.execute(compter).fetchone() == avant
+        assert conn.execute("SELECT COUNT(*) FROM collection WHERE nom = 'Renommée' "
+                            "OR description = 'altérée'").fetchone()[0] == 0
+    finally:
+        conn.close()
