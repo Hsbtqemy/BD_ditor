@@ -315,6 +315,8 @@ def test_les_unites_systemd_lancent_l_outil_toutes_les_heures():
     service = (racine / "bd-bacs-a-sable.service").read_text(encoding="utf-8")
     minuterie = (racine / "bd-bacs-a-sable.timer").read_text(encoding="utf-8")
     assert "Type=oneshot" in service and "User=ubuntu" in service
-    assert "docker exec bd-app python tools/effacer_bacs_a_sable.py --appliquer" in service
+    assert "ExecStart=/home/ubuntu/BD_ditor/deploy/effacer-bacs-a-sable.sh" in service
+    script = (racine.parent / "effacer-bacs-a-sable.sh").read_text(encoding="utf-8")
+    assert "docker exec" in script and "tools/effacer_bacs_a_sable.py --appliquer" in script
     assert "Environment=PATH=" in service
     assert "OnCalendar=hourly" in minuterie and "Unit=bd-bacs-a-sable.service" in minuterie

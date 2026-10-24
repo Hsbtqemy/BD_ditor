@@ -19,8 +19,8 @@ Type=oneshot
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/BD_ditor
-# L'application vit dans le conteneur `bd-app` : l'outil y tourne, sur sa base.
-ExecStart=/usr/bin/docker exec bd-app python tools/effacer_bacs_a_sable.py --appliquer
+# L'application vit dans le conteneur `bd-app` : le script y lance l'outil, sur sa base.
+ExecStart=/home/ubuntu/BD_ditor/deploy/effacer-bacs-a-sable.sh
 
 # Une unité systemd démarre avec un environnement quasi vide : sans PATH, `docker` ne se
 # trouve pas, et l'échec ressemble à une panne de l'application.
