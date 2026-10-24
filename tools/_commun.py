@@ -286,11 +286,10 @@ def clause_vocabulaire(collection_id, alias: str = "collection_id") -> tuple[str
 
 
 def clause_personnages(alias: str = "personnages") -> str:
-    """Les PERSONNAGES publiables. Aujourd'hui « 1 » — tous : un personnage n'a ni
-    `collection_id` ni projet, et rien en base ne dit qu'il est NÉ dans un bac à sable.
-    C'est la marque de naissance que la v35 posera (constat 3 de la relecture) qui le dira ;
-    ce point d'appel UNIQUE la recevra, et les outils qui l'appellent la suivront."""
-    return "1"
+    """Les PERSONNAGES publiables : ceux du registre. Un personnage NÉ dans un bac à sable
+    (`personnages.bac_a_sable_id`, v35) ne sort pas. Ce point d'appel est UNIQUE : les
+    outils qui l'appellent le suivent."""
+    return f"{alias}.bac_a_sable_id IS NULL"
 
 
 # Les cibles du journal qui désignent une RÉGION par leur `cible_id` (« les actes

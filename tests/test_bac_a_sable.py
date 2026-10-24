@@ -569,8 +569,10 @@ def _region_reelle(client, decor, type_="bulle"):
 
 
 def _region_du_bac(client, decor, qui=LEA):
+    """La bulle de la copie de l'exemple dans le bac à sable de lea."""
     planche = _copie(decor, "exemple")["planche_ids"][0]
-    return client.get(f"/api/planches/{planche}/regions", headers=qui).json()[0]["id"]
+    return next(r["id"] for r in client.get(f"/api/planches/{planche}/regions",
+                                            headers=qui).json() if r["type"] == "bulle")
 
 
 def test_un_terme_ne_passe_pas_la_frontiere(client, decor):
@@ -815,6 +817,118 @@ def test_ctrl_z_rend_le_tag_de_son_espace(client, decor):
     assert r.status_code == 200, r.text
     tags = client.get(f"/api/regions/{region}/annotation", headers=LEA).json()["tags"]
     assert [t["id"] for t in tags] == [du_bac]
+
+
+# --------------------------------------------------------------------------- #
+# Les personnages : nés dans un bac à sable, ou du registre (Hugo, 2026-10-24)
+# --------------------------------------------------------------------------- #
+def _noms(client, qui):
+    return {p["nom"]: p for p in client.get("/api/personnages", headers=qui).json()}
+
+
+def test_un_personnage_du_registre_ne_disparait_pas_par_le_bac(client, decor):
+    """resp crée « Spirou » (jamais attribué : visible de tous). lea le fait parler dans une
+    bulle de son bac à sable : resp le voit toujours — l'apparition dans un bac à sable ne
+    le cache pas (relecture croisée). Et elle ne le MONTRE pas : « Fantasio », attribué dans
+    le corpus de resp puis dans le bac de lea, reste caché à qui ne lit pas le corpus."""
+    spirou = client.post("/api/personnages", headers=RESP, json={"nom": "Spirou"}).json()
+    fantasio = client.post("/api/personnages", headers=RESP, json={"nom": "Fantasio"}).json()
+    region = _region_du_bac(client, decor)
+    assert client.put(f"/api/regions/{region}/locuteur", headers=LEA,
+                      json={"personnage_id": spirou["id"]}).status_code == 200
+    assert "Spirou" in _noms(client, RESP) and "Spirou" in _noms(client, RITA)
+    autre = client.post(f"/api/planches/{_copie(decor, 'exemple')['planche_ids'][0]}/regions",
+                        headers=LEA, json={"type": "bulle", "x": 0, "y": 0, "w": 9,
+                                           "h": 9}).json()["id"]
+    client.put(f"/api/regions/{autre}/locuteur", headers=LEA,
+               json={"personnage_id": fantasio["id"]})
+    client.put(f"/api/regions/{_region_reelle(client, decor)}/locuteur", headers=RESP,
+               json={"personnage_id": fantasio["id"]})
+    assert "Fantasio" in _noms(client, RESP)
+    assert "Fantasio" not in _noms(client, LEA) and "Fantasio" not in _noms(client, RITA)
+
+
+def test_un_personnage_nait_dans_un_bac_a_sable(client, decor):
+    """lea en crée un dans son bac à sable : ses membres le voient et le modifient, personne
+    d'autre — pas même l'administrateur. Le registre lui reste fermé (S2)."""
+    pid = decor["bac"]["id"]
+    r = client.post("/api/personnages", headers=LEA,
+                    json={"nom": "Gaston", "bac_a_sable_id": pid})
+    assert r.status_code == 201, r.text
+    gaston = r.json()
+    assert _sql(decor["db"], "SELECT bac_a_sable_id FROM personnages WHERE id = ?",
+                (gaston["id"],)) == [{"bac_a_sable_id": pid}]
+    for qui, voit in ((LEA, True), (SAM, True), (RESP, False), (HUGO, False), (RITA, False)):
+        assert ("Gaston" in _noms(client, qui)) is voit, qui
+    for qui, code in ((LEA, 200), (SAM, 200), (HUGO, 404), (RESP, 404)):
+        r = client.put(f"/api/personnages/{gaston['id']}", headers=qui,
+                       json={"notes": "n"})
+        assert r.status_code == code, (qui, r.text)
+    assert client.post("/api/personnages", headers=LEA,
+                       json={"nom": "Lagaffe"}).status_code == 403
+    autre = client.post("/api/bac-a-sable", headers=RITA).json()["id"]
+    assert client.post("/api/personnages", headers=LEA,
+                       json={"nom": "X", "bac_a_sable_id": autre}).status_code == 404
+    assert client.post("/api/personnages", headers=RESP,
+                       json={"nom": "X", "bac_a_sable_id": decor["etude"]}).status_code \
+        == 404
+    # L'homonyme se cherche dans le même registre : un « Spirou » du registre ne répond
+    # pas à qui en crée un dans son bac à sable.
+    client.post("/api/personnages", headers=RESP, json={"nom": "Spirou"})
+    r = client.post("/api/personnages", headers=LEA,
+                    json={"nom": "spirou", "bac_a_sable_id": pid})
+    assert r.status_code == 201, r.text
+
+
+def test_un_personnage_du_bac_ne_passe_pas_la_frontiere(client, decor):
+    """Il ne s'attribue que dans son bac à sable, ne se fond pas dans le registre, et ne
+    porte pas une valeur d'un autre bac. Un personnage du registre, lui, s'attribue dans
+    un bac à sable."""
+    pid = decor["bac"]["id"]
+    client.put(f"/api/projets/{pid}/membres", headers=LEA,
+               json={"genre": "utilisateur", "principal": "resp", "role": "membre"})
+    gaston = client.post("/api/personnages", headers=LEA,
+                         json={"nom": "Gaston", "bac_a_sable_id": pid}).json()["id"]
+    r = client.put(f"/api/regions/{_region_reelle(client, decor)}/locuteur", headers=RESP,
+                   json={"personnage_id": gaston})
+    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
+    boite = _region_reelle(client, decor, "personnage")
+    r = client.put(f"/api/regions/{boite}/personnage", headers=RESP,
+                   json={"personnage_id": gaston})
+    assert r.status_code == 409, r.text
+    assert client.put(f"/api/regions/{_region_du_bac(client, decor)}/locuteur", headers=LEA,
+                      json={"personnage_id": gaston}).status_code == 200
+    registre = client.post("/api/personnages", headers=RESP, json={"nom": "Spip"}).json()["id"]
+    r = client.post(f"/api/personnages/{gaston}/fusion", headers=RESP,
+                    json={"cible_id": registre})
+    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
+    # Une valeur locale au bac à sable (posée en base) ne qualifie pas un personnage du
+    # registre ; elle qualifie celui du bac à sable.
+    d = client.post("/api/attributs/dimensions", headers=RESP,
+                    json={"cible": "personnage", "nom": "humeur"}).json()["id"]
+    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=RESP,
+                    json={"valeur": "gai"}).json()["id"]
+    _sql(decor["db"], "UPDATE attribut_valeur SET collection_id = ? WHERE id = ?",
+         (decor["base"], v))
+    r = client.put(f"/api/personnages/{registre}/attributs", headers=RESP,
+                   json={"valeur_id": v})
+    assert r.status_code == 409, r.text
+    assert client.put(f"/api/personnages/{gaston}/attributs", headers=LEA,
+                      json={"valeur_id": v}).status_code in (200, 201)
+
+
+def test_l_effacement_emporte_les_personnages_du_bac(client, decor):
+    pid = decor["bac"]["id"]
+    gaston = client.post("/api/personnages", headers=LEA,
+                         json={"nom": "Gaston", "bac_a_sable_id": pid}).json()["id"]
+    client.put(f"/api/regions/{_region_du_bac(client, decor)}/locuteur", headers=LEA,
+               json={"personnage_id": gaston})
+    registre = client.post("/api/personnages", headers=RESP, json={"nom": "Spip"}).json()["id"]
+    client.put(f"/api/regions/{_region_du_bac(client, decor)}/locuteur", headers=LEA,
+               json={"personnage_id": registre})
+    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=LEA).status_code == 200
+    assert _sql(decor["db"], "SELECT id FROM personnages WHERE id IN (?, ?) ORDER BY id",
+                (gaston, registre)) == [{"id": registre}]
 
 
 # --------------------------------------------------------------------------- #

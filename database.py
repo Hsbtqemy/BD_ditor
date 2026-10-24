@@ -320,7 +320,16 @@ CREATE TABLE IF NOT EXISTS personnages (
     nom            TEXT NOT NULL,
     serie          TEXT,
     notes          TEXT,
-    date_creation  TEXT DEFAULT (datetime('now'))
+    date_creation  TEXT DEFAULT (datetime('now')),
+    bac_a_sable_id INTEGER
+    -- v35 (COL-4) — le BAC À SABLE où le personnage est NÉ (`projet.id`, qui ne revient
+    -- jamais), NULL pour un personnage du registre. Un personnage né dans un bac à sable
+    -- n'existe que pour ses membres, ne s'attribue que dans ce bac à sable, et part avec lui
+    -- (Hugo, 2026-10-24) ; les apparitions dans un bac à sable ne comptent pas pour la
+    -- visibilité d'un personnage du registre — ni pour le cacher, ni pour le montrer
+    -- (`socle._clause_personnage`). Sans clé étrangère : le journal et les outils lisent
+    -- encore l'identifiant d'un bac à sable effacé. Commentaire SOUS la dernière colonne
+    -- (cf. celui de `collection.projet_id`).
 );
 
 -- Lien LOCUTEUR : quelle entité parle dans cette zone de texte (au plus une → region_id
@@ -1379,6 +1388,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
                                ("jeu", "INTEGER NOT NULL DEFAULT 0")):
             if colonne not in _cols("projet"):
                 conn.execute(f"ALTER TABLE projet ADD COLUMN {colonne} {sorte}")
+    # … et la marque de naissance d'un personnage (NULL : le registre, tout l'existant).
+    if "personnages" in _tables and "bac_a_sable_id" not in _cols("personnages"):
+        conn.execute("ALTER TABLE personnages ADD COLUMN bac_a_sable_id INTEGER")
     if version < 31:
         # Migrations de DONNÉES, donc gatées par la VERSION, et IDEMPOTENTES (des tests
         # ramènent `user_version` en arrière sur une base courante) : elles ne touchent que

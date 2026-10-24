@@ -1139,7 +1139,7 @@ def _supprimer_le_vocabulaire_du_bac(conn, projet_id: int, collections: list) ->
     détruirait du travail du corpus.
 
     Employé dehors : un tag posé sur une région d'un album d'un autre projet ; une valeur
-    posée sur une telle région, ou sur un personnage ;
+    posée sur une telle région, ou sur un personnage qui n'est pas né dans ce bac à sable ;
     une dimension qui porte une telle valeur (elle reste avec TOUTES ses valeurs) ; un
     domaine qui porte une dimension qui n'est pas du bac à sable.
     Les valeurs avant leurs dimensions, les dimensions avant leurs domaines."""
@@ -1151,14 +1151,16 @@ def _supprimer_le_vocabulaire_du_bac(conn, projet_id: int, collections: list) ->
         f"SELECT v.id FROM attribut_valeur v WHERE "
         f"(EXISTS (SELECT 1 FROM region_attribut ra WHERE ra.valeur_id = v.id AND "
         f"{dehors.format(region='ra.region_id')}) "
-        f"OR EXISTS (SELECT 1 FROM personnage_attribut pa WHERE pa.valeur_id = v.id))")
+        f"OR EXISTS (SELECT 1 FROM personnage_attribut pa JOIN personnages pe "
+        f"ON pe.id = pa.personnage_id WHERE pa.valeur_id = v.id "
+        f"AND pe.bac_a_sable_id IS NOT ?))")
     dims_gardees = (f"SELECT d.id FROM attribut_dimension d WHERE d.collection_id IN "
                     f"({marques}) AND d.id IN (SELECT dimension_id FROM attribut_valeur "
                     f"WHERE id IN ({valeurs_dehors}))")
-    p_dims = [*collections, projet_id]
+    p_dims = [*collections, projet_id, projet_id]
     conn.execute(f"DELETE FROM attribut_valeur WHERE collection_id IN ({marques}) "
                  f"AND id NOT IN ({valeurs_dehors}) AND dimension_id NOT IN ({dims_gardees})",
-                 [*collections, projet_id, *p_dims])
+                 [*collections, projet_id, projet_id, *p_dims])
     conn.execute(f"DELETE FROM attribut_dimension WHERE collection_id IN ({marques}) "
                  f"AND id NOT IN ({dims_gardees})", [*collections, *p_dims])
     conn.execute(f"DELETE FROM domaine WHERE collection_id IN ({marques}) AND NOT EXISTS "
@@ -1243,9 +1245,9 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
     4. le projet, ses membres avec lui (cascade), et l'acte s'écrit : `suppression` sous
        `projet`, charge `{bac_a_sable: true, motif}`.
 
-    Les PERSONNAGES ne sont pas touchés : un compte qui n'écrit que dans des bacs à sable
-    n'en crée aucun (S2, `peut_ecrire_quelque_part`), et un personnage global créé par un
-    autre ne se détruit pas parce qu'il est passé par un bac à sable.
+    Les PERSONNAGES nés dans le bac à sable partent avec lui (`personnages.bac_a_sable_id`,
+    Hugo, 2026-10-24) ; un personnage du registre ne se détruit pas parce qu'il est passé
+    par un bac à sable.
 
     Idempotent : un arrêt au milieu laisse un bac à sable à moitié effacé, que l'appel
     suivant finit ; un projet déjà parti rend `efface: False`. Le journal garde tout,
@@ -1280,6 +1282,15 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
         conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
         journal.journaliser(conn, "suppression", "collection", collection_id,
                             avant={"nom": nom, "bac_a_sable": True})
+    # COL-4 (Hugo, 2026-10-24) — les personnages NÉS dans le bac à sable partent avec lui :
+    # leurs apparitions sont parties avec ses régions. Un personnage qui apparaîtrait encore
+    # ailleurs (base retouchée : aucune route ne l'attribue hors de son bac à sable) rejoint
+    # le registre au lieu d'emporter ce travail.
+    ailleurs = ("EXISTS (SELECT 1 FROM {t} x WHERE x.personnage_id = personnages.id)")
+    conn.execute(f"UPDATE personnages SET bac_a_sable_id = NULL WHERE bac_a_sable_id = ? "
+                 f"AND ({ailleurs.format(t='bulle_locuteur')} "
+                 f"OR {ailleurs.format(t='personnage_presence')})", (projet_id,))
+    conn.execute("DELETE FROM personnages WHERE bac_a_sable_id = ?", (projet_id,))
     nom = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()[0]
     conn.execute("DELETE FROM projet WHERE id = ?", (projet_id,))
     journal.journaliser(conn, "suppression", "projet", projet_id,
@@ -1949,22 +1960,42 @@ def _clause_personnage(portee: autorisation.Portee) -> tuple[str, list]:
     télécharger la base entière (décision du 2026-08-27, cf. docs/hebergement-securite.md
     §6). C'est une mesure d'USAGE — sans elle, l'autocomplétion de locuteur grossit avec
     l'instance entière au lieu de rester à la taille de l'étude en cours.
+
+    COL-4 (Hugo, 2026-10-24) — deux registres. Un personnage NÉ dans un bac à sable
+    (`personnages.bac_a_sable_id`) n'existe que pour les membres de ce bac à sable. Pour un
+    personnage du registre, les apparitions dans un projet ISOLÉ (bac à sable, jeu) ne
+    comptent pas — ni pour le cacher, ni pour le montrer : la relecture croisée avait vu un
+    arrivant, en attribuant « Spirou » dans son bac à sable, le cacher à tout le monde.
     """
-    ou, pp = portee.clause_album("pl.album_id")
-    if ou == "1":
+    if portee.tout and not portee.bornee and not portee.hors_isoles:
         return "1", []
-    apparait = (
+    if portee.tout:
+        ou, pp = "1", []
+    else:
+        ou, pp = portee.clause_album("pl.album_id")
+    hors_isole = ("NOT EXISTS (SELECT 1 FROM albums _ai WHERE _ai.id = pl.album_id "
+                  f"AND {sql_album_isole('_ai')})")
+    apparition = (
         "EXISTS (SELECT 1 FROM {table} x "
         "          JOIN regions r   ON r.id = x.region_id "
         "          JOIN planches pl ON pl.id = r.planche_id "
-        f"        WHERE x.personnage_id = p.id AND {ou})")
-    jamais = ("NOT EXISTS (SELECT 1 FROM bulle_locuteur b WHERE b.personnage_id = p.id) "
-              "AND NOT EXISTS (SELECT 1 FROM personnage_presence q "
-              "                WHERE q.personnage_id = p.id)")
-    return (f"(({jamais}) "
+        f"        WHERE x.personnage_id = p.id AND {hors_isole}{{et}})")
+    apparait = apparition.replace("{et}", f" AND {ou}")
+    jamais = (f"NOT {apparition.replace('{et}', '').format(table='bulle_locuteur')} "
+              f"AND NOT {apparition.replace('{et}', '').format(table='personnage_presence')}")
+    bacs = sorted(portee.bacs_a_sable)
+    du_bac = (f"p.bac_a_sable_id IN ({', '.join('?' * len(bacs))})" if bacs else "0")
+    return (f"((p.bac_a_sable_id IS NULL AND (({jamais}) "
             f" OR {apparait.format(table='bulle_locuteur')} "
-            f" OR {apparait.format(table='personnage_presence')})",
-            [*pp, *pp])
+            f" OR {apparait.format(table='personnage_presence')})) OR {du_bac})",
+            [*pp, *pp, *bacs])
+
+
+def _rive_d_un_personnage(conn, personnage_id) -> int:
+    """La rive d'un personnage : le bac à sable où il est né, 0 pour le registre."""
+    r = conn.execute("SELECT bac_a_sable_id FROM personnages WHERE id = ?",
+                     (personnage_id,)).fetchone()
+    return (r[0] or 0) if r else 0
 
 
 def _get_personnage(conn, portee: autorisation.Portee, personnage_id, *,
@@ -1981,7 +2012,13 @@ def _get_personnage(conn, portee: autorisation.Portee, personnage_id, *,
         (personnage_id, *params)))
     if p is None:
         raise HTTPException(404, f"Personnage {personnage_id} introuvable")
-    if ecriture and not portee.peut_ecrire_quelque_part():
+    if ecriture and p["bac_a_sable_id"] is not None:
+        # COL-4 (Hugo, 2026-10-24) — un personnage né dans un bac à sable se modifie par
+        # les membres de ce bac à sable ; une portée totale bornée, comme un arrivant.
+        if not ((portee.tout and not portee.bornee)
+                or p["bac_a_sable_id"] in portee.bacs_a_sable):
+            raise HTTPException(403, "Ce personnage est en lecture seule pour vous.")
+    elif ecriture and not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Le registre des personnages est en lecture seule "
                                  "pour vous.")
     return p
@@ -2309,6 +2346,9 @@ class PersonnageIn(BaseModel):
     nom: str
     serie: Optional[str] = None
     notes: Optional[str] = None
+    # COL-4 (Hugo, 2026-10-24) — le BAC À SABLE où le personnage naît (`projet.id`), dont
+    # l'appelant est membre ; absent, il naît au registre.
+    bac_a_sable_id: Optional[int] = None
 
 
 class PersonnageUpdate(BaseModel):

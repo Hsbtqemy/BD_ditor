@@ -32,13 +32,14 @@ import autorisation
 import conflit
 import journal
 from config import CIBLES_ATTRIBUT, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUATION
+from database import est_bac_a_sable
 
 from socle import (
     AlignementIn, AttributIn, DimensionDomaineIn, DimensionIn, DomaineIn, FusionIn,
     LexiqueIn, LocuteurIn, PersonnageIn, PersonnageUpdate, PresenceIn, ValeurIn,
     _attributs_de, _clause_personnage, _exiger_une_rive, _get_dimension, _get_personnage,
-    _get_region, _get_valeur, _norm_tag, _patch_lexique, _rive_d_un_album, _rive_d_un_terme,
-    _row, _rows, _sans_accents, db, portee_courante,
+    _get_region, _get_valeur, _norm_tag, _patch_lexique, _rive_d_un_album,
+    _rive_d_un_personnage, _rive_d_un_terme, _row, _rows, _sans_accents, db, portee_courante,
 )
 
 router = APIRouter()
@@ -114,8 +115,22 @@ def create_personnage(payload: PersonnageIn, response: Response,
     le filet de sa propre règle (`BDPropositions.homonymes`), pour une liste lue avant que
     l'homonyme n'existe. Un personnage qu'on ne voit pas n'est pas retrouvé : le rendre
     dirait qu'il existe, et l'attacherait hors de la portée de qui le demande — on en crée
-    un, comme avant. Les noms déjà en double dans la base le restent : aucune fusion ici."""
-    if not portee.peut_ecrire_quelque_part():
+    un, comme avant. Les noms déjà en double dans la base le restent : aucune fusion ici.
+
+    COL-4 (Hugo, 2026-10-24) — `bac_a_sable_id` : le personnage NAÎT dans ce bac à sable,
+    dont l'appelant doit être membre (404 sinon, comme un projet qu'on ne voit pas) — il
+    n'existe que pour ses membres, ne s'attribue que là, et part avec lui. Le registre
+    demande toujours d'écrire quelque part hors des bacs à sable. L'homonyme se cherche
+    dans le même registre : un « Spirou » du registre ne répond pas à qui en crée un dans
+    son bac à sable."""
+    bac = payload.bac_a_sable_id
+    if bac is not None:
+        if bac not in portee.bacs_a_sable and not (portee.tout and not portee.bornee):
+            raise HTTPException(404, f"Projet {bac} introuvable")
+        if not est_bac_a_sable(conn, bac):
+            raise HTTPException(422, "Seul un bac à sable a un registre de personnages à "
+                                     "lui.")
+    elif not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Le registre des personnages est en lecture seule "
                                  "pour vous.")
     nom = (payload.nom or "").strip()
@@ -129,13 +144,13 @@ def create_personnage(payload: PersonnageIn, response: Response,
     conflit.verrouiller(conn)
     ou, params = _clause_personnage(portee)
     for r in conn.execute(f"SELECT p.id, p.nom, p.serie FROM personnages p WHERE {ou} "
-                          f"ORDER BY p.id", params):
+                          f"AND p.bac_a_sable_id IS ? ORDER BY p.id", (*params, bac)):
         if _cle_homonyme(r["nom"], r["serie"]) == cle:
             response.status_code = 200
             return _get_personnage(conn, portee, r["id"])
     pid = conn.execute(
-        "INSERT INTO personnages (nom, serie, notes) VALUES (?, ?, ?)",
-        (nom, serie, payload.notes)).lastrowid
+        "INSERT INTO personnages (nom, serie, notes, bac_a_sable_id) VALUES (?, ?, ?, ?)",
+        (nom, serie, payload.notes, bac)).lastrowid
     conn.commit()
     return _get_personnage(conn, portee, pid)
 
@@ -149,8 +164,11 @@ def _refuser_un_homonyme(conn, portee, personnage_id, nom, serie) -> None:
     conflit.verrouiller(conn)
     cle = _cle_homonyme(nom, serie)
     ou, params = _clause_personnage(portee)
+    # COL-4 — dans le même registre : celui du bac à sable du personnage, ou celui de tous.
+    bac = conn.execute("SELECT bac_a_sable_id FROM personnages WHERE id = ?",
+                       (personnage_id,)).fetchone()[0]
     for r in conn.execute(f"SELECT p.id, p.nom, p.serie FROM personnages p WHERE {ou} "
-                          f"ORDER BY p.id", params):
+                          f"AND p.bac_a_sable_id IS ? ORDER BY p.id", (*params, bac)):
         if r["id"] != personnage_id and _cle_homonyme(r["nom"], r["serie"]) == cle:
             dans = f"dans la série « {r['serie']} »" if r["serie"] else "sans série"
             raise HTTPException(409, f"Un personnage « {r['nom']} » existe déjà {dans} : "
@@ -203,6 +221,10 @@ def fusionner_personnage(personnage_id: int, payload: FusionIn,
         raise HTTPException(422, "Un personnage ne peut être fusionné avec lui-même")
     _get_personnage(conn, portee, personnage_id, ecriture=True)
     _get_personnage(conn, portee, payload.cible_id, ecriture=True)
+    # COL-4 — un personnage né dans un bac à sable ne se fond pas dans le registre, ni
+    # l'inverse : ses apparitions passeraient la frontière.
+    _exiger_une_rive(conn, _rive_d_un_personnage(conn, personnage_id),
+                     _rive_d_un_personnage(conn, payload.cible_id))
     # locuteur : une zone a au plus un locuteur (region_id PK) → réaffectation directe.
     conn.execute("UPDATE bulle_locuteur SET personnage_id = ? WHERE personnage_id = ?",
                  (payload.cible_id, personnage_id))
@@ -340,6 +362,7 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
                                  f"({', '.join(TYPES_LOCUTEUR)}) : cette région est de "
                                  f"type « {region['type']} ».")
     _get_personnage(conn, portee, payload.personnage_id)
+    _exiger_le_personnage_ici(conn, payload.personnage_id, region)
     ancien = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
                           (region_id,)).fetchone()
     conn.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?) "
@@ -350,6 +373,17 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
                         apres={"personnage_id": payload.personnage_id})
     conn.commit()
     return _locuteur_for(conn, region_id)
+
+
+def _exiger_le_personnage_ici(conn, personnage_id, region: dict) -> None:
+    """COL-4 — un personnage né dans un bac à sable ne s'attribue que dans ce bac à sable
+    (409 nommé). Un personnage du registre s'attribue partout, bac à sable compris : ses
+    apparitions là ne comptent pas pour sa visibilité (`socle._clause_personnage`)."""
+    rive = _rive_d_un_personnage(conn, personnage_id)
+    if rive:
+        album = conn.execute("SELECT album_id FROM planches WHERE id = ?",
+                             (region["planche_id"],)).fetchone()
+        _exiger_une_rive(conn, rive, _rive_d_un_album(conn, album[0]) if album else 0)
 
 
 @router.delete("/api/regions/{region_id}/locuteur", status_code=204)
@@ -389,6 +423,7 @@ def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection =
         raise HTTPException(422, "Seule une boîte personnage montre un personnage : cette "
                                  f"région est de type « {region['type']} ».")
     _get_personnage(conn, portee, payload.personnage_id)
+    _exiger_le_personnage_ici(conn, payload.personnage_id, region)
     ancien = conn.execute("SELECT personnage_id FROM personnage_presence WHERE region_id = ?",
                           (region_id,)).fetchone()
     conn.execute("INSERT INTO personnage_presence (region_id, personnage_id) VALUES (?, ?) "
@@ -870,7 +905,8 @@ def _affecter(conn, portee, table, col, oid, valeur_id, cible_attendue):
                              "ON pl.id = r.planche_id WHERE r.id = ?", (oid,)).fetchone()
         _exiger_une_rive(conn, rive, _rive_d_un_album(conn, album[0]) if album else 0)
     elif rive:
-        _exiger_une_rive(conn, rive, 0)          # un personnage du registre
+        # Un personnage du registre (rive 0), ou né dans un AUTRE bac à sable.
+        _exiger_une_rive(conn, rive, _rive_d_un_personnage(conn, oid))
     pose = conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) VALUES (?, ?)",
                         (oid, valeur_id)).rowcount
     if pose and table == "region_attribut":
