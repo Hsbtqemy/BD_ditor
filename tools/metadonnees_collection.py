@@ -402,7 +402,9 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             "provenance": journal.indicateurs_provenance(
                 conn, album_ids, cibles=CIBLES_CORPUS),   # AUTH-1 : compter ce qu'on publie
             # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
-            "lexique": database.lexique_resume(conn, collection_id),
+            # COL-4 : sans le vocabulaire des bacs à sable ni du jeu.
+            "lexique": database.lexique_resume(conn, collection_id,
+                                               clause=clause_vocabulaire(collection_id)),
             "a_prevoir": ["export PROV-O au fil de l'eau", "licence & droits par jeu"],
         },
         "domaines": domaines, "vocabulaire": vocab, "tags": tags, "contribution_roles": roles,

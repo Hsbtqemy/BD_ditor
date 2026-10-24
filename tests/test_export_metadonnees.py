@@ -823,6 +823,19 @@ def test_la_fiche_ne_compte_ni_bac_a_sable_ni_jeu(isoles):
     assert "albums_scope" not in fiche["perimetre"]
 
 
+def test_le_pourcent_defini_ne_compte_ni_bac_a_sable_ni_jeu(isoles):
+    """Le « % défini » des deux outils, en corpus entier : ni le tag ni l'axe du bac à
+    sable (ils comptaient, `database.lexique_resume` sans `clause`)."""
+    totaux = {"tags": 1, "dimensions": 0}             # mot-du-corpus ; aucun axe hors bac
+    r = _run("description_collection.py", isoles["db"], isoles["data"], "--json", "-")
+    lex = json.loads(r.stdout)["description_collection"]["vocabulaire"]["lexique"]
+    assert {k: lex["par_type"][k]["total"] for k in totaux} == totaux, lex
+    r = _run("metadonnees_collection.py", isoles["db"], isoles["data"], "--json", "-")
+    doc = json.loads(r.stdout)["metadonnees_collection"]
+    lex = next(v["lexique"] for v in doc.values() if isinstance(v, dict) and "lexique" in v)
+    assert {k: lex["par_type"][k]["total"] for k in totaux} == totaux, lex
+
+
 def test_iiif_n_emporte_ni_bac_a_sable_ni_jeu(isoles, tmp_path):
     out = tmp_path / "iiif"
     r = _run("iiif_manifest.py", isoles["db"], isoles["data"],

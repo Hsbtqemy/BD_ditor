@@ -45,7 +45,8 @@ from _commun import (version_outil, environnement, portee_albums,  # noqa: E402 
                      forcer_utf8, CIBLES_CORPUS,                   # env / portée / stdout
                                                                    # + liste blanche AUTH-1
                      HorsDuCorpus, albums_du_corpus, clause_personnages,   # COL-4 : ni bac
-                     exiger_hors_isoles, sql_collection_isolee)            # à sable ni jeu
+                     clause_vocabulaire, exiger_hors_isoles,               # à sable ni jeu
+                     sql_collection_isolee)
 
 
 # --------------------------------------------------------------------------- #
@@ -345,7 +346,10 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
             },
             # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
             "vocabulaire": {"domaines": domaines, "dimensions": dimensions,
-                            "lexique": database.lexique_resume(conn, collection_id)},
+                            # COL-4 : sans le vocabulaire des bacs à sable ni du jeu.
+                            "lexique": database.lexique_resume(
+                                conn, collection_id,
+                                clause=clause_vocabulaire(collection_id))},
             "droits": {
                 "ouvert": ["géométrie", "structure", "ordre", "citation", "lemme",
                            "pos", "morph", "tags", "notes", "personnages", "attributs",
