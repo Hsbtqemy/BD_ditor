@@ -246,7 +246,8 @@ class Portee:
 
     __slots__ = ("tout", "admin", "lecture", "ecriture", "propriete", "export",
                  "projets", "projets_geres", "utilisateur", "groupes",
-                 "bacs_a_sable", "bacs_a_soi", "collections_bac", "hors_isoles")
+                 "bacs_a_sable", "bacs_a_soi", "collections_bac", "hors_isoles",
+                 "bornee", "cols_bacs", "projets_bacs", "_ord")
 
     def __init__(self, *, tout: bool = False, admin: bool = False,
                  lecture: frozenset = frozenset(), ecriture: frozenset = frozenset(),
@@ -255,9 +256,23 @@ class Portee:
                  bases: tuple = (),
                  utilisateur: Optional[str] = None, groupes: tuple = (),
                  bacs_a_sable: frozenset = frozenset(), bacs_a_soi: frozenset = frozenset(),
-                 collections_bac: frozenset = frozenset(), hors_isoles: bool = False):
+                 collections_bac: frozenset = frozenset(), hors_isoles: bool = False,
+                 bornee: bool = False, cols_bacs: frozenset = frozenset(),
+                 projets_bacs: frozenset = frozenset()):
         self.tout = tout
         self.admin = admin
+        # COL-4 (Hugo, 2026-10-24) — une portée totale BORNÉE ne passe dans AUCUN bac à
+        # sable : l'administrateur, dans le bac d'un autre, n'a RIEN, comme un non-membre ;
+        # dans le sien, et dans ceux où il est invité, il est un arrivant comme les autres.
+        # `cols_bacs` et `projets_bacs` : toutes les collections et tous les projets des bacs
+        # à sable de l'instance, lus à la résolution ; dans ce périmètre, ce sont les
+        # ensembles ORDINAIRES (`lecture`, `ecriture`… restreints aux bacs à sable) qui
+        # répondent, jamais `tout`. Le mono-poste (`TOTALE`) n'est pas bornée : sans proxy,
+        # personne n'ouvre de bac à sable, et les outils (effacement) passent par elle.
+        self.bornee = bool(bornee and tout)
+        self.cols_bacs = frozenset(cols_bacs) if self.bornee else frozenset()
+        self.projets_bacs = frozenset(projets_bacs) if self.bornee else frozenset()
+        self._ord = None
         # COL-4 — les BACS À SABLE dont on est (`bacs_a_sable`), ceux qu'on a ouverts
         # (`bacs_a_soi`, `projet.bac_a_sable_de` = son login), et les collections qu'on
         # atteint et qui vivent dans un bac à sable (`collections_bac`). Lus par `resoudre`.
@@ -311,12 +326,48 @@ class Portee:
         self.utilisateur = utilisateur
         self.groupes = tuple(groupes)
 
+    # -- la portée totale, bornée aux bacs à sable (COL-4) -------------------- #
+    def couvre(self, collection_id) -> bool:
+        """La portée TOTALE répond-elle pour cette collection ? Oui partout, sauf dans un
+        bac à sable quand elle est bornée — là, seuls les ensembles ordinaires répondent."""
+        return self.tout and not (self.bornee and collection_id in self.cols_bacs)
+
+    def couvre_projet(self, projet_id) -> bool:
+        """Le pendant de `couvre`, pour un projet."""
+        return self.tout and not (self.bornee and projet_id in self.projets_bacs)
+
+    def _ordinaire(self) -> "Portee":
+        """La même personne SANS sa portée totale : ses ensembles ordinaires seuls — ce qui
+        répond, pour une portée bornée, à l'intérieur des bacs à sable."""
+        if self._ord is None:
+            self._ord = Portee(lecture=self.lecture, ecriture=self.ecriture,
+                               propriete=self.propriete, export=self.export,
+                               projets=self.projets, projets_geres=self.projets_geres,
+                               utilisateur=self.utilisateur, groupes=self.groupes,
+                               bacs_a_sable=self.bacs_a_sable, bacs_a_soi=self.bacs_a_soi,
+                               collections_bac=self.collections_bac)
+        return self._ord
+
+    def dans_les_bacs(self) -> "Portee":
+        """La portée qui répond À L'INTÉRIEUR d'un bac à sable : elle-même, sauf pour une
+        portée bornée, dont ce sont les ensembles ordinaires — pour les routes qui lisent
+        `tout` directement et doivent, dans un bac à sable, le lire comme un arrivant."""
+        return self._ordinaire() if self.bornee else self
+
+    def _bornee_sur_album(self, alias: str, clause: tuple[str, list]) -> tuple[str, list]:
+        """Une clause d'album d'une portée bornée : tout ce qui n'est PAS d'un bac à sable,
+        plus ce que la clause ORDINAIRE (`clause`) ouvre — qui ne porte, ses ensembles étant
+        restreints aux bacs à sable, que sur des albums de bac à sable."""
+        sql, params = clause
+        return (f"(NOT EXISTS (SELECT 1 FROM albums _bba WHERE _bba.id = {alias} "
+                f"AND {sql_est_bac_a_sable(sql_projet_d_album('_bba'))}) OR {sql})", params)
+
     # -- décisions ponctuelles ---------------------------------------------- #
     def peut_lire(self, collection_id: int) -> bool:
-        return self.tout or collection_id in self.lecture
+        return self.couvre(collection_id) or collection_id in self.lecture
 
     def peut_ecrire(self, collection_id: int) -> bool:
-        return self.tout or collection_id in self.ecriture
+        return self.couvre(collection_id) or collection_id in self.ecriture
 
     def peut_administrer(self, collection_id: int) -> bool:
         """A-t-on le droit de PARTAGER cette collection — accorder, retirer, supprimer ?
@@ -331,7 +382,8 @@ class Portee:
         fabriquerait des collections définitivement bloquées, dont la seule sortie serait
         un UPDATE en SQL — c'est-à-dire exactement ce que ce chantier existe pour supprimer.
         """
-        return self.admin or collection_id in self.propriete
+        return ((self.admin and not (self.bornee and collection_id in self.cols_bacs))
+                or collection_id in self.propriete)
 
     def peut_exporter(self, collection_id: int) -> bool:
         """A-t-on le droit de SORTIR le contenu de cette collection — un fichier qui
@@ -342,7 +394,7 @@ class Portee:
         suffit pas davantage — exporter ne s'ordonne pas avec annoter. L'administrateur
         passe outre comme partout, et le mono-poste aussi : sans proxy, il n'y a
         personne à qui refuser."""
-        return self.tout or collection_id in self.export
+        return self.couvre(collection_id) or collection_id in self.export
 
     def peut_exporter_quelque_part(self) -> bool:
         """A-t-on le droit d'exporter, où que ce soit ? Sert aux exports qui traversent
@@ -420,7 +472,7 @@ class Portee:
         entrer dans sa collection de BASE au niveau que le projet a choisi (D10, dérivé
         dans `__init__`). Ce que cela ne permet pas : lire aucune AUTRE de ses
         collections."""
-        return self.tout or projet_id in self.projets
+        return self.couvre_projet(projet_id) or projet_id in self.projets
 
     def peut_gerer_projet(self, projet_id: int) -> bool:
         """A-t-on le droit de régler QUI est de ce projet — faire entrer, faire sortir,
@@ -429,7 +481,8 @@ class Portee:
         La forme est celle de `peut_administrer`, un étage plus haut : le responsable, ou
         l'administrateur qui passe outre, et c'est écrit pour la même raison — un projet
         peut naître sans responsable, et son dernier peut partir."""
-        return self.admin or projet_id in self.projets_geres
+        return ((self.admin and not (self.bornee and projet_id in self.projets_bacs))
+                or projet_id in self.projets_geres)
 
     def peut_decider_des_projets(self) -> bool:
         """A-t-on le droit de décider QUELS projets existent — en créer un, le renommer,
@@ -455,6 +508,10 @@ class Portee:
         Ce que la clause ne donne pas : le droit de voir QUI est du projet, ni ses autres
         collections. Elle ne dit que le nom."""
         if self.tout:
+            if self.bornee:                     # COL-4 : aucun bac à sable d'un autre
+                o, p = self._ordinaire().clause_projet(alias)
+                return (f"({alias} NOT IN (SELECT _bbp.id FROM projet _bbp "
+                        f"WHERE _bbp.bac_a_sable_de IS NOT NULL) OR {o})", p)
             return "1", []
         morceaux, params = [], []
         if self.projets:
@@ -487,6 +544,9 @@ class Portee:
             if self.hors_isoles:                # COL-4, S8 : `pour_le_corpus`
                 return (f"NOT EXISTS (SELECT 1 FROM albums _hia WHERE _hia.id = {alias} "
                         f"AND {sql_album_isole('_hia')})", [])
+            if self.bornee:
+                return self._bornee_sur_album(
+                    alias, self._ordinaire().clause_album(alias, ecriture=ecriture))
             return "1", []
         ids = sorted(self.ecriture if ecriture else self.lecture)
         if not ids:
@@ -515,6 +575,9 @@ class Portee:
         nulle part — une base retouchée à la main —, et l'ouvrirait à quiconque.
         """
         if self.tout:
+            if self.bornee:
+                return self._bornee_sur_album(alias,
+                                              self._ordinaire().clause_destruction(alias))
             return "1", []
         ids = sorted(self.ecriture)
         if not ids:
@@ -572,6 +635,9 @@ class Portee:
         La portée totale passe outre, et c'est écrit : l'administrateur et le mono-poste
         détruisent tout, c'est le recours d'une demande."""
         if self.tout:
+            if self.bornee:
+                return self._bornee_sur_album(
+                    alias, self._ordinaire().clause_suppression_directe(alias))
             return "1", []
         if not self.utilisateur:
             return "0", []
@@ -674,6 +740,9 @@ class Portee:
         fonds — et l'ouvrirait à quiconque ; la moitié « lire » la referme, puisqu'une copie
         gardée n'est lue que par la portée totale."""
         if self.tout:
+            if self.bornee:
+                return self._bornee_sur_album(
+                    alias, self._ordinaire().clause_rejoindre_directe(alias))
             return "1", []
         lire, p_lire = self.clause_album(alias)
         if lire == "0":
@@ -768,6 +837,10 @@ class Portee:
             if self.hors_isoles:                # COL-4, S8 : `pour_le_corpus`
                 return (f"({alias} IS NULL OR {alias} NOT IN (SELECT _hic.id FROM collection "
                         f"_hic WHERE {sql_est_isole(sql_projet_de('_hic'))}))", [])
+            if self.bornee:                     # COL-4 : les termes des bacs d'autrui
+                o, p = self._ordinaire().clause_terme(alias)
+                return (f"({alias} NOT IN (SELECT _bbc.id FROM collection _bbc WHERE "
+                        f"{sql_est_bac_a_sable(sql_projet_de('_bbc'))}) OR {o})", p)
             return "1", []
         ids = sorted(self.lecture)
         if not ids:
@@ -783,8 +856,10 @@ class Portee:
         s'édite. Un terme LOCAL s'édite si l'on écrit dans sa collection ; un terme GLOBAL
         s'édite si l'on écrit quelque part, personne ne le « possédant » en propre.
         """
-        if self.tout:
+        if self.tout and (collection_id is None or self.couvre(collection_id)):
             return True
+        if self.tout:                           # COL-4 : un terme d'un bac à sable
+            return collection_id in self.ecriture
         if collection_id is None:
             # COL-4 (S2) — écrire dans son bac à sable ne fait pas modifier le vocabulaire
             # GLOBAL : il survivrait à l'effacement, chez tout le monde.
@@ -812,7 +887,7 @@ class Portee:
         retirerait le tag là où l'appelant n'écrit pas ; seule une portée totale le fait
         (cf. `routes/lexique.py`). Mesure d'attente : les grilles d'ANN-7 reprendront la
         question."""
-        if self.tout:
+        if self.tout and (collection_id is None or self.couvre(collection_id)):
             return True
         if collection_id is None:
             return False
@@ -831,7 +906,8 @@ class Portee:
 
     def __repr__(self) -> str:                  # diagnostic uniquement
         if self.tout:
-            return f"<Portee TOUT admin={self.admin} user={self.utilisateur!r}>"
+            return (f"<Portee TOUT admin={self.admin} bornee={self.bornee} "
+                    f"user={self.utilisateur!r}>")
         return (f"<Portee lecture={sorted(self.lecture)} "
                 f"ecriture={sorted(self.ecriture)} "
                 f"propriete={sorted(self.propriete)} export={sorted(self.export)} "
@@ -1176,6 +1252,36 @@ def acces_derives(conn: sqlite3.Connection, collection_id: int) -> list[dict]:
     return lignes
 
 
+def _portee_d_administrateur(conn: sqlite3.Connection, login: str,
+                             noms_groupes: list[str]) -> Portee:
+    """La portée d'un ADMINISTRATEUR, BORNÉE aux bacs à sable (COL-4 ; Hugo, 2026-10-24 :
+    « l'administrateur dans le bac d'un autre : rien, comme un non-membre »). Totale hors
+    des bacs à sable ; dans leur périmètre, ses ensembles ORDINAIRES — ses accès et ses
+    projets, restreints aux bacs à sable : le sien, et ceux où il est invité, où il est un
+    arrivant comme les autres. Sur une instance sans bac à sable, la portée d'avant, après
+    une seule requête qui le constate."""
+    projets_bacs = frozenset(r[0] for r in conn.execute(
+        "SELECT id FROM projet WHERE bac_a_sable_de IS NOT NULL"))
+    if not projets_bacs:
+        return Portee(tout=True, admin=True, utilisateur=login, groupes=tuple(noms_groupes))
+    cols_bacs = frozenset(r[0] for r in conn.execute(
+        f"SELECT c.id FROM collection c WHERE {sql_est_bac_a_sable(sql_projet_de('c'))}"))
+    lecture, ecriture, propriete, export = (
+        s & cols_bacs for s in collections_du_principal(conn, login, noms_groupes))
+    projets, projets_geres = (
+        s & projets_bacs for s in projets_du_principal(conn, login, noms_groupes))
+    bases = bases_des_projets(conn, projets | projets_geres)
+    bacs, a_soi, cols_bac = bacs_du_principal(
+        conn, login, projets | projets_geres,
+        lecture | ecriture | propriete | {b[1] for b in bases})
+    return Portee(tout=True, admin=True, lecture=lecture, ecriture=ecriture,
+                  propriete=propriete, export=export, projets=projets,
+                  projets_geres=projets_geres, bases=bases, utilisateur=login,
+                  groupes=tuple(noms_groupes), bacs_a_sable=bacs, bacs_a_soi=a_soi,
+                  collections_bac=cols_bac, bornee=True, cols_bacs=cols_bacs,
+                  projets_bacs=projets_bacs)
+
+
 def resoudre(conn: sqlite3.Connection, request) -> Portee:
     """La portée de CETTE requête. Le seul point d'entrée du module."""
     if not AUTH_PROXY:
@@ -1185,12 +1291,13 @@ def resoudre(conn: sqlite3.Connection, request) -> Portee:
     if not login:
         return Portee(groupes=tuple(noms_groupes))   # pas passé par Authelia : rien
     if AUTH_ADMIN_GROUPS & set(noms_groupes):
-        return Portee(tout=True, admin=True, utilisateur=login, groupes=tuple(noms_groupes))
+        return _portee_d_administrateur(conn, login, noms_groupes)
     lecture, ecriture, propriete, export = collections_du_principal(conn, login,
                                                                     noms_groupes)
-    # Les projets se lisent ICI seulement : les trois branches du dessus rendent leur
-    # portée sans toucher la base (mono-poste, sans identité, administrateur), et aucune
-    # n'en a besoin — une portée totale est de tous les projets, une portée vide d'aucun.
+    # Les projets se lisent ICI : les deux premières branches du dessus rendent leur
+    # portée sans toucher la base (mono-poste, sans identité), et n'en ont pas besoin —
+    # une portée totale est de tous les projets, une portée vide d'aucun. L'administrateur
+    # lit les siens depuis COL-4, restreints aux bacs à sable (`_portee_d_administrateur`).
     projets, projets_geres = projets_du_principal(conn, login, noms_groupes)
     bases = bases_des_projets(conn, projets | projets_geres)
     bacs, a_soi, cols_bac = bacs_du_principal(

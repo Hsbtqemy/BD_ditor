@@ -312,8 +312,9 @@ def _exiger_remaniement(portee, tag: dict, local: str, global_: str) -> None:
 
 def _exiger_tout_ecrit(conn, portee, tag_id: int, geste: str) -> None:
     """Hors d'une portée totale, toutes les régions qui portent le tag doivent être dans
-    des albums où l'on ÉCRIT (cf. l'en-tête du bloc). Le refus ne dit ni où ni combien."""
-    if portee.tout:
+    des albums où l'on ÉCRIT (cf. l'en-tête du bloc). Le refus ne dit ni où ni combien.
+    COL-4 — une portée totale BORNÉE n'écrit pas dans le bac à sable d'un autre."""
+    if portee.tout and not portee.bornee:
         return
     ou, params = portee.clause_album("pl.album_id", ecriture=True)
     if conn.execute(

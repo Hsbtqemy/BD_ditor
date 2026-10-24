@@ -204,11 +204,18 @@ def test_derriere_proxy_sans_identite_la_portee_est_vide(derriere_proxy):
     assert p.clause_album("a.id") == ("0", [])
 
 
-def test_groupe_admin_voit_tout(derriere_proxy):
+def test_groupe_admin_voit_tout(client, derriere_proxy):
+    """Sur une instance sans bac à sable, la portée totale d'avant, NON bornée (COL-4 : elle
+    ne se borne qu'aux bacs à sable, cf. `tests/test_bac_a_sable.py`)."""
     class Req:
         headers = {"Remote-User": "alice", "Remote-Groups": "bd-admins, autre"}
-    p = autorisation.resoudre(None, Req())
-    assert p.tout and p.admin and p.utilisateur == "alice"
+    import database
+    conn = database.get_connection()
+    try:
+        p = autorisation.resoudre(conn, Req())
+    finally:
+        conn.close()
+    assert p.tout and p.admin and p.utilisateur == "alice" and not p.bornee
 
 
 def test_ecrire_implique_lire():

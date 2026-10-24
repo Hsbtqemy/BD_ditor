@@ -583,39 +583,6 @@ def _creer_bac_a_sable(conn, login: str) -> int:
     return pid
 
 
-def _bacs_vus(conn, portee: autorisation.Portee) -> set:
-    """Les bacs à sable qu'une portée TOTALE voit sans le demander : le sien, et ceux où son
-    login ou l'un de ses groupes est invité. Une portée totale ne lit pas ses projets à la
-    résolution (`autorisation.resoudre`) : ils se lisent ici, pour les seules listes."""
-    principaux = [(autorisation.UTILISATEUR, portee.utilisateur)] + [
-        (autorisation.GROUPE, g) for g in portee.groupes]
-    vus = {r[0] for r in conn.execute(
-        "SELECT id FROM projet WHERE bac_a_sable_de IS NOT NULL AND bac_a_sable_de = ?",
-        (portee.utilisateur,))} if portee.utilisateur else set()
-    for genre, principal in principaux:
-        if principal:
-            vus |= {r[0] for r in conn.execute(
-                "SELECT pa.projet_id FROM projet_acces pa JOIN projet p ON p.id = pa.projet_id "
-                "WHERE p.bac_a_sable_de IS NOT NULL AND pa.genre = ? AND pa.principal = ?",
-                (genre, principal))}
-    return vus
-
-
-def _clause_bacs_d_autrui(conn, portee: autorisation.Portee, projet: str, *,
-                          tous: bool = False) -> tuple[str, list]:
-    """Fragment SQL qui écarte, pour une portée TOTALE, ce qui vit dans le bac à sable d'un
-    AUTRE où elle n'est pas invitée — sauf `tous` (la vue Projets de l'Administration). Une
-    portée ordinaire ne voit d'un bac à sable que par ses accès : rien à écarter. `projet` :
-    l'expression d'identifiant de projet, écrite par l'appelant. Des listes, pas une garde :
-    une portée totale atteint tout bac à sable par son identifiant."""
-    if not portee.tout or tous:
-        return "1", []
-    vus = sorted(_bacs_vus(conn, portee))
-    garde = f" AND _pba.id NOT IN ({', '.join('?' * len(vus))})" if vus else ""
-    return (f"NOT EXISTS (SELECT 1 FROM projet _pba WHERE _pba.id = ({projet}) "
-            f"AND _pba.bac_a_sable_de IS NOT NULL{garde})", vus)
-
-
 def _planches_importees_du_bac(conn, projet_id: int) -> int:
     """Combien d'IMAGES ont été importées dans ce bac à sable (S9) : les fichiers distincts
     que désignent les planches de ses albums, hors des copies du jeu — qui n'ont rien

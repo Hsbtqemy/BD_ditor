@@ -403,18 +403,16 @@ def _vue_demande(conn, demande_id: int) -> dict:
 
 
 @router.get("/api/demandes")
-def list_demandes(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(db),
+def list_demandes(conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     """Toutes les demandes, en attente ou répondues — une demande répondue RESTE : c'est
     ce qui permet de dire qu'une même suppression a déjà été refusée. Réservée à qui tient
     le fonds : elle nomme qui demande, et dit pourquoi.
 
-    COL-4 (S3) — sans celles des BACS À SABLE, qui se répondent entre leurs comptes et
-    rendraient « À faire » illisible ; `bacs_a_sable=1` les rend aussi."""
+    COL-4 (S3) — sans celles des BACS À SABLE, pour personne : l'administrateur n'y lit
+    rien (Hugo, 2026-10-24)."""
     _exiger_le_fonds(portee)
     vues = _vues_demandes(conn, detail=True)
-    if bacs_a_sable:
-        return vues
     isoles = _projets_isoles(conn)["tous"]
     return [d for d in vues if d["projet_id"] not in isoles]
 
@@ -703,7 +701,7 @@ def _accepter_un_retour(conn, portee, d: dict) -> None:
 # Le fonds
 # --------------------------------------------------------------------------- #
 @router.get("/api/fonds")
-def lire_le_fonds(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(db),
+def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     """Les documents de l'instance : d'où chacun vient (qui l'a importé, quand, dans quel
     projet d'abord), ses copies de travail avec leur projet et leurs collections, s'il est
@@ -783,19 +781,19 @@ def lire_le_fonds(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends
                 d["demande"] = {**a["demande"], "album_id": a["album_id"]}
     sans = [r[0] for r in conn.execute(
         "SELECT id FROM albums WHERE document_id IS NULL ORDER BY id")]
-    if not bacs_a_sable:
-        # COL-4 (S3) — les copies des BACS À SABLE et du JEU sont masquées par défaut : un
-        # document qui n'a de copie que là (le jeu, ce qu'on a importé dans un bac à sable)
-        # disparaît de la liste, les autres perdent ces copies. `bacs_a_sable=1` les rend.
-        isoles = _projets_isoles(conn)["tous"]
-        for d in documents:
-            d["copies"] = [a for a in d["copies"] if a["projet_id"] not in isoles]
-            d["appele"] = any(a["collections"] for a in d["copies"])
-            if d["demande"] is not None and all(a["album_id"] != d["demande"]["album_id"]
-                                                 for a in d["copies"]):
-                d["demande"] = None
-        documents = [d for d in documents
-                     if d["copies"] or d["projet_origine_id"] not in isoles]
+    # COL-4 (S3) — les copies des BACS À SABLE et du JEU n'y paraissent pas, pour personne
+    # (Hugo, 2026-10-24 : l'administrateur ne lit rien d'un bac à sable) : un document qui
+    # n'a de copie que là (le jeu, ce qu'on a importé dans un bac à sable) disparaît de la
+    # liste, les autres perdent ces copies.
+    isoles = _projets_isoles(conn)["tous"]
+    for d in documents:
+        d["copies"] = [a for a in d["copies"] if a["projet_id"] not in isoles]
+        d["appele"] = any(a["collections"] for a in d["copies"])
+        if d["demande"] is not None and all(a["album_id"] != d["demande"]["album_id"]
+                                             for a in d["copies"]):
+            d["demande"] = None
+    documents = [d for d in documents
+                 if d["copies"] or d["projet_origine_id"] not in isoles]
     return {"documents": documents, "copies_sans_document": sans}
 
 
@@ -930,11 +928,14 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
               or (not bac_arrivee and c["projet_id"] not in isoles["tous"])]
     lues = _lues(conn, portee, [c["id"] for c in toutes])
     nommee = next((c for c in toutes if c["id"] == ligne.album_id), None)
+    # Ce qu'on ne LIT pas reste introuvable, même à une portée totale : bornée, elle ne lit
+    # pas le bac à sable d'un autre (Hugo, 2026-10-24), et le refus « cul-de-sac » y dirait
+    # qu'une copie y vit.
     if (ligne.album_id is not None and nommee is not None and nommee not in copies
-            and (portee.tout or nommee["id"] in lues)):
+            and nommee["id"] in lues):
         return {"document_id": doc, "reponse": ligne.reponse, "etat": REFUSE,
                 "motif": _MOTIF_BAC_ISOLE}
-    if not copies and toutes and portee.tout:
+    if not copies and toutes and portee.tout and any(c["id"] in lues for c in toutes):
         return {"document_id": doc, "reponse": ligne.reponse, "etat": REFUSE,
                 "motif": _MOTIF_BAC_ISOLE}
     du_projet_lues = [c for c in copies if c["id"] in lues and c["projet_id"] == projet_id]
@@ -1106,6 +1107,10 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
     # fonds : seuls ceux dont on lit déjà une copie dans le bac à sable (le jeu, ce qu'on y
     # a importé).
     bac_arrivee, _ = _bac_a_sable_de(conn, projet_id=projet_id)
+    if bac_arrivee is not None:
+        # COL-4 (Hugo, 2026-10-24) — dans un bac à sable, une portée totale bornée prend
+        # comme un arrivant : ses ensembles ordinaires répondent, jamais `tout`.
+        portee = portee.dans_les_bacs()
     gere = portee.peut_gerer_projet(projet_id) and bac_arrivee is None
     # En partir recopie l'index des régions, et peut en recalculer les lemmes : spaCy se
     # charge HORS de la transaction d'écriture (CLAUDE.md § Concurrence).

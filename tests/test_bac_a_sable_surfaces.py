@@ -3,7 +3,8 @@
 La Recherche et l'Exploration ne voient les bacs à sable POUR PERSONNE, ni l'administrateur
 ni leur propriétaire (Q4, Hugo, 2026-10-21) : les mesures du corpus restent celles du vrai
 corpus. Et une portée totale ne reçoit, de soixante-quinze bacs à sable, que le sien et ceux
-où elle est invitée, sauf à le demander (`bacs_a_sable=1`).
+où elle est invitée : elle est BORNÉE (Hugo, 2026-10-24) — la vue Projets de
+l'Administration (`bacs_a_sable=1`) lui dit seulement qu'ils existent.
 """
 import pytest
 
@@ -87,14 +88,17 @@ def test_l_administrateur_ne_voit_que_ses_bacs_a_sable_sans_le_demander(client, 
     assert corpus["bac_hugo"]["id"] in vus and corpus["bac"]["id"] not in vus
     tous = {p["id"] for p in client.get("/api/projets?bacs_a_sable=1", headers=HUGO).json()}
     assert corpus["bac"]["id"] in tous
-    assert corpus["base"] not in {c["id"] for c in
-                                  client.get("/api/collections", headers=HUGO).json()}
-    assert corpus["base"] in {c["id"] for c in client.get("/api/collections?bacs_a_sable=1",
-                                                          headers=HUGO).json()}
+    # Rien de ce qu'il porte, même en le demandant : le paramètre n'existe que pour la liste
+    # des projets.
+    for chemin in ("/api/collections", "/api/collections?bacs_a_sable=1"):
+        assert corpus["base"] not in {c["id"] for c in
+                                      client.get(chemin, headers=HUGO).json()}
     copie = _copie(corpus, "exemple")["album_id"]
-    assert copie not in {a["id"] for a in client.get("/api/albums", headers=HUGO).json()}
-    assert copie in {a["id"] for a in client.get("/api/albums?bacs_a_sable=1",
-                                                 headers=HUGO).json()}
+    for chemin in ("/api/albums", "/api/albums?bacs_a_sable=1"):
+        assert copie not in {a["id"] for a in client.get(chemin, headers=HUGO).json()}
+    # Un compte ordinaire ne reçoit pas les bacs à sable des autres en le demandant.
+    assert corpus["bac"]["id"] not in {
+        p["id"] for p in client.get("/api/projets?bacs_a_sable=1", headers=RESP).json()}
     # Invité dans un bac à sable, il le voit.
     client.put(f"/api/projets/{corpus['bac']['id']}/membres", headers=LEA,
                json={"genre": "utilisateur", "principal": "hugo", "role": "membre"})
@@ -131,15 +135,14 @@ def test_aucune_demande_d_un_bac_a_sable_dans_a_faire(client, corpus):
     vue = client.get("/api/comptes-et-groupes", headers=HUGO).json()
     assert demande not in {l.get("demande") for l in vue["a_regarder"]}
     assert demande not in {d["id"] for d in client.get("/api/demandes", headers=HUGO).json()}
-    assert demande in {d["id"] for d in client.get("/api/demandes?bacs_a_sable=1",
-                                                   headers=HUGO).json()}
 
 
 def test_le_fonds_masque_les_bacs_a_sable_et_le_jeu(client, corpus):
     titres = {c["titre"] for d in client.get("/api/fonds", headers=HUGO).json()["documents"]
               for c in d["copies"]}
     assert "Réel" in titres and not {"Le parcours", "Un exemple", "Sous droits"} & titres
+    # Et l'administrateur ne les lit pas en le demandant : il n'y a rien à demander.
     tout = {c["titre"] for d in client.get("/api/fonds?bacs_a_sable=1",
                                            headers=HUGO).json()["documents"]
             for c in d["copies"]}
-    assert {"Le parcours", "Un exemple", "Sous droits"} <= tout
+    assert not {"Le parcours", "Un exemple", "Sous droits"} & tout

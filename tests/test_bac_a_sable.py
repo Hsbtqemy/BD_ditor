@@ -331,9 +331,13 @@ def test_un_tag_tape_dans_un_bac_a_sable_y_nait_local(client, decor):
 
 def test_l_annuaire_ne_se_lit_pas_dans_un_bac_a_sable(client, decor):
     pid = decor["bac"]["id"]
-    for qui in (LEA, HUGO):
-        r = client.get(f"/api/projets/{pid}/membres/choix", headers=qui)
-        assert r.status_code == 403 and "annuaire" in r.json()["detail"], (qui, r.text)
+    r = client.get(f"/api/projets/{pid}/membres/choix", headers=LEA)
+    assert r.status_code == 403 and "annuaire" in r.json()["detail"], r.text
+    # L'administrateur ne voit pas le bac à sable d'un autre ; dans le sien, la même règle.
+    assert client.get(f"/api/projets/{pid}/membres/choix", headers=HUGO).status_code == 404
+    a_hugo = client.post("/api/bac-a-sable", headers=HUGO).json()
+    r = client.get(f"/api/projets/{a_hugo['id']}/membres/choix", headers=HUGO)
+    assert r.status_code == 403 and "annuaire" in r.json()["detail"], r.text
     r = client.get(f"/api/collections/{decor['base']}/annuaire", headers=LEA)
     assert r.status_code == 403
     # Et le miroir `utilisateur` ne dit pas si un login tapé est venu.
@@ -352,7 +356,206 @@ def test_aucun_acces_ne_se_pose_collection_par_collection(client, decor):
     assert r.status_code == 409 and "membre" in r.json()["detail"], r.text
     r = client.put(f"/api/collections/{decor['base']}/acces", headers=HUGO,
                    json={"genre": "utilisateur", "principal": "rita", "niveau": "lecture"})
+    assert r.status_code == 404                 # le bac à sable d'un autre : rien
+    a_hugo = client.post("/api/bac-a-sable", headers=HUGO).json()
+    r = client.put(f"/api/collections/{a_hugo['base']['id']}/acces", headers=HUGO,
+                   json={"genre": "utilisateur", "principal": "rita", "niveau": "lecture"})
     assert r.status_code == 409
+
+
+# --------------------------------------------------------------------------- #
+# L'administrateur dans le bac à sable d'un autre : RIEN (Hugo, 2026-10-24)
+# --------------------------------------------------------------------------- #
+QUESTIONS_DE_COLLECTION = ("peut_lire", "peut_ecrire", "peut_administrer", "peut_exporter",
+                           "peut_ecrire_terme", "peut_remanier_tag")
+QUESTIONS_DE_PROJET = ("est_du_projet", "peut_gerer_projet")
+CLAUSES_D_ALBUM = ("clause_album", "clause_destruction", "clause_suppression_directe",
+                   "clause_rejoindre_directe")
+
+
+def _albums_ouverts(db, portee, clause, album_id):
+    ou, params = getattr(portee, clause)("a.id")
+    c = database.get_connection()
+    try:
+        return c.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
+                         (album_id, *params)).fetchone() is not None
+    finally:
+        c.close()
+
+
+def test_la_portee_totale_ne_passe_dans_aucun_bac_d_autrui(client, decor):
+    """Question par question de `Portee`, le patron de `test_projet_ecran` : sur la base et
+    le projet du bac à sable de lea, l'administrateur répond comme un non-membre (rita) —
+    non partout. Sur le vrai corpus, sa portée totale reste entière."""
+    copie = _copie(decor, "exemple")["album_id"]
+    for qui in (HUGO, RITA):
+        p = _portee(decor["db"], qui)
+        for q in QUESTIONS_DE_COLLECTION:
+            assert getattr(p, q)(decor["base"]) is False, (qui, q)
+        for q in QUESTIONS_DE_PROJET:
+            assert getattr(p, q)(decor["bac"]["id"]) is False, (qui, q)
+        for q in CLAUSES_D_ALBUM:
+            assert not _albums_ouverts(decor["db"], p, q, copie), (qui, q)
+        o, prm = p.clause_projet("p.id")
+        c = database.get_connection()
+        try:
+            assert c.execute(f"SELECT 1 FROM projet p WHERE p.id = ? AND {o}",
+                             (decor["bac"]["id"], *prm)).fetchone() is None, qui
+            assert c.execute(f"SELECT 1 FROM collection c WHERE c.id = ? AND "
+                             f"{p.clause_terme('c.id')[0]}",
+                             (decor["base"], *p.clause_terme("c.id")[1])).fetchone() is None
+        finally:
+            c.close()
+    h = _portee(decor["db"], HUGO)
+    assert h.tout and h.bornee
+    assert all(getattr(h, q)(decor["col"]) for q in QUESTIONS_DE_COLLECTION)
+    assert h.peut_gerer_projet(decor["etude"]) and h.est_du_projet(decor["etude"])
+    for q in CLAUSES_D_ALBUM:
+        assert _albums_ouverts(decor["db"], h, q, decor["reel"]), q
+
+
+def test_les_lots_de_l_administrateur_ne_touchent_pas_le_bac_d_un_autre(client, decor):
+    """Un lot (passes automatiques) ne porte que sur des planches où l'on écrit, et un lot
+    n'est visible qu'à qui les lit toutes (`main._planches_autorisees`) : celles du bac à
+    sable de lea n'y sont pas pour l'administrateur — matérialisées, pas `None`."""
+    planche_bac = _copie(decor, "exemple")["planche_ids"][0]
+    pl = client.post(f"/api/albums/{decor['reel']}/import", headers=RESP,
+                     files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+    conn = database.get_connection()
+    try:
+        for ecriture in (False, True):
+            ok = main._planches_autorisees(conn, _portee(decor["db"], HUGO),
+                                           ecriture=ecriture)
+            assert ok is not None and pl in ok and planche_bac not in ok, ecriture
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("geste", [
+    "lire l'album", "lire ses planches", "lire une région", "écrire une région",
+    "annoter", "créer une région", "lire ses collections", "lire les membres",
+    "créer une collection", "inviter", "détruire l'album", "lire les accès", "exporter",
+    "prendre", "ranger", "proposer les tags", "régler la base", "décrire la base"])
+def test_l_administrateur_n_a_rien_dans_le_bac_d_un_autre(client, decor, geste):
+    """Route par route : la portée totale ne passe pas dans le bac à sable de lea — 404,
+    comme pour qui n'en est pas (rita, qui joue le même geste). Rien n'y est écrit."""
+    copie = _copie(decor, "exemple")
+    planche = copie["planche_ids"][0]
+    region = _sql(decor["db"], "SELECT id FROM regions WHERE planche_id = ? ORDER BY id",
+                  (planche,))[0]["id"]
+    pid, base = decor["bac"]["id"], decor["base"]
+    gestes = {
+        "lire l'album": ("get", f"/api/albums/{copie['album_id']}/contributions", None),
+        "lire ses planches": ("get", f"/api/albums/{copie['album_id']}/planches", None),
+        "lire une région": ("get", f"/api/regions/{region}/annotation", None),
+        "écrire une région": ("put", f"/api/regions/{region}", {"ocr_texte": "ADMIN"}),
+        "annoter": ("put", f"/api/regions/{region}/annotation", {"note": "x", "tags": []}),
+        "créer une région": ("post", f"/api/planches/{planche}/regions",
+                             {"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}),
+        "lire ses collections": ("get", f"/api/albums/{copie['album_id']}/collections", None),
+        "lire les membres": ("get", f"/api/projets/{pid}/membres", None),
+        "créer une collection": ("post", "/api/collections",
+                                 {"nom": "Ici", "projet_id": pid}),
+        "inviter": ("put", f"/api/projets/{pid}/membres",
+                    {"genre": "utilisateur", "principal": "rita", "role": "membre"}),
+        "détruire l'album": ("delete", f"/api/albums/{copie['album_id']}", None),
+        "lire les accès": ("get", f"/api/collections/{base}/acces", None),
+        "exporter": ("get", f"/api/export/json?album_id={copie['album_id']}", None),
+        "prendre": ("post", f"/api/collections/{base}/prendre",
+                    {"documents": [{"document_id": copie["document_id"], "reponse": "zero"}],
+                     "motif": "x"}),
+        "ranger": ("put", f"/api/albums/{decor['reel']}/collections/{base}", None),
+        "proposer les tags": ("get", f"/api/tags?album={copie['album_id']}", None),
+        "régler la base": ("put", f"/api/projets/{pid}/acces-membres",
+                           {"acces_membres": None}),
+        "décrire la base": ("patch", f"/api/collections/{base}", {"description": "x"}),
+    }
+    methode, chemin, corps = gestes[geste]
+    avant = _sql(decor["db"], "SELECT COUNT(*) AS n FROM evenement")[0]["n"]
+    for qui in (RITA, HUGO):
+        r = getattr(client, methode)(chemin, headers=qui,
+                                     **({"json": corps} if corps is not None else {}))
+        assert r.status_code == 404, (qui, geste, r.status_code, r.text)
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM evenement")[0]["n"] == avant
+
+
+def test_dans_le_sien_l_administrateur_est_un_arrivant(client, decor):
+    """Son bac à sable : il en est propriétaire de la base, il y détruit tout album (la
+    règle du propriétaire), il est propriétaire de la collection qu'il y crée ; mais la
+    collection qu'un invité y a créée, il ne la lit pas — pas plus que lea la sienne."""
+    bac = client.post("/api/bac-a-sable", headers=HUGO).json()
+    pid, base = bac["id"], bac["base"]["id"]
+    assert client.put(f"/api/projets/{pid}/membres", headers=HUGO,
+                      json={"genre": "utilisateur", "principal": "sam",
+                            "role": "membre"}).status_code == 200
+    chez_sam = client.post("/api/collections", headers=SAM,
+                           json={"nom": "Chez Sam", "projet_id": pid}).json()["id"]
+    a_sam = client.post("/api/albums", headers=SAM,
+                        json={"titre": "À sam", "collection_id": chez_sam}).json()["id"]
+    assert client.get(f"/api/albums/{a_sam}/planches", headers=HUGO).status_code == 404
+    assert client.get(f"/api/collections/{chez_sam}/acces", headers=HUGO).status_code == 404
+    niveaux = {c["id"]: c["mon_niveau"] for c in
+               client.get("/api/collections", headers=HUGO).json()}
+    assert niveaux[base] == "proprietaire" and chez_sam not in niveaux
+    assert niveaux[decor["col"]] is None            # hors des bacs : sa portée totale
+    sienne = client.post("/api/collections", headers=HUGO,
+                         json={"nom": "La mienne", "projet_id": pid}).json()["id"]
+    assert _sql(decor["db"], "SELECT principal, niveau FROM collection_acces "
+                             "WHERE collection_id = ?", (sienne,)) == [
+        {"principal": "hugo", "niveau": "proprietaire"}]
+    roles = {p["id"]: p["mon_role"] for p in client.get("/api/projets", headers=HUGO).json()}
+    assert roles[pid] == "responsable"
+    copie = next(j for j in bac["jeu"] if j["role"] == "exemple")
+    # Une copie rangée aussi chez sam (posé en base : le geste se demanderait) : pour lui
+    # comme pour un arrivant, elle est « partagée » — elle vit dans une collection qu'il
+    # ne lit pas.
+    _sql(decor["db"], "INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+         (chez_sam, copie["album_id"]))
+    vus = {a["id"]: a for a in client.get("/api/albums", headers=HUGO).json()}
+    assert vus[copie["album_id"]]["partage"] is True
+    assert vus[decor["reel"]]["partage"] is False
+    client.post(f"/api/planches/{copie['planche_ids'][0]}/regions", headers=SAM,
+                json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9})
+    assert client.delete(f"/api/albums/{copie['album_id']}", headers=HUGO).status_code == 204
+
+
+def test_l_administrateur_ne_remanie_pas_un_tag_pose_dans_le_bac_d_un_autre(client, decor):
+    """Un tag GLOBAL posé (base retouchée : le geste ne se fait plus depuis l'écran) sur une
+    région du bac à sable de lea : l'administrateur ne le retire pas « partout » — il
+    n'écrit pas là (`routes/lexique._exiger_tout_ecrit`)."""
+    region = _sql(decor["db"], "SELECT id FROM regions WHERE planche_id = ? ORDER BY id",
+                  (_copie(decor, "exemple")["planche_ids"][0],))[0]["id"]
+    c = sqlite3.connect(decor["db"])
+    try:
+        tag = c.execute("INSERT INTO tags (label) VALUES ('global-pose')").lastrowid
+        an = c.execute("INSERT INTO annotations (region_id, note) VALUES (?, '')",
+                       (region,)).lastrowid
+        c.execute("INSERT INTO annotation_tags (annotation_id, tag_id) VALUES (?, ?)",
+                  (an, tag))
+        c.commit()
+    finally:
+        c.close()
+    r = client.delete(f"/api/tags/{tag}", headers=HUGO)
+    assert r.status_code == 403 and "administrateur" in r.json()["detail"], r.text
+    assert _sql(decor["db"], "SELECT label FROM tags WHERE id = ?", (tag,)) == [
+        {"label": "global-pose"}]
+
+
+def test_invite_ailleurs_l_administrateur_est_un_invite(client, decor):
+    client.put(f"/api/projets/{decor['bac']['id']}/membres", headers=LEA,
+               json={"genre": "utilisateur", "principal": "hugo", "role": "membre"})
+    copie = _copie(decor, "exemple")
+    assert client.get(f"/api/albums/{copie['album_id']}/planches",
+                      headers=HUGO).status_code == 200
+    planche = copie["planche_ids"][0]
+    assert client.post(f"/api/planches/{planche}/regions", headers=HUGO,
+                       json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}
+                       ).status_code == 201
+    # Un invité ne règle rien, ne détruit pas la copie d'une autre.
+    assert client.put(f"/api/projets/{decor['bac']['id']}/membres", headers=HUGO,
+                      json={"genre": "utilisateur", "principal": "rita",
+                            "role": "membre"}).status_code == 403
+    assert client.delete(f"/api/albums/{copie['album_id']}", headers=HUGO).status_code == 403
 
 
 # --------------------------------------------------------------------------- #
@@ -372,20 +575,21 @@ def test_l_invitation_est_bornee(client, decor):
     # celui du dernier responsable, qui ne tiendrait plus le jour où il y en aurait deux.
     r = poser(LEA, principal="lea")
     assert r.status_code == 409 and "propriétaire de ce bac" in r.json()["detail"], r.text
-    # L'invité ne règle rien ; l'administrateur non plus : la portée totale n'y ouvre rien.
+    # L'invité ne règle rien ; l'administrateur non plus : le bac à sable d'un autre lui est
+    # introuvable (Hugo, 2026-10-24 : « rien, comme un non-membre »).
     assert poser(SAM).status_code == 403
-    # Et la liste le dit à l'administrateur : il ne règle pas ce bac à sable.
+    # La liste de l'Administration le lui montre, sans rien lui en ouvrir.
     vue = {p["id"]: p for p in client.get("/api/projets?bacs_a_sable=1", headers=HUGO).json()}
     assert vue[pid]["gerable"] is False and "justification" not in vue[pid]
-    r = poser(HUGO)
-    assert r.status_code == 403 and "propriétaire" in r.json()["detail"]
+    assert vue[pid]["nb_collections"] == 0 and vue[pid]["mon_role"] is None
+    assert poser(HUGO).status_code == 404
     assert client.put(f"/api/projets/{pid}/acces-membres", headers=HUGO,
-                      json={"acces_membres": None}).status_code == 403
+                      json={"acces_membres": None}).status_code == 404
     # Le propriétaire ne se retire pas ; l'invité, si, par le propriétaire.
     r = client.delete(f"/api/projets/{pid}/membres/utilisateur/lea", headers=LEA)
     assert r.status_code == 409 and "propriétaire de ce bac" in r.json()["detail"], r.text
     assert client.delete(f"/api/projets/{pid}/membres/utilisateur/sam",
-                         headers=HUGO).status_code == 403
+                         headers=HUGO).status_code == 404
     assert client.delete(f"/api/projets/{pid}/membres/utilisateur/sam",
                          headers=LEA).status_code == 204
     assert poser(LEA).status_code == 200
@@ -399,21 +603,22 @@ def test_l_invite_travaille_dans_le_jeu(client, decor):
 
 
 def test_un_bac_a_sable_ne_se_renomme_ni_ne_se_supprime(client, decor):
-    pid = decor["bac"]["id"]
+    pid = client.post("/api/bac-a-sable", headers=HUGO).json()["id"]
     assert client.patch(f"/api/projets/{pid}", json={"nom": "Autre"},
                         headers=HUGO).status_code == 409
     assert client.delete(f"/api/projets/{pid}", headers=HUGO).status_code == 409
+    # Celui d'un autre, l'administrateur ne le voit pas.
+    assert client.delete(f"/api/projets/{decor['bac']['id']}",
+                         headers=HUGO).status_code == 404
 
 
 # --------------------------------------------------------------------------- #
 # S3 — rien n'en sort, rien n'y entre
 # --------------------------------------------------------------------------- #
 def test_une_copie_du_bac_a_sable_n_est_la_source_de_rien_ailleurs(client, decor):
-    """Pour la responsable qui a son bac à sable, et pour la portée totale."""
-    client.post("/api/bac-a-sable", headers=RESP)
-    bac_resp = client.get("/api/bac-a-sable", headers=RESP).json()
-    source = bac_resp["jeu"][0]
+    """Pour la responsable qui a son bac à sable, et pour la portée totale (le sien)."""
     for qui in (RESP, HUGO):
+        source = client.post("/api/bac-a-sable", headers=qui).json()["jeu"][0]
         for reponse, extra in (("zero", {}), ("amorcer", {"cran": "decoupage"})):
             r = client.post(f"/api/collections/{decor['col']}/prendre", headers=qui,
                             json={"documents": [{"document_id": source["document_id"],
@@ -422,14 +627,27 @@ def test_une_copie_du_bac_a_sable_n_est_la_source_de_rien_ailleurs(client, decor
                                   "motif": "x"})
             ligne = r.json()["documents"][0]
             assert ligne["etat"] == "refuse" and "cul-de-sac" in ligne["motif"], (qui, r.text)
+    source = client.get("/api/bac-a-sable", headers=RESP).json()["jeu"][0]
     # Sans nommer la copie, le document du jeu n'existe pas pour un vrai projet.
     r = client.post(f"/api/collections/{decor['col']}/prendre", headers=RESP,
                     json={"documents": [{"document_id": source["document_id"],
                                          "reponse": "zero"}], "motif": "x"})
     assert r.status_code == 404
+    source = client.get("/api/bac-a-sable", headers=HUGO).json()["jeu"][0]
     r = client.get(f"/api/albums/{source['album_id']}/amorcer/apercu", headers=HUGO,
                    params={"collection": decor["col"], "cran": "decoupage"})
     assert r.status_code == 409
+    # Et un document qui ne vit que dans le bac à sable d'un AUTRE, l'administrateur ne le
+    # nomme même pas : le refus « cul-de-sac » dirait qu'il existe.
+    a = client.post("/api/albums", headers=LEA,
+                    json={"titre": "À lea", "collection_id": decor["base"]}).json()["id"]
+    doc = _sql(decor["db"], "SELECT document_id FROM albums WHERE id = ?",
+               (a,))[0]["document_id"]
+    for ligne in ({"document_id": doc, "reponse": "zero", "album_id": a},
+                  {"document_id": doc, "reponse": "zero"}):
+        r = client.post(f"/api/collections/{decor['col']}/prendre", headers=HUGO,
+                        json={"documents": [ligne], "motif": "x"})
+        assert r.status_code == 404, r.text
 
 
 def test_rien_n_entre_dans_un_bac_a_sable(client, decor):
@@ -439,10 +657,11 @@ def test_rien_n_entre_dans_un_bac_a_sable(client, decor):
     # La propriétaire du bac à sable ne nomme pas un document du fonds…
     assert client.post(f"/api/collections/{decor['base']}/prendre", headers=LEA,
                        json=corps).status_code == 404
-    # … et la portée totale se voit refuser, par la nature du projet.
+    # … ni la portée totale dans le sien : elle y est une arrivante, qui ne nomme que ce
+    # qu'elle lit dans son bac à sable (Hugo, 2026-10-24).
     hugo = client.post("/api/bac-a-sable", headers=HUGO).json()
     r = client.post(f"/api/collections/{hugo['base']['id']}/prendre", headers=HUGO, json=corps)
-    assert r.json()["documents"][0]["etat"] == "refuse", r.text
+    assert r.status_code == 404, r.text
     # Le rangement ne traverse pas les projets (déjà tenu).
     assert client.put(f"/api/albums/{decor['reel']}/collections/{hugo['base']['id']}",
                       headers=HUGO).status_code == 409
@@ -583,9 +802,14 @@ def test_l_export_se_decide_document_par_document(client, decor):
     for a in (serveur, importe):
         r = client.get("/api/export/json", headers=LEA, params={"album_id": a})
         assert r.status_code == 403 and "dépôt" in r.json()["detail"], r.text
-        # Pour la portée totale aussi : c'est le document qui décide.
+        # L'administrateur ne lit pas le bac à sable d'un autre.
         assert client.get("/api/export/csv", headers=HUGO,
-                          params={"album_id": a}).status_code == 403
+                          params={"album_id": a}).status_code == 404
+    # Dans le sien, c'est le document qui décide, comme pour tout arrivant.
+    a_hugo = client.post("/api/bac-a-sable", headers=HUGO).json()
+    serveur_h = next(j["album_id"] for j in a_hugo["jeu"] if not j["exportable"])
+    assert client.get("/api/export/csv", headers=HUGO,
+                      params={"album_id": serveur_h}).status_code == 403
     r = client.get(f"/api/collections/{decor['base']}/depot/description", headers=LEA)
     assert r.status_code == 409
 

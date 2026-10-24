@@ -58,7 +58,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     OrdrePlanchesIn, ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
-    _MOTIF_JEU, _refuser_le_jeu, _bacs_vus, _clause_bacs_d_autrui,
+    _MOTIF_JEU, _refuser_le_jeu,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_ISOLE, _MOTIF_BAC_PROPRIETAIRE,
     _MOTIF_EXPORT_BAC, _bac_a_sable_de, _collection_locale_d_un_bac, _creer_bac_a_sable,
     _exiger_l_export_hors_bac, _exiger_le_plafond, _planches_importees_du_bac,
@@ -426,7 +426,7 @@ def _journaliser_scan(conn, album_id: int, planche: dict, *, retire: bool = Fals
 
 
 @app.get("/api/albums")
-def list_albums(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(db),
+def list_albums(conn: sqlite3.Connection = Depends(db),
                 portee: autorisation.Portee = Depends(portee_courante)):
     ou, params = portee.clause_album("a.id")
     # AUTH-10 — `destructible` : la question se pose au serveur, album par album. Le client
@@ -474,19 +474,20 @@ def list_albums(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(d
     # copie qu'on y retoucherait partirait dans chaque bac à sable créé ensuite.
     detruire, p_detruire = portee.clause_suppression_directe("a.id")
     ecrire, p_ecrire = portee.clause_album("a.id", ecriture=True)
-    # COL-4 (S6) — une portée totale ne voit, sans le demander (`bacs_a_sable=1`), que
-    # SON bac à sable et ceux où elle est invitée : soixante-quinze n'y défilent pas.
-    cache, p_cache = _clause_bacs_d_autrui(conn, portee, sql_projet_d_album("a"),
-                                           tous=bacs_a_sable)
-    if portee.tout:
+    # COL-4 — une portée totale ne voit, des bacs à sable, que le SIEN et ceux où elle est
+    # invitée : elle est BORNÉE (`Portee.clause_album` ; Hugo, 2026-10-24). Et dans un bac à
+    # sable, `partage` se calcule pour elle comme pour un arrivant (`dans_les_bacs`).
+    if portee.tout and not portee.bornee:
         ailleurs, p_ailleurs = "0", []
     else:
-        lus = sorted(portee.lecture)
-        ailleurs = (f"({ecrire}) AND "
+        o = portee.dans_les_bacs()
+        ecrire_o, p_ecrire_o = o.clause_album("a.id", ecriture=True)
+        lus = sorted(o.lecture)
+        ailleurs = (f"({ecrire_o}) AND "
                     "EXISTS (SELECT 1 FROM collection_album _pa WHERE _pa.album_id = a.id"
                     + (f" AND _pa.collection_id NOT IN ({', '.join('?' * len(lus))})"
                        if lus else "") + ")")
-        p_ailleurs = [*p_ecrire, *lus]
+        p_ailleurs = [*p_ecrire_o, *lus]
     albums = _rows(conn.execute(
         f"""SELECT a.*,
                   {sql_projet_d_album('a')} AS projet_effectif,
@@ -509,9 +510,9 @@ def list_albums(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(d
                   (SELECT COUNT(*) FROM planches p
                      WHERE p.album_id = a.id AND p.validee IS NOT NULL) AS nb_validees
            FROM albums a
-           WHERE {ou} AND NOT {sql_est_jeu(sql_projet_d_album('a'))} AND {cache}
+           WHERE {ou} AND NOT {sql_est_jeu(sql_projet_d_album('a'))}
            ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""",
-        (*p_detruire, *p_ecrire, *p_ailleurs, *p_ecrire, *params, *p_cache)
+        (*p_detruire, *p_ecrire, *p_ailleurs, *p_ecrire, *params)
     ))
     # La demande se cherche par COPIE (`demande_document.album_id`), pas par document (COL-3,
     # tranche 3) : la copie sœur d'un autre projet afficherait sinon « suppression
@@ -2223,8 +2224,10 @@ def creer_job(payload: JobIn, conn: sqlite3.Connection = Depends(db),
 def _planches_autorisees(conn, portee: autorisation.Portee,
                          *, ecriture: bool = False) -> Optional[set]:
     """Ids des planches visibles (ou modifiables si `ecriture`). None = toutes (portée
-    totale), pour ne pas matérialiser un corpus entier à chaque appel."""
-    if portee.tout:
+    totale), pour ne pas matérialiser un corpus entier à chaque appel. COL-4 — une portée
+    totale BORNÉE (un administrateur, quand des bacs à sable existent) se matérialise : les
+    planches du bac à sable d'un autre ne lui sont pas permises."""
+    if portee.tout and not portee.bornee:
         return None
     ou, params = portee.clause_album("p.album_id", ecriture=ecriture)
     return {r[0] for r in conn.execute(f"SELECT p.id FROM planches p WHERE {ou}", params)}

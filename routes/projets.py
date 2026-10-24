@@ -43,7 +43,7 @@ from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, NOM_BAC_A
 
 from socle import (
     AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate,
-    _bac_a_sable_de, _clause_bacs_d_autrui, _get_projet, _refuser_le_jeu, _rows,
+    _bac_a_sable_de, _get_projet, _refuser_le_jeu, _rows,
     _supprimer_projet, db,
     portee_courante,
 )
@@ -65,8 +65,9 @@ def _exiger_de_decider(portee: autorisation.Portee) -> None:
 def _role_dans(portee: autorisation.Portee, projet_id: int):
     """Le rôle de l'APPELANT dans ce projet. `None` pour une portée totale — même raison
     que `mon_niveau` : elle règle tout sans figurer nulle part — et pour qui ne voit le
-    projet que par une collection qu'il lit."""
-    if portee.tout:
+    projet que par une collection qu'il lit. COL-4 — dans un bac à sable, une portée totale
+    bornée a le rôle d'un arrivant (`Portee.couvre_projet`)."""
+    if portee.couvre_projet(projet_id):
         return None
     if projet_id in portee.projets_geres:
         return autorisation.RESPONSABLE
@@ -253,16 +254,20 @@ def list_projets(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(
     COL-4 — le projet de JEU n'y paraît pour personne, pas même pour la portée totale : il
     ne se règle que par son outil.
 
-    COL-4 (S6) — une portée TOTALE ne reçoit, des bacs à sable, que le SIEN et ceux où elle
-    est invitée : sans quoi le sélecteur de projet de l'administrateur en porterait
-    soixante-quinze. `bacs_a_sable=1` les rend tous — la vue Projets de l'Administration,
-    qui les filtre à part. Une portée ordinaire voit ses bacs à sable par ses accès, comme
-    tout projet."""
+    COL-4 — une portée TOTALE ne reçoit, des bacs à sable, que le SIEN et ceux où elle est
+    invitée : elle est BORNÉE (`Portee.clause_projet` ; Hugo, 2026-10-24 : dans le bac d'un
+    autre, l'administrateur n'a rien). `bacs_a_sable=1`, pour qui décide des projets, ajoute
+    TOUS les bacs à sable — la vue Projets de l'Administration : il voit qu'ils existent,
+    leur propriétaire et leur date d'effacement, et rien de ce qu'ils portent (sa ligne ne
+    compte aucune collection lue, ne le dit ni membre ni « gérable »). Une portée ordinaire
+    voit ses bacs à sable par ses accès, comme tout projet, et le paramètre n'y change
+    rien."""
     ou, params = portee.clause_projet("p.id")
-    cache, p_cache = _clause_bacs_d_autrui(conn, portee, "p.id", tous=bacs_a_sable)
+    if bacs_a_sable and portee.peut_decider_des_projets():
+        ou, params = f"({ou} OR p.bac_a_sable_de IS NOT NULL)", params
     lignes = _rows(conn.execute(
-        f"SELECT p.* FROM projet p WHERE {ou} AND NOT {sql_est_jeu('p.id')} AND {cache} "
-        "ORDER BY p.repli DESC, p.nom COLLATE NOCASE, p.id", (*params, *p_cache)))
+        f"SELECT p.* FROM projet p WHERE {ou} AND NOT {sql_est_jeu('p.id')} "
+        "ORDER BY p.repli DESC, p.nom COLLATE NOCASE, p.id", params))
     return [_vue(conn, portee, p) for p in lignes]
 
 
