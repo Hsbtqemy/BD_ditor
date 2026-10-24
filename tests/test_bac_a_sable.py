@@ -865,6 +865,28 @@ def test_un_tag_du_bac_employe_dehors_rejoint_l_instance(client, decor):
     assert [t["id"] for t in tags] == [de_l_instance]
 
 
+def test_un_renommage_dans_un_bac_ne_detourne_pas_le_ctrl_z_du_corpus(client, decor):
+    """La chaîne de renommages du journal se lit DANS l'espace de la région
+    (`undo._tag_a_rendre`) : « foo » renommé « bar » dans le bac à sable de lea ne fait pas
+    rendre « bar » — ni rien — à la région du corpus dont resp défait le retrait de « foo »
+    (contre-relecture : ce mutant survivait à la suite)."""
+    reg = _region_reelle(client, decor)
+    for tags in (["foo"], []):
+        assert client.put(f"/api/regions/{reg}/annotation", headers=RESP,
+                          json={"note": "n", "tags": tags}).status_code == 200
+    assert client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
+                      json={"note": "m", "tags": ["foo"]}).status_code == 200
+    album = _copie(decor, "exemple")["album_id"]
+    tid = next(t["id"] for t in client.get(f"/api/tags?album={album}", headers=LEA).json()
+               if t["label"] == "foo")
+    assert client.put(f"/api/tags/{tid}", headers=LEA, json={"label": "bar"}).status_code == 200
+    r = client.post("/api/undo", headers=RESP)
+    assert r.status_code == 200, r.text
+    tags = [t["label"] for t in client.get(f"/api/regions/{reg}/annotation",
+                                           headers=RESP).json()["tags"]]
+    assert tags == ["foo"], tags
+
+
 def test_ctrl_z_rend_le_tag_de_son_espace(client, decor):
     """L'annulation retrouve un libellé DANS l'espace de la région (`undo._tag_a_rendre`) :
     le « mot » du bac à sable, pas celui du corpus, plus ancien."""
