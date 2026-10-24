@@ -444,7 +444,8 @@ administrateur compris :
 - **il ne compte pour rien ailleurs** : en être responsable n'ouvre pas les notices du
   fonds ; y écrire ne permet ni de toucher au vocabulaire global, ni au registre des
   personnages, ni de compter comme « écrire quelque part » ; le bandeau « vous n'avez accès
-  à aucune collection » reste allumé pour qui n'a que lui ;
+  à aucune collection » reste dû à qui n'a que lui — il se masque à l'écran tant que le
+  projet courant est le bac à sable, dont la ligne en tient lieu, et revient ailleurs ;
 - **la Recherche et l'Exploration ne le voient pour personne**, ni son propriétaire ni un
   administrateur : leurs mesures restent celles du vrai corpus.
 

@@ -62,6 +62,10 @@ suivi de son nom — ou d'une liste déroulante dès que vous en voyez plusieurs
 
 ## 3. Le parcours en huit étapes
 
+**Pour apprendre l'outil sans rien risquer, ouvrez « Mon bac à sable »** : un projet à vous,
+rempli d'un jeu de planches, où l'on suit les étapes ci-dessous sur pièce. Il est décrit
+juste après ce parcours, en *Mon bac à sable*.
+
 **Avant d'entrer dans une collection, vous entrez dans un projet** : son nom se lit en haut
 de chaque page, et c'est de ce projet que la Bibliothèque vous montre les collections.
 
@@ -378,6 +382,69 @@ Les exports de **dépôt** — fiche de description, enregistrements, manifestes
 prennent ailleurs, parce qu'ils portent sur une **collection** et non sur un album :
 *Bibliothèque*, dans la fiche de la collection, onglet *Diffusion et dépôt* (§4). Les **notices**
 Dublin Core / DataCite et la **provenance** restent, elles, en ligne de commande (§5).
+
+---
+
+### Mon bac à sable
+
+Un **projet à vous**, pour apprendre l'outil : il naît au premier clic, rempli d'un jeu de
+planches, et **tout ce qu'il contient s'efface chaque lundi à 4 h** (heure de Paris), le
+même moment pour tout le monde. Rien n'en sort vers le vrai corpus — seule s'exporte la
+copie d'un document libre du jeu où l'on n'a rien importé —, rien n'y entre du fonds, et la
+Recherche comme l'Exploration ne le voient pas : leurs chiffres restent ceux du vrai corpus. Les règles sont dans [`modele-et-droits.md`](modele-et-droits.md) §2, *Le bac à
+sable*.
+
+**L'ouvrir.** Le bouton **Mon bac à sable** se trouve, tant que vous n'en avez pas :
+
+- dans la bande du haut, à côté du projet, sur toutes les pages ;
+- dans le bandeau *Aucune collection ne vous est ouverte*, à droite — « En attendant : Mon
+  bac à sable », sans avoir à le déplier ;
+- dans la page vide, quand vous n'avez encore aucun projet : sous *Sélectionnez ou importez
+  une planche pour commencer* dans l'Atelier, en carte dans la Bibliothèque.
+
+Un clic, et vous arrivez dans l'**Atelier, sur la planche du parcours** du jeu. Ensuite, il
+se choisit dans la liste *Projet* comme les autres, sous le nom *Mon bac à sable* ; recliquer
+ramène au même. Un compte partagé n'en a pas : il est à une personne.
+
+**La ligne du bac à sable.** Tant que le projet courant est un bac à sable, une rangée
+rayée se lit sous la bande, sur toutes les pages : *Bac à sable* (son aide au survol du nom),
+**sa date d'effacement** — « s'efface lundi 26 octobre à 4 h » —, le compte des planches que
+vous y avez importées — « 12 / 50 planches importées » —, puis vos gestes :
+
+- **Inviter… (n)** ouvre *Qui y entre* : tapez le login d'un compte, puis **+ Faire entrer**
+  — il entre comme membre ; ✕ le fait sortir. On invite un compte, jamais un groupe, et
+  l'invité n'en devient pas responsable. Le nombre entre parenthèses est celui des invités ;
+- **Remettre à neuf…** le rend à son jeu de départ, quand vous voulez. Le dialogue dit en
+  deux colonnes **ce qui part** — votre travail, les planches importées, vos collections, le
+  travail et l'invitation de chaque invité, nommé — et **ce qui revient** : les albums du
+  jeu, vierges. Les invitations partent : réinvitez après.
+
+Chez **un invité**, la ligne dit *Bac à sable de* et le login de son propriétaire, et ne porte
+que **Quitter…**, qui se confirme d'une ligne (« camille pourra vous inviter à nouveau »).
+Dans la liste *Projet*, ce bac à sable se nomme *Bac ·* suivi de ce login.
+
+Dans un bac à sable, le bandeau *Aucune collection ne vous est ouverte* ne s'affiche pas —
+la ligne en tient lieu — et revient dès que vous passez sur un autre projet. La
+Bibliothèque y compte ses albums et ses planches à lui ; *+ Prendre du fonds…* n'y est pas
+offert.
+
+**Les planches qu'on importe soi-même** comptent, jusqu'à **cinquante** par bac à sable ;
+celles du jeu ne comptent pas. Au plafond, le compte passe en rouge et le geste d'import
+s'éteint — *⤓ Importer des planches…* dans la fiche d'un album de la Bibliothèque, *⤓
+Importer des images…* dans le menu *Import / Export* de l'Atelier — la raison au survol.
+Supprimez des planches, ou remettez le bac à sable à neuf.
+
+**Le lundi à 4 h**, il s'efface. Au prochain geste — ou à la prochaine page —, un message le
+dit (« Votre bac à sable a été effacé lundi à 4 h. », ou *Le bac à sable de …* chez un
+invité), la page retombe sur votre projet suivant, ou vide, et **Mon bac à sable** revient à
+ses places : un clic en ouvre un neuf.
+
+**Un administrateur** a, lui aussi, son bac à sable, et y est un arrivant comme un autre.
+Dans **🗂️ Projets**, l'axe *Bacs à sable* lui dit lesquels existent — par login, filtrables,
+triés de A à Z ou les plus récents d'abord, « ouvert le » chaque jour —, quand ils
+s'effacent tous, et pour chacun son propriétaire (un lien vers sa fiche de compte) ; il
+n'entre dans aucun : pour aider quelqu'un, il se fait inviter. Aucun bouton n'efface un bac
+à sable avant le lundi.
 
 ---
 
@@ -873,6 +940,11 @@ L'**import PDF** est annoncé dans le menu mais désactivé : il n'est pas encor
 Lisez le bandeau en haut de page, et **dépliez-le** : il distingue une panne de configuration
 d'un simple manque d'accès, et nomme la personne à qui écrire quand l'instance en a déclaré
 une. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3, et §7 pour la question complète.
+
+**Mon bac à sable a disparu.**
+Il s'efface chaque lundi à 4 h, et un message l'a dit au premier geste qui a suivi. **Mon bac
+à sable**, dans la bande du haut, en ouvre un neuf. Chez un invité, il disparaît aussi quand
+son propriétaire le remet à neuf ou vous fait sortir ; la ligne disait de qui il était.
 
 **Une collection que je lisais n'est plus dans la Bibliothèque.**
 Elle est probablement d'un autre **projet** que celui choisi en haut de la page : la liste
