@@ -2345,6 +2345,61 @@ SQL_BACS_EFFACES = ("SELECT cible_id FROM evenement WHERE cible_table = 'projet'
                     "AND json_extract(avant, '$.bac_a_sable')")
 
 
+def _sql_acte_isole_direct(e: str) -> str:
+    """Le corps de `sql_acte_isole`, sans suivre une annulation."""
+    def j(col, cle):
+        return (f"json_extract(CASE WHEN json_valid({e}.{col}) THEN {e}.{col} END, "
+                f"'$.{cle}')")
+    s = "".join(c for c in e if c.isalnum())               # des alias propres à `e`
+    region = (f"(CASE WHEN {e}.cible_table IN ('regions', 'annotations', 'bulle_locuteur', "
+              f"'personnage_presence', 'region_attribut') THEN {e}.cible_id "
+              f"WHEN {e}.cible_table = 'token_correction' THEN "
+              f"COALESCE({j('apres', 'region_id')}, {j('avant', 'region_id')}) END)")
+    planche = (f"COALESCE((SELECT _xr{s}.planche_id FROM regions _xr{s} "
+               f"WHERE _xr{s}.id = {region}), "
+               f"CASE WHEN {e}.cible_table = 'planches' THEN {e}.cible_id END, "
+               f"CASE WHEN {e}.cible_table = 'regions' THEN "
+               f"COALESCE({j('apres', 'planche_id')}, {j('avant', 'planche_id')}) END)")
+
+    def effaces(cle):
+        return (f"SELECT _xj{s}.value FROM evenement _xe{s}, "
+                f"json_each(_xe{s}.avant, '$.{cle}') _xj{s} "
+                f"WHERE _xe{s}.cible_table = 'projet' AND _xe{s}.type = 'suppression' "
+                f"AND json_valid(_xe{s}.avant) AND json_extract(_xe{s}.avant, '$.bac_a_sable')")
+    collection_effacee = (f"SELECT _xc{s}.cible_id FROM evenement _xc{s} "
+                          f"WHERE _xc{s}.cible_table = 'collection' "
+                          f"AND _xc{s}.type = 'suppression' AND json_valid(_xc{s}.avant) "
+                          f"AND json_extract(_xc{s}.avant, '$.bac_a_sable')")
+    return (f"(EXISTS (SELECT 1 FROM planches _xp{s} JOIN albums _xa{s} "
+            f"ON _xa{s}.id = _xp{s}.album_id WHERE _xp{s}.id = {planche} "
+            f"AND {sql_album_isole('_xa' + s)}) "
+            # NULL-sûr : un acte sans région ni planche (une collection, un projet) ne doit
+            # pas rendre NULL, que `NOT` laisserait NULL — l'acte disparaîtrait du compte.
+            f"OR ({region} IS NOT NULL AND {region} IN ({effaces('regions')})) "
+            f"OR ({planche} IS NOT NULL AND {planche} IN ({effaces('planches')})) "
+            f"OR ({e}.cible_table IN ('projet', 'projet_acces') "
+            f"AND ({sql_est_isole(e + '.cible_id')} OR {e}.cible_id IN ({SQL_BACS_EFFACES}))) "
+            f"OR ({e}.cible_table IN ('collection', 'collection_acces') "
+            f"AND (EXISTS (SELECT 1 FROM collection _xk{s} WHERE _xk{s}.id = {e}.cible_id "
+            f"AND {sql_est_isole(sql_projet_de('_xk' + s))}) "
+            f"OR {e}.cible_id IN ({collection_effacee}))))")
+
+
+def sql_acte_isole(e: str = "evenement") -> str:
+    """Fragment SQL VRAI si l'acte `e` (un alias de `evenement`) porte sur un objet d'un
+    projet ISOLÉ — bac à sable ou jeu —, qu'il VIVE encore ou qu'il soit parti avec un bac à
+    sable effacé (COL-4, décision du pilotage, contre-relecture D2 : ce qui disparaît avec
+    le lundi ne retient personne). Vivant : la région, la planche, le projet ou la
+    collection visés sont d'un projet isolé. Parti : l'effacement écrit, dans la charge de
+    sa `suppression` sous `projet`, les planches et les régions qu'il emporte ; une
+    collection d'un bac à sable effacé l'est sous `collection` ; un projet, par
+    `SQL_BACS_EFFACES` — et aucun de ces identifiants ne revient. Une annulation
+    (`cible_table = 'evenement'`) suit l'acte qu'elle défait."""
+    return (f"COALESCE(({_sql_acte_isole_direct(e)} OR ({e}.cible_table = 'evenement' AND "
+            f"EXISTS (SELECT 1 FROM evenement _xu WHERE _xu.id = {e}.cible_id "
+            f"AND {_sql_acte_isole_direct('_xu')}))), 0)")
+
+
 def sql_est_isole(expr: str) -> str:
     """Fragment SQL VRAI si le projet `expr` est ISOLÉ — un bac à sable, ou le projet de jeu.
     C'est ce que les surfaces qui traversent les projets écartent (S8), et ce que la prise,

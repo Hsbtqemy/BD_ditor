@@ -667,6 +667,68 @@ def test_chacun_voit_le_vocabulaire_de_ses_bacs_a_sable(client, decor):
                       json={"label": "autre"}).status_code == 403
 
 
+def test_les_usages_du_lexique_ne_comptent_pas_le_bac_de_l_admin(client, decor):
+    """Contre-relecture, D1 : les chiffres du Lexique restent aveugles aux bacs à sable pour
+    TOUT le monde — `pour_le_corpus` d'une portée totale ne repasse pas ses bacs à sable,
+    sans quoi un personnage du bac de l'administrateur comptait dans `nb_usages`."""
+    bac = client.post("/api/bac-a-sable", headers=HUGO).json()
+    d = client.post("/api/attributs/dimensions", headers=HUGO,
+                    json={"cible": "personnage", "nom": "humeur"}).json()["id"]
+    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=HUGO,
+                    json={"valeur": "joyeux"}).json()["id"]
+    p = client.post("/api/personnages", headers=HUGO,
+                    json={"nom": "Gaston", "bac_a_sable_id": bac["id"]}).json()["id"]
+    r = client.put(f"/api/personnages/{p}/attributs", headers=HUGO, json={"valeur_id": v})
+    assert r.status_code in (200, 201, 204), r.text
+
+    def usages(qui):
+        return next(val["nb_usages"] for dim in client.get("/api/lexique", headers=qui)
+                    .json()["dimensions"] for val in dim["valeurs"] if val["id"] == v)
+
+    assert usages(HUGO) == usages(RESP) == 0, (usages(HUGO), usages(RESP))
+
+
+def _fiche(client, login):
+    return next(c for c in client.get("/api/comptes-et-groupes", headers=HUGO).json()["comptes"]
+                if c["login"] == login)
+
+
+def test_ce_qu_on_fait_dans_un_bac_ne_retient_personne(client, decor, monkeypatch):
+    """Contre-relecture, D2 (décision du pilotage) : `comptes.traces` ne compte pas les actes
+    dont la cible vit dans un projet isolé, création et invitations du bac comprises — ni
+    après l'effacement, quand ses objets sont partis. Ni le verdict de départ, ni le volume
+    que lit l'administrateur. Ce que resp fait dans le vrai corpus, si (la contre-épreuve)."""
+    import config
+    monkeypatch.setattr(config, "ANNUAIRE_ADRESSE", "doublure:")
+    lea = _fiche(client, "lea")
+    assert (lea["actes"], lea["acces_explicites"]) == (0, 0), lea
+    region = _region_du_bac(client, decor)
+    for i in range(3):
+        client.put(f"/api/regions/{region}", headers=LEA, json={"ocr_texte": f"T{i}"})
+    client.post("/api/collections", headers=LEA,
+                json={"nom": "Chez Léa", "projet_id": decor["bac"]["id"]})
+    client.post(f"/api/planches/{_copie(decor, 'exemple')['planche_ids'][0]}/regions",
+                headers=LEA, json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9})
+    client.post("/api/undo", headers=LEA)          # une annulation suit l'acte qu'elle défait
+    lea = _fiche(client, "lea")
+    assert (lea["actes"], lea["acces_explicites"]) == (0, 0), lea
+    assert "actes" not in lea["verdict"]
+    # resp : un acte dans le corpus compte ; ceux de son bac à sable non, ni après sa remise
+    # à neuf, quand régions et planches sont parties.
+    avant = _fiche(client, "resp")["actes"]
+    _region_reelle(client, decor)
+    assert _fiche(client, "resp")["actes"] == avant + 1
+    bac = client.post("/api/bac-a-sable", headers=RESP).json()
+    planche = next(j for j in bac["jeu"] if j["role"] == "exemple")["planche_ids"][0]
+    breg = client.post(f"/api/planches/{planche}/regions", headers=RESP,
+                       json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
+    client.put(f"/api/regions/{breg}/annotation", headers=RESP,
+               json={"note": "n", "tags": ["x"]})
+    assert _fiche(client, "resp")["actes"] == avant + 1
+    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=RESP).status_code == 200
+    assert _fiche(client, "resp")["actes"] == avant + 1
+
+
 def test_une_collection_supprimee_dans_un_bac_y_garde_ses_termes(client, decor):
     """Ses termes ne deviennent pas globaux (`ON DELETE SET NULL`) : ils rejoignent la base."""
     pid = decor["bac"]["id"]

@@ -438,9 +438,11 @@ class Portee:
         ensemble, `hors_isoles` fait écarter par `clause_album` et `clause_terme` ce qui vit
         dans un projet isolé — la nature du projet, jamais la portée, tient l'isolement."""
         if self.tout:
+            # Sans ses bacs à sable : ce qui s'y lit (ses personnages, par
+            # `socle._clause_personnage`) ne doit pas entrer dans les chiffres du corpus —
+            # aveugles aux bacs pour tout le monde (contre-relecture, D1).
             return Portee(tout=True, admin=self.admin, utilisateur=self.utilisateur,
-                          groupes=self.groupes, bacs_a_sable=self.bacs_a_sable,
-                          bacs_a_soi=self.bacs_a_soi, hors_isoles=True)
+                          groupes=self.groupes, hors_isoles=True)
         cb = self.collections_bac
         return Portee(admin=self.admin, lecture=self.lecture - cb,
                       ecriture=self.ecriture - cb, propriete=self.propriete - cb,

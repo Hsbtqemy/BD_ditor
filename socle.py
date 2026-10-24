@@ -1293,6 +1293,10 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
     suppression du projet — rien ne peut plus naître entre les deux. Au-delà de
     `_TOURS_D_EFFACEMENT` tours, un 409 dit de réessayer, sans rien laisser d'incohérent."""
     detruits, passes = 0, 0
+    # Les planches et les régions qu'emporte l'effacement, écrites dans la charge de sa
+    # `suppression` : ce que le journal en garde reste ainsi rattaché à un bac à sable
+    # parti (`database.sql_acte_isole` — un compte ne « laisse » pas ce qui s'efface).
+    emportees = {"planches": set(), "regions": set()}
     for _tour in range(_TOURS_D_EFFACEMENT):
         conflit.verrouiller(conn)
         n = nature_du_projet(conn, projet_id)
@@ -1308,6 +1312,13 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
             (projet_id,))]
         if not albums:
             break                                          # le verrou reste TENU
+        marques = ", ".join("?" * len(albums))
+        for pl_id, rg_id in conn.execute(
+                f"SELECT p.id, r.id FROM planches p LEFT JOIN regions r ON r.planche_id = p.id "
+                f"WHERE p.album_id IN ({marques})", albums):
+            emportees["planches"].add(pl_id)
+            if rg_id is not None:
+                emportees["regions"].add(rg_id)
         conn.commit()
         for album_id in albums:
             _detruire_album(conn, portee, album_id)
@@ -1337,7 +1348,9 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
     nom = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()[0]
     conn.execute("DELETE FROM projet WHERE id = ?", (projet_id,))
     journal.journaliser(conn, "suppression", "projet", projet_id,
-                        avant={"nom": nom, "bac_a_sable": True, "motif": motif})
+                        avant={"nom": nom, "bac_a_sable": True, "motif": motif,
+                               "planches": sorted(emportees["planches"]),
+                               "regions": sorted(emportees["regions"])})
     conn.commit()
     return {"efface": True, "albums": detruits, "gestes_passes": passes}
 

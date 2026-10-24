@@ -25,7 +25,8 @@ from typing import Optional
 
 import autorisation
 from annuaire import GROUPES_DE_ROLE, Lecture
-from database import NOM_COLLECTION_DEFAUT, SQL_BACS_EFFACES, collections, sql_est_isole
+from database import (NOM_COLLECTION_DEFAUT, SQL_BACS_EFFACES, collections, sql_acte_isole,
+                      sql_est_isole, sql_projet_de)
 
 # Tranché par Hugo le 2026-09-17 : une reprise d'identité ne s'efface jamais du journal, et un
 # mariage laisse la même trace. Sans fenêtre, le signal ne s'éteindrait jamais, et une liste
@@ -87,14 +88,23 @@ def traces(conn) -> tuple[dict, dict, dict, dict]:
         # demandé reste écrit sur la demande.
         # `tags` (ANN-8) pour la même raison : renommer, fusionner ou supprimer un tag range
         # le vocabulaire, et n'orpheline aucune annotation.
+        # COL-4 (décision du pilotage, contre-relecture D2) — ni ce qui vit dans un projet
+        # ISOLÉ (bac à sable, jeu), ni ce qui est parti avec un bac à sable effacé
+        # (`database.sql_acte_isole`), création et invitations du bac comprises : ce qui
+        # disparaît avec le lundi ne retient personne, et l'administrateur ne lit rien du
+        # bac à sable d'un autre — pas même son volume.
         "SELECT agent, COUNT(*) AS n FROM evenement "
         "WHERE agent_type = 'humain' AND agent IS NOT NULL "
         "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature', 'annulation', "
         "                          'document', 'collection_album', 'demande', 'tags') "
+        f"  AND NOT {sql_acte_isole('evenement')} "
         "GROUP BY agent")}
+    # … ni un accès sur une collection d'un projet isolé, pour la même raison.
     acces = {r["principal"]: r["n"] for r in conn.execute(
-        "SELECT principal, COUNT(*) AS n FROM collection_acces "
-        "WHERE genre = ? GROUP BY principal", (autorisation.UTILISATEUR,))}
+        "SELECT principal, COUNT(*) AS n FROM collection_acces ca "
+        f"WHERE genre = ? AND NOT EXISTS (SELECT 1 FROM collection _ci "
+        f"WHERE _ci.id = ca.collection_id AND {sql_est_isole(sql_projet_de('_ci'))}) "
+        "GROUP BY principal", (autorisation.UTILISATEUR,))}
     reprises: dict[str, tuple[int, Optional[str]]] = {}
     for r in conn.execute(
             "SELECT avant, date FROM evenement WHERE cible_table = 'utilisateur' ORDER BY id"):
