@@ -29,11 +29,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import autorisation
 from config import STATUTS
-from database import citations_regions
+from database import citations_regions, est_bac_a_sable, sql_projet_d_album
 from pipeline import nlp
 
-from socle import (_clause_lemme, _cle_tag, _csv_response, _csv_safe, _portee_d_export,
-                   _rows, _sql_a_montrer, db, portee_courante)
+from socle import (_clause_lemme, _cle_tag, _csv_response, _csv_safe, _get_projet,
+                   _portee_d_export, _rows, _sql_a_montrer, db, portee_courante)
 
 router = APIRouter()
 
@@ -275,18 +275,40 @@ def recherche_export(q: str = "", album: Optional[int] = None,
 
 
 @router.get("/api/corpus")
-def corpus_stats(conn: sqlite3.Connection = Depends(db),
+def corpus_stats(bac_a_sable: Optional[int] = None, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
     """Compteurs globaux du corpus (pour l'aperçu de la page de recherche). COL-4 (S8) : ni
-    bac à sable ni jeu."""
-    portee = portee.pour_le_corpus()
+    bac à sable ni jeu.
+
+    COL-4 — `bac_a_sable=<id>` : les compteurs de CE bac à sable, et de lui seul, pour la
+    Bibliothèque quand son projet courant en est un (relevé sur la maquette, 2026-10-24 :
+    « 0 albums » dans un bac à sable tout neuf). Les surfaces qui traversent les projets ne
+    passent pas le paramètre et restent aveugles aux bacs. Borné comme le reste : 404 sur
+    un projet qu'on ne nomme pas — le bac d'un autre, pour un administrateur comme pour
+    tous (`Portee.clause_projet`) — ou qui n'est pas un bac à sable ; et chaque compte
+    garde la clause de la portée, qui ne rend du bac que ce qu'on y lit. Ses tags sont
+    ceux de son espace de libellés (`tags.espace`, v35), qu'on lit."""
+    if bac_a_sable is None:
+        portee = portee.pour_le_corpus()
+        dans, p_dans, espace = "1", [], 0
+    else:
+        _get_projet(conn, portee, bac_a_sable)
+        if not est_bac_a_sable(conn, bac_a_sable):
+            raise HTTPException(404, f"Projet {bac_a_sable} introuvable")
+        dans = f"IN (SELECT _a.id FROM albums _a WHERE {sql_projet_d_album('_a')} = ?)"
+        p_dans, espace = [bac_a_sable], bac_a_sable
     # AUTH-2 : des compteurs GLOBAUX diraient combien d'albums et de planches existent
     # ailleurs — la composition du corpus fuit par les nombres aussi bien que par les
     # titres. Chaque sous-requête est donc rattachée à son album, puis filtrée.
     ou, pp = portee.clause_album("alb.id")
     oup, _ = portee.clause_album("pl.album_id")
     our, _ = portee.clause_album("plr.album_id")
+    if bac_a_sable is not None:
+        ou, oup, our = (f"({ou}) AND alb.id {dans}", f"({oup}) AND pl.album_id {dans}",
+                        f"({our}) AND plr.album_id {dans}")
+        pp = [*pp, *p_dans]
     ou_tag, p_tag = portee.clause_terme("t.collection_id")
+    ou_tag, p_tag = f"({ou_tag}) AND t.espace = ?", [*p_tag, espace]
     # AUTH-11 : « annotées » compte les annotations qui ont quelque chose à MONTRER —
     # une note, ou un tag dont on lit le terme (cf. `socle._sql_a_montrer`). Compter la
     # ligne nue faisait dire au compteur qu'on a annoté ce qu'on ne peut pas ouvrir.

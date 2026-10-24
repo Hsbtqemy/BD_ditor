@@ -36,7 +36,7 @@ from fastapi.responses import Response
 
 import autorisation
 import journal
-from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, NOM_BAC_A_SABLE,
+from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET,
                       collection_de_base,
                       creer_collection_de_base, nom_de_projet_reserve, sql_est_jeu,
                       sql_projet_de)
@@ -132,10 +132,12 @@ def _vue(conn, portee: autorisation.Portee, p: dict) -> dict:
 
 
 # COL-4 — ce que la bande affiche d'un bac à sable : « Mon bac à sable » à son propriétaire,
-# « Bac à sable · <login> » à qui y est invité, borné au plafond des noms de projet — un login
-# long se coupe ICI, jamais à l'écran (la mesure de `LONGUEUR_NOM_PROJET`). La forme exacte
-# se tranchera sur la maquette de l'écran (S6).
+# « Bac · <login> » à qui y est invité, borné au plafond des noms de projet — un login long se
+# coupe ICI, jamais à l'écran (la mesure de `LONGUEUR_NOM_PROJET`). Le préfixe court est celui
+# de la maquette (Hugo, 2026-10-24) : six caractères, un login de quinze tient entier ; la
+# ligne du bac à sable, sous la bande, dit le login sans coupe (« Bac à sable de <login> »).
 NOM_AFFICHE_MIEN = "Mon bac à sable"
+PREFIXE_AFFICHE_INVITE = "Bac · "
 
 
 def _vue_du_bac(portee: autorisation.Portee, p: dict) -> dict:
@@ -150,7 +152,7 @@ def _vue_du_bac(portee: autorisation.Portee, p: dict) -> dict:
         nom = NOM_AFFICHE_MIEN
     else:
         bac["proprietaire"] = p["bac_a_sable_de"]
-        nom = f"{NOM_BAC_A_SABLE} · {p['bac_a_sable_de']}"[:LONGUEUR_NOM_PROJET]
+        nom = f"{PREFIXE_AFFICHE_INVITE}{p['bac_a_sable_de']}"[:LONGUEUR_NOM_PROJET]
     return {"nom": nom, "bac_a_sable": bac}
 
 

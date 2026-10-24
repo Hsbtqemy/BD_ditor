@@ -294,7 +294,7 @@ SORTIES_DECLAREES = {
     ("route", "/api/projets"): (
         {"login"},
         "COL-4 — le login du PROPRIÉTAIRE d'un bac à sable (`bac_a_sable.proprietaire`, et le "
-        "nom affiché « Bac à sable · <login> »), rendu à qui le lit sans en être le "
+        "nom affiché « Bac · <login> »), rendu à qui le lit sans en être le "
         "propriétaire : l'INVITÉ, qui doit savoir chez qui il travaille — ce qu'on y fait "
         "s'efface quand ce compte le remet à neuf ; et l'ADMINISTRATEUR dans la vue Projets "
         "(`bacs_a_sable=1`), qui doit savoir à qui il est — il y voit qu'il existe, sa date "

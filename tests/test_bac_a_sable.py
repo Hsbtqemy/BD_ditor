@@ -225,7 +225,7 @@ def test_prochain_effacement(maintenant, attendu):
 def test_l_invite_lit_de_qui_est_le_bac_a_sable(client, decor):
     vus = {p["id"]: p for p in client.get("/api/projets", headers=SAM).json()}
     vue = vus[decor["bac"]["id"]]
-    assert vue["nom"] == "Bac à sable · lea" and vue["gerable"] is False
+    assert vue["nom"] == "Bac · lea" and vue["gerable"] is False
     assert vue["bac_a_sable"] == {"mien": False, "efface_le": decor["bac"]["efface_le"],
                                   "proprietaire": "lea"}
     # Un inconnu ne le voit pas, ni dans la liste ni par son identifiant.
@@ -247,7 +247,7 @@ def test_un_login_long_se_coupe_a_la_source(client, decor):
                json={"genre": "utilisateur", "principal": "sam", "role": "membre"})
     vue = {p["id"]: p for p in client.get("/api/projets", headers=SAM).json()}[pid]
     assert len(vue["nom"]) == database.LONGUEUR_NOM_PROJET
-    assert vue["nom"].startswith("Bac à sable · une-")
+    assert vue["nom"] == "Bac · une-personne-au"
 
 
 # --------------------------------------------------------------------------- #

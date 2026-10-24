@@ -44,13 +44,24 @@ _MOTIF_PARTAGE = ("Un compte partagé n'a pas de bac à sable : il est à une pe
                   "remettre à neuf effacerait le travail d'un autre.")
 
 
+def _est_partage(conn, login) -> bool:
+    return conn.execute("SELECT 1 FROM utilisateur WHERE login = ? AND nature = ?",
+                        (login, NATURE_COLLECTIF)).fetchone() is not None
+
+
 def _exiger_d_ouvrir(conn, portee: autorisation.Portee) -> None:
     """403 nommés : ils parlent de l'appelant, jamais d'un objet."""
     if not portee.peut_ouvrir_un_bac_a_sable():
         raise HTTPException(403, _MOTIF_OUVRIR)
-    if conn.execute("SELECT 1 FROM utilisateur WHERE login = ? AND nature = ?",
-                    (portee.utilisateur, NATURE_COLLECTIF)).fetchone():
+    if _est_partage(conn, portee.utilisateur):
         raise HTTPException(403, _MOTIF_PARTAGE)
+
+
+def peut_ouvrir(conn, portee: autorisation.Portee) -> bool:
+    """La même question que `_exiger_d_ouvrir`, en booléen : l'écran n'offre « Mon bac à
+    sable » qu'à qui le serveur l'ouvrirait (`GET /api/moi`, `bac_a_sable_ouvrable`). Un
+    `null` de `GET /api/bac-a-sable` ne le dit pas : il vaut aussi pour qui n'en a pas."""
+    return portee.peut_ouvrir_un_bac_a_sable() and not _est_partage(conn, portee.utilisateur)
 
 
 def _mien(conn, login):

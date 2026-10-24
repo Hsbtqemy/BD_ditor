@@ -2987,6 +2987,10 @@ def moi(request: Request, conn: sqlite3.Connection = Depends(db),
                       # page par page, d'une liste qu'elles n'ont pas.
                       "exporter": _etat_export(portee),
                       "referent": _referent_instance()},
+            # COL-4 — l'écran n'offre « Mon bac à sable » qu'à qui le serveur l'ouvrirait :
+            # un login derrière le proxy, et pas un compte partagé. La question vit avec la
+            # route qui l'applique (`routes/bac_a_sable.peut_ouvrir`).
+            "bac_a_sable_ouvrable": _routes_bac_a_sable.peut_ouvrir(conn, portee),
             "deconnexion_url": AUTH_LOGOUT_URL or None}
 
 

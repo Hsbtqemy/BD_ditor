@@ -452,7 +452,7 @@ Le **jeu** dont chaque bac à sable prend ses copies ne se change que par son ou
 geste de l'application ne touche ses copies de référence, pas même un administrateur.
 
 Ce que la liste des projets en montre : à son propriétaire « Mon bac à sable », à un invité
-« Bac à sable · » suivi du login de son propriétaire. Un administrateur n'y voit que le sien
+« Bac · » suivi du login de son propriétaire (la ligne du bac à sable, sous la bande, dit « Bac à sable de » et le login entier). Un administrateur n'y voit que le sien
 et ceux où il est invité ; la vue Projets de l'Administration lui dit qu'ils existent tous,
 à qui ils sont et quand ils s'effacent — rien de ce qu'ils portent.
 
