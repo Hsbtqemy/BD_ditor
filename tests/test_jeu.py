@@ -449,13 +449,16 @@ def test_aucune_ecriture_ne_touche_la_reference(client, db_path, reference_compl
     ref = reference_complete
     table = _corps_des_ecritures(ref)
     ecritures = set()
-    for route in inventaire_routes.routes_api():
+    routes = inventaire_routes.routes_api()
+    # ARCH-2 — un inventaire qui rétrécit fait échouer le cliquet qui l'emploie, avec un
+    # plancher DÉRIVÉ du source (`exiger_plancher`), jamais un chiffre recopié.
+    inventaire_routes.exiger_plancher(len(routes), "écritures sur la référence du jeu (COL-4)")
+    for route in routes:
         for m in (getattr(route, "methods", None) or set()) & {"POST", "PUT", "PATCH",
                                                                 "DELETE"}:
             if any(k in route.path for k in _CLES_D_OBJET):
                 ecritures.add((m, route.path))
     assert ecritures - set(table) == set(), "route d'écriture neuve, à déclarer ici"
-    assert len(ecritures) >= 30
     # Les deux qui nomment l'album dans leur CORPS.
     jouees = [(m, chemin, corps) for (m, _p), (chemin, corps) in sorted(table.items())]
     jouees += [("POST", "/api/sharedocs/importer",
@@ -477,6 +480,26 @@ def test_aucune_ecriture_ne_touche_la_reference(client, db_path, reference_compl
             assert r.status_code == 409 and "jeu des bacs à sable" in r.json()["detail"], \
                 (m, chemin, r.status_code, r.text)
         assert _empreinte(db_path, ref["album"]) == avant, (m, chemin)
+    # Et celles qui nomment la référence dans leur CORPS comme SOURCE : la prise d'une
+    # collection, et celle d'un projet (sa base). Chaque réponse est refusée, ligne par
+    # ligne, en nommant le JEU ; aucune copie ne naît de la référence hors d'un bac à sable.
+    doc = _sql(db_path, "SELECT document_id FROM albums WHERE id = ?",
+               (ref["album"],))[0]["document_id"]
+    repli = _sql(db_path, "SELECT id FROM projet WHERE repli = 1")[0]["id"]
+    for chemin in (f"/api/collections/{ref['ailleurs']}/prendre",
+                   f"/api/projets/{repli}/prendre"):
+        for reponse in ("zero", "rejoindre", "amorcer"):
+            r = client.post(chemin, headers=ADMIN, json={
+                "documents": [{"document_id": doc, "album_id": ref["album"],
+                               "reponse": reponse, "cran": "transcription"}],
+                "motif": "x"})
+            assert r.status_code == 200, (chemin, reponse, r.text)
+            ligne = r.json()["documents"][0]
+            assert ligne["etat"] == "refuse" and "jeu des bacs à sable" in ligne["motif"], \
+                (chemin, reponse, ligne)
+    assert _empreinte(db_path, ref["album"]) == avant
+    assert _sql(db_path, "SELECT COUNT(*) AS n FROM albums WHERE document_id = ?",
+                (doc,)) == [{"n": 1}]
 
 
 @pytest.fixture

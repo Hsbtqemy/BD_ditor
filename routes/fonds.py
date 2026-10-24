@@ -58,7 +58,7 @@ from database import (CRAN_IMAGES, CRANS, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUME
                       un_proprietaire_tient_toute_la_copie)
 
 from socle import (
-    DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _MOTIF_BAC_ISOLE,
+    DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _MOTIF_BAC_ISOLE, _MOTIF_JEU_SOURCE,
     _MOTIF_BAC_PROPRIETAIRE, _MOTIF_BAC_SANS_DEMANDE, _bac_a_sable_de, _clore_demandes,
     _deposer, _detruire_album, _en_attente_vers,
     _get_album, _get_collection, _get_projet, _nouvelle_copie, _plan_rejoindre,
@@ -935,13 +935,19 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
     # Ce qu'on ne LIT pas reste introuvable, même à une portée totale : bornée, elle ne lit
     # pas le bac à sable d'un autre (Hugo, 2026-10-24), et le refus « cul-de-sac » y dirait
     # qu'une copie y vit.
+    # Le refus nomme ce qui isole : le JEU pour une copie de référence (contre-relecture :
+    # « un bac à sable est un cul-de-sac » se disait de la référence du jeu), un bac à sable
+    # sinon.
+    jeu = isoles["tous"] - set(isoles["bacs"])
     if (ligne.album_id is not None and nommee is not None and nommee not in copies
             and nommee["id"] in lues):
         return {"document_id": doc, "reponse": ligne.reponse, "etat": REFUSE,
-                "motif": _MOTIF_BAC_ISOLE}
+                "motif": _MOTIF_JEU_SOURCE if nommee["projet_id"] in jeu
+                else _MOTIF_BAC_ISOLE}
     if not copies and toutes and portee.tout and any(c["id"] in lues for c in toutes):
+        lues_jeu = any(c["id"] in lues and c["projet_id"] in jeu for c in toutes)
         return {"document_id": doc, "reponse": ligne.reponse, "etat": REFUSE,
-                "motif": _MOTIF_BAC_ISOLE}
+                "motif": _MOTIF_JEU_SOURCE if lues_jeu else _MOTIF_BAC_ISOLE}
     du_projet_lues = [c for c in copies if c["id"] in lues and c["projet_id"] == projet_id]
     if not copies or not (portee.tout or gere or du_projet_lues):
         raise _introuvable(doc)
@@ -1414,7 +1420,10 @@ def apercu_d_amorce(album_id: int, collection: int, cran: str,
     isoles = _projets_isoles(conn)
     if source["projet_id"] != projet_id and (source["projet_id"] in isoles["tous"]
                                              or projet_id in isoles["bacs"]):
-        raise HTTPException(409, _MOTIF_BAC_ISOLE)   # COL-4 (S3), pour toute portée
+        # COL-4 (S3), pour toute portée — et le refus nomme le jeu pour sa référence.
+        jeu = isoles["tous"] - set(isoles["bacs"])
+        raise HTTPException(409, _MOTIF_JEU_SOURCE if source["projet_id"] in jeu
+                            else _MOTIF_BAC_ISOLE)
     ou, params = portee.clause_rejoindre_directe("a.id")
     directe = conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                            (album_id, *params)).fetchone() is not None

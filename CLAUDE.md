@@ -851,7 +851,10 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   404 sur le bac d'un autre, et dans le sien, ou là où il est invité, un arrivant comme les
   autres. Il voit seulement qu'ils existent : `GET /api/projets?bacs_a_sable=1`, pour qui
   décide des projets — propriétaire, date d'effacement, rien de ce qu'ils portent ; le
-  paramètre n'existe plus ailleurs. Le mono-poste (`TOTALE`) n'est pas borné. Trois
+  paramètre n'existe plus ailleurs. Seule exception, décidée par le pilotage :
+  `GET /api/sauvegarde` reste ENTIÈRE, bacs à sable des autres compris — la doctrine de
+  DROIT-1, une sauvegarde partielle ne restaure pas une instance. Le mono-poste (`TOTALE`)
+  n'est pas borné. Trois
   ensembles de plus dans `Portee` (`bacs_a_sable`, `bacs_a_soi`, `collections_bac`), qui
   ne changent AUCUNE question ponctuelle — dans son bac à sable on travaille comme
   ailleurs — et retirent des questions TRANSVERSES ce qu'il donnerait hors de lui (S2) :

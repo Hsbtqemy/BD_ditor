@@ -571,6 +571,9 @@ _MOTIF_BAC_SANS_DEMANDE = ("Dans un bac à sable, rien ne se demande — ni à u
 _MOTIF_BAC_SANS_FONDS = ("Dans un bac à sable, rien ne part au fonds : c'est la dernière "
                          "collection de cet album, qui se supprime définitivement (son "
                          "propriétaire le peut) ou s'efface avec le bac à sable.")
+_MOTIF_JEU_SOURCE = ("C'est une copie du jeu des bacs à sable : elle n'est la source de rien "
+                     "hors d'un bac à sable, et le jeu ne se change que par son outil "
+                     "(`tools/preparer_jeu.py`).")
 _MOTIF_BAC_ISOLE = ("Un bac à sable est un cul-de-sac : rien n'en sort vers un autre projet, "
                     "et rien n'y entre d'ailleurs.")
 _MOTIF_BAC_ANNUAIRE = ("Dans un bac à sable, on fait entrer un compte par son login, sans "
