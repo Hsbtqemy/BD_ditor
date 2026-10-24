@@ -9,8 +9,11 @@ tous les autres le lundi à 4 h, heure de Paris, sans exception (Hugo, 2026-10-2
 **Une exception écrite, et une seule** : aujourd'hui seule une portée totale décide quels
 projets existent (`peut_decider_des_projets`). Ouvrir son bac à sable n'élargit pas cette
 question — elle garde son sens —, il en pose une NEUVE, `peut_ouvrir_un_bac_a_sable` : un
-login, derrière le proxy. Un compte PARTAGÉ est refusé : un bac à sable est à une personne,
-et « remettre à neuf » y effacerait le travail d'un autre sans qu'il le sache.
+login, derrière le proxy. Un compte PARTAGÉ en a un comme les autres, avec tous ses gestes,
+« Remettre à neuf » compris, et s'y fait inviter (Hugo, 2026-10-24, qui renverse S1 du
+cadrage) : « C'est un bac à sable, fait pour itérer, essayer, recommencer, effacer. Le
+travail produit n'y a aucune valeur, d'autant qu'on ne peut pas exporter. » Aucune garde du
+bac à sable ne lit la nature d'un compte.
 
 Ce que la responsabilité d'un bac à sable NE donne PAS ailleurs — les notices du fonds, le
 vocabulaire et les personnages globaux, l'annuaire, le bandeau de portée vide — est tenu
@@ -28,7 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 import autorisation
 import conflit
 from config import BAC_A_SABLE_PLAFOND_PLANCHES
-from database import NATURE_COLLECTIF, ROLES_JEU, collection_de_base
+from database import ROLES_JEU, collection_de_base
 from pipeline import nlp
 
 from socle import (_creer_bac_a_sable, _effacer_bac_a_sable, _planches_importees_du_bac,
@@ -40,28 +43,20 @@ NOM_AFFICHE_MIEN = "Mon bac à sable"
 
 _MOTIF_OUVRIR = ("Un bac à sable s'ouvre pour un compte nommé, derrière l'authentification : "
                  "aucune identité ne parvient à l'application pour cette requête.")
-_MOTIF_PARTAGE = ("Un compte partagé n'a pas de bac à sable : il est à une personne, et le "
-                  "remettre à neuf effacerait le travail d'un autre.")
-
-
-def _est_partage(conn, login) -> bool:
-    return conn.execute("SELECT 1 FROM utilisateur WHERE login = ? AND nature = ?",
-                        (login, NATURE_COLLECTIF)).fetchone() is not None
 
 
 def _exiger_d_ouvrir(conn, portee: autorisation.Portee) -> None:
-    """403 nommés : ils parlent de l'appelant, jamais d'un objet."""
-    if not portee.peut_ouvrir_un_bac_a_sable():
+    """403 nommé : il parle de l'appelant, jamais d'un objet."""
+    if not peut_ouvrir(conn, portee):
         raise HTTPException(403, _MOTIF_OUVRIR)
-    if _est_partage(conn, portee.utilisateur):
-        raise HTTPException(403, _MOTIF_PARTAGE)
 
 
 def peut_ouvrir(conn, portee: autorisation.Portee) -> bool:
     """La même question que `_exiger_d_ouvrir`, en booléen : l'écran n'offre « Mon bac à
     sable » qu'à qui le serveur l'ouvrirait (`GET /api/moi`, `bac_a_sable_ouvrable`). Un
-    `null` de `GET /api/bac-a-sable` ne le dit pas : il vaut aussi pour qui n'en a pas."""
-    return portee.peut_ouvrir_un_bac_a_sable() and not _est_partage(conn, portee.utilisateur)
+    `null` de `GET /api/bac-a-sable` ne le dit pas : il vaut aussi pour qui n'en a pas. Un
+    compte partagé y répond oui, comme tout login (Hugo, 2026-10-24)."""
+    return portee.peut_ouvrir_un_bac_a_sable()
 
 
 def _mien(conn, login):
@@ -130,7 +125,7 @@ def ouvrir_mon_bac_a_sable(response: Response, conn: sqlite3.Connection = Depend
     existe déjà — le bouton est « y aller », idempotent. Un par login, relu sous le verrou
     d'écriture : deux clics simultanés n'en créent pas deux.
 
-    403 nommé sans identité (mono-poste compris) et pour un compte partagé."""
+    403 nommé sans identité (mono-poste compris) ; un compte partagé en ouvre un."""
     _exiger_d_ouvrir(conn, portee)
     # Une copie au-dessus du cran `images` recopie l'index des régions : spaCy se charge
     # HORS de la transaction d'écriture (CLAUDE.md § Concurrence), comme pour la prise.

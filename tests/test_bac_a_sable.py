@@ -187,12 +187,75 @@ def test_le_mono_poste_n_a_pas_de_bac_a_sable(client, jeu):
     assert client.get("/api/bac-a-sable").json() is None
 
 
-def test_un_compte_partage_n_a_pas_de_bac_a_sable(client, decor):
-    client.get("/api/moi", headers={"Remote-User": "groupe-tp"})
+TP = {"Remote-User": "groupe-tp", "Remote-Groups": ""}
+
+
+def _partage(client):
+    """`groupe-tp`, déclaré compte PARTAGÉ (`utilisateur.nature = 'collectif'`)."""
+    client.get("/api/moi", headers=TP)
     assert client.patch("/api/comptes/groupe-tp/nature", headers=ADMIN,
                         json={"nature": "collectif"}).status_code == 200
-    r = client.post("/api/bac-a-sable", headers={"Remote-User": "groupe-tp"})
-    assert r.status_code == 403 and "partagé" in r.json()["detail"]
+
+
+def test_un_compte_partage_a_son_bac_a_sable_avec_tous_ses_gestes(client, decor):
+    """Hugo, 2026-10-24, qui renverse S1 : « C'est un bac à sable, fait pour itérer, essayer,
+    recommencer, effacer. Le travail produit n'y a aucune valeur, d'autant qu'on ne peut pas
+    exporter. » Un compte partagé l'ouvre, y détruit un album que l'invité a touché, le
+    remet à neuf, y invite — et il est invité chez un autre, où il travaille et d'où il
+    sort de lui-même."""
+    _partage(client)
+    r = client.post("/api/bac-a-sable", headers=TP)
+    assert r.status_code == 201, r.text
+    bac = r.json()
+    assert client.get("/api/bac-a-sable", headers=TP).json()["id"] == bac["id"]
+    # Il y invite, comme tout propriétaire.
+    assert client.put(f"/api/projets/{bac['id']}/membres", headers=TP,
+                      json={"genre": "utilisateur", "principal": "sam",
+                            "role": "membre"}).status_code == 200
+    # Il y détruit, sans rien demander, une copie où l'invité a travaillé : le disjoint du
+    # bac à sable de `clause_suppression_directe` ne lit pas la nature.
+    copie = next(j for j in bac["jeu"] if j["cran"] == "grammaire")
+    client.post(f"/api/planches/{copie['planche_ids'][0]}/regions", headers=SAM,
+                json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9})
+    vu = {a["id"]: a for a in client.get("/api/albums", headers=TP).json()}
+    assert vu[copie["album_id"]]["destructible"] is True
+    assert client.delete(f"/api/albums/{copie['album_id']}", headers=TP).status_code == 204
+    # Il le remet à neuf : un bac à sable neuf, le jeu revenu, l'invitation partie.
+    r = client.post("/api/bac-a-sable/remise-a-neuf", headers=TP)
+    assert r.status_code == 200, r.text
+    neuf = r.json()
+    assert neuf["id"] != bac["id"] and len(neuf["jeu"]) == len(bac["jeu"])
+    assert _sql(decor["db"], "SELECT principal FROM projet_acces WHERE projet_id = ?",
+                (neuf["id"],)) == [{"principal": "groupe-tp"}]
+    # Invité chez lea : il y travaille, et le quitte de lui-même.
+    pid = decor["bac"]["id"]
+    assert client.put(f"/api/projets/{pid}/membres", headers=LEA,
+                      json={"genre": "utilisateur", "principal": "groupe-tp",
+                            "role": "membre"}).status_code == 200
+    planche = _copie(decor, "exemple")["planche_ids"][0]
+    assert client.post(f"/api/planches/{planche}/regions", headers=TP,
+                       json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}
+                       ).status_code == 201
+    assert client.post(f"/api/bac-a-sable/{pid}/quitter", headers=TP).status_code == 204
+
+
+def test_hors_de_son_bac_un_compte_partage_ne_supprime_toujours_rien_seul(client, decor):
+    """La quatrième moitié de `clause_suppression_directe` est inchangée : hors de son bac à
+    sable, un compte partagé ne supprime jamais définitivement seul, même l'album qu'il
+    vient de créer — alors qu'il en a un, où il détruit tout."""
+    _partage(client)
+    client.post("/api/bac-a-sable", headers=TP)
+    client.put(f"/api/projets/{decor['etude']}/membres", headers=ADMIN,
+               json={"genre": "utilisateur", "principal": "groupe-tp", "role": "membre"})
+    base = next(c["id"] for c in client.get("/api/collections", headers=TP).json()
+                if c.get("base") and c.get("projet_id") == decor["etude"])
+    a = client.post("/api/albums", headers=TP,
+                    json={"titre": "Du TP", "collection_id": base})
+    assert a.status_code in (200, 201), a.text
+    a = a.json()["id"]
+    assert {x["id"]: x for x in client.get("/api/albums", headers=TP).json()
+            }[a]["destructible"] is False
+    assert client.delete(f"/api/albums/{a}", headers=TP).status_code == 403
 
 
 def test_la_date_d_effacement_est_le_lundi_a_4h_de_paris(client, decor):

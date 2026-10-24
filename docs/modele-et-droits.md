@@ -398,8 +398,10 @@ Paris), sans exception, et l'on reclique pour en retrouver un neuf. La date du p
 effacement se lit dans le bac à sable.
 
 - **Un bac à sable par compte**, qui s'ouvre au premier clic et y ramène ensuite. Un compte
-  partagé n'en a pas : remettre à neuf y effacerait le travail d'un autre. L'administrateur
-  a le sien, comme les autres.
+  partagé a le sien, avec tous les gestes, *Remettre à neuf* compris, et peut être invité
+  dans celui d'un autre : ce qu'on fait dans un bac à sable n'a aucune valeur, et rien n'en
+  sort (Hugo, 2026-10-24). Ailleurs, un compte partagé ne supprime toujours rien
+  définitivement sans le demander. L'administrateur a le sien, comme les autres.
 - **Son propriétaire y invite des comptes**, par leur login, au rôle de membre : ils
   écrivent dans le jeu, pour essayer le travail à plusieurs. Pas de groupe, pas de second
   responsable, et l'annuaire ne s'y consulte pas. Personne d'autre ne règle un bac à sable.
@@ -412,7 +414,8 @@ effacement se lit dans le bac à sable.
   comme les autres.
 - **Son propriétaire le remet à neuf quand il veut** : tout ce qui y a été fait part, le
   travail des invités aussi, et le jeu revient. Il y supprime aussi tout album sans rien
-  demander ; un invité garde la règle commune (sa copie, que personne d'autre n'a touchée).
+  demander, compte partagé compris ; un invité garde la règle commune (sa copie, que
+  personne d'autre n'a touchée).
 - **On y importe ses propres images**, une cinquantaine de planches au plus — dans un album
   à soi comme dans une copie du jeu, tout compte ; elles partent avec le reste. Depuis
   ShareDocs, sous son propre compte seulement.

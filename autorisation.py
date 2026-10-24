@@ -460,8 +460,9 @@ class Portee:
         sens — décider quels projets existent reste à la portée totale. Un login, derrière le
         proxy : un compte ordinaire comme un administrateur (Hugo, 2026-10-22 : il en a un
         aussi). Ni le mono-poste — sans login, il n'y a ni « mien » ni personne à inviter —,
-        ni une requête sans identité (portée vide). Le compte PARTAGÉ est refusé à la route,
-        qui lit sa nature en base : un bac à sable est à une personne."""
+        ni une requête sans identité (portée vide). Le compte PARTAGÉ en a un aussi (Hugo,
+        2026-10-24, qui renverse S1 : le travail d'un bac à sable n'a aucune valeur, et rien
+        n'en sort) : la question ne lit pas la nature d'un compte."""
         return bool(AUTH_PROXY) and bool(self.utilisateur)
 
     def _ecriture_hors_bac(self) -> frozenset:
@@ -660,16 +661,16 @@ class Portee:
         # demander, quel que soit qui y a travaillé — rien ne s'y demande à un
         # administrateur (S3), et le travail d'un invité s'y efface de toute façon chaque
         # lundi. Le projet de l'album (écrit, ou lu dans ses collections) est l'un des bacs à
-        # sable qu'il a ouverts ; et il n'est pas un compte PARTAGÉ, la quatrième moitié
-        # gardée telle quelle. Un INVITÉ garde la règle commune.
+        # sable qu'il a ouverts — compte PARTAGÉ compris (Hugo, 2026-10-24 : il a son bac à
+        # sable avec tous ses gestes, et le remet à neuf ; un album de plus ou de moins n'y
+        # pèse rien). Hors de son bac à sable, la quatrième moitié ci-dessous est inchangée :
+        # un compte partagé n'y supprime jamais seul. Un INVITÉ garde la règle commune.
         bac, p_bac = "0", []
         if self.bacs_a_soi:
             ids = sorted(self.bacs_a_soi)
-            bac = (f"(EXISTS (SELECT 1 FROM albums _sbs WHERE _sbs.id = {alias} "
-                   f"AND {sql_projet_d_album('_sbs')} IN ({', '.join('?' * len(ids))})) "
-                   f"AND NOT EXISTS (SELECT 1 FROM utilisateur _sbu WHERE _sbu.login = ? "
-                   f"AND _sbu.nature = ?))")
-            p_bac = [*ids, self.utilisateur, NATURE_COLLECTIF]
+            bac = (f"EXISTS (SELECT 1 FROM albums _sbs WHERE _sbs.id = {alias} "
+                   f"AND {sql_projet_d_album('_sbs')} IN ({', '.join('?' * len(ids))}))")
+            p_bac = [*ids]
         detruire, p_detruire = self.clause_destruction(alias)
         if detruire == "0":
             return bac, p_bac

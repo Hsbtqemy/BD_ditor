@@ -235,6 +235,30 @@ def test_premier_clic_offert_par_la_bande_et_la_page_vide(page, jeu):
 
 
 @pytestmark_proxy
+def test_un_compte_partage_se_voit_offrir_le_sien(page, jeu):
+    """Hugo, 2026-10-24, qui renverse S1 : un compte PARTAGÉ a son bac à sable. Déclaré
+    `collectif` par l'administrateur, `groupe-tp` voit « Mon bac à sable » dans la bande et
+    dans le bandeau ; un clic l'ouvre, et sa ligne porte les gestes du propriétaire,
+    « Remettre à neuf… » compris."""
+    tp = {"Remote-User": "groupe-tp"}
+    _api(jeu["base"], tp, "GET", "/api/moi")
+    _api(jeu["base"], HUGO, "PATCH", "/api/comptes/groupe-tp/nature", {"nature": "collectif"})
+    _sous(page, tp)
+    vues = _requetes(page)
+    page.goto(jeu["base"] + "/", wait_until="networkidle")
+    expect(page.locator("#site-nav .bac-ouvrir-bande")).to_be_visible()
+    expect(page.locator("#portee-vide .portee-vide-geste button")).to_be_visible()
+    page.locator("#site-nav .bac-ouvrir-bande").click()
+    page.wait_for_url(re.compile(r"/\?album=\d+&planche=\d+$"))
+    page.wait_for_load_state("networkidle")
+    assert len([v for v in vues if v[0] == "POST" and v[1] == "/api/bac-a-sable"]) == 1
+    ligne = _ligne(page)
+    expect(ligne.locator(".bac-nom")).to_have_text("Bac à sable")
+    expect(ligne.locator("#bac-inviter")).to_be_visible()
+    expect(ligne.locator("#bac-remettre")).to_have_text("Remettre à neuf…")
+
+
+@pytestmark_proxy
 def test_qui_a_deja_un_projet_le_trouve_dans_la_bande_seulement(page, jeu):
     """lea a un projet : la bande l'offre, à côté du projet ; ni la page vide, ni la carte
     de la Bibliothèque, ni le menu du compte ; aucun bandeau de portée vide."""

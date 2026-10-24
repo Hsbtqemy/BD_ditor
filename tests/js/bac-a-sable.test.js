@@ -85,7 +85,7 @@ test("offert à qui le serveur l'ouvrirait, tant qu'il n'en a pas", () => {
   assert.equal(B.offrir(ouvrable, [ORDINAIRE, INVITE]), true, "l'invité chez un autre");
   assert.equal(B.offrir(ouvrable, [ORDINAIRE, MIEN]), false, "il l'a : dans le sélecteur");
   assert.equal(B.offrir({ bac_a_sable_ouvrable: false }, []), false,
-               "mono-poste, compte partagé, sans identité");
+               "mono-poste, sans identité — un compte partagé en a un (Hugo, 2026-10-24)");
   assert.equal(B.offrir(null, []), false, "/api/moi illisible");
   assert.equal(B.offrir({}, []), false, "un serveur d'avant");
 });

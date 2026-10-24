@@ -404,7 +404,8 @@ sable*.
 
 Un clic, et vous arrivez dans l'**Atelier, sur la planche du parcours** du jeu. Ensuite, il
 se choisit dans la liste *Projet* comme les autres, sous le nom *Mon bac à sable* ; recliquer
-ramène au même. Un compte partagé n'en a pas : il est à une personne.
+ramène au même. Un compte partagé a le sien aussi, avec les mêmes gestes : ce qu'on y fait
+n'a aucune valeur, et rien n'en sort.
 
 **La ligne du bac à sable.** Tant que le projet courant est un bac à sable, une rangée
 rayée se lit sous la bande, sur toutes les pages : *Bac à sable* (son aide au survol du nom),

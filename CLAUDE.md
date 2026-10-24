@@ -851,8 +851,11 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   v35, 2026-10-24 ; décisions de Hugo des 2026-10-21 et 2026-10-22, cadrage
   `docs/col4-bac-a-sable-cadrage.md`). `projet.bac_a_sable_de` (le login de qui l'a
   ouvert) en fait un : un par compte, créé par `POST /api/bac-a-sable` sous une question
-  NEUVE, `peut_ouvrir_un_bac_a_sable` (un login, derrière le proxy ; le compte partagé est
-  refusé à la route) — `peut_decider_des_projets` garde son sens. Son propriétaire en est
+  NEUVE, `peut_ouvrir_un_bac_a_sable` (un login, derrière le proxy ; le compte PARTAGÉ
+  compris, avec tous les gestes — remettre à neuf, être invité, détruire dans le sien —,
+  Hugo, 2026-10-24, qui renverse S1 : « le travail produit n'y a aucune valeur, d'autant
+  qu'on ne peut pas exporter » ; aucune garde du bac à sable ne lit plus la nature d'un
+  compte) — `peut_decider_des_projets` garde son sens. Son propriétaire en est
   le seul responsable (`projet_acces`, inamovible) ; il y invite des COMPTES, au rôle de
   membre (`PUT …/membres`, 409 nommés pour un groupe, un responsable, sa propre ligne) ;
   un invité le QUITTE de lui-même (`POST /api/bac-a-sable/{id}/quitter`), et qui en sort

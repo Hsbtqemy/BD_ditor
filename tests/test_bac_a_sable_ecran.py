@@ -37,14 +37,15 @@ def test_le_mono_poste_ne_se_voit_rien_offrir(client, jeu):
     assert client.get("/api/moi").json()["bac_a_sable_ouvrable"] is False
 
 
-def test_un_compte_partage_ne_se_voit_rien_offrir(client, decor):
+def test_un_compte_partage_se_voit_offrir_le_sien(client, decor):
+    """Hugo, 2026-10-24 : un compte partagé a son bac à sable. Déclaré partagé, il se le voit
+    toujours offrir, et la route l'ouvre — les deux répondent la même chose."""
     tp = {"Remote-User": "groupe-tp"}
     assert client.get("/api/moi", headers=tp).json()["bac_a_sable_ouvrable"] is True
     assert client.patch("/api/comptes/groupe-tp/nature", headers=ADMIN,
                         json={"nature": "collectif"}).status_code == 200
-    assert client.get("/api/moi", headers=tp).json()["bac_a_sable_ouvrable"] is False
-    # La contre-épreuve : la route le refuse aussi. Les deux répondent la même chose.
-    assert client.post("/api/bac-a-sable", headers=tp).status_code == 403
+    assert client.get("/api/moi", headers=tp).json()["bac_a_sable_ouvrable"] is True
+    assert client.post("/api/bac-a-sable", headers=tp).status_code == 201
 
 
 # --------------------------------------------------------------------------- #
