@@ -318,6 +318,167 @@ def test_le_jeu_ne_se_regle_pas(client, reference):
                              headers=ADMIN))
 
 
+# Le cliquet de la référence : TOUTE route d'écriture qui nomme un album, une planche, une
+# région ou une contribution — et les deux qui en nomment un dans leur corps — est jouée
+# sur la référence, par une portée TOTALE, avec un corps valide. Elle doit répondre le 409
+# du jeu, et la référence ne doit pas bouger d'un octet. Une route neuve absente de la
+# table fait échouer le test : elle doit être déclarée, donc jouée (COL-4, relecture
+# croisée : le texte, la notice, la validation, la relecture, l'annotation, une région,
+# une contribution, l'ordre des planches passaient tous).
+def _corps_des_ecritures(ref):
+    a, pl, rg, ct = ref["album"], ref["planche"], ref["region"], ref["contribution"]
+    v, p = ref["valeur"], ref["personnage"]
+    return {
+        ("PUT", "/api/regions/{region_id}/tokens/{ordre}"):
+            (f"/api/regions/{rg}/tokens/0", {"lemme": "x"}),
+        ("POST", "/api/regions/{region_id}/grammaire/valider"):
+            (f"/api/regions/{rg}/grammaire/valider", None),
+        ("DELETE", "/api/regions/{region_id}/tokens/{ordre}"):
+            (f"/api/regions/{rg}/tokens/0", None),
+        ("PUT", "/api/regions/{region_id}/locuteur"):
+            (f"/api/regions/{rg}/locuteur", {"personnage_id": p}),
+        ("DELETE", "/api/regions/{region_id}/locuteur"): (f"/api/regions/{rg}/locuteur", None),
+        ("PUT", "/api/regions/{region_id}/personnage"):
+            (f"/api/regions/{ref['case']}/personnage", {"personnage_id": p}),
+        ("DELETE", "/api/regions/{region_id}/personnage"):
+            (f"/api/regions/{ref['case']}/personnage", None),
+        ("PUT", "/api/regions/{region_id}/attributs"):
+            (f"/api/regions/{ref['case']}/attributs", {"valeur_id": v}),
+        ("DELETE", "/api/regions/{region_id}/attributs/{valeur_id}"):
+            (f"/api/regions/{ref['case']}/attributs/{v}", None),
+        ("PUT", "/api/albums/{album_id}/collections/{collection_id}"):
+            (f"/api/albums/{a}/collections/{ref['ailleurs']}", None),
+        ("DELETE", "/api/albums/{album_id}/collections/{collection_id}"):
+            (f"/api/albums/{a}/collections/{ref['collection']}", None),
+        ("PUT", "/api/albums/{album_id}"): (f"/api/albums/{a}", {"titre": "Altéré"}),
+        ("DELETE", "/api/albums/{album_id}"): (f"/api/albums/{a}", None),
+        ("DELETE", "/api/planches/{planche_id}"): (f"/api/planches/{pl}", None),
+        ("POST", "/api/albums/{album_id}/import"): (f"/api/albums/{a}/import", "fichier"),
+        ("POST", "/api/planches/{planche_id}/segmenter"): (f"/api/planches/{pl}/segmenter", None),
+        ("POST", "/api/planches/{planche_id}/detecter-bulles"):
+            (f"/api/planches/{pl}/detecter-bulles", None),
+        ("POST", "/api/planches/{planche_id}/ocr"): (f"/api/planches/{pl}/ocr", None),
+        ("POST", "/api/planches/{planche_id}/regions"):
+            (f"/api/planches/{pl}/regions", {"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}),
+        ("PUT", "/api/regions/{region_id}"): (f"/api/regions/{rg}", {"ocr_texte": "ALTÉRÉ"}),
+        ("DELETE", "/api/regions/{region_id}"): (f"/api/regions/{rg}", None),
+        ("POST", "/api/planches/{planche_id}/reordonner"):
+            (f"/api/planches/{pl}/reordonner", None),
+        ("POST", "/api/regions/{region_id}/deplacer"):
+            (f"/api/regions/{rg}/deplacer", {"sens": "haut"}),
+        ("PATCH", "/api/planches/{planche_id}/statut"):
+            (f"/api/planches/{pl}/statut", {"statut": "valide"}),
+        ("PATCH", "/api/planches/{planche_id}/relecture"):
+            (f"/api/planches/{pl}/relecture", {"relecture": "faite"}),
+        ("PATCH", "/api/planches/{planche_id}/validation"):
+            (f"/api/planches/{pl}/validation", {"validee": True}),
+        ("PATCH", "/api/planches/{planche_id}/verrou"):
+            (f"/api/planches/{pl}/verrou", {"verrouillee": True}),
+        ("PATCH", "/api/planches/{planche_id}/role"):
+            (f"/api/planches/{pl}/role", {"role": "couverture"}),
+        ("PUT", "/api/regions/{region_id}/annotation"):
+            (f"/api/regions/{rg}/annotation", {"note": "ajout", "tags": ["altere"]}),
+        ("POST", "/api/albums/{album_id}/contributions"):
+            (f"/api/albums/{a}/contributions", {"nom": "Intrus", "role": "scenario"}),
+        ("POST", "/api/albums/{album_id}/valider"): (f"/api/albums/{a}/valider", {"validee": True}),
+        ("PUT", "/api/albums/{album_id}/ordre-des-planches"):
+            (f"/api/albums/{a}/ordre-des-planches", {"ordre": [pl], "vu": [pl]}),
+        ("DELETE", "/api/contributions/{contribution_id}"): (f"/api/contributions/{ct}", None),
+    }
+
+
+_CLES_D_OBJET = ("{album_id}", "{planche_id}", "{region_id}", "{contribution_id}")
+
+
+def _empreinte(db, album):
+    """Tout ce que porte la référence, en clair : la moindre écriture la change."""
+    c = sqlite3.connect(db)
+    try:
+        lignes = []
+        for q in ("SELECT * FROM albums WHERE id = ?",
+                  "SELECT * FROM planches WHERE album_id = ? ORDER BY id",
+                  "SELECT r.* FROM regions r JOIN planches p ON p.id = r.planche_id "
+                  "WHERE p.album_id = ? ORDER BY r.id",
+                  "SELECT an.*, at.tag_id FROM annotations an JOIN regions r ON r.id = "
+                  "an.region_id JOIN planches p ON p.id = r.planche_id LEFT JOIN "
+                  "annotation_tags at ON at.annotation_id = an.id WHERE p.album_id = ?",
+                  "SELECT * FROM contribution WHERE album_id = ? ORDER BY id",
+                  "SELECT tc.* FROM token_correction tc JOIN regions r ON r.id = tc.region_id "
+                  "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
+                  "SELECT x.* FROM region_attribut x JOIN regions r ON r.id = x.region_id "
+                  "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
+                  "SELECT x.* FROM bulle_locuteur x JOIN regions r ON r.id = x.region_id "
+                  "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
+                  "SELECT x.* FROM personnage_presence x JOIN regions r ON r.id = x.region_id "
+                  "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
+                  "SELECT * FROM collection_album WHERE album_id = ? ORDER BY collection_id"):
+            lignes.append(c.execute(q, (album,)).fetchall())
+        return lignes
+    finally:
+        c.close()
+
+
+@pytest.fixture
+def reference_complete(client, db_path, reference, png_bytes):
+    """La référence de l'exemple, avec une case, une contribution, une valeur d'attribut et
+    un personnage à attribuer."""
+    regions = _sql(db_path, "SELECT id, type FROM regions WHERE planche_id = ? ORDER BY id",
+                   (reference["planche"],))
+    case = next(r["id"] for r in regions if r["type"] == "case")
+    bulle = next(r["id"] for r in regions if r["type"] == "bulle")
+    c = sqlite3.connect(db_path)
+    try:
+        ct = c.execute("INSERT INTO contribution (album_id, nom, rang) VALUES (?, 'X', 0)",
+                       (reference["album"],)).lastrowid
+        c.commit()
+    finally:
+        c.close()
+    d = client.post("/api/attributs/dimensions", headers=ADMIN,
+                    json={"cible": "case", "nom": "cadrage"}).json()["id"]
+    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=ADMIN,
+                    json={"valeur": "gros plan"}).json()["id"]
+    p = client.post("/api/personnages", headers=ADMIN, json={"nom": "Spirou"}).json()["id"]
+    ailleurs = client.post("/api/collections", headers=ADMIN, json={"nom": "Ailleurs"}).json()
+    return {**reference, "region": bulle, "case": case, "contribution": ct, "valeur": v,
+            "personnage": p, "ailleurs": ailleurs["id"]}
+
+
+def test_aucune_ecriture_ne_touche_la_reference(client, db_path, reference_complete,
+                                                png_bytes):
+    import inventaire_routes
+    ref = reference_complete
+    table = _corps_des_ecritures(ref)
+    ecritures = set()
+    for route in inventaire_routes.routes_api():
+        for m in (getattr(route, "methods", None) or set()) & {"POST", "PUT", "PATCH",
+                                                                "DELETE"}:
+            if any(k in route.path for k in _CLES_D_OBJET):
+                ecritures.add((m, route.path))
+    assert ecritures - set(table) == set(), "route d'écriture neuve, à déclarer ici"
+    assert len(ecritures) >= 30
+    # Les deux qui nomment l'album dans leur CORPS.
+    jouees = [(m, chemin, corps) for (m, _p), (chemin, corps) in sorted(table.items())]
+    jouees += [("POST", "/api/sharedocs/importer",
+                {"album_id": ref["album"], "chemins": ["x/p.png"]}),
+               ("POST", "/api/jobs", {"passes": ["segmenter"], "album_ids": [ref["album"]]})]
+    avant = _empreinte(db_path, ref["album"])
+    for m, chemin, corps in jouees:
+        if corps == "fichier":
+            r = client.post(chemin, headers=ADMIN,
+                            files={"file": ("p.png", png_bytes, "image/png")})
+        else:
+            r = client.request(m, chemin, headers=ADMIN,
+                               **({"json": corps} if corps is not None else {}))
+        if chemin == "/api/jobs":
+            # Un lot filtre au lieu de refuser (AUTH-2) : aucune planche à traiter — ou le
+            # moteur absent avant tout. Jamais une planche de la référence.
+            assert r.status_code in (422, 503), (chemin, r.status_code, r.text)
+        else:
+            assert r.status_code == 409 and "jeu des bacs à sable" in r.json()["detail"], \
+                (m, chemin, r.status_code, r.text)
+        assert _empreinte(db_path, ref["album"]) == avant, (m, chemin)
+
+
 def test_un_compte_ordinaire_ne_voit_pas_le_jeu(client, reference):
     """Personne n'en est membre : 404, comme un objet qui n'existe pas."""
     assert client.get(f"/api/albums/{reference['album']}/planches",

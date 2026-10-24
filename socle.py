@@ -46,7 +46,7 @@ from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DE
                       demandes_vers_collection, est_jeu, etat_des_reponses, get_connection,
                       nature_du_projet, prochain_effacement, projet_d_album,
                       projet_de_collection, rangement_traverse, retirer_document_sans_copie,
-                      sql_projet_d_album, sql_projet_de, unindex_region)
+                      sql_est_jeu, sql_projet_d_album, sql_projet_de, unindex_region)
 from config import BAC_A_SABLE_PLAFOND_PLANCHES
 from pipeline.ingest import (chemin_d_image_sur, dossiers_d_album, elaguer_dossier_d_album,
                              remove_album_files, remove_planche_files)
@@ -345,12 +345,28 @@ def _tags_caches(conn: sqlite3.Connection, portee, region_id: int) -> list[int]:
 # qui sauterait le contrôle rendrait l'oubli invisible — c'est exactement le motif que
 # SANTE-1 vient de corriger ailleurs dans ce dépôt.
 
+def _refuser_la_reference(conn, portee: autorisation.Portee, album_id) -> None:
+    """Un accès en ÉCRITURE vient d'échouer : 409 nommé si l'album est une copie de
+    RÉFÉRENCE du jeu que l'appelant LIT — en écriture, `Portee.clause_album` l'écarte pour
+    toute portée (COL-4 : le jeu ne se change que par son outil). Sinon rien : l'appelant
+    lève son 404. Un 409 et non un 404 : on la lit, un « introuvable » mentirait."""
+    if album_id is None:
+        return
+    ou, params = portee.clause_album("a.id")
+    if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou} "
+                    f"AND {sql_est_jeu(sql_projet_d_album('a'))}",
+                    (album_id, *params)).fetchone():
+        raise HTTPException(409, _MOTIF_JEU)
+
+
 def _get_album(conn, portee: autorisation.Portee, album_id: int, *,
                ecriture: bool = False) -> dict:
     ou, params = portee.clause_album("albums.id", ecriture=ecriture)
     a = _row(conn.execute(f"SELECT * FROM albums WHERE id = ? AND {ou}",
                           (album_id, *params)))
     if a is None:
+        if ecriture:
+            _refuser_la_reference(conn, portee, album_id)
         raise HTTPException(404, f"Album {album_id} introuvable")
     return a
 
@@ -415,6 +431,10 @@ def _get_planche(conn, portee: autorisation.Portee, planche_id: int, *,
     p = _row(conn.execute(f"SELECT * FROM planches WHERE id = ? AND {ou}",
                           (planche_id, *params)))
     if p is None:
+        if ecriture:
+            a = conn.execute("SELECT album_id FROM planches WHERE id = ?",
+                             (planche_id,)).fetchone()
+            _refuser_la_reference(conn, portee, a[0] if a else None)
         raise HTTPException(404, f"Planche {planche_id} introuvable")
     return _planche_rendue(p)
 
@@ -427,6 +447,10 @@ def _get_region(conn, portee: autorisation.Portee, region_id: int, *,
         f"SELECT r.* FROM regions r JOIN planches pl ON pl.id = r.planche_id "
         f"WHERE r.id = ? AND {ou}", (region_id, *params)))
     if r is None:
+        if ecriture:
+            a = conn.execute("SELECT pl.album_id FROM regions r JOIN planches pl "
+                             "ON pl.id = r.planche_id WHERE r.id = ?", (region_id,)).fetchone()
+            _refuser_la_reference(conn, portee, a[0] if a else None)
         raise HTTPException(404, f"Région {region_id} introuvable")
     return r
 

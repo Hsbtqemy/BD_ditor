@@ -58,7 +58,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     OrdrePlanchesIn, ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
-    _MOTIF_JEU, _refuser_le_jeu,
+    _MOTIF_JEU, _refuser_le_jeu, _refuser_la_reference,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_ISOLE, _MOTIF_BAC_PROPRIETAIRE,
     _MOTIF_EXPORT_BAC, _bac_a_sable_de, _collection_locale_d_un_bac, _creer_bac_a_sable,
     _exiger_l_export_hors_bac, _exiger_le_plafond, _planches_importees_du_bac,
@@ -2030,6 +2030,9 @@ def delete_contribution(contribution_id: int, conn: sqlite3.Connection = Depends
     c = conn.execute(f"SELECT c.album_id, c.nom FROM contribution c WHERE c.id = ? AND {ou}",
                      (contribution_id, *params)).fetchone()
     if c is None:
+        a = conn.execute("SELECT album_id FROM contribution WHERE id = ?",
+                         (contribution_id,)).fetchone()
+        _refuser_la_reference(conn, portee, a[0] if a else None)   # COL-4 : le jeu
         raise HTTPException(404, f"Contribution {contribution_id} introuvable")
     conn.execute("DELETE FROM contribution WHERE id = ?", (contribution_id,))
     _journaliser_sur_le_document(conn, c["album_id"], {}, avant={

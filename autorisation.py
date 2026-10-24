@@ -68,7 +68,7 @@ from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
 from database import (CRAN_ANNOTATIONS, GENRES_CONSENTIS, NATURE_COLLECTIF, rang_du_cran,
-                      sql_album_isole, sql_est_bac_a_sable, sql_est_isole,
+                      sql_album_isole, sql_est_bac_a_sable, sql_est_isole, sql_est_jeu,
                       sql_projet_d_album, sql_projet_de, sql_rang_du_cran)
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
@@ -539,14 +539,26 @@ class Portee:
         On filtre par `EXISTS` sur les collections plutôt que par une liste d'albums :
         les collections sont peu nombreuses et les albums peuvent ne pas l'être. La liste
         d'ids reste donc courte quel que soit le corpus.
+
+        COL-4 — en ÉCRITURE, jamais une copie de référence du JEU, quelle que soit la
+        portée : le jeu ne se change que par son outil (`tools/preparer_jeu.py`), et ce
+        qu'on y changerait passerait dans chaque bac à sable créé ensuite. Les accesseurs
+        gardés disent alors pourquoi (409 nommé, `socle._refuser_la_reference`).
         """
+        if ecriture:
+            sql, params = self._clause_album(alias, ecriture=True)
+            return (f"({sql} AND NOT EXISTS (SELECT 1 FROM albums _jxa WHERE _jxa.id = "
+                    f"{alias} AND {sql_est_jeu(sql_projet_d_album('_jxa'))}))", params)
+        return self._clause_album(alias, ecriture=False)
+
+    def _clause_album(self, alias: str, *, ecriture: bool) -> tuple[str, list]:
         if self.tout:
             if self.hors_isoles:                # COL-4, S8 : `pour_le_corpus`
                 return (f"NOT EXISTS (SELECT 1 FROM albums _hia WHERE _hia.id = {alias} "
                         f"AND {sql_album_isole('_hia')})", [])
             if self.bornee:
                 return self._bornee_sur_album(
-                    alias, self._ordinaire().clause_album(alias, ecriture=ecriture))
+                    alias, self._ordinaire()._clause_album(alias, ecriture=ecriture))
             return "1", []
         ids = sorted(self.ecriture if ecriture else self.lecture)
         if not ids:
