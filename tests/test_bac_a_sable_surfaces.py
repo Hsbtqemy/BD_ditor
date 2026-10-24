@@ -125,16 +125,33 @@ def test_comptes_et_groupes_ecarte_les_bacs_a_sable(client, corpus):
 
 
 def test_aucune_demande_d_un_bac_a_sable_dans_a_faire(client, corpus):
+    """Aucune n'y naît plus (`test_bac_a_sable.test_rien_ne_se_demande_dans_un_bac_a_sable`).
+    Une demande posée en base — d'avant ce refus, ou retouchée — ne paraît ni dans « À
+    faire » ni dans la liste de l'administrateur ; et pas davantage une fois le bac à sable
+    EFFACÉ, quand plus aucune ligne de `projet` ne dit qu'il en était un (relecture
+    croisée : elle y reparaissait)."""
     pid = corpus["bac"]["id"]
     chez_sam = client.post("/api/collections", headers=SAM,
                            json={"nom": "Chez Sam", "projet_id": pid}).json()["id"]
     copie = _copie(corpus, "exemple")["album_id"]
-    r = client.put(f"/api/albums/{copie}/collections/{chez_sam}", headers=SAM)
-    assert r.status_code == 202
-    demande = r.json()["demande_id"]
-    vue = client.get("/api/comptes-et-groupes", headers=HUGO).json()
-    assert demande not in {l.get("demande") for l in vue["a_regarder"]}
-    assert demande not in {d["id"] for d in client.get("/api/demandes", headers=HUGO).json()}
+    assert client.put(f"/api/albums/{copie}/collections/{chez_sam}",
+                      headers=SAM).status_code == 403
+    demande = _sql(corpus["db"], "INSERT INTO demande (genre, demandeur, projet_id, "
+                                 "projet_nom, collection_id, collection_nom) VALUES "
+                                 "('rejoindre', 'sam', ?, 'Bac à sable', NULL, NULL) "
+                                 "RETURNING id", (pid,))[0]["id"]
+
+    def visible():
+        vue = client.get("/api/comptes-et-groupes", headers=HUGO).json()
+        return (demande in {l.get("demande") for l in vue["a_regarder"]}
+                or demande in {d["id"] for d in
+                               client.get("/api/demandes", headers=HUGO).json()})
+
+    assert not visible()
+    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=LEA).status_code == 200
+    assert _sql(corpus["db"], "SELECT COUNT(*) AS n FROM projet WHERE id = ?",
+                (pid,)) == [{"n": 0}]
+    assert not visible()
 
 
 def test_le_fonds_masque_les_bacs_a_sable_et_le_jeu(client, corpus):

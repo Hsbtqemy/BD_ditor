@@ -43,7 +43,8 @@ from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DE
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
                       NOM_BAC_A_SABLE, clause_appartenance, cle_tag, collection_de_base,
                       collection_row, creer_collection_de_base, creer_copie,
-                      demandes_vers_collection, est_jeu, etat_des_reponses, get_connection,
+                      demandes_vers_collection, est_isole, est_jeu, etat_des_reponses,
+                      get_connection,
                       nature_du_projet, prochain_effacement, projet_d_album,
                       projet_de_collection, rangement_traverse, retirer_document_sans_copie,
                       sql_album_isole, sql_est_jeu, sql_projet_d_album, sql_projet_de,
@@ -550,6 +551,12 @@ def _refuser_le_jeu(conn, *, projet_id=None, collection_id=None, album_id=None) 
 # part » — ne compte pour rien ailleurs (S2, dans `autorisation.Portee`).
 _MOTIF_BAC_PROPRIETAIRE = ("Dans un bac à sable, c'est son propriétaire qui le fait : rien "
                            "ne s'y demande à un administrateur.")
+_MOTIF_BAC_SANS_DEMANDE = ("Dans un bac à sable, rien ne se demande — ni à un administrateur "
+                           "ni à son propriétaire : ce qui demande un consentement, son "
+                           "propriétaire le fait lui-même.")
+_MOTIF_BAC_SANS_FONDS = ("Dans un bac à sable, rien ne part au fonds : c'est la dernière "
+                         "collection de cet album, qui se supprime définitivement (son "
+                         "propriétaire le peut) ou s'efface avec le bac à sable.")
 _MOTIF_BAC_ISOLE = ("Un bac à sable est un cul-de-sac : rien n'en sort vers un autre projet, "
                     "et rien n'y entre d'ailleurs.")
 _MOTIF_BAC_ANNUAIRE = ("Dans un bac à sable, on fait entrer un compte par son login, sans "
@@ -1247,7 +1254,15 @@ def _deposer(conn, portee: autorisation.Portee, genre: str, collection: dict,
     (la copie visée : celle qu'on rejoint, ou la copie gardée qu'on reprend ; NULL pour une
     copie vierge), `titre` —, et sa trace au journal. Rend son id. Ne commite pas. La
     collection d'arrivée est écrite avec son NOM, son identifiant pouvant se réattribuer.
-    `cran` : celui d'une demande d'EN PARTIR (tranche 3b, `demande.cran`) ; None sinon."""
+    `cran` : celui d'une demande d'EN PARTIR (tranche 3b, `demande.cran`) ; None sinon.
+
+    COL-4 — aucune demande, d'aucun genre, ne naît d'un BAC À SABLE ni du jeu : 403 nommé,
+    quelle que soit la portée (relecture croisée : une entrée de documents partait d'un bac
+    à sable vers l'administrateur). Les routes refusent avant ; ceci est le dernier mot,
+    là où toute demande de prise ou de rejoindre s'écrit."""
+    if est_isole(conn, projet_id) or est_isole(conn, projet_de_collection(conn,
+                                                                          collection["id"])):
+        raise HTTPException(403, _MOTIF_BAC_SANS_DEMANDE)
     projet = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
     cur = conn.execute(
         "INSERT INTO demande (genre, demandeur, motif, projet_id, projet_nom, collection_id, "

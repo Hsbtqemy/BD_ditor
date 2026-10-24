@@ -66,11 +66,16 @@ def decor(client, db_path, jeu, derriere_proxy):
                json={"note": "essai", "tags": ["mot-de-sam"]})
     client.post("/api/collections", headers=SAM,
                 json={"nom": "Chez Sam", "projet_id": bac["id"]})
-    # Le bac à sable de resp, avec une copie GARDÉE au fonds ; celui de hugo, expiré.
+    # Le bac à sable de resp, avec une copie GARDÉE au fonds ; celui de hugo, expiré. Rien
+    # ne part plus au fonds depuis un bac à sable (la route le refuse) : la copie gardée est
+    # posée en base, l'état que l'effacement doit encore savoir prendre (une base d'avant
+    # ce refus, ou retouchée).
     bac_resp = client.post("/api/bac-a-sable", headers=RESP).json()
     gardee = bac_resp["jeu"][0]["album_id"]
     assert client.delete(f"/api/albums/{gardee}/collections/{bac_resp['base']['id']}",
-                         headers=RESP).status_code == 204
+                         headers=RESP).status_code == 409
+    _sql(db_path, "UPDATE albums SET projet_id = ? WHERE id = ?", (bac_resp["id"], gardee))
+    _sql(db_path, "DELETE FROM collection_album WHERE album_id = ?", (gardee,))
     bac_hugo = client.post("/api/bac-a-sable", headers=HUGO).json()
     _sql(db_path, "UPDATE projet SET efface_le = '2000-01-01 00:00:00' WHERE id = ?",
          (bac_hugo["id"],))

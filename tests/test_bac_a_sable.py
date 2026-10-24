@@ -713,47 +713,98 @@ def test_aucune_demande_n_atteint_l_administrateur(client, decor):
     assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM demande") == [{"n": 0}]
 
 
-def test_un_rejoindre_que_seul_l_administrateur_consentirait_est_refuse(client, decor):
-    """Une collection de sam dans le bac à sable, une copie qui vit dans la base ET chez
-    lui : aucun propriétaire ne les tient toutes — la demande irait à un administrateur."""
+def test_rien_ne_se_demande_dans_un_bac_a_sable(client, decor):
+    """Aucune demande, d'aucun genre, ne naît d'un bac à sable (relecture croisée) — ni à un
+    administrateur, ni à son propriétaire. Ce qui demanderait un consentement est refusé, et
+    dit pourquoi ; ce que le propriétaire peut faire lui-même, il le fait."""
     pid = decor["bac"]["id"]
     chez_sam = client.post("/api/collections", headers=SAM,
                            json={"nom": "Chez Sam", "projet_id": pid}).json()["id"]
     copie = _copie(decor, "exemple")["album_id"]
-    # sam range la copie chez lui : il faudrait le consentement de lea (base) — demande.
+    # sam range la copie chez lui : il faudrait le consentement de lea (la base) — refusé.
     r = client.put(f"/api/albums/{copie}/collections/{chez_sam}", headers=SAM)
-    assert r.status_code == 202 and r.json()["repondra"] == "proprietaire"
-    client.post(f"/api/demandes/{r.json()['demande_id']}/reponse", headers=LEA,
-                json={"reponse": "acceptee"})
-    a_lea = client.post("/api/collections", headers=LEA,
-                        json={"nom": "Chez Léa", "projet_id": pid}).json()["id"]
-    r = client.put(f"/api/albums/{copie}/collections/{a_lea}", headers=LEA)
-    assert r.status_code == 403 and "propriétaire" in r.json()["detail"], r.text
-    # Et par la prise : en partir, que seul un administrateur consentirait, est refusé.
+    assert r.status_code == 403 and "rien ne se demande" in r.json()["detail"], r.text
+    # Par la prise : en partir, que lea devrait consentir, aussi.
     doc = _sql(decor["db"], "SELECT document_id FROM albums WHERE id = ?",
                (copie,))[0]["document_id"]
-    r = client.post(f"/api/collections/{a_lea}/prendre", headers=LEA,
+    r = client.post(f"/api/collections/{chez_sam}/prendre", headers=SAM,
                     json={"documents": [{"document_id": doc, "reponse": "amorcer",
                                          "album_id": copie, "cran": "decoupage"}]})
     ligne = r.json()["documents"][0]
-    assert ligne["etat"] == "refuse" and "propriétaire" in ligne["motif"], r.text
-    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM demande WHERE genre = 'amorcer'"
-                ) == [{"n": 0}]
-
-
-def test_la_proprietaire_rend_elle_meme_une_copie_gardee(client, decor):
-    copie = _copie(decor, "exemple")
-    assert client.delete(f"/api/albums/{copie['album_id']}/collections/{decor['base']}",
-                         headers=LEA).status_code == 204
-    corps = {"documents": [{"document_id": copie["document_id"], "reponse": "reprendre",
-                            "album_id": copie["album_id"]}]}
-    # L'invité ne lit pas la copie gardée : il ne la nomme pas (404, comme ailleurs), et
-    # rien ne se demande.
-    r = client.post(f"/api/projets/{decor['bac']['id']}/prendre", headers=SAM, json=corps)
-    assert r.status_code == 404
-    r = client.post(f"/api/projets/{decor['bac']['id']}/prendre", headers=LEA, json=corps)
-    assert r.json()["documents"][0]["etat"] == "fait", r.text
+    assert ligne["etat"] == "refuse" and "rien ne se demande" in ligne["motif"], r.text
+    # lea, qui tient la base, range elle-même — sans rien demander.
+    chez_lea = client.post("/api/collections", headers=LEA,
+                           json={"nom": "Chez Léa", "projet_id": pid}).json()["id"]
+    assert client.put(f"/api/albums/{copie}/collections/{chez_lea}",
+                      headers=LEA).status_code == 201
     assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM demande") == [{"n": 0}]
+
+
+def test_aucune_demande_ne_s_ecrit_depuis_un_bac_a_sable(client, decor):
+    """Le dernier mot (`socle._deposer`), là où toute demande de prise ou de rejoindre
+    s'écrit : 403 si son projet, ou celui de sa collection d'arrivée, est un bac à sable."""
+    conn = database.get_connection()
+    try:
+        col = database.collection_row(conn, decor["base"])
+        for projet in (decor["bac"]["id"], decor["etude"]):
+            with pytest.raises(socle.HTTPException) as e:
+                socle._deposer(conn, _portee(decor["db"], LEA), database.DEMANDE_REJOINDRE,
+                               col, projet, None, [{"document_id": 1}])
+            assert e.value.status_code == 403, projet
+        conn.rollback()
+    finally:
+        conn.close()
+
+
+def test_rien_ne_part_au_fonds_depuis_un_bac_a_sable(client, decor):
+    """Sortir une copie de sa DERNIÈRE collection l'enverrait au fonds — d'où la prise en
+    redemandait l'entrée à un administrateur (relecture croisée). Dans un bac à sable, c'est
+    refusé : elle se supprime définitivement, ou part avec le bac à sable. Sortir d'une
+    collection reste permis tant qu'une autre la garde."""
+    copie = _copie(decor, "exemple")
+    pid, base = decor["bac"]["id"], decor["base"]
+    r = client.delete(f"/api/albums/{copie['album_id']}/collections/{base}", headers=LEA)
+    assert r.status_code == 409 and "fonds" in r.json()["detail"], r.text
+    chez_lea = client.post("/api/collections", headers=LEA,
+                           json={"nom": "Chez Léa", "projet_id": pid}).json()["id"]
+    assert client.put(f"/api/albums/{copie['album_id']}/collections/{chez_lea}",
+                      headers=LEA).status_code == 201
+    assert client.delete(f"/api/albums/{copie['album_id']}/collections/{base}",
+                         headers=LEA).status_code == 204
+    r = client.delete(f"/api/albums/{copie['album_id']}/collections/{chez_lea}", headers=LEA)
+    assert r.status_code == 409, r.text
+    # Et il n'y a rien à reprendre : la prise le dit, sans rien demander.
+    r = client.post(f"/api/projets/{pid}/prendre", headers=LEA,
+                    json={"documents": [{"document_id": copie["document_id"],
+                                         "reponse": "reprendre",
+                                         "album_id": copie["album_id"]}]})
+    ligne = r.json()["documents"][0]
+    assert ligne["etat"] == "refuse" and "rien n'est gardé" in ligne["motif"], r.text
+    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM demande") == [{"n": 0}]
+
+
+def test_rien_n_entre_dans_un_bac_a_sable_depuis_le_fonds(client, decor):
+    """Un document importé au fonds n'a jamais eu de projet : il entre où l'on veut —
+    sauf dans un bac à sable, pour toute portée (relecture croisée : une portée totale le
+    rangeait dans le bac de lea ; et dans le sien, elle est une arrivante)."""
+    a = client.post("/api/albums", headers=HUGO, json={"titre": "Au fonds", "au_fonds": True})
+    assert a.status_code == 201, a.text
+    a = a.json()["id"]
+    bac_hugo = client.post("/api/bac-a-sable", headers=HUGO).json()
+    r = client.put(f"/api/albums/{a}/collections/{bac_hugo['base']['id']}", headers=HUGO)
+    assert r.status_code == 409 and "traverse" in r.json()["detail"], r.text
+    assert client.put(f"/api/albums/{a}/collections/{decor['base']}",
+                      headers=HUGO).status_code == 404
+    # La règle vit dans `database.rangement_traverse`, que l'outil lit aussi.
+    conn = database.get_connection()
+    try:
+        assert database.rangement_traverse(conn, a, decor["base"]) is True
+        assert database.rangement_traverse(conn, a, decor["col"]) is False
+    finally:
+        conn.close()
+    # Ailleurs, il entre comme avant.
+    assert client.put(f"/api/albums/{a}/collections/{decor['col']}",
+                      headers=HUGO).status_code == 201
 
 
 # --------------------------------------------------------------------------- #

@@ -25,7 +25,7 @@ from typing import Optional
 
 import autorisation
 from annuaire import GROUPES_DE_ROLE, Lecture
-from database import NOM_COLLECTION_DEFAUT, collections, sql_est_isole
+from database import NOM_COLLECTION_DEFAUT, SQL_BACS_EFFACES, collections, sql_est_isole
 
 # Tranché par Hugo le 2026-09-17 : une reprise d'identité ne s'efface jamais du journal, et un
 # mariage laisse la même trace. Sans fenêtre, le signal ne s'éteindrait jamais, et une liste
@@ -410,11 +410,13 @@ def _demandes_en_attente(conn) -> list:
     # serveur de la prise (qui ne laissait passer que les suppressions, faute d'écran pour
     # les autres) est levé avec cet écran. Le genre voyage avec la ligne : l'écran ne dit
     # « suppression » que d'une suppression.
-    # COL-4 (S3) — aucune demande d'un bac à sable n'atteint l'administrateur : celles qui
-    # s'y échangent entre comptes (rejoindre, en partir) se répondent par son propriétaire.
+    # COL-4 (S3) — aucune demande d'un bac à sable n'atteint l'administrateur : aucune n'y
+    # naît plus (`socle._deposer`), et une demande posée en base n'y paraît pas — y compris
+    # une fois le bac à sable effacé, sa ligne de `projet` partie (`SQL_BACS_EFFACES`).
     return [(r[0], r[1]) for r in conn.execute(
         "SELECT id, genre FROM demande WHERE reponse IS NULL "
-        f"AND (projet_id IS NULL OR NOT {sql_est_isole('projet_id')}) ORDER BY id")]
+        f"AND (projet_id IS NULL OR (NOT {sql_est_isole('projet_id')} "
+        f"AND projet_id NOT IN ({SQL_BACS_EFFACES}))) ORDER BY id")]
 
 
 def a_regarder(comptes: list, groupes: list, collections_sortie: list,

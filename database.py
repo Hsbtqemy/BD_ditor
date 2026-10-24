@@ -2156,11 +2156,20 @@ def rangement_traverse(conn: sqlite3.Connection, album_id: int, collection_id: i
     projet ; la première moitié, qui ne lit que celles-là, la laisserait alors entrer dans
     n'importe quel projet. Le projet ÉCRIT sur la copie (`albums.projet_id`) doit donc
     être aussi celui de la collection d'arrivée. Une copie qui n'en a JAMAIS eu — importée
-    au fonds — entre où l'on veut, et y prend son projet (`poser_projet_de_copie`)."""
+    au fonds — entre où l'on veut, et y prend son projet (`poser_projet_de_copie`).
+
+    COL-4 — une troisième moitié : rien n'ENTRE dans un projet isolé (un bac à sable, le
+    jeu), quelle que soit la portée. Une copie n'y entre que si elle en est déjà — son
+    projet, écrit ou lu dans ses collections (`projet_d_album`), est celui d'arrivée. Une
+    copie qui n'a JAMAIS eu de projet (importée au fonds) n'y entre donc pas (relecture
+    croisée : une portée totale rangeait un document du fonds dans le bac à sable d'un
+    autre)."""
     if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ? AND collection_id = ?",
                     (album_id, collection_id)).fetchone():
         return False
     arrivee = projet_de_collection(conn, collection_id)
+    if est_isole(conn, arrivee) and projet_d_album(conn, album_id) != arrivee:
+        return True
     ecrit = conn.execute("SELECT projet_id FROM albums WHERE id = ?", (album_id,)).fetchone()
     if ecrit is not None and ecrit[0] is not None and ecrit[0] != arrivee:
         return True
@@ -2238,6 +2247,16 @@ def sql_est_bac_a_sable(expr: str) -> str:
 def sql_est_jeu(expr: str) -> str:
     """Fragment SQL VRAI si le projet `expr` est le projet de jeu."""
     return f"EXISTS (SELECT 1 FROM projet _pjx WHERE _pjx.id = ({expr}) AND _pjx.jeu = 1)"
+
+
+# Les bacs à sable déjà EFFACÉS, lus au journal, où leur effacement s'écrit (`suppression`
+# sous `projet`, charge `bac_a_sable`) : ce qui dit qu'un projet EN ÉTAIT un une fois sa
+# ligne partie. Les identifiants de projet ne reviennent pas (v31) : aucun autre ne s'y
+# confond. Lu par ce qui filtre les demandes (`routes/fonds.list_demandes`,
+# `comptes._demandes_en_attente`).
+SQL_BACS_EFFACES = ("SELECT cible_id FROM evenement WHERE cible_table = 'projet' "
+                    "AND type = 'suppression' AND json_valid(avant) "
+                    "AND json_extract(avant, '$.bac_a_sable')")
 
 
 def sql_est_isole(expr: str) -> str:

@@ -45,7 +45,8 @@ from database import (DEMANDE_REJOINDRE, NATURES, clore_rejoindre_d_une_copie_au
 from socle import (
     DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn,
     _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
-    _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_PROPRIETAIRE, _bac_a_sable_de,
+    _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS,
+    _bac_a_sable_de,
     _get_album, _get_collection, _get_projet, _plan_rejoindre, _refuser_le_bac_a_sable,
     _refuser_le_jeu, _rows, db, portee_courante,
 )
@@ -775,12 +776,12 @@ def ranger_album(album_id: int, collection_id: int,
             raise HTTPException(409, "Cet album n'est la copie d'aucun document : le rejoindre "
                                      "ne peut pas se demander. Signalez-le à un "
                                      "administrateur.")
+        # COL-4 — dans un bac à sable, rien ne se demande, à personne (relecture croisée) :
+        # ce que seul un consentement ouvrirait, son propriétaire le range lui-même.
+        _refuser_le_bac_a_sable(conn, _MOTIF_BAC_SANS_DEMANDE, 403,
+                                collection_id=collection_id)
         qui = ("son propriétaire" if un_proprietaire_tient_toute_la_copie(conn, album_id)
                else "un administrateur")
-        if qui == "un administrateur":
-            # COL-4 (S3) — dans un bac à sable, aucune demande n'atteint l'administrateur.
-            _refuser_le_bac_a_sable(conn, _MOTIF_BAC_PROPRIETAIRE, 403,
-                                    collection_id=collection_id)
         if _en_attente_vers(conn, DEMANDE_REJOINDRE, collection_id, a["document_id"],
                             album_id):
             raise HTTPException(409, "Rejoindre ce travail depuis cette collection est déjà "
@@ -829,6 +830,16 @@ def sortir_album(album_id: int, collection_id: int,
     if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ? AND collection_id = ?",
                     (album_id, collection_id)).fetchone() is None:
         raise HTTPException(404, "Cet album n'appartient pas à cette collection.")
+    # COL-4 — dans un bac à sable, rien ne part au fonds (relecture croisée : une copie du
+    # jeu retirée de la base partait au fonds, d'où la prise en redemandait l'entrée à un
+    # administrateur). Sortir d'une collection reste permis tant qu'une autre la garde ;
+    # sortir de la DERNIÈRE est refusé — la copie se supprime définitivement, ou part avec
+    # le bac à sable. Option fermée, choisie entre refuser et détruire : refuser ne détruit
+    # rien qu'on n'ait demandé.
+    if _bac_a_sable_de(conn, album_id=album_id)[0] is not None and conn.execute(
+            "SELECT COUNT(*) FROM collection_album WHERE album_id = ?",
+            (album_id,)).fetchone()[0] <= 1:
+        raise HTTPException(409, _MOTIF_BAC_SANS_FONDS)
     # Le projet AVANT de sortir, tant qu'on le lit encore dans cette collection : une copie
     # qui part au fonds l'emporte, sans quoi rien ne refuserait de la rendre à un autre.
     poser_projet_de_copie(conn, album_id)

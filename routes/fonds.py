@@ -53,12 +53,13 @@ from database import (CRAN_IMAGES, CRANS, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUME
                       GENRES_CONSENTIS, GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
                       REPONSE_REFUSEE, REPONSES_DEMANDE, collection_de_base, collection_row,
                       compter_le_travail, etat_des_reponses, noms_lisibles, projet_d_album, projet_de_collection,
-                      ranger_copie, rangement_traverse, sql_album_isole, sql_projet_d_album,
+                      SQL_BACS_EFFACES, ranger_copie, rangement_traverse, sql_album_isole,
+                      sql_projet_d_album,
                       un_proprietaire_tient_toute_la_copie)
 
 from socle import (
     DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _MOTIF_BAC_ISOLE,
-    _MOTIF_BAC_PROPRIETAIRE, _bac_a_sable_de, _clore_demandes,
+    _MOTIF_BAC_PROPRIETAIRE, _MOTIF_BAC_SANS_DEMANDE, _bac_a_sable_de, _clore_demandes,
     _deposer, _detruire_album, _en_attente_vers,
     _get_album, _get_collection, _get_projet, _nouvelle_copie, _plan_rejoindre,
     _refuser_le_jeu, _retour_en_attente, _rows, _sans_accents, _supprimer_projet, db,
@@ -410,10 +411,13 @@ def list_demandes(conn: sqlite3.Connection = Depends(db),
     le fonds : elle nomme qui demande, et dit pourquoi.
 
     COL-4 (S3) — sans celles des BACS À SABLE, pour personne : l'administrateur n'y lit
-    rien (Hugo, 2026-10-24)."""
+    rien (Hugo, 2026-10-24). Aucune n'y naît plus (`socle._deposer`) ; le filtre reste, et
+    il ne dépend pas de l'existence du projet : un bac à sable EFFACÉ n'est plus une ligne
+    de `projet`, mais son effacement est écrit au journal, et ses identifiants ne reviennent
+    pas (`_projets_isoles_ou_effaces`)."""
     _exiger_le_fonds(portee)
     vues = _vues_demandes(conn, detail=True)
-    isoles = _projets_isoles(conn)["tous"]
+    isoles = _projets_isoles_ou_effaces(conn)
     return [d for d in vues if d["projet_id"] not in isoles]
 
 
@@ -939,14 +943,7 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
         return {"document_id": doc, "reponse": ligne.reponse, "etat": REFUSE,
                 "motif": _MOTIF_BAC_ISOLE}
     du_projet_lues = [c for c in copies if c["id"] in lues and c["projet_id"] == projet_id]
-    # COL-4 — la propriétaire d'un bac à sable nomme aussi une copie GARDÉE au fonds de son
-    # bac à sable, qu'elle ne lit plus (une copie hors de toute collection) : la rendre est
-    # son geste (S3), sans rien demander.
-    proprio_bac = (bac_arrivee and bool(portee.utilisateur)
-                   and isoles["bacs"][projet_id] == portee.utilisateur)
-    gardee_du_bac = proprio_bac and any(not c["range"] and c["projet_id"] == projet_id
-                                        for c in copies)
-    if not copies or not (portee.tout or gere or du_projet_lues or gardee_du_bac):
+    if not copies or not (portee.tout or gere or du_projet_lues):
         raise _introuvable(doc)
     plan = {"document_id": doc, "reponse": ligne.reponse}
 
@@ -1001,11 +998,13 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
     # Le droit AVANT l'objet (relecture croisée) : à qui n'est ni responsable du projet ni
     # administrateur, le même refus, qu'une copie y soit gardée ou non — sinon la réponse
     # disait l'existence d'une copie gardée au fonds, que seul le fonds montre.
-    if bac_arrivee and not proprio_bac:
-        # COL-4 (S3) — dans un bac à sable, rendre une copie gardée est le geste de son
-        # propriétaire, sans rien demander ; un invité ne le demande à personne.
-        return {**plan, "etat": REFUSE, "motif": _MOTIF_BAC_PROPRIETAIRE}
-    if not (portee.tout or gere or proprio_bac):
+    if bac_arrivee:
+        # COL-4 — dans un bac à sable, rien ne part au fonds (`sortir_album`) : il n'y a
+        # rien à reprendre, ni à demander.
+        return {**plan, "etat": REFUSE,
+                "motif": "Dans un bac à sable, rien n'est gardé au fonds : il n'y a rien à "
+                         "reprendre."}
+    if not (portee.tout or gere):
         return {**plan, "etat": REFUSE,
                 "motif": "Reprendre une copie gardée au fonds se demande par un responsable "
                          "du projet."}
@@ -1015,7 +1014,7 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
         return {**plan, "etat": REFUSE,
                 "motif": "Aucune copie de ce document n'est gardée au fonds pour ce projet."}
     plan["album_id"], plan["titre"] = gardees[0]["id"], gardees[0]["titre"]
-    if portee.tout or proprio_bac:
+    if portee.tout:
         plan["etat"] = FAIT
     else:
         # Un RETOUR, et non une ligne d'entrée (écran de la 3a, Hugo, 2026-10-17) : la copie
@@ -1023,6 +1022,15 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
         # fonds », et la demande s'attend une fois par copie.
         plan["etat"], plan["genre"] = DEMANDE, DEMANDE_RENDRE
     return plan
+
+
+def _projets_isoles_ou_effaces(conn) -> set:
+    """Les projets isolés d'aujourd'hui, et les bacs à sable déjà EFFACÉS — lus au journal,
+    où leur effacement s'écrit (`suppression` sous `projet`, charge `bac_a_sable`). Les
+    identifiants de projet ne reviennent pas (v31) : un projet effacé ne se confond avec
+    aucun autre."""
+    effaces = {r[0] for r in conn.execute(SQL_BACS_EFFACES)}
+    return _projets_isoles(conn)["tous"] | effaces
 
 
 def _projets_isoles(conn) -> dict:
@@ -1135,13 +1143,13 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
             p.update(etat=REFUSE, motif="Déjà demandé pour cette collection : la demande "
                                         "attend sa réponse.")
     if bac_arrivee is not None:
-        # COL-4 (S3) — aucune demande n'atteint l'administrateur depuis un bac à sable : un
-        # « rejoindre » ou un « en partir » que seul un administrateur pourrait consentir
-        # (aucun propriétaire ne tient toute la copie) y est refusé.
+        # COL-4 — aucune demande, d'aucun genre, ne naît d'un bac à sable : ni à un
+        # administrateur (une entrée de documents, un retour), ni à son propriétaire (un
+        # « rejoindre », un « en partir ») — relecture croisée. Chaque ligne qui se
+        # demanderait est refusée, et dit pourquoi ; rien n'est écrit pour elle.
         for p in plans:
-            if (p["etat"] == DEMANDE and p["genre"] in GENRES_CONSENTIS
-                    and not un_proprietaire_tient_toute_la_copie(conn, p["album_id"])):
-                p.update(etat=REFUSE, motif=_MOTIF_BAC_PROPRIETAIRE)
+            if p["etat"] == DEMANDE:
+                p.update(etat=REFUSE, motif=_MOTIF_BAC_SANS_DEMANDE)
     entrees = [p for p in plans if p["etat"] == DEMANDE
                and p["genre"] == DEMANDE_ENTREE_DOCUMENTS]
     if entrees:
