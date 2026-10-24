@@ -74,7 +74,9 @@ travail** — un JPEG qualité 80 à **300 dpi effectifs**. Un scan plus fin est
 (un 400 dpi → 75 %) ; un scan à 300 dpi ou moins est gardé à sa taille ; un scan **sans
 résolution écrite** aussi — on ne réduit pas ce qu'on ne sait pas mesurer, et rien n'est
 inventé. Le facteur est le même pour les deux axes, tiré de la plus basse des deux
-résolutions (`ingest.facteur_de_travail`). Le dérivé web reste à 25 % des dimensions du scan.
+résolutions (`ingest.facteur_de_travail`). Le dérivé web reste à 25 % des dimensions du scan,
+mais jamais moins de 1 600 px de large ni plus que l'image reçue (`ingest.taille_du_derive`,
+2026-10-24).
 
 **Le matériel décrit toujours le SCAN, pas la copie.** `largeur_px`/`hauteur_px`, `dpi_x`/
 `dpi_y` et `mode` sont lus dans le fichier reçu et écrits tels quels : les **centimètres ne

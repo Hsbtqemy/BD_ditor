@@ -82,10 +82,11 @@ dérivé ne peut pas se désaccorder de ce dont il dépend.
 ### Les coordonnées sont en pixels master
 
 Une région est stockée dans les coordonnées du **scan haute résolution**, jamais dans celles
-de l'image affichée. L'affichage web est un dérivé à 25 % ; la conversion se fait au moment
-de dessiner. Vous n'avez rien à faire de cette règle, sauf en connaître la conséquence : les
-coordonnées lues dans le mode Édition sont celles du master, donc environ quatre fois plus
-grandes que ce que vous mesureriez à l'écran.
+de l'image affichée. L'affichage web est un dérivé à 25 % du scan, d'au moins 1 600 px de
+large (jamais plus que l'image reçue) ; la conversion se fait au moment de dessiner. Vous
+n'avez rien à faire de cette règle, sauf en connaître la conséquence : les coordonnées lues
+dans le mode Édition sont celles du master, donc souvent plus grandes (jusqu'à quatre fois)
+que ce que vous mesureriez à l'écran.
 
 ---
 

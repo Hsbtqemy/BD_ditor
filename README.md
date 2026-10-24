@@ -40,7 +40,7 @@ build) · auto-hébergé, traitement 100 % local.
 
 - **SQLite** — fichier unique, mode **WAL**, `foreign_keys=ON` + `ON DELETE CASCADE`
 - Recherche plein texte **SQLite FTS5** (table `recherche` : OCR + note + tags + lemmes)
-- **Pillow** ≥ 10 — masters TIFF/scan + dérivés web **JPEG 25 % / qualité 82**
+- **Pillow** ≥ 10 — copies de travail JPEG + dérivés web **JPEG 25 % du scan (au moins 1 600 px de large, jamais agrandi) / qualité 82**
 - Régions stockées en **pixels MASTER** (indépendantes du dérivé)
 - Sauvegarde par **`VACUUM INTO`** (snapshot cohérent) → **zip** horodaté
 
@@ -143,7 +143,8 @@ La base `bd_annotator.sqlite` et les dossiers `corpus/` (masters) et
 2. **Importer des planches** — en local (⤓, dépose un TIFF/PNG/JPEG) ou depuis
    **ShareDocs** (bouton *ShareDocs* → connexion → navigation → sélection multiple
    → import vers un album existant ou nouveau). Le master est rangé dans `corpus/`,
-   un dérivé web JPEG à 25 % est généré dans `derivatives/`.
+   un dérivé web JPEG à 25 % du scan — au moins 1 600 px de large, jamais plus que l'image
+   reçue — est généré dans `derivatives/`.
 3. **Reconnaissance** (3 passes, cf. plus bas) : **Segmenter** (cases, Kumiko) →
    **Bulles** (ogkalu YOLOv8) → **OCR** (EasyOCR, pré-remplit le texte), par
    planche ou **par lot** depuis la Bibliothèque. L'**ordre de lecture** (rangées
