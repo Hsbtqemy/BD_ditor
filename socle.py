@@ -43,7 +43,8 @@ from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DE
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
                       NOM_BAC_A_SABLE, clause_appartenance, cle_tag, collection_de_base,
                       collection_row, creer_collection_de_base, creer_copie,
-                      demandes_vers_collection, est_isole, est_jeu, etat_des_reponses,
+                      demandes_vers_collection, espace_d_album, est_isole, est_jeu,
+                      etat_des_reponses,
                       get_connection,
                       nature_du_projet, prochain_effacement, projet_d_album,
                       projet_de_collection, rangement_traverse, retirer_document_sans_copie,
@@ -180,19 +181,32 @@ def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee, *, album_i
         return []
     marques = ",".join("?" * len(normalized))
     ou_tag, p_tag = portee.clause_terme("t.collection_id")
+    # COL-4 — les libellés vivent dans un ESPACE (`tags.espace`) : celui de l'instance, ou
+    # celui du bac à sable de l'album (Hugo, 2026-10-24). Tout se lit DANS l'espace de
+    # l'album : un libellé pris dans un bac à sable ne l'est pas pour le corpus, ni
+    # l'inverse, et rien ne se voit d'un côté à l'autre.
+    espace = espace_d_album(conn, album_id)
     # Deux lectures, et l'écart entre elles EST la garde : tout ce que le libellé désigne
-    # déjà dans l'instance, puis ce qu'on en lit. La différence se tait.
+    # déjà dans l'espace, puis ce qu'on en lit. La différence se tait — hors d'un bac à
+    # sable (AUTH-11, ci-dessus).
     pris = {r["cle"] for r in conn.execute(
-        f"SELECT cle_tag(label) AS cle FROM tags WHERE cle_tag(label) IN ({marques})",
-        normalized)}
+        f"SELECT cle_tag(label) AS cle FROM tags WHERE espace = ? "
+        f"AND cle_tag(label) IN ({marques})", (espace, *normalized))}
     lisibles = {}
     for r in _rows(conn.execute(
             f"SELECT t.id, t.label, t.couleur, t.collection_id, cle_tag(t.label) AS cle "
             f"FROM tags t "
-            f"WHERE cle_tag(t.label) IN ({marques}) AND {ou_tag} "
-            f"ORDER BY (t.label = cle_tag(t.label)) DESC, t.id", (*normalized, *p_tag))):
+            f"WHERE t.espace = ? AND cle_tag(t.label) IN ({marques}) AND {ou_tag} "
+            f"ORDER BY (t.label = cle_tag(t.label)) DESC, t.id",
+            (espace, *normalized, *p_tag))):
         cle = r.pop("cle")
         lisibles.setdefault(cle, r)
+    if espace and pris - set(lisibles):
+        # COL-4 — dans un bac à sable, poser un libellé qu'on ne peut pas poser ne rend
+        # plus 200 en silence (Hugo, 2026-10-24) : il est pris, dans CE bac à sable, par
+        # une collection que l'appelant ne lit pas — un refus nommé, entre ses comptes.
+        raise HTTPException(409, "Ce libellé est déjà pris dans ce bac à sable, par une "
+                                 "collection que vous ne lisez pas : choisissez-en un autre.")
     lisibles = list(lisibles.values())
     rangee_dans = {r[0] for r in conn.execute(
         "SELECT collection_id FROM collection_album WHERE album_id = ?", (album_id,))}
@@ -214,15 +228,15 @@ def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee, *, album_i
     locale = _collection_locale_d_un_bac(conn, album_id)
     for label in neufs:
         conn.execute(
-            "INSERT INTO tags (label, collection_id) VALUES (?, ?) "
-            "ON CONFLICT(label) DO NOTHING",
-            (label, locale),
+            "INSERT INTO tags (label, collection_id, espace) VALUES (?, ?, ?) "
+            "ON CONFLICT(espace, label) DO NOTHING",
+            (label, locale, espace),
         )
     if neufs:
         marques_neufs = ",".join("?" * len(neufs))
         lisibles += _rows(conn.execute(
-            f"SELECT id, label, couleur FROM tags WHERE label IN ({marques_neufs})",
-            neufs))
+            f"SELECT id, label, couleur FROM tags WHERE espace = ? "
+            f"AND label IN ({marques_neufs})", (espace, *neufs)))
     return sorted(lisibles, key=lambda r: r["label"])
 
 
@@ -1153,10 +1167,25 @@ def _supprimer_le_vocabulaire_du_bac(conn, projet_id: int, collections: list) ->
                  [*collections, *collections])
     # (Les dimensions gardées sont encore locales au bac à sable à cet instant : un domaine
     # qui n'a qu'elles part, et elles deviennent « hors domaine » — leur portée suit, globale.)
-    conn.execute(f"DELETE FROM tags WHERE collection_id IN ({marques}) AND NOT EXISTS "
-                 f"(SELECT 1 FROM annotation_tags at JOIN annotations an "
-                 f"ON an.id = at.annotation_id WHERE at.tag_id = tags.id "
-                 f"AND {dehors.format(region='an.region_id')})", [*collections, projet_id])
+    employe_dehors = (f"EXISTS (SELECT 1 FROM annotation_tags at JOIN annotations an "
+                      f"ON an.id = at.annotation_id WHERE at.tag_id = tags.id "
+                      f"AND {dehors.format(region='an.region_id')})")
+    conn.execute(f"DELETE FROM tags WHERE (collection_id IN ({marques}) OR espace = ?) "
+                 f"AND NOT {employe_dehors}", [*collections, projet_id, projet_id])
+    # Un tag de l'ESPACE du bac à sable employé dehors rejoint celui de l'instance : fondu
+    # dans le tag de même libellé s'il y en a un (l'unicité par espace l'exige), sinon
+    # déplacé tel quel.
+    for tid, label in conn.execute("SELECT id, label FROM tags WHERE espace = ?",
+                                   (projet_id,)).fetchall():
+        autre = conn.execute("SELECT id FROM tags WHERE espace = 0 AND label = ?",
+                             (label,)).fetchone()
+        if autre is None:
+            conn.execute("UPDATE tags SET espace = 0 WHERE id = ?", (tid,))
+            continue
+        conn.execute("INSERT OR IGNORE INTO annotation_tags (annotation_id, tag_id) "
+                     "SELECT annotation_id, ? FROM annotation_tags WHERE tag_id = ?",
+                     (autre[0], tid))
+        conn.execute("DELETE FROM tags WHERE id = ?", (tid,))
 
 
 def _passer_les_gestes_du_bac(conn, projet_id: int) -> int:

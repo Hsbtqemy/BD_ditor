@@ -28,7 +28,7 @@ import pytest
 import database
 
 BASE_V34 = Path(__file__).resolve().parent / "bases" / "v34-35cc4a3.sql"
-COLONNES_NEUVES = {"projet": ("bac_a_sable_de", "efface_le", "jeu")}
+COLONNES_NEUVES = {"projet": ("bac_a_sable_de", "efface_le", "jeu"), "tags": ("espace",)}
 TABLES_NEUVES = {"jeu_document"}
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
@@ -208,6 +208,29 @@ def test_rejouee_la_migration_ne_change_rien(vraie_v34):
     database.init_db()
     assert (_etat(vraie_v34), _seq(vraie_v34),
             _sql(vraie_v34, "SELECT type, name, sql FROM sqlite_master ORDER BY name")) == etat
+
+
+def test_les_libelles_de_tags_sont_uniques_par_espace(vraie_v34):
+    """`tags` est reconstruite : l'unicité du libellé sur toute l'instance cède la place à
+    l'unicité PAR ESPACE (COL-4). L'existant est de l'espace de l'instance, ses annotations
+    le désignent toujours, et un même libellé vit dans un bac à sable sans rien bloquer."""
+    avant = _sql(vraie_v34, "SELECT at.annotation_id, t.label FROM annotation_tags at "
+                            "JOIN tags t ON t.id = at.tag_id ORDER BY 1, 2")
+    assert avant, "la vraie base porte des tags posés"
+    database.init_db()
+    assert _sql(vraie_v34, "SELECT at.annotation_id, t.label FROM annotation_tags at "
+                           "JOIN tags t ON t.id = at.tag_id ORDER BY 1, 2") == avant
+    assert _sql(vraie_v34, "SELECT COUNT(*) AS n FROM tags WHERE espace <> 0") == [{"n": 0}]
+    assert "UNIQUE" not in _sql_de(vraie_v34, "tags").split("label", 1)[1].split(",", 1)[0]
+    label = avant[0]["label"]
+    c = sqlite3.connect(vraie_v34)
+    try:
+        c.execute("INSERT INTO tags (label, espace) VALUES (?, 99)", (label,))
+        with pytest.raises(sqlite3.IntegrityError):
+            c.execute("INSERT INTO tags (label, espace) VALUES (?, 0)", (label,))
+        c.rollback()
+    finally:
+        c.close()
 
 
 def test_la_base_migree_sert_toujours(vraie_v34, monkeypatch):

@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS regions (
 
 CREATE TABLE IF NOT EXISTS tags (
     id             INTEGER PRIMARY KEY,
-    label          TEXT UNIQUE NOT NULL,
+    label          TEXT NOT NULL,
     couleur        TEXT DEFAULT '#1a4a8a',
     description    TEXT,                          -- glose du tag = SKOS definition (A4 : déjà là)
     -- Lexique situé (v17, A4) — couche définitionnelle SKOS partagée avec le vocabulaire
@@ -234,7 +234,16 @@ CREATE TABLE IF NOT EXISTS tags (
     note_portee    TEXT,
     etat           TEXT NOT NULL DEFAULT 'provisoire',   -- 'provisoire' | 'defini'
     collection_id  INTEGER REFERENCES collection(id) ON DELETE SET NULL,
-    date_creation  TEXT DEFAULT (datetime('now'))
+    date_creation  TEXT DEFAULT (datetime('now')),
+    espace         INTEGER NOT NULL DEFAULT 0
+    -- v35 (COL-4) — l'ESPACE de libellés du tag : 0 pour l'instance, l'identifiant du BAC À
+    -- SABLE (`projet.id`, qui ne revient jamais) pour un tag né dans l'un d'eux. Le libellé
+    -- est UNIQUE PAR ESPACE (`idx_tags_espace_label`, posé par `_migrate`), et non plus dans
+    -- toute l'instance (Hugo, 2026-10-24) : un libellé tapé dans un bac à sable ne bloque
+    -- rien ailleurs, le vrai corpus peut avoir le même, et rien ne se voit d'un côté à
+    -- l'autre. Un tag d'un bac à sable y est toujours LOCAL (`collection_id`, une de ses
+    -- collections) ; l'espace se lit par `espace_d_album`. Commentaire SOUS la dernière
+    -- colonne (cf. celui de `collection.projet_id`).
 );
 
 CREATE TABLE IF NOT EXISTS annotations (
@@ -1407,6 +1416,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # migrée depuis une version plus ancienne l'a déjà reçu par les étapes du dessus.
     if version < 35:
         _reconstruire_avec_autoincrement(conn)
+    # v34 → v35 (COL-4) : les libellés de tags par ESPACE — l'instance, ou un bac à sable.
+    # SQLite ne retire pas par `ALTER` l'unicité d'une colonne : la table se reconstruit,
+    # par PRÉSENCE de la colonne (idempotent). L'unicité par espace se pose ICI, et non dans
+    # SCHEMA_SQL : sur une base ancienne, la colonne n'existe qu'après la reconstruction.
+    if _tags_par_espace(conn):
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_espace_label "
+                     "ON tags(espace, label)")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -1624,6 +1640,56 @@ def _reconstruire_avec_autoincrement(conn: sqlite3.Connection) -> None:
     finally:
         conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(_VIEWS_SQL)
+
+
+def _tags_par_espace(conn: sqlite3.Connection) -> bool:
+    """Reconstruit `tags` sans l'unicité de `label` sur toute l'instance, avec la colonne
+    `espace` (0 pour tout l'existant). La forme de la v30 (`_reconstruire_avec_autoincrement`)
+    : table neuve d'après SCHEMA_SQL, lignes copiées avec leurs identifiants, ancienne
+    détruite, neuve renommée, index et vues recréés, clés étrangères SUSPENDUES — actives,
+    détruire `tags` viderait `annotation_tags` par cascade — puis vérifiées. Sans effet sur
+    une table qui porte déjà `espace`. Rend False sans table `tags` (un schéma minimal de
+    test), True sinon."""
+    colonnes_avant = {r[1] for r in conn.execute("PRAGMA table_info(tags)")}
+    if not colonnes_avant:
+        return False
+    if "espace" in colonnes_avant:
+        return True
+    corps = re.search(r"CREATE TABLE IF NOT EXISTS tags \((.*?)\n\);", SCHEMA_SQL, re.S)
+    neuf = f"CREATE TABLE tags__v35 ({corps.group(1)}\n)"
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            fautes_avant = {tuple(f) for f in conn.execute("PRAGMA foreign_key_check")}
+            for (vue,) in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'view'").fetchall():
+                conn.execute(f'DROP VIEW "{vue}"')
+            index = [s for (s,) in conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'tags' "
+                "AND sql IS NOT NULL")]
+            colonnes = ", ".join(f'"{c[1]}"' for c in conn.execute("PRAGMA table_info(tags)"))
+            conn.execute(neuf)
+            conn.execute(f"INSERT INTO tags__v35 ({colonnes}) SELECT {colonnes} FROM tags")
+            conn.execute("DROP TABLE tags")
+            conn.execute("ALTER TABLE tags__v35 RENAME TO tags")
+            for s in index:
+                conn.execute(s)
+            fautes = [f for f in map(tuple, conn.execute("PRAGMA foreign_key_check"))
+                      if f not in fautes_avant]
+            if fautes:
+                raise RuntimeError("Migration v35 : la reconstruction de `tags` laisse des "
+                                   f"clés étrangères orphelines ({fautes[:5]}) ; rien n'est "
+                                   "modifié.")
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+    conn.executescript(_VIEWS_SQL)
+    return True
 
 
 def _dedup_numeros_planches(conn: sqlite3.Connection) -> None:
@@ -2271,6 +2337,24 @@ def sql_album_isole(alias: str = "a") -> str:
     """Fragment SQL VRAI si la copie `alias` (un alias de la table `albums`) est d'un projet
     isolé, par la règle de `sql_projet_d_album` — écrit ou lu dans ses collections."""
     return sql_est_isole(sql_projet_d_album(alias))
+
+
+def espace_d_album(conn: sqlite3.Connection, album_id) -> int:
+    """L'ESPACE de libellés de tags d'un album (v35, COL-4) : l'id de son bac à sable s'il
+    vit dans l'un d'eux, 0 sinon — l'instance."""
+    if album_id is None:
+        return 0
+    r = conn.execute(f"SELECT {sql_projet_d_album('a')} FROM albums a WHERE a.id = ?",
+                     (album_id,)).fetchone()
+    projet = r[0] if r else None
+    return projet if est_bac_a_sable(conn, projet) else 0
+
+
+def espace_de_region(conn: sqlite3.Connection, region_id) -> int:
+    """L'espace de libellés de l'album d'une région ; 0 pour une région qui n'existe pas."""
+    r = conn.execute("SELECT pl.album_id FROM regions r JOIN planches pl "
+                     "ON pl.id = r.planche_id WHERE r.id = ?", (region_id,)).fetchone()
+    return espace_d_album(conn, r[0]) if r else 0
 
 
 def nature_du_projet(conn: sqlite3.Connection, projet_id) -> dict | None:

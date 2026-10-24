@@ -71,6 +71,15 @@ def _ecrivable(conn: sqlite3.Connection, portee: autorisation.Portee):
     return peut
 
 
+def _ecrit_quelque_part(portee: autorisation.Portee) -> bool:
+    """Le plancher d'une annulation : écrire quelque part — UN BAC À SABLE COMPRIS (COL-4).
+    `Portee.peut_ecrire_quelque_part` ne compte plus les bacs à sable (S2 : le vocabulaire et
+    le registre globaux) ; un arrivant qui n'écrit que dans le sien n'y annulait plus rien.
+    Ce plancher ne dit pas où : `_ecrivable` le dit, acte par acte, sur les lieux de
+    l'inverse (AUTH-14)."""
+    return portee.tout or bool(portee.ecriture)
+
+
 def _agent_undo(portee: autorisation.Portee):
     """Quels actes cette requête peut-elle annuler ?  AUTH-2.
 
@@ -101,7 +110,7 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db),
     # Annuler REJOUE une écriture : il faut en avoir le droit quelque part. Ce plancher ne
     # dit pas OÙ ; c'est `_ecrivable` qui le dit, acte par acte, sur les lieux mêmes de
     # l'inverse (AUTH-14 : le résiduel « un droit d'écriture ailleurs suffit » est fermé).
-    if not portee.peut_ecrire_quelque_part():
+    if not _ecrit_quelque_part(portee):
         raise HTTPException(403, "Annuler demande un droit d'écriture.")
     agent = _agent_undo(portee)
     # spaCy HORS transaction : l'inversion réindexe, verrou tenu. Mais pas toujours — défaire
@@ -177,7 +186,7 @@ def undo_passer(payload: PasserIn, conn: sqlite3.Connection = Depends(db),
       passe désormais — l'autre a défait son geste —, rien n'est passé : 409, « refaites
       Ctrl+Z ». Un acte qui ne s'annule plus du tout (AUTH-14) est passé, comme Ctrl+Z
       l'aurait fait."""
-    if not portee.peut_ecrire_quelque_part():
+    if not _ecrit_quelque_part(portee):
         raise HTTPException(403, "Annuler demande un droit d'écriture.")
     agent = _agent_undo(portee)
     prochain = undo.derniere_action_annulable(conn, agent)

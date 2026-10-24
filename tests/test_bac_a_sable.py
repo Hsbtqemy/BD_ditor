@@ -712,6 +712,111 @@ def test_une_valeur_d_un_bac_ne_se_pose_pas_dans_le_corpus(client, decor):
     assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
 
 
+def _tags_de(db, label):
+    return _sql(db, "SELECT id, espace, collection_id FROM tags WHERE label = ? ORDER BY id",
+                (label,))
+
+
+def test_les_libelles_d_un_bac_a_sable_sont_a_part(client, decor):
+    """Hugo, 2026-10-24 : un libellé né dans un bac à sable ne bloque rien ailleurs ; le
+    vrai corpus peut avoir le même, et rien ne se voit d'un côté à l'autre (relecture
+    croisée : resp posait « peur » sur le corpus et recevait 200 avec `tags: []`)."""
+    bac_region = _region_du_bac(client, decor)
+    r = client.put(f"/api/regions/{bac_region}/annotation", headers=LEA,
+                   json={"note": "", "tags": ["peur"]})
+    assert [t["label"] for t in r.json()["tags"]] == ["peur"]
+    reg = _region_reelle(client, decor)
+    r = client.put(f"/api/regions/{reg}/annotation", headers=RESP,
+                   json={"note": "", "tags": ["peur"]})
+    assert r.status_code == 200 and [t["label"] for t in r.json()["tags"]] == ["peur"], r.text
+    assert [t["espace"] for t in _tags_de(decor["db"], "peur")] == [decor["bac"]["id"], 0]
+    # Dans l'autre sens : un libellé du corpus ne se pose pas dans le bac à sable — le bac
+    # à sable a le sien.
+    client.put(f"/api/regions/{reg}/annotation", headers=RESP,
+               json={"note": "", "tags": ["peur", "colere"]})
+    r = client.put(f"/api/regions/{bac_region}/annotation", headers=LEA,
+                   json={"note": "", "tags": ["peur", "colere"]})
+    bac_ids = {t["id"] for t in r.json()["tags"]}
+    assert bac_ids == {t["id"] for t in _sql(decor["db"], "SELECT id FROM tags WHERE "
+                                                          "espace = ?", (decor["bac"]["id"],))}
+    # Rien ne se voit d'un côté à l'autre : ni ce que l'Atelier propose, ni le nuage.
+    album_bac = _copie(decor, "exemple")["album_id"]
+    proposes = client.get("/api/tags", headers=LEA, params={"album": album_bac}).json()
+    assert {t["id"] for t in proposes} == bac_ids
+    # Le vocabulaire de l'instance se crée sans rien voir du bac à sable.
+    r = client.post("/api/tags", headers=RESP, json={"label": "peur", "description": "d"})
+    assert r.status_code == 201 and r.json()["espace"] == 0, r.text
+    client.put(f"/api/projets/{decor['bac']['id']}/membres", headers=LEA,
+               json={"genre": "utilisateur", "principal": "resp", "role": "membre"})
+    corpus = {t["id"] for t in client.get("/api/tags", headers=RESP,
+                                          params={"album": decor["reel"]}).json()}
+    assert not corpus & bac_ids
+    assert not {t["id"] for t in client.get("/api/tags", headers=RESP).json()} & bac_ids
+
+
+def test_dans_un_bac_un_libelle_pris_se_refuse_par_son_nom(client, decor):
+    """Pris dans CE bac à sable par une collection qu'on ne lit pas : un refus nommé, et non
+    un 200 qui ne pose rien (Hugo, 2026-10-24)."""
+    pid = decor["bac"]["id"]
+    chez_sam = client.post("/api/collections", headers=SAM,
+                           json={"nom": "Chez Sam", "projet_id": pid}).json()["id"]
+    _sql(decor["db"], "INSERT INTO tags (label, collection_id, espace) VALUES "
+                      "('secret', ?, ?)", (chez_sam, pid))
+    r = client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
+                   json={"note": "", "tags": ["secret"]})
+    assert r.status_code == 409 and "déjà pris dans ce bac à sable" in r.json()["detail"], \
+        r.text
+
+
+def test_un_tag_se_renomme_dans_son_espace(client, decor):
+    """L'unicité vaut dans l'espace : un tag du bac à sable prend un libellé du corpus, pas
+    celui d'un autre tag du même bac à sable."""
+    client.put(f"/api/regions/{_region_reelle(client, decor)}/annotation", headers=RESP,
+               json={"note": "", "tags": ["corpus"]})
+    client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
+               json={"note": "", "tags": ["un", "deux"]})
+    un = next(t["id"] for t in _tags_de(decor["db"], "un"))
+    assert client.put(f"/api/tags/{un}", headers=LEA, json={"label": "corpus"}).status_code \
+        == 200
+    r = client.put(f"/api/tags/{un}", headers=LEA, json={"label": "deux"})
+    assert r.status_code == 409 and "fusion" in r.json()["detail"], r.text
+
+
+def test_un_tag_du_bac_employe_dehors_rejoint_l_instance(client, decor):
+    """L'état d'une base retouchée : le « peur » du bac à sable posé sur une région du
+    corpus. L'effacement ne l'emporte pas : il se fond dans le « peur » de l'instance."""
+    client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
+               json={"note": "", "tags": ["peur"]})
+    r1, r2 = _region_reelle(client, decor), _region_reelle(client, decor)
+    client.put(f"/api/regions/{r1}/annotation", headers=RESP,
+               json={"note": "", "tags": ["peur"]})
+    client.put(f"/api/regions/{r2}/annotation", headers=RESP, json={"note": "x", "tags": []})
+    du_bac, de_l_instance = (t["id"] for t in _tags_de(decor["db"], "peur"))
+    _sql(decor["db"], "INSERT INTO annotation_tags (annotation_id, tag_id) SELECT id, ? "
+                      "FROM annotations WHERE region_id = ?", (du_bac, r2))
+    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=LEA).status_code == 200
+    assert _tags_de(decor["db"], "peur") == [
+        {"id": de_l_instance, "espace": 0, "collection_id": None}]
+    tags = client.get(f"/api/regions/{r2}/annotation", headers=RESP).json()["tags"]
+    assert [t["id"] for t in tags] == [de_l_instance]
+
+
+def test_ctrl_z_rend_le_tag_de_son_espace(client, decor):
+    """L'annulation retrouve un libellé DANS l'espace de la région (`undo._tag_a_rendre`) :
+    le « mot » du bac à sable, pas celui du corpus, plus ancien."""
+    client.put(f"/api/regions/{_region_reelle(client, decor)}/annotation", headers=RESP,
+               json={"note": "", "tags": ["mot"]})
+    region = _region_du_bac(client, decor)
+    client.put(f"/api/regions/{region}/annotation", headers=LEA,
+               json={"note": "n", "tags": ["mot"]})
+    du_bac = next(t["id"] for t in _tags_de(decor["db"], "mot") if t["espace"])
+    client.put(f"/api/regions/{region}/annotation", headers=LEA, json={"note": "n", "tags": []})
+    r = client.post("/api/undo", headers=LEA)
+    assert r.status_code == 200, r.text
+    tags = client.get(f"/api/regions/{region}/annotation", headers=LEA).json()["tags"]
+    assert [t["id"] for t in tags] == [du_bac]
+
+
 # --------------------------------------------------------------------------- #
 # S11 — l'invitation
 # --------------------------------------------------------------------------- #

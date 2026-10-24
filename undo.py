@@ -26,7 +26,8 @@ from typing import Optional
 import conflit
 import journal
 from config import TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUATION
-from database import (NATURE_COLLECTIF, annotation_vide, cle_tag, reindex_region,
+from database import (NATURE_COLLECTIF, annotation_vide, cle_tag, espace_de_region,
+                      reindex_region,
                       unindex_region)
 
 # Types d'événements et tables que l'undo sait inverser (le reste est ignoré : ni annulé,
@@ -319,7 +320,7 @@ def _contexte_tags() -> dict:
     return _CONTEXTE_TAGS.get(None) or {"perdus": [], "lisible": lambda _tag_id: False}
 
 
-def _tag_a_rendre(conn, label, depuis, lisible) -> Optional[dict]:
+def _tag_a_rendre(conn, label, depuis, lisible, *, espace: int = 0) -> Optional[dict]:
     """Le tag qu'un INSTANTANÉ nomme `label`, tel qu'il est aujourd'hui — ou None. ANN-8.
 
     L'instantané d'une annotation nomme ses tags par LIBELLÉ (`journal.snapshot_annotation`),
@@ -342,11 +343,17 @@ def _tag_a_rendre(conn, label, depuis, lisible) -> Optional[dict]:
        2026-10-22). Un tag hors de portée trouvé ainsi compte comme perdu.
 
     Ne se demande QUE pour un libellé de l'instantané de l'acte : les tags que la région
-    porte aujourd'hui se reposent par leur identifiant, sans passer par la chaîne."""
+    porte aujourd'hui se reposent par leur identifiant, sans passer par la chaîne.
+
+    COL-4 — tout se cherche dans l'ESPACE de libellés de la région (`espace`, celui de son
+    bac à sable, ou 0) : le même libellé vit dans le corpus et dans un bac à sable, et un
+    renommage dans l'un n'est pas celui de l'autre (une charge sans `espace` est de
+    l'instance)."""
     cle, suivi = cle_tag(label), False
     for ev in conn.execute("SELECT type, avant, apres FROM evenement "
                            "WHERE cible_table = 'tags' AND id > ? ORDER BY id", (depuis,)):
-        if cle_tag((_charge(ev["avant"]) or {}).get("label")) != cle:
+        charge = _charge(ev["avant"]) or {}
+        if cle_tag(charge.get("label")) != cle or (charge.get("espace") or 0) != espace:
             continue
         if ev["type"] == "suppression":
             return None
@@ -354,11 +361,13 @@ def _tag_a_rendre(conn, label, depuis, lisible) -> Optional[dict]:
     if not cle:
         return None
     if not suivi:
-        exact = conn.execute("SELECT id, label FROM tags WHERE label = ?", (label,)).fetchone()
+        exact = conn.execute("SELECT id, label FROM tags WHERE espace = ? AND label = ?",
+                             (espace, label)).fetchone()
         if exact is not None:
             return dict(exact)
-    for row in conn.execute("SELECT id, label FROM tags WHERE cle_tag(label) = ? "
-                            "ORDER BY (label = ?) DESC, id", (cle, cle)):
+    for row in conn.execute("SELECT id, label FROM tags WHERE espace = ? "
+                            "AND cle_tag(label) = ? ORDER BY (label = ?) DESC, id",
+                            (espace, cle, cle)):
         if lisible(row["id"]):
             return dict(row)
     return None
@@ -389,8 +398,9 @@ def _restaurer_annotation(conn, region_id, annot, *, depuis):
     `perdus` du contexte et ne revient pas."""
     ctx = _contexte_tags()
     tag_ids = []
+    espace = espace_de_region(conn, region_id)
     for label in annot.get("tags", []):
-        tag = _tag_a_rendre(conn, label, depuis, ctx["lisible"])
+        tag = _tag_a_rendre(conn, label, depuis, ctx["lisible"], espace=espace)
         if tag is None:
             ctx["perdus"].append(label)
         elif tag["id"] not in tag_ids:
@@ -433,7 +443,9 @@ def _inverser_annotation(conn, region_id, avant, apres, *, depuis):
         note = avant.get("note")
     ctx = _contexte_tags()
     t_avant, t_apres = set(avant.get("tags", [])), set(apres.get("tags", []))
-    resolus = {l: _tag_a_rendre(conn, l, depuis, ctx["lisible"]) for l in t_avant | t_apres}
+    espace = espace_de_region(conn, region_id)
+    resolus = {l: _tag_a_rendre(conn, l, depuis, ctx["lisible"], espace=espace)
+               for l in t_avant | t_apres}
     r_avant = {resolus[l]["id"] for l in t_avant if resolus[l]}
     r_apres = {resolus[l]["id"] for l in t_apres if resolus[l]}
     sans_suite = sorted(l for l in t_avant ^ t_apres if resolus[l] is None)

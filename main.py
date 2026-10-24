@@ -29,7 +29,7 @@ from database import (DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT, annotatio
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
                       liens_vus, relecture_planches, reindex_region, retirer_liens_caches,
-                      sql_est_jeu, sql_projet_d_album, unindex_region)
+                      espace_d_album, sql_est_jeu, sql_projet_d_album, unindex_region)
 import autorisation
 import conflit
 import journal
@@ -1850,11 +1850,16 @@ def list_tags(album: Optional[int] = None, conn: sqlite3.Connection = Depends(db
     if album is None:
         portee = portee.pour_le_corpus()
     ou_terme, p_terme = portee.clause_terme("t.collection_id")
+    # COL-4 — et l'ESPACE de libellés : celui de l'album (son bac à sable, ou l'instance),
+    # celui de l'instance pour le nuage. Rien ne se voit d'un espace à l'autre.
+    espace = 0
     if album is not None:
         _get_album(conn, portee, album)
+        espace = espace_d_album(conn, album)
         ou_terme = (f"({ou_terme}) AND (t.collection_id IS NULL OR t.collection_id IN "
                     f"(SELECT collection_id FROM collection_album WHERE album_id = ?))")
         p_terme = [*p_terme, album]
+    ou_terme, p_terme = f"({ou_terme}) AND t.espace = ?", [*p_terme, espace]
     ou_album, p_album = portee.clause_album("pl.album_id")
     return _rows(conn.execute(
         f"""SELECT t.id, t.label, t.couleur, t.description,
@@ -1906,8 +1911,10 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db),
     conflit.verrouiller(conn)      # l'existant se lit sous le verrou d'écriture
     # ANN-8 — l'existant se cherche par la CLÉ du libellé : un tag d'avant écrit « c’est
     # pluriel » est celui que désigne « c'est pluriel », et c'est SA ligne qu'on écrit.
+    # COL-4 — un tag créé ici est de l'espace de l'INSTANCE (0) : c'est là qu'on cherche
+    # l'existant, et un libellé né dans un bac à sable n'y prend rien.
     existant = _row(conn.execute(
-        "SELECT id, collection_id, label FROM tags WHERE cle_tag(label) = ? "
+        "SELECT id, collection_id, label FROM tags WHERE espace = 0 AND cle_tag(label) = ? "
         "ORDER BY (label = ?) DESC, id LIMIT 1", (label, label)))
     if existant is not None:
         label = existant["label"]
@@ -1919,14 +1926,14 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db),
         if not portee.peut_ecrire_terme(existant["collection_id"]):
             raise HTTPException(403, "Ce tag est en lecture seule pour vous.")
     conn.execute(
-        """INSERT INTO tags (label, couleur, description) VALUES (?, ?, ?)
-           ON CONFLICT(label) DO UPDATE SET
+        """INSERT INTO tags (label, couleur, description, espace) VALUES (?, ?, ?, 0)
+           ON CONFLICT(espace, label) DO UPDATE SET
                couleur = COALESCE(excluded.couleur, tags.couleur),
                description = COALESCE(excluded.description, tags.description)""",
         (label, tag.couleur, tag.description),
     )
     conn.commit()
-    return _row(conn.execute("SELECT * FROM tags WHERE label = ?", (label,)))
+    return _row(conn.execute("SELECT * FROM tags WHERE espace = 0 AND label = ?", (label,)))
 
 
 # =========================================================================== #

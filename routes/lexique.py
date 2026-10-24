@@ -291,7 +291,7 @@ class TagLibelleIn(BaseModel):
     label: str
 
 
-_COLONNES_TAG = "id, label, couleur, description, note_portee, etat, collection_id"
+_COLONNES_TAG = "id, label, couleur, description, note_portee, etat, collection_id, espace"
 
 
 def _tag_vu(conn, portee, tag_id: int, quoi: str = "Tag") -> dict:
@@ -472,9 +472,11 @@ def renommer_tag(tag_id: int, payload: TagLibelleIn,
             global_="Ce tag est posé sur des régions : renommer un tag global revient à "
                     "un administrateur.")
     label = cle_tag(payload.label)
+    # COL-4 — l'unicité vaut DANS l'espace du tag (`tags.espace`) : un tag d'un bac à sable
+    # prend un libellé du corpus, et l'inverse, sans que rien ne se voie.
     autre = _row(conn.execute(
-        "SELECT id, label FROM tags WHERE cle_tag(label) = ? AND id <> ? "
-        "ORDER BY (label = ?) DESC, id LIMIT 1", (label, tag_id, label)))
+        "SELECT id, label FROM tags WHERE espace = ? AND cle_tag(label) = ? AND id <> ? "
+        "ORDER BY (label = ?) DESC, id LIMIT 1", (tag["espace"], label, tag_id, label)))
     if autre is not None:
         ou, params = portee.clause_terme("t.collection_id")
         if conn.execute(f"SELECT 1 FROM tags t WHERE t.id = ? AND {ou}",
@@ -488,7 +490,8 @@ def renommer_tag(tag_id: int, payload: TagLibelleIn,
         conn.execute("UPDATE tags SET label = ? WHERE id = ?", (label, tag_id))
         reindex_tags_regions(conn, regions)
         journal.journaliser(conn, "modification", "tags", tag_id,
-                            avant={"id": tag_id, "label": tag["label"]},
-                            apres={"id": tag_id, "label": label})
+                            avant={"id": tag_id, "label": tag["label"],
+                                   "espace": tag["espace"]},
+                            apres={"id": tag_id, "label": label, "espace": tag["espace"]})
     conn.commit()
     return _tag_vu(conn, portee, tag_id)
