@@ -357,10 +357,19 @@ class Portee:
     def _bornee_sur_album(self, alias: str, clause: tuple[str, list]) -> tuple[str, list]:
         """Une clause d'album d'une portée bornée : tout ce qui n'est PAS d'un bac à sable,
         plus ce que la clause ORDINAIRE (`clause`) ouvre — qui ne porte, ses ensembles étant
-        restreints aux bacs à sable, que sur des albums de bac à sable."""
+        restreints aux bacs à sable, que sur des albums de bac à sable.
+
+        Un `CASE` et non `NOT EXISTS (…) OR (…)`, pour le même sens : dans une COLONNE du
+        `SELECT` (`destructible` de `GET /api/albums`), SQLite calcule les deux opérandes
+        d'un `OR`, et la clause ordinaire — le journal, pour `clause_suppression_directe` —
+        l'était pour chaque album du vrai corpus, où le premier suffit (mesuré : 186 ms au
+        lieu de 22 sur 150 albums). `CASE` n'évalue que la branche retenue. Le résultat est
+        le même ligne à ligne, `NULL` compris : `EXISTS` n'est jamais `NULL`, et la branche
+        `THEN` rend la clause ordinaire telle qu'un `FALSE OR` la rendait."""
         sql, params = clause
-        return (f"(NOT EXISTS (SELECT 1 FROM albums _bba WHERE _bba.id = {alias} "
-                f"AND {sql_est_bac_a_sable(sql_projet_d_album('_bba'))}) OR {sql})", params)
+        return (f"(CASE WHEN EXISTS (SELECT 1 FROM albums _bba WHERE _bba.id = {alias} "
+                f"AND {sql_est_bac_a_sable(sql_projet_d_album('_bba'))}) "
+                f"THEN ({sql}) ELSE 1 END)", params)
 
     # -- décisions ponctuelles ---------------------------------------------- #
     def peut_lire(self, collection_id: int) -> bool:
@@ -675,14 +684,21 @@ class Portee:
         if detruire == "0":
             return bac, p_bac
         autrui, p_autrui = _sql_travail_d_autrui(alias, self.utilisateur)
-        return (f"(({detruire} "
-                f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = {alias} "
-                f"AND _sc.creee_par = ?) "
-                f"AND NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
-                f"AND _su.nature = ?) "
-                f"AND NOT {autrui}) OR {bac})",
-                [*p_detruire, self.utilisateur, self.utilisateur, NATURE_COLLECTIF,
-                 *p_autrui, *p_bac])
+        # Le travail d'autrui (le journal) ne se lit que si tout le reste tient : un `AND`
+        # dans une colonne du `SELECT` calcule tous ses opérandes, et `destructible` le
+        # lisait pour chaque album qu'on n'écrit même pas (45 ms sur 50 albums, aucun vrai).
+        # Le sens est celui de `(<bon marché> AND NOT <autrui>) OR <bac>` : le chemin du bac
+        # à sable d'abord, puis les trois moitiés bon marché — jamais `NULL`, des `EXISTS` —,
+        # puis seulement la quatrième.
+        bon_marche = (f"({detruire} "
+                      f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = {alias} "
+                      f"AND _sc.creee_par = ?) "
+                      f"AND NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
+                      f"AND _su.nature = ?))")
+        p_bon_marche = [*p_detruire, self.utilisateur, self.utilisateur, NATURE_COLLECTIF]
+        quand_bac, p_quand_bac = (f"WHEN {bac} THEN 1 ", p_bac) if bac != "0" else ("", [])
+        return (f"(CASE {quand_bac}WHEN {bon_marche} THEN NOT {autrui} ELSE 0 END)",
+                [*p_quand_bac, *p_bon_marche, *p_autrui])
 
     def peut_tenir_le_fonds(self) -> bool:
         """A-t-on le droit de tenir le FONDS — le voir, rendre une copie gardée, répondre
