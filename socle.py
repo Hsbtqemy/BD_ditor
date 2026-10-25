@@ -871,6 +871,10 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int, *,
             "SELECT collection_id FROM collection_album WHERE album_id = ? "
             "ORDER BY collection_id", (album_id,)).fetchall():
         journal.journaliser_emploi(conn, "delien", album_id, collection_id)
+    # ANN-7 (R11, Q5) — les relevés et les passes de la SURFACE de ses planches : leur clé sur
+    # la planche est SANS action, et le `DELETE` échouerait sur eux. Ceux des régions partent
+    # par CASCADE.
+    retirer_la_surface(conn, "SELECT id FROM planches WHERE album_id = ?", (album_id,))
     conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))   # CASCADE planches/regions
     # Le document part avec sa dernière copie, et sa destruction s'écrit : le journal est
     # tout ce qui reste de lui, ses images quittant le disque juste après. Un album SANS
@@ -901,6 +905,17 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int, *,
     _clore_lignes_d_une_copie_detruite(conn, portee, album_id)
     conn.commit()
     _sous_le_verrou(conn, _effacer_les_images_d_une_copie, conn, album_id, chemins)
+
+
+def retirer_la_surface(conn, planches_sql: str, params) -> int:
+    """Retire les relevés et les passes posés sur la SURFACE de ces planches (`planches_sql`,
+    une requête qui rend leurs identifiants) — ce qu'un chemin qui SUPPRIME une planche doit
+    faire d'abord : leur clé sur la planche est SANS action (Q5), si bien qu'un chemin qui
+    les oublierait échoue bruyamment au lieu d'effacer en silence. Rend le nombre retiré."""
+    n = conn.execute(f"DELETE FROM releve WHERE planche_id IN ({planches_sql})",
+                     params).rowcount
+    return n + conn.execute(f"DELETE FROM passe WHERE planche_id IN ({planches_sql})",
+                            params).rowcount
 
 
 def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
@@ -1176,6 +1191,14 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     if n:
         raise HTTPException(409, f"{n} collection(s) appartiennent à ce projet : un "
                                  "projet ne se supprime que vide.")
+    # ANN-7 (G18) — un projet qui POSSÈDE des grilles ne se supprime pas sans qu'on l'ait
+    # décidé : ses grilles d'abord (les supprimer, ou elles portent des relevés et se
+    # retirent). La clé sans action de `grille.projet_id` est la ceinture.
+    g = conn.execute("SELECT COUNT(*) FROM grille WHERE projet_id = ?",
+                     (projet_id,)).fetchone()[0]
+    if g:
+        raise HTTPException(409, f"Ce projet possède {g} grille(s) d'annotation : "
+                                 "supprimez-les d'abord. Un projet ne se supprime que vide.")
     bases = conn.execute(
         "SELECT c.id, c.nom, (SELECT COUNT(*) FROM collection_album ca "
         "                     WHERE ca.collection_id = c.id) AS n "
@@ -1328,17 +1351,21 @@ def _passer_les_gestes_du_bac(conn, projet_id: int) -> int:
         return 0
     marques = ", ".join("?" * len(planches))
     tables = ", ".join("?" * len(undo._TABLES))
+    # ANN-7 — un acte sur la SURFACE d'une planche (`releve_planche`) la désigne par son
+    # identifiant de PLANCHE, jamais de région : les deux ne se confondent pas.
     gestes = conn.execute(
         f"SELECT * FROM evenement e WHERE e.agent_type = 'humain' "
         f"AND e.cible_table IN ({tables}) "
-        f"AND (e.cible_id IN (SELECT r.id FROM regions r WHERE r.planche_id IN ({marques})) "
+        f"AND ((e.cible_table <> 'releve_planche' "
+        f"      AND e.cible_id IN (SELECT r.id FROM regions r WHERE r.planche_id IN ({marques}))) "
+        f"     OR (e.cible_table = 'releve_planche' AND e.cible_id IN ({marques})) "
         f"     OR (json_valid(e.apres) AND json_extract(e.apres, '$.planche_id') IN ({marques})) "
         f"     OR (json_valid(e.avant) AND json_extract(e.avant, '$.planche_id') IN ({marques}))) "
         f"AND e.id NOT IN (SELECT cible_id FROM evenement "
         f"                 WHERE ((type = 'annulation' AND cible_table = 'evenement') "
         f"                     OR (type = 'abandon' AND cible_table = 'annulation')) "
         f"                   AND cible_id IS NOT NULL) ORDER BY e.id",
-        (*undo._TABLES, *planches, *planches, *planches)).fetchall()
+        (*undo._TABLES, *planches, *planches, *planches, *planches)).fetchall()
     for e in gestes:
         undo.ecarter(conn, e)
     return len(gestes)
@@ -1427,6 +1454,14 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
         conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
         journal.journaliser(conn, "suppression", "collection", collection_id,
                             avant={"nom": nom, "bac_a_sable": True})
+    # ANN-7 (G6) — ses GRILLES partent avec lui : elles n'existaient que là. Leurs relevés et
+    # leurs passes sont partis avec ses albums ; leurs activations et leurs masques d'abord
+    # (la clé de l'activation sur la grille est sans action).
+    grilles_du_bac = [r[0] for r in conn.execute("SELECT id FROM grille WHERE projet_id = ?",
+                                                 (projet_id,))]
+    for gid in grilles_du_bac:
+        conn.execute("DELETE FROM projet_grille WHERE grille_id = ?", (gid,))
+        conn.execute("DELETE FROM grille WHERE id = ?", (gid,))
     # COL-4 (Hugo, 2026-10-24) — les personnages NÉS dans le bac à sable partent avec lui :
     # leurs apparitions sont parties avec ses régions. Un personnage qui apparaîtrait encore
     # ailleurs (base retouchée : aucune route ne l'attribue hors de son bac à sable) rejoint
@@ -1441,7 +1476,8 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
     journal.journaliser(conn, "suppression", "projet", projet_id,
                         avant={"nom": nom, "bac_a_sable": True, "motif": motif,
                                "planches": sorted(emportees["planches"]),
-                               "regions": sorted(emportees["regions"])})
+                               "regions": sorted(emportees["regions"]),
+                               "grilles": grilles_du_bac})
     conn.commit()
     return {"efface": True, "albums": detruits, "gestes_passes": passes}
 

@@ -209,7 +209,7 @@ def test_le_vocabulaire_qui_ne_se_voit_pas_depuis_l_arrivee_reste_et_se_compte(d
     charge = json.loads(_sql(
         db_path, "SELECT apres FROM evenement WHERE cible_table = 'document' AND cible_id = ? "
                  "AND json_extract(apres, '$.album_id') = ?", (source["doc"], b))[0]["apres"])
-    assert charge["copie"]["laisses"] == {"tags": 1, "attributs": 1}
+    assert charge["copie"]["laisses"] == {"tags": 1, "attributs": 1, "releves": 0}
     assert charge["copie"]["copies"]["tags"] == 1 and charge["copie"]["cran"] == "annotations"
 
 
@@ -472,7 +472,8 @@ def test_l_administrateur_lit_le_travail_copie_sous_une_demande(client, db_path,
     conn = database.get_connection()
     try:
         agents = {r[0] for r in conn.execute(
-            f"SELECT agent FROM ({autorisation.sql_actes_sur_album('?')})", [b] * 6)}
+            f"SELECT agent FROM ({autorisation.sql_actes_sur_album('?')})",
+            [b] * len(autorisation._sources_du_travail("?")))}
     finally:
         conn.close()
     assert "lea" in agents
@@ -683,7 +684,7 @@ def test_l_apercu_compte_ce_qui_reste_sans_le_nommer(client, source):
     nombre."""
     r = _apercu(client, source, LEA)
     ap = _ok(r)
-    assert ap["laisses"] == {"tags": 1, "attributs": 1}
+    assert ap["laisses"] == {"tags": 1, "attributs": 1, "releves": 0}
     for nom in ("secret", "grille privée", "à part"):
         assert nom not in r.text
     assert (ap["etat"], ap["repondra"]) == ("demande", "administrateur")
@@ -693,8 +694,9 @@ def test_l_apercu_d_une_copie_sans_region(client, db_path, source):
     _sql(db_path, "DELETE FROM regions")
     ap = _ok(_apercu(client, source, ADMIN))
     assert ap["copies"] == {"regions": 0, "textes": 0, "corrections": 0, "annotations": 0,
-                            "tags": 0, "attributs": 0, "locuteurs": 0, "presences": 0}
-    assert ap["laisses"] == {"tags": 0, "attributs": 0} and ap["personnages"] == 0
+                            "tags": 0, "attributs": 0, "locuteurs": 0, "presences": 0,
+                            "releves": 0, "passes": 0}
+    assert ap["laisses"] == {"tags": 0, "attributs": 0, "releves": 0} and ap["personnages"] == 0
 
 
 def test_l_apercu_garde_ses_portes(client, source):

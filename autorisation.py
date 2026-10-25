@@ -1180,7 +1180,11 @@ def _sql_une_soeur(alias: str) -> str:
 # `region_attribut` n'est écrit que depuis la relecture croisée de la tranche 2 : un
 # attribut posé par un autre ne comptait pas, et l'importatrice détruisait sans demander.
 _CIBLES_DE_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
-                     "region_attribut")
+                     "region_attribut", "releve")
+# ANN-7 (tranche 1, R10, R11) — `releve` : un relevé posé, modifié, retiré sur une région, un
+# doute et son fil, une passe ; sa cible est la RÉGION, si bien que les sources 1 et 6 le
+# lisent par l'index du journal, sans chercher la région dans une charge. Le même acte sur la
+# SURFACE d'une planche s'écrit sous `releve_planche`, lu avec les validations (source 4).
 
 
 def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
@@ -1318,9 +1322,9 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          "JOIN token_correction _tt ON _tt.region_id = _tr.id "
          f"WHERE _tp.album_id = {alias}",
          "_tt.recopiee = 1"),
-        ("_te.agent", "'planches'", "_te.date",
+        ("_te.agent", "_te.cible_table", "_te.date",
          "planches _tp JOIN evenement _te "
-         "ON _te.cible_table = 'planches' AND _te.cible_id = _tp.id "
+         "ON _te.cible_table IN ('planches', 'releve_planche') AND _te.cible_id = _tp.id "
          f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain'", "0"),
         ("_te.agent", "'document'", "_te.date",
          "albums _ta JOIN evenement _te "
@@ -1340,6 +1344,20 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          "OR EXISTS (SELECT 1 FROM token_correction _tvc WHERE _tvc.region_id = _tsrc.d "
          "AND _tvc.recopiee = 1))",
          "1"),
+        # ANN-7 (R11) — le travail RECOPIÉ sur la SURFACE d'une planche : un relevé, une
+        # passe, arrivés avec une copie amorcée au cran `annotations`. La chaîne de
+        # `region_origine` ne remonte que des RÉGIONS, et aucun événement n'est recopié (E3) :
+        # c'est sur leurs COLONNES qu'on lit qui l'a fait, le patron des corrections. Un
+        # auteur NULL — recopié entre deux projets (G9) — compte comme un autre.
+        ("_tsr.auteur", "'releve_planche'", "_tsr.cree_le",
+         "planches _tp JOIN releve _tsr ON _tsr.planche_id = _tp.id "
+         f"WHERE _tp.album_id = {alias} AND _tsr.origine_id IS NOT NULL", "1"),
+        ("_tsp.par", "'releve_planche'", "_tsp.le",
+         "planches _tp JOIN passe _tsp ON _tsp.planche_id = _tp.id "
+         f"WHERE _tp.album_id = {alias} AND EXISTS (SELECT 1 FROM copie _tsc "
+         "WHERE _tsc.album_id = _tp.album_id AND _tsc.depuis_album_id IS NOT NULL) "
+         "AND NOT EXISTS (SELECT 1 FROM evenement _tse WHERE _tse.cible_table = "
+         "'releve_planche' AND _tse.cible_id = _tp.id AND _tse.type = 'passe')", "1"),
     ]
 
 
@@ -1402,6 +1420,11 @@ _SQL_COUCHE_VIT = (
                "AND _tv.recopiee = 1)"
                for t in ("annotations", "bulle_locuteur", "personnage_presence",
                          "region_attribut"))
+    # ANN-7 — un relevé recopié porte son relevé source (`origine_id`) ; une passe, rien :
+    # elle vit si une passe vit sur la région de la copie.
+    + " WHEN 'releve' THEN (EXISTS (SELECT 1 FROM releve _tv WHERE _tv.region_id = _tsrc.d "
+      "AND _tv.origine_id IS NOT NULL) OR EXISTS (SELECT 1 FROM passe _tvp "
+      "WHERE _tvp.region_id = _tsrc.d))"
     + " ELSE 1 END)")
 
 

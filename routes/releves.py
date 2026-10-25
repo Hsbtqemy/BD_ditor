@@ -53,6 +53,7 @@ import conflit
 import grilles
 import journal
 import mots
+from releves import instantane, qualificatifs_de
 from database import cle_tag, noms_lisibles, projet_d_album
 from socle import _get_planche, _get_region, db, portee_courante
 
@@ -99,40 +100,6 @@ def journaliser_releve(conn, type_: str, releve, **charges) -> int:
     if releve["region_id"] is not None:
         return journal.journaliser(conn, type_, "releve", releve["region_id"], **charges)
     return journal.journaliser(conn, type_, "releve_planche", releve["planche_id"], **charges)
-
-
-def qualificatifs_de(conn, releve_id: int) -> list:
-    return [q[0] for q in conn.execute(
-        "SELECT qualificatif_cle FROM releve_qualificatif WHERE releve_id = ? "
-        "ORDER BY qualificatif_cle", (releve_id,))]
-
-
-def instantane(conn: sqlite3.Connection, releve_id: int, *, profond: bool = False) -> dict:
-    """L'état d'un relevé, pour le journal : ses colonnes, ses qualificatifs (triés), son
-    passage — `mots` (les rangs, dans l'ordre) et `formes` —, et, `profond`, ses doutes et
-    leur fil (une suppression : Ctrl+Z les rend). `releve_id` dans la charge : la cible au
-    journal est la région ou la planche, que plusieurs relevés partagent."""
-    r = conn.execute("SELECT * FROM releve WHERE id = ?", (releve_id,)).fetchone()
-    if r is None:
-        return {}
-    passage = conn.execute("SELECT position, rang, forme FROM releve_mot WHERE releve_id = ? "
-                           "ORDER BY position", (releve_id,)).fetchall()
-    out = {"releve_id": r["id"], "region_id": r["region_id"], "planche_id": r["planche_id"],
-           "grille_id": r["grille_id"], "version_id": r["version_id"],
-           "entree_cle": r["entree_cle"], "variante_cle": r["variante_cle"],
-           "precision": r["precision"], "lien_region_id": r["lien_region_id"],
-           "lien_texte": r["lien_texte"], "texte_ancre": r["texte_ancre"], "une": r["une"],
-           "origine_id": r["origine_id"], "auteur": r["auteur"], "cree_le": r["cree_le"],
-           "modifie_par": r["modifie_par"], "modifie_le": r["modifie_le"],
-           "qualificatifs": qualificatifs_de(conn, releve_id),
-           "mots": [m["rang"] for m in passage], "formes": [m["forme"] for m in passage]}
-    if profond:
-        out["doutes"] = [
-            {**dict(d), "messages": [dict(m) for m in conn.execute(
-                "SELECT * FROM doute_message WHERE doute_id = ? ORDER BY id", (d["id"],))]}
-            for d in conn.execute("SELECT * FROM doute WHERE releve_id = ? ORDER BY id",
-                                  (releve_id,))]
-    return out
 
 
 def collectifs(conn, logins) -> set:

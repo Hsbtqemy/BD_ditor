@@ -12,7 +12,9 @@ répété remonte l'historique. Pas de redo dans ce cran (le redo = annuler une 
 Les inversions font des mutations BRUTES (+ réindex FTS) sans repasser par les routes, sinon
 elles rejournaliseraient (bruit + boucle). Un seul événement `annulation` est ajouté par undo.
 Périmètre : régions (créer/modifier/supprimer+cascade), annotations (note+tags), locuteur,
-présence. Hors périmètre (pour l'instant) : correction grammaticale, validation.
+présence, relevés (poser/modifier/retirer, ANN-7 ; une région rétablie rend les siens). Hors
+périmètre : correction grammaticale, validation, doutes et passes (ils se répondent et se
+rouvrent).
 Sous un compte COLLECTIF (AUTH-6), seuls les actes récents : `DELAI_COLLECTIF_MINUTES`.
 Cf. `docs/undo.md`.
 """
@@ -33,7 +35,10 @@ from database import (NATURE_COLLECTIF, annotation_vide, cle_tag, espace_de_regi
 # Types d'événements et tables que l'undo sait inverser (le reste est ignoré : ni annulé,
 # ni bloquant — l'undo « saute » un acte non annulable et remonte au précédent).
 _TYPES = ("creation", "modification", "suppression", "lien", "delien")
-_TABLES = ("regions", "annotations", "bulle_locuteur", "personnage_presence")
+_TABLES = ("regions", "annotations", "bulle_locuteur", "personnage_presence", "releve",
+           "releve_planche")
+# ANN-7 (tranche 1, R10) — les relevés, sous la cible de leur région ou de leur planche.
+_RELEVES = ("releve", "releve_planche")
 _LIENS = ("bulle_locuteur", "personnage_presence")   # tables lien région→personnage (region_id UNIQUE)
 
 _DESCRIPTIONS = {
@@ -47,6 +52,12 @@ _DESCRIPTIONS = {
     ("delien", "bulle_locuteur"): "retrait d'un locuteur",
     ("lien", "personnage_presence"): "attribution d'une présence",
     ("delien", "personnage_presence"): "retrait d'une présence",
+    ("creation", "releve"): "pose d'un relevé",
+    ("modification", "releve"): "modification d'un relevé",
+    ("suppression", "releve"): "retrait d'un relevé",
+    ("creation", "releve_planche"): "pose d'un relevé",
+    ("modification", "releve_planche"): "modification d'un relevé",
+    ("suppression", "releve_planche"): "retrait d'un relevé",
 }
 
 
@@ -201,7 +212,7 @@ def reindexe(e) -> bool:
     Non pour un lien (locuteur, présence : `_poser_lien` / `_retirer_lien` n'indexent rien),
     ni pour l'annulation d'une création (`_supprimer_region` ne fait que DÉSINDEXER). La
     route s'en sert pour ne charger spaCy que lorsqu'il servira (ANN-8)."""
-    if e["cible_table"] in _LIENS:
+    if e["cible_table"] in _LIENS or e["cible_table"] in _RELEVES:
         return False
     return not (e["cible_table"] == "regions" and e["type"] == "creation")
 
@@ -898,6 +909,157 @@ def _laisse_par_un_geste_passe(conn, e):
 
 
 # --------------------------------------------------------------------------- #
+# Les relevés (ANN-7, tranche 1, R10)
+# --------------------------------------------------------------------------- #
+# Les valeurs d'un relevé qu'une annulation remet, gardées comme les champs de CONC-3.
+_VALEURS_DU_RELEVE = ("variante_cle", "qualificatifs", "precision", "lien_region_id", "mots")
+
+
+def _activation_du_releve(conn, snap) -> bool:
+    """La grille du relevé est-elle active, dans SA version, dans le projet de l'album de sa
+    cible ? Sinon l'acte ne s'annule plus (seconde phrase) : un relevé d'une grille
+    désactivée se lit, il ne s'écrit plus — pas même par Ctrl+Z."""
+    from database import projet_d_album
+    if snap.get("region_id") is not None:
+        a = conn.execute("SELECT p.album_id FROM regions g JOIN planches p "
+                         "ON p.id = g.planche_id WHERE g.id = ?",
+                         (snap["region_id"],)).fetchone()
+    else:
+        a = conn.execute("SELECT album_id FROM planches WHERE id = ?",
+                         (snap.get("planche_id"),)).fetchone()
+    if a is None:
+        return False
+    act = conn.execute("SELECT version_id FROM projet_grille WHERE projet_id = ? "
+                       "AND grille_id = ?", (projet_d_album(conn, a[0]),
+                                             snap["grille_id"])).fetchone()
+    return act is not None and act[0] == snap["version_id"]
+
+
+def _entree_existe(conn, snap) -> bool:
+    """L'entrée du relevé existe-t-elle encore dans sa version ? Ctrl+Z rétablit un relevé
+    par la `cle` de son entrée, jamais par un libellé (ANN-8) ; une entrée remaniée depuis
+    (une grille ouverte) rend l'acte irrétablissable."""
+    return conn.execute("SELECT 1 FROM grille_entree WHERE version_id = ? AND cle = ?",
+                        (snap["version_id"], snap["entree_cle"])).fetchone() is not None
+
+
+def _inverser_releve(conn, e, avant, apres) -> None:
+    """Défait la pose, la modification ou le retrait d'un relevé. Les gardes passent avant
+    toute écriture : la grille active dans la version du relevé, l'entrée encore là ; puis,
+    comme pour une région, ce qu'un AUTRE a changé depuis n'est pas écrasé (CONC-3) — le 409
+    nommé, que « Passer ce geste » franchit (ANN-8)."""
+    import releves
+    t = e["type"]
+    snap = apres if t == "creation" else (avant or {})
+    rid = snap.get("releve_id")
+    actuel = releves.instantane(conn, rid) if rid is not None else {}
+    if t == "suppression":
+        if actuel:
+            raise UndoImpossible("le relevé existe déjà")
+        if not (_activation_du_releve(conn, snap) and _entree_existe(conn, snap)):
+            raise Irretablissable()
+        if snap.get("une"):
+            autre = conn.execute(
+                "SELECT * FROM releve WHERE COALESCE(region_id, 0) = ? "
+                "AND COALESCE(planche_id, 0) = ? AND grille_id = ? AND entree_cle = ? "
+                "AND une = 1", (snap.get("region_id") or 0, snap.get("planche_id") or 0,
+                                snap["grille_id"], snap["entree_cle"])).fetchone()
+            if autre is not None:
+                pose = conn.execute(
+                    "SELECT * FROM evenement WHERE cible_table IN ('releve', 'releve_planche') "
+                    "AND type = 'creation' AND id > ? AND json_extract(apres, '$.releve_id') = ? "
+                    "ORDER BY id DESC LIMIT 1", (e["id"], autre["id"])).fetchone()
+                raise conflit.Perime(e["cible_table"], e["cible_id"], "releve", autre["id"],
+                                     conflit.auteur(conn, pose) if pose else None)
+        releves.rendre(conn, snap)
+        return
+    if not actuel:
+        raise Irretablissable()                  # retiré depuis : il n'y a rien à défaire
+    if not (_activation_du_releve(conn, actuel) and _entree_existe(conn, actuel)):
+        raise Irretablissable()
+    objet = ("releve_id", rid)
+    if t == "creation":
+        for champ in _VALEURS_DU_RELEVE:
+            if not conflit.egal(actuel[champ], snap.get(champ)):
+                raise conflit.Perime(e["cible_table"], e["cible_id"], champ, actuel[champ],
+                                     conflit.auteur_du_champ(conn, e["cible_table"],
+                                                             e["cible_id"], champ,
+                                                             actuel[champ], depuis=e["id"],
+                                                             objet=objet))
+        doute = conn.execute("SELECT 1 FROM doute WHERE releve_id = ?", (rid,)).fetchone()
+        if doute is not None:
+            ouvert = conn.execute(
+                "SELECT * FROM evenement WHERE cible_table = ? AND cible_id = ? "
+                "AND type = 'doute' AND id > ? AND json_extract(apres, '$.releve_id') = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (e["cible_table"], e["cible_id"], e["id"], rid)).fetchone()
+            raise conflit.Perime(e["cible_table"], e["cible_id"], "doute", "ouvert",
+                                 conflit.auteur(conn, ouvert) if ouvert else None)
+        conn.execute("DELETE FROM releve WHERE id = ?", (rid,))
+        return
+    # Une modification : ce que l'acte a changé revient, et lui seul.
+    avant, apres = avant or {}, apres or {}
+    changes = [c for c in _VALEURS_DU_RELEVE if c in apres]
+    for champ in changes:
+        conflit.verifier(conn, e["cible_table"], e["cible_id"], champ, vu=apres.get(champ),
+                         actuel=actuel[champ], nouveau=avant.get(champ), depuis=e["id"],
+                         objet=objet)
+    if "variante_cle" in changes:
+        conn.execute("UPDATE releve SET variante_cle = ? WHERE id = ?",
+                     (avant.get("variante_cle"), rid))
+    if "qualificatifs" in changes:
+        conn.execute("DELETE FROM releve_qualificatif WHERE releve_id = ?", (rid,))
+        conn.executemany("INSERT INTO releve_qualificatif (releve_id, qualificatif_cle) "
+                         "VALUES (?, ?)", [(rid, q) for q in avant.get("qualificatifs") or []])
+    if "precision" in changes:
+        conn.execute("UPDATE releve SET precision = ? WHERE id = ?",
+                     (avant.get("precision"), rid))
+    if "lien_region_id" in changes:
+        conn.execute("UPDATE releve SET lien_region_id = ?, lien_texte = ? WHERE id = ?",
+                     (avant.get("lien_region_id"), avant.get("lien_texte"), rid))
+    if "mots" in changes:
+        conn.execute("DELETE FROM releve_mot WHERE releve_id = ?", (rid,))
+        conn.executemany("INSERT INTO releve_mot (releve_id, position, rang, forme) "
+                         "VALUES (?, ?, ?, ?)",
+                         [(rid, i, rang, forme) for i, (rang, forme)
+                          in enumerate(zip(avant.get("mots") or [], avant.get("formes") or []))])
+        conn.execute("UPDATE releve SET texte_ancre = ? WHERE id = ?",
+                     (avant.get("texte_ancre"), rid))
+
+
+def _rendre_releves(conn, snap) -> int:
+    """Les relevés et les passes que la suppression d'une région avait emportés par CASCADE,
+    rendus avec elle sous leurs identifiants (R10 ; « Supprimer une région supprime ses
+    relevés, Ctrl+Z les rend »). Ne reviennent pas — comptés, sans rien dire d'eux : ceux
+    dont la grille n'est plus active dans leur version, ou dont l'entrée a disparu, ou qu'une
+    contrainte refuse. Le patron de `liens_non_rendus`."""
+    import releves
+    manque = 0
+    for n in _noeuds(snap):
+        for r in n.get("releves", []):
+            if not (_activation_du_releve(conn, r) and _entree_existe(conn, r)):
+                manque += 1
+                continue
+            conn.execute("SAVEPOINT rendre_un_releve")
+            try:
+                releves.rendre(conn, r)
+                conn.execute("RELEASE rendre_un_releve")
+            except sqlite3.IntegrityError:
+                conn.execute("ROLLBACK TO rendre_un_releve")
+                conn.execute("RELEASE rendre_un_releve")
+                manque += 1
+        for p in n.get("passes", []):
+            if not _activation_du_releve(conn, {**p, "region_id": n["id"]}):
+                manque += 1
+                continue
+            conn.execute("INSERT OR IGNORE INTO passe (id, region_id, planche_id, grille_id, "
+                         "version_id, rubrique_cle, par, le) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)",
+                         (p["id"], n["id"], p["grille_id"], p["version_id"],
+                          p["rubrique_cle"], p["par"], p["le"]))
+    return manque
+
+
+# --------------------------------------------------------------------------- #
 # Aiguillage + orchestration
 # --------------------------------------------------------------------------- #
 def _inverser(conn, e, voit=None) -> int:
@@ -922,6 +1084,9 @@ def _inverser(conn, e, voit=None) -> int:
             return cid
         if table == "annotations":        # cible_id = region_id (v20 : stable, cf. put_annotation)
             _inverser_annotation(conn, cid, avant, apres, depuis=e["id"])
+            return cid
+        if table in _RELEVES:              # cible_id = la région, ou la planche
+            _inverser_releve(conn, e, avant, apres)
             return cid
         if table in _LIENS:                # cible_id = region_id
             if t == "lien" and avant is None:
@@ -1086,6 +1251,12 @@ def _meme_objet(conn, e) -> bool:
                     or _supprimee_depuis(conn, parent, e)):
                 return False
         return True
+    if e["cible_table"] == "releve_planche":
+        # ANN-7 — la cible est la PLANCHE (la surface) : présente, et d'un album né avant
+        # l'acte. Ses identifiants ne reviennent plus depuis la v30.
+        pl = e["cible_id"]
+        return (conn.execute("SELECT 1 FROM planches WHERE id = ?", (pl,)).fetchone()
+                is not None and not _album_ne_apres(conn, pl, e))
     rid = e["cible_id"]
     r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (rid,)).fetchone()
     if r is None or _recreee_depuis(conn, rid, e) or _supprimee_depuis(conn, rid, e):
@@ -1182,6 +1353,8 @@ def lieux(conn, e) -> dict:
     if e["type"] == "suppression" and e["cible_table"] == "regions":
         return {"regions": [], "planches": _planches_instantane(_charge(e["avant"]) or {}),
                 "personnages": []}
+    if e["cible_table"] == "releve_planche":     # ANN-7 : un relevé de la surface
+        return {"regions": [], "planches": [e["cible_id"]], "personnages": []}
     return {"regions": [e["cible_id"]], "planches": [], "personnages": []}
 
 
@@ -1267,6 +1440,7 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
     perdus = []                    # ANN-8 : les tags qui ne se résolvent plus (`_tag_a_rendre`)
     jeton = _CONTEXTE_TAGS.set({"perdus": perdus, "lisible": lambda tag_id: ecrivable(
         {"regions": [], "planches": [], "personnages": [], "tags": [tag_id]})})
+    releves_non_rendus = None
     try:
         region_id = _inverser(conn, e, voit)
         if rendables is not None:
@@ -1274,6 +1448,8 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
                 non_rendus = _rendre_liens(conn, a_rendre, rendables)
             except sqlite3.IntegrityError as exc:
                 raise Irretablissable() from exc
+        if e["type"] == "suppression" and e["cible_table"] == "regions":
+            releves_non_rendus = _rendre_releves(conn, a_rendre)
     except Irretablissable:
         raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE, voit)
     except conflit.Perime as exc:
@@ -1283,7 +1459,10 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
         raise
     finally:
         _CONTEXTE_TAGS.reset(jeton)
-    planche_id = _planche_de(conn, region_id, e)
+    if e["cible_table"] == "releve_planche":     # la cible est la planche elle-même
+        planche_id, region_id = e["cible_id"], None
+    else:
+        planche_id = _planche_de(conn, region_id, e)
     journal.journaliser(conn, "annulation", "evenement", e["id"],
                         avant={"acte": e["type"], "cible_table": e["cible_table"],
                                "cible_id": e["cible_id"]})
@@ -1294,4 +1473,6 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
         res["liens_non_rendus"] = non_rendus
     if perdus:
         res["tags_non_rendus"] = len(perdus)        # ANN-8 : un tag supprimé depuis l'acte
+    if releves_non_rendus:
+        res["releves_non_rendus"] = releves_non_rendus   # ANN-7 : grille désactivée depuis
     return res

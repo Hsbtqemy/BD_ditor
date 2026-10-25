@@ -74,7 +74,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _supprimer_le_vocabulaire_du_bac, _rive_d_un_personnage, _sortir_du_bac,
     _passer_les_gestes_du_bac,
     _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
-    _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
+    _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet, retirer_la_surface,
     _clore_demandes_vers, _clore_lignes_d_une_copie_detruite, _deposer, _en_attente_vers,
     _nouvelle_copie, _plan_rejoindre, _retour_en_attente,
     RepartirIn, RetirerIn, _MOTIF_REPARTIR, _MOTIF_REPARTIR_PLANCHE, _cran_de_repartir, _repartir,
@@ -777,6 +777,9 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
     for r in conn.execute(
         "SELECT id FROM regions WHERE planche_id = ?", (planche_id,)).fetchall():
         unindex_region(conn, r["id"])
+    # ANN-7 (R11, Q5) — les relevés et les passes de sa SURFACE d'abord : leur clé sur la
+    # planche est sans action. Ceux de ses régions partent par CASCADE.
+    retirer_la_surface(conn, "SELECT ?", (planche_id,))
     conn.execute("DELETE FROM planches WHERE id = ?", (planche_id,))   # CASCADE regions
     _journaliser_scan(conn, p["album_id"], p, retire=True)
     conn.commit()

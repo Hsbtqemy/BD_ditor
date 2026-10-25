@@ -167,6 +167,11 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
                      AND TRIM(COALESCE(ocr_texte, '')) = ''
                      AND NOT EXISTS (SELECT 1 FROM annotations a
                                      WHERE a.region_id = regions.id)
+                     -- ANN-7 (G20 b) : un relevé, une passe, une situation sont du travail.
+                     AND NOT EXISTS (SELECT 1 FROM releve x WHERE x.region_id = regions.id)
+                     AND NOT EXISTS (SELECT 1 FROM passe x WHERE x.region_id = regions.id)
+                     AND NOT EXISTS (SELECT 1 FROM region_attribut x
+                                     WHERE x.region_id = regions.id)
                    UNION ALL
                    SELECT r.id FROM regions r JOIN doomed d ON r.parent_id = d.id
                ) SELECT id FROM doomed""", (planche_id,)).fetchall()

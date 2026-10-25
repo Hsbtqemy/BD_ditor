@@ -1266,6 +1266,18 @@ FROM (
 """
 
 
+# Les tables de l'ANNOTATION (ANN-7, tranche 1 ; cadrage R11, « Deux gardes qui échouent
+# OUVERT couvrent les relevés, et un cliquet les tient », tranché le 2026-10-22) : tout ce
+# qu'on pose sur une région ou une planche au cran `annotations`. Chacune doit être lue par les
+# chemins qui échouent OUVERT si on l'oublie — la règle « travail d'autrui » de la suppression
+# directe, « repartir de zéro », la re-segmentation — ; `tests/test_tables_d_annotation.py`
+# le JOUE table par table, et exige que toute table du schéma qui porte un `region_id` ou un
+# `planche_id` soit ici, ou déclarée hors d'ici avec sa raison.
+TABLES_D_ANNOTATION = ("annotations", "region_attribut", "bulle_locuteur",
+                       "personnage_presence", "releve", "releve_mot", "releve_qualificatif",
+                       "doute", "doute_message", "passe")
+
+
 # Les seize tables de la v37 (ANN-7, tranche 1) : les grilles, où elles servent, et ce qu'on
 # pose. Les tests de migration des versions précédentes migrent jusqu'à la courante et les
 # voient naître, vides : ils les lisent ici plutôt que de recopier la liste sept fois.
@@ -2765,12 +2777,13 @@ def _sql_acte_isole_direct(e: str) -> str:
                 f"'$.{cle}')")
     s = "".join(c for c in e if c.isalnum())               # des alias propres à `e`
     region = (f"(CASE WHEN {e}.cible_table IN ('regions', 'annotations', 'bulle_locuteur', "
-              f"'personnage_presence', 'region_attribut') THEN {e}.cible_id "
+              f"'personnage_presence', 'region_attribut', 'releve') THEN {e}.cible_id "
               f"WHEN {e}.cible_table = 'token_correction' THEN "
               f"COALESCE({j('apres', 'region_id')}, {j('avant', 'region_id')}) END)")
     planche = (f"COALESCE((SELECT _xr{s}.planche_id FROM regions _xr{s} "
                f"WHERE _xr{s}.id = {region}), "
-               f"CASE WHEN {e}.cible_table = 'planches' THEN {e}.cible_id END, "
+               f"CASE WHEN {e}.cible_table IN ('planches', 'releve_planche') "
+               f"THEN {e}.cible_id END, "
                f"CASE WHEN {e}.cible_table = 'regions' THEN "
                f"COALESCE({j('apres', 'planche_id')}, {j('avant', 'planche_id')}) END)")
 
@@ -3324,6 +3337,9 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
             "SELECT personnage_id, date_creation FROM personnage_presence WHERE region_id = ?",
             "INSERT INTO personnage_presence (region_id, personnage_id, date_creation, "
             "recopiee) VALUES (?, ?, ?, 1)")
+        n_rel, n_passes, laisses["releves"] = _copier_les_releves(
+            conn, depuis, collection_id, regions, planches)
+        copies.update(releves=n_rel, passes=n_passes)
 
     if texte:
         lemmes = _lemmes_indexes(conn, list(regions))
@@ -3331,6 +3347,75 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
             _indexer_une_region_copiee(conn, s, c, lemmes.get(s, ""), grammaire=grammaire,
                                        annotations=annotations)
     return {"copies": copies, "laisses": laisses}
+
+
+def _grilles_actives_a_l_arrivee(conn: sqlite3.Connection, collection_id: int) -> dict:
+    """{grille_id: version_id active} dans le projet de la collection d'arrivée."""
+    return dict(conn.execute("SELECT grille_id, version_id FROM projet_grille "
+                             "WHERE projet_id = ?",
+                             (projet_de_collection(conn, collection_id),)).fetchall())
+
+
+def _releves_de_la_source(conn: sqlite3.Connection, depuis: int) -> list:
+    return conn.execute(
+        "SELECT r.* FROM releve r LEFT JOIN regions g ON g.id = r.region_id "
+        "JOIN planches p ON p.id = COALESCE(g.planche_id, r.planche_id) "
+        "WHERE p.album_id = ? ORDER BY r.id", (depuis,)).fetchall()
+
+
+def _copier_les_releves(conn: sqlite3.Connection, depuis: int, collection_id: int,
+                        regions: dict, planches: dict) -> tuple[int, int, int]:
+    """Les relevés et les passes de la copie `depuis`, recopiés au cran `annotations` (ANN-7,
+    tranche 1, R11 ; tranché le 2026-10-22, le patron d'E5). Un relevé SUIT si sa grille est
+    ACTIVE dans le projet d'arrivée, quelle que soit sa version ; sinon il est COMPTÉ dans ce
+    qui est laissé — jamais posé et invisible (le piège de COL-1). En tranche 1 une grille
+    n'est active que dans son projet : entre deux projets, rien ne suit encore. Sa région ou
+    sa planche est celle de la copie, son lien renuméroté (une région hors de la copie : le
+    lien tombe, son texte reste), `origine_id` son relevé source. Son AUTEUR suit dans un
+    même projet ; entre deux projets il arrive sans auteur (G9 : un login nommé à des gens
+    qui ne le connaissent pas). Les passes de ces grilles suivent ; les doutes NON (une
+    conversation de l'équipe source, qui nomme ses membres). Rend (relevés, passes, laissés)."""
+    actives = _grilles_actives_a_l_arrivee(conn, collection_id)
+    entre_projets = projet_d_album(conn, depuis) != projet_de_collection(conn, collection_id)
+    n_rel = laisses = 0
+    for r in _releves_de_la_source(conn, depuis):
+        if r["grille_id"] not in actives:
+            laisses += 1
+            continue
+        lien = regions.get(r["lien_region_id"]) if r["lien_region_id"] is not None else None
+        nid = conn.execute(
+            "INSERT INTO releve (region_id, planche_id, grille_id, version_id, entree_cle, "
+            "variante_cle, precision, lien_region_id, lien_texte, texte_ancre, une, "
+            "origine_id, auteur, cree_le, modifie_par, modifie_le) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (regions.get(r["region_id"]) if r["region_id"] is not None else None,
+             planches.get(r["planche_id"]) if r["planche_id"] is not None else None,
+             r["grille_id"], r["version_id"], r["entree_cle"], r["variante_cle"],
+             r["precision"], lien, r["lien_texte"], r["texte_ancre"], r["une"], r["id"],
+             None if entre_projets else r["auteur"], r["cree_le"],
+             None if entre_projets else r["modifie_par"], r["modifie_le"])).lastrowid
+        conn.execute("INSERT INTO releve_mot (releve_id, position, rang, forme) "
+                     "SELECT ?, position, rang, forme FROM releve_mot WHERE releve_id = ?",
+                     (nid, r["id"]))
+        conn.execute("INSERT INTO releve_qualificatif (releve_id, qualificatif_cle) "
+                     "SELECT ?, qualificatif_cle FROM releve_qualificatif WHERE releve_id = ?",
+                     (nid, r["id"]))
+        n_rel += 1
+    n_passes = 0
+    for p in conn.execute(
+            "SELECT s.* FROM passe s LEFT JOIN regions g ON g.id = s.region_id "
+            "JOIN planches p ON p.id = COALESCE(g.planche_id, s.planche_id) "
+            "WHERE p.album_id = ? ORDER BY s.id", (depuis,)).fetchall():
+        if p["grille_id"] not in actives:
+            continue
+        n_passes += conn.execute(
+            "INSERT OR IGNORE INTO passe (region_id, planche_id, grille_id, version_id, "
+            "rubrique_cle, par, le) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (regions.get(p["region_id"]) if p["region_id"] is not None else None,
+             planches.get(p["planche_id"]) if p["planche_id"] is not None else None,
+             p["grille_id"], p["version_id"], p["rubrique_cle"],
+             None if entre_projets else p["par"], p["le"])).rowcount
+    return n_rel, n_passes, laisses
 
 
 # Combien d'identifiants une lecture de l'index accepte à la fois : sous la limite de
@@ -3420,6 +3505,15 @@ def compter_le_travail(conn: sqlite3.Connection, depuis: int, cran: str,
             f"SELECT COUNT(*) FROM (SELECT personnage_id FROM bulle_locuteur "
             f"WHERE region_id {dans} UNION SELECT personnage_id FROM personnage_presence "
             f"WHERE region_id {dans})", *regions)
+        actives = _grilles_actives_a_l_arrivee(conn, collection_id)
+        sources = _releves_de_la_source(conn, depuis)
+        copies["releves"] = sum(1 for r in sources if r["grille_id"] in actives)
+        laisses["releves"] = len(sources) - copies["releves"]
+        copies["passes"] = conn.execute(
+            "SELECT COUNT(*) FROM passe s LEFT JOIN regions g ON g.id = s.region_id "
+            "JOIN planches p ON p.id = COALESCE(g.planche_id, s.planche_id) "
+            f"WHERE p.album_id = ? AND s.grille_id IN ({', '.join('?' * len(actives))})",
+            (depuis, *actives)).fetchone()[0] if actives else 0
     return {"copies": copies, "laisses": laisses, "personnages": personnages}
 
 
@@ -3749,7 +3843,9 @@ def niveau_de_travail(conn: sqlite3.Connection, album_id: int,
         return bool(conn.execute(f"SELECT EXISTS ({sql})", params).fetchone()[0])
     if any(existe(f"SELECT 1 FROM {t} WHERE region_id IN ({regions})")
            for t in ("annotations", "region_attribut", "bulle_locuteur",
-                     "personnage_presence")):
+                     "personnage_presence", "releve", "passe")) or any(
+            existe(f"SELECT 1 FROM {t} WHERE planche_id IN (SELECT p.id FROM planches p "
+                   f"WHERE {filtre})") for t in ("releve", "passe")):
         return rang_du_cran(CRAN_ANNOTATIONS)
     if existe(f"SELECT 1 FROM token_correction WHERE region_id IN ({regions})") or existe(
             f"SELECT 1 FROM planches p WHERE {filtre} AND p.relecture IS NOT NULL"):
@@ -3818,15 +3914,24 @@ def repartir_de_zero(conn: sqlite3.Connection, album_id: int, cran: str, *,
                               f"({', '.join('?' * len(lot))})", lot).rowcount
         return n
 
-    def sur_les_planches(sql: str, condition: str = "") -> int:
+    def sur_les_planches(sql: str, condition: str = "", *, cle_planche: bool = False) -> int:
         n = 0
+        cle = "planche_id" if cle_planche else "id"
         for lot in lots(planches):
-            n += conn.execute(f"{sql} WHERE id IN ({', '.join('?' * len(lot))}){condition}",
+            n += conn.execute(f"{sql} WHERE {cle} IN ({', '.join('?' * len(lot))}){condition}",
                               lot).rowcount
         return n
 
     comptes["annotations"] = retirer("annotations")             # annotation_tags en cascade
     comptes["attributs"] = retirer("region_attribut")
+    # ANN-7 (R11) — les relevés (leurs mots, qualificatifs et doutes en cascade) et les
+    # passes, des régions ET de la surface des planches : ils sont du cran `annotations`, et
+    # tout cran d'arrivée est au-dessous. Oubliés, ils resteraient sous une copie qu'on a
+    # voulue vide — une garde qui échouerait OUVERT.
+    comptes["releves"] = retirer("releve") + sur_les_planches("DELETE FROM releve",
+                                                              cle_planche=True)
+    comptes["passes"] = retirer("passe") + sur_les_planches("DELETE FROM passe",
+                                                            cle_planche=True)
     comptes["locuteurs"] = retirer("bulle_locuteur")
     comptes["presences"] = retirer("personnage_presence")
     if rang < rang_du_cran(CRAN_GRAMMAIRE):
@@ -3888,6 +3993,12 @@ def compter_repartir(conn: sqlite3.Connection, album_id: int, cran: str, *,
                for t, table in (("annotations", "annotations"), ("attributs", "region_attribut"),
                                 ("locuteurs", "bulle_locuteur"),
                                 ("presences", "personnage_presence"))}
+    planches_sql = f"SELECT p.id FROM planches p WHERE p.album_id = ?{une[0]}"
+    for t, table in (("releves", "releve"), ("passes", "passe")):
+        comptes[t] = conn.execute(
+            f"SELECT (SELECT COUNT(*) FROM {table} WHERE region_id IN ({regions})) + "
+            f"(SELECT COUNT(*) FROM {table} WHERE planche_id IN ({planches_sql}))",
+            params * 2).fetchone()[0]
     if rang < rang_du_cran(CRAN_GRAMMAIRE):
         comptes["corrections"] = n(
             f"SELECT COUNT(*) FROM token_correction WHERE region_id IN ({regions})")
@@ -4396,6 +4507,11 @@ def reindex_region(conn: sqlite3.Connection, region_id: int) -> None:
     fiable = bool(tokens) or not (ocr or "").strip()
     lemmes = _appliquer_corrections(conn, region_id, tokens, lemmes, reancrer=fiable)
     _index_region(conn, region_id, payload, lemmes, tokens)
+    # ANN-7 (R6) — le ré-ancrage des relevés sur des mots : le point d'appel UNIQUE, où passe
+    # tout chemin qui change un texte (la route, l'annulation, l'outil de casse). Sans moteur
+    # de langue aussi : le découpage n'en dépend pas.
+    import releves                                 # import paresseux (évite tout cycle)
+    releves.reancrer_releves(conn, region_id)
 
 
 def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:

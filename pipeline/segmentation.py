@@ -337,10 +337,17 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
         # Après transfert, une ancienne case qui PORTE ENCORE du travail humain —
         # annotation OU correction grammaticale (cf. docs/correction-grammaticale.md
         # §7) — est conservée plutôt que supprimée : jamais de perte de travail humain.
+        # ANN-7 (G20 b, Hugo, 2026-10-25) — une SITUATION (`region_attribut`), un RELEVÉ, une
+        # PASSE sont du travail humain aussi : une case qui ne portait qu'eux était supprimée
+        # à la re-segmentation, et eux avec elle (défaut d'avant, lu, corrigé ici). Aucun
+        # transfert vers la nouvelle case : le transfert d'annotation refuse déjà l'ambiguïté.
         preserved = [c["id"] for c in old_cases if conn.execute(
-            "SELECT EXISTS(SELECT 1 FROM annotations WHERE region_id = ?) "
-            "    OR EXISTS(SELECT 1 FROM token_correction WHERE region_id = ?)",
-            (c["id"], c["id"])).fetchone()[0]]
+            "SELECT EXISTS(SELECT 1 FROM annotations WHERE region_id = :r) "
+            "    OR EXISTS(SELECT 1 FROM token_correction WHERE region_id = :r) "
+            "    OR EXISTS(SELECT 1 FROM region_attribut WHERE region_id = :r) "
+            "    OR EXISTS(SELECT 1 FROM releve WHERE region_id = :r) "
+            "    OR EXISTS(SELECT 1 FROM passe WHERE region_id = :r)",
+            {"r": c["id"]}).fetchone()[0]]
         keep = set(preserved)
         to_delete = [cid for cid in old_ids if cid not in keep]
         for cid in to_delete:

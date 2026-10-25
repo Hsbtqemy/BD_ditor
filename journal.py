@@ -119,7 +119,8 @@ def journaliser(conn: sqlite3.Connection, type: str, cible_table: str,
 # survit (`autorisation._sources_du_travail`, cinquième source) ; les emplois, les demandes
 # et les accès ne sont pas un travail.
 _CIBLES_DE_GESTE = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
-                    "region_attribut", "token_correction", "planches")
+                    "region_attribut", "token_correction", "planches", "releve",
+                    "releve_planche")
 
 
 def _noter_le_geste(conn: sqlite3.Connection, cible_table: str, cible_id, agent, avant,
@@ -133,7 +134,7 @@ def _noter_le_geste(conn: sqlite3.Connection, cible_table: str, cible_id, agent,
     c'est le créateur."""
     if cible_id is None:
         return
-    if cible_table == "planches":
+    if cible_table in ("planches", "releve_planche"):     # ANN-7 : la surface d'une planche
         album = conn.execute("SELECT album_id FROM planches WHERE id = ?",
                              (cible_id,)).fetchone()
     elif cible_table == "token_correction":
@@ -261,6 +262,16 @@ def snapshot_region_profond(conn: sqlite3.Connection, region_id: int) -> Optiona
         (region_id,))]
     if attributs:
         base["attributs"] = attributs
+    # ANN-7 (R10) — ses relevés (profonds : mots, qualificatifs, doutes et leur fil) et ses
+    # passes, que le CASCADE emporte aussi et que Ctrl+Z rend (« Supprimer une région supprime
+    # ses relevés, Ctrl+Z les rend »). La charge porte du texte — une précision, des
+    # messages — : elle est retenue de toute sortie, comme `ocr_texte`.
+    import releves                                 # import paresseux (évite tout cycle)
+    rel, passes = releves.instantanes_de_la_region(conn, region_id)
+    if rel:
+        base["releves"] = rel
+    if passes:
+        base["passes"] = passes
     enfants = [row["id"] for row in conn.execute(
         "SELECT id FROM regions WHERE parent_id = ? ORDER BY ordre, id", (region_id,))]
     if enfants:
