@@ -473,3 +473,107 @@ def test_une_suppression_retablie_ne_repose_pas_une_situation_sur_une_bulle(
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert res["liens_non_rendus"] == 1
     assert (_type(db_path, rid), _liens(db_path, rid)["attributs"]) == ("bulle", [])
+
+
+# --------------------------------------------------------------------------- #
+# CONC-4, relecture — la garde des liens d'une création
+# --------------------------------------------------------------------------- #
+def test_creation_annulee_ne_rend_pas_la_valeur_cachee_ni_son_auteur(
+        client, planche, db_path, derriere_proxy):
+    """La doctrine S2 d'ANN-8 (`_garder_liens_du_type`) vaut pour la garde d'une création :
+    une situation qu'un autre a posée, locale à une collection que l'agent ne lit pas, refuse
+    l'annulation — mais le refus ne rend ni son identifiant ni son auteur, et dit « ailleurs »."""
+    visible, cachee = _decor_cache(client, planche, db_path)
+    rid = _region(client, planche["id"], type="case", headers=LETTREUSE)
+    _ok(client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": cachee}, headers=BOB), 200)
+    res = client.post("/api/undo", headers=LETTREUSE)
+    assert res.status_code == 409, res.text
+    detail = res.json()["detail"]
+    assert detail["conflit"]["champ"] == "situation"
+    assert cachee not in (detail["conflit"]["valeur_actuelle"] or []), "valeur cachée rendue"
+    assert detail["conflit"]["auteur"] is None, "auteur d'une valeur cachée nommé"
+    assert "modifiée ailleurs" in detail["message"] and "bob" not in detail["message"]
+    assert _liens(db_path, rid)["attributs"] == [cachee]
+
+
+def test_creation_annulee_nomme_l_auteur_d_une_valeur_vue_et_tait_la_cachee(
+        client, planche, db_path, derriere_proxy):
+    """Une valeur VUE et une cachée, toutes deux de Bob : le refus nomme Bob (il a posé la
+    vue) et ne rend que la vue."""
+    visible, cachee = _decor_cache(client, planche, db_path)
+    rid = _region(client, planche["id"], type="case", headers=LETTREUSE)
+    for v in (visible, cachee):
+        _ok(client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v}, headers=BOB), 200)
+    res = client.post("/api/undo", headers=LETTREUSE)
+    assert res.status_code == 409, res.text
+    conflit = res.json()["detail"]["conflit"]
+    assert conflit["valeur_actuelle"] == [visible]
+    assert conflit["auteur"]["login"] == "bob"
+
+
+def _bulle_de_bob(client, planche, chemin, type_):
+    rid = _region(client, planche["id"], type=type_, headers=ALICE)
+    zed = _perso(client, "Zed QA")
+    _ok(client.put(f"/api/regions/{rid}/{chemin}", json={"personnage_id": zed}, headers=BOB), 200)
+    return rid, zed
+
+
+def test_l_annulation_de_son_changement_de_type_ne_s_approprie_pas_le_locuteur_de_bob(
+        client, planche, db_path, derriere_proxy):
+    """Alice crée une bulle ; Bob lui donne Zed ; Alice la passe en case (Zed part avec le
+    type), Ctrl+Z (Zed revient), Ctrl+Z encore : la création. L'annulation qui a reposé Zed
+    ne fait pas d'Alice celle qui l'a posé — 409, et Zed reste."""
+    rid, zed = _bulle_de_bob(client, planche, "locuteur", "bulle")
+    _ok(client.put(f"/api/regions/{rid}", json={"type": "case"}, headers=ALICE), 200)
+    _ok(client.post("/api/undo", headers=ALICE), 200)
+    assert _liens(db_path, rid)["locuteur"] == zed
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 409, "la création annulée a emporté le locuteur de Bob"
+    assert res.json()["detail"]["conflit"]["auteur"]["login"] == "bob"
+    assert _liens(db_path, rid)["locuteur"] == zed
+
+
+def test_l_annulation_de_sa_suppression_ne_s_approprie_pas_le_locuteur_de_bob(
+        client, planche, db_path, derriere_proxy):
+    rid, zed = _bulle_de_bob(client, planche, "locuteur", "bulle")
+    _ok(client.delete(f"/api/regions/{rid}", headers=ALICE), 204)
+    _ok(client.post("/api/undo", headers=ALICE), 200)
+    assert _liens(db_path, rid)["locuteur"] == zed
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 409, "la création annulée a emporté le locuteur de Bob"
+    assert _liens(db_path, rid)["locuteur"] == zed
+
+
+def test_l_annulation_de_son_changement_de_type_ne_s_approprie_pas_le_personnage_de_bob(
+        client, planche, db_path, derriere_proxy):
+    """Le même pour le personnage montré d'une boîte (mêmes sources, mêmes gardes)."""
+    rid, zed = _bulle_de_bob(client, planche, "personnage", "personnage")
+    _ok(client.put(f"/api/regions/{rid}", json={"type": "case"}, headers=ALICE), 200)
+    _ok(client.post("/api/undo", headers=ALICE), 200)
+    assert _liens(db_path, rid)["presence"] == zed
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 409, "la création annulée a emporté le personnage de Bob"
+    assert _liens(db_path, rid)["presence"] == zed
+
+
+def test_l_annulation_de_sa_suppression_ne_s_approprie_pas_le_personnage_de_bob(
+        client, planche, db_path, derriere_proxy):
+    rid, zed = _bulle_de_bob(client, planche, "personnage", "personnage")
+    _ok(client.delete(f"/api/regions/{rid}", headers=ALICE), 204)
+    _ok(client.post("/api/undo", headers=ALICE), 200)
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 409, "la création annulée a emporté le personnage de Bob"
+    assert _liens(db_path, rid)["presence"] == zed
+
+
+def test_son_propre_locuteur_repose_par_son_ctrl_z_ne_bloque_pas_sa_creation(
+        client, planche, db_path, derriere_proxy):
+    """Le contre-cas : Alice pose elle-même Zed, passe la bulle en case, Ctrl+Z, Ctrl+Z
+    (son lien), Ctrl+Z (la création) — tout passe, rien d'autre que son travail ne part."""
+    rid = _region(client, planche["id"], type="bulle", headers=ALICE)
+    zed = _perso(client, "Zed QA")
+    _ok(client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": zed}, headers=ALICE), 200)
+    _ok(client.put(f"/api/regions/{rid}", json={"type": "case"}, headers=ALICE), 200)
+    for _ in range(3):
+        _ok(client.post("/api/undo", headers=ALICE), 200)
+    assert not _sql(db_path, "SELECT 1 FROM regions WHERE id = ?", (rid,))

@@ -244,13 +244,18 @@ son travail, et l'annulation ne garde aucun instantané de ce qu'elle supprime.
 le 2026-10-21, `test_h5_…`). La garde de la création ne regardait que les colonnes,
 l'annotation et les enfants : le locuteur, le personnage montré et la situation qu'un autre
 avait donnés à la région partaient avec elle, par cascade. `_garder_liens_de_creation`
-cherche, pour chaque lien que la région porte, l'acte qui l'a posé APRÈS la création
-(`conflit.auteur_des_champs`, changements de type compris pour un locuteur ou un personnage) :
-de l'auteur de la création, il passe — la situation ne s'annule pas, et la poser sur sa
-propre case ne doit pas rendre sa création inannulable ; d'un autre, ou d'aucun acte (un
-outil, une base retouchée : le journal nomme, il ne décide pas), c'est le 409 nommé, rien
-d'écrit, et « Passer ce geste ». Seul compte ce qui RESTE : un lien posé puis retiré par un
-autre ne bloque rien. L'autre case de la même relecture — annuler un `lien` ou un `delien`
+cherche, pour chaque lien que la région porte, le `lien` qui l'a posé APRÈS la création
+(`_poseur`) : de l'auteur de la création, il passe — la situation ne s'annule pas, et la
+poser sur sa propre case ne doit pas rendre sa création inannulable ; d'un autre, ou d'aucun
+acte (un outil, une base retouchée : le journal nomme, il ne décide pas), c'est le 409
+nommé, rien d'écrit, et « Passer ce geste ». Seul compte ce qui RESTE : un lien posé puis
+retiré par un autre ne bloque rien. **Seuls les vrais `lien` désignent qui a posé** (relecture
+de CONC-4) : une annulation qui repose un lien — celle d'un changement de type, d'une
+suppression — ne rend pas son auteur propriétaire du lien ; lue comme un auteur, elle laissait
+Alice, après « passer en case puis Ctrl+Z », emporter le locuteur de Bob avec la création. Et
+la doctrine S2 d'ANN-8 y vaut comme pour un changement de type : une situation qu'on ne lit
+pas refuse aussi, mais le refus ne rend que les valeurs vues, ne nomme que l'auteur d'une
+valeur vue, et dit sinon « modifiée ailleurs ». L'autre case de la même relecture — annuler un `lien` ou un `delien`
 de locuteur écrasait celui qu'un autre avait posé depuis — était déjà fermée par
 `_garder_lien` (`a59e610`, puis `5c749d5`).
 
