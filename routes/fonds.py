@@ -1017,12 +1017,29 @@ def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
     for a in par_album.values():
         a["projet_nom"] = projets.get(a["projet_id"])
         a["cran"] = a["creee_par"] = a["creee_le"] = a["retour"] = None
+        a["retire_du_projet"] = None
     # COL-3, écran de la 3a — la PROVENANCE de chaque copie (« Copies de travail · n » de la
     # fiche) : qui l'a créée, quand, et si c'est une copie vierge née d'une autre (`cran`).
     for r in conn.execute("SELECT album_id, creee_par, creee_le, cran FROM copie"):
         if r["album_id"] in par_album:
             par_album[r["album_id"]].update(creee_par=r["creee_par"], creee_le=r["creee_le"],
                                             cran=r["cran"])
+    # COL-3, tranche 3b — une copie gardée parce que le RESPONSABLE de son projet l'en a
+    # retirée (« Retirer du projet », Hugo, 2026-10-21) : qui, et quand — le dernier acte qui
+    # le dit, si aucune sortie n'a suivi (rendue puis ressortie d'une collection, elle est
+    # gardée pour une autre raison).
+    sorties = {r[0]: r[1] for r in conn.execute(
+        "SELECT json_extract(avant, '$.album_id'), MAX(id) FROM evenement "
+        "WHERE cible_table = 'collection_album' AND type = 'delien' AND json_valid(avant) "
+        "GROUP BY json_extract(avant, '$.album_id')")}
+    for r in conn.execute(
+            "SELECT id, json_extract(apres, '$.album_id') AS album_id, agent, date "
+            "FROM evenement WHERE cible_table = 'document' AND type = 'modification' "
+            "AND json_valid(apres) AND json_extract(apres, '$.retire_du_projet') IS NOT NULL "
+            "ORDER BY id"):
+        a = par_album.get(r["album_id"])
+        if a is not None and not a["collections"] and r["id"] > sorties.get(r["album_id"], 0):
+            a["retire_du_projet"] = {"par": r["agent"], "le": r["date"]}
     # Et le RETOUR qui attend sur une copie gardée : la fiche le dit, et mène à « À faire ».
     for r in conn.execute(
             "SELECT dd.album_id, d.id, d.date_creation, d.collection_nom FROM demande d "
@@ -1045,8 +1062,13 @@ def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
                     attente.setdefault(x["copie"], d)
     noms = noms_lisibles(conn, [d["importe_par"] for d in documents if d["importe_par"]]
                          + [a["creee_par"] for a in par_album.values() if a["creee_par"]])
+    noms.update(noms_lisibles(conn, [a["retire_du_projet"]["par"] for a in par_album.values()
+                                     if a["retire_du_projet"] and a["retire_du_projet"]["par"]]))
     for a in par_album.values():
         a["creee_par_nom"] = noms.get(a["creee_par"]) if a["creee_par"] else None
+        if a["retire_du_projet"]:
+            par = a["retire_du_projet"]["par"]
+            a["retire_du_projet"]["par_nom"] = noms.get(par) if par else None
     for d in documents:
         d["importe_par_nom"] = noms.get(d["importe_par"])
         d["copies"] = copies.get(d["id"], [])

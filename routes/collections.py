@@ -38,7 +38,8 @@ import journal
 from config import STATUTS_DIFFUSION
 from database import (DEMANDE_REJOINDRE, NATURES, clore_rejoindre_d_une_copie_au_fonds,
                       collection_row, collections,
-                      etat_embargo, nom_reserve, poser_projet_de_copie, projet_de_collection,
+                      document_d_album, etat_embargo, nom_reserve, poser_projet_de_copie,
+                      projet_d_album, projet_de_collection,
                       collection_de_base, projet_de_jeu, projet_par_defaut, ranger_copie,
                       un_proprietaire_tient_toute_la_copie)
 
@@ -861,3 +862,59 @@ def sortir_album(album_id: int, collection_id: int,
     clore_rejoindre_d_une_copie_au_fonds(conn, album_id)
     conn.commit()
     return Response(status_code=204)
+
+
+_MOTIF_RETIRER = ("Retirer un album de son projet revient au responsable du projet : vous "
+                  "pouvez le supprimer de votre collection, où il est gardé au fonds avec son "
+                  "travail.")
+
+
+@router.post("/api/albums/{album_id}/retirer-du-projet")
+def retirer_du_projet(album_id: int, conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    """RETIRER DU PROJET — le geste du responsable (COL-3, tranche 3b ; Hugo, 2026-10-21) :
+    l'album quitte TOUTES les collections de son projet, quels qu'en soient les
+    propriétaires. Le scénario de Hugo : un album entré par erreur (contenu, qualité,
+    contexte), déjà pris et travaillé dans plusieurs collections. Un album n'étant que d'un
+    projet (le rangement ne traverse pas), il part au FONDS avec son travail — comme sorti de
+    sa dernière collection : son projet écrit sur lui, les demandes de le rejoindre ou d'en
+    partir closes —, et un administrateur le rend. Rien n'est détruit.
+
+    Qui : le RESPONSABLE du projet de l'album, et l'administrateur (`peut_gerer_projet`) —
+    une décision sur la composition du projet, qui ne demande pas de posséder chacune de
+    ses collections (le renversement du 2026-10-21 : « la main sur la composition de TOUTES
+    les collections de son projet »). 404 à qui ne LIT pas l'album ; 403 nommé à qui le lit
+    sans gérer son projet ; 409 nommé sur une copie déjà gardée au fonds, dans un bac à sable
+    (rien n'y part au fonds) et sur le jeu.
+
+    Ce qui s'écrit : la fin de chaque emploi (`delien`, sous `collection_album`, au nom de qui
+    retire), puis UN acte sous le document qui le dit (`retire_du_projet` : le projet et les
+    collections quittées) — les propriétaires le voient disparaître, et le journal dit qui
+    l'a retiré. Non annulable."""
+    _get_album(conn, portee, album_id)
+    _refuser_le_jeu(conn, album_id=album_id)
+    _refuser_le_bac_a_sable(conn, _MOTIF_BAC_SANS_FONDS, album_id=album_id)
+    conflit.verrouiller(conn)
+    projet_id = projet_d_album(conn, album_id)
+    if projet_id is None or not portee.peut_gerer_projet(projet_id):
+        raise HTTPException(403, _MOTIF_RETIRER)
+    quittees = [{"id": r[0], "nom": r[1]} for r in conn.execute(
+        "SELECT c.id, c.nom FROM collection_album ca JOIN collection c "
+        "ON c.id = ca.collection_id WHERE ca.album_id = ? ORDER BY c.id", (album_id,))]
+    if not quittees:
+        raise HTTPException(409, "Cet album est déjà gardé au fonds : un administrateur peut "
+                                 "le rendre.")
+    # Le projet AVANT de sortir, tant qu'on le lit encore dans ses collections : la copie
+    # qui part au fonds l'emporte (`sortir_album`, la même raison).
+    poser_projet_de_copie(conn, album_id)
+    for c in quittees:
+        journal.journaliser_emploi(conn, "delien", album_id, c["id"])
+    conn.execute("DELETE FROM collection_album WHERE album_id = ?", (album_id,))
+    journal.journaliser(conn, "modification", "document", document_d_album(conn, album_id),
+                        apres={"album_id": album_id,
+                               "retire_du_projet": {"projet_id": projet_id,
+                                                    "collections": quittees}})
+    clore_rejoindre_d_une_copie_au_fonds(conn, album_id)
+    conn.commit()
+    return {"album_id": album_id, "projet_id": projet_id,
+            "collections": [c["id"] for c in quittees], "au_fonds": True}
