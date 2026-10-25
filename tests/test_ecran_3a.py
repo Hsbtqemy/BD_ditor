@@ -168,9 +168,12 @@ def test_les_copies_gardees_se_lisent_par_le_responsable(client, prise):
     r = client.get(f"/api/projets/{prise['projet']}/copies-gardees", headers=RESP)
     assert r.status_code == 200, r.text
     (c,) = r.json()
+    # `retire_du_projet` (COL-3, tranche 3b, écran du 2026-10-25) : qui l'a retirée du projet,
+    # quand c'est un retrait du responsable — None pour une copie sortie de sa collection.
     assert set(c) == {"album_id", "document_id", "titre", "serie", "auteur", "garde_depuis",
-                      "retour"}
-    assert (c["album_id"], c["retour"]) == (cx, None) and c["garde_depuis"]
+                      "retour", "retire_du_projet"}
+    assert (c["album_id"], c["retour"], c["retire_du_projet"]) == (cx, None, None)
+    assert c["garde_depuis"]
     demande = _rendre(client, prise, cx, prise["base"]).json()["documents"][0]["demande_id"]
     (c,) = client.get(f"/api/projets/{prise['projet']}/copies-gardees", headers=RESP).json()
     assert (c["retour"]["id"], c["retour"]["collection_id"]) == (demande, prise["base"])
