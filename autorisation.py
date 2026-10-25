@@ -615,50 +615,55 @@ class Portee:
                 list(ids) * 2)
 
     def clause_suppression_directe(self, alias: str = "a.id") -> tuple[str, list]:
-        """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut
-        SUPPRIMER DÉFINITIVEMENT sans rien demander — lui, ou l'une de ses planches.
-        COL-3, tranche 2 (Hugo, 2026-10-11).
+        """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut EFFACER
+        sans rien demander — le supprimer DÉFINITIVEMENT, lui ou l'une de ses planches, ou le
+        RAMENER à un cran (« repartir de zéro », E8). COL-3, tranche 2 (Hugo, 2026-10-11),
+        RENVERSÉE en partie le 2026-10-21 (tranche 3b, « qui efface, qui retire, qui
+        crée »).
 
         « Supprimer » a deux réponses. Supprimer DE LA COLLECTION ne détruit rien : la
         copie part au fonds avec son travail, et c'est le geste de qui écrit dans la
-        collection. Supprimer DÉFINITIVEMENT efface les images et le travail ; il existe
-        pour l'import par erreur, et ne doit alors attendre personne. Hors de ce cas, il se
-        DEMANDE à un administrateur.
+        collection. Effacer détruit le travail — et, pour une suppression, les images
+        qu'aucune autre planche n'emploie.
 
-        La règle est la conjonction de quatre moitiés, toutes nécessaires :
+        TROIS chemins sans demande depuis le 2026-10-21 — un compte PARTAGÉ n'en prend
+        aucun, hors de son bac à sable :
 
-        - `clause_destruction`, INCHANGÉE (AUTH-10) : on écrit dans toutes les collections
-          où la copie vit. Elle reste nécessaire, et cesse d'être suffisante ;
-        - CETTE COPIE a été créée PAR CET APPELANT (`copie.creee_par`, v31). Pour la copie
-          d'origine d'un document, c'est son importateur ; pour une copie sœur, qui l'a
-          prise (COL-3, tranche 3, D5) — l'importatrice d'origine ne supprime pas seule la
-          copie d'un autre, et qui a pris une copie n'attend pas l'importatrice pour la
-          sienne. Jamais vrai sans login, ni sans ligne `copie`, ni pour la copie d'un
-          document d'avant le fonds, dont l'importateur n'a été écrit nulle part — celles-là
-          se demandent, seul un administrateur les détruit (décision B3) ;
-        - l'appelant n'est pas un compte PARTAGÉ : « celui qui l'a importé » n'y désigne
-          personne (proposition R7, suivie en route). C'est le premier endroit où la nature
-          d'un compte borde un geste ; elle ne borde toujours aucun ACCÈS ;
-        - PERSONNE D'AUTRE n'y a travaillé (`_sql_travail_d_autrui`).
+        1. le CRÉATEUR d'une copie que personne d'autre n'a touchée, MÊME si c'est la
+           dernière copie de son document (l'import par erreur, qui ne doit attendre
+           personne — Hugo, 2026-10-21, sur le cas où les deux règles se croisent). C'est la
+           règle d'avant, ses quatre moitiés toutes nécessaires :
+           - `clause_destruction`, INCHANGÉE (AUTH-10) : on écrit dans toutes les
+             collections où la copie vit ;
+           - CETTE COPIE a été créée PAR CET APPELANT (`copie.creee_par`, v31) : pour la
+             copie d'origine, son importateur ; pour une sœur, qui l'a prise (D5). Jamais
+             vrai sans login, ni sans ligne `copie`, ni pour un document d'avant le fonds
+             (décision B3) ;
+           - l'appelant n'est pas un compte partagé (proposition R7) ;
+           - PERSONNE D'AUTRE n'y a travaillé (`_sql_travail_d_autrui`) ;
+        2. le PROPRIÉTAIRE de TOUTES les collections où vit l'album, même si d'autres y ont
+           travaillé — la protection du travail des membres passe de la PERMISSION à la
+           VISIBILITÉ : l'écran dit qui perd quoi avant d'effacer (`GET
+           /api/albums/{id}/travail-des-autres`), et le journal qui l'a fait ;
+        3. le RESPONSABLE du projet de l'album, aux mêmes conditions que le propriétaire —
+           « plus élevé en droits qu'un propriétaire ». Il atteint l'album par les
+           accesseurs gardés comme tout le monde : la route d'une suppression demande d'y
+           ÉCRIRE quelque part.
 
-        Ce que la règle ne lit PAS, et c'est cohérent avec elle : une demande REFUSÉE. Qu'un
-        administrateur ait répondu « garder » à la demande d'un collègue ne retire rien à
-        l'importatrice : si les quatre moitiés tiennent — le collègue n'a donc pas travaillé
-        dans l'album —, elle le supprime encore elle-même (relecture croisée, constat 7).
-        « Garder » répond à une demande ; il ne protège pas le document de qui l'a importé.
+        Les chemins 2 et 3 ne font jamais sortir seuls un document du fonds commun : la
+        DERNIÈRE copie d'un document — aucune autre copie vivante hors d'un projet isolé —
+        se demande à un administrateur, gardien du fonds. Ils ne valent pas dans un bac à
+        sable, qui a son chemin à lui (ci-dessous) : un invité qui y possède une collection
+        garde la règle commune du créateur.
 
-        « Aucun autre projet ne l'emploie », les mots de Hugo, n'a pas de moitié à lui, et
-        n'en aura pas : la règle porte sur CETTE copie, et détruire une copie ne retire rien
-        à sa sœur — ni son travail, ni les images qu'elle emploie (`socle._detruire_album`),
-        ni le document, qui part avec sa DERNIÈRE copie (D5, Hugo, 2026-10-17).
+        Ce que la règle ne lit PAS : une demande REFUSÉE (« garder » répond à une demande,
+        il ne protège pas le document de qui peut l'effacer — relecture croisée, constat 7).
 
-        Ce que la réponse ne dit pas, et c'est voulu : LAQUELLE des moitiés manque. Le refus
-        est le même dans tous les cas (`socle._MOTIF_DESTRUCTION`) — dire « c'est Léa qui y
-        a travaillé » ou « une autre collection le porte » à qui ne lit pas cette collection
-        décrirait le corpus hors de sa portée.
+        Ce que la réponse ne dit pas, et c'est voulu : LEQUEL des chemins manque. Le refus
+        est le même dans tous les cas (`socle._MOTIF_DESTRUCTION`).
 
         La portée totale passe outre, et c'est écrit : l'administrateur et le mono-poste
-        détruisent tout, c'est le recours d'une demande."""
+        effacent tout, c'est le recours d'une demande."""
         if self.tout:
             if self.bornee:
                 return self._bornee_sur_album(
@@ -666,40 +671,82 @@ class Portee:
             return "1", []
         if not self.utilisateur:
             return "0", []
-        # COL-4 (S5 du cadrage) — un cinquième chemin, disjoint des quatre moitiés : le
-        # PROPRIÉTAIRE d'un bac à sable détruit tout album de son bac à sable, sans rien
-        # demander, quel que soit qui y a travaillé — rien ne s'y demande à un
-        # administrateur (S3), et le travail d'un invité s'y efface de toute façon chaque
-        # lundi. Le projet de l'album (écrit, ou lu dans ses collections) est l'un des bacs à
-        # sable qu'il a ouverts — compte PARTAGÉ compris (Hugo, 2026-10-24 : il a son bac à
-        # sable avec tous ses gestes, et le remet à neuf ; un album de plus ou de moins n'y
-        # pèse rien). Hors de son bac à sable, la quatrième moitié ci-dessous est inchangée :
-        # un compte partagé n'y supprime jamais seul. Un INVITÉ garde la règle commune.
+        # COL-4 (S5 du cadrage) — un chemin à lui, disjoint des trois : le PROPRIÉTAIRE d'un
+        # bac à sable détruit tout album de son bac à sable, sans rien demander, quel que
+        # soit qui y a travaillé — rien ne s'y demande à un administrateur (S3), et le
+        # travail d'un invité s'y efface de toute façon chaque lundi. Le projet de l'album
+        # (écrit, ou lu dans ses collections) est l'un des bacs à sable qu'il a ouverts —
+        # compte PARTAGÉ compris (Hugo, 2026-10-24). Hors de son bac à sable, un compte
+        # partagé n'efface jamais seul. Un INVITÉ garde la règle commune.
         bac, p_bac = "0", []
         if self.bacs_a_soi:
             ids = sorted(self.bacs_a_soi)
             bac = (f"EXISTS (SELECT 1 FROM albums _sbs WHERE _sbs.id = {alias} "
                    f"AND {sql_projet_d_album('_sbs')} IN ({', '.join('?' * len(ids))}))")
             p_bac = [*ids]
+        tient, p_tient = self._sql_tient_l_album(alias)
         detruire, p_detruire = self.clause_destruction(alias)
-        if detruire == "0":
+        if detruire == "0" and tient == "0":
             return bac, p_bac
-        autrui, p_autrui = _sql_travail_d_autrui(alias, self.utilisateur)
+        pas_partage = ("NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
+                       "AND _su.nature = ?)")
+        p_pas_partage = [self.utilisateur, NATURE_COLLECTIF]
         # Le travail d'autrui (le journal) ne se lit que si tout le reste tient : un `AND`
         # dans une colonne du `SELECT` calcule tous ses opérandes, et `destructible` le
         # lisait pour chaque album qu'on n'écrit même pas (45 ms sur 50 albums, aucun vrai).
-        # Le sens est celui de `(<bon marché> AND NOT <autrui>) OR <bac>` : le chemin du bac
-        # à sable d'abord, puis les trois moitiés bon marché — jamais `NULL`, des `EXISTS` —,
-        # puis seulement la quatrième.
-        bon_marche = (f"({detruire} "
-                      f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = {alias} "
-                      f"AND _sc.creee_par = ?) "
-                      f"AND NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
-                      f"AND _su.nature = ?))")
-        p_bon_marche = [*p_detruire, self.utilisateur, self.utilisateur, NATURE_COLLECTIF]
-        quand_bac, p_quand_bac = (f"WHEN {bac} THEN 1 ", p_bac) if bac != "0" else ("", [])
-        return (f"(CASE {quand_bac}WHEN {bon_marche} THEN NOT {autrui} ELSE 0 END)",
-                [*p_quand_bac, *p_bon_marche, *p_autrui])
+        # Un `CASE` n'évalue que la branche retenue : le chemin du bac à sable d'abord, puis
+        # les chemins 2 et 3 — bon marché, ils ne lisent pas le journal —, puis les trois
+        # moitiés bon marché du chemin 1, puis seulement la quatrième. Le sens est celui de
+        # `<bac> OR <tient> OR (<bon marché> AND NOT <autrui>)`, jamais `NULL` : des `EXISTS`.
+        cas, params = [], []
+        if bac != "0":
+            cas.append(f"WHEN {bac} THEN 1")
+            params += p_bac
+        if tient != "0":
+            cas.append(f"WHEN ({tient} AND {pas_partage}) THEN 1")
+            params += [*p_tient, *p_pas_partage]
+        if detruire != "0":
+            autrui, p_autrui = _sql_travail_d_autrui(alias, self.utilisateur)
+            bon_marche = (f"({detruire} "
+                          f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = {alias} "
+                          f"AND _sc.creee_par = ?) AND {pas_partage})")
+            cas.append(f"WHEN {bon_marche} THEN NOT {autrui}")
+            params += [*p_detruire, self.utilisateur, *p_pas_partage, *p_autrui]
+        return f"(CASE {' '.join(cas)} ELSE 0 END)", params
+
+    def _sql_tient_l_album(self, alias: str) -> tuple[str, list]:
+        """Les chemins 2 et 3 de `clause_suppression_directe` (Hugo, 2026-10-21), hors du
+        compte partagé que l'appelant ajoute : on POSSÈDE chacune des collections où vit
+        l'album, ou l'on est RESPONSABLE de son projet — et l'album n'est pas la DERNIÈRE
+        copie de son document au fonds commun. `"0"` quand on ne possède ni ne gère rien.
+
+        Hors des bacs à sable, des deux côtés : une collection de bac à sable ne compte pas
+        dans ce qu'on possède, un bac à sable dans ce qu'on gère — son propriétaire a son
+        chemin à lui. La moitié « toutes » est accompagnée d'un `EXISTS` : seule, elle serait
+        vraie d'une copie rangée nulle part. « Dernière copie » : aucune AUTRE copie vivante
+        du même document hors d'un projet isolé — une copie du jeu ou d'un bac à sable, qui
+        part avec lui, ne garde pas un document au fonds commun."""
+        morceaux, params = [], []
+        possede = sorted(self.propriete - self.collections_bac)
+        if possede:
+            marques = ", ".join("?" * len(possede))
+            morceaux.append(
+                f"(EXISTS (SELECT 1 FROM collection_album _tc WHERE _tc.album_id = {alias}) "
+                f"AND NOT EXISTS (SELECT 1 FROM collection_album _tc2 "
+                f"WHERE _tc2.album_id = {alias} AND _tc2.collection_id NOT IN ({marques})))")
+            params += possede
+        geres = sorted(self.projets_geres - self.bacs_a_sable)
+        if geres:
+            morceaux.append(
+                f"EXISTS (SELECT 1 FROM albums _tg WHERE _tg.id = {alias} "
+                f"AND {sql_projet_d_album('_tg')} IN ({', '.join('?' * len(geres))}))")
+            params += geres
+        if not morceaux:
+            return "0", []
+        soeur = (f"EXISTS (SELECT 1 FROM albums _ts1 JOIN albums _ts2 "
+                 f"ON _ts2.document_id = _ts1.document_id AND _ts2.id <> _ts1.id "
+                 f"WHERE _ts1.id = {alias} AND NOT {sql_album_isole('_ts2')})")
+        return f"(({' OR '.join(morceaux)}) AND {soeur})", params
 
     def peut_tenir_le_fonds(self) -> bool:
         """A-t-on le droit de tenir le FONDS — le voir, rendre une copie gardée, répondre
@@ -1158,14 +1205,22 @@ _SQL_ORDRE_DES_PLANCHES = (
 
 
 def sql_actes_sur_album(alias: str) -> str:
-    """`SELECT agent, sorte, quand` — chaque geste humain que la règle de suppression lit
-    sur l'album `alias`, un par ligne, l'appelant compris (COL-3 ; Hugo, 2026-10-15 :
-    l'administrateur voit, sous une demande, ce que les autres ont fait sur le document).
-    Lu à la source même de la règle, au moment de la lecture. Ce n'est pas une question
-    d'accès : la route qui le rend porte sa propre garde (`peut_tenir_le_fonds`)."""
-    return " UNION ALL ".join(f"SELECT {agent} AS agent, {sorte} AS sorte, {quand} AS quand "
-                              f"FROM {depuis}"
-                              for agent, sorte, quand, depuis in _sources_du_travail(alias))
+    """`SELECT agent, sorte, quand, recopie` — chaque geste humain que la règle de
+    suppression lit sur l'album `alias`, un par ligne, l'appelant compris (COL-3 ; Hugo,
+    2026-10-15 : l'administrateur voit, sous une demande, ce que les autres ont fait sur le
+    document). Lu à la source même de la règle, au moment de la lecture. Ce n'est pas une
+    question d'accès : la route qui le rend porte sa propre garde.
+
+    `recopie` (tranche 3b) vaut 1 pour un geste de la SIXIÈME source — fait sur une région
+    SOURCE avant la copie, et que la copie porte : il n'est pas perdu quand elle part, la
+    source le garde si elle vit, et son auteur a travaillé dans une autre copie, peut-être
+    un autre projet. Un écran qui ne tient pas le fonds ne le nomme pas
+    (`routes/fonds.travail_des_autres_avant_d_effacer`)."""
+    sources = _sources_du_travail(alias)
+    return " UNION ALL ".join(
+        f"SELECT {agent} AS agent, {sorte} AS sorte, {quand} AS quand, "
+        f"{1 if i == len(sources) - 1 else 0} AS recopie FROM {depuis}"
+        for i, (agent, sorte, quand, depuis) in enumerate(sources))
 
 
 # --------------------------------------------------------------------------- #

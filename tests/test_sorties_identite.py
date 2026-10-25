@@ -374,6 +374,15 @@ SORTIES_DECLAREES = {
         "qui GÈRE le projet ; le nom passe par "
         "`Portee.peut_nommer_le_demandeur(consentement=…)`. Aucun artefact n'en sort "
         "(`demande` est une cible retenue)."),
+    ("route", "/api/albums/{album_id}/travail-des-autres"): (
+        {"login", "nom"},
+        "COL-3, tranche 3b (Hugo, 2026-10-21) — avant d'EFFACER, ce que d'autres ont fait sur "
+        "l'album : qui (login et nom lisible), combien de gestes de chaque sorte, la date du "
+        "dernier, et qui a créé la copie. La protection du travail des membres passe de la "
+        "permission à la visibilité : c'est l'objet même de la route. Bornée à qui peut "
+        "effacer l'album sans rien demander (`Portee.clause_suppression_directe`) ; hors "
+        "portée totale, le travail RECOPIÉ d'une autre copie s'y compte sans nom, et "
+        "l'importateur du document n'y est pas. Aucun artefact n'en sort."),
     ("route", "/api/moi"): (
         {"login", "nom"},
         "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "

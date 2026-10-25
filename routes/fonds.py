@@ -353,7 +353,8 @@ def _comptes_partages(conn) -> set:
                                        (NATURE_COLLECTIF,))}
 
 
-def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: set) -> dict:
+def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: set, *,
+                        recopie_a_part: bool = False) -> dict:
     """Ce que les AUTRES que `demandeur` ont fait sur la COPIE demandée, lu au journal au
     moment de la lecture, par la source même de la règle de suppression
     (`autorisation.sql_actes_sur_album`) — Hugo, 2026-10-15 : l'administrateur doit voir,
@@ -374,18 +375,31 @@ def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: se
 
     Chaque entrée dit si son compte est PARTAGÉ (`collectif`), et `demandeur_collectif`
     celui du demandeur : sous un login partagé, une seule entrée peut être le travail de
-    plusieurs personnes."""
+    plusieurs personnes.
+
+    `recopie_a_part` (tranche 3b) : le travail RECOPIÉ — fait sur une région source avant
+    la copie, la sixième source de la règle — ne s'y nomme pas, et se compte à part, sans
+    auteur (`travail_recopie` : les gestes par sorte et la date du dernier ; None s'il n'y
+    en a pas). Pour un écran qui ne tient pas le fonds : ses auteurs ont travaillé dans une
+    autre copie, peut-être un autre projet, et ce travail ne part pas avec cette copie."""
     doc = conn.execute("SELECT importe_par FROM document WHERE id = ?",
                        (document_id,)).fetchone()
     par_agent: dict = {}
+    recopie: dict | None = None
     for album_id in ([] if copie is None else [copie]):
-        for agent, sorte, n, dernier in conn.execute(
-                "SELECT agent, sorte, COUNT(*), MAX(quand) FROM ("
+        for agent, sorte, origine, n, dernier in conn.execute(
+                "SELECT agent, sorte, recopie, COUNT(*), MAX(quand) FROM ("
                 f"{autorisation.sql_actes_sur_album(str(int(album_id)))}"
                 # Un geste sans auteur écrit n'est jamais celui du demandeur — même d'une
                 # demande sans demandeur, que `IS NOT NULL` seul aurait vidée.
-                ") WHERE agent IS NULL OR agent IS NOT ? GROUP BY agent, sorte",
+                ") WHERE agent IS NULL OR agent IS NOT ? GROUP BY agent, sorte, recopie",
                 (demandeur,)):
+            if recopie_a_part and origine:
+                recopie = recopie or {"gestes": {}, "dernier": None}
+                recopie["gestes"][sorte] = recopie["gestes"].get(sorte, 0) + n
+                if dernier and (recopie["dernier"] is None or dernier > recopie["dernier"]):
+                    recopie["dernier"] = dernier
+                continue
             e = par_agent.setdefault(agent, {"agent": agent, "gestes": {}, "dernier": None})
             e["gestes"][sorte] = e["gestes"].get(sorte, 0) + n
             if dernier and (e["dernier"] is None or dernier > e["dernier"]):
@@ -404,12 +418,53 @@ def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: se
     for e in autres:
         e["agent_nom"] = noms.get(e["agent"]) if e["agent"] else None
         e["collectif"] = e["agent"] in collectifs
-    return {"importe_par": importe_par,
-            "importe_par_nom": noms.get(importe_par) if importe_par else None,
-            "creee_par": creee_par,
-            "creee_par_nom": noms.get(creee_par) if creee_par else None,
-            "demandeur_collectif": demandeur in collectifs,
-            "travail_des_autres": autres}
+    rendu = {"importe_par": importe_par,
+             "importe_par_nom": noms.get(importe_par) if importe_par else None,
+             "creee_par": creee_par,
+             "creee_par_nom": noms.get(creee_par) if creee_par else None,
+             "demandeur_collectif": demandeur in collectifs,
+             "travail_des_autres": autres}
+    if recopie_a_part:
+        rendu["travail_recopie"] = recopie
+    return rendu
+
+
+_MOTIF_TRAVAIL = ("Ce que d'autres ont fait sur cet album se lit par qui peut l'effacer sans "
+                  "rien demander : son propriétaire, le responsable de son projet, ou qui "
+                  "l'a créé.")
+
+
+@router.get("/api/albums/{album_id}/travail-des-autres")
+def travail_des_autres_avant_d_effacer(album_id: int, conn: sqlite3.Connection = Depends(db),
+                                       portee: autorisation.Portee = Depends(portee_courante)):
+    """Ce que d'AUTRES ont fait sur cet album — qui, combien de gestes de chaque sorte, la
+    date du dernier —, pour qui va l'effacer (COL-3, tranche 3b ; Hugo, 2026-10-21 : la
+    protection du travail des membres passe de la permission à la VISIBILITÉ, l'écran dit
+    qui perd quoi AVANT d'effacer). La mesure que l'administrateur lit déjà sous une
+    demande, lue par la même source que la règle (`autorisation.sql_actes_sur_album`) : ce
+    que l'écran montre est ce que la règle a lu.
+
+    Bornée à qui PEUT effacer cet album sans rien demander
+    (`Portee.clause_suppression_directe`) — son propriétaire, le responsable de son projet,
+    qui l'a créé, une portée totale : 404 à qui n'y écrit pas (l'accesseur gardé), 403 nommé
+    à qui y écrit sans pouvoir l'effacer. Le travail RECOPIÉ d'une autre copie se compte à
+    part, sans nom (`travail_recopie`) : il ne part pas avec celle-ci, et ses auteurs
+    peuvent être d'un autre projet. Ce sont des GESTES, défaits compris, pas ce qui reste
+    sur les planches."""
+    a = _get_album(conn, portee, album_id, ecriture=True)
+    ou, params = portee.clause_suppression_directe("a.id")
+    if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
+                    (album_id, *params)).fetchone() is None:
+        raise HTTPException(403, _MOTIF_TRAVAIL)
+    vue = _travail_des_autres(conn, a["document_id"], album_id, portee.utilisateur,
+                              _comptes_partages(conn), recopie_a_part=not portee.tout)
+    vue.pop("demandeur_collectif", None)
+    if not portee.tout:
+        # Qui a importé le DOCUMENT peut l'avoir fait dans un autre projet, dont la copie
+        # d'origine vit ailleurs : seul `creee_par`, qui a créé CETTE copie, se lit ici.
+        vue.pop("importe_par", None)
+        vue.pop("importe_par_nom", None)
+    return {"album_id": album_id, **vue}
 
 
 def _vue_demande(conn, demande_id: int) -> dict:

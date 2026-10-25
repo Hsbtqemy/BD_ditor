@@ -777,13 +777,19 @@ def _refuser_le_bac_a_sable(conn, motif: str, status: int = 409, **objet) -> Non
 # lequel. Elle dit aussi les deux gestes qui restent : supprimer l'album de sa collection —
 # il est gardé au fonds —, ou demander. Une planche n'a ni l'un ni l'autre (décision B4) :
 # sa suppression se dit à un administrateur.
-_MOTIF_DESTRUCTION = ("D'autres s'en servent, ou ce n'est pas vous qui l'avez importé : "
-                      "supprimer définitivement cet album se demande à un administrateur. "
-                      "Vous pouvez le supprimer de votre collection, où il est gardé au "
-                      "fonds avec son travail.")
+#
+# COL-3, tranche 3b (Hugo, 2026-10-21) — trois chemins effacent sans demande désormais : le
+# créateur seul à y avoir travaillé, le propriétaire de toutes ses collections, le
+# responsable de son projet ; ces deux derniers jamais sur la DERNIÈRE copie d'un document.
+# La phrase dit les trois raisons d'un refus ensemble, sans dire laquelle — la même forme.
+_MOTIF_DESTRUCTION = ("D'autres s'en servent, ou ce n'est pas vous qui l'avez importé, ou "
+                      "c'est la dernière copie de ce document : supprimer définitivement cet "
+                      "album se demande à un administrateur. Vous pouvez le supprimer de "
+                      "votre collection, où il est gardé au fonds avec son travail.")
 _MOTIF_DESTRUCTION_PLANCHE = ("D'autres se servent de cet album, ou ce n'est pas vous qui "
-                              "l'avez importé : supprimer l'une de ses planches se demande "
-                              "à un administrateur de l'instance.")
+                              "l'avez importé, ou c'est la dernière copie de ce document : "
+                              "supprimer l'une de ses planches se demande à un administrateur "
+                              "de l'instance.")
 
 
 def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int, *,

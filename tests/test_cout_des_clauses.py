@@ -59,16 +59,27 @@ def _ancienne(p, clause, ecriture):
                f"AND {sql_projet_d_album('_sbs')} IN ({', '.join('?' * len(ids))}))")
         p_bac = [*ids]
     detruire, p_detruire = p.clause_destruction("a.id")
-    if detruire == "0":
+    # COL-3, tranche 3b (Hugo, 2026-10-21) — les chemins 2 et 3, le propriétaire de toutes
+    # les collections et le responsable du projet, hors dernière copie : la RÉFÉRENCE les
+    # ajoute en `OR`, sous la forme qui calcule tout. Leur fragment est celui du code
+    # (`_sql_tient_l_album`) — ce test mesure l'assemblage en `CASE`, pas ce fragment, que
+    # `tests/test_qui_efface.py` éprouve par ses comportements.
+    tient, p_tient = p._sql_tient_l_album("a.id")
+    if detruire == "0" and tient == "0":
         return bac, p_bac
-    autrui, p_autrui = autorisation._sql_travail_d_autrui("a.id", p.utilisateur)
-    return (f"(({detruire} "
-            f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = a.id "
-            f"AND _sc.creee_par = ?) "
-            f"AND NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
-            f"AND _su.nature = ?) "
-            f"AND NOT {autrui}) OR {bac})",
-            [*p_detruire, p.utilisateur, p.utilisateur, NATURE_COLLECTIF, *p_autrui, *p_bac])
+    pas_partage = ("NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
+                   "AND _su.nature = ?)")
+    morceaux, params = [], []
+    if detruire != "0":
+        autrui, p_autrui = autorisation._sql_travail_d_autrui("a.id", p.utilisateur)
+        morceaux.append(f"({detruire} "
+                        f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = a.id "
+                        f"AND _sc.creee_par = ?) AND {pas_partage} AND NOT {autrui})")
+        params += [*p_detruire, p.utilisateur, p.utilisateur, NATURE_COLLECTIF, *p_autrui]
+    if tient != "0":
+        morceaux.append(f"({tient} AND {pas_partage})")
+        params += [*p_tient, p.utilisateur, NATURE_COLLECTIF]
+    return f"({' OR '.join(morceaux)} OR {bac})", [*params, *p_bac]
 
 
 def _valeurs(conn, frag):
@@ -107,6 +118,17 @@ def scene(client, decor):  # noqa: F811
     _region(client, _planche(client, touche, RESP), ADMIN)
     d_un_autre = client.post("/api/albums", headers=ADMIN,
                              json={"titre": "D'un autre", "collection_id": col}).json()["id"]
+    # COL-3, tranche 3b — une SŒUR de « Touché », prise par l'administrateur dans la même
+    # collection : pour resp, responsable de l'Étude, « Touché » n'est plus la dernière copie
+    # de son document, et le chemin 3 (le responsable du projet) le rend effaçable — sans
+    # que le journal soit lu.
+    doc = next(a["document_id"] for a in client.get("/api/albums", headers=ADMIN).json()
+               if a["id"] == touche)
+    r = client.post(f"/api/collections/{col}/prendre", headers=ADMIN,
+                    json={"documents": [{"document_id": doc, "reponse": "zero",
+                                         "album_id": touche}]})
+    assert r.status_code == 200, r.text
+    soeur = r.json()["documents"][0]["copie_id"]
     _planche(client, decor["reel"], RESP)
     for qui in (HUGO, RESP):
         assert client.post("/api/bac-a-sable", headers=qui).status_code == 201
@@ -126,6 +148,7 @@ def scene(client, decor):  # noqa: F811
     du_tp = client.post("/api/albums", headers=TP,
                         json={"titre": "Du TP", "collection_id": col}).json()["id"]
     return {**decor, "touche": touche, "d_un_autre": d_un_autre, "du_tp": du_tp,
+            "soeur": soeur,
             "copie_touchee": copie["album_id"]}
 
 
@@ -158,7 +181,8 @@ def test_l_ancien_et_le_nouveau_sql_rendent_les_memes_valeurs(client, scene):
         conn.close()
     sup = {nom: vus[nom, "clause_suppression_directe", None] for nom in portees}
     r = sup["resp (ordinaire)"]
-    assert (r[scene["reel"]], r[scene["touche"]], r[scene["d_un_autre"]]) == (1, 0, 0)
+    assert (r[scene["reel"]], r[scene["touche"]], r[scene["d_un_autre"]],
+            r[scene["soeur"]]) == (1, 1, 0, 1)
     assert sup["lea (propriétaire de bac)"][scene["copie_touchee"]] == 1
     assert sup["sam (invité)"][scene["copie_touchee"]] == 0
     assert sup["groupe-tp (compte partagé)"][scene["du_tp"]] == 0
@@ -202,8 +226,10 @@ def test_hors_des_bacs_la_clause_ordinaire_n_est_pas_evaluee(client, scene):
 
 def test_le_travail_d_autrui_ne_se_lit_que_si_le_reste_tient(client, scene, monkeypatch):
     """`clause_suppression_directe`, dans une colonne du `SELECT` : le travail d'autrui (le
-    journal) n'est lu que pour les albums où les trois moitiés bon marché tiennent — pour
-    resp, les deux qu'elle a créés et où elle écrit partout ; ni pour « D'un autre », ni
+    journal) n'est lu que pour les albums où les trois moitiés bon marché tiennent et où
+    aucun chemin plus court ne répond — pour resp, « Réel », qu'elle a créé et où elle écrit
+    partout ; ni pour « Touché » et sa sœur, que le chemin du responsable (tranche 3b) rend
+    effaçables sans le journal, ni pour « D'un autre », ni
     pour un album qu'elle n'écrit pas, ni dans son bac à sable, où le chemin du bac répond
     d'abord. Et pour une portée bornée, sur aucun album : le vrai corpus ne lit pas la clause
     ordinaire, le bac à sable à soi répond par son chemin."""
@@ -213,7 +239,7 @@ def test_le_travail_d_autrui_ne_se_lit_que_si_le_reste_tient(client, scene, monk
         sql, prm = lire_autrui(alias, login)
         return f"(bd_autrui_vu({alias}) OR {sql})", prm
     monkeypatch.setattr(autorisation, "_sql_travail_d_autrui", temoin)
-    for qui, attendu in ((RESP, {scene["reel"], scene["touche"]}), (HUGO, set()),
+    for qui, attendu in ((RESP, {scene["reel"]}), (HUGO, set()),
                          (LEA, set())):
         p = _portee(scene["db"], qui)
         conn = database.get_connection()
