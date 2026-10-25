@@ -1,19 +1,18 @@
 ---
 chantier: COL-4
-statut: à venir
+statut: livré
 ---
 
 # COL-4 — « Mon bac à sable » : un projet de test à soi, remis à neuf chaque semaine, où l'on apprend l'outil
 
-**Arrêté sur** `0449efb` (2026-10-25, sur `dev`, non poussé ; certifié : suite, e2e, image) — l'ÉCRAN est livré sur le côté serveur
-(`1e5b75e` … `5aa166d`, tel que tranché sur maquette, relu ; suite par défaut 2 711 passed sur
-`5aa166d`, e2e touchés, a11y et reflow verts), la passe `bac-a-sable` est écrite, la recette
-reconstruite sur `5aa166d` avec un jeu de sept planches. Avant lui, le côté SERVEUR :
-v35, le jeu et son outil, créer et borner, effacer (remise à neuf, lundi 4 h, minuterie posée
-non installée), les surfaces transverses, la documentation ; relu en croisé, corrigé, contre-relu.
-Restent : la passe `bac-a-sable` jouée par Hugo, le vrai jeu, la minuterie sur le VPS, et
-avant `main` les vérifications de la zone du côté serveur. Fiche ouverte le 2026-10-21 sur une demande
-de Hugo et ses réponses du même jour (Contexte).
+**Arrêté sur** `0449efb` (2026-10-25, EN PRODUCTION : `main` = `f8dfa5c`, déployé à la main par
+Hugo — la veille refuse à raison une version qui migre). Le bac à sable SANS wizard est livré :
+le côté serveur (v35, relu en croisé, corrigé, contre-relu), l'écran tranché sur maquette, les
+retours de la passe `bac-a-sable` (jouée 38 sur 38), la chaîne entière verte. En production le
+2026-10-25 : la base migrée en v35 (intégrité ok), les 866 dérivés refaits au plancher (+429 Mo),
+le jeu de sept documents préparé en part serveur, la minuterie du lundi installée ; Hugo a ouvert
+son bac à sable. Restent : la part du dépôt du jeu, trois options fermées à confirmer, et le
+wizard (`UX-6`, lot 4). Fiche ouverte le 2026-10-21 sur une demande de Hugo (Contexte).
 
 ## Reste
 
@@ -38,7 +37,7 @@ de Hugo et ses réponses du même jour (Contexte).
   dit la date du prochain effacement
 - [x] **Un administrateur a, lui aussi, un bac à sable** — attendu : tranché. L'isolement tient à
   la NATURE du projet, jamais à la portée (S3) : sa portée totale n'y ouvre rien de plus
-- [ ] **Les images du jeu : « un peu des trois »** — attendu : la composition du jeu écrite, et
+- [ ] **Les images du jeu : « un peu des trois »** — attendu : la composition du jeu écrite, et **Relevé le 2026-10-25** : *Bibi Fricotin chez les Chinois* n'est pas de Forton — album n° 11, 1940, de la période Gaston Callaud (albums 8 à 12, d'après Wikipédia, une seule source ; date de mort de Callaud non trouvée) : elle ne va PAS au dépôt, sauf à établir que Callaud est mort depuis plus de 70 ans. *La Vocation de Bibi Fricotin*, signée de Forton (mort en 1934 ; le TGI de Paris, 2011, confirme le domaine public de ses Pieds Nickelés, mais PAS des reprises d'autres dessinateurs), est la première candidate sûre pour le dépôt — sans bulles, elle n'est pas un parcours
   ce qu'elle emporte. Hugo veut mêler des planches DESSINÉES pour l'outil (licence libre, dans le
   dépôt), du DOMAINE PUBLIC (licence du scan à lire, dans le dépôt) et des scans du CORPUS (sous
   droits : jamais dans le dépôt, posés à la main sur le VPS). Conséquences à trancher avant le
@@ -83,8 +82,8 @@ de Hugo et ses réponses du même jour (Contexte).
 - [x] **La v35 passe sur une copie de la base de PRODUCTION** — attendu : une copie de la base du VPS migrée sur le poste, sans erreur, `foreign_key_check` vide, le nombre de lignes de chaque table inchangé ; avant de pousser `main` **Fait le 2026-10-25** : la sauvegarde téléchargée par Hugo depuis la production, migrée sur le poste par le code de `dev` — version 34 → 35, intégrité ok avant et après, aucune référence orpheline, les 34 tables au même nombre de lignes (seule `jeu_document` naît, vide), 13 tags dans l'espace de l'instance ; la copie effacée
 - [x] **75 bacs à sable ne ralentissent pas l'administrateur** — attendu : avec 75 bacs semés, les listes de l'administrateur (albums, collections, projets, fonds, Recherche) répondent dans le même ordre de temps qu'avant ; la borne de la portée totale ajoute des sous-requêtes, non mesurées **Mesuré le 2026-10-25** (décor synthétique : 150 albums, 1 500 planches, 13 500 régions ; 75 bacs ouverts par l'API) : toutes les listes restent dans le même ordre de temps (10 à 90 ms), ouvrir un bac à sable 30 à 60 ms, effacer les 75 en 9 à 15 s — sauf `GET /api/albums` pour un administrateur qui a son bac ou y est invité, 22 → 190 ms, linéaire en nombre d'albums : `destructible` calculait le travail d'autrui pour chaque album (SQLite évalue les deux côtés d'un `OR` dans une colonne). **Corrigé par `e62f6bc`** (`CASE WHEN`, même sens prouvé ligne à ligne sous neuf identités, coût tenu par un test qui compte les évaluations) : 239 → 30 ms ; et pour un compte ordinaire, défaut plus ancien (COL-3), 65 → 17 ms
 - [x] **Les passes longues avant `main`** — attendu : les e2e entiers et la suite DANS l'image, verts sur le commit qui part ; aucune n'a tourné sur le côté serveur **Fait le 2026-10-25** : sur `4841929`, suite par défaut 2 750 passed, e2e entiers 846 passed (1 h 26), suite dans l'image 1 rouge — le test des unités systemd lisait `deploy/`, exclu de l'image ; sauté comme ses voisins par `0449efb` ; sur `0449efb`, suite par défaut 2 750 passed, suite dans l'image 2 659 passed, 30 skipped, code 0 (le code de l'application inchangé : la passe navigateur vaut)
-- [ ] **La minuterie de l'effacement est installée sur le VPS** — attendu : `systemctl list-timers` y montre `bd-bacs-a-sable.timer`, prochain passage lundi 4 h (Paris) ; un passage à blanc de l'outil, lancé par Hugo, dit les bacs échus. Les commandes sont dans `docs/exploitation.md`
-- [ ] **Le vrai jeu est préparé** — attendu : la part du dépôt versée dans `jeu/` (après la vérification de Forton) et la part serveur posée sur le VPS ; `tools/preparer_jeu.py` les lit, et un bac à sable neuf en production porte le parcours (Bibi Fricotin) ; aujourd'hui `jeu/jeu.json` est vide
+- [x] **La minuterie de l'effacement est installée sur le VPS** — attendu : `systemctl list-timers` y montre `bd-bacs-a-sable.timer`, prochain passage lundi 4 h (Paris) ; un passage à blanc de l'outil, lancé par Hugo, dit les bacs échus. Les commandes sont dans `docs/exploitation.md` **Fait par Hugo le 2026-10-25** : `bd-bacs-a-sable.timer` actif, premier passage à 10 h 04 UTC (« ✓ 0 bac(s) à sable effacé(s) »), le suivant à l'heure pile
+- [ ] **Le vrai jeu est préparé** — attendu : la part du dépôt versée dans `jeu/` (après la vérification de Forton) et la part serveur posée sur le VPS ; `tools/preparer_jeu.py` les lit, et un bac à sable neuf en production porte le parcours (Bibi Fricotin) ; aujourd'hui `jeu/jeu.json` est vide **En production le 2026-10-25, TOUT en part serveur** (choix du pilotage, sur la consigne de Hugo « le plus cohérent et sécurisé ») : sept documents posés par Hugo sur le VPS (`/data/jeu`, hors du dépôt), export fermé pour tous — *Bibi Fricotin chez les Chinois* (le parcours, découpé en trois cases et quatre bulles), *La Vocation de Bibi Fricotin* (exemple, signée « L. Forton », ajoutée par Hugo le 2026-10-25), Girin, *Lightning Comics* n° 6, *Modern Comics* n° 76, Calvo, Stevson ; `jeu/jeu.json` du dépôt reste vide. Reste ouverte la part du DÉPÔT
 - [ ] **Trois questions laissées à l'option fermée** — attendu : confirmées ou rouvertes par Hugo. (1) Dans un bac à sable, ranger une copie dans une autre collection du même bac est réservé au propriétaire : l'invité ne le demande plus (le « rejoindre » à consentement est refusé). (2) Importer un tableur de vocabulaire dans un bac est refusé (domaines et dimensions restent uniques sur l'instance ; seuls les tags ont un espace à part). (3) Ce qu'on importe soi-même dans son bac ne s'exporte pas, ni comme figure
 
 ### L'écran, tranché par Hugo sur maquette — 2026-10-24
