@@ -885,7 +885,7 @@ def test_une_cible_sans_rang_ne_peut_pas_etre_publiee():
     import _commun
 
     assert _commun.CIBLES_SANS_RANG == {"document", "collection_album", "demande",
-                                        "region_attribut", "tags"}
+                                        "region_attribut", "tags", "grille"}
     assert _commun.CIBLES_SANS_RANG <= set(_commun.CIBLES_RETENUES)
     assert not _commun.CIBLES_SANS_RANG & _commun.CIBLES_CORPUS
 

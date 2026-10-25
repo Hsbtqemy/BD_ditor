@@ -445,6 +445,12 @@ HORS_CONTROLE = {
     ("GET", "/api/sauvegarde"): _BASE_ENTIERE,
     ("POST", "/api/sharedocs/deposer-sauvegarde"): _BASE_ENTIERE
         + " Même artefact que `GET /api/sauvegarde`, envoyé sur ShareDocs.",
+    ("GET", "/api/grilles/{grille_id}/versions/{numero}/tableur"):
+        "ANN-7, G16 : le réexport d'une GRILLE d'annotation au format de son tableur — un "
+        "vocabulaire d'étude, à son projet, réservé à qui le gère. Ce n'est la sortie "
+        "d'aucune collection : la grille ne porte ni album, ni transcription, ni terme du "
+        "vocabulaire d'aujourd'hui (tags, attributs), et son plan est le même quelle que "
+        "soit la collection d'où l'on vient.",
 }
 
 # Les routes jouées qui ne sont PAS sous `/depot/` : comment les appeler, et les
@@ -528,6 +534,10 @@ SORTIE_PAR_DEFAUT = {"iiif_manifest.py", "crosswalk_depot.py", "provenance_expor
 
 OUTILS_HORS = {
     "_commun.py": "Bibliothèque partagée, sans `main()` : elle ne produit rien.",
+    "importer_grille.py":
+        "ENTRE une grille d'annotation (ANN-7), n'en sort pas : son compte rendu ne nomme "
+        "que les clés et les libellés du tableur qu'on lui donne, et son `--json` le bilan "
+        "de cet import. `--publier` ne fait que changer l'état d'une version.",
     "importer_vocabulaire.py":
         "ENTRE du vocabulaire, n'en sort pas. Son `--collection` désigne la portée où "
         "les termes naissent ; son compte rendu ne nomme que les lignes du tableur "
@@ -604,6 +614,8 @@ OUTILS_HORS = {
 # Elle fait donc échouer, et celui qui l'ajoute relit la raison avant de l'inscrire ici.
 ENTREES_HORS = {
     "_commun.py": set(),
+    "importer_grille.py": {"fichier", "--listes", "--projet", "--grille", "--nom", "--ouverte",
+                           "--porte-sur", "--note", "--a-blanc", "--json", "--publier"},
     "importer_vocabulaire.py": {"fichier", "--collection", "--dry-run"},
     "dictionnaire_xlsx.py": {"--out", "--source"},
     "rapport_accord.py": {"--json", "--csv", "--modele"},
