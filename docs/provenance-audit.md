@@ -147,6 +147,18 @@ liens locuteur & présence, validation de planche. Une retouche d'un **pré-remp
 machine** pose en plus la **surface dénormalisée** `regions.touche` + `date_modification`
 (lue à moindre coût par l'indicateur de dérive, sans rejouer le journal).
 
+**Grilles et relevés** (ANN-7, tranche 1, v37) — trois cibles, toutes RETENUES de toute
+sortie (`tools/_commun.CIBLES_RETENUES`) : `grille` (`cible_id` = la grille) pour l'import
+d'une version, sa publication, une coquille, une activation, un masque, un retrait ;
+`releve` (`cible_id` = la RÉGION) pour un relevé posé, modifié ou retiré, un doute ouvert,
+répondu ou levé, une passe marquée ou rouverte ; `releve_planche` (`cible_id` = la planche)
+pour les mêmes actes sur la surface. La cible d'un relevé est sa zone et non le relevé : la
+règle « personne d'autre n'y a travaillé » et Ctrl+Z le trouvent par l'index du journal,
+comme une annotation. `grille` ne donne aucun rang dans les pseudonymes (`CIBLES_SANS_RANG`)
+— importer une grille n'est pas annoter — ; `releve` et `releve_planche` en donnent. Le
+texte d'un message de doute n'est écrit qu'en base (`doute_message`) : la charge de l'acte
+ne nomme que le relevé, le doute et le message, par leurs identifiants.
+
 ## Indicateurs dérivés
 
 `journal.indicateurs_provenance(conn, album_ids)` agrège :

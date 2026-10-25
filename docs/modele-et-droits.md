@@ -1067,6 +1067,29 @@ lisez pas (« libellé déjà pris », sans dire où), qui écrirait sur un term
 seule pour vous, ou qui rangerait un terme hors de la collection de son parent (« hors de la
 collection de son parent ») est refusée entière, et comptée par motif dans le bilan.
 
+### Les grilles d'annotation : qui peut quoi (ANN-7, tranche 1)
+
+*Le modèle depuis le 2026-10-25, sans écran encore — la page Annotation vient avec la tranche
+2. Le détail : [`grilles-et-releves.md`](grilles-et-releves.md) ; le tableur :
+[`import-grille.md`](import-grille.md).*
+
+Une **grille** est le vocabulaire d'une étude : des rubriques, des entrées, leurs variantes et
+leurs qualificatifs. Elle appartient à UN projet, et c'est à ce projet que tout se règle.
+
+| Geste | Qui |
+|---|---|
+| Importer une grille ou une nouvelle version, la publier, corriger une coquille, l'activer, la désactiver, la retirer, la supprimer quand rien ne l'emploie | qui **gère** le projet : son responsable, un administrateur |
+| Lire un brouillon | les mêmes, et personne d'autre |
+| Lire le plan d'une version publiée | les membres du projet ; quiconque lit un album d'un projet où la grille est active ; quiconque lit un album qui porte un de ses relevés, même désactivée |
+| La masquer dans une collection | qui **administre** la collection (son propriétaire) — un filtre de ce qu'on propose, pas une garde |
+| Poser, modifier, retirer un relevé ; ouvrir un doute, y répondre, le lever ; marquer une passe « terminée » ou la rouvrir | quiconque **écrit** dans l'album, sur une grille active de son projet |
+
+Un relevé n'a pas de collection : il vit sur une zone ou sur une planche, donc dans l'album,
+et se lit comme lui. Désactiver une grille ne supprime aucun relevé : ils restent, en
+lecture. Masquer une grille dans une collection ne cache rien de ce qui est posé. Le
+brouillon n'est pas montré, parce que le plan d'une grille peut révéler une étude en cours.
+Rien d'une grille ni d'un relevé ne sort encore d'un export.
+
 ---
 
 ## 5. Les régimes de diffusion — citer n'est pas publier

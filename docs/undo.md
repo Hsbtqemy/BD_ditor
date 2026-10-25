@@ -517,6 +517,26 @@ acte dont la couche n'a pas été touchée (une géométrie de case, sous une re
 la grammaire »). C'est l'option fermée de « ne remonte pas au-delà » : une remise à zéro est
 un point d'arrêt de la pile, pas un tri couche par couche.
 
+## Les relevés (ANN-7, tranche 1)
+
+Poser, modifier et retirer un relevé s'annulent — sur une région (cible `releve`, dont
+`cible_id` est la RÉGION) comme sur la surface d'une planche (`releve_planche`, la planche) ;
+les deux cibles sont dans `undo._TABLES`. Les questions d'AUTH-14 valent telles quelles —
+écrire maintenant là où l'inverse touche (`undo.lieux` lit la région, ou la planche pour la
+surface), et l'objet est-il encore celui de l'acte (pour la surface : la planche existe, et
+son album n'est pas né après l'acte) — avec deux de plus, propres à une grille : la grille
+est-elle encore ACTIVE à la version du relevé, et l'entrée existe-t-elle dans cette version ?
+Sinon l'acte est PASSÉ, avec la seconde phrase. Défaire une modification qu'un autre a
+recouverte depuis reçoit le 409 de CONC-3, champ par champ, comme une région.
+
+Supprimer une région emporte ses relevés, leurs doutes et les passes de la zone : l'instantané
+profond les garde (`releves` dans l'instantané de chaque nœud), et Ctrl+Z de la suppression
+les rend sous leurs identifiants — sauf ceux dont la grille n'est plus active ou l'entrée a
+disparu, comptés dans `releves_non_rendus`. Un relevé retiré par la LEVÉE d'un doute
+(« retirer ») s'annule comme un retrait ; la levée elle-même, le doute et la passe ont leurs
+types à eux, hors de la pile. Un texte retouché qui ré-ancre les relevés n'écrit rien quand
+un mot est perdu : Ctrl+Z du texte les rend normaux sans rien rejouer.
+
 ## Boucle
 
 - **API** : `GET /api/undo/prochain` (aperçu : `{evenement_id, description}` ou `null`) ·
