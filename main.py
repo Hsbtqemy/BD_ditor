@@ -104,6 +104,7 @@ from routes import lexique as _routes_lexique
 from routes import personnages as _routes_personnages
 from routes import projets as _routes_projets
 from routes import recherche as _routes_recherche
+from routes import releves as _routes_releves
 
 from pipeline.backup import make_backup
 from pipeline import jobs
@@ -170,6 +171,7 @@ app.include_router(_routes_lexique.router)
 app.include_router(_routes_projets.router)
 app.include_router(_routes_fonds.router)
 app.include_router(_routes_bac_a_sable.router)
+app.include_router(_routes_releves.router)
 
 
 # --------------------------------------------------------------------------- #

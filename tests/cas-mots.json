@@ -1,0 +1,140 @@
+[
+  {
+    "nom": "les espaces et les retours à la ligne séparent",
+    "texte": "IL NE\nSAIT  PAS",
+    "mots": ["IL", "NE", "SAIT", "PAS"]
+  },
+  {
+    "nom": "la ponctuation forme des mots à elle",
+    "texte": "OUI, NON.",
+    "mots": ["OUI", ",", "NON", "."]
+  },
+  {
+    "nom": "une suite d'un même signe ne fait qu'un mot — « emphase par ponctuation » la désigne",
+    "texte": "NON !!! ET ALORS...",
+    "mots": ["NON", "!!!", "ET", "ALORS", "..."],
+    "a_trancher": "G11 : « !!! » et « ... » comme UN mot"
+  },
+  {
+    "nom": "deux signes différents font deux mots",
+    "texte": "QUOI ?!",
+    "mots": ["QUOI", "?", "!"]
+  },
+  {
+    "nom": "les points de suspension en un caractère sont un mot",
+    "texte": "J'SAIS PAS…",
+    "mots": ["J'", "SAIS", "PAS", "…"]
+  },
+  {
+    "nom": "un clitique élidé se détache avec son apostrophe droite",
+    "texte": "j'sais t'es l'otage d'la ville",
+    "mots": ["j'", "sais", "t'", "es", "l'", "otage", "d'", "la", "ville"]
+  },
+  {
+    "nom": "un clitique élidé se détache avec son apostrophe typographique",
+    "texte": "C’EST L’OTAGE",
+    "mots": ["C’", "EST", "L’", "OTAGE"]
+  },
+  {
+    "nom": "qu', n', s', m' et ç' se détachent aussi",
+    "texte": "qu'il n'y s'en m'a ç'a",
+    "mots": ["qu'", "il", "n'", "y", "s'", "en", "m'", "a", "ç'", "a"]
+  },
+  {
+    "nom": "les conjonctions élidées se détachent",
+    "texte": "jusqu'à lorsqu'il puisqu'on quoiqu'elle",
+    "mots": ["jusqu'", "à", "lorsqu'", "il", "puisqu'", "on", "quoiqu'", "elle"]
+  },
+  {
+    "nom": "une apostrophe qui n'élide pas reste dans son mot : « aujourd'hui »",
+    "texte": "AUJOURD’HUI aujourd'hui",
+    "mots": ["AUJOURD’HUI", "aujourd'hui"],
+    "a_trancher": "G11 : « aujourd'hui » en UN mot"
+  },
+  {
+    "nom": "« presqu'île » et « quelqu'un » restent entiers",
+    "texte": "presqu'île quelqu'un",
+    "mots": ["presqu'île", "quelqu'un"],
+    "a_trancher": "G11 : une apostrophe qui n'élide pas"
+  },
+  {
+    "nom": "une élision graphique DANS un mot reste dans le mot : « p'tit »",
+    "texte": "un p'tit gars",
+    "mots": ["un", "p'tit", "gars"]
+  },
+  {
+    "nom": "le trait d'union reste dans son mot",
+    "texte": "peut-être dis-moi",
+    "mots": ["peut-être", "dis-moi"],
+    "a_trancher": "G11 : les mots à tiret en UN mot"
+  },
+  {
+    "nom": "« -t-il » reste dans le verbe",
+    "texte": "VA-T-IL VENIR ?",
+    "mots": ["VA-T-IL", "VENIR", "?"],
+    "a_trancher": "G11 : « -t-il »"
+  },
+  {
+    "nom": "la coupure de fin de ligne du lettrage fait UN mot, retour compris",
+    "texte": "UN POR-\nTRAIT",
+    "mots": ["UN", "POR-\nTRAIT"],
+    "a_trancher": "G11 : la coupure de fin de ligne"
+  },
+  {
+    "nom": "un tiret en fin de ligne qui ne coupe rien reste un signe",
+    "texte": "ET -\nVOILÀ",
+    "mots": ["ET", "-", "VOILÀ"]
+  },
+  {
+    "nom": "un nombre garde sa virgule et son point",
+    "texte": "3,50 OU 1.000 FRANCS",
+    "mots": ["3,50", "OU", "1.000", "FRANCS"],
+    "a_trancher": "G11 : les nombres"
+  },
+  {
+    "nom": "une virgule après un nombre, suivie d'une espace, reste un signe",
+    "texte": "3, 4",
+    "mots": ["3", ",", "4"]
+  },
+  {
+    "nom": "un sigle pointé garde ses points",
+    "texte": "LA S.N.C.F. ARRIVE",
+    "mots": ["LA", "S.N.C.F.", "ARRIVE"],
+    "a_trancher": "G11 : les sigles pointés"
+  },
+  {
+    "nom": "une initiale seule n'est pas un sigle : son point est un signe",
+    "texte": "M. DUPONT",
+    "mots": ["M", ".", "DUPONT"]
+  },
+  {
+    "nom": "le tiret de dialogue et les guillemets sont des signes",
+    "texte": "— « HÉ ! »",
+    "mots": ["—", "«", "HÉ", "!", "»"]
+  },
+  {
+    "nom": "une apostrophe seule, hors d'un mot, est un signe",
+    "texte": "les gars' 'tain",
+    "mots": ["les", "gars", "'", "'", "tain"]
+  },
+  {
+    "nom": "les lettres répétées d'un allongement restent un mot",
+    "texte": "NOOON OUIII",
+    "mots": ["NOOON", "OUIII"]
+  },
+  {
+    "nom": "un symbole est un mot",
+    "texte": "10 €",
+    "mots": ["10", "€"]
+  },
+  {
+    "nom": "un texte vide n'a aucun mot",
+    "texte": "",
+    "mots": []
+  },
+  {
+    "nom": "des espaces seules n'ont aucun mot",
+    "texte": "   \n  ",
+    "mots": []
+  }
+]
