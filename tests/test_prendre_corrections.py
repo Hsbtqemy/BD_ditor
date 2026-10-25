@@ -155,12 +155,19 @@ def test_le_demandeur_supprime_seul_la_copie_qu_on_lui_a_accordee(client, prise,
 
 def test_un_autre_acte_de_l_administrateur_compte_encore(client, prise):
     """Borné à la naissance : la notice retouchée par l'administrateur sur cette copie est
-    un travail d'autrui, et le demandeur demande alors."""
+    un travail d'autrui. Jusqu'au 2026-10-21, le demandeur demandait alors ; depuis (COL-3,
+    tranche 3b), il est aussi RESPONSABLE du projet de la copie, qui a une sœur au fonds
+    commun, et l'efface encore — par le chemin du responsable, non par celui du créateur. Ce
+    qui reste mesuré : l'acte de l'administrateur est lu comme le travail d'un autre, ce que
+    l'écran « qui perd quoi » lui montre avant d'effacer."""
     demande = _entree(client, prise, ("d1",))
     copie = _repondre(client, demande, "acceptee").json()["documents"][0]["copie_id"]
     assert client.put(f"/api/albums/{copie}", json={"titre": "Retouché"},
                       headers=ADMIN).status_code == 200
-    assert _albums(client, RESP)[copie]["destructible"] is False
+    assert _albums(client, RESP)[copie]["destructible"] is True
+    vue = client.get(f"/api/albums/{copie}/travail-des-autres", headers=RESP).json()
+    assert [(e["agent"], e["gestes"]) for e in vue["travail_des_autres"]] == [
+        (ADMIN["Remote-User"], {"document": 1})]
 
 
 def test_une_prise_directe_reste_a_l_administrateur(client, prise, db_path):
