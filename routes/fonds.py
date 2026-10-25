@@ -619,13 +619,7 @@ def apercu_du_retrait(album_id: int, conn: sqlite3.Connection = Depends(db),
         "ON c.id = ca.collection_id WHERE ca.album_id = ? ORDER BY c.id", (album_id,)))
     logins = set()
     for c in collections:
-        explicites = [{"genre": r[0], "principal": r[1]} for r in conn.execute(
-            "SELECT genre, principal FROM collection_acces WHERE collection_id = ? "
-            "AND niveau = ? ORDER BY genre, principal", (c["id"], autorisation.PROPRIETAIRE))]
-        derives = [{"genre": x["genre"], "principal": x["principal"]}
-                   for x in autorisation.acces_derives(conn, c["id"])
-                   if x["niveau"] == autorisation.PROPRIETAIRE]
-        c["proprietaires"] = explicites + [x for x in derives if x not in explicites]
+        c["proprietaires"] = autorisation.proprietaires_de(conn, c["id"])
         logins |= {x["principal"] for x in c["proprietaires"]
                    if x["genre"] == autorisation.UTILISATEUR}
     noms = noms_lisibles(conn, sorted(logins))

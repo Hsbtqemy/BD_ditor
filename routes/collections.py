@@ -38,7 +38,8 @@ import comptes
 import conflit
 import journal
 from config import STATUTS_DIFFUSION
-from database import (DEMANDE_REJOINDRE, LONGUEUR_MOTIF, NATURES,
+from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, LONGUEUR_MOTIF, NATURES,
+                      REPONSE_REFUSEE,
                       clore_rejoindre_d_une_copie_au_fonds, noms_lisibles,
                       collection_row, collections,
                       document_d_album, etat_embargo, nom_reserve, poser_projet_de_copie,
@@ -48,7 +49,8 @@ from database import (DEMANDE_REJOINDRE, LONGUEUR_MOTIF, NATURES,
 
 from socle import (
     DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn, RetirerIn,
-    _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
+    _clore_demandes, _clore_demandes_vers, _collections_lues_d_albums, _deposer,
+    _en_attente_vers,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS,
     _bac_a_sable_de,
     _get_album, _get_collection, _get_projet, _plan_rejoindre, _refuser_le_bac_a_sable,
@@ -909,7 +911,14 @@ def retirer_du_projet(album_id: int, payload: Optional[RetirerIn] = None,
     Écran tranché par Hugo le 2026-10-25 : un MOTIF facultatif (`motif`, borné), que les
     propriétaires lisent avec le retrait, en tête de leur collection, jusqu'à « Vu »
     (`GET /api/collections/{id}/retraits`) ; le titre de l'album est écrit dans l'acte, pour
-    qu'ils sachent lequel est parti."""
+    qu'ils sachent lequel est parti — et, collection par collection, QUI la possédait à cet
+    instant (`autorisation.proprietaires_de`) : l'avis ne se lit que par eux, un propriétaire
+    nommé après ne lit pas les anciens (le pilotage, 2026-10-25).
+
+    Il CLÔT les demandes de REPARTIR DE ZÉRO qui visaient la copie, refusées au nom de qui
+    retire (le pilotage, 2026-10-25) : la copie quitte le projet, et la ramener à un cran ne
+    se demande plus d'ici. Les demandes de la SUPPRIMER restent : l'administrateur en décide
+    au fonds."""
     motif = ((payload.motif if payload else None) or "").strip() or None
     if motif is not None and len(motif) > LONGUEUR_MOTIF:
         raise HTTPException(422, f"Le motif tient en {LONGUEUR_MOTIF} caractères au plus "
@@ -921,7 +930,9 @@ def retirer_du_projet(album_id: int, payload: Optional[RetirerIn] = None,
     projet_id = projet_d_album(conn, album_id)
     if projet_id is None or not portee.peut_gerer_projet(projet_id):
         raise HTTPException(403, _MOTIF_RETIRER)
-    quittees = [{"id": r[0], "nom": r[1]} for r in conn.execute(
+    quittees = [{"id": r[0], "nom": r[1],
+                 "proprietaires": autorisation.proprietaires_de(conn, r[0])}
+                for r in conn.execute(
         "SELECT c.id, c.nom FROM collection_album ca JOIN collection c "
         "ON c.id = ca.collection_id WHERE ca.album_id = ? ORDER BY c.id", (album_id,))]
     if not quittees:
@@ -939,6 +950,10 @@ def retirer_du_projet(album_id: int, payload: Optional[RetirerIn] = None,
                                                     "collections": quittees,
                                                     "titre": a["titre"], "motif": motif}})
     clore_rejoindre_d_une_copie_au_fonds(conn, album_id)
+    _clore_demandes(conn, portee, [r[0] for r in conn.execute(
+        "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
+        "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL",
+        (DEMANDE_REPARTIR, album_id))], REPONSE_REFUSEE)
     conn.commit()
     return {"album_id": album_id, "projet_id": projet_id,
             "collections": [c["id"] for c in quittees], "au_fonds": True}
@@ -954,6 +969,23 @@ _SQL_RETRAITS = (
     "            WHERE json_extract(_j.value, '$.id') = ?)")
 
 
+def _possedait(portee: autorisation.Portee, retrait: dict, collection_id: int) -> bool:
+    """L'appelant POSSÉDAIT-il cette collection au moment du retrait ? Son login, ou l'un de
+    ses groupes, parmi les propriétaires que l'acte a photographiés pour elle. La portée
+    totale, toujours. Un acte qui n'en a rien photographié ne se lit que par elle."""
+    if portee.tout:
+        return True
+    quittee = next((c for c in retrait.get("collections") or ()
+                    if isinstance(c, dict) and c.get("id") == collection_id), None)
+    for x in (quittee or {}).get("proprietaires") or ():
+        if x.get("genre") == autorisation.UTILISATEUR and portee.utilisateur \
+                and x.get("principal") == portee.utilisateur:
+            return True
+        if x.get("genre") == autorisation.GROUPE and x.get("principal") in portee.groupes:
+            return True
+    return False
+
+
 @router.get("/api/collections/{collection_id}/retraits")
 def retraits_de_la_collection(collection_id: int, conn: sqlite3.Connection = Depends(db),
                               portee: autorisation.Portee = Depends(portee_courante)):
@@ -964,6 +996,10 @@ def retraits_de_la_collection(collection_id: int, conn: sqlite3.Connection = Dep
 
     Réservée à qui ADMINISTRE la collection — son propriétaire, par la base son responsable,
     un administrateur : 404 à qui ne la lit pas, 403 nommé à qui la lit sans la posséder.
+    Et chaque retrait ne se lit que par qui POSSÉDAIT la collection au moment du retrait —
+    son login, ou un groupe dont il est membre, parmi les propriétaires que l'acte a
+    photographiés (le pilotage, 2026-10-25) : un propriétaire nommé après ne lit pas les
+    anciens. La portée totale les lit tous ; un acte qui n'a rien photographié, elle seule.
     Chaque ligne nomme qui a retiré l'album (login et nom lisible) : c'est l'objet même de
     l'avis. « Vu » se mémorise par LOGIN (`retrait_vu`) : un propriétaire qui l'a vu ne le
     revoit plus, un autre propriétaire le lit encore."""
@@ -976,6 +1012,8 @@ def retraits_de_la_collection(collection_id: int, conn: sqlite3.Connection = Dep
                           (collection_id, portee.utilisateur or "")):
         charge = json.loads(r["apres"])
         retrait = charge.get("retire_du_projet") or {}
+        if not _possedait(portee, retrait, collection_id):
+            continue
         lignes.append({"evenement_id": r["id"], "album_id": charge.get("album_id"),
                        "titre": retrait.get("titre"), "par": r["agent"], "le": r["date"],
                        "motif": retrait.get("motif")})
@@ -994,8 +1032,9 @@ def retrait_vu(collection_id: int, evenement_id: int, conn: sqlite3.Connection =
     _get_collection(conn, portee, collection_id, administrer=True,
                     motif="« Vu », sur le retrait d'un album, se dit par le propriétaire de "
                           "la collection.")
-    if conn.execute(_SQL_RETRAITS + " AND e.id = ?",
-                    (collection_id, evenement_id)).fetchone() is None:
+    r = conn.execute(_SQL_RETRAITS + " AND e.id = ?", (collection_id, evenement_id)).fetchone()
+    if r is None or not _possedait(portee, json.loads(r["apres"]).get("retire_du_projet") or {},
+                                   collection_id):
         raise HTTPException(404, f"Retrait {evenement_id} introuvable")
     conn.execute("INSERT OR IGNORE INTO retrait_vu (evenement_id, login) VALUES (?, ?)",
                  (evenement_id, portee.utilisateur or ""))

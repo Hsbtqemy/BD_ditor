@@ -69,6 +69,30 @@ def test_le_journal_dit_qui_l_a_retire(client, efface):
     assert (copie["retire_du_projet"]["par"], copie["collections"]) == ("resp", [])
 
 
+def test_retirer_du_projet_clot_les_demandes_de_repartir(client, efface):
+    """Décision du pilotage (2026-10-25) : retirer du projet CLÔT les demandes de repartir de
+    zéro qui visaient la copie, refusées au nom de qui retire ; les demandes de la supprimer
+    restent, l'administrateur en décide au fonds. `membre`, qui a créé B1 et écrit dans la
+    base sans écrire dans X, y travaille puis demande les deux."""
+    from test_amorcer_entre_projets import _travailler
+    db, b1 = efface["db"], efface["b1"]
+    _travailler(client, b1, MEMBRE)
+    repartir = client.post("/api/demandes", headers=MEMBRE,
+                           json={"genre": "repartir", "album_id": b1, "cran": "images",
+                                 "motif": "Fausse piste", "certifie": True})
+    assert repartir.status_code == 201, repartir.text
+    supprimer = client.post("/api/demandes", headers=MEMBRE,
+                            json={"genre": "suppression_document", "album_id": b1,
+                                  "motif": "Importé par erreur", "certifie": True})
+    assert supprimer.status_code == 201, supprimer.text
+    _ok(_retirer(client, b1, RESP))
+    etat = {r["id"]: (r["reponse"], r["repondu_par"]) for r in _sql(
+        db, "SELECT id, reponse, repondu_par FROM demande WHERE id IN (?, ?)",
+        (repartir.json()["id"], supprimer.json()["id"]))}
+    assert etat == {repartir.json()["id"]: ("refusee", "resp"),
+                    supprimer.json()["id"]: (None, None)}
+
+
 def test_un_administrateur_le_rend(client, efface):
     """La copie emporte son projet — écrit sur elle avant de sortir, même quand rien ne
     l'avait écrit (une copie d'avant le fonds) —, et ne revient que dans ce projet. Rendue

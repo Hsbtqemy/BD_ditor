@@ -14,6 +14,8 @@ serveur, et les bornes de chaque réponse.
 - le responsable source choisit sa copie parmi TOUTES celles de son projet, les trop peu
   travaillées éteintes, chacune avec son aperçu ; l'administrateur lit qui attend.
 """
+import json
+
 import pytest
 
 from conftest import ADMIN
@@ -150,6 +152,35 @@ def test_chaque_proprietaire_lit_le_retrait_jusqu_a_vu(client, efface):
                                headers=RESP))
     assert (gardee["retire_du_projet"]["par"], gardee["retire_du_projet"]["motif"]) == (
         "resp", "Mauvaise numérisation")
+
+
+def test_un_retrait_ne_se_lit_que_par_qui_possedait_la_collection_alors(client, efface):
+    """Décision du pilotage (2026-10-25) : l'avis « retiré du projet par … » ne se lit que par
+    qui POSSÉDAIT une collection quittée au moment du retrait — son login, ou un groupe dont
+    il est membre. Un propriétaire nommé APRÈS ne lit pas les anciens, ni ne les marque
+    « Vu » (le 404 d'un retrait absent) ; la portée totale les lit tous."""
+    b1, x = efface["b1"], efface["x"]
+    r = client.put(f"/api/collections/{x}/acces", headers=ADMIN,
+                   json={"genre": "groupe", "principal": "equipe-x", "niveau": "proprietaire"})
+    assert r.status_code == 200, r.text
+    _ok(client.post(f"/api/albums/{b1}/retirer-du-projet", headers=RESP))
+    zoe = {"Remote-User": "zoe", "Remote-Groups": "equipe-x"}
+    (avis,) = _ok(client.get(f"/api/collections/{x}/retraits", headers=PROPRIO))
+    assert [a["evenement_id"] for a in _ok(client.get(f"/api/collections/{x}/retraits",
+                                                      headers=zoe))] == [avis["evenement_id"]]
+    assert [a["evenement_id"] for a in _ok(client.get(f"/api/collections/{x}/retraits",
+                                                      headers=ADMIN))] == [avis["evenement_id"]]
+    _accorder(client, x, "nouveau", "proprietaire")
+    nouveau = {"Remote-User": "nouveau"}
+    assert _ok(client.get(f"/api/collections/{x}/retraits", headers=nouveau)) == []
+    r = client.post(f"/api/collections/{x}/retraits/{avis['evenement_id']}/vu", headers=nouveau)
+    assert r.status_code == 404, r.text
+    # L'acte a photographié les propriétaires de chaque collection quittée.
+    charge = _sql(efface["db"], "SELECT json_extract(apres, '$.retire_du_projet.collections') "
+                                "AS c FROM evenement WHERE id = ?", (avis["evenement_id"],))
+    quittees = {c["id"]: sorted(p["principal"] for p in c["proprietaires"])
+                for c in json.loads(charge[0]["c"])}
+    assert quittees == {efface["base"]: ["resp"], x: ["equipe-x", "proprio"]}
 
 
 def test_le_motif_d_un_retrait_est_borne(client, efface):

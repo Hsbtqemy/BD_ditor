@@ -1486,6 +1486,21 @@ def acces_derives(conn: sqlite3.Connection, collection_id: int) -> list[dict]:
     return lignes
 
 
+def proprietaires_de(conn: sqlite3.Connection, collection_id: int) -> list[dict]:
+    """Qui POSSÈDE cette collection, aujourd'hui : `[{genre, principal}, …]` — les
+    propriétaires écrits (`collection_acces`), puis, pour une collection de BASE, les
+    responsables de son projet (`acces_derives`), sans doublon. Une LECTURE, comme
+    `acces_derives` : rien de ce qu'elle rend ne décide d'un accès. « Retirer du projet » la
+    photographie dans son acte (COL-3, tranche 3b) : l'avis « retiré du projet par … » ne se
+    lit que par qui possédait une collection quittée AU MOMENT du retrait."""
+    explicites = [{"genre": r[0], "principal": r[1]} for r in conn.execute(
+        "SELECT genre, principal FROM collection_acces WHERE collection_id = ? "
+        "AND niveau = ? ORDER BY genre, principal", (collection_id, PROPRIETAIRE))]
+    derives = [{"genre": x["genre"], "principal": x["principal"]}
+               for x in acces_derives(conn, collection_id) if x["niveau"] == PROPRIETAIRE]
+    return explicites + [x for x in derives if x not in explicites]
+
+
 def _portee_d_administrateur(conn: sqlite3.Connection, login: str,
                              noms_groupes: list[str]) -> Portee:
     """La portée d'un ADMINISTRATEUR, BORNÉE aux bacs à sable (COL-4 ; Hugo, 2026-10-24 :
