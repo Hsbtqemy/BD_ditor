@@ -317,7 +317,19 @@ quelqu'un a modifié entre-temps. Si le serveur ne répond pas en quelques secon
 le dit, votre saisie reste dans le champ, et refaire le geste part sans attendre. Quand le
 bandeau dit « depuis un autre écran de ce même compte », c'est vous dans un autre onglet, ou un collègue sous le même compte partagé. Si c'est la position d'une
 région qui a changé ailleurs, elle se recharge simplement ; si la région a été supprimée, un
-message dit par qui, et elle disparaît de votre écran. Ctrl+Z refuse de même de défaire un
+message dit par qui, et elle disparaît de votre écran. Le **locuteur** d'une bulle et le
+**personnage** d'une boîte suivent la même règle : si quelqu'un l'a changé ou retiré depuis
+que vous l'avez vu, votre choix (ou votre ✕) est refusé, et le même bandeau s'ouvre au-dessus
+de la puce — il nomme votre choix, montre celui de l'autre, et offre les deux mêmes gestes.
+
+**Quand la planche ouverte change ailleurs**, l'Atelier le remarque : il vérifie toutes les
+trente secondes (pas quand l'onglet est caché) et quand vous revenez sur l'onglet. Si une
+région a été créée, modifiée ou supprimée par quelqu'un d'autre — ou par une passe
+automatique —, un bouton **⟳ Actualiser** apparaît à côté du nom de la planche ; son
+infobulle dit combien de régions ont changé. Rien ne se recharge tout seul. Actualiser
+enregistre d'abord ce que vous étiez en train de saisir (le bandeau s'ouvre si quelqu'un a
+modifié le même champ), puis relit la planche ; vos propres gestes ne font jamais apparaître
+le bouton. Ctrl+Z refuse de même de défaire un
 geste que quelqu'un a modifié après vous. Le message porte alors **« Passer ce geste »** :
 votre geste reste fait, le travail de l'autre aussi, et le Ctrl+Z suivant défait votre geste
 d'avant. Ne retirez pas à la main ce que l'autre a fait pour pouvoir annuler : ce retrait

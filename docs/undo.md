@@ -29,7 +29,7 @@ rollback en cas d'échec.
 
 | Acte journalisé | Inverse |
 |---|---|
-| `creation` région | supprimer la région (+ sous-arbre, désindexé) — **refusé** si quelqu'un d'autre l'a modifiée, annotée ou y a rattaché une région depuis |
+| `creation` région | supprimer la région (+ sous-arbre, désindexé) — **refusé** si quelqu'un d'autre l'a modifiée, annotée, y a rattaché une région, ou lui a donné un locuteur, un personnage montré ou une situation depuis (CONC-4) |
 | `modification` région (géométrie / OCR / déplacement) | remettre les colonnes que l'acte a CHANGÉES à leur valeur `avant` — **refusé** si l'une d'elles a changé depuis (sauf par un moteur) |
 | `modification` région qui a changé le type d'une zone de texte en case ou en boîte personnage | remettre le type, puis **reposer le locuteur** que le changement avait retiré (ANN-8), s'il est rendable — sinon le type revient seul, et la réponse le compte (`liens_non_rendus`) ; **refusé** (409 nommé) si la région porte aujourd'hui un AUTRE locuteur |
 | `modification` région qui a changé le type d'une boîte personnage ou d'une case | le miroir : remettre le type, puis **reposer le personnage montré ou la situation** que le changement avait retirés — **refusé** (409 nommé) si la boîte montre aujourd'hui un AUTRE personnage ; la situation revient par différence, à côté de celle qu'un autre a posée |
@@ -239,6 +239,20 @@ MOTEUR ne bloque pas (l'OCR n'est qu'un pré-remplissage). L'ordre et la source 
 gardés : l'ordre se recalcule, la source suit la retouche. La même règle refuse d'annuler la
 CRÉATION d'une région que quelqu'un d'autre a travaillée depuis : la supprimer emporterait
 son travail, et l'annulation ne garde aucun instantané de ce qu'elle supprime.
+
+**Ses LIENS comptent aussi** (CONC-4, 2026-10-25 ; reproduit par la relecture croisée d'ANN-8
+le 2026-10-21, `test_h5_…`). La garde de la création ne regardait que les colonnes,
+l'annotation et les enfants : le locuteur, le personnage montré et la situation qu'un autre
+avait donnés à la région partaient avec elle, par cascade. `_garder_liens_de_creation`
+cherche, pour chaque lien que la région porte, l'acte qui l'a posé APRÈS la création
+(`conflit.auteur_des_champs`, changements de type compris pour un locuteur ou un personnage) :
+de l'auteur de la création, il passe — la situation ne s'annule pas, et la poser sur sa
+propre case ne doit pas rendre sa création inannulable ; d'un autre, ou d'aucun acte (un
+outil, une base retouchée : le journal nomme, il ne décide pas), c'est le 409 nommé, rien
+d'écrit, et « Passer ce geste ». Seul compte ce qui RESTE : un lien posé puis retiré par un
+autre ne bloque rien. L'autre case de la même relecture — annuler un `lien` ou un `delien`
+de locuteur écrasait celui qu'un autre avait posé depuis — était déjà fermée par
+`_garder_lien` (`a59e610`, puis `5c749d5`).
 
 **Après un tel refus, l'acte RESTE en tête de la pile — et défaire à la main le geste de
 l'autre n'en sort pas** (relevé par la contre-relecture d'ANN-8, 2026-10-21). Le 409 n'écrit
