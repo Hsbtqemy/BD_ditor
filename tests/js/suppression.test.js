@@ -86,10 +86,10 @@ const DEMANDE = { id: 9, demandeur: "sam", demandeur_nom: "Sam Diallo",
                   date_creation: "2026-10-14 12:00:00" };
 
 const DEFINITIFS = [
-  ["l'importateur seul efface", { destructible: true, demande: null, total: false },
-   "direct", "Supprimer définitivement", ["cette copie, ses images", "vous l'avez créée", "Irréversible"]],
-  ["la portée totale efface partout", { destructible: true, demande: null, total: true },
-   "direct", "Supprimer définitivement", ["cette copie, ses images et tout le travail", "Irréversible"]],
+  ["le créateur seul efface", { destructible: true, demande: null, pouvoir: "createur" },
+   "direct", "Supprimer définitivement", ["cette copie, ses images", "Irréversible"]],
+  ["la portée totale efface partout", { destructible: true, demande: null, pouvoir: "admin" },
+   "direct", "Supprimer définitivement", ["cette copie, ses images et le travail", "Irréversible"]],
   ["la portée totale efface même si une demande attend",
    { destructible: true, demande: DEMANDE, total: true },
    "direct", "Supprimer définitivement", ["Efface tout de suite cette copie"]],
@@ -464,4 +464,95 @@ test("après « Supprimer définitivement » d'une copie qui a une sœur : ses i
     "« Lotus » est supprimé définitivement, avec ses images et le travail fait dessus.");
   assert.equal(S.apresDefinitif("Lotus", "direct"), S.apresDefinitif("Lotus", "direct", false));
   assert.ok(S.apresDefinitif("Lotus", "demande", true).startsWith("Votre demande est partie"));
+});
+
+/* ── COL-3, écran de la 3b — « Supprimer… » suit le chemin réel (Hugo, 2026-10-21/25) ── */
+
+test("effacer sans demander dit PAR QUEL CHEMIN, et jamais « vous l'avez créée » à qui ne l'a pas créée", () => {
+  const cas = [
+    ["responsable", "Vous êtes responsable du projet : rien à demander."],
+    ["proprietaire", "Vous tenez toutes ses collections : rien à demander."],
+    ["createur", "Vous avez créé cette copie, et personne d'autre n'y a travaillé : rien à demander."],
+    ["admin", "Vous administrez l'instance : rien à demander."],
+    ["bac", "C'est votre bac à sable : rien à demander."],
+  ];
+  for (const [pouvoir, raison] of cas) {
+    const r = S.definitif({ destructible: true, demande: null, pouvoir });
+    assert.equal(r.mode, "direct", pouvoir);
+    assert.equal(r.raison, raison, pouvoir);
+    // La phrase d'avant disait au propriétaire et au responsable qu'ils l'avaient créée.
+    assert.ok(!/l'avez créée/.test(r.texte), `${pouvoir} : ${r.texte}`);
+    if (pouvoir !== "createur") assert.ok(!/créé/.test(r.texte + r.raison), pouvoir);
+  }
+  // Sans chemin connu, rien n'est supposé.
+  assert.equal(S.definitif({ destructible: true, demande: null }).raison, "");
+});
+
+test("la DERNIÈRE copie se demande — et le panneau dit pourquoi à qui aurait pu l'effacer", () => {
+  const r = S.definitif({ destructible: false, demande: null, derniere: true, pouvoir: "responsable" });
+  assert.equal(r.mode, "demande");
+  assert.equal(r.derniere, true);
+  assert.equal(r.bouton, "Envoyer la demande");
+  for (const m of ["C'est la dernière copie de ce document", "sortir du fonds, images comprises",
+                   "Vous êtes responsable du projet, mais c'est un administrateur qui décide",
+                   "Rien n'est effacé d'ici là"]) {
+    assert.ok(r.texte.includes(m), `« ${m} » absent de : ${r.texte}`);
+  }
+  // Sans chemin (ni propriétaire, ni responsable, ni créateur seul) : la demande ordinaire.
+  const sans = S.definitif({ destructible: false, demande: null, derniere: true, pouvoir: null });
+  assert.notEqual(sans.derniere, true);
+  assert.ok(sans.texte.startsWith("D'autres s'en servent"), sans.texte);
+  // Un chemin sans la dernière copie (un compte partagé, que la règle arrête) : la demande
+  // ordinaire — jamais « dernière copie » d'un document qui en a d'autres.
+  const pasDerniere = S.definitif({ destructible: false, demande: null, derniere: false,
+                                    pouvoir: "responsable" });
+  assert.ok(!/dernière copie/.test(pasDerniere.texte), pasDerniere.texte);
+  assert.notEqual(pasDerniere.derniere, true);
+  // Une demande qui attend l'emporte : rien ne se redépose.
+  assert.equal(S.definitif({ destructible: false, demande: DEMANDE, derniere: true,
+                             pouvoir: "responsable" }).mode, "attente");
+  // Une sœur dans un projet isolé : les images restent, la phrase ne dit pas « images comprises ».
+  const soeur = S.definitif({ destructible: false, demande: null, derniere: true,
+                              pouvoir: "proprietaire", soeur: true });
+  assert.ok(!soeur.texte.includes("images comprises"), soeur.texte);
+});
+
+test("les trois genres de la 3b : leurs noms, leurs tranches, leurs réponses", () => {
+  const am = S.genreDemande(DEM(S.GENRE_AMORCER, { cran: "transcription" }));
+  assert.deepEqual([am.connu, am.libelle, am.classe, am.accepter, am.refuser],
+                   [true, "En partir d'un travail", "amorcer", "Accepter : copier dans « Base P »",
+                    "Refuser"]);
+  const e7 = S.genreDemande(DEM(S.GENRE_AMORCER_ENTRE_PROJETS, { cran: "annotations" }));
+  assert.equal(e7.classe, "amorcer", "en partir : une seule tranche, verte, pour les deux genres");
+  assert.equal(e7.libelle, "En partir d'un travail");
+  const rp = S.genreDemande(DEM(S.GENRE_REPARTIR, { cran: "decoupage" }));
+  assert.deepEqual([rp.libelle, rp.classe, rp.accepter, rp.refuser],
+                   ["Repartir de zéro", "repartir", "Repartir du découpage", "Garder"]);
+  for (const g of [am, e7, rp]) assert.ok(!/Détruire/.test(g.accepter + g.refuser));
+});
+
+test("une demande d'en partir ou de repartir ne se dit jamais suppression, et explique sa réponse", () => {
+  for (const genre of [S.GENRE_AMORCER, S.GENRE_AMORCER_ENTRE_PROJETS, S.GENRE_REPARTIR]) {
+    const d = DEM(genre, { cran: "transcription" });
+    assert.ok(!/suppression/.test(S.texteDemande(d)), genre);
+    assert.ok(S.explicationDemande(d).length > 0, genre);
+  }
+  assert.equal(S.texteDemande(DEM(S.GENRE_AMORCER, { cran: "transcription",
+                                                     documents: [{ titre: "Lotus" }] })),
+               "Rémi demande d'en partir : « Lotus », jusqu'à la transcription, pour « Base P »");
+  assert.equal(S.texteDemande(DEM(S.GENRE_REPARTIR, { cran: "images",
+                                                      documents: [{ titre: "Lotus" }] })),
+               "Rémi demande de repartir de zéro sur « Lotus » : revenir aux images seules");
+  assert.ok(S.explicationDemande(DEM(S.GENRE_REPARTIR, { cran: "images" })).includes("Ne s'annule pas"));
+  // Le demandeur entre deux projets ne lit jamais d'où vient la copie.
+  assert.ok(S.explicationDemande(DEM(S.GENRE_AMORCER_ENTRE_PROJETS, { cran: "decoupage" }))
+    .includes("ne lit jamais d'où elle vient"));
+});
+
+test("ce que lit le demandeur d'une demande entre deux projets : le document, le cran, l'arrivée", () => {
+  const d = { genre: S.GENRE_AMORCER_ENTRE_PROJETS, cran: "annotations", collection_nom: "Base",
+              documents: [{ document_id: 3, titre: "Le Voyageur" }] };
+  assert.equal(S.quoiEnPartir(d), "En partir : « Le Voyageur », jusqu'aux annotations → « Base »");
+  assert.ok(!/projet/.test(S.quoiEnPartir({ ...d, projet_nom: "Onomatopées" })),
+            "jamais le projet qui tient le travail");
 });

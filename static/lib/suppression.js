@@ -14,11 +14,23 @@
 
    Aucun accès au document, à la fenêtre ni à l'adresse au chargement. */
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module !== "undefined" && module.exports) module.exports = api;  // Node (tests)
   else root.BDSuppression = api;                                              // navigateur
-})(typeof self !== "undefined" ? self : this, function () {
+})(typeof self !== "undefined" ? self : this, function (root) {
   "use strict";
+
+  /* Les mots des crans (COL-3, tranche 3b) vivent dans `lib/echelle.js` : une demande d'en
+     partir et une demande de repartir de zéro nomment leur cran, et la raison d'effacer sans
+     demander se dit par ses phrases. Lu À L'APPEL, jamais au chargement : sous Node par
+     `require`, dans le navigateur par `BDEchelle`, que les deux gabarits chargent avant. */
+  let echelle = null;
+  function E() {
+    if (echelle) return echelle;
+    echelle = typeof module !== "undefined" && module.exports && typeof require === "function"
+      ? require("./echelle.js") : root.BDEchelle;
+    return echelle;
+  }
 
   /* Les genres d'une demande et ses deux réponses. Le serveur les accepte sans les publier
      par une route : ils ne se recopient qu'ICI, et `tests/test_suppression_ecran.py` mesure
@@ -31,16 +43,12 @@
   const GENRE_ENTREE = "entree_documents";
   const GENRE_REJOINDRE = "rejoindre";
   const GENRE_RENDRE = "rendre_copie";
-  /* COL-3, tranche 3b — EN PARTIR d'un travail du projet (E4). Recopié pour que l'accord
-     avec `database` reste mesuré ; sans entrée dans `GENRES` tant que son écran attend sa
-     maquette (E10) : « À faire » le dit « Demande », sans bouton. */
+  /* COL-3, tranche 3b — EN PARTIR d'un travail du projet (E4), en partir d'un travail d'un
+     AUTRE projet (E7 : la demande ne nomme aucune copie) et REPARTIR DE ZÉRO (E8). Recopiés
+     pour que l'accord avec `database` reste mesuré ; leurs mots sont dans `GENRES` depuis
+     l'écran tranché sur maquette (Hugo, 2026-10-25). */
   const GENRE_AMORCER = "amorcer";
-  /* COL-3, tranche 3b — en partir d'un travail d'un AUTRE projet (E7) : la demande ne nomme
-     aucune copie. Même statut que le précédent : recopié pour la mesure, sans entrée dans
-     `GENRES` tant que son écran attend la maquette. */
   const GENRE_AMORCER_ENTRE_PROJETS = "amorcer_entre_projets";
-  /* COL-3, tranche 3b — repartir de zéro (E8). Même statut : recopié pour la mesure, sans
-     entrée dans `GENRES` tant que son écran attend la maquette. */
   const GENRE_REPARTIR = "repartir";
   const ACCEPTER = "acceptee";
   const REFUSER = "refusee";
@@ -175,17 +183,26 @@
      (`soeur`, dans `GET /api/albums`, rendu à qui écrit dans la copie). */
   const IMAGES_RESTENT = "Ses images restent : une autre copie de ce document les emploie.";
 
-  /* `soeur` : le document a une autre copie — les images restent, et la phrase le dit. */
-  function definitif({ destructible, demande, total, moi, soeur }) {
+  /* `soeur` : le document a une autre copie — les images restent, et la phrase le dit.
+
+     COL-3, tranche 3b (Hugo, 2026-10-21 ; écran du 2026-10-25) — TROIS chemins effacent sans
+     rien demander : le créateur d'une copie que personne d'autre n'a touchée, le propriétaire
+     de toutes ses collections, le responsable du projet. La phrase d'avant (« vous l'avez
+     créée, et personne d'autre n'y a travaillé ») disait FAUX aux deux derniers, que
+     `destructible` inclut désormais. Le chemin se dit à part (`raison`), par `pouvoir` — une
+     clé de `BDEchelle.POUVOIRS`, que l'écran lit dans ce que le serveur a rendu ; sans elle,
+     rien n'est supposé. `derniere` (`derniere_copie`) : la DERNIÈRE copie du document ne se
+     supprime que sur demande, sauf par son créateur seul ; quand l'appelant a un chemin
+     (`pouvoir`) que seule cette règle arrête, le panneau dit pourquoi il demande. */
+  function definitif({ destructible, demande, moi, soeur, derniere, pouvoir }) {
+    const raison = pouvoir && E().POUVOIRS[pouvoir] ? E().POUVOIRS[pouvoir] : "";
     if (destructible) {
       const efface = soeur ? "cette copie et" : "cette copie, ses images et";
       const reste = soeur ? ` ${IMAGES_RESTENT}` : "";
       return {
         mode: "direct", bouton: "Supprimer définitivement",
-        texte: total
-          ? `Efface tout de suite ${efface} tout le travail fait dessus.${reste} Irréversible.`
-          : `Efface tout de suite ${efface} le travail fait dessus : vous l'avez créée, et `
-            + `personne d'autre n'y a travaillé.${reste} Irréversible.`,
+        texte: `Efface tout de suite ${efface} le travail fait dessus.${reste} Irréversible.`,
+        raison: raison ? `${raison} : rien à demander.` : "",
       };
     }
     if (demande) {
@@ -197,8 +214,16 @@
           + " : un administrateur y répondra. Rien n'est effacé d'ici là.",
       };
     }
+    if (derniere && raison) {
+      return {
+        mode: "demande", bouton: "Envoyer la demande", derniere: true, raison: "",
+        texte: "C'est la dernière copie de ce document : la supprimer le fait sortir du fonds"
+          + `${soeur ? "" : ", images comprises"}. ${raison}, mais c'est un administrateur qui `
+          + "décide. Rien n'est effacé d'ici là.",
+      };
+    }
     return {
-      mode: "demande", bouton: "Envoyer la demande",
+      mode: "demande", bouton: "Envoyer la demande", raison: "",
       texte: "D'autres s'en servent, ou ce n'est pas vous qui avez créé cette copie : la "
         + `demande part à un administrateur, qui décide.${soeur ? ` ${IMAGES_RESTENT}` : ""} `
         + "Rien n'est effacé d'ici là.",
@@ -297,6 +322,19 @@
     [GENRE_RENDRE]: { libelle: "Rendre une copie gardée", classe: "rendre",
                       accepter: (d) => `Rendre à ${nomArrivee(d)}`,
                       refuser: () => "Garder au fonds" },
+    /* COL-3, tranche 3b (Hugo, sur maquette, 2026-10-25) — deux tranches neuves : « En partir
+       d'un travail », VERTE, pour les deux genres d'en partir ; « Repartir de zéro », ROSE.
+       Entre deux projets, « Accepter » nomme la copie SOURCE que choisit qui répond
+       (`BDEchelle.accepterDepuis`, au moment du choix) : d'ici, la phrase sans nom. */
+    [GENRE_AMORCER]: { libelle: "En partir d'un travail", classe: "amorcer",
+                       accepter: (d) => `Accepter : copier dans ${nomArrivee(d)}`,
+                       refuser: () => "Refuser" },
+    [GENRE_AMORCER_ENTRE_PROJETS]: { libelle: "En partir d'un travail", classe: "amorcer",
+                                     accepter: () => "Accepter : copier depuis la copie choisie",
+                                     refuser: () => "Refuser" },
+    [GENRE_REPARTIR]: { libelle: "Repartir de zéro", classe: "repartir",
+                        accepter: (d) => E().boutonRepartir(d.cran),
+                        refuser: () => "Garder" },
   };
 
   /* Ce qu'un écran sait d'un genre : { connu, libelle, classe, accepter, refuser } —
@@ -360,7 +398,23 @@
       return `${qui} demande à rendre ${et(titres) || "une copie gardée"} à `
         + `${d.collection_nom ? g(d.collection_nom) : "une collection"}`;
     }
+    if (d.genre === GENRE_AMORCER || d.genre === GENRE_AMORCER_ENTRE_PROJETS) {
+      return `${qui} demande d'en partir : ${et(titres) || "un document"}, `
+        + `${E().jusqua(d.cran)}${d.collection_nom ? `, pour ${g(d.collection_nom)}` : ""}`;
+    }
+    if (d.genre === GENRE_REPARTIR) {
+      return `${qui} demande de repartir de zéro sur ${et(titres) || "un album"} : revenir `
+        + E().vers(d.cran);
+    }
     return `${qui} a déposé une demande`;
+  }
+
+  /* Ce que la fiche du projet dit d'une demande d'en partir ENTRE DEUX PROJETS à son
+     responsable, qui l'a déposée (E7, écran de la 3b) : « En partir : « titre », jusqu'à … →
+     « arrivée » » — jamais le projet qui tient le travail, ni s'il en existe un. */
+  function quoiEnPartir(d) {
+    const titre = ((d.documents || [])[0] || {}).titre || "un document";
+    return `En partir : ${g(titre)}, ${E().jusqua(d.cran)} → ${nomArrivee(d)}`;
   }
 
   /* Ce que la réponse FERA, dit sous la demande dépliée — pour les trois genres qui ne sont
@@ -389,6 +443,20 @@
       return `Copie de ${g(d.projet_nom || "son projet")}, gardée au fonds avec son travail.`
         + `${sortie} « Rendre » la range dans ${nomArrivee(d)}, la collection que le `
         + "responsable a nommée ; « Garder au fonds » la laisse où elle est.";
+    }
+    if (d.genre === GENRE_AMORCER) {
+      return `Accepter crée dans ${nomArrivee(d)} une copie de travail au nom de ${qui}, `
+        + `amorcée avec le travail de cette copie, ${E().jusqua(d.cran)}. Ce qui se fera dans `
+        + "l'une n'arrivera pas dans l'autre.";
+    }
+    if (d.genre === GENRE_AMORCER_ENTRE_PROJETS) {
+      return `Accepter crée dans ${nomArrivee(d)}, projet ${g(d.projet_nom || "d'arrivée")}, une `
+        + `copie de travail au nom de ${qui}, amorcée avec le travail de la copie choisie, `
+        + `${E().jusqua(d.cran)}. Le demandeur ne lit jamais d'où elle vient.`;
+    }
+    if (d.genre === GENRE_REPARTIR) {
+      return "Accepter efface ce qui est posé sur les planches au-dessus du cran demandé ; "
+        + "les images, la notice et les planches restent. Ne s'annule pas.";
     }
     return "";
   }
@@ -514,7 +582,7 @@
   return {
     GENRE_DOCUMENT, GENRE_PROJET, GENRE_ENTREE, GENRE_REJOINDRE, GENRE_RENDRE, GENRE_AMORCER,
     GENRE_AMORCER_ENTRE_PROJETS, GENRE_REPARTIR, GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
-    toutAccepter, REFUSER_LE_RESTE, explicationDemande, IMAGES_RESTENT,
+    toutAccepter, REFUSER_LE_RESTE, explicationDemande, IMAGES_RESTENT, quoiEnPartir,
     ACCEPTER, REFUSER, PARTIELLE, CERTIFICATION, SORTES,
     RECOCHER_SUR_DEMANDE, dateLue, demandeur, pastille, offrir, retrait, definitif, apresRetrait, apresDefinitif,
     origine, emplois, titreDocument, texteDemande, contexteDemande, confirmationDetruire,

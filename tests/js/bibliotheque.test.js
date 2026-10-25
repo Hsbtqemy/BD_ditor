@@ -319,9 +319,73 @@ test("les demandes reçues se comptent pour qui peut y répondre, jamais pour un
   assert.deepEqual(B.demandesARepondre(l, false).map((d) => d.id), [1]);
   assert.deepEqual(B.demandesARepondre(l, true), [], "l'administrateur répond dans « À faire »");
   assert.deepEqual(B.demandesARepondre(null, false), []);
+  // Écran de la 3b (E4) : une demande d'en partir se reçoit dans le même bloc ⚑ ; un genre
+  // que l'écran ne connaît pas ne s'y montre pas.
   assert.deepEqual(B.demandesARepondre([{ id: 4, repondable: true, genre: "rejoindre" },
-                                        { id: 5, repondable: true, genre: "amorcer" }], false)
-    .map((d) => d.id), [4], "en partir n'a pas encore son écran (E10) : pas sous les mots d'un rejoindre");
+                                        { id: 5, repondable: true, genre: "amorcer" },
+                                        { id: 6, repondable: true, genre: "inconnu" },
+                                        { id: 7, repondable: false, genre: "amorcer" }], false)
+    .map((d) => d.id), [4, 5]);
+});
+
+/* ── COL-3, écran de la 3b ───────────────────────────────────────────────────────── */
+
+test("en partir dit son cran ; entre deux projets, « demandé » au bit près", () => {
+  const J = (c) => `jusqu'à ${c}`;
+  assert.deepEqual(B.reponsePrise({ etat: "fait", reponse: "amorcer", cran: "x" }, J),
+                   { classe: "fait", texte: "copie faite, jusqu'à x" });
+  assert.deepEqual(B.reponsePrise({ etat: "fait", reponse: "zero" }, J),
+                   { classe: "fait", texte: "fait" });
+  assert.deepEqual(B.reponsePrise({ etat: "demande", reponse: "amorcer", cran: "x",
+                                    repondra: "proprietaire" }, J),
+                   { classe: "demande", texte: "copie demandée à son propriétaire" });
+  // E7 : aucun `repondra` — le demandeur ne doit pas apprendre qui tient ce travail.
+  assert.deepEqual(B.reponsePrise({ etat: "demande", reponse: "amorcer", cran: "x" }, J),
+                   { classe: "demande", texte: "demandé" });
+  // Une entrée de documents, elle, part toujours à un administrateur.
+  assert.deepEqual(B.reponsePrise({ etat: "demande", reponse: "zero" }, J),
+                   { classe: "demande", texte: "demandé à un administrateur" });
+  // Sans les mots du cran, la ligne se dit sans cran.
+  assert.deepEqual(B.reponsePrise({ etat: "fait", reponse: "amorcer", cran: "x" }),
+                   { classe: "fait", texte: "copie faite" });
+});
+
+test("« + Créer une collection » : actif, éteint pour un membre, absent pour qui n'en est pas", () => {
+  assert.equal(B.offrirCreerCollection({ collection_creable: true, mon_role: "membre" }), "actif");
+  assert.equal(B.offrirCreerCollection({ collection_creable: true, mon_role: null }), "actif",
+               "la portée totale crée sans figurer dans le projet");
+  assert.equal(B.offrirCreerCollection({ collection_creable: false, mon_role: "membre" }), "eteint");
+  assert.equal(B.offrirCreerCollection({ collection_creable: false, mon_role: null }), "absent");
+  assert.equal(B.offrirCreerCollection({ mon_role: "membre" }), "eteint",
+               "une réponse sans la clé ne vaut pas « oui »");
+  // Sans projet à nommer : une identité ne suffit plus (v36) ; la portée totale crée toujours.
+  assert.equal(B.offrirCreerCollection(null), "absent");
+  assert.equal(B.offrirCreerCollection(null, true), "actif");
+  assert.equal(B.offrirCreerCollection({ collection_creable: false, mon_role: "membre" }, true),
+               "eteint", "la réponse du serveur sur un projet l'emporte");
+});
+
+test("« Repartir de zéro… » à qui écrit ; « Retirer du projet… » à qui gère le projet de l'album", () => {
+  const a = { id: 1, projet_id: 7, collections: [{ id: 2, nom: "X" }] };
+  assert.equal(B.offrirRepartir(a, true), true);
+  assert.equal(B.offrirRepartir(a, false), false);
+  assert.equal(B.offrirRepartir({ ...a, au_fonds: true }, true), false);
+  const p = { id: 7, gerable: true };
+  assert.equal(B.offrirRetirer(a, p), true);
+  assert.equal(B.offrirRetirer(a, { ...p, gerable: false }), false);
+  assert.equal(B.offrirRetirer(a, { ...p, bac_a_sable: { mien: true } }), false,
+               "rien ne part au fonds d'un bac à sable");
+  assert.equal(B.offrirRetirer({ ...a, collections: [] }, p), false);
+  assert.equal(B.offrirRetirer(a, { id: 8, gerable: true }), false, "le projet de l'album, pas un autre");
+  assert.equal(B.offrirRetirer(a, null), false);
+});
+
+test("tenir toutes les collections : chacune administrée, et rien ailleurs", () => {
+  const cols = [{ id: 1, administrable: true }, { id: 2, administrable: false }, { id: 3, administrable: true }];
+  assert.equal(B.tientToutes({ collections: [{ id: 1 }, { id: 3 }] }, cols), true);
+  assert.equal(B.tientToutes({ collections: [{ id: 1 }, { id: 2 }] }, cols), false);
+  assert.equal(B.tientToutes({ collections: [{ id: 1 }], partage: true }, cols), false);
+  assert.equal(B.tientToutes({ collections: [] }, cols), false);
 });
 
 test("recocher après un retrait : soi seulement si l'on tient tout ce qui reste (D4 stricte)", () => {

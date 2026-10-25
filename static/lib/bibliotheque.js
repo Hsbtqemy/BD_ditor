@@ -291,12 +291,22 @@
      refus et sa raison. Une entrée de documents et un retour se répondent par un
      administrateur ; un rejoindre, par qui `repondra`. Jamais « fait » sans que le serveur
      l'ait dit. */
-  function reponsePrise(ligne) {
+  /* COL-3, tranche 3b — EN PARTIR (`reponse: "amorcer"`) dit son cran : « fait, jusqu'à la
+     transcription ». Entre deux projets (E7), la ligne revient demandée SANS `repondra` :
+     qui y répondra dépend de ce que les autres projets tiennent, que le demandeur ne doit
+     pas apprendre — elle se lit « demandé », au bit près, que le travail existe ailleurs ou
+     non. `jusqua` : les mots du cran (`BDEchelle.jusqua`), passés par l'hôte ; sans eux, la
+     ligne se dit sans cran. */
+  function reponsePrise(ligne, jusqua) {
     const l = ligne || {};
-    if (l.etat === "fait") return { classe: "fait", texte: "fait" };
+    const amorce = l.reponse === "amorcer";
+    const cran = amorce && l.cran && typeof jusqua === "function" ? `, ${jusqua(l.cran)}` : "";
+    if (l.etat === "fait") return { classe: "fait", texte: amorce ? `copie faite${cran}` : "fait" };
     if (l.etat === "demande") {
+      if (amorce && !l.repondra) return { classe: "demande", texte: "demandé" };
       return { classe: "demande",
-               texte: `demandé à ${l.repondra ? quiRepondra(l.repondra) : "un administrateur"}` };
+               texte: `${amorce ? "copie demandée" : "demandé"} à `
+                 + `${l.repondra ? quiRepondra(l.repondra) : "un administrateur"}` };
     }
     return { classe: "refuse", texte: l.motif ? `refusé : ${l.motif}` : "refusé" };
   }
@@ -321,14 +331,15 @@
   /* Les demandes de rejoindre REÇUES, comptées pour la marque ⚑ d'une collection, la
      pastille de son onglet Albums et le compteur de la bande d'outils : celles auxquelles
      on peut répondre (`repondable`), en propriétaire. Une portée totale n'en compte aucune
-     ici — l'administrateur les lit dans « À faire », en recours (maquette, écran 3). La
-     route rend aussi, depuis la tranche 3b, les demandes d'EN PARTIR (`genre: "amorcer"`) :
-     leur écran attend sa maquette (E10), et le bloc ⚑ ne les montre pas sous les mots d'un
-     rejoindre — une demande sans `genre` est un rejoindre, la forme d'avant la 3b. */
+     ici — l'administrateur les lit dans « À faire », en recours (maquette, écran 3). Depuis
+     l'écran de la 3b (Hugo, 2026-10-25, E4), les demandes d'EN PARTIR (`genre: "amorcer"`)
+     se reçoivent dans le même bloc ⚑, avec leurs mots. Une demande sans `genre` est un
+     rejoindre, la forme d'avant la 3b ; un genre inconnu ne se montre pas. */
   function demandesARepondre(demandes, total) {
     if (total) return [];
     return (Array.isArray(demandes) ? demandes : []).filter(
-      (d) => d && d.repondable === true && (d.genre === undefined || d.genre === "rejoindre"));
+      (d) => d && d.repondable === true
+        && (d.genre === undefined || d.genre === "rejoindre" || d.genre === "amorcer"));
   }
 
   /* Si l'on pourrait RANGER de nouveau un album dans une collection qu'on vient de lui
@@ -346,6 +357,49 @@
     const r = Array.isArray(restantes) ? restantes : [];
     return !(album && album.partage) && r.length && r.every((c) => admin.has(Number(c.id)))
       ? "soi" : "demande";
+  }
+
+  /* ═══ COL-3, tranche 3b — les gestes de l'écran (Hugo, sur maquette, 2026-10-25) ═══ */
+
+  /* « + Créer une collection » : ACTIF là où le serveur dit qu'on peut créer
+     (`collection_creable`, `GET /api/projets`, v36) ; ÉTEINT — à sa place, focalisable, la
+     raison en infobulle — pour un MEMBRE du projet que le réglage n'y autorise pas ; ABSENT
+     pour qui n'est pas du projet (il ne fait qu'y lire une collection). SANS PROJET à nommer
+     — un compte qui n'est encore de rien —, absent aussi : depuis la v36, une identité ne
+     suffit plus, nulle part ; une portée TOTALE (`total` : l'administrateur, le mono-poste)
+     crée toujours, dans le projet de repli. */
+  function offrirCreerCollection(projet, total) {
+    if (!projet) return total ? "actif" : "absent";
+    if (projet.collection_creable === true) return "actif";
+    return projet.mon_role ? "eteint" : "absent";
+  }
+
+  /* « Repartir de zéro… » s'offre à qui ÉCRIT dans l'album (écran de la 3b, à côté de
+     « Supprimer… », et ↺ sur chaque planche) ; le panneau dit ensuite, d'après le serveur,
+     si l'on repart soi-même ou si l'on demande. Jamais sur une copie gardée au fonds. */
+  function offrirRepartir(album, ecrire) {
+    return !!(album && ecrire && !album.au_fonds);
+  }
+
+  /* « Retirer du projet… » s'offre au RESPONSABLE du projet de l'album et à l'administrateur
+     (`gerable` du projet, `GET /api/projets`), sur un album rangé dans ce projet — jamais
+     dans un bac à sable, où rien ne part au fonds. */
+  function offrirRetirer(album, projet) {
+    return !!(album && projet && projet.gerable === true && !projet.bac_a_sable
+              && !album.au_fonds && collectionsDe(album).length
+              && album.projet_id === projet.id);
+  }
+
+  /* Le PROPRIÉTAIRE de toutes les collections de l'album, lu dans ce que l'écran sait : on
+     ADMINISTRE chacune de ses collections qu'on lit, et l'album ne vit nulle part ailleurs
+     (`partage` faux). Pour DIRE le chemin de l'effacement (`BDEchelle.pouvoir`), jamais pour
+     l'offrir : `destructible` et l'aperçu de « Repartir » sont les réponses du serveur. */
+  function tientToutes(album, collections) {
+    const admin = new Set((Array.isArray(collections) ? collections : [])
+      .filter((c) => c && c.administrable).map((c) => Number(c.id)));
+    const siennes = collectionsDe(album);
+    return !!(album && !album.partage && siennes.length
+              && siennes.every((c) => admin.has(Number(c.id))));
   }
 
   /* Ce sur quoi un lot travaille, en une ligne (UX-18) — lu dans `albums`, que
@@ -372,5 +426,5 @@
            droitsAlbum, actesCollection, aussiDans, libelleAlbums, comparer, libelleCommuns, lireAdresse,
            ecrireAdresse, offrirPrendreDuFonds, destinationsPrise, destinationParDefaut,
            quiRepondra, reponsePrise, messageRejoindre, demandesARepondre, quiRecocherait,
-           sujetDuLot };
+           sujetDuLot, offrirCreerCollection, offrirRepartir, offrirRetirer, tientToutes };
 });
