@@ -293,3 +293,87 @@ def test_actualiser_garde_le_nom_a_moitie_tape_d_un_personnage(page, decor):
         expect(b.locator("#loc-input")).to_have_value("Hadd")
     finally:
         ctx.close()
+
+
+# ── Se REPÉRER (Hugo, 2026-10-25) ─────────────────────────────────────────────────────────
+# « Laisser en blanc empêche qu'on voie la différence, ou juste l'apparition du bouton. Il
+# vaut mieux un effet de couleur que changer l'emplacement. » Le bouton apparu est le seul
+# PLEIN de la bande, dans la couleur d'attention ; mesuré dans les QUATRE états de couleur
+# que pose `theme.js` — le contraste élevé redéfinit les jetons, et c'est sur lui qu'une
+# encre choisie pour le thème ordinaire tomberait.
+
+_STYLES_DE_LA_BANDE = """() => {
+  const st = (sel) => { const c = getComputedStyle(document.querySelector(sel));
+    return {fond: c.backgroundColor, bord: c.borderTopColor, encre: c.color,
+            largeurBord: c.borderTopWidth, graisse: c.fontWeight}; };
+  return {bouton: st('#planche-actualiser'), ghost: st('#btn-traitement'),
+          bande: getComputedStyle(document.querySelector('#header')).backgroundColor}; }"""
+
+
+def _rgba(css):
+    """`rgb(r, g, b)` ou `rgba(r, g, b, a)` → (r, g, b, a)."""
+    nombres = [float(x) for x in css[css.index("(") + 1:css.index(")")].replace(",", " ").split()
+               if x != "/"]
+    return tuple(nombres[:3]) + ((nombres[3],) if len(nombres) > 3 else (1.0,))
+
+
+def _luminance(rgb):
+    def canal(v):
+        v /= 255
+        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = (canal(v) for v in rgb[:3])
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _rapport(a, b):
+    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+@pytest.mark.parametrize("theme,contraste", [("dark", None), ("light", None),
+                                             ("dark", "high"), ("light", "high")])
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_actualiser_apparu_se_repere_par_sa_couleur(page, decor, theme, contraste):
+    from test_e2e_a11y import _audit, _fmt   # l'instrument d'origine, pas une copie
+    s = decor
+    ctx = page.context.browser.new_context(extra_http_headers=BOB)
+    pose = f"localStorage.setItem('bd-theme','{theme}');"
+    if contraste:
+        pose += f" localStorage.setItem('bd-contrast','{contraste}');"
+    ctx.add_init_script(pose)
+    b = ctx.new_page()
+    try:
+        b.goto(s["url"], wait_until="networkidle")
+        etat = b.evaluate("() => ({t: document.documentElement.dataset.theme || null,"
+                          " c: document.documentElement.dataset.contrast || null})")
+        assert etat["t"] == theme and etat["c"] == contraste, (
+            f"l'état de couleur n'est pas posé ({etat}) : la mesure porterait sur un autre")
+        _retour_sur_l_onglet(b)
+        expect(b.locator("#planche-actualiser")).to_be_hidden()
+        with _client(s["base"], ALICE) as c:
+            assert c.put(f"/api/regions/{s['bulles'][0]}",
+                         json={"ocr_texte": "AILLEURS"}).status_code == 200
+        _retour_sur_l_onglet(b)
+        expect(b.locator("#planche-actualiser")).to_be_visible()
+        b.mouse.move(0, 0)                              # aucun survol : l'état de repos
+        m = b.evaluate(_STYLES_DE_LA_BANDE)
+        bouton, ghost = m["bouton"], m["ghost"]
+        fond, bord, encre, bande = (_rgba(bouton["fond"]), _rgba(bouton["bord"]),
+                                    _rgba(bouton["encre"]), _rgba(m["bande"]))
+        lieu = f"[{theme}{', contraste élevé' if contraste else ''}]"
+        # Pas le style des autres boutons de la bande : ni leur fond, ni leur bordure.
+        assert bouton["fond"] != ghost["fond"] and bouton["bord"] != ghost["bord"], (lieu, m)
+        # Un fond PLEIN, sans quoi le rapport mesuré plus bas ne serait pas celui de l'écran.
+        assert fond[3] == 1 and bande[3] == 1, (lieu, m)
+        # Ni l'épaisseur du bord ni la graisse ne changent : seule la couleur parle (écran
+        # stable). La police n'est pas comparée : le bouton est `small`, son voisin non.
+        for cle in ("largeurBord", "graisse"):
+            assert bouton[cle] == ghost[cle], (lieu, cle, m)
+        # Le fond, accent plein : 3:1 contre la bande. L'encre posée dessus : AA, 4,5:1.
+        assert _rapport(fond, bande) >= 3, (lieu, round(_rapport(fond, bande), 2), m)
+        assert _rapport(encre, fond) >= 4.5, (lieu, round(_rapport(encre, fond), 2), m)
+        # Et l'instrument d'origine ne relève rien sur lui.
+        viol = [v for v in _audit(b) if any("planche-actualiser" in t for t in v["targets"])]
+        assert not viol, f"« Actualiser » {lieu} :\n{_fmt(viol)}"
+    finally:
+        ctx.close()

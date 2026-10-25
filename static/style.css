@@ -35,6 +35,14 @@
   --focus:        var(--accent-blue);     /* anneau de focus clavier */
   --ink-red:      #ff6b80;                /* rouge en PETIT TEXTE — AA sur fonds sombres (le plein reste --accent-red) */
   --danger:       #c02c46;                /* fond des boutons destructeurs — texte blanc AA */
+  /* CONC-4 — ATTENTION : un état qui demande un geste sans rien détruire (« Actualiser »,
+     la planche a changé ailleurs). Ni une couleur de mode (bleu Navigation, ambre Édition,
+     vert Annotation, violet Transcription), ni le rouge des gestes destructeurs : le cyan,
+     que la bande n'emploie nulle part. Un ALIAS, résolu sur la racine après chaque thème,
+     donc il suit les quatre. Le fond est un accent plein (3:1 contre la bande) ; l'encre
+     posée dessus est la sienne, AA (4,5:1) dans chaque thème. */
+  --attention:     var(--accent-cyan);
+  --attention-ink: var(--bg-deep);        /* #1a1a2e sur #22d3ee : 9,4:1 */
 
   /* Aligne les contrôles NATIFS (scrollbars, listes des <select>, cases à
      cocher, curseur) sur le thème — sinon ils restent clairs en mode sombre. */
@@ -77,6 +85,7 @@
   --accent-pink: #bd3580;
   --ink-red:     var(--accent-red);   /* le rouge clair passe déjà en texte → pas de variante */
   --danger:      var(--accent-red);   /* #fff sur #d11f45 = 5.3:1 (AA) */
+  --attention-ink: #fff;              /* #fff sur #0a6880 = 6,35:1 (AA) */
   --border:      #cdd4e3;
   --text:        #1b2030;
   --text-muted:  #586079;
@@ -102,6 +111,7 @@
   --accent-blue:#9cc6ff; --accent-red:#ff8198; --accent-amber:#ffc44d;
   --accent-green:#6bf59c; --accent-violet:#dcb0ff; --accent-cyan:#63e7ff; --accent-pink:#ff95cb;
   --ink-red: var(--accent-red);   /* l'accent HC est déjà AAA en texte */
+  --attention-ink: #000;          /* sur #63e7ff : 14,4:1 */
   --focus:#fff;
   /* COL-4 — la rayure de la ligne du bac à sable : le voile de survol (22 % de blanc) y
      faisait tomber l'encre d'alerte à 4,28:1, sous le seuil de 4,5:1 ; à 12 %, 6,18:1. */
@@ -114,6 +124,7 @@
   --accent-blue:#0a39c0; --accent-red:#b3002a; --accent-amber:#6f4500;
   --accent-green:#0a6b30; --accent-violet:#5a1aa0; --accent-cyan:#055f78; --accent-pink:#9c0f5e;
   --focus:#000;
+  --attention-ink: #fff;          /* sur #055f78 : 7,2:1 */
   --bac-rayure: var(--hover);     /* COL-4 — 14 % de noir : 5,14:1 pour l'encre d'alerte */
 }
 
@@ -669,6 +680,19 @@ kbd {
    autres commandes de la bande, il ne se plie pas ; ce qui lui manque est pris au nom de
    planche, fait pour céder. */
 #planche-actualiser { white-space: nowrap; flex: 0 0 auto; }
+/* Et il doit se REPÉRER (Hugo, 2026-10-25 : « laisser en blanc empêche qu'on voie […]
+   l'apparition du bouton. Il vaut mieux un effet de couleur que changer l'emplacement »).
+   Seul bouton PLEIN de la bande, dans la couleur d'attention : les autres commandes y sont
+   des contours (`ghost`, `mode-btn`). Ni la place, ni la taille, ni la graisse ne changent —
+   une bordure de même épaisseur, la même police : l'écran reste stable, seule la couleur
+   parle. Aucune animation : l'apparition elle-même est le signal, et un clignotement
+   disputerait l'attention à la saisie en cours. Au survol, un anneau dans la même couleur
+   plutôt qu'un fond éclairci, qui rognerait le contraste de l'encre. */
+#planche-actualiser {
+  background: var(--attention); color: var(--attention-ink);
+  border-color: var(--attention);
+}
+#planche-actualiser:hover { box-shadow: 0 0 0 2px var(--attention); }
 .modes { display: flex; gap: .4615rem; margin-left: auto; }
 .header-actions { display: flex; gap: .6154rem; align-items: center; }
 
