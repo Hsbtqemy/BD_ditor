@@ -651,11 +651,294 @@ def releves_de_la_planche(planche_id: int, conn: sqlite3.Connection = Depends(db
     leur passage, leurs qualificatifs, leur lien (et le texte d'une région liée perdue),
     leur état DÉRIVÉ et ses causes, leur auteur et son nom lisible, `collectif` (un compte
     partagé), `modifiable` (la grille active dans leur version, l'album écrit), leur doute
-    ouvert et son fil (R13). À qui LIT la planche (404 sinon) : lire un relevé, c'est lire
-    l'album."""
+    ouvert et son fil ; et les PASSES de la planche, chacune signée (R13). À qui LIT la
+    planche (404 sinon) : lire un relevé, c'est lire l'album."""
     _get_planche(conn, portee, planche_id)
     lignes = conn.execute(
         "SELECT * FROM releves_effectifs WHERE planche_id = ? OR region_id IN "
         "(SELECT id FROM regions WHERE planche_id = ?) ORDER BY id",
         (planche_id, planche_id)).fetchall()
-    return {"planche_id": planche_id, "releves": vues(conn, portee, lignes)}
+    return {"planche_id": planche_id, "releves": vues(conn, portee, lignes),
+            "passes": passes_de_la_planche(conn, planche_id)}
+
+
+# --------------------------------------------------------------------------- #
+# Le DOUTE (R7 ; note §8 ; G20 a) — une propriété de tout relevé, avec son fil
+# --------------------------------------------------------------------------- #
+# Il porte sur UN relevé ; un seul OUVERT à la fois (un second « ? » ajoute un message au fil
+# ouvert) ; il s'ouvre avec un commentaire obligatoire ; on y répond ; on le LÈVE en gardant,
+# en changeant (la modification du relevé est un acte à part, avant la levée) ou en retirant
+# le relevé. N'importe qui le lève — c'est-à-dire, ici, quiconque ÉCRIT dans l'album (G20 a,
+# Hugo, 2026-10-25). Au journal sous la cible du relevé, par des TYPES à lui (`doute`,
+# `doute_reponse`, `doute_levee`), hors de ceux que Ctrl+Z remonte : un doute se répond, il
+# ne s'annule pas.
+LONGUEUR_MESSAGE = 2000
+
+
+class DouteIn(BaseModel):
+    texte: str
+
+
+class LeveeIn(BaseModel):
+    issue: str
+    vu: Optional[dict] = None
+
+
+def _message(texte) -> str:
+    texte = grilles.propre(texte)
+    if not texte:
+        raise HTTPException(422, "Un doute s'ouvre, et se répond, avec un commentaire.")
+    if len(texte) > LONGUEUR_MESSAGE:
+        raise HTTPException(422, f"Un message tient en {LONGUEUR_MESSAGE} caractères.")
+    return texte
+
+
+def _vue_doute(conn, doute_id: int) -> dict:
+    d = conn.execute("SELECT * FROM doute WHERE id = ?", (doute_id,)).fetchone()
+    messages = conn.execute("SELECT * FROM doute_message WHERE doute_id = ? ORDER BY id",
+                            (doute_id,)).fetchall()
+    logins = [d["ouvert_par"], d["leve_par"], *(m["auteur"] for m in messages)]
+    noms, partages = noms_lisibles(conn, logins), collectifs(conn, logins)
+    return {"id": d["id"], "releve_id": d["releve_id"], "ouvert_par": d["ouvert_par"],
+            "ouvert_le": d["ouvert_le"], "leve_par": d["leve_par"], "leve_le": d["leve_le"],
+            "issue": d["issue"],
+            "messages": [{"id": m["id"], "auteur": m["auteur"],
+                          "auteur_nom": noms.get(m["auteur"]) if m["auteur"] else None,
+                          "collectif": m["auteur"] in partages, "date": m["date"],
+                          "texte": m["texte"]} for m in messages]}
+
+
+def _doute_a_ecrire(conn, portee, doute_id: int):
+    d = conn.execute("SELECT * FROM doute WHERE id = ?", (doute_id,)).fetchone()
+    if d is None:
+        raise HTTPException(404, f"Doute {doute_id} introuvable")
+    try:
+        r, _cible = releve_a_ecrire(conn, portee, d["releve_id"])
+    except HTTPException as refus:
+        if refus.status_code == 404:
+            raise HTTPException(404, f"Doute {doute_id} introuvable")
+        raise
+    return d, r
+
+
+@router.post("/api/releves/{releve_id}/doutes", status_code=201)
+def douter(releve_id: int, payload: DouteIn, conn: sqlite3.Connection = Depends(db),
+           portee: autorisation.Portee = Depends(portee_courante)):
+    """Ouvre un DOUTE sur un relevé, avec son commentaire — ou, s'il en a déjà un d'ouvert,
+    ajoute ce commentaire à son fil (« un second ? ajoute un message »). À qui écrit dans
+    l'album (G20 a), sur une grille active."""
+    texte = _message(payload.texte)
+    conflit.verrouiller(conn)
+    r, _cible = releve_a_ecrire(conn, portee, releve_id)
+    d = conn.execute("SELECT id FROM doute WHERE releve_id = ? AND leve_le IS NULL",
+                     (releve_id,)).fetchone()
+    if d is None:
+        doute_id = conn.execute("INSERT INTO doute (releve_id, ouvert_par) VALUES (?, ?)",
+                                (releve_id, portee.utilisateur)).lastrowid
+        type_ = "doute"
+    else:
+        doute_id, type_ = d["id"], "doute_reponse"
+    mid = conn.execute("INSERT INTO doute_message (doute_id, auteur, texte) VALUES (?, ?, ?)",
+                       (doute_id, portee.utilisateur, texte)).lastrowid
+    charge = {"releve_id": releve_id, "doute_id": doute_id, "message_id": mid}
+    if type_ == "doute":
+        journaliser_releve(conn, "doute", r, apres={**charge, "doute": "ouvert"})
+    else:
+        journaliser_releve(conn, "doute_reponse", r, apres=charge)
+    conn.commit()
+    return _vue_doute(conn, doute_id)
+
+
+@router.post("/api/doutes/{doute_id}/messages", status_code=201)
+def repondre_au_doute(doute_id: int, payload: DouteIn, conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    """RÉPOND à un doute ouvert : un message signé et daté de plus dans son fil. 409 nommé sur
+    un doute levé — en ouvrir un autre sur le relevé."""
+    texte = _message(payload.texte)
+    conflit.verrouiller(conn)
+    d, r = _doute_a_ecrire(conn, portee, doute_id)
+    if d["leve_le"] is not None:
+        raise HTTPException(409, "Ce doute est levé : ouvrez-en un autre sur le relevé.")
+    mid = conn.execute("INSERT INTO doute_message (doute_id, auteur, texte) VALUES (?, ?, ?)",
+                       (doute_id, portee.utilisateur, texte)).lastrowid
+    journaliser_releve(conn, "doute_reponse", r,
+                       apres={"releve_id": r["id"], "doute_id": doute_id, "message_id": mid})
+    conn.commit()
+    return _vue_doute(conn, doute_id)
+
+
+@router.post("/api/doutes/{doute_id}/levee")
+def lever_le_doute(doute_id: int, payload: LeveeIn, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    """LÈVE un doute : en gardant le relevé, en le changeant (sa modification est un acte à
+    part, faite avant), ou en le RETIRANT — la levée s'écrit, puis le retrait, qu'un Ctrl+Z
+    rend. `vu` : `{"doute": "ouvert"}` (R9). Un doute déjà levé ne se relève pas autrement :
+    la même issue passe sans rien écrire, une autre reçoit le 409 de CONC-3, qui nomme qui
+    l'a levé."""
+    if payload.issue not in grilles.ISSUES_DOUTE:
+        raise HTTPException(422, f"Une levée garde, change ou retire le relevé "
+                                 f"({' | '.join(grilles.ISSUES_DOUTE)}).")
+    vu = payload.vu or {}
+    if set(vu) - {"doute"}:
+        raise HTTPException(422, "« vu » ne porte que « doute ».")
+    conflit.verrouiller(conn)
+    d, r = _doute_a_ecrire(conn, portee, doute_id)
+    actuel = d["issue"] if d["leve_le"] is not None else "ouvert"
+    table, cible_id = cible_du_journal(r)
+    try:
+        conflit.verifier(conn, table, cible_id, "doute", vu=vu.get("doute", "ouvert"),
+                         actuel=actuel, nouveau=payload.issue, objet=("doute_id", doute_id))
+    except conflit.Perime as exc:
+        raise HTTPException(409, exc.detail())
+    if actuel == payload.issue:
+        return _vue_doute(conn, doute_id)
+    conn.execute("UPDATE doute SET leve_par = ?, leve_le = datetime('now'), issue = ? "
+                 "WHERE id = ?", (portee.utilisateur, payload.issue, doute_id))
+    journaliser_releve(conn, "doute_levee", r,
+                       avant={"releve_id": r["id"], "doute_id": doute_id, "doute": "ouvert"},
+                       apres={"releve_id": r["id"], "doute_id": doute_id,
+                              "doute": payload.issue})
+    vue = _vue_doute(conn, doute_id)
+    if payload.issue == "retire":
+        retirer(conn, r)
+        vue["releve_retire"] = True
+    conn.commit()
+    return vue
+
+
+# --------------------------------------------------------------------------- #
+# La PASSE (R7 ; Q7 : commune et signée) — « terminée »
+# --------------------------------------------------------------------------- #
+# Une ligne par zone (région ou planche), grille et rubrique (`''` : toute la grille). La
+# marquer écrit qui et quand ; une passe déjà marquée par un autre RESTE (une écriture
+# identique passe sans conflit) ; « Rouvrir » la retire. Elle distingue « 0 élision » de
+# « pas regardé » (note §9) et ne tient à aucun relevé. Au journal sous la cible de sa zone,
+# par ses types (`passe`, `passe_rouverte`), hors de Ctrl+Z.
+class PasseIn(BaseModel):
+    rubrique_cle: str = ""
+    vu: Optional[dict] = None
+
+
+def _zone(cible: dict) -> dict:
+    """La zone d'une passe, sous la forme qu'attend `journaliser_releve`."""
+    if cible["region"] is not None:
+        return {"region_id": cible["region"]["id"], "planche_id": None}
+    return {"region_id": None, "planche_id": cible["planche_id"]}
+
+
+def _passe_cible(conn, portee, *, region_id=None, planche_id=None, grille_id: int,
+                 rubrique_cle: str):
+    rubrique_cle = (rubrique_cle or "").strip()
+    cible = cible_ecrite(conn, portee, region_id=region_id, planche_id=planche_id)
+    act = activation_ou_409(conn, cible["album_id"], grille_id)
+    if rubrique_cle and conn.execute(
+            "SELECT 1 FROM grille_rubrique WHERE version_id = ? AND cle = ?",
+            (act["version_id"], rubrique_cle)).fetchone() is None:
+        raise HTTPException(422, f"« {rubrique_cle} » n'est pas une rubrique de cette version "
+                                 "de la grille.")
+    zone = _zone(cible)
+    existante = conn.execute(
+        "SELECT * FROM passe WHERE COALESCE(region_id, 0) = ? AND COALESCE(planche_id, 0) = ? "
+        "AND grille_id = ? AND rubrique_cle = ?",
+        (zone["region_id"] or 0, zone["planche_id"] or 0, grille_id, rubrique_cle)).fetchone()
+    return zone, act, rubrique_cle, existante
+
+
+def _vue_passe(conn, p) -> dict:
+    noms = noms_lisibles(conn, [p["par"]])
+    return {"id": p["id"], "region_id": p["region_id"], "planche_id": p["planche_id"],
+            "grille_id": p["grille_id"], "version_id": p["version_id"],
+            "rubrique_cle": p["rubrique_cle"], "par": p["par"],
+            "par_nom": noms.get(p["par"]) if p["par"] else None,
+            "collectif": p["par"] in collectifs(conn, [p["par"]]), "le": p["le"]}
+
+
+def _verifier_passe(conn, zone, grille_id, rubrique_cle, vu, actuel: bool, nouveau: bool):
+    if "passe" not in vu:
+        return
+    table, cible_id = cible_du_journal(zone)
+    try:
+        conflit.verifier(conn, table, cible_id, "passe", vu=bool(vu["passe"]), actuel=actuel,
+                         nouveau=nouveau, objet=("passe_cle", f"{grille_id}:{rubrique_cle}"))
+    except conflit.Perime as exc:
+        raise HTTPException(409, exc.detail())
+
+
+def _marquer(conn, portee, payload: PasseIn, grille_id: int, **cible):
+    vu = payload.vu or {}
+    if set(vu) - {"passe"}:
+        raise HTTPException(422, "« vu » ne porte que « passe ».")
+    conflit.verrouiller(conn)
+    zone, act, rk, existante = _passe_cible(conn, portee, grille_id=grille_id,
+                                            rubrique_cle=payload.rubrique_cle, **cible)
+    _verifier_passe(conn, zone, grille_id, rk, vu, existante is not None, True)
+    if existante is not None:
+        return _vue_passe(conn, existante)
+    pid = conn.execute("INSERT INTO passe (region_id, planche_id, grille_id, version_id, "
+                       "rubrique_cle, par) VALUES (?, ?, ?, ?, ?, ?)",
+                       (zone["region_id"], zone["planche_id"], grille_id, act["version_id"],
+                        rk, portee.utilisateur)).lastrowid
+    charge = {"passe_cle": f"{grille_id}:{rk}", "grille_id": grille_id, "rubrique_cle": rk,
+              "version_id": act["version_id"]}
+    journaliser_releve(conn, "passe", zone, avant={**charge, "passe": False},
+                       apres={**charge, "passe": True})
+    conn.commit()
+    return _vue_passe(conn, conn.execute("SELECT * FROM passe WHERE id = ?", (pid,)).fetchone())
+
+
+def _rouvrir(conn, portee, grille_id: int, rubrique_cle: str, vu_marquee, **cible):
+    conflit.verrouiller(conn)
+    zone, act, rk, existante = _passe_cible(conn, portee, grille_id=grille_id,
+                                            rubrique_cle=rubrique_cle, **cible)
+    vu = {} if vu_marquee is None else {"passe": vu_marquee}
+    _verifier_passe(conn, zone, grille_id, rk, vu, existante is not None, False)
+    if existante is None:
+        return Response(status_code=204)
+    conn.execute("DELETE FROM passe WHERE id = ?", (existante["id"],))
+    charge = {"passe_cle": f"{grille_id}:{rk}", "grille_id": grille_id, "rubrique_cle": rk,
+              "version_id": existante["version_id"], "par": existante["par"]}
+    journaliser_releve(conn, "passe_rouverte", zone, avant={**charge, "passe": True},
+                       apres={**charge, "passe": False})
+    conn.commit()
+    return Response(status_code=204)
+
+
+@router.put("/api/regions/{region_id}/passes/{grille_id}")
+def marquer_passe_region(region_id: int, grille_id: int, payload: PasseIn,
+                         conn: sqlite3.Connection = Depends(db),
+                         portee: autorisation.Portee = Depends(portee_courante)):
+    """Marque « terminée » la passe d'une grille (ou de l'une de ses rubriques) sur une
+    région. Déjà marquée par un autre : elle reste, signée de lui. À qui écrit l'album."""
+    return _marquer(conn, portee, payload, grille_id, region_id=region_id)
+
+
+@router.delete("/api/regions/{region_id}/passes/{grille_id}", status_code=204)
+def rouvrir_passe_region(region_id: int, grille_id: int, rubrique_cle: str = "",
+                         vu_marquee: Optional[bool] = None,
+                         conn: sqlite3.Connection = Depends(db),
+                         portee: autorisation.Portee = Depends(portee_courante)):
+    """ROUVRE la passe : elle n'est plus terminée. `vu_marquee` : ce que l'écran avait vu."""
+    return _rouvrir(conn, portee, grille_id, rubrique_cle, vu_marquee, region_id=region_id)
+
+
+@router.put("/api/planches/{planche_id}/passes/{grille_id}")
+def marquer_passe_planche(planche_id: int, grille_id: int, payload: PasseIn,
+                          conn: sqlite3.Connection = Depends(db),
+                          portee: autorisation.Portee = Depends(portee_courante)):
+    """La passe sur la planche entière (la surface)."""
+    return _marquer(conn, portee, payload, grille_id, planche_id=planche_id)
+
+
+@router.delete("/api/planches/{planche_id}/passes/{grille_id}", status_code=204)
+def rouvrir_passe_planche(planche_id: int, grille_id: int, rubrique_cle: str = "",
+                          vu_marquee: Optional[bool] = None,
+                          conn: sqlite3.Connection = Depends(db),
+                          portee: autorisation.Portee = Depends(portee_courante)):
+    """Rouvre la passe de la planche entière."""
+    return _rouvrir(conn, portee, grille_id, rubrique_cle, vu_marquee, planche_id=planche_id)
+
+
+def passes_de_la_planche(conn, planche_id: int) -> list:
+    return [_vue_passe(conn, p) for p in conn.execute(
+        "SELECT * FROM passe WHERE planche_id = ? OR region_id IN "
+        "(SELECT id FROM regions WHERE planche_id = ?) ORDER BY id", (planche_id, planche_id))]

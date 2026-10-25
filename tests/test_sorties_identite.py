@@ -158,6 +158,11 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
                            json={"grille_id": grille_id, "version": 1, "region_id": r["id"],
                                  "entree_cle": "cri", "mots": [0]})
     assert r_releve.status_code == 201, r_releve.text
+    # Un DOUTE ouvert par la sentinelle, et une PASSE marquée par elle : leurs auteurs passent
+    # par la même route (le fil d'un doute, qui a marqué une passe).
+    client.post(f"/api/releves/{r_releve.json()['id']}/doutes", headers=ident,
+                json={"texte": "semis"})
+    client.put(f"/api/regions/{r['id']}/passes/{grille_id}", headers=ident, json={})
     # COL-4 — un BAC À SABLE d'un AUTRE compte, où la sentinelle est invitée : `GET
     # /api/projets` y rend le login de son propriétaire (l'invité doit savoir chez qui il
     # est). Le propriétaire porte la sentinelle dans son login — un autre compte que celle
