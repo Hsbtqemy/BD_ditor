@@ -495,7 +495,7 @@ remonterait une à une. La cible `document` n'est pas dans la liste blanche (`un
 **la remise à zéro ne s'annule pas**, et l'écran devra le dire avant de la faire.
 
 **Ctrl+Z ne remonte pas au-delà.** Un cinquième témoin, à côté des quatre de `_meme_objet` :
-`undo.remis_a_zero_depuis` regarde, non l'objet, mais ce qui s'est passé sur SON album depuis
+`undo.planches_remises_a_zero` regarde, non l'objet, mais ce qui s'est passé sur SON album depuis
 l'acte — une remise à zéro de l'album, ou de la planche de l'acte, journalisée après lui. Si
 oui, l'acte est PASSÉ (la trace `abandon` d'AUTH-14), avec la seconde phrase : « l'état d'avant
 ne peut plus être rétabli ». Sans ce témoin, défaire la dernière note posée avant une remise à

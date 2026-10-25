@@ -277,7 +277,11 @@ document — quand aucune autre copie ne le porte hors d'un bac à sable ou du j
 **supprime** que **sur demande** à un administrateur, gardien du fonds : la supprimer fait
 sortir le document du fonds commun, images comprises. Une seule exception : la copie
 d'**origine** — celle de l'import —, que son créateur supprime seul si personne d'autre n'y
-a travaillé (l'import par erreur, qui n'a à attendre personne). Une copie prise du fonds ne
+a **jamais** fait le moindre geste (l'import par erreur, qui n'a à attendre personne) : pour
+la dernière copie, un geste défait, effacé depuis ou emporté par une remise à zéro compte
+encore (décision du 2026-10-25). Ailleurs, on lit ce qui existe encore. Dans un bac à sable
+ou le jeu, la règle de la dernière copie n'a pas cours : rien n'en sort vers le fonds
+commun. Une copie prise du fonds ne
 profite pas de l'exception, même devenue la dernière (décision du 2026-10-25 : prendre une
 copie vierge, effacer l'originale travaillée par d'autres, puis effacer la copie vierge,
 aurait fait sortir le document du fonds sans administrateur). **Repartir de zéro** n'a pas
@@ -448,7 +452,9 @@ personnages suivent.
   parmi les copies de son projet qu'il **lit** — gérer un projet n'en ouvre pas les
   collections —, et la copie neuve est au demandeur ; le premier refus ferme la demande pour
   tous. Une correction grammaticale recopiée d'un projet à l'autre arrive **sans son
-  auteur**, et se lit *recopiée* ; dans un même projet, son auteur la suit.
+  auteur**, et se lit *recopiée* ; dans un même projet, son auteur la suit. La valider ne
+  la fait pas vôtre : elle reste *recopiée*, et votre validation se lit au journal ; la
+  corriger, si.
 
 *Repartir de zéro* ramène une copie — ou une seule de ses planches — à un cran plus bas que
 ce qu'elle porte, en gardant ses images : vers la grammaire, les annotations partent ; vers la

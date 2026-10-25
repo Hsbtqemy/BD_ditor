@@ -991,8 +991,9 @@ L'album n'est effacé tout de suite que si vous avez créé cette copie vous-mê
 prise du fonds —, que personne d'autre n'y a travaillé, et que vous écrivez dans toutes ses
 collections ; ou, depuis le 2026-10-21, si vous possédez toutes ses collections, ou êtes
 responsable de son projet. La dernière copie d'un document se demande toujours — sauf la copie
-de l'import, par qui l'a importée si personne d'autre n'y a travaillé ; une copie prise du
-fonds devenue la dernière se demande aussi. Un album créé avant
+de l'import, par qui l'a importée si personne d'autre n'y a jamais rien fait, même défait
+depuis ; une copie prise du fonds devenue la dernière se demande aussi. Dans un bac à sable,
+rien de cela : ce qu'on ne peut pas y supprimer s'efface avec lui. Un album créé avant
 l'arrivée du fonds n'a pas d'importateur écrit : sa suppression par celui qui l'a créé se
 demande toujours. Sous un compte partagé, tout se demande. Cf.
 [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.

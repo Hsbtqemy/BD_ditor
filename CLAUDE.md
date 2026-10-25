@@ -535,7 +535,18 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   profite pas de l'exception (relecture croisée de la 3b, constat 1, tranché par le pilotage
   le 2026-10-25) : sans quoi prendre une copie vierge, effacer l'originale travaillée (une
   sœur existe), puis effacer la vierge faisait sortir le document du fonds sans
-  administrateur. **Repartir de zéro** ne connaît pas la règle de la dernière copie
+  administrateur. Et pour la dernière copie, « personne d'autre n'y a travaillé » se lit
+  sur TOUT ce qui y a jamais été fait (Hugo, 2026-10-25) : le moindre geste d'un autre,
+  même défait, effacé depuis ou emporté par une remise à zéro, l'envoie à un
+  administrateur — ce qui ferme deux détours, la remettre à zéro puis la supprimer, ou en
+  supprimer une à une les régions de l'autre. Le geste est retenu au moment où il est fait,
+  dans `geste_sur_copie` (v36, posé par `journal.journaliser` : une région et ce qu'elle
+  porte, une correction, une planche) ; les autres suppressions lisent ce qui vit encore.
+  La règle de la dernière copie n'a pas cours dans un projet ISOLÉ — un bac à sable, le
+  jeu (contre-relecture de la 3b : l'invité ne supprimait plus la copie vierge qu'il avait
+  prise) —, et le refus d'effacer, dans un bac à sable, ne renvoie ni à un administrateur
+  ni au fonds (`socle._MOTIF_DESTRUCTION_BAC`). **Repartir de zéro** ne connaît pas la
+  règle de la dernière copie
   (`Portee.clause_repartir_directe`, les mêmes chemins sans elle) : les images restent,
   rien ne sort du fonds commun. Les chemins (2) et (3) ne valent pas dans un bac à
   sable (une collection de bac à sable ne compte pas dans ce qu'on possède) : son
@@ -565,8 +576,10 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   PROPRIÉTAIRES de chaque collection quittée (`autorisation.proprietaires_de`) : l'avis ne
   se lit que par eux — un login, ou un groupe dont on est membre —, un propriétaire nommé
   après ne lit pas les anciens (le pilotage, 2026-10-25). Retirer CLÔT les demandes de
-  repartir de zéro qui visaient la copie, refusées au nom de qui retire ; celles de la
-  supprimer restent, l'administrateur en décide au fonds. 403 nommé à qui lit l'album
+  repartir de zéro qui visaient la copie, refusées au nom de qui retire — comme tout envoi
+  au fonds, la sortie de sa dernière collection comprise
+  (`database.clore_rejoindre_d_une_copie_au_fonds`) ; celles de la supprimer restent,
+  l'administrateur en décide au fonds. 403 nommé à qui lit l'album
   sans gérer son projet, 409 nommés dans un bac à sable, sur le jeu, sur une copie déjà
   gardée. Ce paragraphe et le suivant renversent aussi une moitié de « le projet ne borde
   rien des collections, hors sa base » (point du projet, plus bas) : le responsable a la
@@ -689,7 +702,16 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   2026-10-25, inchangé) ; l'administrateur en recours, qui lit à qui elle s'adresse
   (`sources`). Une correction grammaticale recopiée ENTRE deux projets arrive SANS auteur
   (Hugo, 2026-10-25) et se lit « recopiée » (`corr_recopiee` de
-  `GET /api/regions/{id}/tokens`) ; dans un même projet, l'auteur reste. *Repartir de zéro*
+  `GET /api/regions/{id}/tokens`) ; dans un même projet, l'auteur reste. « Recopiée » est
+  une marque EXPLICITE, `recopiee` (v36), posée par `copier_le_travail` sur chaque couche
+  reprise — correction, annotation, locuteur, présence, attribut (`COUCHES_RECOPIEES`) — et
+  non une date (décision du pilotage, 2026-10-25 : la date confondait un geste fait dans la
+  même seconde, et la validation la réécrivait). Elle vit avec la ligne : la corriger la
+  remet à 0, la VALIDER non — valider une correction recopiée n'en fait pas l'auteur (ni
+  l'auteur de la source, ni le validateur entre deux projets), elle passe `valide`, et qui
+  l'a validée se lit au journal. La sixième source ne compte une couche d'annotation que
+  tant que la couche RECOPIÉE vit : une couche posée ensuite ne ranime pas celle de la
+  source. *Repartir de zéro*
   (E8) ramène une copie — ou UNE planche, Hugo, 2026-10-21 — à un cran plus bas que ce
   qu'elle porte (`POST /api/albums/{id}/repartir`, `POST /api/planches/{id}/repartir`) :
   l'inverse de l'échelle, `validee` part, `verrouillee` reste, l'index suit
