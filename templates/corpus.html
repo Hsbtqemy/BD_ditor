@@ -64,6 +64,10 @@
                disait « créer » plus fort que tout le reste. -->
           <button id="col-creer" class="ghost small" type="button" aria-expanded="false"
                   aria-controls="col-creer-zone">+ Créer une collection</button>
+          <!-- COL-3, écran de la 3b (Hugo, 2026-10-25) — ÉTEINT pour un membre que le réglage
+               du projet n'autorise pas : à sa place, focalisable, la raison en infobulle et
+               ici, pour qui l'entend. -->
+          <span id="col-creer-raison" class="sr-only"></span>
         </div>
         <div id="col-creer-zone" class="contrib-add col-creer-zone" hidden>
           <input id="col-nom" placeholder="Nom de la collection" autocomplete="off"
@@ -203,6 +207,10 @@
         <section class="sp-carte sp-carte-definitif" aria-labelledby="sp-def-titre">
           <h4 id="sp-def-titre">Supprimer définitivement</h4>
           <p id="sp-def-texte" class="sp-texte"></p>
+          <!-- COL-3, écran de la 3b : par quel chemin on efface sans demander, et ce que
+               d'autres y perdent (« qui perd quoi »), dit AVANT. -->
+          <p id="sp-def-raison" class="small muted" hidden></p>
+          <div id="sp-perd"></div>
           <label id="sp-motif-wrap" hidden>Pourquoi ce document n'a pas sa place ici
             <textarea id="sp-motif" rows="2"></textarea></label>
           <div id="sp-certif-wrap" class="sp-certif" hidden>
@@ -217,6 +225,65 @@
     </div>
   </div>
 
+  <!-- COL-3, écran de la 3b (Hugo, sur maquette, 2026-10-25) — « Repartir de zéro », ouvert
+       par son bouton dans la tête de la fiche d'un album et par ↺ sur chaque planche : ce
+       qui reste, « Revenir… » en radios (les crans au-dessus du travail éteints), « Part »
+       en nombres, « qui perd quoi », puis faire — ou demander, motif et certification. Les
+       mots viennent de `lib/echelle.js` ; ce qu'on peut faire, de l'aperçu du serveur. -->
+  <div id="repartir-modal" hidden>
+    <div class="modal-box sp-boite rp-boite">
+      <div class="sp-tete">
+        <h3 id="rp-titre">Repartir de zéro</h3>
+        <button id="rp-annuler" class="ghost small" type="button">Annuler</button>
+      </div>
+      <p id="rp-restent" class="sp-texte"></p>
+      <div class="rp-zone">
+        <fieldset id="rp-crans" class="rp-crans"><legend>Revenir…</legend></fieldset>
+        <div class="rp-part" aria-labelledby="rp-part-titre" role="group">
+          <h4 id="rp-part-titre">Part</h4>
+          <ul id="rp-part-liste" class="rp-part-liste"></ul>
+        </div>
+      </div>
+      <div id="rp-perd"></div>
+      <p id="rp-raison" class="sp-texte small"></p>
+      <label id="rp-motif-wrap" hidden>Pourquoi
+        <span class="muted small">(obligatoire : l'administrateur le lira)</span>
+        <textarea id="rp-motif" rows="2"></textarea></label>
+      <div id="rp-certif-wrap" class="sp-certif" hidden>
+        <p id="rp-certif-texte" class="sp-texte"></p>
+        <label class="sp-certif-case"><input type="checkbox" id="rp-certif"
+          aria-describedby="rp-certif-texte"> <span id="rp-certif-libelle"></span></label>
+      </div>
+      <div class="rp-actions">
+        <button id="rp-ok" class="danger" type="button" hidden></button>
+        <span id="rp-irreversible" class="irreversible small" hidden>Ne s'annule pas, Ctrl+Z compris.</span>
+      </div>
+      <p id="rp-msg" class="muted small" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <!-- COL-3, écran de la 3b — « Retirer du projet », au responsable du projet et à
+       l'administrateur : les collections quittées, le fonds, qui le verra disparaître, qui y
+       a travaillé (rien n'est effacé), un motif facultatif. -->
+  <div id="retirer-modal" hidden>
+    <div class="modal-box sp-boite rt-boite">
+      <div class="sp-tete">
+        <h3 id="rt-titre">Retirer du projet</h3>
+        <button id="rt-annuler" class="ghost small" type="button">Annuler</button>
+      </div>
+      <p id="rt-texte" class="sp-texte"></p>
+      <p id="rt-proprios" class="sp-texte small" hidden></p>
+      <div id="rt-perd"></div>
+      <label id="rt-motif-wrap">Pourquoi
+        <span class="muted small">(facultatif : les propriétaires le liront)</span>
+        <textarea id="rt-motif" rows="2"></textarea></label>
+      <div class="rp-actions">
+        <button id="rt-ok" class="danger" type="button" hidden>Retirer du projet</button>
+      </div>
+      <p id="rt-msg" class="muted small" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
 </div>
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
@@ -225,6 +292,7 @@
 <script src="/static/lib/depot.js"></script>
 <script src="/static/lib/droits.js"></script>
 <script src="/static/lib/qui-entre.js"></script>
+<script src="/static/lib/echelle.js"></script>
 <script src="/static/lib/suppression.js"></script>
 <script src="/static/lib/bibliotheque.js"></script>
 <script src="/static/lib/import-planches.js"></script>

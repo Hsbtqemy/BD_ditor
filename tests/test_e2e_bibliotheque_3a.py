@@ -9,7 +9,8 @@ fichier mesure ce que la BIBLIOTHÈQUE en fait :
   corpus (vers la base) et dans l'onglet Albums d'une collection (vers elle) ; les notices
   cherchées au serveur, cochées, la destination choisie, la réponse document par document ;
 - « + Prendre dans le projet… » à qui écrit dans la collection : « Rejoindre » et « Copie
-  vierge », la réponse écrite sur place ;
+  vierge » (« Copie… » depuis l'écran de la 3b, « Images seules » cochée), la réponse écrite
+  sur place ;
 - « Sur les collections », dans la fiche d'un album : cocher = rejoindre (fait, ou case
   indéterminée « demandé »), décocher = supprimer de la collection ;
 - les demandes de rejoindre reçues par le propriétaire : la marque ⚑ sur la collection, le
@@ -232,8 +233,11 @@ def test_l_ecrivain_prend_dans_le_projet(page, decor):
     expect(lotus.locator('[data-dp="rejoindre"]')).to_have_attribute(
         "title", "Ranger aussi ici cette copie : qui tient toutes ses collections doit "
                  "l'accepter. Le travail sera partagé.")
-    # Copie vierge : immédiate, à son nom.
-    oreille.locator('[data-dp="zero"]').click()
+    # Copie vierge — « Copie… » depuis l'écran de la 3b, « Images seules » cochée : immédiate,
+    # à son nom.
+    oreille.locator('[data-dp="copie"]').click()
+    expect(oreille.locator('.echelle-zone input[value="images"]')).to_be_checked()
+    oreille.locator("[data-dp-copier]").click()
     expect(oreille.locator(".reponse.fait")).to_have_text("fait", timeout=5000)
     # Rejoindre : Ana tient Lot A, la demande lui part.
     lotus.locator('[data-dp="rejoindre"]').click()
@@ -430,7 +434,7 @@ def test_un_rejoindre_deja_demande_ne_se_redemande_pas(page, decor):
     lotus = page.locator(f'#bi-dans-projet-panneau li[data-dp-album="{decor["albums"]["Lotus"]}"]')
     expect(lotus.locator(".reponse.demande")).to_have_text("rejoindre demandé", timeout=5000)
     expect(lotus.locator('[data-dp="rejoindre"]')).to_have_count(0)
-    expect(lotus.locator('[data-dp="zero"]')).to_be_visible()
+    expect(lotus.locator('[data-dp="copie"]')).to_be_visible()
 
 
 def test_sous_une_portee_totale_la_case_demandee_reste_un_geste(page, decor):

@@ -316,22 +316,38 @@ def test_prendre_le_nom_du_repli_est_refuse_la_ou_l_on_a_agi(page, decor):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_creer_ne_demande_aucun_droit_mais_decrire_si(page, decor):
+def test_creer_demande_d_etre_du_projet_mais_decrire_si(page, decor):
     """Trois questions dans un même bloc, et c'est la garde qu'on risquait de confondre.
 
-    Carole n'a accès à RIEN. Elle ne voit donc pas la collection du décor — mais elle voit
-    le bouton de création, et créer lui réussit : une identité suffit, refuser la création
-    à qui n'a encore rien rendrait l'outil inutilisable au premier jour. Elle devient
-    propriétaire de ce qu'elle a créé : sa fiche s'ouvre, dit « décider qui entre » parmi
-    ses droits, et lui offre de MODIFIER la description, pas seulement de la lire.
+    « Créer une collection exige une IDENTITÉ, pas un droit » valait jusqu'au 2026-10-21 :
+    RENVERSÉ par Hugo (COL-3, tranche 3b, v36). Créer se décide par le projet — ses
+    responsables, et ses membres s'il le leur ouvre. Dora n'est d'aucun projet : le bouton
+    n'est pas là. Carole est MEMBRE d'un projet qui le leur ouvre : elle ne voit pas la
+    collection du décor, mais elle voit le bouton, et créer lui réussit. Elle devient
+    propriétaire de ce qu'elle a créé : sa fiche s'ouvre, dit « décider qui entre » parmi ses
+    droits, et lui offre de MODIFIER la description, pas seulement de la lire.
 
     Une garde unique posée sur le bloc lui aurait masqué le bouton : l'erreur qui échoue
     en se FERMANT, sans casser aucun test d'API — mot pour mot AUTH-4."""
+    with _client(decor["base"]) as c:
+        pid = c.post("/api/projets", json={"nom": "Atelier C"}).json()["id"]
+        assert c.put(f"/api/projets/{pid}/membres",
+                     json={"principal": "carole", "role": "membre"}).status_code == 200
+        assert c.put(f"/api/projets/{pid}/creation-de-collections",
+                     json={"membres": True}).status_code == 200
+    page.set_extra_http_headers({"Remote-User": "dora"})
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
+    expect(page.locator("#bi-compte")).to_be_visible(timeout=5000)
+    expect(page.locator("#col-creer"), "Dora n'est d'aucun projet").to_be_hidden()
+
+    page.add_init_script(f"try {{ localStorage.setItem('bd-projet', '{pid}') }} catch (e) {{}}")
     page.set_extra_http_headers({"Remote-User": "carole", "Remote-Groups": "etudiants"})
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    page.wait_for_selector("#col-body .col-note", timeout=3000)   # la liste est rendue… vide
-    expect(page.locator("#col-body .col-item"),
-           "une collection qu'elle ne lit pas ne doit pas lui apparaître").to_have_count(0)
+    expect(page.locator("#collections-projet")).to_have_text("Dans le projet « Atelier C »",
+                                                              timeout=5000)
+    # La seule collection qu'elle lit : la base du projet, ouverte à ses membres — celle du
+    # décor, dans un autre projet, ne doit pas lui apparaître.
+    expect(page.locator("#col-body .col-item")).to_have_count(1)
     assert page.locator("#col-creer").is_visible(), "le bouton de création lui est masqué"
 
     _creer(page, "Espace de Carole")
@@ -340,7 +356,7 @@ def test_creer_ne_demande_aucun_droit_mais_decrire_si(page, decor):
     expect(fiche.locator('.droits [data-acte="administrer"]')).to_have_class("oui")
     fiche.locator('[role="tab"][data-onglet="description"]').click()
     expect(fiche.locator('[data-modifier="description"]')).to_be_visible()
-    expect(page.locator("#col-body .col-item")).to_have_count(1)
+    expect(page.locator("#col-body .col-item")).to_have_count(2)
 
 
 def test_un_refus_d_acces_survit_au_rechargement_de_la_collection(page, decor):
@@ -627,6 +643,15 @@ def test_la_creation_ne_dit_proprietaire_qu_a_qui_l_est(page, live_server):
     assert "sans en être propriétaire" in message, message
     assert "vous en êtes propriétaire" not in message, message
 
+    # COL-3, tranche 3b (v36) — une personne ne crée plus que dans un projet qui le lui
+    # ouvre : Inès est membre d'un tel projet.
+    with _client(live_server) as c:
+        pid = c.post("/api/projets", json={"nom": "Projet d'Inès"}).json()["id"]
+        assert c.put(f"/api/projets/{pid}/membres",
+                     json={"principal": "ines", "role": "membre"}).status_code == 200
+        assert c.put(f"/api/projets/{pid}/creation-de-collections",
+                     json={"membres": True}).status_code == 200
+    page.add_init_script(f"try {{ localStorage.setItem('bd-projet', '{pid}') }} catch (e) {{}}")
     page.set_extra_http_headers({"Remote-User": "ines"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
     _creer(page, "Espace d'Inès")
@@ -656,15 +681,14 @@ def test_une_liste_vide_ne_promet_la_propriete_qu_a_qui_la_recevra(page, live_se
         page.locator("#col-body .col-item").first.wait_for(timeout=5000)
         expect(page.locator("#col-body .col-note")).to_have_count(0)
         return
+    # COL-3, tranche 3b (v36) — une identité ne suffit plus à créer une collection : Nadia,
+    # qui n'est d'aucun projet, ne reçoit AUCUNE promesse — elle serait fausse —, et le
+    # bouton n'est pas là. Le bandeau de portée vide dit à qui s'adresser.
     page.set_extra_http_headers({"Remote-User": "nadia"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
-    note = page.locator("#col-body .col-note")
-    note.wait_for(timeout=5000)
-    texte = note.inner_text()
-    assert "vous en serez propriétaire" in texte, texte
-    assert "Aucune collection" not in texte, (
-        f"la liste double le bandeau de portée vide : {texte!r}")
-    expect(page.locator(".portee-vide")).to_be_visible()
+    expect(page.locator(".portee-vide")).to_be_visible(timeout=5000)
+    expect(page.locator("#col-body .col-note")).to_have_count(0)
+    expect(page.locator("#col-creer")).to_be_hidden()
 
 
 # --------------------------------------------------------------------------- #
@@ -1034,7 +1058,11 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
 
     # ── « Erreur » : il l'a importé, il l'efface ─────────────────────────────────────────
     _ouvrir_suppression(page, "Erreur")
-    expect(page.locator("#sp-def-texte")).to_contain_text("vous l'avez créée")
+    # COL-3, écran de la 3b : le chemin se dit à part — et il ne se dit « créée » qu'à qui
+    # l'a créée, seul à y avoir travaillé.
+    expect(page.locator("#sp-def-raison")).to_have_text(
+        "Vous avez créé cette copie, et personne d'autre n'y a travaillé : rien à demander.",
+        timeout=5000)
     expect(page.locator("#sp-motif")).to_be_hidden()
     expect(page.locator("#sp-certif")).to_be_hidden()
     expect(page.locator("#sp-def")).to_have_text("Supprimer définitivement")

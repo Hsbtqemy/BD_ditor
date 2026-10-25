@@ -72,14 +72,18 @@ def test_valider_est_un_bouton_qui_porte_son_etat(page, decor):
     expect(bouton).to_have_text("✔")
     # Plus de badge à côté du bouton, ni de ↺ : un seul contrôle dit l'état.
     expect(page.locator("#album-detail .val-badge")).to_have_count(0)
-    assert "↺" not in page.locator("#album-detail").inner_text()
+    # (Le ↺ de la ligne est, depuis l'écran de la 3b, « Repartir de zéro » : la
+    # validation, elle, n'en porte plus.)
+    assert "↺" not in page.locator("#album-detail td.c-val").first.inner_text()
 
     bouton.click()
     bouton = page.locator(f'button[data-val="{decor["planche"]}"]')
     expect(bouton).to_have_attribute("aria-pressed", "true", timeout=5000)
     assert _validee(decor["base"], decor["album"], decor["planche"]), (
         "le bouton s'est enfoncé sans que la planche soit validée au serveur")
-    assert "↺" not in page.locator("#album-detail").inner_text()
+    # (Le ↺ de la ligne est, depuis l'écran de la 3b, « Repartir de zéro » : la
+    # validation, elle, n'en porte plus.)
+    assert "↺" not in page.locator("#album-detail td.c-val").first.inner_text()
 
     bouton.click()
     bouton = page.locator(f'button[data-val="{decor["planche"]}"]')

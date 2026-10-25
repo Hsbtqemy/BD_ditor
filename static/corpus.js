@@ -159,6 +159,13 @@ function pastilleDemande(a) {
   return texte ? ` <span class="sp-pastille">${esc(texte)}</span>` : "";
 }
 
+/* COL-3, écran de la 3b — une copie NÉE d'une autre le dit sur sa ligne : « copie vierge »,
+   « copie · jusqu'à … » (`copie_cran`, `GET /api/albums`). */
+function puceCopie(a) {
+  const t = BDEchelle.puceCopie(a.copie_cran);
+  return t ? ` <span class="cran-puce">${esc(t)}</span>` : "";
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    La liste — le bloc « Collections »
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -260,15 +267,20 @@ function rendreListeCollections() {
   mode.hidden = B.calques.size < 2;
   mode.querySelectorAll("[data-mode]").forEach((b) =>
     b.setAttribute("aria-pressed", String(b.dataset.mode === B.mode)));
+  majCreer();
   if (!COLS.projet.length) {
     // Une portée VIDE a déjà son bandeau (`theme.js`), qui dit à qui s'adresser : la liste
     // ne le double pas d'un second « rien », elle dit seulement ce qu'on peut faire. Qui lit
     // des collections ailleurs, lui, apprend que c'est CE projet qui est vide pour lui.
+    // COL-3, tranche 3b (v36) — « créez-en une » n'est dit qu'à qui le PEUT dans ce projet
+    // (`collection_creable`) : une identité n'y suffit plus.
     const ou = COLS.toutes.length && nomProjet !== null ? ` dans le projet « ${esc(nomProjet)} »` : "";
     const promesse = B.total ? "" : " : vous en serez propriétaire";
+    const creer = BDBiblio.offrirCreerCollection(projetCourant(), B.total) === "actif";
     corps.innerHTML = PORTEE_VIDE
-      ? `<li class="col-note">Créez une collection${promesse}.</li>`
-      : `<li class="col-note">Aucune collection ouverte pour vous${ou}. Créez-en une${promesse}.</li>`;
+      ? (creer ? `<li class="col-note">Créez une collection${promesse}.</li>` : "")
+      : `<li class="col-note">Aucune collection ouverte pour vous${ou}.${creer
+          ? ` Créez-en une${promesse}.` : ""}</li>`;
     return;
   }
   corps.innerHTML = COLS.projet.map((c) => {
@@ -338,6 +350,7 @@ async function chargerCollections(opts = {}) {
   // COL-3, tranche 3a — ce qui attend une réponse : non bloquant, et redessiné à l'arrivée.
   chargerDemandesRecues();
   chargerMesDemandes();
+  chargerRecuesE7();
   return true;
 }
 
@@ -472,6 +485,7 @@ function rendreAccueil() {
       <button type="button" class="primary small" id="bi-prendre-fonds" data-prendre-fonds="tete"
               aria-expanded="${!!(P3A.prise && P3A.prise.ou === "tete")}" aria-controls="bi-prise-zone">+ Prendre du fonds…</button>
     </div>` : ""}</div>
+    <div id="bi-e7-zone"></div>
     <div id="bi-prise-zone" class="bi-prise-zone"></div>
     <div id="bi-bac-carte"></div>
     ${p && p.description ? `<p class="bi-projet-description">${esc(p.description)}</p>` : ""}
@@ -485,6 +499,7 @@ function rendreAccueil() {
   if (!fonds || (P3A.prise && P3A.prise.ou !== "tete")) P3A.prise = null;
   P3A.dansProjet = null;
   rendreZonePrise();
+  rendreE7();
   loadSynthese();
   carteBacASable();
 }
@@ -649,7 +664,7 @@ function rendreAlbumsDeLaCollection(panneau, c) {
     return `<tr class="col-album" data-id="${a.id}">
       <td class="c-chk"><input type="checkbox" data-coche-album="${a.id}"
           aria-label="Sélectionner l'album ${esc(a.titre)}" ${state.checkedAlbums.has(a.id) ? "checked" : ""}></td>
-      <td class="c-titre"><button type="button" class="lf-lien bi-titre" data-ouvrir-album="${a.id}">${esc(a.titre)}</button>${pastilleDemande(a)}</td>
+      <td class="c-titre"><button type="button" class="lf-lien bi-titre" data-ouvrir-album="${a.id}">${esc(a.titre)}</button>${puceCopie(a)}${pastilleDemande(a)}</td>
       <td class="c-act">${droits.ecrire ? `<button class="icon-btn" type="button" data-act="edit" data-id="${a.id}"
           title="Éditer les métadonnées" aria-label="Éditer les métadonnées de ${esc(a.titre)}">✎</button>` : ""}
         ${offrir ? `<button class="ghost small sp-ouvrir" type="button" data-act="supprimer" data-id="${a.id}"
@@ -668,13 +683,13 @@ function rendreAlbumsDeLaCollection(panneau, c) {
   const ecrit = !!c.ecrivable;
   if (P3A.prise && (P3A.prise.ou !== "collection" || P3A.prise.depuis !== c.id || !fonds)) P3A.prise = null;
   if (P3A.dansProjet && (P3A.dansProjet.collection !== c.id || !ecrit)) P3A.dansProjet = null;
-  panneau.innerHTML = `<div id="bi-recues-zone"></div>
+  panneau.innerHTML = `<div id="bi-retraits-zone"></div><div id="bi-recues-zone"></div>
     ${ecrit ? `<div class="bi-gestes-albums">
       ${fonds ? `<button type="button" class="ghost small" id="bi-prendre-fonds" data-prendre-fonds="collection"
           aria-expanded="${!!P3A.prise}" aria-controls="bi-prise-zone">+ Prendre du fonds…</button>` : ""}
       <button type="button" class="ghost small" id="bi-dans-projet" aria-expanded="${!!P3A.dansProjet}"
           aria-controls="bi-prise-zone"
-          title="Ranger ici un album que le projet a déjà : rejoindre son travail, ou en prendre une copie vierge">+ Prendre dans le projet…</button>
+          title="Ranger ici un album que le projet a déjà : rejoindre son travail, ou en prendre une copie, vierge ou avec son travail jusqu'au cran choisi">+ Prendre dans le projet…</button>
     </div>
     <div id="bi-prise-zone" class="bi-prise-zone"></div>` : ""}
     ${barreLot("albums", coches.length)}
@@ -688,6 +703,8 @@ function rendreAlbumsDeLaCollection(panneau, c) {
     </div>`;
   rendreBlocRecues(c);
   rendreZonePrise();
+  rendreRetraits(c);
+  if (c.administrable && RETRAITS.collection !== c.id) chargerRetraits(c);
 }
 
 /* ── Onglet DESCRIPTION : la LECTURE d'abord, le formulaire au geste ──────────────────── */
@@ -1264,6 +1281,14 @@ function renderDetail() {
   // UX-19 — l'Atelier s'ouvre sur la collection d'où l'on a ouvert l'album (son retour),
   // même si l'album vit aussi ailleurs : l'Atelier la pose par l'adresse, et la retient.
   const versAtelier = B.depuis !== null ? `&collection=${B.depuis}` : "";
+  // COL-3, écran de la 3b (Hugo, 2026-10-25) — « Repartir de zéro… » dans la tête, à qui écrit
+  // dans l'album, et ↺ sur chaque planche, avant la corbeille : le même panneau. « Retirer du
+  // projet… », au responsable du projet et à l'administrateur.
+  const repartir = BDBiblio.offrirRepartir(a, ecrire);
+  const projetAlbum = PROJETS.find((x) => x.id === a.projet_id) || null;
+  const retirer = BDBiblio.offrirRetirer(a, projetAlbum);
+  const puceR = BDEchelle.puceRepartie(a.repartie, BDSuppression.dateLue);
+  const puceC = BDEchelle.puceCopie(a.copie_cran);
   // UX-11 (Hugo, 2026-10-22) — le nom du fichier d'origine au SURVOL de la ligne, et rien de
   // plus : Hugo n'est pas sûr qu'il mérite une colonne. Une planche d'avant la v34 n'en a pas.
   const planchesRows = planches.length
@@ -1272,7 +1297,7 @@ function renderDetail() {
           <td class="c-chk"><input type="checkbox" aria-label="Sélectionner ${esc(plancheNomLu(p))}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
           <td class="c-vig"><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
           <td class="c-pl">${plancheNum(p)}${materielInfo(p)}</td>
-          <td class="c-act c-gestes">${boutonsOrdre(a, p)}${roleToggle(p)} ${lockToggle(p)} <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}${versAtelier}" title="Ouvrir dans l'Atelier" aria-label="Ouvrir ${esc(plancheNomLu(p))} dans l'Atelier">↗</a> ${corbeillePlanche(a, p, droits)}</td>
+          <td class="c-act c-gestes">${boutonsOrdre(a, p)}${roleToggle(p)} ${lockToggle(p)} <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}${versAtelier}" title="Ouvrir dans l'Atelier" aria-label="Ouvrir ${esc(plancheNomLu(p))} dans l'Atelier">↗</a> ${repartir ? `<button class="icon-btn" type="button" data-repartir-planche="${p.id}" title="Repartir de zéro sur cette planche…" aria-label="Repartir de zéro sur ${esc(plancheNomLu(p))}…">↺</button> ` : ""}${corbeillePlanche(a, p, droits)}</td>
           <td data-l="Statut"><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
           <td class="c-num" data-l="Régions">${p.nb_regions} rég.</td>
           <td class="c-num" data-l="Annotées">${p.nb_annotees} ann.</td>
@@ -1309,6 +1334,8 @@ function renderDetail() {
         ${serieTome(a) ? `<p class="lf-serie">${esc(serieTome(a))}</p>` : ""}
         <h3 id="album-titre" tabindex="-1">${esc(a.titre)} ${a.annee ? `<span class="muted">(${a.annee})</span>` : ""}</h3>
         ${idParts ? `<div class="detail-meta muted small">${idParts}</div>` : ""}
+        ${puceC || puceR ? `<p class="detail-puces">${puceC ? `<span class="cran-puce" title="Née d'une autre copie de ce document">${esc(puceC)}</span>` : ""}${puceR
+          ? `<span class="cran-puce puce-repartie" title="${esc(puceR.titre)}">${esc(puceR.texte)}</span>` : ""}</p>` : ""}
         ${edParts ? `<div class="detail-meta muted small">${edParts}</div>` : ""}
         ${a.source_numerisation ? `<div class="detail-meta muted small">Numérisation : ${esc(a.source_numerisation)}</div>` : ""}
         ${a.lieu_masters ? `<div class="detail-meta muted small">Masters : ${esc(a.lieu_masters)}</div>` : ""}
@@ -1319,6 +1346,8 @@ function renderDetail() {
       ${ecrire ? `<div class="lf-gestes-tete">
         <button class="ghost small" type="button" id="detail-edit">✎ Modifier l'album</button>
         <button class="ghost small" type="button" id="detail-validate-all">✔ Tout valider</button>
+        ${repartir ? `<button class="ghost small" type="button" data-act="repartir" data-id="${a.id}" aria-label="Repartir de zéro sur ${esc(a.titre)}…">Repartir de zéro…</button>` : ""}
+        ${retirer ? `<button class="ghost small" type="button" data-act="retirer" data-id="${a.id}" aria-label="Retirer ${esc(a.titre)} du projet…">Retirer du projet…</button>` : ""}
         ${offrir ? `<button class="ghost small sp-ouvrir" type="button" data-act="supprimer" data-id="${a.id}" aria-label="Supprimer ${esc(a.titre)}…">Supprimer…</button>` : ""}
       </div>` : ""}
       </div>
@@ -1627,8 +1656,9 @@ function validLu(p) {
    Ce qu'elle dit se lit CONTRE elle, dans la ligne de sa planche — l'idiome de « Ce
    projet » (« le message d'un geste se lit contre son contrôle ») : un toast, en bas à
    droite, couvrait le bouton qu'on venait de toucher. Une seule parle à la fois. */
-const PLANCHE_A_DEMANDER = "Cette planche ne se supprime pas d'ici : vous n'avez pas importé "
-  + "l'album, ou d'autres y ont travaillé. Adressez-vous à un administrateur de l'instance.";
+const PLANCHE_A_DEMANDER = "Cette planche ne se supprime pas d'ici : d'autres y ont travaillé, "
+  + "ce n'est pas vous qui avez créé cette copie, ou c'est la dernière copie de son document. "
+  + "Adressez-vous à un administrateur de l'instance.";
 
 function corbeillePlanche(a, p, droits) {
   if (a.destructible) {
@@ -2225,21 +2255,21 @@ async function ouvrirSuppression(a) {
   retrait.innerHTML = `<p class="muted small">Lecture des collections…</p>`;
   const moi = await Promise.resolve(window.BDMoi).catch(() => null);
   const total = !!(moi && moi.acces && moi.acces.total);
-  // La seconde réponse ne dépend que de la ligne : elle se dit tout de suite.
-  const d = BDSuppression.definitif({ destructible: a.destructible, demande: a.demande,
-                                      total, moi: MOI.login, soeur: !!a.soeur });
-  SUPPR.definitif = d;
-  $("#sp-def-texte").textContent = d.texte;
-  $("#sp-motif-wrap").hidden = d.mode !== "demande";
-  // La certification accompagne la demande (Hugo, 2026-10-15) : ses mots sont ceux de
-  // `lib/suppression.js`, et le serveur l'exige aussi.
-  $("#sp-certif-wrap").hidden = d.mode !== "demande";
+  // La seconde réponse se dit tout de suite d'après la ligne, puis se PRÉCISE quand le serveur
+  // a dit ce que d'autres y ont fait (COL-3, tranche 3b) : par quel chemin on efface, et qui
+  // perd quoi — ou, pour la dernière copie d'un document, pourquoi l'on demande quand même.
+  rendreDefinitif(a, total, null);
   $("#sp-certif-texte").textContent = BDSuppression.CERTIFICATION.texte;
   $("#sp-certif-libelle").textContent = BDSuppression.CERTIFICATION.caseACocher;
-  $("#sp-def").hidden = !d.bouton;
-  $("#sp-def").textContent = d.bouton;
   $("#suppr-modal").hidden = false;
   $("#sp-annuler").focus();
+  if (a.destructible || (a.derniere_copie && !a.demande)) {
+    // Bornée à qui peut effacer sans rien demander (`clause_repartir_directe`) : un 403 dit
+    // seulement qu'on n'a aucun chemin — la phrase d'avant reste juste.
+    const vue = await apiGet(`/api/albums/${a.id}/travail-des-autres`).catch(() => null);
+    if (SUPPR.album !== a) return;
+    if (vue) rendreDefinitif(a, total, vue);
+  }
   let siennes, toutes;
   try {
     siennes = await apiGet(`/api/albums/${a.id}/collections`);
@@ -2267,6 +2297,47 @@ async function ouvrirSuppression(a) {
         </div>`;
       }).join("")
     : `<p class="muted small">Vous n'écrivez dans aucune de ses collections.</p>`;
+}
+
+/* Le chemin par lequel on efface sans demander (`BDEchelle.pouvoir`), lu dans ce que le
+   serveur a rendu : la portée totale, son bac à sable, la copie qu'on a créée et que
+   personne d'autre n'a touchée (`vue`, `GET /api/albums/{id}/travail-des-autres`), le
+   projet qu'on gère, les collections qu'on administre toutes. Pour le DIRE seulement. */
+function pouvoirSur(a, total, vue) {
+  const p = PROJETS.find((x) => x.id === a.projet_id) || null;
+  return BDEchelle.pouvoir({
+    total,
+    bac: !!(p && p.bac_a_sable && p.bac_a_sable.mien),
+    createur: BDEchelle.createurIntact(vue, MOI.login),
+    responsable: !!(p && p.gerable),
+    proprietaire: BDBiblio.tientToutes(a, COLS.toutes),
+  });
+}
+
+/* La carte « Supprimer définitivement » : ses mots, sa raison, « qui perd quoi » quand on
+   efface sans demander un travail où d'autres ont travaillé — et, pour la dernière copie,
+   le même tableau avant la demande. `vue` : ce que le serveur a compté, ou null. */
+function rendreDefinitif(a, total, vue) {
+  const pouvoir = vue || total ? pouvoirSur(a, total, vue) : null;
+  const d = BDSuppression.definitif({ destructible: a.destructible, demande: a.demande,
+                                      moi: MOI.login, soeur: !!a.soeur,
+                                      derniere: !!a.derniere_copie, pouvoir });
+  SUPPR.definitif = d;
+  $("#sp-def-texte").textContent = d.texte;
+  const raison = $("#sp-def-raison");
+  raison.textContent = d.raison || "";
+  raison.hidden = !d.raison;
+  const perd = vue && (d.mode === "direct" || d.derniere)
+    ? BDEchelle.quiPerdQuoi(vue.travail_des_autres, { geste: "supprimer",
+                                                      dateLue: BDSuppression.dateLue })
+    : null;
+  $("#sp-perd").innerHTML = BDEchelle.htmlQuiPerdQuoi(perd);
+  // La certification accompagne la demande (Hugo, 2026-10-15) : ses mots sont ceux de
+  // `lib/suppression.js`, et le serveur l'exige aussi.
+  $("#sp-motif-wrap").hidden = d.mode !== "demande";
+  $("#sp-certif-wrap").hidden = d.mode !== "demande";
+  $("#sp-def").hidden = !d.bouton;
+  $("#sp-def").textContent = d.bouton;
 }
 
 function fermerSuppression() {
@@ -2325,6 +2396,282 @@ async function spDefinitif() {
   toast(BDSuppression.apresDefinitif(a.titre, d.mode, !!a.soeur), "success");
 }
 
+
+/* ── « Repartir de zéro » (COL-3, tranche 3b, E8 ; écran tranché par Hugo le 2026-10-25) ──
+   Ramener une copie — ou l'une de ses planches — à un cran, en gardant ses images, sa
+   notice, ses planches et leur verrou. Le panneau s'ouvre par « Repartir de zéro… » dans la
+   tête de la fiche d'un album et par ↺ sur chaque planche. Ce qu'on peut faire, le serveur
+   le dit par l'aperçu (`GET /api/albums/{id}/repartir/apercu` : `niveau`, `comptes`,
+   `direct`) ; qui y a travaillé, par `…/travail-des-autres`. Les mots viennent de
+   `lib/echelle.js`. UN acte au journal, non annulable : le panneau le dit avant.
+
+   Une PLANCHE n'a pas de demande à elle (décision B4, que le serveur tient pour « repartir »
+   comme pour « supprimer ») : sans le droit de le faire soi-même, le panneau le dit et
+   n'offre rien. */
+const REP = { album: null, planche: null, cran: null, niveau: null, direct: false,
+              apercus: new Map(), vue: null, total: false, jeton: 0 };
+
+function rpMsg(texte, erreur) {
+  const el = $("#rp-msg");
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+async function rpApercu(cran) {
+  if (REP.apercus.has(cran)) return REP.apercus.get(cran);
+  const q = new URLSearchParams({ cran });
+  if (REP.planche) q.set("planche", String(REP.planche.id));
+  const r = await apiGet(`/api/albums/${REP.album.id}/repartir/apercu?${q}`);
+  REP.apercus.set(cran, r);
+  return r;
+}
+
+async function ouvrirRepartir(a, planche) {
+  const jeton = ++REP.jeton;
+  Object.assign(REP, { album: a, planche: planche || null, cran: null, niveau: null,
+                       direct: false, apercus: new Map(), vue: null });
+  const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+  REP.total = !!(moi && moi.acces && moi.acces.total);
+  $("#rp-titre").textContent = `Repartir de zéro : « ${a.titre} »`
+    + (planche ? `, ${plancheNomLu(planche).replace(/^la /, "")}` : "");
+  $("#rp-restent").textContent = BDEchelle.restent(planche ? plancheNomLu(planche) : null,
+                                                    a.nb_planches);
+  $("#rp-crans").innerHTML = `<legend>Revenir…</legend><p class="muted small">Lecture du travail…</p>`;
+  $("#rp-part-liste").innerHTML = "";
+  $("#rp-perd").innerHTML = "";
+  $("#rp-raison").textContent = "";
+  $("#rp-motif").value = "";
+  $("#rp-certif").checked = false;
+  $("#rp-motif-wrap").hidden = true;
+  $("#rp-certif-wrap").hidden = true;
+  $("#rp-certif-texte").textContent = BDEchelle.CERTIFICATION_REPARTIR.texte;
+  $("#rp-certif-libelle").textContent = BDEchelle.CERTIFICATION_REPARTIR.caseACocher;
+  $("#rp-ok").hidden = true;
+  $("#rp-irreversible").hidden = true;
+  rpMsg("");
+  $("#repartir-modal").hidden = false;
+  $("#rp-annuler").focus();
+  let premier;
+  try { premier = await rpApercu("images"); }
+  catch (e) { if (REP.jeton === jeton) rpMsg(e.message, true); return; }
+  if (REP.jeton !== jeton) return;
+  REP.niveau = premier.niveau;
+  REP.direct = !!premier.direct;
+  REP.cran = BDEchelle.cranParDefaut(premier.niveau);
+  if (REP.direct) {
+    REP.vue = await apiGet(`/api/albums/${a.id}/travail-des-autres`).catch(() => null);
+    if (REP.jeton !== jeton) return;
+  }
+  await rendreRepartir(jeton);
+}
+
+async function rendreRepartir(jeton, focus) {
+  const a = REP.album;
+  const crans = BDEchelle.cransRepartir(REP.niveau);
+  $("#rp-crans").innerHTML = `<legend>Revenir…</legend>${crans.map((c, i) => `
+    <label class="rp-cran"><input type="radio" name="rp-cran" value="${c.valeur}" id="rp-cran-${i}"
+        ${c.valeur === REP.cran ? "checked" : ""} ${c.eteint ? "disabled" : ""}
+        aria-describedby="rp-cran-${i}-sous">
+      <span class="rp-cran-nom">${esc(c.libelle)}</span>
+      <span class="rp-cran-sous muted small" id="rp-cran-${i}-sous">${esc(c.sous)}</span></label>`).join("")}`;
+  if (focus) { const r = document.querySelector(`#rp-crans input[value="${REP.cran}"]`); if (r) r.focus(); }
+  if (REP.cran === null) {
+    $("#rp-part-liste").innerHTML = `<li class="muted">rien</li>`;
+    $("#rp-raison").textContent = `Rien à retirer : ${REP.planche ? "cette planche" : "cette copie"} `
+      + "ne porte encore que ses images.";
+    return;
+  }
+  let ap;
+  try { ap = await rpApercu(REP.cran); }
+  catch (e) { if (REP.jeton === jeton) rpMsg(e.message, true); return; }
+  if (REP.jeton !== jeton) return;
+  const part = BDEchelle.part(ap.comptes);
+  $("#rp-part-liste").innerHTML = part.length
+    ? part.map((x) => `<li>${esc(x)}</li>`).join("")
+    : `<li class="muted">Rien n'est posé au-dessus de ce cran.</li>`;
+  const pouvoir = REP.direct ? pouvoirSur(a, REP.total, REP.vue) : null;
+  const m = BDEchelle.panneauRepartir({ direct: REP.direct, pouvoir, planche: !!REP.planche,
+                                        attente: a.demande_repartir,
+                                        dateLue: BDSuppression.dateLue });
+  REP.mode = m.mode;
+  // « Qui perd quoi » : ce que d'autres y ont fait, AVANT d'effacer sans demander. Sur une
+  // planche, le serveur ne compte le travail que de l'album entier : le titre le dit.
+  let perd = REP.direct && REP.vue
+    ? BDEchelle.quiPerdQuoi(REP.vue.travail_des_autres, { geste: "repartir", cran: REP.cran,
+                                                          dateLue: BDSuppression.dateLue })
+    : null;
+  if (perd && REP.planche) {
+    perd = { ...perd, titre: `${perd.titre} — sur tout l'album : la part de cette planche `
+      + "n'est pas comptée à part" };
+  }
+  $("#rp-perd").innerHTML = BDEchelle.htmlQuiPerdQuoi(perd);
+  $("#rp-raison").textContent = m.texte;
+  const demande = m.mode === "demande";
+  $("#rp-motif-wrap").hidden = !demande;
+  $("#rp-certif-wrap").hidden = !demande;
+  const ok = $("#rp-ok");
+  ok.hidden = m.mode !== "direct" && !demande;
+  ok.textContent = demande ? "Envoyer la demande" : BDEchelle.boutonRepartir(REP.cran);
+  $("#rp-irreversible").hidden = m.mode !== "direct";
+}
+
+function fermerRepartir() {
+  REP.jeton++;
+  REP.album = null;
+  $("#repartir-modal").hidden = true;
+}
+
+async function rpValider() {
+  const a = REP.album, ok = $("#rp-ok");
+  if (!a || ok.disabled || !REP.cran) return;
+  let motif = "";
+  if (REP.mode === "demande") {
+    motif = $("#rp-motif").value.trim();
+    if (!motif) {
+      rpMsg("Dites pourquoi : c'est ce que l'administrateur lira pour décider.", true);
+      $("#rp-motif").focus();
+      return;
+    }
+    if (!$("#rp-certif").checked) {
+      rpMsg(BDEchelle.CERTIFICATION_REPARTIR.manque, true);
+      $("#rp-certif").focus();
+      return;
+    }
+  }
+  const planche = REP.planche, cran = REP.cran, mode = REP.mode;
+  ok.disabled = true;
+  try {
+    if (mode === "direct") {
+      await apiSend("POST", planche ? `/api/planches/${planche.id}/repartir`
+                                    : `/api/albums/${a.id}/repartir`, { cran });
+    } else {
+      await apiSend("POST", "/api/demandes", { genre: BDSuppression.GENRE_REPARTIR,
+                                               album_id: a.id, cran, motif, certifie: true });
+    }
+  } catch (e) {
+    ok.disabled = false;
+    rpMsg(e.message, true);
+    return;
+  }
+  ok.disabled = false;
+  fermerRepartir();
+  const ou = planche ? `, ${plancheNomLu(planche).replace(/^la /, "")},` : "";
+  toast(mode === "direct"
+    ? `« ${a.titre} »${ou} repart ${BDEchelle.vers(cran)}. Un acte au journal ; il ne s'annule pas.`
+    : "Votre demande est partie à un administrateur. Rien n'est effacé d'ici là.", "success");
+  await loadAlbums().catch(() => {});
+}
+
+/* ── « Retirer du projet » (COL-3, tranche 3b ; écran tranché par Hugo le 2026-10-25) ──
+   Le geste du RESPONSABLE du projet, et de l'administrateur : l'album quitte toutes les
+   collections du projet et part au fonds avec son travail. Rien n'est effacé ; les
+   propriétaires des collections quittées le lisent en tête de leur onglet Albums. Le
+   panneau dit d'abord, d'après l'aperçu du serveur, ce qui arrivera et à qui. */
+const RET = { album: null, jeton: 0 };
+
+function rtMsg(texte, erreur) {
+  const el = $("#rt-msg");
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+async function ouvrirRetirer(a) {
+  const jeton = ++RET.jeton;
+  RET.album = a;
+  $("#rt-titre").textContent = `Retirer « ${a.titre} » du projet`;
+  $("#rt-texte").textContent = "Lecture de ce que le retrait touche…";
+  $("#rt-proprios").hidden = true;
+  $("#rt-perd").innerHTML = "";
+  $("#rt-motif").value = "";
+  $("#rt-ok").hidden = true;
+  rtMsg("");
+  $("#retirer-modal").hidden = false;
+  $("#rt-annuler").focus();
+  let ap;
+  try { ap = await apiGet(`/api/albums/${a.id}/retirer-du-projet/apercu`); }
+  catch (e) { if (RET.jeton === jeton) { $("#rt-texte").textContent = ""; rtMsg(e.message, true); } return; }
+  if (RET.jeton !== jeton) return;
+  const p = PROJETS.find((x) => x.id === ap.projet_id);
+  $("#rt-texte").textContent = BDEchelle.texteRetirer(p ? p.nom : "", ap.collections);
+  const proprios = BDEchelle.proprietairesQuiVerront(ap.collections, MOI.login);
+  $("#rt-proprios").textContent = proprios;
+  $("#rt-proprios").hidden = !proprios;
+  $("#rt-perd").innerHTML = BDEchelle.htmlQuiPerdQuoi(BDEchelle.quiPerdQuoi(
+    ap.travail_des_autres, { geste: "retirer", recopie: ap.travail_recopie,
+                             dateLue: BDSuppression.dateLue }));
+  $("#rt-ok").hidden = false;
+}
+
+function fermerRetirer() {
+  RET.jeton++;
+  RET.album = null;
+  $("#retirer-modal").hidden = true;
+}
+
+async function rtValider() {
+  const a = RET.album, ok = $("#rt-ok");
+  if (!a || ok.disabled) return;
+  const motif = $("#rt-motif").value.trim();
+  ok.disabled = true;
+  let r;
+  try {
+    r = await apiSend("POST", `/api/albums/${a.id}/retirer-du-projet`, motif ? { motif } : {});
+  } catch (e) {
+    ok.disabled = false;
+    rtMsg(e.message, true);
+    return;
+  }
+  ok.disabled = false;
+  fermerRetirer();
+  const p = PROJETS.find((x) => x.id === (r && r.projet_id));
+  RETRAITS.collection = null;                // les avis des collections quittées ont changé
+  state.checkedAlbums.delete(a.id);
+  toast(`« ${a.titre} » a quitté « ${p ? p.nom : "son projet"} » : il est gardé au fonds, `
+    + "avec son travail.", "success");
+  await loadAlbums().catch(() => {});
+}
+
+/* ── Après un retrait, chaque propriétaire le lit dans sa collection (écran de la 3b) ────
+   En tête de l'onglet Albums de chaque collection quittée, chez qui l'ADMINISTRE et la
+   possédait au moment du retrait (le serveur borne : `GET /api/collections/{id}/retraits`),
+   jusqu'à « Vu ». */
+const RETRAITS = { collection: null, lignes: [] };
+
+async function chargerRetraits(c) {
+  RETRAITS.collection = c.id;
+  RETRAITS.lignes = [];
+  let l;
+  try { l = await apiGet(`/api/collections/${c.id}/retraits`); } catch (e) { return; }
+  if (RETRAITS.collection !== c.id) return;
+  RETRAITS.lignes = l || [];
+  rendreRetraits(c);
+}
+
+function rendreRetraits(c) {
+  const zone = $("#bi-retraits-zone");
+  if (!zone) return;
+  const l = RETRAITS.collection === c.id ? RETRAITS.lignes : [];
+  zone.innerHTML = l.map((r) => {
+    const t = BDEchelle.ligneRetrait(r, MOI.login, BDSuppression.dateLue);
+    return `<div class="trace" data-retrait="${r.evenement_id}"><p class="trace-quoi">${esc(t.texte)}${t.motif
+      ? ` <span class="muted">${esc(t.motif)}</span>` : ""}</p>
+      <button type="button" class="ghost small" data-retrait-vu="${r.evenement_id}"
+              aria-label="Vu : ${esc(t.texte)}">Vu</button></div>`;
+  }).join("");
+}
+
+async function retraitVu(bouton) {
+  const c = $("#col-fiche") ? collection($("#col-fiche").dataset.id) : null;
+  const id = Number(bouton.dataset.retraitVu);
+  if (!c) return;
+  bouton.disabled = true;
+  try { await apiSend("POST", `/api/collections/${c.id}/retraits/${id}/vu`); }
+  catch (e) { bouton.disabled = false; toast(e.message, "error"); return; }
+  RETRAITS.lignes = RETRAITS.lignes.filter((r) => r.evenement_id !== id);
+  rendreRetraits(c);
+  const t = titreDeFiche();
+  if (t) t.focus();
+}
 
 /* Cellule « Planche » : numéro ÉDITORIAL (dérivé, cité) pour le récit, ou pastille
    Paratexte ; le RANG dans l'album reste visible en discret (clé de tri, ≠ du numéro
@@ -2565,6 +2912,11 @@ const P3A = {
   prise: null,              // le panneau « Prendre du fonds… » ouvert
   dansProjet: null,         // le panneau « Prendre dans le projet… » ouvert
   minuterie: null,
+  // COL-3, tranche 3b (E7) — les demandes d'en partir venues d'un AUTRE projet, que le
+  // projet courant tient : son responsable y répond en tête de la fiche du projet.
+  e7: [],
+  e7Choix: new Map(),       // demande → copie source cochée
+  e7Msg: null,              // { texte, erreur } : la ligne du dernier geste
 };
 const NOTICES_PAR_PAGE = 25;
 
@@ -2609,6 +2961,80 @@ async function chargerMesDemandes() {
   rendreRappels();
 }
 
+/* COL-3, tranche 3b (E7 ; écran tranché par Hugo le 2026-10-25) — les demandes d'en partir
+   qu'un AUTRE projet adresse à celui-ci (`GET /api/projets/{id}/demandes-recues`, à qui le
+   GÈRE). Son responsable y répond aux deux endroits : en tête de la fiche du projet dans
+   l'Administration, et ICI, en tête de la fiche du projet de la Bibliothèque, où le rappel
+   de la bande d'outils mène. Il y choisit sa copie source (« Depuis quelle copie », les trop
+   peu travaillées éteintes), lit l'aperçu, et répond. Une portée totale n'en lit aucune ici :
+   l'administrateur les trouve dans « À faire ». */
+async function chargerRecuesE7() {
+  const p = projetCourant();
+  let l = [];
+  if (p && p.gerable && !B.total && !p.bac_a_sable) {
+    l = await apiGet(`/api/projets/${p.id}/demandes-recues`).catch(() => []);
+  }
+  if (projetCourant() !== p) return;
+  P3A.e7 = Array.isArray(l) ? l : [];
+  rendreRappels();
+  rendreE7();
+}
+
+function rendreE7() {
+  const zone = $("#bi-e7-zone");
+  if (!zone) return;
+  const l = P3A.e7;
+  const msg = P3A.e7Msg;
+  if (!l.length) {
+    zone.innerHTML = msg ? `<p id="bi-e7-msg" class="col-msg muted small${msg.erreur ? " erreur" : ""}" role="status">${esc(msg.texte)}</p>` : "";
+    return;
+  }
+  zone.innerHTML = `<section id="bi-e7-bloc" class="recues recues-e7" aria-labelledby="bi-e7-titre">
+    <h4 id="bi-e7-titre" tabindex="-1">Demandes d'en partir · ${l.length}</h4>
+    ${l.map((d) => {
+      const choix = BDEchelle.nomCopieChoisie(d.copies, state.albums, P3A.e7Choix.get(d.id));
+      return `<div class="recue e7-recue" data-e7="${d.id}">
+        <p class="e7-quoi"><b>« ${esc(d.projet_nom || "un autre projet")} »</b> demande d'en partir :
+          <b>« ${esc(d.titre || "")} »</b>, ${esc(BDEchelle.jusqua(d.cran))}</p>
+        <p class="muted small">Demandée par ${esc(d.demandeur_nom || d.demandeur || "son responsable")} le ${esc(BDSuppression.dateLue(d.date_creation))}</p>
+        ${d.motif ? `<p class="recue-motif small">${esc(d.motif)}</p>` : ""}
+        ${BDEchelle.htmlSourcesE7(d, { copies: d.copies, albums: state.albums,
+                                       choisie: P3A.e7Choix.get(d.id) })}
+        <span class="bi-boutons">
+          ${choix && d.repondable ? `<button type="button" class="primary small" data-e7-accepter="${d.id}">${esc(BDEchelle.accepterDepuis(choix.nom))}</button>` : ""}
+          ${d.repondable ? `<button type="button" class="ghost small" data-e7-refuser="${d.id}">Refuser</button>` : ""}
+        </span></div>`;
+    }).join("")}
+    <p id="bi-e7-msg" class="col-msg muted small${msg && msg.erreur ? " erreur" : ""}" role="status" aria-live="polite">${msg ? esc(msg.texte) : ""}</p>
+  </section>`;
+}
+
+async function repondreE7(id, accepter) {
+  const d = P3A.e7.find((x) => x.id === id);
+  if (!d) return;
+  const choix = accepter ? BDEchelle.nomCopieChoisie(d.copies, state.albums, P3A.e7Choix.get(id)) : null;
+  if (accepter && !choix) return;
+  const corps = { reponse: accepter ? BDSuppression.ACCEPTER : BDSuppression.REFUSER };
+  if (accepter) corps.album_id = choix.id;
+  try {
+    await apiSend("POST", `/api/demandes/${id}/reponse`, corps);
+  } catch (e) {
+    P3A.e7Msg = { texte: e.message, erreur: true };
+    rendreE7();
+    return;
+  }
+  P3A.e7Msg = { texte: accepter
+    ? `Accepté : « ${d.projet_nom || "le projet demandeur"} » a sa copie de « ${d.titre || ""} », `
+      + `${BDEchelle.jusqua(d.cran)}, copiée depuis ${choix.nom}.`
+    : `Refusé : rien ne part vers « ${d.projet_nom || "le projet demandeur"} ». La demande est close.`,
+    erreur: false };
+  P3A.e7 = P3A.e7.filter((x) => x.id !== id);
+  rendreRappels();
+  rendreE7();
+  const t = $("#bi-e7-titre") || $("#bi-accueil-titre");
+  if (t) t.focus();
+}
+
 function nbRecues() {
   const ids = new Set();
   P3A.recues.forEach((l) => l.forEach((d) => ids.add(d.id)));
@@ -2621,8 +3047,11 @@ function rendreRappels() {
   if (!zone) return;
   const n = nbRecues();
   const p = projetCourant();
+  const e7 = P3A.e7.length;
   zone.innerHTML = (n ? `<button type="button" class="rappel" id="bi-recues-compteur"
-        title="Des demandes de rejoindre attendent votre réponse">${pluriel(n, "demande")} à répondre</button>` : "")
+        title="Des demandes attendent votre réponse">${pluriel(n, "demande")} à répondre</button>` : "")
+    + (e7 ? `<button type="button" class="rappel" id="bi-e7-compteur"
+        title="Un autre projet demande d'en partir d'un travail de ce projet : elles se lisent en tête de la fiche du projet">${pluriel(e7, "demande")} d'en partir</button>` : "")
     + (P3A.mesDemandes && p ? `<a class="rappel calme" id="bi-mes-demandes"
         href="/administration?vue=projets&projet=${p.id}"
         title="Vos demandes au fonds, en attente d'un administrateur : suivez-les dans la fiche du projet">${pluriel(P3A.mesDemandes, "demande")} au fonds, en attente</a>` : "");
@@ -2633,7 +3062,7 @@ function rendreRappels() {
 function marqueRecues(c) {
   const n = (P3A.recues.get(c.id) || []).length;
   if (!n) return "";
-  return `<span class="col-marque" title="${pluriel(n, "demande")} de rejoindre à répondre"><span aria-hidden="true">⚑ ${n}</span><span class="sr-only">${pluriel(n, "demande")} de rejoindre à répondre</span></span>`;
+  return `<span class="col-marque" title="${pluriel(n, "demande")} à répondre"><span aria-hidden="true">⚑ ${n}</span><span class="sr-only">${pluriel(n, "demande")} à répondre</span></span>`;
 }
 
 /* La pastille de l'onglet Albums d'une collection. */
@@ -2659,9 +3088,27 @@ function rendreBlocRecues(c, msg) {
     zone.innerHTML = msg ? `<p id="bi-recues-msg" class="col-msg muted small" role="status">${esc(msg)}</p>` : "";
     return;
   }
+  // COL-3, écran de la 3b (E4) — une demande d'EN PARTIR se reçoit dans le même bloc, comme
+  // un rejoindre : qui demande, le titre, le cran, la collection d'arrivée, le motif,
+  // l'aperçu en nombres, « Accepter : copier dans « … » » / « Refuser ».
+  const rejoindre = l.every((d) => d.genre !== BDSuppression.GENRE_AMORCER);
   zone.innerHTML = `<section id="bi-recues-bloc" class="recues" aria-labelledby="bi-recues-titre">
-    <h4 id="bi-recues-titre">⚑ ${pluriel(l.length, "demande")} de rejoindre un album de « ${esc(c.nom)} »</h4>
-    <ul class="lf-lignes">${l.map((d) => `<li data-demande="${d.id}">
+    <h4 id="bi-recues-titre">⚑ ${rejoindre
+      ? `${pluriel(l.length, "demande")} de rejoindre un album de « ${esc(c.nom)} »`
+      : `${pluriel(l.length, "demande")} à répondre sur « ${esc(c.nom)} »`}</h4>
+    <ul class="lf-lignes">${l.map((d) => d.genre === BDSuppression.GENRE_AMORCER
+      ? `<li data-demande="${d.id}" class="recue-amorcer">
+      <span><b>${esc(d.demandeur_nom || d.demandeur || "Quelqu'un")}</b> demande d'en partir :
+        <b>« ${esc(d.titre || "")} »</b>, ${esc(BDEchelle.jusqua(d.cran))}, pour « ${esc(d.collection_nom || "")} »
+        <span class="muted small">· ${esc(BDSuppression.dateLue(d.date_creation))}</span></span>
+      ${d.motif ? `<p class="recue-motif small">${esc(d.motif)}</p>` : ""}
+      ${BDEchelle.htmlApercuDemande(d.apercu, d.collection_nom)}
+      <span class="bi-boutons">
+        <button type="button" class="primary small" data-repondre="${d.id}" data-reponse="${BDSuppression.ACCEPTER}"
+                title="Une copie de travail naît dans « ${esc(d.collection_nom || "")} », au nom du demandeur, avec ce travail : ce qui se fera dans l'une n'arrivera pas dans l'autre">Accepter : copier dans « ${esc(d.collection_nom || "")} »</button>
+        <button type="button" class="ghost small" data-repondre="${d.id}" data-reponse="${BDSuppression.REFUSER}">Refuser</button>
+      </span></li>`
+      : `<li data-demande="${d.id}">
       <span><b>${esc(d.demandeur_nom || d.demandeur || "Quelqu'un")}</b> demande que
         « ${esc(d.titre || "")} » soit aussi rangé dans « ${esc(d.collection_nom || "")} »
         <span class="muted small">· ${esc(BDSuppression.dateLue(d.date_creation))}</span></span>
@@ -2688,9 +3135,14 @@ async function repondreDemande(bouton) {
     return;
   }
   const titre = d ? d.titre : "", arrivee = d ? d.collection_nom : "";
+  const amorce = !!d && d.genre === BDSuppression.GENRE_AMORCER;
+  const qui = d ? (d.demandeur_nom || d.demandeur || "Le demandeur") : "Le demandeur";
   const texte = reponse === BDSuppression.ACCEPTER
-    ? `« ${titre} » est aussi rangé dans « ${arrivee} » : le travail est partagé.`
-    : `Refusé : « ${titre} » reste où il est. La demande peut être redéposée.`;
+    ? (amorce ? `Accepté : ${qui} a sa copie de « ${titre} » dans « ${arrivee} », `
+                + `${BDEchelle.jusqua(d.cran)}.`
+              : `« ${titre} » est aussi rangé dans « ${arrivee} » : le travail est partagé.`)
+    : (amorce ? `Refusé : rien n'est copié. La demande peut être redéposée.`
+              : `Refusé : « ${titre} » reste où il est. La demande peut être redéposée.`);
   P3A.recues.forEach((l, cid) => {
     const reste = l.filter((x) => x.id !== id);
     if (reste.length) P3A.recues.set(cid, reste); else P3A.recues.delete(cid);
@@ -2723,8 +3175,8 @@ function basculerPrise(ou) {
   const dests = BDBiblio.destinationsPrise(COLS.toutes, PROJET);
   P3A.dansProjet = null;
   P3A.prise = { ou, depuis, dest: BDBiblio.destinationParDefaut(dests, depuis), q: "", offset: 0,
-                total: 0, notices: null, coches: new Set(), reponses: new Map(), motif: "",
-                msg: null, erreur: false };
+                total: 0, notices: null, coches: new Set(), crans: new Map(),
+                reponses: new Map(), motif: "", msg: null, erreur: false };
   majBoutonsPrise();
   rendreZonePrise();
   chargerNotices();
@@ -2767,7 +3219,7 @@ function htmlPrise() {
       <button type="button" class="primary small" id="bi-prise-ok"></button>
       <button type="button" class="ghost small" id="bi-prise-fermer">Fermer</button>
       <span class="muted small">${B.total ? "Chaque document entre tout de suite, en copie vierge."
-        : "Une seule demande part à un administrateur ; un document dont vous lisez déjà une copie dans le projet vous est donné sans attendre, en copie vierge."}</span>
+        : "« Images seules » : une seule demande part à un administrateur — un document dont vous lisez déjà une copie dans le projet vous est donné sans attendre, en copie vierge. « Le travail, jusqu'au … » : une demande par document, à qui le tient ; vous lirez « demandé », puis la réponse."}</span>
     </div>
     <p id="bi-prise-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
   </section>`;
@@ -2810,6 +3262,7 @@ function rendreNotices() {
           <span><span class="bi-notice-titre">${esc(n.titre || "")}</span>
             <span class="muted small">${[n.serie, n.auteur].filter(Boolean).map((x) => `· ${esc(x)}`).join(" ")}</span></span></label>
         ${n.dans_le_projet ? `<span class="bi-deja" title="Une collection de ce projet l'a déjà ; cocher en prend une seconde copie, vierge — demandée, sauf si vous lisez déjà la première">déjà dans ce projet</span>` : ""}
+        ${B.total || rep ? "" : selectCranNotice(n, pr)}
         ${n.garde_au_fonds ? `<a class="bi-garde" href="/administration?vue=projets&amp;projet=${PROJET}"
             title="Une copie de ce document, avec son travail, a été retirée de sa dernière collection du projet : son responsable peut demander à la rendre, dans la fiche du projet">une copie de ce projet est gardée au fonds — la demander à rendre ↗</a>` : ""}
         ${rep ? `<span class="reponse ${rep.classe}">${esc(rep.texte)}</span>` : ""}
@@ -2831,12 +3284,32 @@ function rendreNotices() {
   if (pr.msg !== null) colMsg($("#bi-prise-msg"), pr.msg, pr.erreur);
 }
 
+/* COL-3, écran de la 3b (E7, Hugo, 2026-10-25) — un cran PAR DOCUMENT, éteint tant que la
+   notice n'est pas cochée : « Images seules », l'entrée de documents de la 3a, demandée à
+   un administrateur ; ou « Le travail, jusqu'au … », une demande d'en partir que le serveur
+   adresse à qui tient ce travail — la ligne répond « demandé », au bit près. Une portée
+   totale ne l'a pas : elle prend tout de suite, et en partir d'une copie se fait en la
+   nommant, depuis la fiche du document (à trancher). */
+function selectCranNotice(n, pr) {
+  const coche = pr.coches.has(n.document_id);
+  const cran = pr.crans.get(n.document_id) || "images";
+  return `<select data-notice-cran="${n.document_id}" class="bi-notice-cran"
+      aria-label="Ce que vous prenez de « ${esc(n.titre || "")} »" ${coche ? "" : "disabled"}
+      title="Les images seules : une copie vierge, dont l'entrée se demande à un administrateur. Au-dessus : le travail d'un autre projet, s'il existe, jusqu'à ce cran — la demande va à qui le tient ; vous lirez « demandé », puis la réponse.">
+    ${BDEchelle.VALEURS.map((v) => `<option value="${v}" ${v === cran ? "selected" : ""}>${esc(
+      v === "images" ? "Images seules" : `Le travail, ${BDEchelle.jusqua(v)}`)}</option>`).join("")}</select>`;
+}
+
 async function envoyerPrise() {
   const pr = P3A.prise, ok = $("#bi-prise-ok");
   if (!pr || !pr.coches.size || !pr.dest || ok.disabled) return;
   const motifEl = $("#bi-prise-motif");
   if (motifEl) pr.motif = motifEl.value;
-  const documents = [...pr.coches].map((d) => ({ document_id: d, reponse: "zero" }));
+  const documents = [...pr.coches].map((d) => {
+    const cran = B.total ? "images" : (pr.crans.get(d) || "images");
+    return cran === "images" ? { document_id: d, reponse: "zero" }
+      : { document_id: d, reponse: "amorcer", cran };
+  });
   const corps = { documents };
   if (pr.motif.trim()) corps.motif = pr.motif.trim();
   ok.disabled = true;
@@ -2848,16 +3321,22 @@ async function envoyerPrise() {
     return;
   }
   const lignes = r.documents || [];
-  lignes.forEach((l) => pr.reponses.set(l.document_id, BDBiblio.reponsePrise(l)));
+  lignes.forEach((l) => pr.reponses.set(l.document_id, BDBiblio.reponsePrise(l, BDEchelle.jusqua)));
   pr.coches.clear();
+  pr.crans.clear();
   const faits = lignes.filter((l) => l.etat === "fait").length;
-  const demandes = lignes.filter((l) => l.etat === "demande").length;
+  // Une entrée de documents se demande à un administrateur ; une demande d'en partir entre
+  // deux projets (E7) va à qui tient ce travail — le demandeur ne sait pas qui, ni s'il existe.
+  const entrees = lignes.filter((l) => l.etat === "demande" && l.reponse !== "amorcer").length;
+  const enPartir = lignes.filter((l) => l.etat === "demande" && l.reponse === "amorcer").length;
+  const demandes = entrees + enPartir;
   const refus = lignes.length - faits - demandes;
   const dest = collection(pr.dest);
   const ou = dest ? ` dans « ${dest.nom} »` : "";
   pr.msg = [
     faits ? `Fait : ${pluriel(faits, "document")} ${faits > 1 ? "ont" : "a"} désormais une copie de travail vierge${ou}.` : "",
-    demandes ? `${pluriel(demandes, "document")} ${demandes > 1 ? "sont demandés" : "est demandé"} à un administrateur : vous en suivrez la réponse dans la fiche du projet.` : "",
+    entrees ? `${pluriel(entrees, "document")} ${entrees > 1 ? "sont demandés" : "est demandé"} à un administrateur : vous en suivrez la réponse dans la fiche du projet.` : "",
+    enPartir ? `${enPartir > 1 ? `${enPartir} demandes d'en partir sont parties` : "La demande d'en partir est partie"} : vous en suivrez la réponse dans la fiche du projet.` : "",
     refus ? `${pluriel(refus, "document")} refusé${refus > 1 ? "s" : ""} : la raison est sur sa ligne.` : "",
   ].filter(Boolean).join(" ");
   pr.erreur = false;
@@ -2924,14 +3403,135 @@ function rendreDansProjet() {
     const titreRej = direct
       ? "Ranger aussi ici cette copie : vous tenez toutes ses collections, c'est immédiat. Le travail est partagé."
       : "Ranger aussi ici cette copie : qui tient toutes ses collections doit l'accepter. Le travail sera partagé.";
-    return `<li data-dp-album="${a.id}"><span><b>${esc(a.titre)}</b> <span class="muted small">· dans ${ou}</span></span>
+    // COL-3, écran de la 3b (Hugo, 2026-10-25) — « Copie vierge » devient « Copie… », qui
+    // déplie SOUS la ligne l'échelle des cinq crans, « Images seules » cochée : sans rien
+    // changer, c'est la copie vierge d'avant, immédiate.
+    const ouvert = !!dp.copie && dp.copie.album === a.id && !rep;
+    return `<li data-dp-album="${a.id}"${ouvert ? ' class="ouvert"' : ""}><span><b>${esc(a.titre)}</b> <span class="muted small">· dans ${ou}</span></span>
       <span class="bi-boutons">${rep ? `<span class="reponse ${rep.classe}">${esc(rep.texte)}</span>`
         : `${dejaDemande ? `<span class="reponse demande" title="Rejoindre ce travail depuis cette collection est déjà demandé : la demande attend sa réponse">rejoindre demandé</span>`
           : `<button type="button" class="ghost small" data-dp="rejoindre" data-id="${a.id}" title="${esc(titreRej)}">Rejoindre</button>`}
-           <button type="button" class="ghost small" data-dp="zero" data-id="${a.id}"
-                   title="Une seconde copie, images seules, sans le travail de l'autre ; à votre nom, tout de suite. Ce qui se corrigera dans l'une n'arrivera pas dans l'autre.">Copie vierge</button>`}</span></li>`;
+           <button type="button" class="ghost small" data-dp="copie" data-id="${a.id}"
+                   aria-expanded="${ouvert}" aria-controls="bi-echelle-${a.id}"
+                   title="Une copie à vous, ici : les images seules, ou avec le travail de l'autre copie jusqu'au cran choisi. Ce qui se fera dans l'une n'arrivera pas dans l'autre.">Copie…</button>`}</span>
+      ${ouvert ? htmlEchelleCopie(a, c) : ""}</li>`;
   }).join("") || `<li class="muted small">Rien à prendre : tout ce que vous lisez du projet est déjà ici.</li>`;
   if (dp.msg !== null) colMsg($("#bi-dp-msg"), dp.msg, dp.erreur);
+}
+
+/* L'échelle de « Copie… », dépliée sous la ligne (écran de la 3b) : un tableau, une ligne
+   par cran — la radio, puis ce que ce cran AJOUTE, en nombres (E5) ; une ligne grise quand
+   la source n'a pas ce travail, le cran restant choisissable. Sous le tableau, au cran des
+   annotations, ce qui RESTE (compté, jamais nommé) et les fiches de personnage qui
+   deviennent lisibles (E6). Puis la réponse attendue — immédiat, ou à accepter — et le
+   bouton. Les nombres viennent d'UN aperçu, au cran le plus haut : il les porte tous. */
+function htmlEchelleCopie(a, c) {
+  const cp = P3A.dansProjet.copie;
+  const nom = c ? c.nom : "";
+  const lignes = BDEchelle.lignesEchelle(cp.apercu);
+  const sous = BDEchelle.sousLEchelle(cp.apercu, cp.cran, nom);
+  const sansApercu = cp.cran !== "images" && !cp.apercu;
+  const rep = BDEchelle.reponseCopie({ cran: cp.cran, etat: cp.apercu && cp.apercu.etat,
+                                       repondra: cp.apercu && cp.apercu.repondra,
+                                       total: B.total, arrivee: nom });
+  const texte = sansApercu
+    ? (cp.erreur ? `L'aperçu n'a pas pu être lu : ${cp.erreur}` : "Lecture du travail de cette copie…")
+    : rep.texte;
+  return `<div class="echelle-zone" id="bi-echelle-${a.id}">
+    <table class="tab-echelle">
+      <caption class="sr-only">Jusqu'où copier « ${esc(a.titre)} » dans « ${esc(nom)} »</caption>
+      <thead><tr><th scope="col">Jusqu'où</th><th scope="col">Ce que ce cran ajoute</th></tr></thead>
+      <tbody>${lignes.map((l, i) => `<tr class="${[l.valeur === cp.cran ? "choisi" : "", l.vide ? "vide" : ""].filter(Boolean).join(" ")}">
+        <td><label class="echelle-cran"><input type="radio" name="dp-cran-${a.id}" value="${l.valeur}"
+            data-dp-cran="${a.id}" id="dp-cran-${a.id}-${i}" ${l.valeur === cp.cran ? "checked" : ""}>
+          <span>${esc(l.court)}</span></label></td>
+        <td>${esc(l.texte)}</td></tr>`).join("")}</tbody>
+    </table>
+    ${sous.restent || sous.personnages ? `<p class="small echelle-sous">${sous.restent
+      ? `<span class="echelle-reste">${esc(sous.restent)}</span> <span class="muted" title="${esc(sous.aide)}" aria-hidden="true">ⓘ</span><span class="sr-only"> — ${esc(sous.aide)}</span>` : ""}${sous.restent && sous.personnages ? " · " : ""}${esc(sous.personnages)}</p>` : ""}
+    <div class="reponse-attendue"><span class="small">${esc(texte)}</span>
+      <span class="bi-boutons"><button type="button" class="primary small" data-dp-copier="${a.id}" ${sansApercu ? "disabled" : ""}>${esc(rep.bouton)}</button>
+      <button type="button" class="ghost small" data-dp-annuler="${a.id}">Annuler</button></span></div>
+  </div>`;
+}
+
+/* Déplie ou replie l'échelle sous la ligne d'un album, et lit son aperçu une fois. */
+async function basculerEchelleCopie(albumId) {
+  const dp = P3A.dansProjet;
+  if (!dp) return;
+  if (dp.copie && dp.copie.album === albumId) {
+    dp.copie = null;
+    rendreDansProjet();
+    const b = document.querySelector(`button[data-dp="copie"][data-id="${albumId}"]`);
+    if (b) b.focus();
+    return;
+  }
+  const cp = { album: albumId, cran: "images", apercu: null, erreur: null };
+  dp.copie = cp;
+  rendreDansProjet();
+  const r = document.getElementById(`dp-cran-${albumId}-0`);
+  if (r) r.focus();
+  try {
+    cp.apercu = await apiGet(`/api/albums/${albumId}/amorcer/apercu?`
+      + new URLSearchParams({ collection: String(dp.collection), cran: "annotations" }));
+  } catch (e) { cp.erreur = e.message; }
+  if (P3A.dansProjet === dp && dp.copie === cp) rendreEchelleCopie(false);
+}
+
+/* Redessine l'échelle seule : la liste et la recherche gardent leur état, et le focus reste
+   sur la radio qu'on vient de cocher. */
+function rendreEchelleCopie(focus) {
+  const dp = P3A.dansProjet;
+  if (!dp || !dp.copie) return;
+  const zone = document.getElementById(`bi-echelle-${dp.copie.album}`);
+  const a = state.albums.find((x) => x.id === dp.copie.album);
+  if (!zone || !a) return;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = htmlEchelleCopie(a, collection(dp.collection));
+  zone.replaceWith(tmp.firstElementChild);
+  if (focus) {
+    const r = document.querySelector(`input[data-dp-cran="${a.id}"][value="${dp.copie.cran}"]`);
+    if (r) r.focus();
+  }
+}
+
+/* « Copier … » ou « Demander » : la prise, une ligne — `zero` aux images seules (la copie
+   vierge), `amorcer` au-dessus, avec le cran. Le serveur dit fait ou demandé. */
+async function copierDansProjet(bouton) {
+  const dp = P3A.dansProjet;
+  if (!dp || !dp.copie) return;
+  const a = state.albums.find((x) => x.id === Number(bouton.dataset.dpCopier));
+  if (!a) return;
+  const cran = dp.copie.cran;
+  const ligne = cran === "images"
+    ? { document_id: a.document_id, reponse: "zero", album_id: a.id }
+    : { document_id: a.document_id, reponse: "amorcer", album_id: a.id, cran };
+  bouton.disabled = true;
+  let r;
+  try {
+    r = await apiSend("POST", `/api/collections/${dp.collection}/prendre`, { documents: [ligne] });
+  } catch (e) {
+    bouton.disabled = false;
+    dp.msg = e.message; dp.erreur = true;
+    colMsg($("#bi-dp-msg"), dp.msg, true);
+    return;
+  }
+  const l = (r.documents || [])[0] || {};
+  dp.reponses.set(a.id, BDBiblio.reponsePrise(l, BDEchelle.jusqua));
+  dp.copie = null;
+  const c = collection(dp.collection), nom = c ? c.nom : "";
+  dp.erreur = l.etat !== "fait" && l.etat !== "demande";
+  dp.msg = l.etat === "fait"
+    ? (cran === "images"
+      ? `Fait : « ${a.titre} » a une seconde copie, vierge, dans « ${nom} », à votre nom. Ce qui se fera dans l'une n'arrivera pas dans l'autre.`
+      : `Fait : votre copie de « ${a.titre} » est dans « ${nom} », ${BDEchelle.jusqua(cran)}. Ce qui se fera dans l'une n'arrivera pas dans l'autre.`)
+    : l.etat === "demande"
+      ? `Demandé à ${BDBiblio.quiRepondra(l.repondra)} : votre copie de « ${a.titre} », ${BDEchelle.jusqua(cran)}, naîtra dans « ${nom} » si la réponse est oui. Rien ne change d'ici là.`
+      : (l.motif || "Refusé.");
+  if (l.etat === "fait") await loadAlbums().catch(() => {});
+  else rendreDansProjet();
+  const t = $("#bi-dp-titre");
+  if (t) t.focus();
 }
 
 async function prendreDansProjet(bouton) {
@@ -3066,6 +3666,46 @@ function choisirMode(mode) {
 }
 
 /* ── Créer une collection : le champ n'apparaît qu'au geste ───────────────────────────── */
+
+/* COL-3, tranche 3b (v36 ; écran tranché par Hugo sur maquette, 2026-10-25) — qui crée une
+   collection est un RÉGLAGE du projet : ses responsables et les administrateurs toujours,
+   ses membres si le projet le leur ouvre. Le serveur le dit projet par projet
+   (`collection_creable`) ; l'écran ne le déduit pas du rôle. Pour un MEMBRE que le réglage
+   n'autorise pas, le bouton reste À SA PLACE, ÉTEINT et focalisable (`aria-disabled`), et dit
+   pourquoi en nommant les responsables — en infobulle, pour le lecteur d'écran, et dans la
+   ligne de message quand on le touche ; pour qui n'est pas du projet, il n'est pas là. CE
+   N'EST PAS UNE GARDE : le serveur refuse par un 403 nommé. */
+function majCreer() {
+  const b = $("#col-creer"), raison = $("#col-creer-raison");
+  if (!b) return;
+  const p = projetCourant();
+  const offre = BDBiblio.offrirCreerCollection(p, B.total);
+  b.hidden = offre === "absent";
+  const eteint = offre === "eteint";
+  const texte = eteint ? BDEchelle.raisonCreerEteint(p ? p.nom : "", p ? p.responsables : []) : "";
+  b.classList.toggle("eteint", eteint);
+  if (eteint) {
+    b.setAttribute("aria-disabled", "true");
+    b.setAttribute("aria-describedby", "col-creer-raison");
+    b.title = texte;
+    ouvrirCreation(false);
+  } else {
+    b.removeAttribute("aria-disabled");
+    b.removeAttribute("aria-describedby");
+    b.title = "";
+  }
+  raison.textContent = texte;
+}
+
+function basculerCreation() {
+  const b = $("#col-creer");
+  if (b.getAttribute("aria-disabled") === "true") {
+    colMsg($("#col-creer-msg"), $("#col-creer-raison").textContent);
+    return;
+  }
+  ouvrirCreation($("#col-creer-zone").hidden);
+}
+
 function ouvrirCreation(ouvrir) {
   const zone = $("#col-creer-zone");
   zone.hidden = !ouvrir;
@@ -3226,7 +3866,7 @@ function setupBack() {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function brancherListe() {
-  $("#col-creer").onclick = () => ouvrirCreation($("#col-creer-zone").hidden);
+  $("#col-creer").onclick = basculerCreation;
   $("#col-add").onclick = creerCollection;
   $("#col-nom").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); creerCollection(); }
@@ -3286,10 +3926,24 @@ function brancherFiche() {
       return;
     }
     if (t.closest("#bi-prise-ok")) { envoyerPrise(); return; }
+    const copie = t.closest('button[data-dp="copie"]');
+    if (copie) { basculerEchelleCopie(Number(copie.dataset.id)); return; }
+    const copier = t.closest("button[data-dp-copier]");
+    if (copier) { copierDansProjet(copier); return; }
+    const annuler = t.closest("button[data-dp-annuler]");
+    if (annuler) { basculerEchelleCopie(Number(annuler.dataset.dpAnnuler)); return; }
     const dpb = t.closest("button[data-dp]");
     if (dpb) { prendreDansProjet(dpb); return; }
     const rp = t.closest("button[data-repondre]");
     if (rp) { repondreDemande(rp); return; }
+    // COL-3, écran de la 3b — en tête de la fiche du projet : les demandes d'en partir venues
+    // d'un autre projet ; en tête de l'onglet Albums : les retraits, jusqu'à « Vu ».
+    const e7a = t.closest("button[data-e7-accepter]");
+    if (e7a) { repondreE7(Number(e7a.dataset.e7Accepter), true); return; }
+    const e7r = t.closest("button[data-e7-refuser]");
+    if (e7r) { repondreE7(Number(e7r.dataset.e7Refuser), false); return; }
+    const vu = t.closest("button[data-retrait-vu]");
+    if (vu) { retraitVu(vu); return; }
     const oc = t.closest("[data-ouvrir-col]");
     if (oc) { ouvrirCollection(Number(oc.dataset.ouvrirCol), "albums", false); return; }
     const oa = t.closest("[data-ouvrir-album]");
@@ -3330,6 +3984,15 @@ function brancherFiche() {
       const a = state.albums.find((x) => x.id === Number(act.dataset.id));
       if (a && act.dataset.act === "edit") openModal(a);
       if (a && act.dataset.act === "supprimer") ouvrirSuppression(a);
+      if (a && act.dataset.act === "repartir") ouvrirRepartir(a, null);
+      if (a && act.dataset.act === "retirer") ouvrirRetirer(a);
+      return;
+    }
+    const rpl = t.closest("button[data-repartir-planche]");
+    if (rpl) {
+      const a = state.albums.find((x) => x.id === state.openId);
+      const p = state.planches.find((x) => x.id === Number(rpl.dataset.repartirPlanche));
+      if (a && p) ouvrirRepartir(a, p);
       return;
     }
     if (t.closest("#detail-edit")) {
@@ -3408,6 +4071,23 @@ function brancherFiche() {
       rendreNotices();
       const el = document.getElementById(`bi-notice-${d}`);
       if (el) el.focus();
+      return;
+    }
+    if (t.matches("[data-notice-cran]") && P3A.prise) {
+      P3A.prise.crans.set(Number(t.dataset.noticeCran), t.value);
+      return;
+    }
+    if (t.matches("[data-e7-source]")) {
+      P3A.e7Choix.set(Number(t.dataset.e7Source), Number(t.value));
+      P3A.e7Msg = null;
+      rendreE7();
+      const r = document.querySelector(`[data-e7-source="${t.dataset.e7Source}"][value="${t.value}"]`);
+      if (r) r.focus();
+      return;
+    }
+    if (t.matches("[data-dp-cran]") && P3A.dansProjet && P3A.dansProjet.copie) {
+      P3A.dansProjet.copie.cran = t.value;
+      rendreEchelleCopie(true);
       return;
     }
     if (t.matches("#bi-prise-dest") && P3A.prise) {
@@ -3504,10 +4184,44 @@ function setup() {
   // COL-3, tranche 3a — le compteur des demandes reçues mène à la première collection qui
   // en attend, sur son onglet Albums, où se trouve le bloc ⚑.
   $("#bi-rappels").addEventListener("click", (e) => {
+    // COL-3, écran de la 3b — le rappel des demandes d'en partir mène en tête de la fiche du
+    // projet, où elles se répondent.
+    if (e.target.closest("#bi-e7-compteur")) {
+      toutLeProjet();
+      B.vueFiche = true;
+      rendreVue();
+      const t = $("#bi-e7-titre") || $("#bi-accueil-titre");
+      if (t) t.focus();
+      return;
+    }
     if (!e.target.closest("#bi-recues-compteur")) return;
     const premiere = COLS.projet.find((c) => P3A.recues.has(c.id));
     if (premiere) ouvrirCollection(premiere.id, "albums", false);
   });
+  // COL-3, écran de la 3b — « Repartir de zéro » et « Retirer du projet », leurs panneaux.
+  $("#rp-annuler").onclick = fermerRepartir;
+  $("#rp-ok").onclick = rpValider;
+  $("#repartir-modal").addEventListener("change", (e) => {
+    const t = e.target;
+    if (!t.matches('input[name="rp-cran"]') || !REP.album) return;
+    REP.cran = t.value;
+    rpMsg("");
+    rendreRepartir(REP.jeton, true);
+  });
+  $("#repartir-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "repartir-modal") fermerRepartir();
+  });
+  $("#rt-annuler").onclick = fermerRetirer;
+  $("#rt-ok").onclick = rtValider;
+  $("#retirer-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "retirer-modal") fermerRetirer();
+  });
+  if (window.BDDialog) {
+    BDDialog.register($("#repartir-modal"),
+      { box: ".modal-box", labelledby: "rp-titre", onClose: fermerRepartir, retour: titreDeFiche });
+    BDDialog.register($("#retirer-modal"),
+      { box: ".modal-box", labelledby: "rt-titre", onClose: fermerRetirer, retour: titreDeFiche });
+  }
   // COL-3 — on a changé de projet, par le sélecteur de la bande ou dans un autre onglet :
   // la liste est celle du nouveau, et ce qui était ouvert dans l'ancien se referme.
   document.addEventListener(BDProjet.EVENEMENT, async (e) => {
@@ -3516,6 +4230,8 @@ function setup() {
     PROJET = id;
     colTaireSauf(null);
     P3A.prise = null; P3A.dansProjet = null;
+    P3A.e7 = []; P3A.e7Choix.clear(); P3A.e7Msg = null;
+    RETRAITS.collection = null; RETRAITS.lignes = [];
     B.calques.clear(); B.mode = "une"; B.ouverte = null; B.edition = null; B.depuis = null;
     state.openId = null; state.planches = []; state.checkedPlanches.clear();
     state.checkedAlbums.clear();
