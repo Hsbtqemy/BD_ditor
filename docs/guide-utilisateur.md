@@ -477,7 +477,11 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   *Dans toutes* choisit l'union ou l'intersection ; *Tout ce que vous lisez* défait le calque.
   **Le nom** d'une collection **ouvre sa fiche**, sans rien filtrer. Dessous, les albums du
   projet — ceux que vous lisez —, chacun nommant ses collections, et un champ pour chercher
-  par titre, série ou auteur. *+ Créer une collection* ouvre son champ au geste. Le compte
+  par titre, série ou auteur. *+ Créer une collection* ouvre son champ au geste — à qui le
+  projet le permet (ci-dessous, *Collections*) ; pour un membre qu'il ne le permet pas, le
+  bouton reste à sa place, **éteint**, et dit au survol (et au clavier, quand on l'active) que
+  *seuls les responsables créent des collections* dans ce projet, en les nommant ; qui n'est
+  pas du projet ne le voit pas. Le compte
   ne dit le total du projet qu'à un administrateur : pour les autres, c'est *… albums que
   vous lisez*. Sous une largeur de téléphone, la liste et la fiche se montrent l'une après
   l'autre, et *← Liste* ramène à la liste.
@@ -552,28 +556,31 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
     le fait confirmer quand il coûte ; la case ne s'offre que sur les collections où vous
     écrivez.
   - **Supprimer définitivement** efface les images et tout le travail fait dessus, pour
-    tout le monde, dans tous les projets. Il efface **tout de suite** si vous avez créé
-    cette copie vous-même — importée, ou prise du fonds — et que personne d'autre n'y a
-    travaillé : c'est l'erreur, qui n'a à attendre personne ; le panneau le dit (*… vous
-    l'avez créée, et personne d'autre n'y a travaillé. Irréversible.*) et le bouton
-    s'appelle *Supprimer définitivement*. **Sinon, il se demande à un administrateur** : le
-    panneau dit *D'autres s'en servent, ou ce n'est pas vous qui avez créé cette copie : la
-    demande part à un administrateur, qui décide. Rien n'est effacé d'ici là.* Remplissez *Pourquoi ce
+    tout le monde, dans tous les projets. Il efface **tout de suite** par trois chemins
+    (règle du 2026-10-21), et le panneau dit lequel est le vôtre, sous *Efface tout de
+    suite cette copie, ses images et le travail fait dessus. Irréversible.* : *Vous avez
+    créé cette copie, et personne d'autre n'y a travaillé : rien à demander.* — l'erreur,
+    importée ou prise du fonds, qui n'a à attendre personne —, *Vous tenez toutes ses
+    collections : rien à demander.* (vous possédez toutes les collections de l'album), ou
+    *Vous êtes responsable du projet : rien à demander.* Les deux derniers effacent même
+    quand d'autres y ont travaillé : le panneau montre alors, **avant** le bouton, **ce que
+    d'autres y perdent** — un tableau, *Ce que n autres personnes perdent* : une ligne par
+    personne, une colonne par sorte de geste concernée (cases et bulles, corrections,
+    annotations, validations, notice et scans), la date du dernier geste ; *Des gestes,
+    comptés au journal* rappelle, au survol, qu'un geste défait depuis compte encore. Le
+    bouton s'appelle *Supprimer définitivement*. **La dernière copie d'un document**, elle,
+    ne se supprime sans demande que par son créateur seul, et seulement si c'est la copie
+    de l'import : à un propriétaire ou un responsable, le panneau dit *C'est la dernière
+    copie de ce document : la supprimer le fait sortir du fonds, images comprises. Vous
+    êtes responsable du projet, mais c'est un administrateur qui décide.*, montre qui perd
+    quoi, et demande. **Sinon, il se demande à un administrateur** : le panneau dit
+    *D'autres s'en servent, ou ce n'est pas vous qui avez créé cette copie : la demande part
+    à un administrateur, qui décide. Rien n'est effacé d'ici là.* Remplissez *Pourquoi ce
     document n'a pas sa place ici*, lisez ce que la suppression détruirait, cochez *Je
     certifie que ces données ne sont pas importantes.*, puis *Envoyer la demande*. Sans
     motif ou sans la case, rien ne part, et le panneau le dit. Ce qui compte comme « avoir
     travaillé », et pourquoi un album créé avant l'arrivée du fonds se demande toujours :
     [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
-    **Depuis le 2026-10-21, la règle du serveur est plus large que ces mots** : le
-    **propriétaire** de toutes les collections de l'album, et le **responsable** de son
-    projet, l'effacent aussi sans rien demander, même si d'autres y ont travaillé — sauf la
-    dernière copie d'un document, qui se demande toujours à un administrateur, comme celle
-    qu'on a prise soi-même du fonds quand elle est devenue la dernière (seule la copie de
-    l'import échappe à cette règle). Repartir de zéro, lui, se fait aussi sur la dernière
-    copie. Le panneau
-    suit le serveur pour OFFRIR l'effacement, mais ses mots sont encore ceux du créateur
-    (*… vous l'avez créée, et personne d'autre n'y a travaillé*) : ils seront réécrits avec
-    l'écran de la tranche 3b, qui attend sa maquette.
   - **Une demande en attente se voit sur l'album**, dans la liste et dans sa fiche : *suppression demandée par
     vous*, ou *suppression demandée* sans nom — seuls un administrateur et la personne qui a
     demandé lisent qui l'a fait. Tant qu'elle attend, *Supprimer définitivement* le dit,
@@ -582,6 +589,32 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   - **Une copie qui a une sœur** — le même document, pris ailleurs en copie vierge — se
     supprime seule : le panneau ajoute *Ses images restent : une autre copie de ce document
     les emploie.*, sans dire où vit l'autre copie.
+- **Repartir de zéro** (tranche 3b) : garder les images, la notice, les planches et leur
+  verrou, et effacer le travail **au-dessus** d'un cran. *Repartir de zéro…*, dans la tête
+  de la fiche d'un album où vous écrivez, à côté de *Supprimer…*, et **↺** sur chaque
+  planche, avant la corbeille, ouvrent le même panneau. *Revenir…* propose quatre crans —
+  *Aux images seules*, *Au découpage*, *À la transcription*, *À la grammaire relue* —, ceux
+  que le travail de la copie n'atteint pas éteints ; le cran coché d'abord n'ôte que la
+  couche du dessus. *Part* dit en nombres ce qui partirait, validations comprises. Puis,
+  quand vous repartez sans demander (les mêmes chemins que la suppression, la dernière
+  copie comprise) : la raison, *qui perd quoi* comme pour la suppression, et le bouton de
+  danger — *Repartir de la transcription*, *Repartir du découpage*… —, avec *Ne s'annule
+  pas, Ctrl+Z compris.* Sinon, pour l'album : le motif, la certification (*Repartir de
+  zéro détruit ce qui a été posé sur les planches au-dessus du cran choisi…*) et *Envoyer la
+  demande* ; un administrateur répond dans *À faire*. **Une planche ne se demande pas** : à
+  qui ne peut pas la ramener lui-même, le panneau le dit et n'offre rien. Une copie remise à
+  zéro le dit dans la tête de sa fiche : *repartie de la transcription le JJ/MM/AAAA* — qui
+  l'a fait, au survol, pour qui écrit dans la copie.
+- **Retirer du projet** (tranche 3b) : *Retirer du projet…*, dans la tête de la fiche d'un
+  album, au **responsable** du projet et à un administrateur. Le panneau nomme les
+  collections que l'album quitte — toutes celles du projet —, dit qu'il part au fonds avec
+  son travail et qu'un administrateur peut le rendre, nomme les propriétaires qui le
+  verront disparaître, et montre qui y a travaillé (*rien n'est effacé*). Un motif
+  *facultatif*, que les propriétaires liront, puis *Retirer du projet*. Chaque propriétaire
+  d'une collection quittée lit ensuite en tête de son onglet *Albums* : *« … » a été retiré
+  du projet par … le … : il est gardé au fonds, avec son travail. Motif : …*, jusqu'à ce
+  qu'il clique *Vu*. La fiche du projet le dit sous *Copies gardées au fonds* (*retiré du
+  projet par …*).
 - **Prendre un document** (tranche 3a). Deux gestes, au-dessus du tableau de l'onglet
   *Albums* d'une collection, et le premier aussi en tête de la fiche du projet :
   - **+ Prendre du fonds…** n'est offert qu'au **responsable** du projet et à un
@@ -589,9 +622,17 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
     d'autre —, cherchées au serveur, 25 par page. Cochez un ou plusieurs documents, choisissez
     *Dans* quelle collection ils arrivent — la base est en tête, et présélectionnée en tête du
     corpus ; dans une collection, c'est elle —, écrivez *Pourquoi ces documents ?* et
-    *Demander* : une seule demande part à un administrateur, et chaque document dit sa
-    réponse sur sa ligne — *fait* quand le projet a déjà une copie que vous lisez (une copie
-    vierge entre tout de suite), *demandé à un administrateur* sinon, ou *refusé* et pourquoi.
+    *Demander*. **Chaque notice cochée porte son cran** (tranche 3b) : *Images seules* — une
+    copie vierge, dont l'entrée se demande à un administrateur (une seule demande pour toutes
+    ces notices) — ou *Le travail, jusqu'au …* — le travail qu'un **autre projet** a fait sur
+    ce document, s'il en existe un, jusqu'à ce cran : une demande par document, que le serveur
+    adresse à qui le tient. Chaque document dit sa réponse sur sa ligne — *fait* quand le
+    projet a déjà une copie que vous lisez (une copie vierge entre tout de suite), *demandé à
+    un administrateur* pour une entrée, *demandé* tout court pour le travail d'un autre projet
+    — que ce travail existe ou non, la ligne ne le dit pas —, ou *refusé* et pourquoi. La
+    suite se lit dans la fiche du projet, *Au fonds* : *En partir : « … », jusqu'au … →
+    « … »*, puis *en attente*, *acceptée* ou *refusée* — jamais le projet qui tenait ce
+    travail.
     *Déjà dans ce projet* signale un document qu'une collection du projet a déjà, sans dire
     laquelle ; il reste cochable, pour une seconde copie. *Une copie de ce projet est gardée
     au fonds — la demander à rendre ↗* signale qu'une copie du projet, avec son travail, a
@@ -601,25 +642,46 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   - **+ Prendre dans le projet…** est offert à qui **écrit** dans la collection : les albums du
     projet que vous lisez et qui n'y sont pas encore. Sur chaque ligne, *Rejoindre* — le même
     travail, partagé avec ses collections : immédiat si vous les possédez toutes, sinon
-    *demandé à son propriétaire* (ou *à un administrateur*) — ou *Copie vierge* — une seconde
-    copie, images seules, sans le travail de l'autre, à votre nom, tout de suite. L'infobulle
-    de chaque bouton le redit, et la réponse s'écrit à la place des boutons. Un album dont
-    le rejoindre vers cette collection attend déjà dit *rejoindre demandé* au lieu du bouton.
+    *demandé à son propriétaire* (ou *à un administrateur*) — ou *Copie…* — une copie à vous,
+    ici. *Copie…* déplie sous la ligne **l'échelle des cinq crans**, en tableau : une ligne par
+    cran — *Images seules*, *+ le découpage*, *+ la transcription*, *+ la grammaire relue*, *+
+    les annotations* —, et ce que chacun **ajoute** en nombres (régions, textes, corrections,
+    annotations, tags, attributs, locuteurs) ; une ligne grise dit *rien : la source n'a pas
+    ce travail*. Au cran des annotations, la phrase sous le tableau compte les tags et
+    attributs qui **restent** (locaux à une collection que la vôtre ne voit pas : ils ne
+    suivent pas, et ne sont pas nommés) et les fiches de personnage qui deviennent lisibles.
+    *Images seules* est cochée : c'est la copie vierge, immédiate — *Copier les images*. Un
+    cran au-dessus est immédiat si vous possédez toutes les collections de l'autre copie
+    (*Copier jusqu'à …*) ; sinon *Son propriétaire doit l'accepter* (ou *Un administrateur*) et
+    le bouton dit *Demander*. Ce qui se fera dans l'une n'arrivera pas dans l'autre. La
+    réponse s'écrit à la place des boutons ; une copie née ainsi le dit sur sa ligne (*copie
+    vierge*, *copie · jusqu'à la transcription*). Un album dont le rejoindre vers cette
+    collection attend déjà dit *rejoindre demandé* au lieu du bouton.
 - **Les demandes de rejoindre que vous recevez**, comme propriétaire d'une collection : une
   marque **⚑ n** sur la collection, dans le bloc *Collections* ; dans la bande d'outils, *n
   demandes à répondre*, qui mène à la première ; et en tête de l'onglet *Albums*, dont
   l'onglet porte une pastille, un bloc ⚑ qui dit qui demande que quel album soit aussi rangé
   dans quelle collection — *Accepter* (le travail est partagé) ou *Refuser* (l'album reste où
-  il est, et la demande peut être redéposée). Rien n'apparaît dans la bande du haut. Un
-  administrateur les lit dans *À faire*, en recours. **Responsable**, vos demandes au fonds
+  il est, et la demande peut être redéposée). Une **demande d'en partir** (quelqu'un veut une
+  copie à lui de ce travail, jusqu'à un cran) s'y lit aussi : qui demande, le titre, le cran,
+  la collection d'arrivée, le motif, ce qui partirait en nombres — *Accepter : copier dans
+  « … »* ou *Refuser*. Rien n'apparaît dans la bande du haut. Un administrateur les lit dans
+  *À faire*, en recours.
+- **Les demandes d'en partir venues d'un autre projet**, comme responsable du projet qui tient
+  ce travail : en tête de la fiche du projet — *Demandes d'en partir · n* —, où mène le
+  rappel *n demandes d'en partir* de la bande d'outils. Chacune dit quel projet la fait, et
+  qui, le document, le cran, le motif ; *Depuis quelle copie* propose les copies de votre
+  projet que vous lisez, celles qui ne sont pas assez travaillées éteintes, et montre ce que
+  la copie cochée ferait partir ; *Accepter : copier depuis « … »* ou *Refuser* — un refus la
+  clôt pour tous. La même demande se répond dans l'Administration, fiche du projet. **Responsable**, vos demandes au fonds
   qui attendent se rappellent dans la bande d'outils — *n demandes au fonds, en attente* —, et
   mènent à la fiche du projet, dans l'Administration, où se lit leur état.
 - **Supprimer une planche** suit la règle de l'album, sans demande à elle : sa corbeille 🗑
   est active là où vous supprimeriez l'album définitivement sans rien demander. Ailleurs,
   si vous écrivez dans l'album, elle est **grisée** et, quand on la touche, dit sous elle :
-  *Cette planche ne se supprime pas d'ici : vous n'avez pas importé l'album, ou d'autres y
-  ont travaillé. Adressez-vous à un administrateur de l'instance.* À qui ne fait que lire,
-  pas de corbeille.
+  *Cette planche ne se supprime pas d'ici : d'autres y ont travaillé, ce n'est pas vous qui
+  avez créé cette copie, ou c'est la dernière copie de son document. Adressez-vous à un
+  administrateur de l'instance.* À qui ne fait que lire, pas de corbeille.
 - **Planches** : ouvrir, supprimer, et trois marques indépendantes —
   **rôle** (`récit`, numéroté, ou `paratexte` : couverture, liminaire, publicité, écarté de la
   numérotation), **validation** et **verrou** (🔒 protège des passes automatiques). Les gestes
@@ -744,15 +806,24 @@ règle d'accès (cf. §2).
   - **La fiche** : le nom, le nombre de collections que vous y lisez, la mention *projet
     de repli* s'il l'est ; puis *Pourquoi ce projet existe*, *Qui y entre*, *Collections*
     — celles que vous lisez, la base marquée *base*, chacune menant à sa fiche dans la
-    Bibliothèque —, *Ce que la base ouvre aux membres*, *Au fonds* et *Ce projet*.
+    Bibliothèque —, *Ce que la base ouvre aux membres*, *Au fonds* et *Ce projet*. Sous la
+    liste des collections, une case : *Les membres peuvent créer des collections* —
+    décochée par défaut ; *Les responsables et les administrateurs en créent toujours.* —,
+    qui s'applique dès qu'on la coche ou la décoche ; fermer n'efface aucune collection.
+  - **Demandes d'en partir**, en tête de la fiche quand un autre projet demande d'en partir
+    d'un travail que le vôtre tient (la ligne du projet, dans la liste, porte *⚑ n demandes
+    d'en partir*) : les mêmes que dans la Bibliothèque — *Depuis quelle copie*, l'aperçu,
+    *Accepter : copier depuis « … »* ou *Refuser*.
   - **Ce que la base ouvre aux membres** : les trois réponses de la création. En cocher une
     autre n'applique rien : une phrase dit d'abord ce que le changement fait — *Resserrer
     n'efface aucun travail…*, ou *Ouvrir donne à 3 entrées du projet le droit…* —, puis
     *Appliquer : base …* (ou *Annuler*). La base n'ouvre qu'elle-même.
   - **Au fonds** : *Au fonds · n demandes* — les documents demandés pour le projet et leur
     état (*en attente*, *acceptée*, *refusée*, *acceptée en partie* ; *Détail* les dit
-    document par document) ; puis *Copies gardées au fonds · n*, les copies du projet
-    retirées de leur dernière collection. *Demander à la rendre…* ouvre le choix d'une
+    document par document), et les demandes d'en partir d'un travail d'un autre projet
+    (*En partir : « … », jusqu'au … → « … »*, puis leur état, sans jamais nommer le projet
+    qui le tient) ; puis *Copies gardées au fonds · n*, les copies du projet retirées de leur
+    dernière collection — *retiré du projet par …* quand c'est un responsable qui l'a fait. *Demander à la rendre…* ouvre le choix d'une
     collection du projet où vous écrivez — la base d'abord —, puis *Demander* : un
     administrateur répondra *Rendre* ou *Garder au fonds*, et la ligne dit *retour demandé
     le …* d'ici là. Un administrateur, lui, lit *Rendre à…* et rend tout de suite.
@@ -813,8 +884,15 @@ règle d'accès (cf. §2).
     écrivain demande à ranger aussi une copie dans sa collection) : *Accepter : ranger aussi
     dans « … »* ou *Refuser* — c'est d'abord au propriétaire de répondre, l'administrateur
     est le recours. Un **retour** (le responsable demande à rendre une copie gardée) :
-    *Rendre à « … »* ou *Garder au fonds*. Aucune de ces trois-là ne se répond par
-    *Détruire*.
+    *Rendre à « … »* ou *Garder au fonds*. Deux tranches de plus depuis la 3b : **En partir
+    d'un travail** (verte) — dans un projet, *Accepter : copier dans « … »* ou *Refuser*, avec
+    ce qui partirait ; entre deux projets, *Depuis quelle copie* puis *Accepter : copier
+    depuis « … »* ou *Refuser* —, chacune marquée *attend …* (le propriétaire, ou le
+    responsable du projet qui tient le travail, que l'administrateur remplace en répondant),
+    ou *aucun responsable ne tient ce travail : à vous* ; et **Repartir de zéro** (rose) — le
+    motif, la certification, ce qui part, ce que d'autres que le demandeur y ont fait, puis
+    *Repartir de …* (après confirmation : ne s'annule pas) ou *Garder*. Aucune de ces
+    demandes ne se répond par *Détruire*.
   - **Importer au fonds** : un titre, des fichiers, puis *+ Importer au fonds*. L'album
     naît **appelé par personne**, sans collection ni projet, et ses planches entrent une à
     une ; le message dit combien sont entrées et lesquelles ont été refusées. C'est le
@@ -955,7 +1033,6 @@ Elles sont documentées ; elles ne sont simplement pas dans l'interface.
 | Réindexer tout le corpus après un changement de modèle linguistique | `tools/reindex_nlp.py` | [`correction-grammaticale.md`](correction-grammaticale.md) |
 | Relire la résolution des planches importées avant cette fonctionnalité | `tools/reindex_materiel.py` | [`materiel-numerisation.md`](materiel-numerisation.md) |
 | Remplacer par des copies de travail les masters gardés avant la v34 — **efface les masters du serveur** | `tools/convertir_en_copies_de_travail.py` | [`materiel-numerisation.md`](materiel-numerisation.md), « La copie de travail » |
-| **Tranche 3b de COL-3, côté serveur — leur écran attend sa maquette** : *en partir* d'un travail jusqu'à un cran (dans le projet, ou entre deux projets sans nommer la source), *repartir de zéro* sur un album ou une planche, *retirer du projet* un album, lire avant d'effacer ce que d'autres y ont fait, régler si les membres d'un projet créent des collections | l'API de l'application (`POST /api/collections/{id}/prendre` en `amorcer`, `POST /api/albums/{id}/repartir`, `POST /api/planches/{id}/repartir`, `POST /api/albums/{id}/retirer-du-projet`, `GET /api/albums/{id}/travail-des-autres`, `PUT /api/projets/{id}/creation-de-collections`, et ce que l'écran tranché le 2026-10-25 lira : les aperçus de « Repartir de zéro » et de « Retirer du projet », l'avis d'un retrait jusqu'à « Vu ») | [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds* et §3, *Le projet* |
 | Créer un compte, un groupe | l'annuaire LLDAP, par son interface web (le fichier des comptes du portail n'est plus que le repli) | [`exploitation.md`](exploitation.md), « Basculer vers l'annuaire LLDAP » |
 
 L'**import PDF** est annoncé dans le menu mais désactivé : il n'est pas encore implémenté.
