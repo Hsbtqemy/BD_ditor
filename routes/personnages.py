@@ -356,6 +356,7 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
     pourtant hors du schéma : c'est la route, le changement de type et l'annulation qui le
     tiennent, et une base d'avant peut encore en porter.
     """
+    conflit.verrouiller(conn)      # CONC-4 : le locuteur actuel se lit sous le verrou
     region = _get_region(conn, portee, region_id, ecriture=True)
     if region["type"] not in TYPES_LOCUTEUR:
         raise HTTPException(422, f"Un locuteur ne s'attribue qu'à une zone de texte "
@@ -365,6 +366,10 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
     _exiger_le_personnage_ici(conn, payload.personnage_id, region)
     ancien = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
                           (region_id,)).fetchone()
+    if "personnage_vu" in payload.model_fields_set:
+        _garder_le_lien(conn, "bulle_locuteur", region_id, vu=payload.personnage_vu,
+                        actuel=ancien["personnage_id"] if ancien else None,
+                        nouveau=payload.personnage_id)
     conn.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?) "
                  "ON CONFLICT(region_id) DO UPDATE SET personnage_id = excluded.personnage_id",
                  (region_id, payload.personnage_id))
@@ -373,6 +378,43 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
                         apres={"personnage_id": payload.personnage_id})
     conn.commit()
     return _locuteur_for(conn, region_id)
+
+
+# CONC-4 — le champ que le 409 nomme pour chaque lien, et ce qui décrit le personnage présent
+# (pour que l'écran montre la version de l'autre sans relire).
+_LIENS_GARDES = {
+    "bulle_locuteur": ("locuteur", lambda conn, rid: _locuteur_for(conn, rid)["locuteur"]),
+    "personnage_presence": ("presence",
+                            lambda conn, rid: _personnage_for(conn, rid)["personnage"]),
+}
+
+
+def _garder_le_lien(conn, table: str, region_id: int, *, vu, actuel, nouveau) -> None:
+    """CONC-4 — refuser une attribution ou un retrait fait sur une valeur PÉRIMÉE (Hugo,
+    2026-10-21 : le patron du temps b de CONC-3, `conflit.verifier`).
+
+    Mesuré le 2026-10-25 à deux navigateurs, sur le code d'avant : Alice pose Zed, Bob — dont
+    l'écran montrait « aucun » — pose Yann ; la base gardait Yann, et aucun écran n'en disait
+    rien. Puis le ✕ d'Alice, qui voyait encore Zed, retirait Yann, en silence.
+
+    `vu` est le personnage que l'écran VOYAIT (un identifiant, ou None pour « aucun »). Si la
+    base porte autre chose — et que l'écriture ne pose pas déjà ce qu'elle porte —, c'est le
+    409 de CONC-3 : `detail.conflit` avec le champ (`locuteur`, `presence`), le personnage
+    présent en `valeur_actuelle` et, en plus, décrit (`personnage` : id, nom, série, ou None),
+    et l'auteur du dernier acte qui l'a posé ou ôté — un `lien`/`delien`, ou le changement de
+    type qui l'a retiré (ANN-8). Rien n'est écrit. Appelée sous le verrou d'écriture, pris
+    AVANT de lire `actuel` : deux attributions simultanées ne passent pas toutes deux.
+
+    L'appelant ne l'appelle que si la valeur vue a été ENVOYÉE : elle reste facultative pour
+    l'API (Q8), et sans elle le dernier gagne, comme avant."""
+    champ, decrire = _LIENS_GARDES[table]
+    try:
+        conflit.verifier(conn, table, region_id, champ, vu=vu, actuel=actuel, nouveau=nouveau,
+                         sources=((table, "personnage_id"), ("regions", champ)))
+    except conflit.Perime as exc:
+        detail = exc.detail()
+        detail["conflit"]["personnage"] = decrire(conn, region_id)
+        raise HTTPException(409, detail)
 
 
 def _exiger_le_personnage_ici(conn, personnage_id, region: dict) -> None:
@@ -387,11 +429,18 @@ def _exiger_le_personnage_ici(conn, personnage_id, region: dict) -> None:
 
 
 @router.delete("/api/regions/{region_id}/locuteur", status_code=204)
-def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db),
+def clear_locuteur(region_id: int, personnage_vu: Optional[int] = None,
+                   conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Retire le locuteur. CONC-4 — `?personnage_vu=` : celui que l'écran voyait ; s'il n'est
+    plus là, 409 nommé (`_garder_le_lien`). Facultatif (Q8)."""
+    conflit.verrouiller(conn)      # CONC-4 : le locuteur actuel se lit sous le verrou
     _get_region(conn, portee, region_id, ecriture=True)
     ancien = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
                           (region_id,)).fetchone()
+    if personnage_vu is not None:
+        _garder_le_lien(conn, "bulle_locuteur", region_id, vu=personnage_vu,
+                        actuel=ancien["personnage_id"] if ancien else None, nouveau=None)
     conn.execute("DELETE FROM bulle_locuteur WHERE region_id = ?", (region_id,))
     if ancien:
         journal.journaliser(conn, "delien", "bulle_locuteur", region_id,
@@ -416,6 +465,7 @@ def get_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
 @router.put("/api/regions/{region_id}/personnage")
 def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
+    conflit.verrouiller(conn)      # CONC-4 : le personnage actuel se lit sous le verrou
     region = _get_region(conn, portee, region_id, ecriture=True)
     # ANN-8 (décision du 2026-10-22) — le miroir du locuteur : seule une boîte personnage
     # montre un personnage. Après l'accesseur gardé, pour la raison de `set_locuteur`.
@@ -426,6 +476,10 @@ def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection =
     _exiger_le_personnage_ici(conn, payload.personnage_id, region)
     ancien = conn.execute("SELECT personnage_id FROM personnage_presence WHERE region_id = ?",
                           (region_id,)).fetchone()
+    if "personnage_vu" in payload.model_fields_set:     # CONC-4, cf. `set_locuteur`
+        _garder_le_lien(conn, "personnage_presence", region_id, vu=payload.personnage_vu,
+                        actuel=ancien["personnage_id"] if ancien else None,
+                        nouveau=payload.personnage_id)
     conn.execute("INSERT INTO personnage_presence (region_id, personnage_id) VALUES (?, ?) "
                  "ON CONFLICT(region_id) DO UPDATE SET personnage_id = excluded.personnage_id",
                  (region_id, payload.personnage_id))
@@ -437,11 +491,17 @@ def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection =
 
 
 @router.delete("/api/regions/{region_id}/personnage", status_code=204)
-def clear_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
+def clear_presence(region_id: int, personnage_vu: Optional[int] = None,
+                   conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Retire le personnage montré ; `?personnage_vu=` : cf. `clear_locuteur` (CONC-4)."""
+    conflit.verrouiller(conn)      # CONC-4 : le personnage actuel se lit sous le verrou
     _get_region(conn, portee, region_id, ecriture=True)
     ancien = conn.execute("SELECT personnage_id FROM personnage_presence WHERE region_id = ?",
                           (region_id,)).fetchone()
+    if personnage_vu is not None:
+        _garder_le_lien(conn, "personnage_presence", region_id, vu=personnage_vu,
+                        actuel=ancien["personnage_id"] if ancien else None, nouveau=None)
     conn.execute("DELETE FROM personnage_presence WHERE region_id = ?", (region_id,))
     if ancien:
         journal.journaliser(conn, "delien", "personnage_presence", region_id,

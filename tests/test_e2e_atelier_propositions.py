@@ -737,7 +737,9 @@ def test_un_nom_existant_tape_avant_la_liste_prend_l_homonyme(page, atelier, cha
             page.expect_response(_est("PUT", chemin)) as reponse:
         lectures.relacher()
     assert reponse.value.status == 200, reponse.value.text()
-    assert envoi.value.post_data_json == {"personnage_id": zed}
+    # CONC-4 : le corps porte aussi `personnage_vu` (ce que l'écran voyait) ; ces tests
+    # éprouvent QUEL personnage part, la valeur vue a ses gardes (`test_e2e_conflit_a_deux`).
+    assert envoi.value.post_data_json["personnage_id"] == zed
     expect(page.locator(c["puce"])).to_contain_text("Zed", timeout=15000)
     assert _creations(parties) == [], f"un homonyme a été créé : {parties}"
     assert [p["nom"] for p in _registre(atelier)].count("Zed") == 1
@@ -770,7 +772,7 @@ def test_un_nom_tape_sans_ses_accents_prend_l_homonyme_accentue(page, atelier, c
             page.expect_response(_est("PUT", chemin)) as reponse:
         champ.press("Enter")
     assert reponse.value.status == 200, reponse.value.text()
-    assert envoi.value.post_data_json == {"personnage_id": etienne}
+    assert envoi.value.post_data_json["personnage_id"] == etienne
     expect(page.locator(c["puce"])).to_contain_text("Étienne", timeout=15000)
     assert _creations(parties) == [], f"un quasi-doublon a été créé : {parties}"
     assert [p["nom"] for p in _registre(atelier)].count("Étienne") == 1
@@ -801,7 +803,7 @@ def test_l_homonyme_au_dela_des_dix_propositions_est_pris_meme_tape_lentement(pa
             page.expect_response(_est("PUT", chemin)) as reponse:
         champ.press("Enter")
     assert reponse.value.status == 200, reponse.value.text()
-    assert envoi.value.post_data_json == {"personnage_id": ids["Zed"]}
+    assert envoi.value.post_data_json["personnage_id"] == ids["Zed"]
     assert _creations(parties) == [], parties
     assert len(_registre(atelier)) == 13             # Tintin, onze « Azed », « Zed »
 
@@ -877,7 +879,7 @@ def test_une_lecture_du_registre_arrivee_en_retard_n_ecrase_pas_la_plus_recente(
     with page.expect_request(_est("PUT", chemin)) as envoi, \
             page.expect_response(_est("PUT", chemin)):
         champ.press("Enter")
-    assert envoi.value.post_data_json == {"personnage_id": zed}
+    assert envoi.value.post_data_json["personnage_id"] == zed
     assert _creations(parties) == [], parties
 
 
@@ -912,7 +914,7 @@ def test_un_nom_qu_on_vient_de_creer_retape_aussitot_n_est_pas_cree_deux_fois(pa
             page.expect_response(_est("PUT", chemin)) as reponse:
         lectures.relacher()
     assert reponse.value.status == 200, reponse.value.text()
-    assert envoi.value.post_data_json == {"personnage_id": zed}
+    assert envoi.value.post_data_json["personnage_id"] == zed
     assert len(_creations(parties)) == 1, f"« Zed » a été créé deux fois : {parties}"
     assert [p["nom"] for p in _registre(atelier)].count("Zed") == 1
 
@@ -1074,7 +1076,7 @@ def test_un_nom_cree_par_l_autre_champ_n_est_pas_cree_deux_fois(page, atelier):
             page.expect_response(_est("PUT", chemin)) as reponse:
         lectures.relacher()
     assert reponse.value.status == 200, reponse.value.text()
-    assert envoi.value.post_data_json == {"personnage_id": zed}
+    assert envoi.value.post_data_json["personnage_id"] == zed
     assert len(_creations(parties)) == 1, parties
     assert [p["nom"] for p in _registre(atelier)].count("Zed") == 1
 
@@ -1118,7 +1120,7 @@ def test_pendant_le_rechargement_entree_reverifie_la_surlignee(page, atelier, fl
                 page.expect_response(_est("PUT", chemin)) as reponse:
             champ.press("Enter")
         assert reponse.value.status == 200, reponse.value.text()
-        assert envoi.value.post_data_json == {"personnage_id": ids[part]}
+        assert envoi.value.post_data_json["personnage_id"] == ids[part]
         lectures.relacher()
         return
 
@@ -1140,7 +1142,7 @@ def test_pendant_le_rechargement_entree_reverifie_la_surlignee(page, atelier, fl
     with page.expect_request(_est("PUT", chemin)) as envoi, \
             page.expect_response(_est("PUT", chemin)):
         champ.press("Enter")
-    assert envoi.value.post_data_json == {"personnage_id": ids["Zed"]}
+    assert envoi.value.post_data_json["personnage_id"] == ids["Zed"]
     assert _creations(parties) == [], parties
 
 
@@ -1208,7 +1210,7 @@ def test_des_homonymes_entree_ne_decide_pas_la_liste_se_reduit_a_eux(page, ateli
             page.expect_response(_est("PUT", chemin)) as reponse:
         champ.press("Enter")
     assert reponse.value.status == 200, reponse.value.text()
-    assert envoi.value.post_data_json == {"personnage_id": zed["Les Aventures"]}
+    assert envoi.value.post_data_json["personnage_id"] == zed["Les Aventures"]
     expect(page.locator(c["puce"])).to_contain_text("Les Aventures", timeout=15000)
     assert _creations(parties) == [], parties
 
@@ -1230,4 +1232,4 @@ def test_un_homonyme_se_choisit_aussi_d_un_clic(page, atelier):
     with page.expect_request(_est("PUT", chemin)) as envoi, \
             page.expect_response(_est("PUT", chemin)):
         liste.nth(0).click()
-    assert envoi.value.post_data_json == {"personnage_id": zed[None]}
+    assert envoi.value.post_data_json["personnage_id"] == zed[None]

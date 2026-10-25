@@ -77,6 +77,9 @@ const state = {
   annotSale: annotPropre(), // CONC-3 : ce qui a CHANGÉ depuis le dernier enregistrement
   noteVue: "",             // CONC-3 : la note telle que le serveur l'a donnée ou acceptée
   conflit: null,           // CONC-3 : { lieu: "note"|"transcription", regionId, conflit }
+                           // CONC-4 : lieu "locuteur"|"presence", plus `saisie` (le choix)
+  locVu: undefined,        // CONC-4 : le locuteur que l'écran a VU (id, null : aucun ;
+  persoVu: undefined,      //   undefined : pas encore lu) — de même le personnage montré
   envoiNote: null,         // CONC-3 : l'enregistrement de note pas encore revenu (promesse)
   envoiTr: null,           // CONC-3 : de même pour le texte transcrit
   geste: null,             // CONC-3 : le geste retenu en attendant la réponse, { rejouer }
@@ -1423,6 +1426,27 @@ function conflitDe(e, champ) {
   return c && c.champ === champ ? c : null;
 }
 
+/* CONC-4 — un lien (locuteur, personnage montré) refusé : le bandeau s'ouvre au-dessus de la
+   puce si l'on est encore sur cette zone ET dans le mode où elle se voit ; sinon le dire,
+   comme le filet de la note. Rend vrai si `e` était ce conflit-là. `saisie` : le choix
+   ({ id, nom }), ou null pour un retrait. */
+function conflitDeLien(e, lieu, regionId, saisie) {
+  const c = conflitDe(e, lieu);
+  if (!c) return false;
+  const ici = state.mode === "annotation"
+    && (lieu === "locuteur" ? state.locRegion : state.persoRegion) === regionId;
+  if (ici && !state.conflit) ouvrirConflit(lieu, regionId, c, saisie);
+  else toast(BDConflit.messageNonEnregistre(c), "error", 8000);
+  return true;
+}
+
+// CONC-4 — où le bandeau d'un lien s'ouvre (au-dessus de la puce), et le champ qui garde le
+// focus après un geste.
+const LIEUX_LIEN = {
+  locuteur: { puce: "#loc-current", champ: "#loc-input" },
+  presence: { puce: "#perso-current", champ: "#perso-input" },
+};
+
 /* Bloque un changement de bulle, de planche ou de mode pendant un conflit. */
 function conflitBloque() {
   if (!state.conflit) return false;
@@ -1453,16 +1477,18 @@ function annoncer(texte) {
   setTimeout(() => { zone.textContent = texte; }, 50);   // un changement, pour être relu
 }
 
-function ouvrirConflit(lieu, regionId, conflit) {
+function ouvrirConflit(lieu, regionId, conflit, saisie = null) {
   fermerConflit();
-  state.conflit = { lieu, regionId, conflit };
-  const champ = lieu === "note" ? $("#note-input") : $("#tr-text");
+  state.conflit = { lieu, regionId, conflit, saisie };
+  const lien = LIEUX_LIEN[lieu];
+  const champ = lien ? $(lien.puce) : lieu === "note" ? $("#note-input") : $("#tr-text");
   const titre = BDConflit.titreConflit(conflit);
   const a = conflit.auteur;
   const deQui = !a ? "Version enregistrée"
     : a.meme_compte ? "Version de l'autre écran, enregistrée"
     : `Version de ${a.nom || a.login}, enregistrée`;
-  const quoi = lieu === "note" ? "Votre note n'est pas enregistrée." : "Votre texte n'est pas enregistré.";
+  const quoi = lien ? BDConflit.texteLienNonEnregistre(saisie)
+    : lieu === "note" ? "Votre note n'est pas enregistrée." : "Votre texte n'est pas enregistré.";
 
   const b = document.createElement("div");
   b.className = "bandeau-conflit";
@@ -1481,13 +1507,17 @@ function ouvrirConflit(lieu, regionId, conflit) {
   if (lieu === "transcription") {
     b.querySelector(".bandeau-texte").textContent = quoi + " Il reste dans le champ ci-dessous.";
   }
-  b.querySelector(".bandeau-version").textContent = conflit.valeur_actuelle ?? "";
+  // Un lien n'a pas de champ où la saisie « reste » : le bandeau dit le choix, et montre la
+  // version de l'autre par son nom (`detail.conflit.personnage`), pas par un identifiant.
+  if (lien) b.querySelector(".bandeau-texte").textContent = quoi;
+  b.querySelector(".bandeau-version").textContent = lien
+    ? BDConflit.nomPersonnage(conflit.personnage, lieu) : conflit.valeur_actuelle ?? "";
   b.querySelector('[data-geste="remplacer"]').onclick = remplacerParLaMienne;
   b.querySelector('[data-geste="garder"]').onclick = garderLAutre;
   champ.parentNode.insertBefore(b, champ);
 
   if (lieu === "note") setSaveState("attente");
-  else {
+  else if (!lien) {
     setTrSave("attente");
     $("#tr-prev").disabled = true;
     $("#tr-next").disabled = true;
@@ -1514,6 +1544,17 @@ function remplacerParLaMienne() {
   if (!c) return;
   const valeur = c.conflit.valeur_actuelle ?? "";
   fermerConflit();
+  if (LIEUX_LIEN[c.lieu]) {
+    // CONC-4 — la version de l'autre devient la valeur VUE, et le geste repart : le choix
+    // remplace la sienne, le retrait la retire. Un troisième entre-temps : nouveau bandeau.
+    const vu = c.conflit.valeur_actuelle ?? null;
+    const locuteur = c.lieu === "locuteur";
+    if (locuteur) state.locVu = vu; else state.persoVu = vu;
+    if (c.saisie) (locuteur ? setLocuteur : setPerso)(c.saisie.id, c.regionId, c.saisie.nom);
+    else (locuteur ? clearLocuteur : clearPerso)();
+    $(LIEUX_LIEN[c.lieu].champ).focus();
+    return;
+  }
   if (c.lieu === "note") {
     state.noteVue = valeur;
     state.annotSale.note = true;
@@ -1536,6 +1577,14 @@ function garderLAutre() {
   if (!c) return;
   const valeur = c.conflit.valeur_actuelle ?? "";
   fermerConflit();
+  if (LIEUX_LIEN[c.lieu]) {
+    // CONC-4 — la puce montre la version de l'autre, qui devient la valeur vue ; le choix
+    // qu'on avait fait est abandonné.
+    if (c.lieu === "locuteur") renderLocuteur(c.conflit.personnage || null);
+    else renderPerso(c.conflit.personnage || null);
+    $(LIEUX_LIEN[c.lieu].champ).focus();
+    return;
+  }
   if (c.lieu === "note") {
     $("#note-input").value = valeur;
     state.noteVue = valeur;
@@ -1884,14 +1933,18 @@ async function loadLocuteur(regionId) {
   $("#loc-input").setAttribute("aria-label", "Attribuer un locuteur " + LOCUTEUR_DE[r.type]);
   $("#loc-input").value = "";
   $("#loc-suggest").hidden = true;
-  renderLocuteur(null);
+  renderLocuteur(null, false);
+  state.locVu = undefined;            // CONC-4 : rien n'est VU tant que la lecture n'a pas répondu
   try {
     const { locuteur } = await apiGet(`/api/regions/${regionId}/locuteur`);
     if (state.locRegion === regionId) renderLocuteur(locuteur);   // anti-course
   } catch (e) { /* non bloquant */ }
 }
 
-function renderLocuteur(loc) {
+/* `vu` : ce rendu est-il ce que le serveur porte — la lecture, ou la réponse d'un geste ?
+   Alors il devient la valeur VUE que le prochain geste déclare (CONC-4). */
+function renderLocuteur(loc, vu = true) {
+  if (vu) state.locVu = loc ? loc.id : null;
   const box = $("#loc-current");
   if (!box) return;
   box.innerHTML = "";
@@ -1910,18 +1963,34 @@ function renderLocuteur(loc) {
   if (locAlignWidget) locAlignWidget.load(loc ? loc.id : null);   // alignement d'autorité (A5)
 }
 
-async function setLocuteur(pid, rid) {   // `rid` : la zone du GESTE, pas celle du moment
+/* CONC-4 — le geste déclare le locuteur que l'écran VOYAIT (`personnage_vu`) : si quelqu'un
+   l'a changé depuis, le serveur refuse par le 409 nommé, et le bandeau de CONC-3 s'ouvre au-
+   dessus de la puce (`ouvrirConflit`), avec le choix qu'on venait de faire. La valeur vue
+   n'est déclarée que pour la zone ouverte, et une fois lue : sinon le dernier gagne. */
+async function setLocuteur(pid, rid, nom) {   // `rid` : la zone du GESTE, pas celle du moment
   if (rid == null) return;
+  if (conflitBloque()) return;        // un seul bandeau à la fois : il attend un choix
+  const corps = { personnage_id: pid };
+  if (rid === state.locRegion && state.locVu !== undefined) corps.personnage_vu = state.locVu;
   try {
-    const { locuteur } = await apiSend("PUT", `/api/regions/${rid}/locuteur`, { personnage_id: pid });
+    const { locuteur } = await apiSend("PUT", `/api/regions/${rid}/locuteur`, corps);
     if (state.locRegion === rid) renderLocuteur(locuteur);
-  } catch (e) { toast("Locuteur : " + e.message, "error"); }
+  } catch (e) {
+    if (conflitDeLien(e, "locuteur", rid, { id: pid, nom })) return;
+    toast("Locuteur : " + e.message, "error");
+  }
 }
 
 async function clearLocuteur() {
   const rid = state.locRegion;
   if (rid == null) return;
-  try { await apiSend("DELETE", `/api/regions/${rid}/locuteur`); } catch (e) { return; }
+  if (conflitBloque()) return;
+  const vu = state.locVu;
+  const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
+  try { await apiSend("DELETE", `/api/regions/${rid}/locuteur${q}`); } catch (e) {
+    conflitDeLien(e, "locuteur", rid, null);
+    return;
+  }
   if (state.locRegion === rid) renderLocuteur(null);
 }
 
@@ -1936,14 +2005,16 @@ async function loadPerso(regionId) {
   state.persoRegion = regionId;
   $("#perso-input").value = "";
   $("#perso-suggest").hidden = true;
-  renderPerso(null);
+  renderPerso(null, false);
+  state.persoVu = undefined;          // CONC-4, cf. `loadLocuteur`
   try {
     const { personnage } = await apiGet(`/api/regions/${regionId}/personnage`);
     if (state.persoRegion === regionId) renderPerso(personnage);   // anti-course
   } catch (e) { /* non bloquant */ }
 }
 
-function renderPerso(perso) {
+function renderPerso(perso, vu = true) {   // `vu` : cf. `renderLocuteur`
+  if (vu) state.persoVu = perso ? perso.id : null;
   const box = $("#perso-current");
   if (!box) return;
   box.innerHTML = "";
@@ -1962,18 +2033,30 @@ function renderPerso(perso) {
   if (persoAlignWidget) persoAlignWidget.load(perso ? perso.id : null);   // alignement d'autorité (A5)
 }
 
-async function setPerso(pid, rid) {      // `rid` : la boîte du GESTE, pas celle du moment
+async function setPerso(pid, rid, nom) {      // `rid` : la boîte du GESTE, pas celle du moment
   if (rid == null) return;
+  if (conflitBloque()) return;        // CONC-4, cf. `setLocuteur`
+  const corps = { personnage_id: pid };
+  if (rid === state.persoRegion && state.persoVu !== undefined) corps.personnage_vu = state.persoVu;
   try {
-    const { personnage } = await apiSend("PUT", `/api/regions/${rid}/personnage`, { personnage_id: pid });
+    const { personnage } = await apiSend("PUT", `/api/regions/${rid}/personnage`, corps);
     if (state.persoRegion === rid) renderPerso(personnage);
-  } catch (e) { toast("Personnage : " + e.message, "error"); }
+  } catch (e) {
+    if (conflitDeLien(e, "presence", rid, { id: pid, nom })) return;
+    toast("Personnage : " + e.message, "error");
+  }
 }
 
 async function clearPerso() {
   const rid = state.persoRegion;
   if (rid == null) return;
-  try { await apiSend("DELETE", `/api/regions/${rid}/personnage`); } catch (e) { return; }
+  if (conflitBloque()) return;
+  const vu = state.persoVu;
+  const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
+  try { await apiSend("DELETE", `/api/regions/${rid}/personnage${q}`); } catch (e) {
+    conflitDeLien(e, "presence", rid, null);
+    return;
+  }
   if (state.persoRegion === rid) renderPerso(null);
 }
 
@@ -2090,9 +2173,9 @@ function setupPersoInput(inputSel, sugSel, onPick, zone) {
       try {
         const p = await apiSend("POST", "/api/personnages", { nom: it.nom });
         registreModifie++;                           // ANN-8 : l'autre champ le saura aussi
-        await onPick(p.id, z);
+        await onPick(p.id, z, p.nom);                // le nom : CONC-4, pour le bandeau
       } catch (e) { toast("Création : " + e.message, "error"); }
-    } else { await onPick(it.id, z); }
+    } else { await onPick(it.id, z, it.nom); }
   }
   async function choose(it) {
     // ANN-8 — « Créer » pris dans une liste lue avant une création (ici ou dans l'autre

@@ -92,3 +92,28 @@ test("une annulation de locuteur ou de présence refusée nomme le lien (ANN-8)"
   assert.equal(C.messageAnnulationRefusee({ champ: "presence", auteur }, MAINTENANT),
                "Annulation impossible : le personnage montré a été modifié depuis par Stagiaire QA à 14 h 32.");
 });
+
+test("CONC-4 — un lien : le titre nomme le locuteur ou le personnage montré", () => {
+  const auteur = { nom: "Bob Martin", login: "bob", le: iso(local(2026, 9, 17, 14, 32)) };
+  assert.equal(C.titreConflit({ champ: "locuteur", auteur }, MAINTENANT),
+               "Locuteur modifié par Bob Martin à 14 h 32");
+  assert.equal(C.titreConflit({ champ: "presence", auteur }, MAINTENANT),
+               "Personnage montré modifié par Bob Martin à 14 h 32");
+  assert.equal(C.messageNonEnregistre({ champ: "locuteur", auteur }, MAINTENANT),
+               "Locuteur modifié par Bob Martin à 14 h 32 : le vôtre n'a pas été enregistré.");
+});
+
+test("CONC-4 — la version d'un lien : le nom, la série, ou les mots du panneau", () => {
+  assert.equal(C.nomPersonnage({ id: 1, nom: "Zed", serie: null }, "locuteur"), "Zed");
+  assert.equal(C.nomPersonnage({ id: 1, nom: "Zed", serie: "Tintin" }, "presence"), "Zed · Tintin");
+  assert.equal(C.nomPersonnage(null, "locuteur"), "Aucun locuteur");
+  assert.equal(C.nomPersonnage(null, "presence"), "Non identifié");
+  assert.equal(C.nomPersonnage(null, "autre"), "Personne");
+});
+
+test("CONC-4 — ce qui n'est pas enregistré : le choix, nommé, ou le retrait", () => {
+  assert.equal(C.texteLienNonEnregistre({ id: 2, nom: "Yann" }),
+               "Votre choix, Yann, n'est pas enregistré.");
+  assert.equal(C.texteLienNonEnregistre({ id: 2 }), "Votre choix n'est pas enregistré.");
+  assert.equal(C.texteLienNonEnregistre(null), "Votre retrait n'est pas enregistré.");
+});

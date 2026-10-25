@@ -120,6 +120,27 @@
                   parQui(a), a ? quand(a.le, maintenant) : "") + ".";
   }
 
+  /* CONC-4 — un LIEN (le locuteur d'une zone de texte, le personnage montré d'une boîte) se
+     refuse comme une note : le bandeau est le même, mais il n'y a pas de champ où la saisie
+     « reste » — elle est un choix dans une liste. Le bandeau dit donc lequel. */
+  const AUCUN = { locuteur: "Aucun locuteur", presence: "Non identifié" };   // les mots du panneau
+
+  /* La version enregistrée, telle que le panneau la montre : « Zed », « Zed · Tintin », ou
+     ce que dit le panneau quand il n'y a personne. */
+  function nomPersonnage(personnage, lieu) {
+    if (!personnage) return AUCUN[lieu] || "Personne";
+    return personnage.serie ? `${personnage.nom} · ${personnage.serie}` : personnage.nom;
+  }
+
+  /* Ce qui n'est pas enregistré : « Votre choix, Yann, n'est pas enregistré. », ou le retrait
+     (`saisie` nulle : le ✕ de la puce). */
+  function texteLienNonEnregistre(saisie) {
+    if (!saisie) return "Votre retrait n'est pas enregistré.";
+    return saisie.nom ? `Votre choix, ${saisie.nom}, n'est pas enregistré.`
+      : "Votre choix n'est pas enregistré.";
+  }
+
   return { GESTES, heure, quand, parQui, titreConflit, messageNonEnregistre,
-           messageSuppression, messageAnnulationRefusee };
+           messageSuppression, messageAnnulationRefusee, nomPersonnage,
+           texteLienNonEnregistre };
 });

@@ -680,3 +680,127 @@ def test_un_glissement_seul_n_est_pas_un_conflit(page, decor):
         assert corps and corps[-1]["vu"]["x"] == 10, corps
     finally:
         ctx_a.close()
+
+
+# --------------------------------------------------------------------------- #
+# CONC-4 — le locuteur et le personnage montré : le même bandeau, sur un choix
+# --------------------------------------------------------------------------- #
+def _choisir(p, champ, liste, nom):
+    """Taper un nom du registre dans le champ, attendre qu'il soit proposé, Entrée."""
+    p.click(champ)
+    p.keyboard.type(nom)
+    expect(p.locator(liste)).to_contain_text(nom, timeout=15000)
+    p.keyboard.press("Enter")
+
+
+def _personnages_qa(base, *noms):
+    with _client(base) as c:
+        for qui in (ALICE, BOB):
+            c.get("/api/moi", headers=qui)        # le nom affiché, comme un écran réel
+        return [c.post("/api/personnages", json={"nom": n}).json()["id"] for n in noms]
+
+
+def _lien_en_base(base, rid, route, cle):
+    with _client(base) as c:
+        return (c.get(f"/api/regions/{rid}/{route}").json()[cle] or {}).get("id")
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_deux_locuteurs_le_bandeau_nomme_garde_le_choix_et_offre_les_deux_gestes(page, decor):
+    """La mesure du 2026-10-25, rejouée : Alice pose Zed, Bob — qui voyait « aucun » — pose
+    Yann. Le choix de Bob est refusé, le bandeau le dit et montre Zed ; « Remplacer par la
+    mienne » pose Yann. Puis le ✕ d'Alice, qui voit encore Zed, est refusé à son tour, et
+    « Garder l'autre » lui montre Yann. Rien ne s'est perdu en silence."""
+    s = decor
+    zed, yann = _personnages_qa(s["base"], "Zed QA", "Yann QA")
+    locuteur = lambda: _lien_en_base(s["base"], s["bulle"], "locuteur", "locuteur")  # noqa: E731
+    ctx_a, a = _contexte(page, ALICE)
+    ctx_b, b = _contexte(page, BOB)
+    try:
+        _ouvrir(a, s["url_bulle"], "annotation")
+        _ouvrir(b, s["url_bulle"], "annotation")
+        expect(b.locator("#loc-current")).to_have_text("Aucun locuteur")
+
+        _choisir(a, "#loc-input", "#loc-suggest", "Zed QA")
+        expect(a.locator("#loc-current")).to_contain_text("Zed QA", timeout=15000)
+        assert _attendre(locuteur, zed) == zed
+
+        _choisir(b, "#loc-input", "#loc-suggest", "Yann QA")
+        bandeau = b.locator("#bandeau-conflit")
+        expect(bandeau).to_be_visible(timeout=15000)
+        expect(bandeau.locator(".bandeau-titre")).to_contain_text(
+            "Locuteur modifié par Alice Dupont")
+        expect(bandeau.locator(".bandeau-texte")).to_have_text(
+            "Votre choix, Yann QA, n'est pas enregistré.")
+        expect(bandeau.locator(".bandeau-version")).to_have_text("Zed QA")
+        expect(bandeau.locator("button")).to_have_text(["Remplacer par la mienne", "Garder l'autre"])
+        assert locuteur() == zed, "le choix d'Alice a été écrasé"
+        # L'Atelier a déclaré ce qu'il voyait (Q8 : facultatif pour l'API, pas pour lui).
+        corps = [json.loads(d) for m, u, d in b.envois if m == "PUT" and u.endswith("/locuteur")]
+        assert corps and all(c.get("personnage_vu", "absent") is None for c in corps), corps
+        # Changer de mode est bloqué tant qu'on n'a pas choisi, comme pour la note.
+        b.click('.mode-btn[data-mode="navigation"]')
+        expect(b.locator("#toasts .toast").last).to_have_text("Choisissez d'abord une version")
+        expect(b.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute(
+            "aria-pressed", "true")
+
+        bandeau.get_by_role("button", name="Remplacer par la mienne", exact=True).click()
+        expect(bandeau).to_have_count(0)
+        assert _attendre(locuteur, yann) == yann
+        expect(b.locator("#loc-current")).to_contain_text("Yann QA")
+        dernier = [json.loads(d) for m, u, d in b.envois if m == "PUT" and u.endswith("/locuteur")][-1]
+        assert dernier == {"personnage_id": yann, "personnage_vu": zed}, dernier
+
+        # Alice voit encore Zed : son ✕ ne retire plus Yann.
+        expect(a.locator("#loc-current")).to_contain_text("Zed QA")
+        a.click("#loc-current .x")
+        bandeau_a = a.locator("#bandeau-conflit")
+        expect(bandeau_a).to_be_visible(timeout=15000)
+        expect(bandeau_a.locator(".bandeau-titre")).to_contain_text("Locuteur modifié par Bob Martin")
+        expect(bandeau_a.locator(".bandeau-texte")).to_have_text("Votre retrait n'est pas enregistré.")
+        expect(bandeau_a.locator(".bandeau-version")).to_have_text("Yann QA")
+        assert any(m == "DELETE" and u.endswith(f"/locuteur?personnage_vu={zed}")
+                   for m, u, d in a.envois), a.envois
+        assert locuteur() == yann, "le retrait d'Alice a emporté Yann"
+        bandeau_a.get_by_role("button", name="Garder l'autre", exact=True).click()
+        expect(bandeau_a).to_have_count(0)
+        expect(a.locator("#loc-current")).to_contain_text("Yann QA")
+        assert locuteur() == yann
+    finally:
+        ctx_a.close()
+        ctx_b.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_deux_personnages_montres_le_second_est_refuse_et_garder_l_autre_le_montre(page, decor):
+    s = decor
+    zed, yann = _personnages_qa(s["base"], "Zed QA", "Yann QA")
+    with _client(s["base"]) as c:
+        boite = c.post(f"/api/planches/{s['planche']}/regions",
+                       json={"type": "personnage", "x": 120, "y": 40, "w": 30, "h": 40}).json()["id"]
+    url = s["url_planche"] + f"&region={boite}"
+    montre = lambda: _lien_en_base(s["base"], boite, "personnage", "personnage")  # noqa: E731
+    ctx_a, a = _contexte(page, ALICE)
+    ctx_b, b = _contexte(page, BOB)
+    try:
+        for p in (a, b):
+            p.goto(url, wait_until="networkidle")
+            with p.expect_request(lambda r: r.url.endswith("/personnage")):
+                p.click('.mode-btn[data-mode="annotation"]')
+            p.wait_for_load_state("networkidle")
+        _choisir(a, "#perso-input", "#perso-suggest", "Zed QA")
+        assert _attendre(montre, zed) == zed
+        _choisir(b, "#perso-input", "#perso-suggest", "Yann QA")
+        bandeau = b.locator("#bandeau-conflit")
+        expect(bandeau).to_be_visible(timeout=15000)
+        expect(bandeau.locator(".bandeau-titre")).to_contain_text(
+            "Personnage montré modifié par Alice Dupont")
+        expect(bandeau.locator(".bandeau-version")).to_have_text("Zed QA")
+        assert montre() == zed
+        bandeau.get_by_role("button", name="Garder l'autre", exact=True).click()
+        expect(bandeau).to_have_count(0)
+        expect(b.locator("#perso-current")).to_contain_text("Zed QA")
+        assert montre() == zed
+    finally:
+        ctx_a.close()
+        ctx_b.close()

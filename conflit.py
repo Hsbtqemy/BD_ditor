@@ -162,17 +162,25 @@ def auteur_des_champs(conn: sqlite3.Connection, sources, cible_id: int,
 
 
 def verifier(conn: sqlite3.Connection, cible_table: str, cible_id: int, champ: str, *,
-             vu: Any, actuel: Any, nouveau: Any, depuis: Optional[int] = None) -> None:
+             vu: Any, actuel: Any, nouveau: Any, depuis: Optional[int] = None,
+             sources=None) -> None:
     """Lève `Perime` si `champ` ne porte plus la valeur `vu` et que l'écriture l'écraserait.
 
     Trois cas passent. L'écran avait vu la valeur actuelle. L'écriture pose la valeur déjà
     en base : rien ne se perd. Et le dernier changement vient d'un MOTEUR (Q2) — l'OCR n'est
     qu'un pré-remplissage, l'humain l'emporte, et le texte du moteur reste au journal.
     `depuis` : cf. `auteur_du_champ` — une annulation le passe, une route non.
+
+    `sources` : pour un champ que plusieurs sortes d'actes écrivent, les couples (table, clé
+    de la charge) où chercher l'auteur (`auteur_des_champs`) ; sinon `champ` sous
+    `cible_table`. CONC-4 — un locuteur s'écrit sous `bulle_locuteur` (`personnage_id`), et
+    un changement de type le retire sous `regions` (`locuteur`) : le 409 d'une attribution
+    périmée nomme l'un ou l'autre.
     """
     if egal(vu, actuel) or egal(nouveau, actuel):
         return
-    qui = auteur_du_champ(conn, cible_table, cible_id, champ, actuel, depuis=depuis)
+    qui = (auteur_des_champs(conn, sources, cible_id, actuel, depuis=depuis) if sources
+           else auteur_du_champ(conn, cible_table, cible_id, champ, actuel, depuis=depuis))
     if qui is not None and qui["agent_type"] == "moteur":
         return
     raise Perime(cible_table, cible_id, champ, actuel, qui)

@@ -2418,10 +2418,15 @@ class PersonnageUpdate(BaseModel):
 
 class LocuteurIn(BaseModel):
     personnage_id: int
+    # CONC-4 — le locuteur que l'écran VOYAIT : un identifiant, ou `null` pour « aucun ».
+    # FACULTATIF (Q8 de CONC-3) : absent, le dernier gagne, comme avant ; présent, une base
+    # qui porte autre chose répond le 409 nommé (`routes/personnages._garder_le_lien`).
+    personnage_vu: Optional[int] = None
 
 
 class PresenceIn(BaseModel):
     personnage_id: int   # entité montrée dans une boîte personnage (§14, brique (a))
+    personnage_vu: Optional[int] = None   # CONC-4 : celui que l'écran voyait, cf. LocuteurIn
 
 
 class FusionIn(BaseModel):

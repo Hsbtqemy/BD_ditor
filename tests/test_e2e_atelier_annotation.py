@@ -198,12 +198,14 @@ def test_attribuer_changer_retirer_un_locuteur_puis_annuler(page, atelier, type_
     expect(page.locator("#loc-suggest div", has_text="Créer")).to_have_count(0)
     with page.expect_request(_est("PUT", chemin)) as envoi:
         champ.press("Enter")
-    assert envoi.value.post_data_json == {"personnage_id": atelier["tintin"]}
+    # CONC-4 : le changement déclare le locuteur que l'écran voyait — le Narrateur.
+    assert envoi.value.post_data_json == {"personnage_id": atelier["tintin"],
+                                          "personnage_vu": narrateur}
     expect(puce).to_contain_text("Tintin", timeout=15000)
     assert _locuteur(atelier, rid)["id"] == atelier["tintin"]
 
-    # RETIRER.
-    with page.expect_response(_est("DELETE", chemin)) as reponse:
+    # RETIRER — en déclarant le locuteur que l'écran voyait (CONC-4).
+    with page.expect_response(_est("DELETE", f"{chemin}?personnage_vu={atelier['tintin']}"))             as reponse:
         puce.locator(".x").click()
     assert reponse.value.status == 204
     expect(page.locator("#loc-current")).to_contain_text("Aucun locuteur", timeout=15000)
