@@ -541,7 +541,17 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   administrateur — ce qui ferme deux détours, la remettre à zéro puis la supprimer, ou en
   supprimer une à une les régions de l'autre. Le geste est retenu au moment où il est fait,
   dans `geste_sur_copie` (v36, posé par `journal.journaliser` : une région et ce qu'elle
-  porte, une correction, une planche) ; les autres suppressions lisent ce qui vit encore.
+  porte, une correction, une planche ; ce qui est journalisé après le `DELETE` se lit sur
+  sa charge — la planche d'une région, la région d'une correction retirée) ; les autres
+  suppressions lisent ce qui vit encore. Décisions du pilotage (2026-10-25) : la curation du
+  vocabulaire (fusionner ou supprimer un personnage, un tag — réservée au propriétaire et à
+  l'administrateur, elle ne porte sur aucune copie) et le recalcul de l'ordre de lecture
+  (`POST /api/planches/{id}/reordonner`, comme l'ordre des planches) n'y comptent pas ;
+  aucun rattrapage depuis le journal à la migration (le corpus de production est de test) :
+  ce qui a été fait avant la v36 retombe sur « ce qui vit encore » ; le marquage par date de
+  `recopiee` à la migration garde deux limites, en sens opposés — une annotation recopiée
+  puis modifiée avant la v36 n'est pas marquée, et tout attribut d'une copie au cran
+  `annotations` l'est.
   La règle de la dernière copie n'a pas cours dans un projet ISOLÉ — un bac à sable, le
   jeu (contre-relecture de la 3b : l'invité ne supprimait plus la copie vierge qu'il avait
   prise) —, et le refus d'effacer, dans un bac à sable, ne renvoie ni à un administrateur
