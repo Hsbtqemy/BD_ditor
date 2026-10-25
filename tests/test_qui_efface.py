@@ -356,6 +356,50 @@ def test_une_correction_retiree_est_un_geste(client, efface, db_path):
     assert _destructible(client, IMPORTEUR, seul) is False
 
 
+def test_retirer_la_correction_d_un_autre_est_un_geste(client, efface, db_path):
+    """Relecture de `geste_sur_copie` : le seul geste d'`ecrivain` sur « Seul » est de
+    retirer la correction grammaticale que l'importateur y avait posée — journalisé après le
+    `DELETE`, sur une correction qui n'existe plus : sa copie se lit sur la région de la
+    charge. La dernière copie se demande."""
+    from pipeline import nlp
+    if not nlp.nlp_available():
+        pytest.skip("sans moteur, aucun token sur lequel corriger")
+    seul = efface["seul"]
+    _accorder(client, efface["principale"], "ecrivain", "ecriture")
+    bulle = _travailler(client, seul, IMPORTEUR)
+    _ok(client.put(f"/api/regions/{bulle}/tokens/0", headers=IMPORTEUR,
+                   json={"lemme": "Tintin", "etat": "corrige"}))
+    assert _destructible(client, IMPORTEUR, seul) is True
+    _ok(client.delete(f"/api/regions/{bulle}/tokens/0", headers=ECRIVAIN))
+    assert not _sql(db_path, "SELECT 1 FROM token_correction WHERE region_id = ?", (bulle,))
+    assert _sql(db_path, "SELECT agent FROM geste_sur_copie WHERE album_id = ? "
+                         "ORDER BY agent", (seul,)) == [{"agent": "ecrivain"},
+                                                        {"agent": "importeur"}]
+    assert _destructible(client, IMPORTEUR, seul) is False
+
+
+def test_valider_une_planche_partie_depuis_est_un_geste(client, efface, db_path):
+    """La validation d'une planche par un autre, la planche partie depuis : rien n'en vit, ni
+    l'acte (sa planche n'est plus là), et la dernière copie se demande quand même. Le décor
+    passe par une sœur, le temps que l'importateur — propriétaire de sa collection —
+    supprime la planche (chemin 2) ; l'administrateur détruit ensuite la sœur."""
+    from test_prendre import _prendre, _zero
+    mine = _collection(client, "Mine")
+    _accorder(client, mine, "importeur", "proprietaire")
+    _accorder(client, mine, "ecrivain", "ecriture")
+    a = _album(client, "Unique", mine, IMPORTEUR)
+    _planche(client, a, IMPORTEUR)
+    p2 = _planche(client, a, IMPORTEUR)
+    r = client.patch(f"/api/planches/{p2}/validation", headers=ECRIVAIN, json={"validee": True})
+    assert r.status_code == 200, r.text
+    doc = _sql(db_path, "SELECT document_id FROM albums WHERE id = ?", (a,))[0]["document_id"]
+    (ligne,) = _ok(_prendre(client, efface["principale"], [_zero(doc, a)], ADMIN))["documents"]
+    assert client.delete(f"/api/planches/{p2}", headers=IMPORTEUR).status_code in (200, 204)
+    assert client.delete(f"/api/albums/{ligne['copie_id']}", headers=ADMIN).status_code == 204
+    assert _destructible(client, IMPORTEUR, a) is False
+    assert client.delete(f"/api/albums/{a}", headers=IMPORTEUR).status_code == 403
+
+
 def test_hors_de_la_derniere_copie_la_regle_lit_ce_qui_vit(client, efface, db_path):
     """Les autres suppressions gardent « ce qui vit encore » : X3, copie vierge prise par
     `ecrivain`, a des sœurs ; `proprio` y pose puis y retire une case — le geste est retenu,

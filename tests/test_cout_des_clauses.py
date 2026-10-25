@@ -11,7 +11,10 @@ calculent que la branche retenue.
 
 Deux propriétés, et chacune a son test :
 - le SENS ne change pour personne : l'ancien SQL (celui de 1032d4e, recopié ici comme
-  RÉFÉRENCE) et le nouveau rendent les mêmes valeurs, album par album, sous neuf identités ;
+  RÉFÉRENCE) et le nouveau rendent les mêmes valeurs, album par album, sous neuf identités.
+  Depuis la tranche 3b de COL-3, la référence porte la clause NEUVE (les chemins 2 et 3,
+  la dernière copie, `geste_sur_copie`, repartir) : elle compare la forme CASE à la forme
+  OR d'une même clause, et non plus à 1032d4e ;
 - le COÛT : ce qui ne compte pas n'est plus évalué. Pas un temps — il bruite —, mais une
   fonction SQL témoin, glissée dans le fragment coûteux, qui note chaque album pour lequel
   SQLite l'appelle.

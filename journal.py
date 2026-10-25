@@ -127,9 +127,9 @@ def _noter_le_geste(conn: sqlite3.Connection, cible_table: str, cible_id, agent,
     """Retient QUI a fait un geste sur QUELLE copie, au moment où il est fait (`geste_sur_copie`)
     — ce que le journal ne dirait plus une fois la région effacée : la règle de la DERNIÈRE
     copie le lit, « personne d'autre n'y a jamais travaillé » (Hugo, 2026-10-25). La copie se
-    lit sur ce qui vit encore — la région, la correction, la planche —, et pour une région
-    déjà partie (une suppression journalisée après le `DELETE`), sur la planche de son
-    instantané. Un acte sans agent se retient sous '' : on ne sait pas qui, donc pas que
+    lit sur ce qui vit encore — la région, la correction, la planche —, et pour ce qui est
+    déjà parti (une suppression journalisée après le `DELETE`), sur sa charge : la planche de
+    l'instantané d'une région, la région d'une correction retirée. Un acte sans agent se retient sous '' : on ne sait pas qui, donc pas que
     c'est le créateur."""
     if cible_id is None:
         return
@@ -140,6 +140,16 @@ def _noter_le_geste(conn: sqlite3.Connection, cible_table: str, cible_id, agent,
         album = conn.execute(
             "SELECT p.album_id FROM token_correction c JOIN regions r ON r.id = c.region_id "
             "JOIN planches p ON p.id = r.planche_id WHERE c.id = ?", (cible_id,)).fetchone()
+        if album is None:
+            # Une correction déjà retirée (journalisée après le `DELETE`) : sa région est
+            # dans la charge.
+            for etat in (avant, apres):
+                region = etat.get("region_id") if isinstance(etat, dict) else None
+                if region is not None:
+                    album = conn.execute(
+                        "SELECT p.album_id FROM regions r JOIN planches p "
+                        "ON p.id = r.planche_id WHERE r.id = ?", (region,)).fetchone()
+                    break
     else:
         album = conn.execute(
             "SELECT p.album_id FROM regions r JOIN planches p ON p.id = r.planche_id "
