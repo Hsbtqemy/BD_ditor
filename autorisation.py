@@ -487,6 +487,29 @@ class Portee:
         collections."""
         return self.couvre_projet(projet_id) or projet_id in self.projets
 
+    def peut_creer_collection(self, projet_id: int, *, membres_creent: bool,
+                              bac_a_sable: bool) -> bool:
+        """Peut-on CRÉER une collection dans ce projet ?  COL-3, tranche 3b (Hugo,
+        2026-10-21) — RENVERSEMENT daté d'AUTH-3 (« créer une collection exige une
+        IDENTITÉ, pas un droit ») : une collection est une étude, un cercle d'accès, une
+        unité de dépôt, et en ouvrir une dans un projet est décider de ce qu'il contient.
+
+        Le RESPONSABLE du projet, et la portée totale (l'administrateur, le mono-poste) :
+        toujours. Un MEMBRE : seulement si le projet le leur ouvre (`membres_creent`, le
+        réglage de `projet.membres_creent_collections`, NON par défaut). Qui n'est pas du
+        projet : jamais — le projet de REPLI compris, où il suffisait d'une identité ; sans
+        responsable, seul un administrateur y crée désormais.
+
+        Un BAC À SABLE n'est pas touché (`bac_a_sable`) : son propriétaire en est le
+        responsable, ses invités y créent comme avant — le travail n'y a aucune valeur, et
+        il s'efface chaque lundi.
+
+        Les deux faits sont lus par l'appelant sur la ligne du projet ; la règle est ici. Une
+        portée totale BORNÉE crée dans un bac à sable comme un arrivant (`couvre_projet`)."""
+        if self.couvre_projet(projet_id) or projet_id in self.projets_geres:
+            return True
+        return projet_id in self.projets and (membres_creent or bac_a_sable)
+
     def peut_gerer_projet(self, projet_id: int) -> bool:
         """A-t-on le droit de régler QUI est de ce projet — faire entrer, faire sortir,
         nommer un autre responsable ?

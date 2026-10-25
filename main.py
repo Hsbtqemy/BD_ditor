@@ -50,7 +50,8 @@ import sante as sante_moteurs
 # en a aucun, et l'outil de recalcul s'arrête s'il en apparaît un.
 from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     CHAMPS_VUS,
-    AccesIn, AccesMembresIn, AlbumIn, AlbumUpdate, DemandeIn, DocumentPrisIn, PriseIn,
+    AccesIn, AccesMembresIn, AlbumIn, AlbumUpdate, CreationCollectionsIn, DemandeIn,
+    DocumentPrisIn, PriseIn,
     ReponseIn, AlignementIn, DEMANDE, FAIT, REFUSE,
     AnnotationIn, AttributIn, CollectionIn,
     CollectionUpdate, ContributionIn, ContributionRoleIn, DeposerExportIn, DeposerIn, DimensionDomaineIn,

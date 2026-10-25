@@ -2562,6 +2562,12 @@ class ProjetIn(BaseModel):
     acces_membres: Optional[str] = autorisation.ECRITURE
 
 
+class CreationCollectionsIn(BaseModel):
+    """Le réglage d'un projet (v36, COL-3, tranche 3b) : ses MEMBRES peuvent-ils y créer des
+    collections ? Ses responsables et les administrateurs le peuvent toujours."""
+    membres: bool
+
+
 class AccesMembresIn(BaseModel):
     """La position des membres d'un projet dans sa collection de base (D10) : `ecriture`,
     `lecture`, ou `null` (protégée). OBLIGATOIRE — `null` est une valeur, pas une

@@ -30,10 +30,27 @@ def _acces(db_path, collection_id, principal, niveau, genre="utilisateur"):
         conn.close()
 
 
+def ouvrir_le_repli_a(client, *logins):
+    """Fait de ces comptes des MEMBRES du projet de repli, et ouvre à ses membres la
+    création de collections (v36, COL-3, tranche 3b) : depuis le 2026-10-21, créer une
+    collection n'est plus permis à qui n'a qu'une identité. Le décor, pas le geste testé —
+    la base du repli reste protégée, être membre n'y ouvre rien d'autre."""
+    repli = next(p["id"] for p in client.get("/api/projets", headers=ADMIN).json()
+                 if p["repli"])
+    for login in logins:
+        assert client.put(f"/api/projets/{repli}/membres", headers=ADMIN,
+                          json={"principal": login, "role": "membre"}).status_code == 200
+    assert client.put(f"/api/projets/{repli}/creation-de-collections", headers=ADMIN,
+                      json={"membres": True}).status_code == 200
+    return repli
+
+
 @pytest.fixture
 def collection_a_alice(client, db_path, derriere_proxy):
     """Une collection créée PAR alice, qui en est donc propriétaire — par la route, pas
-    par du SQL : c'est précisément ce qu'AUTH-3 ajoute."""
+    par du SQL : c'est précisément ce qu'AUTH-3 ajoute. Alice est membre du projet de
+    repli, qui ouvre la création à ses membres (v36)."""
+    ouvrir_le_repli_a(client, "alice", "bob")
     r = client.post("/api/collections", json={"nom": "Corpus colonial"},
                     headers={"Remote-User": "alice"})
     assert r.status_code == 201
@@ -340,10 +357,20 @@ def test_creer_sans_identite_est_refuse(client, derriere_proxy):
         == [True]
 
 
-def test_creer_sans_droit_mais_avec_identite_reste_permis(client, derriere_proxy):
-    """La contrepartie, et c'est le geste fondateur : quelqu'un qui n'a AUCUNE collection
-    peut en ouvrir une. Le refuser rendrait l'application inutilisable au premier jour de
-    chacun — c'est bien l'identité qui est exigée, pas un droit."""
+def test_creer_avec_une_identite_seule_est_refuse_depuis_la_v36(client, derriere_proxy):
+    """RENVERSÉ le 2026-10-21 (COL-3, tranche 3b, v36 ; décision de Hugo) : « quelqu'un qui
+    n'a AUCUNE collection peut en ouvrir une » valait depuis AUTH-3 — c'était l'identité qui
+    était exigée, pas un droit. Créer une collection est désormais une décision du PROJET :
+    ses responsables et les administrateurs, ses membres si le projet le leur ouvre. Dans le
+    projet de repli, sans responsable ici, une identité seule ne crée plus rien — un 403
+    nommé, et rien n'est écrit. Membre, et le réglage ouvert : la création revient, et son
+    auteur en est propriétaire, comme avant."""
+    r = client.post("/api/collections", json={"nom": "Premier jour"},
+                    headers={"Remote-User": "nouvelle"})
+    assert r.status_code == 403 and "responsables" in r.json()["detail"]
+    assert [c["base"] for c in client.get("/api/collections", headers=ADMIN).json()] \
+        == [True]
+    ouvrir_le_repli_a(client, "nouvelle")
     r = client.post("/api/collections", json={"nom": "Premier jour"},
                     headers={"Remote-User": "nouvelle"})
     assert r.status_code == 201

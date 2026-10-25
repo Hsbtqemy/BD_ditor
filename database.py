@@ -19,7 +19,7 @@ from config import DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUA
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 35
+SCHEMA_VERSION = 36
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -524,7 +524,13 @@ CREATE TABLE IF NOT EXISTS projet (
     date_creation  TEXT DEFAULT (datetime('now')),
     bac_a_sable_de TEXT,
     efface_le      TEXT,
-    jeu            INTEGER NOT NULL DEFAULT 0
+    jeu            INTEGER NOT NULL DEFAULT 0,
+    membres_creent_collections INTEGER NOT NULL DEFAULT 0
+    -- v36 (COL-3, tranche 3b ; Hugo, 2026-10-21) — `membres_creent_collections` : les
+    -- MEMBRES du projet peuvent-ils y créer des collections ? NON par défaut, et pour tout
+    -- l'existant ; les responsables et les administrateurs créent toujours
+    -- (`autorisation.Portee.peut_creer_collection`). Un bac à sable ne le lit pas : ses
+    -- invités y créent comme avant, son propriétaire en est responsable.
     -- v35 (COL-4) — deux natures de projet de plus, chacune un DRAPEAU comme `repli`.
     -- `bac_a_sable_de` : le LOGIN de qui l'a ouvert, NULL pour un projet ordinaire. Une
     -- colonne dit à la fois « c'est un bac à sable » et « de qui » ; la règle de lecture vit
@@ -1396,6 +1402,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # `collection.base` ne vaut pas pour elle).
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_projet_bac_a_sable_de "
                      "ON projet(bac_a_sable_de) WHERE bac_a_sable_de IS NOT NULL")
+    # v35 → v36 (COL-3, tranche 3b ; Hugo, 2026-10-21) : qui crée une collection devient un
+    # réglage du projet. Par PRÉSENCE, à 0 — « non » — pour tout l'existant, bacs à sable et
+    # jeu compris (leur règle ne le lit pas) : aucun membre ne garde un geste que son
+    # responsable ne lui a pas ouvert. NOT NULL DEFAULT 0 : un projet créé sans le dire
+    # naît fermé.
+    if "projet" in _tables and "membres_creent_collections" not in _cols("projet"):
+        conn.execute("ALTER TABLE projet ADD COLUMN membres_creent_collections "
+                     "INTEGER NOT NULL DEFAULT 0")
     # … et la marque de naissance d'un personnage (NULL : le registre, tout l'existant).
     if "personnages" in _tables and "bac_a_sable_id" not in _cols("personnages"):
         conn.execute("ALTER TABLE personnages ADD COLUMN bac_a_sable_id INTEGER")

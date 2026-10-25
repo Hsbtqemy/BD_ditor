@@ -244,6 +244,11 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
     return vues
 
 
+_MOTIF_CREER = ("Créer une collection dans ce projet revient à ses responsables et aux "
+                "administrateurs de l'instance — à ses membres aussi, si le projet le leur "
+                "ouvre.")
+
+
 @router.post("/api/collections", status_code=201)
 def create_collection(payload: CollectionIn, conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
@@ -252,8 +257,12 @@ def create_collection(payload: CollectionIn, conn: sqlite3.Connection = Depends(
 
     AUTH-3 — cette route remplace `tools/gerer_collections.py creer`, qui exigeait un accès
     shell : ouvrir un espace de travail ne peut pas demander d'être administrateur système.
-    Aucun droit préalable n'est requis, et c'est délibéré — refuser la création à qui n'a
-    encore rien rendrait l'application inutilisable au premier jour de chacun.
+    « Aucun droit préalable n'est requis » valait jusqu'au 2026-10-21 : RENVERSÉ par Hugo
+    (COL-3, tranche 3b, v36). Créer une collection dans un projet revient à ses RESPONSABLES
+    et aux administrateurs ; à ses MEMBRES seulement si le projet le leur ouvre
+    (`projet.membres_creent_collections`, non par défaut) ; à personne d'autre — le projet
+    de REPLI compris, où une identité suffisait. Un bac à sable n'est pas touché. La règle
+    est `Portee.peut_creer_collection` ; 403 nommé sinon.
 
     Hors proxy (mono-poste), il n'y a PERSONNE à inscrire comme propriétaire : la collection
     naît sans accès, et la portée totale rend la question sans objet. Idem pour un
@@ -277,17 +286,18 @@ def create_collection(payload: CollectionIn, conn: sqlite3.Connection = Depends(
         raise HTTPException(422, "Le nom de la collection est requis.")
     _refuser_nom_reserve(nom)
     # COL-3 — une collection naît dans UN projet, et n'en change pas. Sans `projet_id`,
-    # ou en nommant le projet de repli : rien ne change, une identité suffit — sans quoi
-    # l'écran, qui enverra toujours le projet courant, fermerait ce que l'API laisse
-    # ouvert. Dans un AUTRE projet, il faut en être : 404 s'il n'est pas visible, 403 nommé
-    # si l'on en voit le nom (par une collection qu'on lit) sans en être membre.
+    # dans le projet de repli. Un AUTRE projet doit être visible (404 sinon) ; puis la règle
+    # de la v36 (Hugo, 2026-10-21), pour tout projet, le repli compris : ses responsables,
+    # la portée totale, ses membres si le projet le leur ouvre — 403 nommé sinon.
     projet_id = projet_par_defaut(conn)
     if payload.projet_id is not None and payload.projet_id != projet_id:
         projet_id = _get_projet(conn, portee, payload.projet_id)["id"]
         _refuser_le_jeu(conn, projet_id=projet_id)        # COL-4 : on n'y range rien
-        if not portee.est_du_projet(projet_id):
-            raise HTTPException(403, "Créer une collection dans ce projet demande d'en "
-                                     "être membre.")
+    reglage = conn.execute("SELECT membres_creent_collections, bac_a_sable_de FROM projet "
+                           "WHERE id = ?", (projet_id,)).fetchone()
+    if not portee.peut_creer_collection(projet_id, membres_creent=bool(reglage[0]),
+                                        bac_a_sable=reglage[1] is not None):
+        raise HTTPException(403, _MOTIF_CREER)
     cur = conn.execute(
         "INSERT INTO collection (nom, description, projet_id) VALUES (?, ?, ?)",
         (nom, payload.description, projet_id))

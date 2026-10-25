@@ -230,6 +230,9 @@ def test_une_base_neuve_nait_avec_son_projet(client, db_path):
         "date_creation": client.get("/api/projets").json()[0]["date_creation"],
         # COL-3, tranche 3 (D10) — sa collection de base, née avec lui.
         "mon_role": None, "gerable": True, "nb_collections": 1, "justification": None,
+        # COL-3, tranche 3b (v36) — la portée totale crée toujours ; le réglage, à qui gère,
+        # naît fermé.
+        "collection_creable": True, "membres_creent_collections": False,
         # COL-3, tranche 2 — la demande de suppression qui attend, à qui gère.
         "demande_suppression": None,
         # COL-3 — l'Administration dit « sans responsable » sans lire les membres un à un.
@@ -790,11 +793,18 @@ def test_la_fiche_propose_les_groupes_et_verifie_les_membres(client, decor, monk
 # --------------------------------------------------------------------------- #
 # Une collection naît dans UN projet
 # --------------------------------------------------------------------------- #
-def test_creer_une_collection_sans_projet_n_a_pas_change(client, db_path, derriere_proxy):
-    """Sans `projet_id`, ou en nommant le repli : une identité suffit, comme avant la v29.
-    Alice n'est membre de rien, et crée dans le premier projet — l'écran, qui enverra
-    toujours le projet courant, ne ferme donc pas ce que l'API laisse ouvert."""
+def test_creer_une_collection_sans_projet_suit_la_regle_du_repli(client, db_path,
+                                                                 derriere_proxy):
+    """Sans `projet_id`, ou en nommant le repli, la collection naît dans le premier projet.
+    Une identité y suffisait (« comme avant la v29 ») : RENVERSÉ le 2026-10-21 (COL-3,
+    tranche 3b, v36) — Alice, qui n'est de rien, n'y crée plus (403 nommé) ; membre du
+    repli quand il ouvre la création à ses membres, elle crée, et en est propriétaire."""
     repli = _repli(db_path)
+    r = client.post("/api/collections", json={"nom": "Sans rien dire"}, headers=ALICE)
+    assert r.status_code == 403 and "responsables" in r.json()["detail"]
+    assert _membre(client, repli, "alice").status_code == 200
+    assert client.put(f"/api/projets/{repli}/creation-de-collections", headers=ADMIN,
+                      json={"membres": True}).status_code == 200
     r = client.post("/api/collections", json={"nom": "Sans rien dire"}, headers=ALICE)
     assert r.status_code == 201 and r.json()["projet_id"] == repli
     r = client.post("/api/collections", json={"nom": "En nommant le repli",
@@ -807,20 +817,26 @@ def test_creer_une_collection_sans_projet_n_a_pas_change(client, db_path, derrie
 
 def test_creer_une_collection_dans_un_autre_projet_demande_d_en_etre(client, db_path,
                                                                     decor):
-    """Dans un projet qui n'est pas le repli, il faut en être MEMBRE. 404 à qui ne le voit
-    pas — et à un projet qui n'existe pas, la même réponse ; 403 nommé à qui en lit le nom
-    par une collection sans en être. La membre crée, devient propriétaire de SA collection,
-    et celle-ci est du projet."""
+    """Dans un projet qui n'est pas le repli, il faut en être MEMBRE — et, depuis la v36
+    (COL-3, tranche 3b), que le projet ouvre la création à ses membres. 404 à qui ne le
+    voit pas — et à un projet qui n'existe pas, la même réponse ; 403 nommé à qui en lit le
+    nom par une collection sans en être, et à la membre tant que le réglage est fermé. La
+    membre crée, devient propriétaire de SA collection, et celle-ci est du projet."""
     pid = decor["projet"]
     _acces(client, decor["collection"], "bob")
     assert _membre(client, pid, "alice").status_code == 200
+    r = client.post("/api/collections", json={"nom": "Trop tôt", "projet_id": pid},
+                    headers=ALICE)
+    assert r.status_code == 403 and "membres" in r.json()["detail"]
+    assert client.put(f"/api/projets/{pid}/creation-de-collections", headers=ADMIN,
+                      json={"membres": True}).status_code == 200
 
     assert client.post("/api/collections", json={"nom": "X", "projet_id": pid},
                        headers=CAROL).status_code == 404
     assert client.post("/api/collections", json={"nom": "X", "projet_id": 9999},
                        headers=ADMIN).status_code == 404
     r = client.post("/api/collections", json={"nom": "X", "projet_id": pid}, headers=BOB)
-    assert r.status_code == 403 and "membre" in r.json()["detail"]
+    assert r.status_code == 403 and "responsables" in r.json()["detail"]
     assert _sql(db_path, "SELECT 1 FROM collection WHERE nom = 'X'") == []
 
     r = client.post("/api/collections", json={"nom": "La mienne", "projet_id": pid},

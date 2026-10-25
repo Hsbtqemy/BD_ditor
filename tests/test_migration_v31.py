@@ -71,7 +71,7 @@ COLONNES_NEUVES = {"albums": ("tome", "lieu_masters"), "planches": ("master_orig
                    "document": ("projet_origine_nom",),
                    "demande": ("collection_id", "collection_nom", "cran"),
                    "demande_document": ("copie_id",),
-                   "projet": ("bac_a_sable_de", "efface_le", "jeu"),
+                   "projet": ("bac_a_sable_de", "efface_le", "jeu", "membres_creent_collections"),
                    "personnages": ("bac_a_sable_id",), "tags": ("espace",)}
 LIGNES = ("albums", "planches", "regions", "personnages", "projet", "projet_acces",
           "collection", "collection_acces", "collection_album", "document", "demande",

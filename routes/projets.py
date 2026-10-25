@@ -42,7 +42,7 @@ from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET,
                       sql_projet_de)
 
 from socle import (
-    AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate,
+    AccesMembresIn, CreationCollectionsIn, MembreIn, ProjetIn, ProjetUpdate,
     _bac_a_sable_de, _get_projet, _refuser_le_jeu, _rows, _sortir_du_bac,
     _supprimer_projet, db,
     portee_courante,
@@ -96,7 +96,14 @@ def _vue(conn, portee: autorisation.Portee, p: dict) -> dict:
     vue = {"id": p["id"], "nom": p["nom"], "description": p["description"],
            "repli": bool(p["repli"]), "date_creation": p["date_creation"],
            "mon_role": _role_dans(portee, p["id"]), "gerable": gerable,
-           "nb_collections": sum(1 for i in ids if portee.peut_lire(i))}
+           "nb_collections": sum(1 for i in ids if portee.peut_lire(i)),
+           # v36 (COL-3, tranche 3b) — la question, posée au serveur projet par projet :
+           # l'appelant peut-il y CRÉER une collection (`Portee.peut_creer_collection`) ?
+           # L'écran n'offre « + Créer une collection » que là ; il ne le déduit pas du rôle,
+           # le réglage du projet en décide pour un membre.
+           "collection_creable": portee.peut_creer_collection(
+               p["id"], membres_creent=bool(p.get("membres_creent_collections")),
+               bac_a_sable=p.get("bac_a_sable_de") is not None)}
     if p.get("bac_a_sable_de") is not None:
         vue.update(_vue_du_bac(portee, p))
     if gerable:
@@ -125,6 +132,10 @@ def _vue(conn, portee: autorisation.Portee, p: dict) -> dict:
             "SELECT id, nom, acces_membres FROM collection WHERE id = ?", (b,)).fetchone()
         vue["base"] = None if ligne is None else {
             "id": ligne["id"], "nom": ligne["nom"], "acces_membres": ligne["acces_membres"]}
+        # v36 — le RÉGLAGE, pour qui le règle : les membres peuvent-ils créer des
+        # collections ? (`PUT …/creation-de-collections`). Un membre lit la réponse qui le
+        # concerne dans `collection_creable`, pas le réglage lui-même.
+        vue["membres_creent_collections"] = bool(p.get("membres_creent_collections"))
         vue["nb_membres"] = conn.execute(
             "SELECT COUNT(*) FROM projet_acces WHERE projet_id = ? AND role <> ?",
             (p["id"], autorisation.RESPONSABLE)).fetchone()[0]
@@ -392,6 +403,37 @@ def regler_acces_membres(projet_id: int, payload: AccesMembresIn,
                             apres={"membres_du_projet": projet_id, "niveau": position})
     conn.commit()
     return {"projet_id": projet_id, "collection_id": base, "acces_membres": position}
+
+
+@router.put("/api/projets/{projet_id}/creation-de-collections")
+def regler_creation_de_collections(projet_id: int, payload: CreationCollectionsIn,
+                                   conn: sqlite3.Connection = Depends(db),
+                                   portee: autorisation.Portee = Depends(portee_courante)):
+    """Règle si les MEMBRES du projet peuvent y créer des collections (v36, COL-3, tranche
+    3b ; Hugo, 2026-10-21) — NON par défaut. Ses responsables et les administrateurs créent
+    toujours (`Portee.peut_creer_collection`).
+
+    Réservé à qui GÈRE le projet : 404 sur un projet qu'on ne voit pas, 403 nommé sur un
+    projet qu'on voit sans le gérer. Ni sur le jeu, ni dans un bac à sable, où ses invités
+    créent toujours (409 nommé). Écrit au journal sous `projet` (retenu de toute sortie) ;
+    rien ne s'écrit si rien ne change. Fermer n'efface rien : les collections déjà créées
+    par des membres restent les leurs."""
+    p = _get_projet(conn, portee, projet_id, gerer=True,
+                    motif="Régler qui crée des collections dans un projet revient à son "
+                          "responsable.")
+    _refuser_le_jeu(conn, projet_id=projet_id)
+    if p["bac_a_sable_de"] is not None:
+        raise HTTPException(409, "C'est un bac à sable : ses invités y créent des collections, "
+                                 "et il s'efface chaque lundi — rien à régler.")
+    avant = bool(p["membres_creent_collections"])
+    if avant != payload.membres:
+        conn.execute("UPDATE projet SET membres_creent_collections = ? WHERE id = ?",
+                     (int(payload.membres), projet_id))
+        journal.journaliser(conn, "modification", "projet", projet_id,
+                            avant={"membres_creent_collections": avant},
+                            apres={"membres_creent_collections": payload.membres})
+    conn.commit()
+    return {"projet_id": projet_id, "membres_creent_collections": payload.membres}
 
 
 # --------------------------------------------------------------------------- #

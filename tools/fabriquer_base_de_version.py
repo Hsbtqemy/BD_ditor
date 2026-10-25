@@ -40,7 +40,10 @@ Ce que le parcours pose, et pourquoi :
   attend ;
 - à partir de la v34 (`_parcours_v34`, COL-4) : une copie amorcée (`region_origine`) ; deux
   collections détruites en haut de leur table, la première nommée encore par une demande,
-  la seconde par le seul journal. Les planches du code v34 notent leur `master_origine`.
+  la seconde par le seul journal. Les planches du code v34 notent leur `master_origine` ;
+- à partir de la v35 (`_parcours_v35`, COL-3, tranche 3b) : le jeu des bacs à sable, préparé
+  par son outil ; deux bacs à sable, dont l'un où un invité a créé une collection et importé
+  un album ; une collection créée par un simple membre d'un projet ordinaire.
 
 Le parcours n'emploie que des routes stables depuis la v29. Si une version les change, il
 gagne une branche sur `database.SCHEMA_VERSION` plutôt que de perdre l'ancienne forme :
@@ -209,6 +212,8 @@ def _jouer_le_parcours(main, database, journal) -> dict:
             faits.update(_parcours_v31(c, principal, albums[1], faits))
         if database.SCHEMA_VERSION >= 34:
             faits.update(_parcours_v34(c, albums[1], faits))
+        if database.SCHEMA_VERSION >= 35:
+            faits.update(_parcours_v35(c, database, faits))
     return faits
 
 
@@ -406,6 +411,51 @@ def _parcours_v34(c, album_de_sam: int, faits: dict) -> dict:
     return {"album_amorce": amorcee, "collections_detruites": [visee, haute]}
 
 
+def _parcours_v35(c, database, faits: dict) -> dict:
+    """Ce qu'une base v35 doit porter pour que la v36 ait de quoi se tromper (COL-3, tranche
+    3b : qui crée une collection devient un réglage du projet) : le JEU des bacs à sable,
+    préparé par son outil ; deux BACS À SABLE — celui de Léa, où Sam est invité, a créé une
+    collection et importé un album ; celui de l'administrateur — ; et une collection créée
+    par un simple MEMBRE d'un projet ordinaire (Sam, dans Étude B), ce que la v35 laissait
+    faire. La v36 ajoute à `projet` un réglage que tout l'existant reçoit à « non », sans
+    rien changer d'autre. Par les routes du code v35 et par son outil du jeu, importé du
+    code extrait."""
+    sys.path.insert(0, str(Path.cwd() / "tools"))
+    import preparer_jeu
+    depot = Path(os.environ["BD_DATA_DIR"]) / "jeu-depot"
+    depot.mkdir()
+    for nom in ("j1.png", "j2.png"):
+        (depot / nom).write_bytes(_png())
+    bulle = {"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9, "texte": "LE OTAGE"}
+    (depot / "jeu.json").write_text(json.dumps({"documents": [
+        {"cle": "parcours", "titre": "Le parcours", "role": "pas-a-pas", "rang": 1,
+         "cran": "images", "planches": [{"fichier": "j1.png"}]},
+        {"cle": "exemple", "titre": "Un exemple", "role": "exemple", "cran": "transcription",
+         "planches": [{"fichier": "j2.png", "regions": [
+             {"type": "case", "x": 0, "y": 0, "w": 30, "h": 30, "enfants": [bulle]}]}]},
+    ]}, ensure_ascii=False), encoding="utf-8")
+    with database.connect() as conn:
+        preparer_jeu.preparer(conn, depot=depot, appliquer_=True, dire=lambda _l: None)
+        jeu = database.projet_de_jeu(conn)
+    bac_lea = _ok(c.post("/api/bac-a-sable", headers=LEA), 201)
+    _ok(c.put(f"/api/projets/{bac_lea['id']}/membres", headers=LEA,
+              json={"genre": "utilisateur", "principal": "sam", "role": "membre"}), 200)
+    chez_sam = _ok(c.post("/api/collections", headers=SAM,
+                          json={"nom": "Chez Sam", "projet_id": bac_lea["id"]}), 201)["id"]
+    du_bac = _ok(c.post("/api/albums", headers=SAM,
+                        json={"titre": "Importé au bac", "collection_id": chez_sam}),
+                 201)["id"]
+    _ok(c.post(f"/api/albums/{du_bac}/import", headers=SAM,
+               files={"file": ("p.png", _png(), "image/png")}), 201)
+    bac_admin = _ok(c.post("/api/bac-a-sable", headers=ADMIN), 201)
+    par_un_membre = _ok(c.post("/api/collections", headers=SAM,
+                               json={"nom": "Par un membre",
+                                     "projet_id": faits["projet_etude"]}), 201)["id"]
+    return {"projet_de_jeu": jeu, "bacs_a_sable": [bac_lea["id"], bac_admin["id"]],
+            "collection_d_un_invite": chez_sam, "album_du_bac": du_bac,
+            "collection_d_un_membre": par_un_membre}
+
+
 def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict) -> None:
     conn = sqlite3.connect(base)
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -439,6 +489,13 @@ def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict)
                                  for t in ("region_origine",)})
         faits["planches_avec_master_origine"] = conn.execute(
             "SELECT COUNT(*) FROM planches WHERE master_origine IS NOT NULL").fetchone()[0]
+    if version >= 35:
+        faits["comptes"].update({t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                                 for t in ("jeu_document",)})
+        faits["natures_de_projet"] = dict(conn.execute(
+            "SELECT CASE WHEN jeu = 1 THEN 'jeu' WHEN bac_a_sable_de IS NOT NULL "
+            "THEN 'bac à sable' WHEN repli = 1 THEN 'repli' ELSE 'ordinaire' END AS n, "
+            "COUNT(*) FROM projet GROUP BY n ORDER BY n").fetchall())
     try:
         relatif = sortie.relative_to(RACINE).as_posix()
     except ValueError:
