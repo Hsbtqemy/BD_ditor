@@ -145,6 +145,9 @@ test("le panneau : faire, demander, attendre — et une planche ne se demande pa
   const pl = E.panneauRepartir({ direct: false, planche: true });
   assert.equal(pl.mode, "planche");
   assert.ok(pl.texte.includes("ne se demande pas"));
+  // Hugo, 2026-10-25 : il renvoie à la demande sur l'album entier, ou à un administrateur.
+  assert.ok(pl.texte.includes("Demandez-le pour l'album entier"), pl.texte);
+  assert.ok(pl.texte.includes("adressez-vous à un administrateur"), pl.texte);
   const att = E.panneauRepartir({ direct: false, attente: { cran: "decoupage",
                                                             date_creation: "2026-10-24" }, dateLue: date });
   assert.equal(att.mode, "attente");

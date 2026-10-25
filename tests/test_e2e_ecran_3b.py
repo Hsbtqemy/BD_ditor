@@ -186,6 +186,8 @@ def test_qui_cree_une_collection(page, decor):
     _ouvrir(page, d, "noe", projet=d["projet"])
     creer = page.locator("#col-creer")
     expect(creer).to_be_visible(timeout=5000)
+    # Sous la liste des collections, la place de la maquette (Hugo, 2026-10-25).
+    expect(page.locator("#collections-bloc #col-creer")).to_have_count(1)
     expect(creer).to_have_attribute("aria-disabled", "true")
     expect(creer).to_have_attribute(
         "title", "Dans « Oralité », seuls les responsables créent des collections : demandez-le à Paule Prop.")
@@ -428,6 +430,8 @@ def test_une_planche_ne_se_demande_pas_et_un_album_se_demande(page, decor):
     fiche.locator(f'[data-repartir-planche="{d["planches"]["Pirates"]}"]').click()
     expect(page.locator("#repartir-modal")).to_be_visible()
     expect(page.locator("#rp-raison")).to_contain_text("ne se demande pas", timeout=5000)
+    expect(page.locator("#rp-raison")).to_contain_text(
+        "Demandez-le pour l'album entier, ou adressez-vous à un administrateur de l'instance.")
     expect(page.locator("#rp-ok")).to_be_hidden()
     expect(page.locator("#rp-motif-wrap")).to_be_hidden()
     page.keyboard.press("Escape")

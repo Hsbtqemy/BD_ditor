@@ -268,8 +268,8 @@
     if (planche) {
       return { mode: "planche",
                texte: "D'autres se servent de cet album, ou ce n'est pas vous qui avez créé cette "
-                 + "copie : repartir de zéro sur une planche ne se demande pas. Adressez-vous à "
-                 + "un administrateur de l'instance." };
+                 + "copie : repartir de zéro sur une planche ne se demande pas. Demandez-le pour "
+                 + "l'album entier, ou adressez-vous à un administrateur de l'instance." };
     }
     if (attente) {
       const quand = attente.date_creation && dateLue ? `, le ${dateLue(attente.date_creation)}` : "";

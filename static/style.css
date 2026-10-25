@@ -3615,6 +3615,9 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
    la corbeille éteinte — un contour pointillé, l'encre atténuée — plutôt qu'une opacité,
    qui le rendait indiscernable d'un bouton absent en thème clair. */
 #col-creer[hidden] { display: none; }
+/* Sous la liste des collections (écran de la 3b, la place de la maquette). */
+.bi-creer { margin: .35rem 0 0; }
+.bi-creer:has(> #col-creer[hidden]) { display: none; }
 .ghost.eteint { border-style: dashed; border-color: var(--text-muted); color: var(--text-muted);
                 cursor: not-allowed; }
 .ghost.eteint:hover { background: transparent; }

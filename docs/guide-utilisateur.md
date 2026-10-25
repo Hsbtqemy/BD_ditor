@@ -477,7 +477,7 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   *Dans toutes* choisit l'union ou l'intersection ; *Tout ce que vous lisez* défait le calque.
   **Le nom** d'une collection **ouvre sa fiche**, sans rien filtrer. Dessous, les albums du
   projet — ceux que vous lisez —, chacun nommant ses collections, et un champ pour chercher
-  par titre, série ou auteur. *+ Créer une collection* ouvre son champ au geste — à qui le
+  par titre, série ou auteur. *+ Créer une collection*, sous la liste des collections, ouvre son champ au geste — à qui le
   projet le permet (ci-dessous, *Collections*) ; pour un membre qu'il ne le permet pas, le
   bouton reste à sa place, **éteint**, et dit au survol (et au clavier, quand on l'active) que
   *seuls les responsables créent des collections* dans ce projet, en les nommant ; qui n'est
@@ -602,7 +602,8 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   pas, Ctrl+Z compris.* Sinon, pour l'album : le motif, la certification (*Repartir de
   zéro détruit ce qui a été posé sur les planches au-dessus du cran choisi…*) et *Envoyer la
   demande* ; un administrateur répond dans *À faire*. **Une planche ne se demande pas** : à
-  qui ne peut pas la ramener lui-même, le panneau le dit et n'offre rien. Une copie remise à
+  qui ne peut pas la ramener lui-même, le panneau le dit, n'offre aucun bouton, et renvoie
+  à la demande sur l'album entier ou à un administrateur. Une copie remise à
   zéro le dit dans la tête de sa fiche : *repartie de la transcription le JJ/MM/AAAA* — qui
   l'a fait, au survol, pour qui écrit dans la copie.
 - **Retirer du projet** (tranche 3b) : *Retirer du projet…*, dans la tête de la fiche d'un

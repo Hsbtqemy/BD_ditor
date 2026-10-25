@@ -60,23 +60,7 @@
       <div class="lf-liste bi-liste">
         <div class="lf-tete-liste">
           <span class="lf-compte" id="bi-compte" role="status" aria-live="polite"></span>
-          <!-- Le champ n'apparaît qu'au geste (UX-18) : un champ permanent en pleine largeur
-               disait « créer » plus fort que tout le reste. -->
-          <button id="col-creer" class="ghost small" type="button" aria-expanded="false"
-                  aria-controls="col-creer-zone">+ Créer une collection</button>
-          <!-- COL-3, écran de la 3b (Hugo, 2026-10-25) — ÉTEINT pour un membre que le réglage
-               du projet n'autorise pas : à sa place, focalisable, la raison en infobulle et
-               ici, pour qui l'entend. -->
-          <span id="col-creer-raison" class="sr-only"></span>
         </div>
-        <div id="col-creer-zone" class="contrib-add col-creer-zone" hidden>
-          <input id="col-nom" placeholder="Nom de la collection" autocomplete="off"
-                 aria-label="Nom de la nouvelle collection">
-          <button id="col-add" class="primary small" type="button">Créer</button>
-        </div>
-        <!-- Sous le champ, et non sous la liste : le message se lit là où l'on a agi
-             (COL-2, 2026-09-16). Vide, il n'a aucune hauteur. -->
-        <p id="col-creer-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
 
         <section id="collections-bloc" class="bi-calques" aria-labelledby="collections-titre">
           <div class="bi-calques-tete">
@@ -95,6 +79,25 @@
             <button type="button" data-mode="une" aria-pressed="true">Dans l'une</button>
             <button type="button" data-mode="toutes" aria-pressed="false">Dans toutes</button>
           </div>
+          <!-- « + Créer une collection » SOUS la liste des collections qu'il allonge (COL-3,
+               écran de la 3b, tranché par Hugo le 2026-10-25 : la place de la maquette). Le
+               champ n'apparaît qu'au geste (UX-18) : un champ permanent en pleine largeur
+               disait « créer » plus fort que tout le reste. ÉTEINT pour un membre que le
+               réglage du projet n'autorise pas : focalisable, la raison en infobulle et dans
+               `#col-creer-raison`, pour qui l'entend. -->
+          <div class="bi-creer">
+            <button id="col-creer" class="ghost small" type="button" aria-expanded="false"
+                    aria-controls="col-creer-zone">+ Créer une collection</button>
+            <span id="col-creer-raison" class="sr-only"></span>
+          </div>
+          <div id="col-creer-zone" class="contrib-add col-creer-zone" hidden>
+            <input id="col-nom" placeholder="Nom de la collection" autocomplete="off"
+                   aria-label="Nom de la nouvelle collection">
+            <button id="col-add" class="primary small" type="button">Créer</button>
+          </div>
+          <!-- Sous le champ : le message se lit là où l'on a agi (COL-2, 2026-09-16). Vide,
+               il n'a aucune hauteur. -->
+          <p id="col-creer-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
         </section>
 
         <h2 id="albums-titre" class="lf-groupe bi-albums-titre">Albums</h2>

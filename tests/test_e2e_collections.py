@@ -442,25 +442,29 @@ def test_faire_entrer_demande_de_dire_compte_ou_groupe(page, decor):
 
 def _message_sous_le_champ(page, motif):
     """Le message de création, trouvé par son texte puis situé : sous le geste de création
-    — le bouton « + Créer une collection », et son champ quand il est ouvert — et au-dessus
-    de la liste des collections, et visible. Le champ se referme une fois la collection
-    créée (UX-18) : c'est le bouton qui reste le lieu du geste."""
+    — le bouton « + Créer une collection », et son champ quand il est ouvert —, lui-même
+    SOUS la liste des collections qu'il allonge (COL-3, écran de la 3b, la place de la
+    maquette tranchée par Hugo le 2026-10-25), et visible. Le champ se referme une fois la
+    collection créée (UX-18) : c'est le bouton qui reste le lieu du geste."""
     message = page.locator("#biblio [role=status]", has_text=motif)
     message.wait_for(timeout=5000)
     zone = page.locator("#col-creer-zone")
     champ = (zone if zone.is_visible() else page.locator("#col-creer")).bounding_box()
     liste = page.locator("#col-body").bounding_box()
     m = message.bounding_box()
-    assert champ["y"] + champ["height"] <= m["y"] and m["y"] + m["height"] <= liste["y"], (
-        f"le message « {message.inner_text()} » n'est pas entre le geste de création "
-        f"({champ}) et la liste ({liste}) : {m}")
+    assert liste["y"] + liste["height"] <= champ["y"], (
+        f"le geste de création ({champ}) n'est pas sous la liste des collections ({liste})")
+    assert champ["y"] + champ["height"] <= m["y"], (
+        f"le message « {message.inner_text()} » n'est pas sous le geste de création "
+        f"({champ}) : {m}")
     assert _se_voit(message), f"le message de création n'est pas visible ({m})"
     return message.inner_text()
 
 
 def test_la_creation_parle_sous_son_champ(page, decor):
-    """Le message de création — refus comme succès — s'affiche sous le geste, en haut de la
-    liste, et non sous elle. Situé à l'écran et plus seulement cherché à son adresse :
+    """Le message de création — refus comme succès — s'affiche sous le geste, et le geste
+    sous la liste des collections (écran de la 3b, 2026-10-25 ; il était en tête de la liste
+    jusque-là). Situé à l'écran et plus seulement cherché à son adresse :
     `#col-creer-msg` déplacé sous la liste garderait `test_a11y_bibliotheque_collections`
     vert, qui ne lit que l'adresse — relevé par la passe de revue du 2026-09-16."""
     with _client(decor["base"]) as c:
