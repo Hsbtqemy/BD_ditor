@@ -405,6 +405,90 @@ def test_entre_deux_projets_une_correction_recopiee_arrive_sans_auteur(client, a
                 (bulle,)) == [{"auteur": "importeur"}]
 
 
+def _copie_au_cran_grammaire(client, s, db_path):
+    """La bulle de Le Lotus bleu porte une correction d'`importeur` ; `resp` en demande la
+    grammaire pour la base d'Étude P, `resp2` accepte. Rend la bulle copiée."""
+    o = s["albums"]["d1"]
+    pl = client.get(f"/api/albums/{o}/planches", headers=IMPORTEUR).json()[0]["id"]
+    bulle = [x for x in client.get(f"/api/planches/{pl}/regions", headers=IMPORTEUR).json()
+             if x["type"] == "bulle"][0]["id"]
+    _sql(db_path, "DELETE FROM tokens WHERE region_id = ?", (bulle,))
+    # La forme que le moteur rend (il minuscule le lettrage) : la validation réindexe, et une
+    # correction dont la forme ne se retrouve plus partirait à revérifier.
+    _sql(db_path, "INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                  "VALUES (?, 0, 'tintin', 'tintin', 'PROPN', '')", (bulle,))
+    _sql(db_path, "INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, etat, "
+                  "auteur) VALUES (?, 0, 'tintin', 'Tintin', 'PROPN', 'corrige', "
+                  "'importeur')", (bulle,))
+    ligne = _demander_ailleurs(client, s, cran="grammaire")
+    _ok(_repondre(client, ligne["demande_id"], "acceptee", RESP2, album_id=o))
+    return _sql(db_path, "SELECT region_id FROM region_origine WHERE region_source_id = ?",
+                (bulle,))[0]["region_id"]
+
+
+def test_une_correction_de_la_seconde_de_la_copie_n_est_pas_recopiee(client, ailleurs,
+                                                                     db_path):
+    """Contre-relecture de la 3b : la marque est EXPLICITE (décision du pilotage,
+    2026-10-25). Une correction posée sur la copie dans la seconde même de sa naissance n'est
+    pas recopiée — la date la confondait."""
+    copiee = _copie_au_cran_grammaire(client, ailleurs, db_path)
+    _sql(db_path, "INSERT INTO token_correction (region_id, ordre, forme, lemme, etat, "
+                  "auteur, date_modif) VALUES (?, 1, 'ET', 'et', 'corrige', 'resp', "
+                  "(SELECT c.creee_le FROM copie c JOIN planches p ON p.album_id = c.album_id "
+                  " JOIN regions r ON r.planche_id = p.id WHERE r.id = ?))", (copiee, copiee))
+    assert _sql(db_path, "SELECT ordre, recopiee FROM token_correction WHERE region_id = ? "
+                         "ORDER BY ordre", (copiee,)) == [{"ordre": 0, "recopiee": 1},
+                                                          {"ordre": 1, "recopiee": 0}]
+
+
+def test_valider_une_correction_recopiee_n_en_fait_pas_l_auteur(client, ailleurs, db_path):
+    """Décision du pilotage (2026-10-25) : la marque survit à la validation, et valider une
+    correction recopiée n'en fait pas l'auteur — entre deux projets, elle reste sans auteur
+    (le `COALESCE` de la route l'aurait donnée au validateur), passe `valide`, et qui l'a
+    validée se lit au journal. La corriger, en revanche, la fait sienne et ôte la marque."""
+    from pipeline import nlp
+    if not nlp.nlp_available():
+        pytest.skip("la validation réindexe la région : sans moteur, ses tokens partent")
+    copiee = _copie_au_cran_grammaire(client, ailleurs, db_path)
+    toks = _ok(client.post(f"/api/regions/{copiee}/grammaire/valider", headers=RESP))
+    t0 = next(t for t in toks if t["ordre"] == 0)
+    assert (t0["corr_auteur"], t0["corr_recopiee"], t0["provenance"]) == (None, True, "valide")
+    assert _sql(db_path, "SELECT auteur, recopiee, etat FROM token_correction "
+                         "WHERE region_id = ? AND ordre = 0", (copiee,)) == [
+        {"auteur": None, "recopiee": 1, "etat": "valide"}]
+    assert _sql(db_path, "SELECT agent FROM evenement WHERE cible_table = 'regions' "
+                         "AND type = 'validation' AND cible_id = ?", (copiee,)) == [
+        {"agent": "resp"}]
+    toks = _ok(client.put(f"/api/regions/{copiee}/tokens/0", headers=RESP,
+                          json={"lemme": "Tintin", "etat": "corrige"}))
+    t0 = next(t for t in toks if t["ordre"] == 0)
+    assert (t0["corr_auteur"], t0["corr_recopiee"]) == ("resp", False)
+
+
+def test_la_lecture_se_relit_a_la_reponse(client, prise):
+    """Contre-relecture de la 3b : `resp2` lit la copie source par un GROUPE, retiré entre la
+    demande et la réponse. La copie quitte ses `copies`, accepter en la nommant répond 404 ;
+    il peut encore refuser."""
+    repli = _repli(client)
+    _ok(client.put(f"/api/projets/{repli}/membres", headers=ADMIN,
+                   json={"principal": "resp2", "role": "responsable"}))
+    _ok(client.put(f"/api/collections/{prise['principale']}/acces", headers=ADMIN,
+                   json={"genre": "groupe", "principal": "lecteurs", "niveau": "lecture"}))
+    r2 = {"Remote-User": "resp2", "Remote-Groups": "lecteurs"}
+    o = prise["albums"]["d1"]
+    _travailler(client, o, IMPORTEUR)
+    ligne = _demander_ailleurs(client, prise)
+    (d,) = _ok(client.get(f"/api/projets/{repli}/demandes-recues", headers=r2))
+    assert [c["album_id"] for c in d["copies"]] == [o]
+    _ok(client.delete(f"/api/collections/{prise['principale']}/acces/groupe/lecteurs",
+                      headers=ADMIN), 204)
+    (d,) = _ok(client.get(f"/api/projets/{repli}/demandes-recues", headers=r2))
+    assert d["copies"] == []
+    assert _repondre(client, ligne["demande_id"], "acceptee", r2,
+                     album_id=o).status_code == 404
+    assert _ok(_repondre(client, ligne["demande_id"], "refusee", r2))["reponse"] == "refusee"
+
+
 def test_un_refus_la_ferme_pour_tous(client, ailleurs):
     ligne = _demander_ailleurs(client, ailleurs)
     _ok(_repondre(client, ligne["demande_id"], "refusee", RESP2))

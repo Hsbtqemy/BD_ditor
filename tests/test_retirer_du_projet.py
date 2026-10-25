@@ -93,6 +93,30 @@ def test_retirer_du_projet_clot_les_demandes_de_repartir(client, efface):
                     supprimer.json()["id"]: (None, None)}
 
 
+def test_sortir_de_sa_derniere_collection_clot_aussi_les_demandes_de_repartir(client, efface):
+    """Contre-relecture de la 3b : l'envoi ORDINAIRE au fonds — supprimer la copie de sa
+    dernière collection — clôt les demandes de repartir de zéro comme le retrait du projet.
+    X1 ne vit que dans X ; `ecrivain`, qui l'a créée et ne peut l'effacer (le travail
+    recopié d'`importeur`), demande les deux, puis la supprime de X."""
+    db, x1 = efface["db"], efface["x1"]
+    repartir = client.post("/api/demandes", headers=ECRIVAIN,
+                           json={"genre": "repartir", "album_id": x1, "cran": "images",
+                                 "motif": "Fausse piste", "certifie": True})
+    assert repartir.status_code == 201, repartir.text
+    supprimer = client.post("/api/demandes", headers=ECRIVAIN,
+                            json={"genre": "suppression_document", "album_id": x1,
+                                  "motif": "Importé par erreur", "certifie": True})
+    assert supprimer.status_code == 201, supprimer.text
+    r = client.delete(f"/api/albums/{x1}/collections/{efface['x']}", headers=ECRIVAIN)
+    assert r.status_code == 204, r.text
+    assert _collections(db, x1) == []
+    etat = {r["id"]: (r["reponse"], r["repondu_par"]) for r in _sql(
+        db, "SELECT id, reponse, repondu_par FROM demande WHERE id IN (?, ?)",
+        (repartir.json()["id"], supprimer.json()["id"]))}
+    assert etat == {repartir.json()["id"]: ("refusee", "ecrivain"),
+                    supprimer.json()["id"]: (None, None)}
+
+
 def test_un_administrateur_le_rend(client, efface):
     """La copie emporte son projet — écrit sur elle avant de sortir, même quand rien ne
     l'avait écrit (une copie d'avant le fonds) —, et ne revient que dans ce projet. Rendue

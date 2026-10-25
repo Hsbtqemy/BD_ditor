@@ -319,8 +319,10 @@ def test_dans_le_projet_une_correction_recopiee_garde_son_auteur_et_se_tait(clie
     # La source garde la sienne, qui n'est pas recopiée.
     toks = client.get(f"/api/regions/{source['bulle']}/tokens", headers=LEA).json()
     assert [t["corr_recopiee"] for t in toks] == [False]
-    _sql(db_path, "UPDATE token_correction SET date_modif = datetime('now', '+1 day'), "
-                  "auteur = 'sam' WHERE region_id = ?", (bulle,))
+    # Ce que fait `corriger_token` sur une correction recopiée : elle devient celle de qui
+    # la corrige, et perd sa marque (la route, avec le moteur, est jouée plus bas).
+    _sql(db_path, "UPDATE token_correction SET auteur = 'sam', recopiee = 0 "
+                  "WHERE region_id = ?", (bulle,))
     toks = client.get(f"/api/regions/{bulle}/tokens", headers=LEA).json()
     assert [(t["corr_auteur"], t["corr_recopiee"]) for t in toks] == [("sam", False)], toks
     # Et « qui perd quoi » la nomme : elle a été faite sur CETTE copie.
@@ -377,6 +379,45 @@ def test_une_couche_posee_ensuite_ne_ranime_pas_celle_de_la_source(client, db_pa
     _ok(client.put(f"/api/regions/{case}/annotation", headers=LEA,
                    json={"note": "à moi", "tags": []}))
     assert _destructible(client, b, LEA) is True
+
+
+def test_une_couche_reposee_apres_une_remise_a_zero_ne_ranime_rien(client, db_path, source):
+    """Contre-relecture de la 3b : la couche qui VIT doit être la couche RECOPIÉE (la marque
+    `recopiee`, v36), pas n'importe quelle couche posée sur la région. `sam` annote la case de
+    la source ; `lea` en part jusqu'aux annotations ; la propriétaire d'Étude ramène la copie
+    à la transcription, puis `lea` annote elle-même la case copiée : le travail de `sam` ne
+    revient pas, et `lea` supprime seule sa copie."""
+    _ok(client.put(f"/api/regions/{source['case']}/annotation", headers=SAM,
+                   json={"note": "plan large", "tags": []}))
+    b = _copier(source, "annotations")
+    assert _destructible(client, b, LEA) is False
+    _accorder(client, source["etude"], "proprio", "proprietaire")
+    _ok(client.post(f"/api/albums/{b}/repartir", headers={"Remote-User": "proprio"},
+                    json={"cran": "transcription"}))
+    case = _sql(db_path, "SELECT o.region_id FROM region_origine o JOIN regions r "
+                         "ON r.id = o.region_id JOIN planches p ON p.id = r.planche_id "
+                         "WHERE o.region_source_id = ? AND p.album_id = ?",
+                (source["case"], b))[0]["region_id"]
+    _ok(client.put(f"/api/regions/{case}/annotation", headers=LEA,
+                   json={"note": "à moi", "tags": []}))
+    assert _sql(db_path, "SELECT recopiee FROM annotations WHERE region_id = ?",
+                (case,)) == [{"recopiee": 0}]
+    assert _destructible(client, b, LEA) is True
+
+
+def test_les_couches_recopiees_portent_leur_marque(db_path, source):
+    """`copier_le_travail` marque EXPLICITEMENT ce qu'il recopie — annotation, attribut de
+    case, locuteur, présence, correction — et rien de la source."""
+    b = _copier(source, "annotations")
+    regions = ("SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
+               "WHERE p.album_id = ?")
+    for t in database.COUCHES_RECOPIEES:
+        copie = _sql(db_path, f"SELECT DISTINCT recopiee FROM {t} WHERE region_id IN "
+                              f"({regions})", (b,))
+        src = _sql(db_path, f"SELECT DISTINCT recopiee FROM {t} WHERE region_id IN "
+                            f"({regions})", (source["a"],))
+        assert copie == [{"recopiee": 1}], (t, copie)
+        assert src == [{"recopiee": 0}], (t, src)
 
 
 def test_le_travail_fait_sur_la_source_apres_la_copie_ne_compte_pas(client, db_path, source):

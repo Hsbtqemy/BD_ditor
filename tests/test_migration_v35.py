@@ -30,7 +30,9 @@ import database
 BASE_V34 = Path(__file__).resolve().parent / "bases" / "v34-35cc4a3.sql"
 COLONNES_NEUVES = {"projet": ("bac_a_sable_de", "efface_le", "jeu", "membres_creent_collections"), "tags": ("espace",),
                    "personnages": ("bac_a_sable_id",)}
-TABLES_NEUVES = {"jeu_document", "retrait_vu"}  # `retrait_vu` : la v36
+# La v36 marque les couches qu'une copie amorcée reprend (`recopiee`).
+COLONNES_NEUVES.update({t: ("recopiee",) for t in database.COUCHES_RECOPIEES})
+TABLES_NEUVES = {"jeu_document", "retrait_vu", "geste_sur_copie"}  # les deux derniers : la v36
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
           "copie", "demande", "demande_document", "region_origine", "contribution",

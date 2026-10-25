@@ -683,7 +683,14 @@ class Portee:
         2026-10-25) — sans quoi la dernière copie sortait du fonds sans administrateur :
         prendre une copie vierge (immédiat pour qui lit une copie dans le projet), effacer
         l'originale travaillée par d'autres (permis, une sœur existe), puis effacer sa
-        copie vierge (« même dernière »).
+        copie vierge (« même dernière »). Et pour la dernière copie, « personne d'autre n'y a
+        travaillé » se lit sur TOUT ce qui y a jamais été fait (Hugo, 2026-10-25,
+        `geste_sur_copie`) : le moindre geste d'un autre, même défait, effacé depuis ou
+        emporté par une remise à zéro, l'envoie à un administrateur. Sans quoi deux détours la
+        faisaient sortir du fonds : la remettre à zéro (chemin 2) puis la supprimer, ou
+        supprimer une à une les régions de l'autre. Les autres suppressions lisent ce qui vit
+        encore. La règle de la dernière copie n'a pas cours dans un projet ISOLÉ (un bac à
+        sable, le jeu) : rien n'en sort vers le fonds commun (contre-relecture de la 3b).
 
         Les chemins 2 et 3 ne valent pas dans un bac à sable, qui a son chemin à lui
         (ci-dessous) : un invité qui y possède une collection garde la règle commune du
@@ -767,15 +774,26 @@ class Portee:
             params += [*p_tient, *p_pas_partage]
         if detruire != "0":
             autrui, p_autrui = _sql_travail_d_autrui(alias, self.utilisateur)
-            # Le créateur : de la copie d'ORIGINE même dernière, de toute autre copie tant
-            # qu'une sœur garde le document au fonds commun (constat 1 de la relecture).
-            derniere = (f" AND (_sc.cran = '{CRAN_ORIGINE}' OR {_sql_une_soeur(alias)})"
-                        if derniere_copie_gardee else "")
+            # Le créateur : de toute copie tant qu'une sœur garde le document au fonds
+            # commun, ou qu'elle vit dans un projet ISOLÉ — un bac à sable, le jeu : rien n'y
+            # sort du fonds commun, rien ne s'y demande à un administrateur (contre-relecture
+            # de la 3b, régression COL-4) ; de la DERNIÈRE copie, seulement si c'est la copie
+            # d'ORIGINE (constat 1 de la relecture) et que PERSONNE D'AUTRE n'y a JAMAIS fait
+            # un geste — défait, effacé depuis, emporté par une remise à zéro (Hugo,
+            # 2026-10-25 : `geste_sur_copie`). Les autres suppressions lisent ce qui vit.
+            derniere, p_derniere = "", []
+            if derniere_copie_gardee:
+                derniere = (f" AND ({_sql_une_soeur(alias)} OR {_sql_isolee(alias)} "
+                            f"OR (_sc.cran = '{CRAN_ORIGINE}' AND NOT EXISTS (SELECT 1 FROM "
+                            f"geste_sur_copie _sg WHERE _sg.album_id = {alias} "
+                            f"AND _sg.agent IS NOT ?)))")
+                p_derniere = [self.utilisateur]
             bon_marche = (f"({detruire} "
                           f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = {alias} "
                           f"AND _sc.creee_par = ?{derniere}) AND {pas_partage})")
             cas.append(f"WHEN {bon_marche} THEN NOT {autrui}")
-            params += [*p_detruire, self.utilisateur, *p_pas_partage, *p_autrui]
+            params += [*p_detruire, self.utilisateur, *p_derniere, *p_pas_partage,
+                       *p_autrui]
         return f"(CASE {' '.join(cas)} ELSE 0 END)", params
 
     def _sql_tient_l_album(self, alias: str, *,
@@ -1084,6 +1102,14 @@ class Portee:
 TOTALE = Portee(tout=True, admin=True)
 
 
+def _sql_isolee(alias: str) -> str:
+    """Fragment SQL VRAI si la copie `alias` (un id d'album) vit dans un projet ISOLÉ — un bac
+    à sable, le jeu. La règle de la dernière copie n'y a pas cours : rien n'en sort vers le
+    fonds commun, et rien ne s'y demande à un administrateur."""
+    return (f"EXISTS (SELECT 1 FROM albums _tis WHERE _tis.id = {alias} "
+            f"AND {sql_album_isole('_tis')})")
+
+
 def _sql_une_soeur(alias: str) -> str:
     """Fragment SQL VRAI si le document de la copie `alias` a une AUTRE copie vivante hors
     d'un projet isolé — une copie du jeu ou d'un bac à sable, qui part avec lui, ne garde pas
@@ -1213,9 +1239,9 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
     « Recopié » est une expression SQL, vraie pour une ligne de travail RECOPIÉ — fait
     ailleurs, avant la copie, et que la copie porte (tranche 3b) : toute la sixième source,
     et dans la troisième les corrections grammaticales que la copie a reçues telles quelles
-    (sa région a une source, et la correction n'a pas été touchée depuis la naissance de la
-    copie : `date_modif` antérieure ou égale à `copie.creee_le`, la date de la source étant
-    recopiée avec la ligne). Un écran qui ne tient pas le fonds ne nomme pas ces lignes
+    et que personne n'a corrigées depuis (la marque EXPLICITE `token_correction.recopiee`,
+    v36 — décision du pilotage du 2026-10-25 : la date confondait une correction faite dans
+    la même seconde, et la validation la réécrivait). Un écran qui ne tient pas le fonds ne nomme pas ces lignes
     (relecture croisée de la 3b, constat 3 : la troisième nommait l'importeur d'un autre
     projet sous « qui perd quoi »). Elle ne change rien à la RÈGLE, qui compte ces lignes
     comme les autres."""
@@ -1241,9 +1267,7 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
          "JOIN token_correction _tt ON _tt.region_id = _tr.id "
          f"WHERE _tp.album_id = {alias}",
-         "EXISTS (SELECT 1 FROM region_origine _tro3 JOIN copie _tco3 "
-         "ON _tco3.album_id = _tp.album_id WHERE _tro3.region_id = _tr.id "
-         "AND _tt.date_modif <= _tco3.creee_le)"),
+         "_tt.recopiee = 1"),
         ("_te.agent", "'planches'", "_te.date",
          "planches _tp JOIN evenement _te "
          "ON _te.cible_table = 'planches' AND _te.cible_id = _tp.id "
@@ -1263,7 +1287,8 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          f"AND (_te.cible_table NOT IN ({annotation}) "
          f"OR (_tsrc.rang >= {rang_du_cran(CRAN_ANNOTATIONS)} AND {_SQL_COUCHE_VIT})) "
          "AND (_te.cible_table <> 'regions' OR _te.type <> 'validation' "
-         "OR EXISTS (SELECT 1 FROM token_correction _tvc WHERE _tvc.region_id = _tsrc.d))",
+         "OR EXISTS (SELECT 1 FROM token_correction _tvc WHERE _tvc.region_id = _tsrc.d "
+         "AND _tvc.recopiee = 1))",
          "1"),
     ]
 
@@ -1318,17 +1343,16 @@ _SQL_EFFACER_OU_RETIRER = (
 # Une couche d'ANNOTATION recopiée VIT-elle encore sur la région de départ de la chaîne
 # (`_tsrc.d`) ? La sixième source lit ce qui vit, pas le cran de la copie (relecture croisée
 # de la 3b, constat 5) : repartir de zéro au-dessous des annotations efface la couche, et le
-# travail qu'elle portait ne compte plus — comme un travail supprimé depuis.
+# travail qu'elle portait ne compte plus — comme un travail supprimé depuis. La couche
+# RECOPIÉE, et elle seule (la marque `recopiee`, v36 ; contre-relecture de la 3b) : une
+# couche posée ensuite sur la copie, par qui que ce soit, ne ranime pas celle de la source.
 _SQL_COUCHE_VIT = (
     "(CASE _te.cible_table "
-    "WHEN 'annotations' THEN EXISTS (SELECT 1 FROM annotations _tv WHERE _tv.region_id = _tsrc.d) "
-    "WHEN 'bulle_locuteur' THEN EXISTS (SELECT 1 FROM bulle_locuteur _tv "
-    "WHERE _tv.region_id = _tsrc.d) "
-    "WHEN 'personnage_presence' THEN EXISTS (SELECT 1 FROM personnage_presence _tv "
-    "WHERE _tv.region_id = _tsrc.d) "
-    "WHEN 'region_attribut' THEN EXISTS (SELECT 1 FROM region_attribut _tv "
-    "WHERE _tv.region_id = _tsrc.d) "
-    "ELSE 1 END)")
+    + " ".join(f"WHEN '{t}' THEN EXISTS (SELECT 1 FROM {t} _tv WHERE _tv.region_id = _tsrc.d "
+               "AND _tv.recopiee = 1)"
+               for t in ("annotations", "bulle_locuteur", "personnage_presence",
+                         "region_attribut"))
+    + " ELSE 1 END)")
 
 
 def sql_actes_sur_album(alias: str) -> str:

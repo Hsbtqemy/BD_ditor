@@ -62,6 +62,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     OrdrePlanchesIn, ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
+    _MOTIF_DESTRUCTION_BAC, _motif_d_effacement,
     _MOTIF_JEU, _refuser_le_jeu, _refuser_la_reference,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_ISOLE, _MOTIF_BAC_PROPRIETAIRE,
     _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS, _MOTIF_JEU_SOURCE,

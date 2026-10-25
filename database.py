@@ -251,7 +251,10 @@ CREATE TABLE IF NOT EXISTS annotations (
     region_id          INTEGER UNIQUE REFERENCES regions(id) ON DELETE CASCADE,
     note               TEXT,
     date_creation      TEXT DEFAULT (datetime('now')),
-    date_modification  TEXT DEFAULT (datetime('now'))
+    date_modification  TEXT DEFAULT (datetime('now')),
+    recopiee           INTEGER NOT NULL DEFAULT 0
+    -- v36 (COL-3, tranche 3b) : 1 si la ligne est arrivée avec une copie amorcée
+    -- (`copier_le_travail`), telle quelle ; cf. `COUCHES_RECOPIEES`.
 );
 
 CREATE TABLE IF NOT EXISTS annotation_tags (
@@ -298,6 +301,10 @@ CREATE TABLE IF NOT EXISTS token_correction (
     auto_lemme  TEXT,
     auto_pos    TEXT,
     auto_morph  TEXT,
+    -- v36 (COL-3, tranche 3b) : 1 si la correction est arrivée avec une copie amorcée
+    -- (`copier_le_travail`), et n'a été corrigée par personne depuis. Survit à la
+    -- validation et au ré-ancrage ; cf. `COUCHES_RECOPIEES`.
+    recopiee    INTEGER NOT NULL DEFAULT 0,
     UNIQUE(region_id, ordre)
 );
 
@@ -342,7 +349,10 @@ CREATE TABLE IF NOT EXISTS personnages (
 CREATE TABLE IF NOT EXISTS bulle_locuteur (
     region_id      INTEGER PRIMARY KEY REFERENCES regions(id) ON DELETE CASCADE,
     personnage_id  INTEGER NOT NULL REFERENCES personnages(id) ON DELETE CASCADE,
-    date_creation  TEXT DEFAULT (datetime('now'))
+    date_creation  TEXT DEFAULT (datetime('now')),
+    recopiee           INTEGER NOT NULL DEFAULT 0
+    -- v36 (COL-3, tranche 3b) : 1 si la ligne est arrivée avec une copie amorcée
+    -- (`copier_le_travail`), telle quelle ; cf. `COUCHES_RECOPIEES`.
 );
 
 -- Lien PRÉSENCE : quelle entité est MONTRÉE dans cette boîte personnage (au plus une
@@ -352,7 +362,10 @@ CREATE TABLE IF NOT EXISTS bulle_locuteur (
 CREATE TABLE IF NOT EXISTS personnage_presence (
     region_id      INTEGER PRIMARY KEY REFERENCES regions(id) ON DELETE CASCADE,
     personnage_id  INTEGER NOT NULL REFERENCES personnages(id) ON DELETE CASCADE,
-    date_creation  TEXT DEFAULT (datetime('now'))
+    date_creation  TEXT DEFAULT (datetime('now')),
+    recopiee           INTEGER NOT NULL DEFAULT 0
+    -- v36 (COL-3, tranche 3b) : 1 si la ligne est arrivée avec une copie amorcée
+    -- (`copier_le_travail`), telle quelle ; cf. `COUCHES_RECOPIEES`.
 );
 
 -- ALIGNEMENT D'AUTORITÉ (v18, A5, N6) — relie une entité personnage à des référentiels
@@ -432,6 +445,7 @@ CREATE TABLE IF NOT EXISTS personnage_attribut (
 CREATE TABLE IF NOT EXISTS region_attribut (
     region_id      INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
     valeur_id      INTEGER NOT NULL REFERENCES attribut_valeur(id) ON DELETE CASCADE,
+    recopiee       INTEGER NOT NULL DEFAULT 0,  -- v36 : cf. `COUCHES_RECOPIEES`
     PRIMARY KEY (region_id, valeur_id)
 );
 
@@ -635,6 +649,22 @@ CREATE TABLE IF NOT EXISTS copie (
 -- et y écrire un « vu » l'aurait fait compter comme un acte. `evenement_id` SANS clé : il
 -- désigne l'acte `retire_du_projet` (sous `document`), que rien n'efface. Rien n'en sort :
 -- ni route de lecture hors de l'avis lui-même, ni export.
+-- GESTE_SUR_COPIE (v36, COL-3, tranche 3b ; Hugo, 2026-10-25) — qui a JAMAIS fait un geste
+-- humain sur une copie : une ligne par copie et par agent ('' quand l'acte n'en nomme pas),
+-- posée par `journal.journaliser` au moment du geste, quand il porte sur une région (et ce
+-- qu'elle porte), une correction grammaticale ou une planche de cette copie. Elle ne
+-- s'efface pas quand le geste est défait, ni quand ce qu'il a posé disparaît : c'est son
+-- objet. La règle de la DERNIÈRE copie la lit (« personne d'autre n'y a jamais travaillé »,
+-- `autorisation.Portee.clause_suppression_directe`), et elle seule — les autres
+-- suppressions lisent ce qui vit encore. Le journal ne suffit pas : une région effacée
+-- (par une remise à zéro, ou une à une) n'a plus de planche, et l'acte qui la nommait ne
+-- dit plus de quelle copie elle était. Rien n'en sort : ni route, ni export.
+CREATE TABLE IF NOT EXISTS geste_sur_copie (
+    album_id   INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    agent      TEXT NOT NULL,
+    PRIMARY KEY (album_id, agent)
+);
+
 CREATE TABLE IF NOT EXISTS retrait_vu (
     evenement_id   INTEGER NOT NULL,
     login          TEXT NOT NULL,
@@ -946,6 +976,43 @@ FROM tokens t
 LEFT JOIN token_correction c
        ON c.region_id = t.region_id AND c.ordre = t.ordre;
 """
+
+
+# Les couches qu'une copie amorcée reprend telles quelles, et qui portent la marque
+# `recopiee` (v36, COL-3, tranche 3b). La règle de suppression les lit pour savoir si le
+# travail recopié VIT encore sur la copie (`autorisation._SQL_COUCHE_VIT`), « qui perd
+# quoi » pour le compter sans nom, l'Atelier pour dire « recopiée ». Une marque EXPLICITE,
+# posée par `copier_le_travail` (décision du pilotage, 2026-10-25) : la date de la ligne
+# rapprochée de celle de la copie confondait une correction faite dans la même seconde, et
+# la validation la réécrit. Elle vit avec la ligne : une couche effacée l'emporte, une
+# couche posée ensuite naît à 0, et la corriger (une correction grammaticale) la remet à 0.
+COUCHES_RECOPIEES = ("annotations", "bulle_locuteur", "personnage_presence",
+                     "region_attribut", "token_correction")
+
+
+def _marquer_les_couches_recopiees(conn: sqlite3.Connection, tables) -> None:
+    """La marque `recopiee` des copies amorcées d'avant la v36, déduite UNE fois (migration)
+    de la date : la ligne tient à une région copiée (`region_origine`) et n'a pas changé
+    depuis la naissance de sa copie. Un attribut de case n'a pas de date : celui d'une région
+    copiée au cran `annotations` est tenu pour recopié."""
+    if not {"region_origine", "copie", "regions", "planches"} <= set(tables):
+        return
+    copiee = ("SELECT _mro.region_id, _mco.creee_le, _mco.cran FROM region_origine _mro "
+              "JOIN regions _mr ON _mr.id = _mro.region_id "
+              "JOIN planches _mp ON _mp.id = _mr.planche_id "
+              "JOIN copie _mco ON _mco.album_id = _mp.album_id")
+    for table, quand in (("token_correction", "date_modif"),
+                         ("annotations", "date_modification"),
+                         ("bulle_locuteur", "date_creation"),
+                         ("personnage_presence", "date_creation")):
+        if table in tables:
+            conn.execute(f"UPDATE {table} SET recopiee = 1 WHERE recopiee = 0 AND EXISTS ("
+                         f"SELECT 1 FROM ({copiee}) _c WHERE _c.region_id = {table}.region_id "
+                         f"AND {table}.{quand} <= _c.creee_le)")
+    if "region_attribut" in tables:
+        conn.execute(f"UPDATE region_attribut SET recopiee = 1 WHERE recopiee = 0 AND EXISTS ("
+                     f"SELECT 1 FROM ({copiee}) _c WHERE _c.region_id = region_attribut.region_id "
+                     f"AND _c.cran = '{CRAN_ANNOTATIONS}')")
 
 
 def init_db() -> None:
@@ -1427,6 +1494,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # … et la marque de naissance d'un personnage (NULL : le registre, tout l'existant).
     if "personnages" in _tables and "bac_a_sable_id" not in _cols("personnages"):
         conn.execute("ALTER TABLE personnages ADD COLUMN bac_a_sable_id INTEGER")
+    # … et la marque d'une couche RECOPIÉE (relecture croisée de la 3b, constats 3 et 4 ;
+    # décision du pilotage du 2026-10-25) : par PRÉSENCE, à 0. Table `geste_sur_copie`
+    # NOUVELLE (SCHEMA_SQL), vide : ce qui a été fait avant la v36 n'y est pas, et la règle
+    # de la dernière copie lit alors ce qui vit encore, comme les autres.
+    for table in COUCHES_RECOPIEES:
+        if table in _tables and "recopiee" not in _cols(table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN recopiee "
+                         "INTEGER NOT NULL DEFAULT 0")
+    if version < 36:
+        # Les copies amorcées d'avant la v36 (le jeu des bacs à sable, COL-4) n'ont rien
+        # marqué : une ligne d'une région copiée qui n'a pas bougé depuis la naissance de sa
+        # copie est tenue pour recopiée — la date, à défaut de mieux, une fois. Idempotent :
+        # ne marque que des lignes à 0.
+        _marquer_les_couches_recopiees(conn, _tables)
     if version < 31:
         # Migrations de DONNÉES, donc gatées par la VERSION, et IDEMPOTENTES (des tests
         # ramènent `user_version` en arrière sur une base courante) : elles ne touchent que
@@ -2882,7 +2963,9 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
         # une source sans projet (importée au fonds) compte comme un autre projet.
         entre_projets = projet_d_album(conn, depuis) != projet_de_collection(conn,
                                                                              collection_id)
-        lus = ["NULL" if c == "auteur" and entre_projets else c for c in cols]
+        # La marque EXPLICITE d'une correction recopiée (décision du pilotage, 2026-10-25).
+        lus = ["NULL" if c == "auteur" and entre_projets else "1" if c == "recopiee" else c
+               for c in cols]
         copies["corrections"] = _par_region(
             f"SELECT {', '.join(lus)} FROM token_correction WHERE region_id = ? ORDER BY id",
             f"INSERT INTO token_correction (region_id, {', '.join(cols)}) "
@@ -2907,8 +2990,8 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
             if not tags and not (a["note"] or "").strip():
                 continue
             nid = conn.execute(
-                "INSERT INTO annotations (region_id, note, date_creation, date_modification) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO annotations (region_id, note, date_creation, date_modification, "
+                "recopiee) VALUES (?, ?, ?, ?, 1)",
                 (c, a["note"], a["date_creation"], a["date_modification"])).lastrowid
             conn.executemany("INSERT INTO annotation_tags (annotation_id, tag_id) "
                              "VALUES (?, ?)", [(nid, t) for t in tags])
@@ -2921,8 +3004,8 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
             n_attr_total += conn.execute("SELECT COUNT(*) FROM region_attribut "
                                          "WHERE region_id = ?", (s,)).fetchone()[0]
             n_attr += conn.execute(
-                "INSERT INTO region_attribut (region_id, valeur_id) "
-                "SELECT ?, ra.valeur_id FROM region_attribut ra "
+                "INSERT INTO region_attribut (region_id, valeur_id, recopiee) "
+                "SELECT ?, ra.valeur_id, 1 FROM region_attribut ra "
                 "JOIN attribut_valeur v ON v.id = ra.valeur_id "
                 "JOIN attribut_dimension d ON d.id = v.dimension_id "
                 f"WHERE ra.region_id = ? AND {val_vu} AND {dim_vu}",
@@ -2931,12 +3014,12 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
         laisses["attributs"] = n_attr_total - n_attr
         copies["locuteurs"] = _par_region(
             "SELECT personnage_id, date_creation FROM bulle_locuteur WHERE region_id = ?",
-            "INSERT INTO bulle_locuteur (region_id, personnage_id, date_creation) "
-            "VALUES (?, ?, ?)")
+            "INSERT INTO bulle_locuteur (region_id, personnage_id, date_creation, recopiee) "
+            "VALUES (?, ?, ?, 1)")
         copies["presences"] = _par_region(
             "SELECT personnage_id, date_creation FROM personnage_presence WHERE region_id = ?",
-            "INSERT INTO personnage_presence (region_id, personnage_id, date_creation) "
-            "VALUES (?, ?, ?)")
+            "INSERT INTO personnage_presence (region_id, personnage_id, date_creation, "
+            "recopiee) VALUES (?, ?, ?, 1)")
 
     if texte:
         lemmes = _lemmes_indexes(conn, list(regions))
@@ -3176,7 +3259,10 @@ def clore_rejoindre_d_une_copie_au_fonds(conn: sqlite3.Connection, album_id: int
     écran de la 3a (relecture croisée, défaut 3 ; option fermée). Les demandes d'EN PARTIR
     (`DEMANDE_AMORCER`, tranche 3b) aussi : leur consentement était celui des propriétaires
     des collections que la copie vient de quitter, et une copie gardée ne se lit plus que
-    par qui tient le fonds.
+    par qui tient le fonds. Et celles d'en REPARTIR DE ZÉRO (`DEMANDE_REPARTIR`, le pilotage,
+    2026-10-25) : la copie a quitté son projet — retirée du projet, ou sortie de sa dernière
+    collection —, et la ramener à un cran ne se demande plus d'ici. Les demandes de la
+    SUPPRIMER restent : l'administrateur en décide au fonds.
 
     Accepter un `rejoindre` sur une copie gardée la RENDRAIT — sans que son responsable l'ait
     demandé, et sous les mots « ranger aussi », qui supposent une copie déjà rangée. Reprendre
@@ -3191,8 +3277,8 @@ def clore_rejoindre_d_une_copie_au_fonds(conn: sqlite3.Connection, album_id: int
     clos = []
     for (demande_id,) in conn.execute(
             "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
-            "WHERE d.genre IN (?, ?) AND dd.album_id = ? AND d.reponse IS NULL ORDER BY d.id",
-            (*GENRES_CONSENTIS, album_id)).fetchall():
+            "WHERE d.genre IN (?, ?, ?) AND dd.album_id = ? AND d.reponse IS NULL "
+            "ORDER BY d.id", (*GENRES_CONSENTIS, DEMANDE_REPARTIR, album_id)).fetchall():
         conn.execute("UPDATE demande_document SET reponse = ? WHERE demande_id = ? "
                      "AND reponse IS NULL", (REPONSE_REFUSEE, demande_id))
         conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
@@ -3932,18 +4018,19 @@ def _reancrer_corrections(conn: sqlite3.Connection, region_id: int, new_tokens: 
     # réécriture propre (DELETE + réinsertion) → aucune collision d'UNIQUE possible
     conn.execute("DELETE FROM token_correction WHERE region_id = ?", (region_id,))
     # NLP-2 : ce que l'annotateur a vu voyage avec sa correction, survivante ou orpheline.
+    # La marque d'une correction RECOPIÉE (v36) voyage avec elle, comme ce qu'on a vu.
     ins = ("INSERT INTO token_correction "
            "(region_id, ordre, forme, lemme, pos, morph, etat, auteur, date_modif, obsolete, "
-           f" {', '.join(COLONNES_VU)}) "
-           f"VALUES ({', '.join('?' * (10 + len(COLONNES_VU)))})")
+           f" recopiee, {', '.join(COLONNES_VU)}) "
+           f"VALUES ({', '.join('?' * (11 + len(COLONNES_VU)))})")
     for c, no in survivors:
         conn.execute(ins, (region_id, no, new_forme[no], c["lemme"], c["pos"], c["morph"],
-                           c["etat"], c["auteur"], c["date_modif"], 0,
+                           c["etat"], c["auteur"], c["date_modif"], 0, c["recopiee"],
                            *(c[k] for k in COLONNES_VU)))
     park = -1                                   # ordres négatifs : ne rejoignent aucun token
     for c in orphans:
         conn.execute(ins, (region_id, park, c["forme"], c["lemme"], c["pos"], c["morph"],
-                           c["etat"], c["auteur"], c["date_modif"], 1,
+                           c["etat"], c["auteur"], c["date_modif"], 1, c["recopiee"],
                            *(c[k] for k in COLONNES_VU)))
         park -= 1
 

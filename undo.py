@@ -1110,15 +1110,9 @@ def _meme_objet(conn, e) -> bool:
     return True
 
 
-def remis_a_zero_depuis(conn, e) -> bool:
-    """L'album — ou la planche — où l'acte `e` a porté a-t-il été REMIS À ZÉRO depuis ?
-    Les planches concernées sont celles de `planches_remises_a_zero`."""
-    return bool(planches_remises_a_zero(conn, e))
-
-
 def planches_remises_a_zero(conn, e) -> list:
     """Les planches où l'acte `e` a porté et qui ont été REMISES À ZÉRO depuis — elles, ou
-    leur album entier.
+    leur album entier : vide si aucune.
     COL-3, tranche 3b (E8, Hugo, 2026-10-20) : repartir de zéro est UN acte sous le document
     (`socle._repartir`, charge `repartir`), non annulable, qui efface d'un geste les couches
     au-dessus d'un cran ; Ctrl+Z ne remonte pas au-delà. Défaire un acte d'avant ferait

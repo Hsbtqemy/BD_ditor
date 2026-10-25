@@ -28,8 +28,10 @@ BASE_V32 = Path(__file__).resolve().parent / "bases" / "v32-0b4f1ef.sql"
 COLONNES_NEUVES = {"albums": ("tome", "lieu_masters"), "planches": ("master_origine",),
                    "projet": ("bac_a_sable_de", "efface_le", "jeu", "membres_creent_collections"),
                    "personnages": ("bac_a_sable_id",), "tags": ("espace",)}
+# La v36 marque les couches qu'une copie amorcée reprend (`recopiee`).
+COLONNES_NEUVES.update({t: ("recopiee",) for t in database.COUCHES_RECOPIEES})
 # Ce que la v35 ajoute (COL-4), que la migration traverse aussi.
-TABLES_NEUVES = {"jeu_document", "retrait_vu"}  # `retrait_vu` : la v36
+TABLES_NEUVES = {"jeu_document", "retrait_vu", "geste_sur_copie"}  # les deux derniers : la v36
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
           "copie", "demande", "demande_document", "region_origine", "contribution",

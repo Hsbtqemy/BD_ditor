@@ -76,15 +76,22 @@ def _ancienne(p, clause, ecriture):
     morceaux, params = [], []
     if detruire != "0":
         autrui, p_autrui = autorisation._sql_travail_d_autrui("a.id", p.utilisateur)
-        # Le créateur d'une copie qui n'est pas d'ORIGINE ne supprime pas seul la dernière
-        # copie (relecture croisée de la 3b, constat 1) ; repartir n'a pas cette moitié.
-        derniere = (f" AND (_sc.cran = 'origine' OR {autorisation._sql_une_soeur('a.id')})"
-                    if garde else "")
+        # La dernière copie (relecture croisée de la 3b et sa contre-relecture) : le
+        # créateur ne la supprime seul que hors projet isolé si c'est la copie d'ORIGINE et
+        # que personne d'autre n'y a JAMAIS fait un geste ; repartir n'a pas cette moitié.
+        derniere, p_derniere = "", []
+        if garde:
+            derniere = (f" AND ({autorisation._sql_une_soeur('a.id')} "
+                        f"OR {autorisation._sql_isolee('a.id')} OR (_sc.cran = 'origine' "
+                        "AND NOT EXISTS (SELECT 1 FROM geste_sur_copie _sg "
+                        "WHERE _sg.album_id = a.id AND _sg.agent IS NOT ?)))")
+            p_derniere = [p.utilisateur]
         morceaux.append(f"({detruire} "
                         f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = a.id "
                         f"AND _sc.creee_par = ?{derniere}) AND {pas_partage} "
                         f"AND NOT {autrui})")
-        params += [*p_detruire, p.utilisateur, p.utilisateur, NATURE_COLLECTIF, *p_autrui]
+        params += [*p_detruire, p.utilisateur, *p_derniere, p.utilisateur, NATURE_COLLECTIF,
+                   *p_autrui]
     if tient != "0":
         morceaux.append(f"({tient} AND {pas_partage})")
         params += [*p_tient, p.utilisateur, NATURE_COLLECTIF]

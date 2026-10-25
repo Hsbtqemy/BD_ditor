@@ -38,8 +38,7 @@ import comptes
 import conflit
 import journal
 from config import STATUTS_DIFFUSION
-from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, LONGUEUR_MOTIF, NATURES,
-                      REPONSE_REFUSEE,
+from database import (DEMANDE_REJOINDRE, LONGUEUR_MOTIF, NATURES,
                       clore_rejoindre_d_une_copie_au_fonds, noms_lisibles,
                       collection_row, collections,
                       document_d_album, etat_embargo, nom_reserve, poser_projet_de_copie,
@@ -49,8 +48,7 @@ from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, LONGUEUR_MOTIF, NATUR
 
 from socle import (
     DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn, RetirerIn,
-    _clore_demandes, _clore_demandes_vers, _collections_lues_d_albums, _deposer,
-    _en_attente_vers,
+    _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS,
     _bac_a_sable_de,
     _get_album, _get_collection, _get_projet, _plan_rejoindre, _refuser_le_bac_a_sable,
@@ -916,9 +914,10 @@ def retirer_du_projet(album_id: int, payload: Optional[RetirerIn] = None,
     nommé après ne lit pas les anciens (le pilotage, 2026-10-25).
 
     Il CLÔT les demandes de REPARTIR DE ZÉRO qui visaient la copie, refusées au nom de qui
-    retire (le pilotage, 2026-10-25) : la copie quitte le projet, et la ramener à un cran ne
-    se demande plus d'ici. Les demandes de la SUPPRIMER restent : l'administrateur en décide
-    au fonds."""
+    retire (le pilotage, 2026-10-25), comme tout envoi au fonds
+    (`database.clore_rejoindre_d_une_copie_au_fonds`) : la copie quitte le projet, et la
+    ramener à un cran ne se demande plus d'ici. Les demandes de la SUPPRIMER restent :
+    l'administrateur en décide au fonds."""
     motif = ((payload.motif if payload else None) or "").strip() or None
     if motif is not None and len(motif) > LONGUEUR_MOTIF:
         raise HTTPException(422, f"Le motif tient en {LONGUEUR_MOTIF} caractères au plus "
@@ -950,10 +949,6 @@ def retirer_du_projet(album_id: int, payload: Optional[RetirerIn] = None,
                                                     "collections": quittees,
                                                     "titre": a["titre"], "motif": motif}})
     clore_rejoindre_d_une_copie_au_fonds(conn, album_id)
-    _clore_demandes(conn, portee, [r[0] for r in conn.execute(
-        "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
-        "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL",
-        (DEMANDE_REPARTIR, album_id))], REPONSE_REFUSEE)
     conn.commit()
     return {"album_id": album_id, "projet_id": projet_id,
             "collections": [c["id"] for c in quittees], "au_fonds": True}

@@ -1390,6 +1390,44 @@ def test_l_invite_garde_la_regle_commune_sur_sa_copie(client, decor):
     assert client.delete(f"/api/albums/{a}", headers=SAM).status_code == 204
 
 
+def test_l_invite_supprime_la_copie_vierge_qu_il_a_prise(client, decor):
+    """Contre-relecture de la 3b, régression COL-4 : l'invité prend une copie VIERGE d'un
+    document du jeu dans le bac à sable, puis la supprime. Elle est la dernière copie de son
+    document hors d'un projet isolé — aucune —, mais la règle de la dernière copie n'a pas
+    cours dans un bac à sable : rien n'en sort vers le fonds commun, et rien ne s'y demande à
+    un administrateur."""
+    src = _copie(decor, "exemple")
+    r = client.post(f"/api/collections/{decor['base']}/prendre", headers=SAM,
+                    json={"documents": [{"document_id": src["document_id"], "reponse": "zero",
+                                         "album_id": src["album_id"]}]})
+    assert r.status_code == 200, r.text
+    (ligne,) = r.json()["documents"]
+    assert ligne["etat"] == "fait", ligne
+    copie = ligne["copie_id"]
+    vu = {a["id"]: a for a in client.get("/api/albums", headers=SAM).json()}
+    assert vu[copie]["destructible"] is True
+    assert client.delete(f"/api/albums/{copie}", headers=SAM).status_code == 204
+
+
+def test_dans_un_bac_le_refus_ne_renvoie_ni_a_un_administrateur_ni_au_fonds(client, decor):
+    """L'invité qui ne peut pas effacer — une copie d'exemple du jeu, qu'il n'a pas créée —
+    lit pourquoi sans qu'on lui propose deux recours qui n'existent pas dans un bac à sable :
+    supprimer l'album, une planche, en repartir de zéro."""
+    copie = _copie(decor, "grammaire")
+    pl = copie["planche_ids"][0]
+    reponses = [client.delete(f"/api/albums/{copie['album_id']}", headers=SAM),
+                client.delete(f"/api/planches/{pl}", headers=SAM),
+                client.post(f"/api/albums/{copie['album_id']}/repartir", headers=SAM,
+                            json={"cran": "images"}),
+                client.post(f"/api/planches/{pl}/repartir", headers=SAM,
+                            json={"cran": "images"})]
+    for r in reponses:
+        assert r.status_code == 403, r.text
+        detail = r.json()["detail"]
+        assert "bac à sable" in detail, detail
+        assert "administrateur" not in detail and "fonds" not in detail, detail
+
+
 def test_le_proprietaire_d_un_autre_bac_n_y_detruit_rien(client, decor):
     client.post("/api/bac-a-sable", headers=RITA)
     copie = _copie(decor, "grammaire")["album_id"]

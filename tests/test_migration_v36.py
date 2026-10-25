@@ -11,7 +11,10 @@ importé un album —, et une collection créée par un simple MEMBRE d'un proje
 
 Ce que la v36 apporte (Hugo, 2026-10-21) : `projet.membres_creent_collections`, à 0 —
 « non » — pour tout l'existant, bacs à sable et jeu compris ; et la table `retrait_vu`,
-vide (l'écran de la 3b, tranché le 2026-10-25). Et rien d'autre : les lignes,
+vide (l'écran de la 3b, tranché le 2026-10-25). Et, après la contre-relecture de la 3b
+(décisions du 2026-10-25) : la marque `recopiee` des couches qu'une copie amorcée reprend,
+déduite de la date pour l'existant (la base n'en porte aucune : le test qui la mesure pose
+la sienne), et la table `geste_sur_copie`, vide. Et rien d'autre : les lignes,
 les index, les vues, l'index plein texte, les compteurs, sont ceux d'avant. Ce qui change
 est le geste : le membre qui créait ne crée plus, ses collections restent les siennes.
 """
@@ -75,7 +78,9 @@ def _etat(db):
     for t in LIGNES:
         lignes[t] = sorted(json.dumps({k: v for k, v in r.items()
                                        if not (t == "projet"
-                                               and k == "membres_creent_collections")},
+                                               and k == "membres_creent_collections")
+                                       and not (t in database.COUCHES_RECOPIEES
+                                                and k == "recopiee")},
                                       sort_keys=True, ensure_ascii=False)
                            for r in _sql(db, f'SELECT * FROM "{t}"'))
     return {
@@ -122,7 +127,12 @@ def test_une_vraie_base_v35_migre_sans_rien_perdre(vraie_v35):
     # Une table NEUVE, vide : les « Vu » d'un retrait du projet (écran de la 3b).
     assert apres["comptes"].pop("retrait_vu") == 0
     apres["tables"].remove("retrait_vu")
+    # … et celle de qui a jamais touché une copie : vide, l'existant n'y est pas.
+    assert apres["comptes"].pop("geste_sur_copie") == 0
+    apres["tables"].remove("geste_sur_copie")
     assert apres == avant
+    for t in database.COUCHES_RECOPIEES:
+        assert _sql(vraie_v35, f"SELECT COUNT(*) AS n FROM {t} WHERE recopiee = 1")[0]["n"] == 0
     assert _seq(vraie_v35) == seq_avant
     assert _sql(vraie_v35, "PRAGMA foreign_key_check") == []
     assert _sql(vraie_v35, "PRAGMA integrity_check")[0]["integrity_check"] == "ok"
@@ -138,6 +148,32 @@ def test_tout_l_existant_passe_a_non_bacs_a_sable_et_jeu_compris(vraie_v35):
                      (pid,)).fetchone() == (0,)
     c.rollback()
     c.close()
+
+
+def test_les_couches_recopiees_d_avant_se_marquent_par_la_date(vraie_v35):
+    """Les copies amorcées d'avant la v36 n'ont rien marqué : la migration tient pour recopiée
+    une ligne d'une région copiée qui n'a pas bougé depuis la naissance de sa copie, et
+    laisse à 0 celle d'après. Un attribut de case n'a pas de date : il n'est tenu pour
+    recopié qu'au cran `annotations` — ici, la copie est au cran `transcription`."""
+    (r,) = _sql(vraie_v35, "SELECT o.region_id, c.creee_le FROM region_origine o "
+                           "JOIN regions g ON g.id = o.region_id "
+                           "JOIN planches p ON p.id = g.planche_id "
+                           "JOIN copie c ON c.album_id = p.album_id "
+                           "WHERE c.cran = 'transcription' ORDER BY o.region_id LIMIT 1")
+    rid, ne = r["region_id"], r["creee_le"]
+    _sql(vraie_v35, "INSERT INTO token_correction (region_id, ordre, forme, etat, date_modif) "
+                    "VALUES (?, 0, 'A', 'corrige', datetime(?, '-1 hour')), "
+                    "(?, 1, 'B', 'corrige', datetime(?, '+1 hour'))", (rid, ne, rid, ne))
+    _sql(vraie_v35, "INSERT INTO annotations (region_id, note, date_modification) "
+                    "VALUES (?, 'avant', datetime(?, '-1 hour'))", (rid, ne))
+    database.init_db()
+    assert _sql(vraie_v35, "SELECT forme, recopiee FROM token_correction WHERE region_id = ? "
+                           "ORDER BY ordre", (rid,)) == [{"forme": "A", "recopiee": 1},
+                                                         {"forme": "B", "recopiee": 0}]
+    assert _sql(vraie_v35, "SELECT recopiee FROM annotations WHERE region_id = ?",
+                (rid,)) == [{"recopiee": 1}]
+    assert _sql(vraie_v35, "SELECT COUNT(*) AS n FROM region_attribut WHERE recopiee = 1")[0][
+        "n"] == 0
 
 
 def test_rejouee_la_migration_ne_change_rien(vraie_v35):

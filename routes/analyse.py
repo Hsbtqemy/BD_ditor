@@ -891,19 +891,16 @@ def _tokens_effectifs(conn, region_id: int) -> list:
     jamais `tokens` brut (invariant projet).
 
     `corr_recopiee` (COL-3, tranche 3b) : la correction est arrivée avec la COPIE, telle
-    quelle — sa région a une source, et elle n'a pas été touchée depuis la naissance de la
-    copie. Entre deux projets elle arrive sans auteur (`database.copier_le_travail`) : l'écran
-    la dit « recopiée » plutôt que de la laisser sans personne."""
+    quelle, et personne ne l'a corrigée depuis — la marque EXPLICITE `recopiee`, posée par
+    `database.copier_le_travail` (décision du pilotage, 2026-10-25 ; la date confondait une
+    correction faite dans la même seconde). Entre deux projets elle arrive sans auteur :
+    l'écran la dit « recopiée » plutôt que de la laisser sans personne."""
     lignes = _rows(conn.execute(
         "SELECT te.ordre, te.texte, te.lemme, te.pos, te.morph, te.provenance, te.a_revoir, "
         "       te.corr_lemme, te.corr_pos, te.corr_morph, te.corr_auteur, "
         "       EXISTS (SELECT 1 FROM token_correction _c "
-        "               JOIN region_origine _ro ON _ro.region_id = _c.region_id "
-        "               JOIN regions _r ON _r.id = _c.region_id "
-        "               JOIN planches _p ON _p.id = _r.planche_id "
-        "               JOIN copie _co ON _co.album_id = _p.album_id "
         "               WHERE _c.region_id = te.region_id AND _c.ordre = te.ordre "
-        "                 AND _c.date_modif <= _co.creee_le) AS corr_recopiee "
+        "                 AND _c.recopiee = 1) AS corr_recopiee "
         "FROM tokens_effectifs te WHERE te.region_id = ? ORDER BY te.ordre", (region_id,)))
     return [{**t, "corr_recopiee": bool(t["corr_recopiee"])} for t in lignes]
 
@@ -962,7 +959,8 @@ def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
         "ON CONFLICT(region_id, ordre) DO UPDATE SET "
         "  forme=excluded.forme, lemme=excluded.lemme, pos=excluded.pos, "
         "  morph=excluded.morph, etat=excluded.etat, auteur=excluded.auteur, "
-        "  obsolete=0, date_modif=datetime('now'), modele_auto=excluded.modele_auto, "
+        "  obsolete=0, recopiee=0, date_modif=datetime('now'), "
+        "  modele_auto=excluded.modele_auto, "
         "  auto_lemme=excluded.auto_lemme, auto_pos=excluded.auto_pos, "
         "  auto_morph=excluded.auto_morph",
         (region_id, ordre, tok["texte"], lemme, pos, morph, payload.etat, auteur,
@@ -1005,8 +1003,15 @@ def valider_grammaire(region_id: int, request: Request,
     modele = nlp.model_info().get("model") or None      # NLP-2 ; modèle déjà chargé
     reindex_region(conn, region_id)   # ré-ancre (aligne) d'abord → nettoie toute dérive du texte
     # 1) corrections cohérentes existantes → validées (auteur préservé : valider ≠ corriger)
+    #    Une correction RECOPIÉE (COL-3, tranche 3b ; décision du pilotage, 2026-10-25) le
+    #    reste : valider ne la fait pas sienne — ni l'auteur de la source dans un même projet,
+    #    ni le validateur entre deux projets, où elle est arrivée sans auteur et le reste.
+    #    Elle passe `valide`, sa marque survit, et qui l'a validée se lit au journal (l'acte
+    #    `validation` sous la région, écrit plus bas), pas sur la ligne.
     conn.execute("UPDATE token_correction "
-                 "SET etat='valide', auteur=COALESCE(auteur, ?), date_modif=datetime('now') "
+                 "SET etat='valide', "
+                 "    auteur=CASE WHEN recopiee = 1 THEN auteur ELSE COALESCE(auteur, ?) END, "
+                 "    date_modif=datetime('now') "
                  "WHERE region_id = ? AND obsolete = 0", (auteur, region_id))
     # 1 bis) NLP-2 : leur relevé suit ce qui s'affiche — là seulement où un token s'affiche.
     # Sans moteur, la réindexation ci-dessus vient de vider `tokens` sans ré-ancrer : relever

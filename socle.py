@@ -794,6 +794,20 @@ _MOTIF_DESTRUCTION_PLANCHE = ("D'autres se servent de cet album, ou ce n'est pas
                               "de l'instance.")
 
 
+# Dans un bac à sable, le refus ne renvoie ni à un administrateur ni au fonds : ni l'un ni
+# l'autre n'y a cours (COL-4, S3 ; contre-relecture de la 3b). Ce qui reste : son
+# propriétaire, et le lundi qui l'efface.
+_MOTIF_DESTRUCTION_BAC = ("Dans un bac à sable, une copie se supprime par son propriétaire, ou "
+                          "par qui l'a créée si personne d'autre n'y a travaillé : sinon, elle "
+                          "s'efface avec le bac à sable.")
+
+
+def _motif_d_effacement(conn, album_id: int, motif: str) -> str:
+    """Le motif d'un refus d'effacer — celui du bac à sable quand l'album en est d'un."""
+    projet_id, _ = _bac_a_sable_de(conn, album_id=album_id)
+    return _MOTIF_DESTRUCTION_BAC if projet_id is not None else motif
+
+
 def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int, *,
                         planche: bool = False, reference_du_jeu: bool = False) -> None:
     """403 si l'on ne peut pas supprimer DÉFINITIVEMENT cet album — ou, `planche`, l'une
@@ -808,8 +822,8 @@ def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int, *,
     ou, params = portee.clause_suppression_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                     (album_id, *params)).fetchone() is None:
-        raise HTTPException(403, _MOTIF_DESTRUCTION_PLANCHE if planche
-                            else _MOTIF_DESTRUCTION)
+        raise HTTPException(403, _motif_d_effacement(
+            conn, album_id, _MOTIF_DESTRUCTION_PLANCHE if planche else _MOTIF_DESTRUCTION))
 
 
 def _detruire_album(conn, portee: autorisation.Portee, album_id: int, *,
@@ -968,7 +982,7 @@ def _repartir(conn, portee: autorisation.Portee, album_id: int, cran: str, *,
     effacable, p_effacable = portee.clause_repartir_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {effacable}",
                     (album_id, *p_effacable)).fetchone() is None:
-        raise HTTPException(403, motif_refus)
+        raise HTTPException(403, _motif_d_effacement(conn, album_id, motif_refus))
     niveau = niveau_de_travail(conn, album_id, planche_id)
     if rang_du_cran(cran) >= niveau:
         raise HTTPException(409, f"Rien à retirer au-dessus du cran « {cran} » : "

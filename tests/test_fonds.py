@@ -373,7 +373,16 @@ def test_une_passe_automatique_ne_compte_pas_un_acte_sans_agent_si(client, db_pa
 
 def test_un_travail_supprime_depuis_ne_compte_plus(client, decor):
     """La limite écrite dans la règle, et acceptée par Hugo : on lit ce qui VIT encore. Un
-    collègue pose une région, puis l'importatrice la supprime ; il ne reste rien de lui."""
+    collègue pose une région, puis l'importatrice la supprime ; il ne reste rien de lui.
+
+    Hors de la DERNIÈRE copie (Hugo, 2026-10-25) : pour elle, tout ce qui a jamais été fait
+    compte — le geste du collègue l'envoie à un administrateur. Une sœur, prise par
+    l'administrateur, garde ici le document au fonds commun."""
+    doc = _albums(client, ADMIN)[decor["erreur"]]["document_id"]
+    r = client.post(f"/api/collections/{decor['incubateur']}/prendre", headers=ADMIN,
+                    json={"documents": [{"document_id": doc, "reponse": "zero",
+                                         "album_id": decor["erreur"]}]})
+    assert r.status_code == 200 and r.json()["documents"][0]["etat"] == "fait", r.text
     region = _region(client, decor["planche"], COLLEGUE)
     assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
     assert client.delete(f"/api/regions/{region}", headers=IMPORTEUSE).status_code == 204
@@ -499,8 +508,9 @@ def test_la_clause_aux_extremites_et_ses_parametres_lies():
     sans_rangs = sql.replace(database.sql_rang_du_cran("_tco.cran"), "") \
         .replace(database.sql_rang_du_cran("_tco2.cran"), "")
     assert "o'brien" not in sql and "3" not in sans_rangs.replace("_t", "")
-    # Six sources du travail d'autrui depuis la v32, plus le créateur et le compte partagé.
-    assert sql.count("?") == len(params) and params.count("o'brien") == 8
+    # Six sources du travail d'autrui depuis la v32, plus le créateur, le geste sur la
+    # dernière copie (v36, `geste_sur_copie`) et le compte partagé.
+    assert sql.count("?") == len(params) and params.count("o'brien") == 9
     assert autorisation.TOTALE.peut_tenir_le_fonds() is True
     assert autorisation.Portee(admin=True, utilisateur="x").peut_tenir_le_fonds() is False
 

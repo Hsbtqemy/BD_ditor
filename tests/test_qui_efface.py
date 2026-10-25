@@ -269,6 +269,108 @@ def test_repartir_de_zero_sur_la_derniere_copie_par_le_proprietaire(client, effa
                           headers=ATELIER))["direct"] is False
 
 
+def _unique(client, importeur_niveau):
+    """« Unique », seule copie de son document, importée par `importeur` dans « Mine », où
+    `ecrivain` écrit aussi, et où il pose une case et sa bulle avec du texte."""
+    mine = _collection(client, "Mine")
+    _accorder(client, mine, "importeur", importeur_niveau)
+    _accorder(client, mine, "ecrivain", "ecriture")
+    a = _album(client, "Unique", mine, IMPORTEUR)
+    _planche(client, a, IMPORTEUR)
+    _travailler(client, a, ECRIVAIN)
+    return a
+
+
+def test_derniere_copie_remise_a_zero_puis_supprimee_se_demande(client, efface, db_path):
+    """Contre-relecture de la 3b, et la décision de Hugo du 2026-10-25 : pour la DERNIÈRE
+    copie, « personne d'autre n'y a travaillé » se lit sur tout ce qui y a jamais été fait.
+    L'importateur, propriétaire de la collection, ramène aux images la copie d'origine où
+    `ecrivain` a travaillé (permis : repartir n'a pas la règle de la dernière copie) — le
+    travail de l'autre ne vit plus —, puis veut la supprimer : elle se demande."""
+    a = _unique(client, "proprietaire")
+    assert _destructible(client, IMPORTEUR, a) is False
+    _ok(client.post(f"/api/albums/{a}/repartir", headers=IMPORTEUR, json={"cran": "images"}))
+    assert _destructible(client, IMPORTEUR, a) is False
+    assert client.delete(f"/api/albums/{a}", headers=IMPORTEUR).status_code == 403
+    assert _demander(client, a, IMPORTEUR).status_code == 201
+
+
+def test_derniere_copie_videe_region_par_region_puis_supprimee_se_demande(client, efface):
+    """Le second détour : l'importateur, simple écrivain, supprime une à une les régions de
+    l'autre, puis la copie. Le geste de l'autre est retenu : elle se demande."""
+    a = _unique(client, "ecriture")
+    pl = client.get(f"/api/albums/{a}/planches", headers=IMPORTEUR).json()[0]["id"]
+    for x in sorted(client.get(f"/api/planches/{pl}/regions", headers=IMPORTEUR).json(),
+                    key=lambda x: -x["id"]):
+        assert client.delete(f"/api/regions/{x['id']}", headers=IMPORTEUR).status_code in (
+            200, 204)
+    assert _destructible(client, IMPORTEUR, a) is False
+    assert client.delete(f"/api/albums/{a}", headers=IMPORTEUR).status_code == 403
+
+
+def test_un_geste_defait_compte_encore_pour_la_derniere_copie(client, efface, db_path):
+    """« Même défait » : `ecrivain` pose une case sur « Seul » puis l'annule (Ctrl+Z). Rien
+    ne vit de son geste ; la dernière copie se demande quand même. L'import que personne
+    d'autre n'a ouvert, lui, reste supprimable seul par son créateur — « Seul » avant le
+    geste."""
+    seul = efface["seul"]
+    assert _destructible(client, IMPORTEUR, seul) is True
+    _accorder(client, efface["principale"], "ecrivain", "ecriture")
+    pl = _sql(db_path, "SELECT id FROM planches WHERE album_id = ?", (seul,))[0]["id"]
+    _ok(client.post(f"/api/planches/{pl}/regions", headers=ECRIVAIN,
+                    json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)
+    _ok(client.post("/api/undo", headers=ECRIVAIN, json={}))
+    assert not _sql(db_path, "SELECT 1 FROM regions WHERE planche_id = ?", (pl,))
+    assert _destructible(client, IMPORTEUR, seul) is False
+    assert client.delete(f"/api/albums/{seul}", headers=IMPORTEUR).status_code == 403
+
+
+def test_supprimer_la_region_d_un_autre_est_un_geste(client, efface, db_path):
+    """Le seul geste de `ecrivain` sur « Seul » est d'en supprimer la case que l'importateur
+    y avait posée — journalisé après le `DELETE`, quand la région n'a plus de planche : sa
+    copie se lit sur l'instantané. La dernière copie se demande."""
+    seul = efface["seul"]
+    _accorder(client, efface["principale"], "ecrivain", "ecriture")
+    pl = _sql(db_path, "SELECT id FROM planches WHERE album_id = ?", (seul,))[0]["id"]
+    r = _ok(client.post(f"/api/planches/{pl}/regions", headers=IMPORTEUR,
+                        json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)
+    assert _destructible(client, IMPORTEUR, seul) is True
+    assert client.delete(f"/api/regions/{r['id']}", headers=ECRIVAIN).status_code in (200, 204)
+    assert _destructible(client, IMPORTEUR, seul) is False
+
+
+def test_une_correction_retiree_est_un_geste(client, efface, db_path):
+    """Une correction grammaticale d'`ecrivain` sur la bulle de l'importateur, puis retirée :
+    rien d'elle ne vit, le geste compte pour la dernière copie."""
+    from pipeline import nlp
+    if not nlp.nlp_available():
+        pytest.skip("sans moteur, aucun token sur lequel corriger")
+    seul = efface["seul"]
+    _accorder(client, efface["principale"], "ecrivain", "ecriture")
+    bulle = _travailler(client, seul, IMPORTEUR)
+    assert _destructible(client, IMPORTEUR, seul) is True
+    _ok(client.put(f"/api/regions/{bulle}/tokens/0", headers=ECRIVAIN,
+                   json={"lemme": "Tintin", "etat": "corrige"}))
+    _ok(client.delete(f"/api/regions/{bulle}/tokens/0", headers=ECRIVAIN))
+    assert not _sql(db_path, "SELECT 1 FROM token_correction WHERE region_id = ?", (bulle,))
+    assert _destructible(client, IMPORTEUR, seul) is False
+
+
+def test_hors_de_la_derniere_copie_la_regle_lit_ce_qui_vit(client, efface, db_path):
+    """Les autres suppressions gardent « ce qui vit encore » : X3, copie vierge prise par
+    `ecrivain`, a des sœurs ; `proprio` y pose puis y retire une case — le geste est retenu,
+    mais X3 n'est pas la dernière copie : `ecrivain` l'efface seul."""
+    x3 = efface["x3"]
+    pl = _sql(db_path, "SELECT id FROM planches WHERE album_id = ?", (x3,))[0]["id"]
+    r = _ok(client.post(f"/api/planches/{pl}/regions", headers=PROPRIO,
+                        json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)
+    assert _destructible(client, ECRIVAIN, x3) is False
+    assert client.delete(f"/api/regions/{r['id']}", headers=PROPRIO).status_code in (200, 204)
+    assert _sql(db_path, "SELECT agent FROM geste_sur_copie WHERE album_id = ?",
+                (x3,)) == [{"agent": "proprio"}]
+    assert _destructible(client, ECRIVAIN, x3) is True
+
+
 def test_une_soeur_isolee_ne_garde_pas_le_document_au_fonds_commun(client, efface, db_path):
     """Les sœurs d'O sont X1 et Y1, dans Étude P. Étude P déclarée projet isolé (le jeu), O
     redevient la dernière copie du fonds commun : `proprio2` ne l'efface plus seul."""

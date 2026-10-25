@@ -108,7 +108,52 @@ def journaliser(conn: sqlite3.Connection, type: str, cible_table: str,
         "cible_id, avant, apres) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (activite_id, type, agent, agent_type, cible_table, cible_id,
          _js(avant), _js(apres)))
+    if agent_type == "humain" and cible_table in _CIBLES_DE_GESTE:
+        _noter_le_geste(conn, cible_table, cible_id, agent, avant, apres)
     return cur.lastrowid
+
+
+# Les cibles d'un GESTE sur une copie, que `geste_sur_copie` retient (v36, COL-3, tranche 3b ;
+# Hugo, 2026-10-25) : une région et ce qu'elle porte, une correction grammaticale, une
+# planche (sa validation). Les actes sous le document se lisent au journal même, qui leur
+# survit (`autorisation._sources_du_travail`, cinquième source) ; les emplois, les demandes
+# et les accès ne sont pas un travail.
+_CIBLES_DE_GESTE = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
+                    "region_attribut", "token_correction", "planches")
+
+
+def _noter_le_geste(conn: sqlite3.Connection, cible_table: str, cible_id, agent, avant,
+                    apres) -> None:
+    """Retient QUI a fait un geste sur QUELLE copie, au moment où il est fait (`geste_sur_copie`)
+    — ce que le journal ne dirait plus une fois la région effacée : la règle de la DERNIÈRE
+    copie le lit, « personne d'autre n'y a jamais travaillé » (Hugo, 2026-10-25). La copie se
+    lit sur ce qui vit encore — la région, la correction, la planche —, et pour une région
+    déjà partie (une suppression journalisée après le `DELETE`), sur la planche de son
+    instantané. Un acte sans agent se retient sous '' : on ne sait pas qui, donc pas que
+    c'est le créateur."""
+    if cible_id is None:
+        return
+    if cible_table == "planches":
+        album = conn.execute("SELECT album_id FROM planches WHERE id = ?",
+                             (cible_id,)).fetchone()
+    elif cible_table == "token_correction":
+        album = conn.execute(
+            "SELECT p.album_id FROM token_correction c JOIN regions r ON r.id = c.region_id "
+            "JOIN planches p ON p.id = r.planche_id WHERE c.id = ?", (cible_id,)).fetchone()
+    else:
+        album = conn.execute(
+            "SELECT p.album_id FROM regions r JOIN planches p ON p.id = r.planche_id "
+            "WHERE r.id = ?", (cible_id,)).fetchone()
+        if album is None:
+            for etat in (apres, avant):
+                planche = etat.get("planche_id") if isinstance(etat, dict) else None
+                if planche is not None:
+                    album = conn.execute("SELECT album_id FROM planches WHERE id = ?",
+                                         (planche,)).fetchone()
+                    break
+    if album is not None:
+        conn.execute("INSERT OR IGNORE INTO geste_sur_copie (album_id, agent) VALUES (?, ?)",
+                     (album[0], agent or ""))
 
 
 def journaliser_emploi(conn: sqlite3.Connection, type: str, album_id: int,
