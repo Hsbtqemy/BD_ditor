@@ -50,7 +50,9 @@ def test_les_genres_de_la_prise_et_l_etat_partiel_sont_ceux_du_serveur():
     assert _constante("GENRE_REJOINDRE") == database.DEMANDE_REJOINDRE
     assert _constante("GENRE_RENDRE") == database.DEMANDE_RENDRE
     assert _constante("GENRE_AMORCER") == database.DEMANDE_AMORCER
+    assert _constante("GENRE_AMORCER_ENTRE_PROJETS") == database.DEMANDE_AMORCER_ENTRE_PROJETS
     assert _constante("PARTIELLE") == database.REPONSE_PARTIELLE
     assert set(database.GENRES_DEMANDE) == {
         _constante(n) for n in ("GENRE_DOCUMENT", "GENRE_PROJET", "GENRE_ENTREE",
-                                "GENRE_REJOINDRE", "GENRE_RENDRE", "GENRE_AMORCER")}
+                                "GENRE_REJOINDRE", "GENRE_RENDRE", "GENRE_AMORCER",
+                                "GENRE_AMORCER_ENTRE_PROJETS")}

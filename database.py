@@ -3250,9 +3250,20 @@ DEMANDE_RENDRE = "rendre_copie"
 # Une demande par copie SOURCE (`demande_document.album_id`), qui nomme sa collection
 # d'arrivée ; acceptée, la copie neuve est dite par `copie_id`.
 DEMANDE_AMORCER = "amorcer"
+# COL-3, tranche 3b (E7, Hugo, 2026-10-20) — EN PARTIR d'un travail d'un AUTRE projet. Le
+# responsable du projet d'arrivée demande un DOCUMENT et un CRAN, jamais une copie source :
+# il ne sait pas — et ne doit pas apprendre — qu'un autre projet en a travaillé une. Le
+# serveur l'ADRESSE, au moment où on la lit, aux responsables des projets qui tiennent une
+# copie rangée travaillée jusqu'à ce cran (`projets_qui_tiennent`), et un administrateur y
+# répond en recours ; le premier qui accepte choisit SA copie source (`ReponseIn.album_id`).
+# Un genre à lui, et non `amorcer` sans copie : `amorcer` attend le consentement des
+# propriétaires des collections d'UNE copie nommée (`demande_document.album_id`), et chaque
+# chemin qui le lit suppose cette copie. Ici `album_id` reste NULL, la collection d'arrivée
+# est nommée, `cran` posé ; acceptée, la copie neuve est dite par `copie_id`.
+DEMANDE_AMORCER_ENTRE_PROJETS = "amorcer_entre_projets"
 GENRES_DEMANDE = (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                   DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
-                  DEMANDE_AMORCER)
+                  DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE_PROJETS)
 # Les genres qui attendent le CONSENTEMENT des propriétaires des collections où vit la
 # copie visée — et non la réponse de qui tient le fonds (`Portee.peut_repondre_a`).
 GENRES_CONSENTIS = (DEMANDE_REJOINDRE, DEMANDE_AMORCER)
@@ -3278,6 +3289,83 @@ def etat_des_reponses(reponses) -> str | None:
     if set(reponses) == {REPONSE_REFUSEE}:
         return REPONSE_REFUSEE
     return REPONSE_PARTIELLE
+
+
+def niveau_de_travail(conn: sqlite3.Connection, album_id: int,
+                      planche_id: int | None = None) -> int:
+    """Le rang, sur l'échelle des crans (`rang_du_cran`), du plus haut travail que PORTE
+    cette copie — ou, `planche_id`, l'une de ses planches. COL-3, tranche 3b : ce qu'une
+    copie « tient » quand une demande d'en partir cherche à qui s'adresser (E7), et ce au-
+    dessous de quoi on peut repartir de zéro (E8). Un FAIT, lu sur ce qui VIT, cran par cran
+    de haut en bas (la liste d'E1) :
+
+    - `annotations` (4) : une annotation, un attribut de case, un locuteur, une présence ;
+    - `grammaire` (3) : une correction grammaticale, ou la relecture forcée d'une planche ;
+    - `transcription` (2) : un texte non vide ;
+    - `decoupage` (1) : une région ;
+    - `images` (0) : rien de cela.
+
+    La validation n'y compte pour rien : elle ne suit aucune copie (E1)."""
+    filtre, params = (("p.album_id = ?", (album_id,)) if planche_id is None
+                      else ("p.id = ? AND p.album_id = ?", (planche_id, album_id)))
+    regions = f"SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id WHERE {filtre}"
+
+    def existe(sql: str) -> bool:
+        return bool(conn.execute(f"SELECT EXISTS ({sql})", params).fetchone()[0])
+    if any(existe(f"SELECT 1 FROM {t} WHERE region_id IN ({regions})")
+           for t in ("annotations", "region_attribut", "bulle_locuteur",
+                     "personnage_presence")):
+        return rang_du_cran(CRAN_ANNOTATIONS)
+    if existe(f"SELECT 1 FROM token_correction WHERE region_id IN ({regions})") or existe(
+            f"SELECT 1 FROM planches p WHERE {filtre} AND p.relecture IS NOT NULL"):
+        return rang_du_cran(CRAN_GRAMMAIRE)
+    if existe(f"SELECT 1 FROM regions WHERE id IN ({regions}) "
+              "AND TRIM(COALESCE(ocr_texte, '')) <> ''"):
+        return rang_du_cran(CRAN_TRANSCRIPTION)
+    if existe(regions):
+        return rang_du_cran(CRAN_DECOUPAGE)
+    return rang_du_cran(CRAN_IMAGES)
+
+
+def projets_qui_tiennent(conn: sqlite3.Connection, document_id: int, cran: str, *,
+                         sauf: int | None) -> dict[int, list[dict]]:
+    """Les projets qui TIENNENT le travail d'un document jusqu'à un cran — ceux à qui une
+    demande d'en partir ENTRE DEUX PROJETS s'adresse (E7, COL-3, tranche 3b) :
+    `{projet_id: [{album_id, titre, niveau}, …]}`, les copies les plus anciennes d'abord.
+
+    Une copie y compte si elle est RANGÉE (une copie gardée au fonds n'est tenue que par qui
+    tient le fonds), hors d'un projet ISOLÉ (un bac à sable, le jeu : rien n'en sort), hors
+    du projet `sauf` (celui d'arrivée), et si elle porte du travail au moins jusqu'au cran
+    demandé (`niveau_de_travail`). Lu au moment où l'on en a besoin — l'adressage suit le
+    travail tel qu'il est, et rien n'est écrit sur la demande : une copie travaillée depuis
+    la fait apparaître chez son responsable, une copie détruite l'en retire.
+
+    Un FAIT : qui peut y répondre reste à `autorisation.Portee.peut_repondre_a`. Rien de ce
+    que rend cette fonction ne sort vers le DEMANDEUR — sans quoi il apprendrait qu'un autre
+    projet a ce travail, ce qu'E7 existe pour ne pas lui dire."""
+    rang = rang_du_cran(cran)
+    tiennent: dict[int, list[dict]] = {}
+    for r in conn.execute(
+            f"SELECT a.id, a.titre, {sql_projet_d_album('a')} AS projet_id FROM albums a "
+            "WHERE a.document_id = ? "
+            "AND EXISTS (SELECT 1 FROM collection_album ca WHERE ca.album_id = a.id) "
+            f"AND NOT {sql_album_isole('a')} ORDER BY a.id", (document_id,)).fetchall():
+        if r["projet_id"] is None or r["projet_id"] == sauf:
+            continue
+        niveau = niveau_de_travail(conn, r["id"])
+        if niveau >= rang:
+            tiennent.setdefault(r["projet_id"], []).append(
+                {"album_id": r["id"], "titre": r["titre"], "niveau": CRANS[niveau]})
+    return tiennent
+
+
+def titre_de_notice(conn: sqlite3.Connection, document_id: int) -> str | None:
+    """Le titre de la NOTICE d'un document : celui de sa plus ancienne copie vivante hors
+    d'un projet isolé (D7 — la règle de `GET /api/fonds/notices`), None sans copie."""
+    r = conn.execute(
+        "SELECT a.titre FROM albums a WHERE a.document_id = ? "
+        f"AND NOT {sql_album_isole('a')} ORDER BY a.id LIMIT 1", (document_id,)).fetchone()
+    return r[0] if r else None
 
 
 def un_proprietaire_tient_toute_la_copie(conn: sqlite3.Connection, album_id: int) -> bool:

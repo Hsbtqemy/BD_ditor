@@ -35,6 +35,10 @@
      avec `database` reste mesuré ; sans entrée dans `GENRES` tant que son écran attend sa
      maquette (E10) : « À faire » le dit « Demande », sans bouton. */
   const GENRE_AMORCER = "amorcer";
+  /* COL-3, tranche 3b — en partir d'un travail d'un AUTRE projet (E7) : la demande ne nomme
+     aucune copie. Même statut que le précédent : recopié pour la mesure, sans entrée dans
+     `GENRES` tant que son écran attend la maquette. */
+  const GENRE_AMORCER_ENTRE_PROJETS = "amorcer_entre_projets";
   const ACCEPTER = "acceptee";
   const REFUSER = "refusee";
   /* L'état d'une demande dont les documents ont reçu des réponses mêlées (D9) : jamais une
@@ -506,7 +510,7 @@
 
   return {
     GENRE_DOCUMENT, GENRE_PROJET, GENRE_ENTREE, GENRE_REJOINDRE, GENRE_RENDRE, GENRE_AMORCER,
-    GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
+    GENRE_AMORCER_ENTRE_PROJETS, GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
     toutAccepter, REFUSER_LE_RESTE, explicationDemande, IMAGES_RESTENT,
     ACCEPTER, REFUSER, PARTIELLE, CERTIFICATION, SORTES,
     RECOCHER_SUR_DEMANDE, dateLue, demandeur, pastille, offrir, retrait, definitif, apresRetrait, apresDefinitif,

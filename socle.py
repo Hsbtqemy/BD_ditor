@@ -2518,9 +2518,12 @@ class DemandeIn(BaseModel):
 class ReponseIn(BaseModel):
     """La réponse à une demande : `acceptee` ou `refusee`. `document_id` (COL-3, tranche
     3, D9) : pour une entrée de documents, la ligne à laquelle on répond ; absent, la
-    réponse vaut pour toutes celles qui attendent — « tout accepter »."""
+    réponse vaut pour toutes celles qui attendent — « tout accepter ». `album_id` (tranche
+    3b, E7) : pour ACCEPTER une demande d'en partir entre deux projets, la copie source que
+    choisit qui répond — une copie de SON projet, pour un responsable."""
     reponse: str
     document_id: Optional[int] = None
+    album_id: Optional[int] = None
 
 
 class DocumentPrisIn(BaseModel):

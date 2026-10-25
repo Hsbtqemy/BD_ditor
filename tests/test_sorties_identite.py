@@ -213,6 +213,18 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
             conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, "
                          "titre) VALUES (?, ?, ?, 'Cliquet')",
                          (dem, doc, a["id"] if genre == "rejoindre" else None))
+        # COL-3, tranche 3b (E7) — une demande d'en partir ENTRE DEUX PROJETS, déposée par le
+        # login sentinelle depuis un AUTRE projet, et qui s'adresse au projet du semis : son
+        # album y tient le travail jusqu'aux annotations. Sans elle,
+        # `…/projets/{id}/demandes-recues` rendrait une liste vide et passerait pour muette
+        # alors qu'elle nomme qui demande.
+        autre = conn.execute("INSERT INTO projet (nom) VALUES ('Autre semis')").lastrowid
+        dem = conn.execute(
+            "INSERT INTO demande (genre, demandeur, motif, projet_id, projet_nom, cran) "
+            "VALUES ('amorcer_entre_projets', ?, 'semis', ?, 'Autre semis', 'transcription')",
+            (SENTINELLES["login"], autre)).lastrowid
+        conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
+                     "VALUES (?, ?, NULL, 'Cliquet')", (dem, doc))
         act = conn.execute(
             "INSERT INTO activite (type, agent, agent_type) VALUES ('session', ?, 'humain')",
             (SENTINELLES["login"],)).lastrowid
@@ -353,6 +365,15 @@ SORTIES_DECLAREES = {
         "responsable. Qui a déposé ne s'y nomme que pour soi-même et pour une portée totale "
         "(`Portee.peut_nommer_le_demandeur`) — ce que mesure ce balayage, la sentinelle étant "
         "administratrice. Qui a répondu n'y est pas. Réservée à qui gère le projet."),
+    ("route", "/api/projets/{projet_id}/demandes-recues"): (
+        {"login", "nom"},
+        "COL-3, tranche 3b (E7) — les demandes d'en partir ENTRE DEUX PROJETS qui s'adressent "
+        "à ce projet, parce qu'il tient le travail demandé : QUI demande (et son nom "
+        "lisible) et le nom du projet d'arrivée — on ne laisse pas partir son travail vers "
+        "quelqu'un qu'on ne connaît pas, ce que le cadrage a accepté par écrit. Réservée à "
+        "qui GÈRE le projet ; le nom passe par "
+        "`Portee.peut_nommer_le_demandeur(consentement=…)`. Aucun artefact n'en sort "
+        "(`demande` est une cible retenue)."),
     ("route", "/api/moi"): (
         {"login", "nom"},
         "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "

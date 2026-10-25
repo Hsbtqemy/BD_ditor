@@ -67,7 +67,8 @@ import sqlite3
 from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
-from database import (CRAN_ANNOTATIONS, GENRES_CONSENTIS, NATURE_COLLECTIF, rang_du_cran,
+from database import (CRAN_ANNOTATIONS, DEMANDE_AMORCER_ENTRE_PROJETS, GENRES_CONSENTIS,
+                      NATURE_COLLECTIF, rang_du_cran,
                       sql_album_isole, sql_est_bac_a_sable, sql_est_isole, sql_est_jeu,
                       sql_projet_d_album, sql_projet_de, sql_rang_du_cran)
 
@@ -812,9 +813,21 @@ class Portee:
         par qui possède les deux, ou par un administrateur : la forme stricte de D4 lue
         comme le consentement de CHAQUE collection, tenu par une seule réponse.
 
+        Une demande d'en partir ENTRE DEUX PROJETS (`DEMANDE_AMORCER_ENTRE_PROJETS`, E7,
+        tranche 3b) ne nomme aucune copie : `projets`, les projets qui TIENNENT aujourd'hui
+        le travail demandé (`database.projets_qui_tiennent`, relevé par l'appelant sous le
+        verrou). Le RESPONSABLE de l'un d'eux y répond — c'est son travail qui sortirait du
+        projet (« qui autorise qu'on amorce depuis son travail », Hugo, 2026-10-09) —, et la
+        portée totale en recours, la seule quand aucun projet ne le tient. Être MEMBRE d'un
+        projet source, posséder une de ses collections : rien de cela n'y suffit.
+
         Ce que la question ne dit pas, et c'est à la route : quoi répondre à qui ne peut pas
         répondre — un 403 nommé sur le droit, avant l'objet, à qui n'administre rien ; un
         404 à qui ne lit pas la copie visée."""
+        if demande["genre"] == DEMANDE_AMORCER_ENTRE_PROJETS:
+            if self.tout:
+                return True
+            return any(self.peut_gerer_projet(p) for p in demande.get("projets") or ())
         if demande["genre"] in GENRES_CONSENTIS:
             if self.tout:
                 return True
@@ -843,8 +856,17 @@ class Portee:
         demande : on ne consent pas à partager un travail avec quelqu'un dont on ignore le
         nom — ce que le cadrage de la tranche a accepté par écrit, dans le même projet, le
         rangement ne traversant pas les projets. De même pour une demande d'en partir
-        (tranche 3b), dans le projet."""
+        (tranche 3b), dans le projet.
+
+        Entre deux projets (E7) : le responsable d'un projet qui TIENT le travail demandé
+        (`consentement["projets"]`, comme pour `peut_repondre_a`) lit qui demande, et le nom
+        du projet d'arrivée — accepté par écrit au cadrage : on ne laisse pas partir son
+        travail vers quelqu'un qu'on ne connaît pas."""
         if self.tout:
+            return True
+        if (consentement is not None
+                and consentement["genre"] == DEMANDE_AMORCER_ENTRE_PROJETS
+                and any(self.peut_gerer_projet(p) for p in consentement.get("projets") or ())):
             return True
         if (consentement is not None and consentement["genre"] in GENRES_CONSENTIS
                 and any(self.peut_administrer(c) for c in consentement["collections"] or ())):
