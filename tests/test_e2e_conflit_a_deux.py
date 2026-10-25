@@ -804,3 +804,31 @@ def test_deux_personnages_montres_le_second_est_refuse_et_garder_l_autre_le_mont
     finally:
         ctx_a.close()
         ctx_b.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_deux_choix_de_locuteur_coup_sur_coup_ne_se_contredisent_pas(page, decor):
+    """Relecture de CONC-4 : deux choix faits avant que le premier soit revenu partaient
+    tous deux avec la valeur vue d'AVANT, et le second recevait un 409 contre soi-même. Ils
+    partent désormais l'un après l'autre : le second déclare le personnage du premier."""
+    s = decor
+    zed, yann = _personnages_qa(s["base"], "Zed QA", "Yann QA")
+    locuteur = lambda: _lien_en_base(s["base"], s["bulle"], "locuteur", "locuteur")  # noqa: E731
+    ctx_b, b = _contexte(page, BOB)
+    try:
+        _ouvrir(b, s["url_bulle"], "annotation")
+        retenue = _Retenue(b, "**/api/regions/*/locuteur")
+        _choisir(b, "#loc-input", "#loc-suggest", "Zed QA")
+        assert retenue.attendre(1) == 1
+        _choisir(b, "#loc-input", "#loc-suggest", "Yann QA")
+        b.wait_for_timeout(500)
+        retenue.liberer()
+        assert _attendre(locuteur, yann, page=b) == yann
+        b.wait_for_load_state("networkidle")
+        expect(b.locator("#bandeau-conflit")).to_have_count(0)
+        expect(b.locator("#loc-current")).to_contain_text("Yann QA")
+        corps = [json.loads(d) for m, u, d in b.envois if m == "PUT" and u.endswith("/locuteur")]
+        assert corps == [{"personnage_id": zed, "personnage_vu": None},
+                         {"personnage_id": yann, "personnage_vu": zed}], corps
+    finally:
+        ctx_b.close()

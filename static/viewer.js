@@ -80,6 +80,8 @@ const state = {
                            // CONC-4 : lieu "locuteur"|"presence", plus `saisie` (le choix)
   locVu: undefined,        // CONC-4 : le locuteur que l'écran a VU (id, null : aucun ;
   persoVu: undefined,      //   undefined : pas encore lu) — de même le personnage montré
+  envoiLoc: null,          // CONC-4 : le geste de locuteur pas encore revenu (promesse)
+  envoiPerso: null,        // CONC-4 : de même pour le personnage montré
   envoiNote: null,         // CONC-3 : l'enregistrement de note pas encore revenu (promesse)
   envoiTr: null,           // CONC-3 : de même pour le texte transcrit
   geste: null,             // CONC-3 : le geste retenu en attendant la réponse, { rejouer }
@@ -503,8 +505,8 @@ async function actualiserPlanche() {
     const sale = state.annotSale;
     const enCours = sale.note || sale.ajoutes.size || sale.retires.size
       || state.saveTimer || state.envoiNote;
-    if (!enCours) loadAnnotation(state.selectedId);
-    else chargerBlocsDuType(state.selectedId);   // le locuteur, le personnage, la situation
+    if (!enCours) loadAnnotation(state.selectedId, true);
+    else chargerBlocsDuType(state.selectedId, true);   // le locuteur, le personnage, la situation
   }
   if (state.mode === "transcription") actualiserTranscription(trAvant);
 }
@@ -1277,7 +1279,9 @@ function setMode(mode) {
 /* ===================================================================
    Annotation (tags + note, sauvegarde auto)
    =================================================================== */
-async function loadAnnotation(regionId) {
+/* `garder` : relire sans toucher à ce qui se tape dans les champs de personnage (CONC-4,
+   « Actualiser » sur la zone ouverte). */
+async function loadAnnotation(regionId, garder = false) {
   try {
     const ann = await apiGet(`/api/regions/${regionId}/annotation`);
     state.currentTags = ann.tags.map((t) => t.label);
@@ -1297,16 +1301,16 @@ async function loadAnnotation(regionId) {
     renderTagChips();
     setSaveState("");
   }
-  chargerBlocsDuType(regionId);   // indépendants de l'annotation
+  chargerBlocsDuType(regionId, garder);   // indépendants de l'annotation
 }
 
 /* Les trois blocs que le TYPE de la région décide, et dont un seul s'affiche. Appelée au
    chargement de l'annotation ET quand le type change sous les yeux (ANN-6) : sans le second
    appel, une bulle passée en case gardait son bloc Locuteur jusqu'à la prochaine sélection —
    et le serveur, qui tient désormais la règle, y refuserait l'attribution. */
-function chargerBlocsDuType(regionId) {
-  loadLocuteur(regionId);   // Locuteur — zones de texte : bulle, cartouche, texte
-  loadPerso(regionId);      // Personnage — boîtes personnage : identité + profil
+function chargerBlocsDuType(regionId, garder = false) {
+  loadLocuteur(regionId, garder);   // Locuteur — zones de texte : bulle, cartouche, texte
+  loadPerso(regionId, garder);      // Personnage — boîtes personnage : identité + profil
   loadSituation(regionId);  // Situation — cases
 }
 
@@ -2057,17 +2061,21 @@ const LOCUTEUR_DE = {
   bulle: "à la bulle", cartouche: "au cartouche", texte: "à la zone de texte",
 };
 
-async function loadLocuteur(regionId) {
+async function loadLocuteur(regionId, garder = false) {
   const sec = $("#loc-section");
   const r = state.regionsById.get(regionId);
   if (!r || !Object.hasOwn(LOCUTEUR_DE, r.type)) {
     sec.hidden = true; state.locRegion = null; return;
   }
+  // CONC-4 — relue sur place (« Actualiser »), la zone garde le nom à moitié tapé.
+  const memeZone = garder && state.locRegion === regionId;
   sec.hidden = false;
   state.locRegion = regionId;
   $("#loc-input").setAttribute("aria-label", "Attribuer un locuteur " + LOCUTEUR_DE[r.type]);
-  $("#loc-input").value = "";
-  $("#loc-suggest").hidden = true;
+  if (!memeZone) {
+    $("#loc-input").value = "";
+    $("#loc-suggest").hidden = true;
+  }
   renderLocuteur(null, false);
   state.locVu = undefined;            // CONC-4 : rien n'est VU tant que la lecture n'a pas répondu
   try {
@@ -2102,9 +2110,18 @@ function renderLocuteur(loc, vu = true) {
    l'a changé depuis, le serveur refuse par le 409 nommé, et le bandeau de CONC-3 s'ouvre au-
    dessus de la puce (`ouvrirConflit`), avec le choix qu'on venait de faire. La valeur vue
    n'est déclarée que pour la zone ouverte, et une fois lue : sinon le dernier gagne. */
-async function setLocuteur(pid, rid, nom) {   // `rid` : la zone du GESTE, pas celle du moment
+/* Les gestes d'un même lien partent L'UN APRÈS L'AUTRE (`enchainer`, comme la note) : deux
+   choix coup sur coup déclaraient tous deux la valeur vue d'AVANT le premier, et le second
+   recevait un 409 contre soi-même (relecture de CONC-4). La valeur vue se lit donc au moment
+   où le geste PART, après la réponse du précédent. */
+function setLocuteur(pid, rid, nom) {   // `rid` : la zone du GESTE, pas celle du moment
   if (rid == null) return;
   if (conflitBloque()) return;        // un seul bandeau à la fois : il attend un choix
+  return enchainer("envoiLoc", () => envoyerLocuteur(pid, rid, nom));
+}
+
+async function envoyerLocuteur(pid, rid, nom) {
+  if (conflitBloque()) return;        // le geste précédent a ouvert le bandeau
   const corps = { personnage_id: pid };
   if (rid === state.locRegion && state.locVu !== undefined) corps.personnage_vu = state.locVu;
   try {
@@ -2116,11 +2133,16 @@ async function setLocuteur(pid, rid, nom) {   // `rid` : la zone du GESTE, pas c
   }
 }
 
-async function clearLocuteur() {
+function clearLocuteur() {
   const rid = state.locRegion;
   if (rid == null) return;
   if (conflitBloque()) return;
-  const vu = state.locVu;
+  return enchainer("envoiLoc", () => retirerLocuteur(rid));
+}
+
+async function retirerLocuteur(rid) {
+  if (conflitBloque()) return;
+  const vu = rid === state.locRegion ? state.locVu : undefined;
   const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
   try { await apiSend("DELETE", `/api/regions/${rid}/locuteur${q}`); } catch (e) {
     conflitDeLien(e, "locuteur", rid, null);
@@ -2132,14 +2154,17 @@ async function clearLocuteur() {
 /* --- Personnage MONTRÉ : identité d'une boîte personnage (§14, brique (a)). Miroir du
    locuteur, mais pour l'image — même entité, et le profil corpus se règle ICI aussi, donc
    atteignable pour un personnage muet (sans bulle). --- */
-async function loadPerso(regionId) {
+async function loadPerso(regionId, garder = false) {   // `garder` : cf. `loadLocuteur`
   const sec = $("#perso-section");
   const r = state.regionsById.get(regionId);
   if (!r || r.type !== "personnage") { sec.hidden = true; state.persoRegion = null; return; }
+  const memeZone = garder && state.persoRegion === regionId;
   sec.hidden = false;
   state.persoRegion = regionId;
-  $("#perso-input").value = "";
-  $("#perso-suggest").hidden = true;
+  if (!memeZone) {
+    $("#perso-input").value = "";
+    $("#perso-suggest").hidden = true;
+  }
   renderPerso(null, false);
   state.persoVu = undefined;          // CONC-4, cf. `loadLocuteur`
   try {
@@ -2168,9 +2193,14 @@ function renderPerso(perso, vu = true) {   // `vu` : cf. `renderLocuteur`
   if (persoAlignWidget) persoAlignWidget.load(perso ? perso.id : null);   // alignement d'autorité (A5)
 }
 
-async function setPerso(pid, rid, nom) {      // `rid` : la boîte du GESTE, pas celle du moment
+function setPerso(pid, rid, nom) {      // `rid` : la boîte du GESTE, pas celle du moment
   if (rid == null) return;
-  if (conflitBloque()) return;        // CONC-4, cf. `setLocuteur`
+  if (conflitBloque()) return;        // CONC-4, cf. `setLocuteur` : en file, et un bandeau à la fois
+  return enchainer("envoiPerso", () => envoyerPerso(pid, rid, nom));
+}
+
+async function envoyerPerso(pid, rid, nom) {
+  if (conflitBloque()) return;
   const corps = { personnage_id: pid };
   if (rid === state.persoRegion && state.persoVu !== undefined) corps.personnage_vu = state.persoVu;
   try {
@@ -2182,11 +2212,16 @@ async function setPerso(pid, rid, nom) {      // `rid` : la boîte du GESTE, pas
   }
 }
 
-async function clearPerso() {
+function clearPerso() {
   const rid = state.persoRegion;
   if (rid == null) return;
   if (conflitBloque()) return;
-  const vu = state.persoVu;
+  return enchainer("envoiPerso", () => retirerPerso(rid));
+}
+
+async function retirerPerso(rid) {
+  if (conflitBloque()) return;
+  const vu = rid === state.persoRegion ? state.persoVu : undefined;
   const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
   try { await apiSend("DELETE", `/api/regions/${rid}/personnage${q}`); } catch (e) {
     conflitDeLien(e, "presence", rid, null);

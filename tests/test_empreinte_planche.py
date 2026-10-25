@@ -145,3 +145,46 @@ def test_un_tag_qu_on_ne_lit_pas_ne_change_pas_l_empreinte(client, album, planch
         conn.close()
     assert _empreinte(client, pid, lectrice) == avant_l
     _seule_change(avant_a, _empreinte(client, pid, ADMIN), rid)
+
+
+def test_une_situation_qu_on_ne_lit_pas_ne_change_pas_l_empreinte(client, album, planche,
+                                                                    db_path, monkeypatch):
+    """Le miroir du tag, pour la situation d'une case : une valeur locale à une collection
+    qu'on ne lit pas — ou une valeur globale rangée sous un AXE local (bases d'avant la v24,
+    la ceinture de `socle._attributs_de`) — ne bouge pas l'empreinte de la lectrice ; celle
+    d'un administrateur, si. Les deux filtres, la valeur ET sa dimension, sont éprouvés."""
+    pid = planche["id"]
+    rid = _region(client, pid, type="case")
+    secrete = client.post("/api/collections", json={"nom": "Étude fermée"},
+                          headers=ADMIN).json()["id"]
+    assert client.put(f"/api/albums/{album['id']}/collections/{secrete}",
+                      headers=ADMIN).status_code in (200, 201, 204)
+    conn = sqlite3.connect(db_path)
+    try:
+        (ouverte,) = conn.execute("SELECT collection_id FROM collection_album WHERE album_id = ? "
+                                  "AND collection_id <> ?", (album["id"], secrete)).fetchone()
+        conn.execute("INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
+                     "VALUES (?, 'utilisateur', 'lectrice', 'lecture')", (ouverte,))
+        dim = conn.execute("INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                           "VALUES ('case', 'grille-secrete', ?)", (secrete,)).lastrowid
+        locale = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
+                              "VALUES (?, 'confidentielle', ?)", (dim, secrete)).lastrowid
+        globale = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
+                               "VALUES (?, 'sous-axe-prive', NULL)", (dim,)).lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+    monkeypatch.setattr(main, "AUTH_PROXY", True)
+    monkeypatch.setattr(autorisation, "AUTH_PROXY", True)
+    lectrice = {"Remote-User": "lectrice"}
+    for valeur in (locale, globale):
+        avant_l, avant_a = _empreinte(client, pid, lectrice), _empreinte(client, pid, ADMIN)
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+                         (rid, valeur))
+            conn.commit()
+        finally:
+            conn.close()
+        assert _empreinte(client, pid, lectrice) == avant_l, valeur
+        _seule_change(avant_a, _empreinte(client, pid, ADMIN), rid)

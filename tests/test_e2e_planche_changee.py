@@ -267,3 +267,29 @@ def test_la_verification_suit_l_intervalle_et_se_suspend_onglet_cache(page, deco
         expect(b.locator("#planche-actualiser")).to_be_visible()
     finally:
         ctx.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_actualiser_garde_le_nom_a_moitie_tape_d_un_personnage(page, decor):
+    """Relecture de CONC-4 : « Actualiser » vidait le champ du locuteur, où Bob avait commencé
+    de taper un nom. La saisie s'y garde, comme dans la note et le texte."""
+    s = decor
+    un, deux, _ = s["bulles"]
+    ctx, b = _ouvrir(page, s["url"] + f"&region={un}")
+    try:
+        with b.expect_request(lambda r: r.url.endswith("/locuteur")):
+            b.click('.mode-btn[data-mode="annotation"]')
+        b.wait_for_load_state("networkidle")
+        with _client(s["base"], ALICE) as c:
+            assert c.put(f"/api/regions/{deux}", json={"ocr_texte": "AILLEURS"}).status_code == 200
+        _retour_sur_l_onglet(b)
+        expect(b.locator("#planche-actualiser")).to_be_visible()
+        b.click("#loc-input")
+        b.keyboard.type("Hadd")
+        with b.expect_response(lambda r: r.url.endswith(f"/regions/{un}/locuteur")):
+            b.locator("#planche-actualiser").click()
+        expect(b.locator("#planche-actualiser")).to_be_hidden(timeout=15000)
+        b.wait_for_load_state("networkidle")
+        expect(b.locator("#loc-input")).to_have_value("Hadd")
+    finally:
+        ctx.close()
