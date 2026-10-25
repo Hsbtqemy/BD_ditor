@@ -445,6 +445,11 @@ def test_le_verrou_de_l_outil(client, decor):
 
 def test_les_unites_systemd_lancent_l_outil_toutes_les_heures():
     racine = Path(__file__).resolve().parent.parent / "deploy" / "systemd"
+    if not racine.exists():
+        pytest.skip(
+            "deploy/ est exclu du contexte de build (.dockerignore) : ce test ne tourne QUE "
+            "sur la machine de développement. Son skip dans l'image N'EST PAS une couverture "
+            "— cf. QA-6, « un skip se lit comme un succès »")
     service = (racine / "bd-bacs-a-sable.service").read_text(encoding="utf-8")
     minuterie = (racine / "bd-bacs-a-sable.timer").read_text(encoding="utf-8")
     assert "Type=oneshot" in service and "User=ubuntu" in service
