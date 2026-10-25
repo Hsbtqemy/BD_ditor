@@ -330,6 +330,55 @@ def test_dans_le_projet_une_correction_recopiee_garde_son_auteur_et_se_tait(clie
         ("sam", {"token_correction": 1})], vue
 
 
+def test_une_couche_recopiee_effacee_par_une_remise_a_zero_ne_compte_plus(client, db_path,
+                                                                          source):
+    """Relecture croisée de la 3b, constat 5 : la sixième source lit ce qui VIT encore, pas le
+    cran de la copie. `sam` annote la case de la source ; `lea` en part jusqu'aux annotations
+    dans Étude — l'annotation de `sam` suit, et `lea` ne supprime plus seule sa copie. La
+    propriétaire d'Étude ramène la copie à la transcription : la couche est effacée, le
+    travail de `sam` ne compte plus, et `lea` la supprime de nouveau seule."""
+    _ok(client.put(f"/api/regions/{source['case']}/annotation", headers=SAM,
+                   json={"note": "plan large", "tags": []}))
+    b = _copier(source, "annotations")
+    assert _destructible(client, b, LEA) is False
+    _accorder(client, source["etude"], "proprio", "proprietaire")
+    _ok(client.post(f"/api/albums/{b}/repartir", headers={"Remote-User": "proprio"},
+                    json={"cran": "transcription"}))
+    assert _destructible(client, b, LEA) is True
+
+
+def test_une_validation_grammaticale_recopiee_suit_les_corrections(client, db_path, source):
+    """La même règle pour la grammaire : `sam` a validé la grammaire de la bulle source (un
+    acte `validation` sous `regions`, posé au journal) ; `lea` en part jusqu'à la grammaire,
+    et ne supprime plus seule sa copie. Ramenée à la transcription par la propriétaire
+    d'Étude, la copie n'a plus de correction : la validation de `sam` ne compte plus."""
+    _sql(db_path, "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
+                  "apres, date) VALUES ('validation', 'sam', 'humain', 'regions', ?, "
+                  "'{\"grammaire\": \"validee\"}', datetime('now', '-1 hour'))",
+         (source["bulle"],))
+    b = _copier(source, "grammaire")
+    assert _destructible(client, b, LEA) is False
+    _accorder(client, source["etude"], "proprio", "proprietaire")
+    _ok(client.post(f"/api/albums/{b}/repartir", headers={"Remote-User": "proprio"},
+                    json={"cran": "transcription"}))
+    assert _destructible(client, b, LEA) is True
+
+
+def test_une_couche_posee_ensuite_ne_ranime_pas_celle_de_la_source(client, db_path, source):
+    """Le pendant : « ce qui vit » ne remplace pas le cran de la chaîne. `sam` annote la case
+    de la source ; `lea` en part jusqu'à la transcription — l'annotation ne suit pas —, puis
+    annote elle-même la case copiée : la couche vit sur la copie, mais ce n'est pas celle de
+    `sam`, et `lea` supprime seule sa copie."""
+    _ok(client.put(f"/api/regions/{source['case']}/annotation", headers=SAM,
+                   json={"note": "plan large", "tags": []}))
+    b = _copier(source, "transcription")
+    case = _sql(db_path, "SELECT region_id FROM region_origine WHERE region_source_id = ?",
+                (source["case"],))[0]["region_id"]
+    _ok(client.put(f"/api/regions/{case}/annotation", headers=LEA,
+                   json={"note": "à moi", "tags": []}))
+    assert _destructible(client, b, LEA) is True
+
+
 def test_le_travail_fait_sur_la_source_apres_la_copie_ne_compte_pas(client, db_path, source):
     b = _copier(source, "annotations")
     _sql(db_path, "UPDATE copie SET creee_le = datetime('now', '-1 hour') WHERE album_id = ?",

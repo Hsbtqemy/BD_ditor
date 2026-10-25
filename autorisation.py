@@ -1140,7 +1140,8 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     sinon à la créatrice d'une copie de la supprimer seule. Changer l'ORDRE des planches
     n'en est pas un (UX-11, Hugo, 2026-10-22 ; `_SQL_ORDRE_DES_PLANCHES`) : écrit sous le
     document lui aussi, il n'y compte pas, et l'administrateur ne le lit pas non plus sous
-    une demande. Chaque sous-requête part de
+    une demande. Ni REPARTIR DE ZÉRO, ni RETIRER DU PROJET (tranche 3b,
+    `_SQL_EFFACER_OU_RETIRER`) : l'un efface, l'autre range. Chaque sous-requête part de
     l'album et descend par les index
     (`idx_evenement_cible`) : la liste des albums la pose album par album.
 
@@ -1152,9 +1153,13 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     un acte ne compte que s'il est ANTÉRIEUR à la copie qui l'a emporté (le travail fait
     ensuite sur la source n'est pas dans la copie), et une couche d'annotation (note,
     locuteur, présence, attribut) ne compte que si chaque maillon de la chaîne l'a emportée
-    (cran `annotations`). C'est un écart ÉCRIT avec « on lit ce qui vit encore » : la
-    région source peut être supprimée depuis, et le journal qui la nomme lui survit ; le
-    travail copié, lui, vit. La lecture penche vers la demande : tout acte humain sur une
+    (cran `annotations`) ET si elle VIT encore sur la région de la copie — repartir de zéro
+    au-dessous l'efface, et le travail qu'elle portait ne compte plus (relecture croisée de
+    la 3b, constat 5) ; une validation grammaticale, que si une correction y vit. C'est un
+    écart ÉCRIT avec « on lit ce qui vit encore » : la région source peut être supprimée
+    depuis, et le journal qui la nomme lui survit ; le travail copié, lui, vit, et c'est
+    lui qu'on lit. La cible `regions` ne distingue pas la géométrie du texte : un texte
+    recopié puis effacé par une remise au découpage compte encore, tant que la région vit. La lecture penche vers la demande : tout acte humain sur une
     région source avant la copie compte — un texte modifié puis copié au seul cran du
     découpage aussi, la cible `regions` ne distinguant pas la géométrie du texte.
 
@@ -1178,21 +1183,21 @@ _CIBLES_D_ANNOTATION = tuple(c for c in _CIBLES_DE_REGION if c != "regions")
 def _sql_chaine_des_sources(depart: str) -> str:
     """`WITH RECURSIVE …` qui rend, pour les régions que `depart` sélectionne (une requête
     `SELECT region_id`), chacune de leurs régions SOURCES en remontant `region_origine` —
-    en `(s, borne, rang)` : la région source, la date de la copie qui l'a emportée (un acte
-    ne compte qu'avant elle), et le plus petit cran de la chaîne jusque-là (une couche ne
-    suit que si chaque maillon l'a prise). Le premier maillon est la copie de `depart` ; le
+    en `(d, s, borne, rang)` : la région de départ, la région source, la date de la copie qui
+    l'a emportée (un acte ne compte qu'avant elle), et le plus petit cran de la chaîne
+    jusque-là (une couche ne suit que si chaque maillon l'a prise). Le premier maillon est la copie de `depart` ; le
     suivant, la copie qui portait la source ; une région source supprimée arrête la chaîne
     (sa ligne `region_origine` est partie avec elle)."""
     rang = sql_rang_du_cran
     return (
-        "WITH RECURSIVE _tch(s, borne, rang) AS ("
-        "SELECT _tro.region_source_id, _tco.creee_le, " + rang("_tco.cran") + " "
+        "WITH RECURSIVE _tch(d, s, borne, rang) AS ("
+        "SELECT _tro.region_id, _tro.region_source_id, _tco.creee_le, " + rang("_tco.cran") + " "
         "FROM region_origine _tro JOIN regions _trr ON _trr.id = _tro.region_id "
         "JOIN planches _tpp ON _tpp.id = _trr.planche_id "
         "JOIN copie _tco ON _tco.album_id = _tpp.album_id "
         f"WHERE _tro.region_id IN ({depart}) "
         "UNION "
-        "SELECT _tro2.region_source_id, MIN(_tch.borne, _tco2.creee_le), "
+        "SELECT _tch.d, _tro2.region_source_id, MIN(_tch.borne, _tco2.creee_le), "
         "MIN(_tch.rang, " + rang("_tco2.cran") + ") "
         "FROM _tch JOIN region_origine _tro2 ON _tro2.region_id = _tch.s "
         "JOIN regions _trr2 ON _trr2.id = _tch.s "
@@ -1248,15 +1253,18 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
          f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' "
          f"AND {_SQL_ALBUM_DE_LA_CHARGE} = _ta.id AND NOT {_SQL_NAISSANCE_D_UNE_COPIE} "
-         f"AND NOT {_SQL_ORDRE_DES_PLANCHES}", "0"),
+         f"AND NOT {_SQL_ORDRE_DES_PLANCHES} AND NOT {_SQL_EFFACER_OU_RETIRER}", "0"),
         ("_te.agent", "_te.cible_table", "_te.date",
          "evenement _te JOIN ("
-         + _sql_chaine_des_sources(regions_de_l_album) + "SELECT s, borne, rang FROM _tch"
+         + _sql_chaine_des_sources(regions_de_l_album) + "SELECT d, s, borne, rang FROM _tch"
          f") _tsrc ON _te.cible_id = _tsrc.s "
          f"WHERE _te.cible_table IN ({cibles}) AND _te.agent_type = 'humain' "
          "AND _te.date <= _tsrc.borne "
          f"AND (_te.cible_table NOT IN ({annotation}) "
-         f"OR _tsrc.rang >= {rang_du_cran(CRAN_ANNOTATIONS)})", "1"),
+         f"OR (_tsrc.rang >= {rang_du_cran(CRAN_ANNOTATIONS)} AND {_SQL_COUCHE_VIT})) "
+         "AND (_te.cible_table <> 'regions' OR _te.type <> 'validation' "
+         "OR EXISTS (SELECT 1 FROM token_correction _tvc WHERE _tvc.region_id = _tsrc.d))",
+         "1"),
     ]
 
 
@@ -1291,6 +1299,36 @@ ACTE_ORDRE_DES_PLANCHES = "ordre_des_planches"
 _SQL_ORDRE_DES_PLANCHES = (
     "((CASE WHEN json_valid(_te.apres) THEN json_extract(_te.apres, '$.acte') END) "
     f"IS '{ACTE_ORDRE_DES_PLANCHES}')")
+
+
+# REPARTIR DE ZÉRO (`socle._repartir`, charge `repartir`) et RETIRER DU PROJET
+# (`routes/collections.retirer_du_projet`, charge `retire_du_projet`) : deux actes sous le
+# document qui ne sont pas un travail sur l'album (relecture croisée de la 3b, constat 5 ;
+# le patron de l'ordre des planches). L'un efface, l'autre range : les compter ôtait à qui
+# a créé seul une copie le droit de l'effacer, pour un geste fait par son propriétaire ou
+# son responsable — et l'administrateur les lisait sous une demande comme un travail perdu.
+# Reconnus par la clé de leur charge, que seules ces deux routes posent ; `json_type` rend
+# NULL sur une clé absente, et le `CASE`, jamais NULL, garde comptée une charge illisible.
+_SQL_EFFACER_OU_RETIRER = (
+    "(CASE WHEN json_valid(_te.apres) THEN "
+    "json_type(_te.apres, '$.repartir') IS NOT NULL "
+    "OR json_type(_te.apres, '$.retire_du_projet') IS NOT NULL ELSE 0 END)")
+
+
+# Une couche d'ANNOTATION recopiée VIT-elle encore sur la région de départ de la chaîne
+# (`_tsrc.d`) ? La sixième source lit ce qui vit, pas le cran de la copie (relecture croisée
+# de la 3b, constat 5) : repartir de zéro au-dessous des annotations efface la couche, et le
+# travail qu'elle portait ne compte plus — comme un travail supprimé depuis.
+_SQL_COUCHE_VIT = (
+    "(CASE _te.cible_table "
+    "WHEN 'annotations' THEN EXISTS (SELECT 1 FROM annotations _tv WHERE _tv.region_id = _tsrc.d) "
+    "WHEN 'bulle_locuteur' THEN EXISTS (SELECT 1 FROM bulle_locuteur _tv "
+    "WHERE _tv.region_id = _tsrc.d) "
+    "WHEN 'personnage_presence' THEN EXISTS (SELECT 1 FROM personnage_presence _tv "
+    "WHERE _tv.region_id = _tsrc.d) "
+    "WHEN 'region_attribut' THEN EXISTS (SELECT 1 FROM region_attribut _tv "
+    "WHERE _tv.region_id = _tsrc.d) "
+    "ELSE 1 END)")
 
 
 def sql_actes_sur_album(alias: str) -> str:

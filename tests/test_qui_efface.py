@@ -329,6 +329,28 @@ def test_le_bac_a_sable_garde_son_chemin_et_rien_d_autre(client, efface, db_path
     assert _clause(db_path, {"Remote-User": "lea"}, a) is True
 
 
+def test_repartir_ou_retirer_du_projet_n_est_pas_un_travail_sur_l_album(client, efface):
+    """Relecture croisée de la 3b, constat 5 : X3, copie vierge d'Astérix prise par
+    `ecrivain`, qui la découpe seul. `proprio` (X) la ramène aux images, puis un
+    administrateur la retire du projet et la rend à X : ni l'acte `repartir` ni l'acte
+    `retire_du_projet` — écrits sous le document, et nommant l'album — ne sont un travail sur
+    l'album (le patron de l'ordre des planches). `ecrivain` l'efface encore seul, et ce que
+    l'administrateur lit sous une demande ne les compte pas."""
+    x3 = efface["x3"]
+    _travailler(client, x3, ECRIVAIN, texte=None)
+    assert _destructible(client, ECRIVAIN, x3) is True
+    _ok(client.post(f"/api/albums/{x3}/repartir", headers=PROPRIO, json={"cran": "images"}))
+    assert _destructible(client, ECRIVAIN, x3) is True
+    _ok(client.post(f"/api/albums/{x3}/retirer-du-projet", headers=ADMIN))
+    _ranger(x3, efface["x"])
+    assert _destructible(client, ECRIVAIN, x3) is True
+    vue = _ok(client.get(f"/api/albums/{x3}/travail-des-autres", headers=ECRIVAIN))
+    # « Qui perd quoi » lit la même source que ce que l'administrateur lit sous une
+    # demande : ni `proprio` ni l'administrateur n'y sont, et les régions d'`ecrivain`
+    # sont parties avec la remise aux images.
+    assert vue["travail_des_autres"] == [], vue
+
+
 # =========================================================================== #
 # Qui perd quoi, avant d'effacer
 # =========================================================================== #
