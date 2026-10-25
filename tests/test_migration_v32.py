@@ -61,6 +61,11 @@ def vraie_v31(tmp_path, monkeypatch):
     return db
 
 
+# La v37 (ANN-7, tranche 1) aussi : seize tables neuves, vides, et `regions.nom`.
+TABLES_NEUVES |= set(database.TABLES_DES_GRILLES)
+COLONNES_NEUVES["regions"] = (*COLONNES_NEUVES.get("regions", ()), "nom")
+
+
 def _etat(db):
     tables = [r["name"] for r in _sql(
         db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "

@@ -43,7 +43,11 @@ Ce que le parcours pose, et pourquoi :
   la seconde par le seul journal. Les planches du code v34 notent leur `master_origine` ;
 - à partir de la v35 (`_parcours_v35`, COL-3, tranche 3b) : le jeu des bacs à sable, préparé
   par son outil ; deux bacs à sable, dont l'un où un invité a créé une collection et importé
-  un album ; une collection créée par un simple membre d'un projet ordinaire.
+  un album ; une collection créée par un simple membre d'un projet ordinaire ;
+- à partir de la v36 (`_parcours_v36`, ANN-7, tranche 1) : des régions des cinq types, des
+  textes à apostrophes et à tirets ; une copie sœur amorcée au cran `annotations` ; un album
+  retiré du projet ; le réglage de création ouvert ; une planche et une région détruites en
+  haut de leur table.
 
 Le parcours n'emploie que des routes stables depuis la v29. Si une version les change, il
 gagne une branche sur `database.SCHEMA_VERSION` plutôt que de perdre l'ancienne forme :
@@ -122,9 +126,30 @@ def _png() -> bytes:
     return b.getvalue()
 
 
+# La version du code joué, posée par `_jouer_le_parcours` : quelques gestes ont changé de
+# forme d'une version à l'autre, et chaque fichier de `tests/bases/` doit rester refabricable.
+_VERSION = 0
+
+
+def _collection_du_repli(c, qui, nom: str) -> int:
+    """Une collection du projet de REPLI, possédée par `qui`. Jusqu'à la v35, tout compte
+    identifié en créait une ; depuis la v36 (COL-3, tranche 3b), créer une collection revient
+    aux responsables du projet et aux administrateurs : l'administrateur la crée, puis en
+    fait `qui` propriétaire — le même état, par les gestes que la v36 permet."""
+    if _VERSION < 36:
+        return _ok(c.post("/api/collections", headers=qui, json={"nom": nom}), 201)["id"]
+    cid = _ok(c.post("/api/collections", headers=ADMIN, json={"nom": nom}), 201)["id"]
+    _ok(c.put(f"/api/collections/{cid}/acces", headers=ADMIN,
+              json={"genre": "utilisateur", "principal": qui["Remote-User"],
+                    "niveau": "proprietaire"}), 200)
+    return cid
+
+
 def _jouer_le_parcours(main, database, journal) -> dict:
     """Le parcours, par les routes du code joué. Rend ce qu'il faut savoir de la base."""
     from fastapi.testclient import TestClient
+    global _VERSION
+    _VERSION = database.SCHEMA_VERSION
     with TestClient(main.app, headers={main.EN_TETE_REQUETE: "1"}) as c:
         for qui in (ADMIN, LEA, SAM):
             c.get("/api/moi", headers=qui)
@@ -214,6 +239,8 @@ def _jouer_le_parcours(main, database, journal) -> dict:
             faits.update(_parcours_v34(c, albums[1], faits))
         if database.SCHEMA_VERSION >= 35:
             faits.update(_parcours_v35(c, database, faits))
+        if database.SCHEMA_VERSION >= 36:
+            faits.update(_parcours_v36(c, faits))
     return faits
 
 
@@ -346,8 +373,7 @@ def _parcours_v31(c, principal: int, album_de_sam: int, faits: dict) -> dict:
     assert soeur, prise
     # Deux « rejoindre » : Léa range dans sa collection un album de Sam qu'elle lit ; le
     # Corpus principal n'a pas de propriétaire, donc un administrateur répond.
-    lea_seule = _ok(c.post("/api/collections", headers=LEA,
-                           json={"nom": "Collection de Léa"}), 201)["id"]
+    lea_seule = _collection_du_repli(c, LEA, "Collection de Léa")
     rejoint = _ok(c.put(f"/api/albums/{album_de_sam}/collections/{lea_seule}",
                         headers=LEA), 202)["demande_id"]
     _ok(c.post(f"/api/demandes/{rejoint}/reponse", headers=ADMIN,
@@ -400,10 +426,8 @@ def _parcours_v34(c, album_de_sam: int, faits: dict) -> dict:
     # suivant, et la seconde reprendrait celui de la première. La première : un
     # « rejoindre » la vise, refusé par sa destruction. La seconde, la plus haute : le
     # journal seul la nomme.
-    visee = _ok(c.post("/api/collections", headers=LEA,
-                       json={"nom": "Arrivée détruite"}), 201)["id"]
-    haute = _ok(c.post("/api/collections", headers=LEA,
-                       json={"nom": "Éphémère"}), 201)["id"]
+    visee = _collection_du_repli(c, LEA, "Arrivée détruite")
+    haute = _collection_du_repli(c, LEA, "Éphémère")
     assert haute > visee
     _ok(c.put(f"/api/albums/{album_de_sam}/collections/{visee}", headers=LEA), 202)
     _ok(c.delete(f"/api/collections/{visee}", headers=LEA), 204)
@@ -448,12 +472,81 @@ def _parcours_v35(c, database, faits: dict) -> dict:
     _ok(c.post(f"/api/albums/{du_bac}/import", headers=SAM,
                files={"file": ("p.png", _png(), "image/png")}), 201)
     bac_admin = _ok(c.post("/api/bac-a-sable", headers=ADMIN), 201)
+    # Depuis la v36, un simple membre ne crée une collection que si le projet le lui ouvre :
+    # la responsable ouvre le réglage d'abord (le même état, par les gestes de la v36).
+    if _VERSION >= 36:
+        _ok(c.put(f"/api/projets/{faits['projet_etude']}/creation-de-collections",
+                  headers=LEA, json={"membres": True}), 200)
     par_un_membre = _ok(c.post("/api/collections", headers=SAM,
                                json={"nom": "Par un membre",
                                      "projet_id": faits["projet_etude"]}), 201)["id"]
     return {"projet_de_jeu": jeu, "bacs_a_sable": [bac_lea["id"], bac_admin["id"]],
             "collection_d_un_invite": chez_sam, "album_du_bac": du_bac,
             "collection_d_un_membre": par_un_membre}
+
+
+def _parcours_v36(c, faits: dict) -> dict:
+    """Ce qu'une base v36 doit porter pour que la v37 ait de quoi se tromper (ANN-7, tranche
+    1 : les grilles et les relevés, seize tables neuves et `regions.nom`) : des régions des
+    CINQ types d'aujourd'hui (case, bulle, cartouche, texte, boîte personnage), des textes à
+    apostrophes — droites et typographiques —, à tirets et à ponctuations répétées (ce que
+    le découpage en mots de la v37 lira) ; deux copies SŒURS dont l'une AMORCÉE au cran
+    `annotations` (le cran où les relevés suivront) ; un album RETIRÉ du projet par sa
+    responsable, avec un motif ; le réglage « les membres créent des collections » ouvert sur
+    Étude B ; et, en haut de leur table, une planche et une région détruites — les
+    identifiants qu'une migration ne doit pas rendre. Les bacs à sable viennent de
+    `_parcours_v35`. Par les routes du code v36."""
+    etude, collection_b = faits["projet_etude"], faits["collection_b"]
+    cinq = _ok(c.post("/api/albums", headers=LEA,
+                      json={"titre": "Cinq types", "collection_id": collection_b}), 201)["id"]
+    pl = _ok(c.post(f"/api/albums/{cinq}/import", headers=LEA,
+                    files={"file": ("p.png", _png(), "image/png")}), 201)["id"]
+    case = _ok(c.post(f"/api/planches/{pl}/regions", headers=LEA,
+                      json={"type": "case", "x": 0, "y": 0, "w": 30, "h": 30}), 201)["id"]
+    zones = {}
+    for type_, texte in (("bulle", "J'SAIS PAS… AUJOURD’HUI, PEUT-ÊTRE !!!"),
+                         ("cartouche", "— C'EST L'HISTOIRE D'UN OTAGE..."),
+                         ("texte", "presqu'île, dis-moi : va-t-il por-\ntrait ?!")):
+        zones[type_] = _ok(c.post(f"/api/planches/{pl}/regions", headers=LEA,
+                                  json={"type": type_, "x": 1, "y": 1, "w": 9, "h": 9,
+                                        "parent_id": case}), 201)["id"]
+        _ok(c.put(f"/api/regions/{zones[type_]}", headers=LEA, json={"ocr_texte": texte}), 200)
+    boite = _ok(c.post(f"/api/planches/{pl}/regions", headers=LEA,
+                       json={"type": "personnage", "x": 2, "y": 2, "w": 5, "h": 5,
+                             "parent_id": case}), 201)["id"]
+    _ok(c.put(f"/api/regions/{zones['bulle']}/annotation", headers=LEA,
+              json={"note": "à relever", "tags": ["dialogue"]}), 200)
+    # Sa sœur AMORCÉE au cran `annotations`, dans la Collection C : la responsable tient les
+    # deux collections, la copie naît tout de suite (`clause_rejoindre_directe`).
+    document = next(a["document_id"] for a in _ok(c.get("/api/albums", headers=ADMIN), 200)
+                    if a["id"] == cinq)
+    prise = _ok(c.post(f"/api/collections/{faits['collection_c']}/prendre", headers=LEA,
+                       json={"documents": [{"document_id": document, "reponse": "amorcer",
+                                            "album_id": cinq, "cran": "annotations"}]}), 200)
+    amorcee = prise["documents"][0]["copie_id"]
+    assert amorcee and prise["documents"][0]["etat"] == "fait", prise
+    # Un album RETIRÉ du projet par sa responsable : il part au fonds, l'acte le dit.
+    retire = _ok(c.post("/api/albums", headers=LEA,
+                        json={"titre": "Retiré du projet", "collection_id": collection_b}),
+                 201)["id"]
+    _ok(c.post(f"/api/albums/{retire}/import", headers=LEA,
+               files={"file": ("p.png", _png(), "image/png")}), 201)
+    _ok(c.post(f"/api/albums/{retire}/retirer-du-projet", headers=LEA,
+               json={"motif": "Entré par erreur."}), 200)
+    # Le réglage de la v36 est ouvert sur Étude B par `_parcours_v35`, avant qu'un membre y
+    # crée sa collection.
+    # En DERNIER, une planche puis une région détruites en haut de leur table.
+    haute = _ok(c.post(f"/api/albums/{cinq}/import", headers=LEA,
+                       files={"file": ("p.png", _png(), "image/png")}), 201)["id"]
+    region_haute = _ok(c.post(f"/api/planches/{pl}/regions", headers=LEA,
+                              json={"type": "bulle", "x": 3, "y": 3, "w": 4, "h": 4}),
+                       201)["id"]
+    _ok(c.delete(f"/api/planches/{haute}", headers=ADMIN), 204)
+    _ok(c.delete(f"/api/regions/{region_haute}", headers=LEA), 204)
+    return {"album_cinq_types": cinq, "regions_cinq_types": {**zones, "case": case,
+                                                             "personnage": boite},
+            "album_amorce_annotations": amorcee, "album_retire_du_projet": retire,
+            "planche_detruite_v36": haute, "region_detruite_v36": region_haute}
 
 
 def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict) -> None:
@@ -496,6 +589,13 @@ def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict)
             "SELECT CASE WHEN jeu = 1 THEN 'jeu' WHEN bac_a_sable_de IS NOT NULL "
             "THEN 'bac à sable' WHEN repli = 1 THEN 'repli' ELSE 'ordinaire' END AS n, "
             "COUNT(*) FROM projet GROUP BY n ORDER BY n").fetchall())
+    if version >= 36:
+        faits["comptes"].update({t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                                 for t in ("geste_sur_copie", "retrait_vu")})
+        faits["regions_par_type"] = dict(conn.execute(
+            "SELECT type, COUNT(*) FROM regions GROUP BY type ORDER BY type").fetchall())
+        faits["crans_des_copies"] = dict(conn.execute(
+            "SELECT cran, COUNT(*) FROM copie GROUP BY cran ORDER BY cran").fetchall())
     try:
         relatif = sortie.relative_to(RACINE).as_posix()
     except ValueError:

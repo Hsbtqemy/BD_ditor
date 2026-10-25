@@ -366,6 +366,8 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
     neuves |= {"jeu_document"}
     # La v36 (COL-3, tranche 3b) aussi : `retrait_vu` et `geste_sur_copie`, vides.
     neuves |= {"retrait_vu", "geste_sur_copie"}
+    # La v37 (ANN-7, tranche 1) aussi : seize tables neuves, vides, et `regions.nom`.
+    neuves |= set(database.TABLES_DES_GRILLES)
     # Et la base NEUVE du projet de repli (D10 ; Hugo, 2026-10-17) : une collection de plus.
     assert apres["comptes"]["collection"] == avant["comptes"]["collection"] + 1
     neuves |= {"collection"}
@@ -375,7 +377,8 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
     for t in TABLES:
         retire = {"albums": ("document_id", "projet_id", "tome", "lieu_masters"),
                   "planches": ("master_origine",),
-                  "personnages": ("bac_a_sable_id",), "tags": ("espace",)}.get(t, ())
+                  "personnages": ("bac_a_sable_id",), "tags": ("espace",),
+                  "regions": ("nom",)}.get(t, ())
         assert [{k: v for k, v in r.items() if k not in retire} for r in apres["lignes"][t]] \
             == avant["lignes"][t], t
     assert set(avant["index"]) <= set(apres["index"])

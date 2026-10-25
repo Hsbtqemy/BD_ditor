@@ -71,16 +71,20 @@ def vraie_v35(tmp_path, monkeypatch):
 
 
 def _etat(db):
+    # La v37 (ANN-7, tranche 1), que la migration traverse aussi : seize tables neuves,
+    # vides, leurs index, et `regions.nom` — écartés de la comparaison.
+    neuves = set(database.TABLES_DES_GRILLES)
     tables = [r["name"] for r in _sql(
         db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
-            "AND name NOT LIKE 'recherche_%' ORDER BY name")]
+            "AND name NOT LIKE 'recherche_%' ORDER BY name") if r["name"] not in neuves]
     lignes = {}
     for t in LIGNES:
         lignes[t] = sorted(json.dumps({k: v for k, v in r.items()
                                        if not (t == "projet"
                                                and k == "membres_creent_collections")
                                        and not (t in database.COUCHES_RECOPIEES
-                                                and k == "recopiee")},
+                                                and k == "recopiee")
+                                       and not (t == "regions" and k == "nom")},
                                       sort_keys=True, ensure_ascii=False)
                            for r in _sql(db, f'SELECT * FROM "{t}"'))
     return {
@@ -88,7 +92,8 @@ def _etat(db):
         "comptes": {t: _sql(db, f'SELECT COUNT(*) AS n FROM "{t}"')[0]["n"] for t in tables},
         "lignes": lignes,
         "index": sorted(r["sql"] for r in _sql(
-            db, "SELECT sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL")),
+            db, "SELECT sql, tbl_name FROM sqlite_master WHERE type = 'index' "
+                "AND sql IS NOT NULL") if r["tbl_name"] not in neuves),
         "vues": sorted(r["name"] for r in _sql(
             db, "SELECT name FROM sqlite_master WHERE type = 'view'")),
         "recherche": sorted(r["region_id"] for r in _sql(
@@ -123,7 +128,6 @@ def test_une_vraie_base_v35_migre_sans_rien_perdre(vraie_v35):
     database.init_db()
     apres = _etat(vraie_v35)
     assert _sql(vraie_v35, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
-    assert database.SCHEMA_VERSION == 36
     # Une table NEUVE, vide : les « Vu » d'un retrait du projet (écran de la 3b).
     assert apres["comptes"].pop("retrait_vu") == 0
     apres["tables"].remove("retrait_vu")

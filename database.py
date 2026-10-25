@@ -19,7 +19,7 @@ from config import DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUA
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 36
+SCHEMA_VERSION = 37
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -219,7 +219,14 @@ CREATE TABLE IF NOT EXISTS regions (
     -- les indicateurs de dérive sans rejouer le journal. Cf. `activite`/`evenement`.
     activite_id       INTEGER REFERENCES activite(id) ON DELETE SET NULL,
     touche            INTEGER NOT NULL DEFAULT 0,     -- pré-remplissage machine retouché par un humain
-    date_modification TEXT                            -- horodatage de la dernière retouche humaine
+    date_modification TEXT,                           -- horodatage de la dernière retouche humaine
+    nom               TEXT
+    -- v37 (ANN-7, tranche 1 ; G17, Hugo, 2026-10-25) : le NOM libre d'une zone de détail
+    -- (« le téléphone », « l'affiche »), NULL pour tout autre type. Le type `detail` lui-même
+    -- vient avec l'écran qui le trace (tranche 2) ; la colonne naît avec la migration de la
+    -- tranche 1 pour qu'il n'en faille pas une seconde. Elle ne sort par aucun export :
+    -- `_region_tree` et les outils de sortie nomment leurs champs un à un. Commentaire SOUS
+    -- la dernière colonne (cf. celui de `collection.projet_id`).
 );
 
 CREATE TABLE IF NOT EXISTS tags (
@@ -699,6 +706,243 @@ CREATE TABLE IF NOT EXISTS region_origine (
 );
 CREATE INDEX IF NOT EXISTS idx_region_origine_source ON region_origine(region_source_id);
 
+-- =========================================================================================
+-- LES GRILLES ET LES RELEVÉS (v37, ANN-7, tranche 1 ; cadrage `docs/ann7-tranche1-cadrage.md`,
+-- R1, tranché par Hugo le 2026-10-25). Seize tables neuves, toutes vides à la migration.
+-- Toutes portent `AUTOINCREMENT` (la règle de la v30 : le journal les nommera, et un
+-- identifiant rendu au suivant mêlerait deux objets) ; aucune ne porte de `CHECK` — les
+-- listes (états, formes, cibles, cardinalités, issues) vivent dans le code (`grilles.py`),
+-- pour la raison écrite sur `utilisateur.nature`. Une version de grille est un INSTANTANÉ
+-- COMPLET : ses lignes se désignent entre elles par leur `cle`, jamais par leur `id`.
+-- =========================================================================================
+
+-- GRILLE — un vocabulaire d'annotation, à UN projet. `nom` unique DANS son projet, tenu par
+-- le code sous le verrou d'écriture (aucune unicité d'instance, donc aucun « ce nom est pris
+-- ailleurs »). `ouverte` : 0 = fermée (elle se coche, ses responsables l'enrichissent par
+-- une nouvelle version), 1 = ouverte (une seule version, `vivante`, qui s'enrichit en
+-- posant). « Brouillon / en usage » se DÉRIVE de ses versions ; seule la retraite s'écrit.
+-- `projet_id` SANS action : un projet qui possède une grille ne se supprime pas sans qu'on
+-- l'ait décidé (G18, un 409 nommé avant la clé). `cree_par` : un login, NULL hors proxy.
+CREATE TABLE IF NOT EXISTS grille (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    projet_id      INTEGER NOT NULL REFERENCES projet(id),
+    nom            TEXT NOT NULL,
+    ouverte        INTEGER NOT NULL DEFAULT 0,
+    retiree_le     TEXT,
+    cree_par       TEXT,
+    date_creation  TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_grille_projet ON grille(projet_id);
+
+-- GRILLE_VERSION — un état daté et figé (`publiee`), le brouillon qui le précède
+-- (`brouillon`, au plus un par grille fermée), ou l'unique version d'une grille ouverte
+-- (`vivante`). `cible` : « Porte sur », la cible des entrées qui ne déclarent pas la leur
+-- (une ou plusieurs sortes, séparées par `|`, cf. `grilles.CIBLES`). `empreinte` : le
+-- SHA-256 du contenu normalisé — réimporter le même tableur ne crée rien.
+CREATE TABLE IF NOT EXISTS grille_version (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    grille_id     INTEGER NOT NULL REFERENCES grille(id) ON DELETE CASCADE,
+    numero        INTEGER NOT NULL,
+    etat          TEXT NOT NULL,
+    cible         TEXT,
+    note          TEXT,
+    empreinte     TEXT,
+    importee_par  TEXT,
+    importee_le   TEXT,
+    publiee_par   TEXT,
+    publiee_le    TEXT,
+    UNIQUE (grille_id, numero)
+);
+
+-- Le PLAN d'une version : rubriques (elles rangent, s'imbriquent par `parent_cle` ; on n'y
+-- pose rien), entrées (ce qu'on pose), variantes (une entrée à variantes en choisit UNE),
+-- listes de qualificatifs (partagées entre plusieurs entrées), exemples (un texte, ou un
+-- renvoi à un relevé, `releve_id`, sans clé étrangère — la source peut mourir avant).
+CREATE TABLE IF NOT EXISTS grille_rubrique (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    version_id  INTEGER NOT NULL REFERENCES grille_version(id) ON DELETE CASCADE,
+    cle         TEXT NOT NULL,
+    libelle     TEXT NOT NULL,
+    parent_cle  TEXT,
+    rang        INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (version_id, cle)
+);
+CREATE TABLE IF NOT EXISTS grille_entree (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    version_id    INTEGER NOT NULL REFERENCES grille_version(id) ON DELETE CASCADE,
+    cle           TEXT NOT NULL,
+    rubrique_cle  TEXT,
+    rang          INTEGER NOT NULL DEFAULT 0,
+    forme         TEXT NOT NULL,
+    libelle       TEXT NOT NULL,
+    definition    TEXT,
+    structure     TEXT,
+    piege         TEXT,
+    precision     TEXT,                       -- le libellé d'une précision libre, NULL sinon
+    lien          INTEGER NOT NULL DEFAULT 0, -- 1 : l'entrée désigne une autre région
+    cible         TEXT,                       -- NULL : celle de la version (« Porte sur »)
+    cardinalite   TEXT,                       -- 'une' | 'plusieurs' ; NULL : le défaut (Q6)
+    liste_cle     TEXT,                       -- la liste d'une entrée à qualificatifs
+    retiree       INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (version_id, cle)
+);
+CREATE TABLE IF NOT EXISTS grille_variante (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    version_id  INTEGER NOT NULL REFERENCES grille_version(id) ON DELETE CASCADE,
+    entree_cle  TEXT NOT NULL,
+    cle         TEXT NOT NULL,
+    libelle     TEXT NOT NULL,
+    definition  TEXT,
+    structure   TEXT,
+    piege       TEXT,
+    rang        INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (version_id, entree_cle, cle)
+);
+CREATE TABLE IF NOT EXISTS grille_liste (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    version_id  INTEGER NOT NULL REFERENCES grille_version(id) ON DELETE CASCADE,
+    cle         TEXT NOT NULL,
+    libelle     TEXT,
+    UNIQUE (version_id, cle)
+);
+CREATE TABLE IF NOT EXISTS grille_qualificatif (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    version_id  INTEGER NOT NULL REFERENCES grille_version(id) ON DELETE CASCADE,
+    liste_cle   TEXT NOT NULL,
+    cle         TEXT NOT NULL,
+    libelle     TEXT NOT NULL,
+    definition  TEXT,
+    rang        INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (version_id, liste_cle, cle)
+);
+CREATE TABLE IF NOT EXISTS grille_exemple (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    version_id    INTEGER NOT NULL REFERENCES grille_version(id) ON DELETE CASCADE,
+    entree_cle    TEXT NOT NULL,
+    variante_cle  TEXT,
+    rang          INTEGER NOT NULL DEFAULT 0,
+    texte         TEXT,
+    releve_id     INTEGER
+);
+
+-- OÙ ELLE SERT. Une grille s'ACTIVE sur un projet, dans UNE version (`projet_grille`) ; une
+-- collection du projet peut la MASQUER — un filtre d'écran, pas une garde (Q1) : on stocke
+-- le masque et non la liste des grilles montrées, pour qu'une grille activée ensuite se
+-- montre partout par défaut. Désactiver ne retire aucun relevé.
+CREATE TABLE IF NOT EXISTS projet_grille (
+    projet_id   INTEGER NOT NULL REFERENCES projet(id) ON DELETE CASCADE,
+    grille_id   INTEGER NOT NULL REFERENCES grille(id),
+    version_id  INTEGER NOT NULL REFERENCES grille_version(id),
+    active_par  TEXT,
+    active_le   TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (projet_id, grille_id)
+);
+CREATE INDEX IF NOT EXISTS idx_projet_grille_grille ON projet_grille(grille_id);
+CREATE TABLE IF NOT EXISTS collection_grille_masquee (
+    collection_id  INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
+    grille_id      INTEGER NOT NULL REFERENCES grille(id) ON DELETE CASCADE,
+    masque_par     TEXT,
+    masque_le      TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (collection_id, grille_id)
+);
+
+-- RELEVÉ — ce qu'on pose : une entrée d'une version de grille sur UNE cible, une région
+-- (entière, ou des mots d'une zone de texte, alors avec ses `releve_mot`) ou la planche
+-- (la surface, IMG-2). Exactement une des deux colonnes est remplie, tenu par le code.
+-- AUCUN `collection_id` (Q1) : le relevé tient à sa cible.
+--   `region_id` en CASCADE : supprimer une région supprime ses relevés, Ctrl+Z les rend
+--   (l'instantané profond) ; `planche_id` SANS action (Q5) : la suppression d'une planche
+--   qui porte un relevé de surface ÉCHOUE — bruyamment — si le chemin ne les a pas retirés
+--   d'abord ; `grille_id`, `version_id` SANS action : une grille employée ne se supprime
+--   pas. `lien_region_id` et `origine_id` SANS clé : le relevé reste quand la région liée
+--   disparaît (« à revoir », `lien_texte` garde ce qu'elle disait), et la source d'un
+--   relevé recopié peut mourir avant lui — les identifiants de région ne reviennent pas.
+--   `texte_ancre` : le texte de la zone quand le passage a été désigné, qui permet de
+--   rejouer l'alignement (`reancrer_releves`). `une` : la cardinalité FIGÉE à la pose, que
+--   lit l'index unique partiel. L'ÉTAT ne s'écrit pas : il se DÉRIVE (`releves_effectifs`).
+CREATE TABLE IF NOT EXISTS releve (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    region_id       INTEGER REFERENCES regions(id) ON DELETE CASCADE,
+    planche_id      INTEGER REFERENCES planches(id),
+    grille_id       INTEGER NOT NULL REFERENCES grille(id),
+    version_id      INTEGER NOT NULL REFERENCES grille_version(id),
+    entree_cle      TEXT NOT NULL,
+    variante_cle    TEXT,
+    precision       TEXT,
+    lien_region_id  INTEGER,
+    lien_texte      TEXT,
+    texte_ancre     TEXT,
+    une             INTEGER NOT NULL DEFAULT 0,
+    origine_id      INTEGER,
+    auteur          TEXT,
+    cree_le         TEXT DEFAULT (datetime('now')),
+    modifie_par     TEXT,
+    modifie_le      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_releve_region ON releve(region_id);
+CREATE INDEX IF NOT EXISTS idx_releve_planche ON releve(planche_id);
+CREATE INDEX IF NOT EXISTS idx_releve_grille ON releve(grille_id);
+CREATE INDEX IF NOT EXISTS idx_releve_lien ON releve(lien_region_id);
+-- La cardinalité `une` (Q6) : un seul relevé d'une même entrée sur une même cible — tenu
+-- par la base, en plus de la relecture sous le verrou que fait la route.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_releve_une
+    ON releve(COALESCE(region_id, 0), COALESCE(planche_id, 0), grille_id, entree_cle)
+    WHERE une = 1;
+-- Le PASSAGE d'un relevé sur des mots : une ligne par mot désigné, dans l'ordre
+-- (`position`), avec son RANG dans le découpage de l'outil (`mots.py`) et sa FORME.
+CREATE TABLE IF NOT EXISTS releve_mot (
+    releve_id  INTEGER NOT NULL REFERENCES releve(id) ON DELETE CASCADE,
+    position   INTEGER NOT NULL,
+    rang       INTEGER,
+    forme      TEXT NOT NULL,
+    PRIMARY KEY (releve_id, position)
+);
+CREATE TABLE IF NOT EXISTS releve_qualificatif (
+    releve_id         INTEGER NOT NULL REFERENCES releve(id) ON DELETE CASCADE,
+    qualificatif_cle  TEXT NOT NULL,
+    PRIMARY KEY (releve_id, qualificatif_cle)
+);
+-- DOUTE — il porte sur UN relevé, un seul OUVERT à la fois (l'index partiel) ; un fil de
+-- messages signés et datés ; on le lève en gardant, en changeant ou en retirant le relevé
+-- (`issue`). CASCADE : il part avec son relevé, le journal garde le fil.
+CREATE TABLE IF NOT EXISTS doute (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    releve_id  INTEGER NOT NULL REFERENCES releve(id) ON DELETE CASCADE,
+    ouvert_par TEXT,
+    ouvert_le  TEXT DEFAULT (datetime('now')),
+    leve_par   TEXT,
+    leve_le    TEXT,
+    issue      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_doute_releve ON doute(releve_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_doute_ouvert ON doute(releve_id) WHERE leve_le IS NULL;
+CREATE TABLE IF NOT EXISTS doute_message (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    doute_id  INTEGER NOT NULL REFERENCES doute(id) ON DELETE CASCADE,
+    auteur    TEXT,
+    date      TEXT DEFAULT (datetime('now')),
+    texte     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doute_message_doute ON doute_message(doute_id);
+-- PASSE — « terminée » (Q7, commune et signée) : une ligne par zone (région ou planche),
+-- grille et rubrique ; `rubrique_cle` vaut '' pour toute la grille, parce qu'un NULL
+-- n'entre pas dans une unicité SQLite. Elle ne tient à aucun relevé. `version_id` : pour
+-- que la montée de version sache quelles zones rouvrir.
+CREATE TABLE IF NOT EXISTS passe (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    region_id     INTEGER REFERENCES regions(id) ON DELETE CASCADE,
+    planche_id    INTEGER REFERENCES planches(id),
+    grille_id     INTEGER NOT NULL REFERENCES grille(id),
+    version_id    INTEGER REFERENCES grille_version(id),
+    rubrique_cle  TEXT NOT NULL DEFAULT '',
+    par           TEXT,
+    le            TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_passe_region ON passe(region_id);
+CREATE INDEX IF NOT EXISTS idx_passe_planche ON passe(planche_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_passe_zone
+    ON passe(COALESCE(region_id, 0), COALESCE(planche_id, 0), grille_id, rubrique_cle);
+
 -- DEMANDE (v30, COL-3, tranche 2) — UN mécanisme pour ce qui ne se fait pas seul : qui
 -- demande, quand, pourquoi ; puis qui répond, quand, quoi. Aucune messagerie. Les deux
 -- tables naissent avec le document pour que le schéma ne change qu'UNE fois dans la
@@ -976,6 +1220,16 @@ FROM tokens t
 LEFT JOIN token_correction c
        ON c.region_id = t.region_id AND c.ordre = t.ordre;
 """
+
+
+# Les seize tables de la v37 (ANN-7, tranche 1) : les grilles, où elles servent, et ce qu'on
+# pose. Les tests de migration des versions précédentes migrent jusqu'à la courante et les
+# voient naître, vides : ils les lisent ici plutôt que de recopier la liste sept fois.
+TABLES_DES_GRILLES = ("grille", "grille_version", "grille_rubrique", "grille_entree",
+                      "grille_variante", "grille_liste", "grille_qualificatif",
+                      "grille_exemple", "projet_grille", "collection_grille_masquee",
+                      "releve", "releve_mot", "releve_qualificatif", "doute",
+                      "doute_message", "passe")
 
 
 # Les couches qu'une copie amorcée reprend telles quelles, et qui portent la marque
@@ -1552,6 +1806,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if _tags_par_espace(conn):
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_espace_label "
                      "ON tags(espace, label)")
+    # v36 → v37 (ANN-7, tranche 1 ; cadrage R1, tranché par Hugo le 2026-10-25) : les grilles
+    # et les relevés — seize tables NOUVELLES (SCHEMA_SQL), vides : aucune donnée existante
+    # n'est touchée, aucune table reconstruite. Et une colonne, `regions.nom` (le nom libre
+    # d'un détail, G17), posée par PRÉSENCE, NULL pour tout l'existant.
+    if "regions" in _tables and "nom" not in _cols("regions"):
+        conn.execute("ALTER TABLE regions ADD COLUMN nom TEXT")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
