@@ -12,6 +12,8 @@ Le décor reprend celui de `test_prendre` (le projet de repli porte « Principal
 `importeur` a importé trois documents ; le projet « Étude P » a `resp` pour responsable) et
 lui ajoute `resp2`, RESPONSABLE du projet de repli — un second projet, d'où l'on part —,
 `membre2`, simple membre du repli, et `proprio2`, propriétaire de Principale sans rien gérer.
+`resp2` LIT Principale : gérer un projet n'en ouvre pas les collections, et un responsable ne
+consent qu'avec une copie qu'il lit (relecture croisée de la 3b, constat 2).
 La copie d'origine de « Le Lotus bleu » (d1) est TRAVAILLÉE dans Principale : une case et sa
 bulle, avec du texte ; celle de « L'Oreille cassée » (d2) n'a que ses images.
 """
@@ -64,6 +66,7 @@ def ailleurs(client, prise):  # noqa: F811
         _ok(client.put(f"/api/projets/{repli}/membres", headers=ADMIN,
                        json={"principal": principal, "role": role}))
     _accorder(client, prise["principale"], "proprio2", "proprietaire")
+    _accorder(client, prise["principale"], "resp2", "lecture")
     _travailler(client, prise["albums"]["d1"], IMPORTEUR)
     return {**prise, "repli": repli}
 
@@ -330,6 +333,40 @@ def test_accepter_exige_une_copie_du_projet_qu_on_gere(client, ailleurs):
                 (ligne["demande_id"],))[0]["reponse"] is None
 
 
+def test_le_responsable_source_ne_consent_qu_avec_une_copie_qu_il_lit(client, ailleurs,
+                                                                      db_path):
+    """La relecture croisée de la 3b, constat 2 : gérer un projet n'en ouvre pas les
+    collections (D10). `resp2` gère le repli sans LIRE Principale, où vit la copie
+    travaillée de Le Lotus bleu ; nommé aussi responsable d'Étude P, il en demande le texte
+    pour la base d'Étude P. La demande lui parvient — il peut la refuser —, mais sans copie à
+    nommer ni aperçu : rien ne se compte d'une collection qu'il ne lit pas. Et accepter en
+    nommant la copie de Principale lui répond le même 404 qu'une copie absente : le texte
+    de Principale ne passe pas dans sa base."""
+    s = ailleurs
+    o = s["albums"]["d1"]
+    _sql(db_path, "DELETE FROM collection_acces WHERE principal = 'resp2'")
+    assert client.get(f"/api/albums/{o}/planches", headers=RESP2).status_code == 404
+    _ok(client.put(f"/api/projets/{s['projet']}/membres", headers=ADMIN,
+                   json={"principal": "resp2", "role": "responsable"}))
+    ligne = _demander_ailleurs(client, s, qui=RESP2)
+    assert ligne["etat"] == "demande", ligne
+    (d,) = _ok(client.get(f"/api/projets/{s['repli']}/demandes-recues", headers=RESP2))
+    assert d["id"] == ligne["demande_id"] and d["copies"] == [], d
+    reponses = [_repondre(client, d["id"], "acceptee", RESP2, album_id=a) for a in (o, 999999)]
+    assert [r.status_code for r in reponses] == [404, 404]
+    assert {r.json()["detail"].split()[0] for r in reponses} == {"Album"}
+    assert _sql(db_path, "SELECT reponse FROM demande WHERE id = ?",
+                (d["id"],))[0]["reponse"] is None
+    assert not _sql(db_path, "SELECT 1 FROM regions r JOIN planches p ON p.id = r.planche_id "
+                             "JOIN albums a ON a.id = p.album_id WHERE a.document_id = ? "
+                             "AND a.id <> ?", (s["docs"]["d1"], o))
+    # Lecture rendue : la copie se nomme, son aperçu se lit, et l'accepter passe.
+    _accorder(client, s["principale"], "resp2", "lecture")
+    (d,) = _ok(client.get(f"/api/projets/{s['repli']}/demandes-recues", headers=RESP2))
+    assert [c["album_id"] for c in d["copies"]] == [o] and d["copies"][0]["apercu"]
+    _ok(_repondre(client, d["id"], "acceptee", RESP2, album_id=o))
+
+
 def test_un_refus_la_ferme_pour_tous(client, ailleurs):
     ligne = _demander_ailleurs(client, ailleurs)
     _ok(_repondre(client, ligne["demande_id"], "refusee", RESP2))
@@ -382,6 +419,7 @@ def trois(client, ailleurs):
     _ok(client.put(f"/api/projets/{p3}/membres", headers=ADMIN,
                    json={"principal": "resp3", "role": "responsable"}))
     z = _collection(client, "Collection Z", projet_id=p3)
+    _accorder(client, z, "resp3", "lecture")
     r = _prendre(client, z, [_amorcer(ailleurs["docs"]["d1"], "transcription",
                                       ailleurs["albums"]["d1"])], ADMIN)
     copie_z = _ok(r)["documents"][0]["copie_id"]
@@ -396,7 +434,9 @@ def test_chaque_responsable_ne_lit_que_ses_copies(client, trois):
     assert d2["id"] == d3["id"] == ligne["demande_id"]
     assert [c["album_id"] for c in d2["copies"]] == [trois["albums"]["d1"]]
     assert [c["album_id"] for c in d3["copies"]] == [trois["copie_z"]]
-    # resp2 ne prend pas la copie d'Autre comme source : le même 404 qu'une copie absente.
+    # resp2 ne prend pas la copie d'Autre comme source, même en la LISANT — il ne gère pas
+    # Autre : le même 404 qu'une copie absente.
+    _accorder(client, trois["z"], "resp2", "lecture")
     reponses = [_repondre(client, ligne["demande_id"], "acceptee", RESP2, album_id=a)
                 for a in (trois["copie_z"], 999999)]
     assert [r.status_code for r in reponses] == [404, 404]
