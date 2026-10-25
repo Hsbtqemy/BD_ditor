@@ -35,6 +35,14 @@ LIBELLES = {
     "locuteur": "le locuteur",
     "presence": "le personnage montré",
     "situation": "la situation",
+    # ANN-7 (tranche 1, R9) : les valeurs uniques d'un relevé, d'un doute, d'une passe.
+    "variante_cle": "la variante",
+    "qualificatifs": "les qualificatifs",
+    "precision": "la précision",
+    "lien_region_id": "le lien",
+    "mots": "le passage",
+    "doute": "le doute",
+    "passe": "la passe",
 }
 
 
@@ -70,6 +78,8 @@ class Perime(Exception):
     def message(self) -> str:
         quoi = LIBELLES.get(self.champ, self.champ)
         e = "e" if quoi.startswith("la ") else ""      # « la note a été modifiée »
+        if quoi.startswith("les "):                    # « les qualificatifs ont été modifiés »
+            return self._message_pluriel(quoi)
         a = self.auteur
         if a is None:
             par = f"modifié{e} ailleurs"
@@ -80,6 +90,19 @@ class Perime(Exception):
         else:
             par = f"modifié{e} ailleurs, le {a['le']} (UTC)"
         return (f"Conflit : {quoi} a été {par} depuis que vous l'avez vu{e}. "
+                "Votre modification n'est pas enregistrée.")
+
+    def _message_pluriel(self, quoi: str) -> str:
+        a = self.auteur
+        if a is None:
+            par = "modifiés ailleurs"
+        elif a["meme_compte"]:
+            par = f"modifiés depuis un autre écran de ce même compte, le {a['le']} (UTC)"
+        elif a["nom"] or a["login"]:
+            par = f"modifiés par {a['nom'] or a['login']}, le {a['le']} (UTC)"
+        else:
+            par = f"modifiés ailleurs, le {a['le']} (UTC)"
+        return (f"Conflit : {quoi} ont été {par} depuis que vous les avez vus. "
                 "Votre modification n'est pas enregistrée.")
 
     def detail(self) -> dict:
@@ -110,7 +133,8 @@ def auteur(conn: sqlite3.Connection, e) -> dict:
 
 
 def auteur_du_champ(conn: sqlite3.Connection, cible_table: str, cible_id: int, champ: str,
-                    valeur: Any, *, depuis: Optional[int] = None) -> Optional[dict]:
+                    valeur: Any, *, depuis: Optional[int] = None,
+                    objet: Optional[tuple] = None) -> Optional[dict]:
     """Le dernier acte du journal qui a posé `champ` à `valeur`, ou None si aucun.
 
     Les annulations comptent : elles sont journalisées sur l'acte qu'elles défont
@@ -124,11 +148,13 @@ def auteur_du_champ(conn: sqlite3.Connection, cible_table: str, cible_id: int, c
     se reprenait — l'auteur d'un ANCIEN objet, dans une collection que l'agent ne lit pas.
     Rien trouvé après l'acte : None, « modifié ailleurs ».
     """
-    return auteur_des_champs(conn, ((cible_table, champ),), cible_id, valeur, depuis=depuis)
+    return auteur_des_champs(conn, ((cible_table, champ),), cible_id, valeur, depuis=depuis,
+                             objet=objet)
 
 
 def auteur_des_champs(conn: sqlite3.Connection, sources, cible_id: int,
-                      valeur: Any, *, depuis: Optional[int] = None) -> Optional[dict]:
+                      valeur: Any, *, depuis: Optional[int] = None,
+                      objet: Optional[tuple] = None) -> Optional[dict]:
     """`auteur_du_champ` pour une valeur que plusieurs sortes d'actes écrivent : `sources`,
     des couples (table, clé de la charge), lus ensemble dans l'ordre du journal — le dernier
     acte qui a posé la valeur, quelle que soit sa table.
@@ -136,6 +162,11 @@ def auteur_des_champs(conn: sqlite3.Connection, sources, cible_id: int,
     ANN-8 — un locuteur se pose et se retire par `bulle_locuteur` (`personnage_id`), mais un
     changement de type le retire aussi, dans un acte sur `regions` qui le range sous
     `locuteur` (et son annulation le repose) : nommer qui l'a ôté demande de lire les deux.
+
+    `objet` (ANN-7) : `(clé, valeur)` — seuls comptent les actes dont la charge (avant ou
+    après) porte cette clé à cette valeur. Les actes sur un RELEVÉ ciblent sa RÉGION (R10),
+    que plusieurs relevés partagent : sans ce filtre, la variante d'un autre relevé de la
+    même bulle nommerait son auteur à la place.
     """
     tables = [t for t, _ in sources]
     cle = dict(sources)
@@ -156,6 +187,8 @@ def auteur_des_champs(conn: sqlite3.Connection, sources, cible_id: int,
             avant, apres = _charge(e["acte_apres"]), _charge(e["acte_avant"])
         else:
             avant, apres = _charge(e["avant"]), _charge(e["apres"])
+        if objet is not None and objet[1] not in (avant.get(objet[0]), apres.get(objet[0])):
+            continue
         if not egal(avant.get(champ), apres.get(champ)) and egal(apres.get(champ), valeur):
             return auteur(conn, e)
     return None
@@ -163,7 +196,7 @@ def auteur_des_champs(conn: sqlite3.Connection, sources, cible_id: int,
 
 def verifier(conn: sqlite3.Connection, cible_table: str, cible_id: int, champ: str, *,
              vu: Any, actuel: Any, nouveau: Any, depuis: Optional[int] = None,
-             sources=None) -> None:
+             sources=None, objet: Optional[tuple] = None) -> None:
     """Lève `Perime` si `champ` ne porte plus la valeur `vu` et que l'écriture l'écraserait.
 
     Trois cas passent. L'écran avait vu la valeur actuelle. L'écriture pose la valeur déjà
@@ -179,8 +212,9 @@ def verifier(conn: sqlite3.Connection, cible_table: str, cible_id: int, champ: s
     """
     if egal(vu, actuel) or egal(nouveau, actuel):
         return
-    qui = (auteur_des_champs(conn, sources, cible_id, actuel, depuis=depuis) if sources
-           else auteur_du_champ(conn, cible_table, cible_id, champ, actuel, depuis=depuis))
+    qui = (auteur_des_champs(conn, sources, cible_id, actuel, depuis=depuis, objet=objet)
+           if sources else auteur_du_champ(conn, cible_table, cible_id, champ, actuel,
+                                           depuis=depuis, objet=objet))
     if qui is not None and qui["agent_type"] == "moteur":
         return
     raise Perime(cible_table, cible_id, champ, actuel, qui)

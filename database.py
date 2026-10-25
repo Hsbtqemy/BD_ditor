@@ -1219,6 +1219,50 @@ SELECT t.region_id, t.ordre, t.texte,
 FROM tokens t
 LEFT JOIN token_correction c
        ON c.region_id = t.region_id AND c.ordre = t.ordre;
+
+-- ANN-7 (tranche 1 ; G2, Hugo, 2026-10-25) — l'ÉTAT d'un relevé ne s'écrit pas : il se
+-- DÉRIVE, ici, à un seul endroit, read model canonique de toute route qui lit des relevés.
+-- Chaque cause est lisible dans les données, et disparaît avec elle :
+--   « à revoir » — un mot du passage perdu (`releve_mot.rang` NULL) ; le texte de la zone
+--   qui n'est plus celui de l'ancrage (`texte_ancre`, une réindexation manquée ou un mot
+--   que le ré-ancrage n'a pas retrouvé) ; la région liée qui n'existe plus ; un type de
+--   région qui ne convient plus à l'entrée (G8) ; une entrée absente de sa version ;
+--   « à compléter » — une précision ou un lien que l'entrée attend, et que le relevé ne
+--   porte pas ;
+--   « normal » sinon.
+-- La règle du type est celle de `grilles.type_convient`, écrite ici en SQL ;
+-- `tests/test_releves.py` accorde les deux, type par type et cible par cible.
+DROP VIEW IF EXISTS releves_effectifs;
+CREATE VIEW releves_effectifs AS
+SELECT x.*,
+       CASE WHEN x.mot_perdu OR x.texte_change OR x.lien_perdu OR x.type_change
+                 OR x.entree_absente THEN 'a_revoir'
+            WHEN x.precision_manquante OR x.lien_manquant THEN 'a_completer'
+            ELSE 'normal' END AS etat
+FROM (
+  SELECT r.*,
+         COALESCE(e.cible, v.cible) AS cible_effective,
+         EXISTS (SELECT 1 FROM releve_mot m WHERE m.releve_id = r.id AND m.rang IS NULL)
+             AS mot_perdu,
+         (r.texte_ancre IS NOT NULL AND r.texte_ancre IS NOT COALESCE(g.ocr_texte, ''))
+             AS texte_change,
+         (r.lien_region_id IS NOT NULL AND NOT EXISTS (
+              SELECT 1 FROM regions l WHERE l.id = r.lien_region_id)) AS lien_perdu,
+         (r.region_id IS NOT NULL AND e.cle IS NOT NULL AND NOT (
+              CASE WHEN COALESCE(e.cible, v.cible) = 'mots'
+                        THEN g.type IN ('bulle', 'cartouche', 'texte')
+                   WHEN COALESCE(e.cible, v.cible) IN ('planche', 'entite') THEN 0
+                   ELSE instr('|' || COALESCE(e.cible, v.cible) || '|',
+                              '|' || g.type || '|') > 0 END)) AS type_change,
+         (e.cle IS NULL) AS entree_absente,
+         (e.precision IS NOT NULL AND TRIM(COALESCE(r.precision, '')) = '')
+             AS precision_manquante,
+         (e.lien = 1 AND r.lien_region_id IS NULL) AS lien_manquant
+  FROM releve r
+  JOIN grille_version v ON v.id = r.version_id
+  LEFT JOIN grille_entree e ON e.version_id = r.version_id AND e.cle = r.entree_cle
+  LEFT JOIN regions g ON g.id = r.region_id
+) x;
 """
 
 

@@ -125,16 +125,6 @@ def type_convient(type_region: str, cibles) -> bool:
     return False
 
 
-def sql_type_convient(type_expr: str, cible_expr: str) -> str:
-    """`type_convient`, écrit en SQL : la règle de la vue `releves_effectifs`, à côté de sa
-    jumelle Python pour qu'elles ne divergent pas (`tests/test_releves.py` les accorde)."""
-    textes = ", ".join(f"'{t}'" for t in TYPES_TEXTE)
-    return (f"(CASE WHEN {cible_expr} = '{CIBLE_MOTS}' THEN {type_expr} IN ({textes}) "
-            f"WHEN {cible_expr} IN ('{CIBLE_PLANCHE}', '{CIBLE_ENTITE}') THEN 0 "
-            f"ELSE instr('{SEP_CIBLES}' || {cible_expr} || '{SEP_CIBLES}', "
-            f"'{SEP_CIBLES}' || {type_expr} || '{SEP_CIBLES}') > 0 END)")
-
-
 # --------------------------------------------------------------------------- #
 # Les versions, l'activation
 # --------------------------------------------------------------------------- #

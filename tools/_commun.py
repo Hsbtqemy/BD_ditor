@@ -487,6 +487,17 @@ CIBLES_RETENUES = {
         "annotation : la charge nomme un projet, une collection, et le plan d'une grille "
         "peut révéler une étude en cours (`Portee.clause_grille`). Rien des grilles ne sort "
         "avant la tranche 4 d'ANN-7, qui décidera de leur sortie (SKOS).",
+    "releve":
+        "ANN-7 — un relevé posé, modifié ou retiré sur une région, un doute et son fil, une "
+        "passe « terminée ». Rien du relevé ne sort avant la tranche 4, qui décidera de sa "
+        "sortie avec sa grille et sa version : la charge porte une précision et des messages "
+        "en texte libre, le passage désigné, et la grille d'une étude peut-être en cours. Ces "
+        "actes COMPTENT pourtant dans les rangs des pseudonymes (G10), pour que leur sortie ne "
+        "renumérote pas tous ceux qui annotent.",
+    "releve_planche":
+        "ANN-7 — la même chose sur la SURFACE d'une planche (un relevé, un doute, une passe "
+        "de la planche entière) ; la même raison que `releve`, dont elle n'est que la cible "
+        "planche.",
 }
 
 

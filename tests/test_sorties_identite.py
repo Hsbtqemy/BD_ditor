@@ -151,6 +151,13 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
     client.post(f"/api/grilles/{grille_id}/versions/1/publication", headers=ident)
     client.put(f"/api/projets/{projet['id']}/grilles/{grille_id}/activation", headers=ident,
                json={"version": 1})
+    # … et un RELEVÉ posé par la sentinelle sur la bulle du semis : la route des relevés
+    # d'une planche nomme son auteur (login, nom lisible). Sans lui elle rendrait une liste
+    # vide et passerait pour muette.
+    r_releve = client.post("/api/releves", headers=ident,
+                           json={"grille_id": grille_id, "version": 1, "region_id": r["id"],
+                                 "entree_cle": "cri", "mots": [0]})
+    assert r_releve.status_code == 201, r_releve.text
     # COL-4 — un BAC À SABLE d'un AUTRE compte, où la sentinelle est invitée : `GET
     # /api/projets` y rend le login de son propriétaire (l'invité doit savoir chez qui il
     # est). Le propriétaire porte la sentinelle dans son login — un autre compte que celle
@@ -310,6 +317,13 @@ SORTIES_DECLAREES = {
         "l'exposition réelle est plus large, et c'est écrit ici plutôt que tu. RÉSERVÉE aux "
         "administrateurs d'instance (403 sinon), elle ne sort de l'instance par aucun "
         "artefact : ni export, ni dépôt."),
+    ("route", "/api/planches/{planche_id}/releves"): (
+        {"login", "nom"},
+        "ANN-7, tranche 1 (R13) — les relevés d'une planche, avec leur AUTEUR, son nom lisible, "
+        "qui les a modifiés, et l'auteur de chaque message d'un doute ouvert : la page "
+        "Annotation dit qui a posé quoi (« les champs d'un relevé », Hugo, 2026-10-22), et un "
+        "doute est une conversation signée. Rendue à qui LIT l'album, comme le relevé. Elle "
+        "ne sort de l'instance par aucun artefact : rien du relevé ne sort avant la tranche 4."),
     ("route", "/api/collections/{collection_id}/acces"): (
         {"login"},
         "Qui entre dans UNE collection : le principal d'un accès est un login ou un nom de "
