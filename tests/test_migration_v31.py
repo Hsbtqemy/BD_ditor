@@ -31,7 +31,7 @@ import database
 BASE_V30 = Path(__file__).resolve().parent / "bases" / "v30-5e7f56b.sql"
 # `region_origine` est celle de la v32 (COL-3, tranche 3b), que la migration traverse aussi.
 # `jeu_document` est celle de la v35 (COL-4).
-TABLES_NEUVES = {"copie", "region_origine", "jeu_document"}
+TABLES_NEUVES = {"copie", "region_origine", "jeu_document", "retrait_vu"}
 
 
 def _sql(db, q, p=()):

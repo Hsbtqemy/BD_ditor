@@ -32,7 +32,7 @@ COLONNES_NEUVES = {"albums": ("lieu_masters",), "planches": ("master_origine",),
                    "projet": ("bac_a_sable_de", "efface_le", "jeu", "membres_creent_collections"),
                    "personnages": ("bac_a_sable_id",), "tags": ("espace",)}
 # Ce que la v35 ajoute (COL-4), que la migration traverse aussi.
-TABLES_NEUVES = {"jeu_document"}
+TABLES_NEUVES = {"jeu_document", "retrait_vu"}  # `retrait_vu` : la v36
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
           "copie", "demande", "demande_document", "region_origine", "contribution",

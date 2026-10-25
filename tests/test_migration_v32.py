@@ -24,7 +24,7 @@ import pytest
 import database
 
 BASE_V31 = Path(__file__).resolve().parent / "bases" / "v31-16c6127.sql"
-TABLES_NEUVES = {"region_origine", "jeu_document"}
+TABLES_NEUVES = {"region_origine", "jeu_document", "retrait_vu"}
 COLONNES_NEUVES = {"demande": ("cran",), "albums": ("tome", "lieu_masters"),
                    "planches": ("master_origine",), "projet": ("bac_a_sable_de", "efface_le", "jeu", "membres_creent_collections"),
                    "personnages": ("bac_a_sable_id",), "tags": ("espace",)}
