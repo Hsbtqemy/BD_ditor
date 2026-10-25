@@ -407,8 +407,16 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   alors, `bd-admins` ou le mono-poste (option B d'AUTH-12, 2026-09-16 ; « zéro
   propriétaire interdit en base », écrit ici jusque-là, était faux). Un album, lui,
   n'existait jamais hors collection — vrai jusqu'au fonds (2026-10-16), où une copie gardée
-  n'en a plus aucune. **Créer une collection exige une IDENTITÉ, pas
-  un droit** (403 nommant la panne derrière le proxy) ; le nom `Collection par défaut` est
+  n'en a plus aucune. **Créer une collection exigeait une IDENTITÉ, pas
+  un droit** (403 nommant la panne derrière le proxy) — **RENVERSÉ le 2026-10-21** (COL-3,
+  tranche 3b, v36, décision de Hugo) : créer une collection dans un projet revient à ses
+  RESPONSABLES et aux administrateurs, à ses MEMBRES seulement si le projet le leur ouvre
+  (`projet.membres_creent_collections`, NON par défaut, à « non » pour tout l'existant,
+  réglé par qui gère le projet : `PUT /api/projets/{id}/creation-de-collections`), à
+  personne d'autre — le projet de REPLI compris, où une identité suffisait : sans
+  responsable, seul un administrateur y crée. Un bac à sable n'est pas touché (ses invités
+  y créent). La règle est `Portee.peut_creer_collection`, 403 nommé sinon ; l'identité reste
+  exigée ; le nom `Collection par défaut` est
   **réservé** (se l'attribuer capturerait les albums créés sans collection explicite) ; et
   les changements d'accès sont **tracés au journal A3** (`lien`/`delien`, non annulables).
 - **Exporter est une case À CÔTÉ du niveau, pas un palier** (DROIT-2, v27) :
@@ -508,6 +516,40 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   sinon été nommée aux lectrices du corpus principal). Le fonds et les demandes sont à la
   seule portée totale (`peut_tenir_le_fonds`) : leurs routes refusent sur le DROIT, avant de
   chercher l'objet, le même 403 que l'objet existe ou non. Cf. `docs/modele-et-droits.md`.
+- **Qui EFFACE sans demander : trois chemins** (COL-3, tranche 3b ; Hugo, 2026-10-21 —
+  RENVERSEMENT daté des quatre conditions du point précédent, que E8 reprenait). Effacer —
+  supprimer une copie, ou la ramener à un cran — se fait sans demande par (1) le CRÉATEUR
+  d'une copie que personne d'autre n'a touchée, MÊME dernière copie de son document (la
+  règle d'avant, ses quatre moitiés ; Hugo, le même jour, sur le cas où les deux règles se
+  croisent) ; (2) le PROPRIÉTAIRE de TOUTES les collections où vit l'album, même si
+  d'autres y ont travaillé ; (3) le RESPONSABLE du projet de l'album, aux mêmes conditions.
+  Jamais un compte PARTAGÉ hors de son bac à sable. La DERNIÈRE copie d'un document —
+  aucune autre copie vivante hors d'un projet isolé — ne sort du fonds commun par (2) ou (3)
+  que sur demande à un administrateur. Les chemins (2) et (3) ne valent pas dans un bac à
+  sable (une collection de bac à sable ne compte pas dans ce qu'on possède) : son
+  propriétaire a son chemin à lui, un invité garde celui du créateur. Ils sont lus AVANT
+  le journal dans le `CASE` de `clause_suppression_directe` (le coût de `e62f6bc` tient,
+  `tests/test_cout_des_clauses.py`), `destructible` les publie, une planche les suit, et le
+  refus nomme la dernière copie parmi ses raisons sans dire laquelle manque. **La
+  protection du travail des membres passe de la PERMISSION à la VISIBILITÉ** :
+  `GET /api/albums/{id}/travail-des-autres` rend, avant d'effacer, ce que d'autres y ont
+  fait — qui, combien de gestes de chaque sorte, la date du dernier —, par la même source
+  que la règle (`autorisation.sql_actes_sur_album`), bornée à qui peut effacer l'album
+  (404 à qui n'y écrit pas, 403 nommé sinon) ; hors portée totale, le travail RECOPIÉ d'une
+  autre copie s'y compte sans nom et l'importateur du document n'y est pas — leurs auteurs
+  peuvent être d'un autre projet. Le responsable atteint l'album par les accesseurs
+  gardés comme tout le monde : la suppression demande d'y ÉCRIRE quelque part (sa base,
+  le plus souvent). **« Retirer du projet »** (`POST /api/albums/{id}/retirer-du-projet`)
+  est le geste du responsable — et de l'administrateur — sur la COMPOSITION : l'album quitte
+  toutes les collections de son projet, quels qu'en soient les propriétaires, et part au
+  fonds avec son travail, comme sorti de sa dernière collection (son projet écrit sur lui,
+  ses `rejoindre` et ses demandes d'en partir clos) ; un administrateur le rend. Chaque fin
+  d'emploi s'écrit au nom de qui retire, puis UN acte sous le document (`retire_du_projet`)
+  que `GET /api/fonds` relit (`retire_du_projet`, qui et quand). 403 nommé à qui lit l'album
+  sans gérer son projet, 409 nommés dans un bac à sable, sur le jeu, sur une copie déjà
+  gardée. Ce paragraphe et le suivant renversent aussi une moitié de « le projet ne borde
+  rien des collections, hors sa base » (point du projet, plus bas) : le responsable a la
+  main sur la composition et l'effacement de TOUTES les collections de son projet.
 - **Prendre un document, REJOINDRE un travail** (COL-3, tranche 3a ; D3, D4 stricte, D9,
   D10, D11, Hugo, 2026-10-17). Une collection PREND des documents
   (`POST /api/collections/{id}/prendre`, une liste, le résultat document par document :
@@ -596,6 +638,51 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   d'images qui n'obtient pas le verrou laisse les fichiers et le dit au journal du serveur :
   la destruction validée répond son succès. Trois genres naissent d'un geste — l'entrée,
   le rejoindre, le retour — et ne se déposent pas par `POST /api/demandes` (422 nommé).
+- **En PARTIR d'un travail, REPARTIR DE ZÉRO** (COL-3, tranche 3b ; E1 à E9, Hugo,
+  2026-10-20 ; l'écran attend sa maquette, E10). *En partir* est une quatrième réponse de
+  la prise, `amorcer` : une copie à soi, amorcée avec le travail d'une copie jusqu'à un cran
+  (`database.CRANS` : `images` · `decoupage` · `transcription` · `grammaire` ·
+  `annotations` ; la validation ne suit jamais), par `database.creer_copie` →
+  `copier_le_travail`. AUCUN événement n'est recopié (E3) : chaque région copiée dit sa
+  source dans `region_origine` (v32), et la règle de suppression remonte la chaîne — la
+  sixième source de `autorisation._sources_du_travail`, bornée dans le temps et par le
+  cran. Seuls les termes visibles depuis la collection d'arrivée suivent, le reste est
+  COMPTÉ (E5, l'aperçu `GET /api/albums/{id}/amorcer/apercu` : des nombres, jamais un
+  libellé) ; les personnages suivent (E6). Dans le projet, la règle de `rejoindre` (E4) :
+  immédiat pour qui administre chaque collection de la source, sinon une demande
+  `amorcer` au propriétaire. ENTRE DEUX PROJETS (E7), la demande ne nomme PAS la source : le
+  responsable du projet d'arrivée prend en `amorcer` sans `album_id` — un document et un
+  cran —, et la ligne est TOUJOURS une demande, d'un genre à elle
+  (`amorcer_entre_projets`), sans `repondra` : le JSON brut de la prise et de
+  `GET /api/projets/{id}/demandes` est le même, qu'un autre projet tienne ce travail ou non
+  (`tests/test_amorcer_entre_projets.py`, deux instances). L'adressage se lit au moment où
+  l'on en a besoin (`database.projets_qui_tiennent` : une copie RANGÉE, hors projet isolé,
+  travaillée jusqu'au cran — `niveau_de_travail`) ; le responsable d'un tel projet la lit
+  dans `GET /api/projets/{id}/demandes-recues` (qui demande, le projet d'arrivée, ses
+  copies qui tiennent) et y répond par la route commune — accepter nomme SA copie
+  (`ReponseIn.album_id`), la copie neuve est au demandeur, refuser la ferme pour tous ;
+  l'administrateur en recours, qui lit à qui elle s'adresse (`sources`). *Repartir de zéro*
+  (E8) ramène une copie — ou UNE planche, Hugo, 2026-10-21 — à un cran plus bas que ce
+  qu'elle porte (`POST /api/albums/{id}/repartir`, `POST /api/planches/{id}/repartir`) :
+  l'inverse de l'échelle, `validee` part, `verrouillee` reste, l'index suit
+  (`database.repartir_de_zero`) ; sous la règle de l'effacement (point précédent), sinon
+  une demande `repartir`, motif et certification obligatoires, à laquelle répond un
+  administrateur — une planche n'a pas de demande à elle (B4). UN acte sous le document
+  (`repartir`), non annulable, que Ctrl+Z lit pour ne pas remonter au-delà (§ Annulation).
+  **Ce que l'écran de la 3b (tranché par Hugo sur maquette le 2026-10-25) lit du
+  serveur** : dans `GET /api/albums`, deux DONNÉES de plus, à qui écrit dans la copie —
+  `derniere_copie` (aucune autre copie vivante hors projet isolé : la règle de
+  l'effacement dite album par album) — et pour tous `repartie` (le dernier acte `repartir`
+  sur l'album entier : cran, d'où, date ; QUI, à qui écrit et à la portée totale seulement) ;
+  les aperçus des deux panneaux, `GET /api/albums/{id}/repartir/apercu` (ce qui part,
+  `database.compter_repartir`, égal aux comptes de l'acte ; le plus haut travail ; direct ou
+  demandé) et `GET /api/albums/{id}/retirer-du-projet/apercu` (collections quittées, leurs
+  propriétaires, qui y a travaillé) ; l'avis d'un retrait à chaque propriétaire d'une
+  collection quittée, `GET /api/collections/{id}/retraits`, jusqu'à « Vu »
+  (`POST …/retraits/{acte}/vu`, mémorisé par LOGIN dans `retrait_vu`, v36 — le journal
+  est append-only, un « vu » n'est pas un acte) ; entre deux projets, toutes les copies
+  rangées du projet source (`tient`, `apercu`) et, pour l'administrateur, qui attend
+  (`sources[].responsables`).
 - **L'accès que le PROJET tient sur sa base se LIT là où l'on regarde qui entre** (COL-3,
   écran de la 3a ; forme tranchée par Hugo sur maquette le 2026-10-17 — l'esprit d'AUTH-4,
   « inévitable, mais pas invisible »). La relecture croisée de la v31 l'avait relevé : un
@@ -692,7 +779,14 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   qui n'en font qu'un.
 - **Le PROJET est un étage AU-DESSUS des collections, et il ne borde rien de ce qui
   précède — hors sa collection de BASE** (COL-3, tranche 1, v29, 2026-10-10 ; la base :
-  tranche 3, v31, D10). Une collection appartient à UN projet et
+  tranche 3, v31, D10). **RENVERSÉ en partie le 2026-10-21** (tranche 3b, Hugo) : le
+  RESPONSABLE a désormais la main sur la composition et l'effacement de TOUTES les
+  collections de son projet — il efface sans demande un album du projet hors de sa dernière
+  copie, le retire du projet, et décide si ses membres créent des collections (cf. « Qui
+  EFFACE sans demander » et « Créer une collection », plus haut) ; il consent, entre deux
+  projets, à ce qu'on parte de son travail (E7). Ce qui reste vrai : être d'un projet
+  n'ouvre aucune AUTRE collection que sa base, et les clauses qui filtrent les données ne
+  connaissent pas les projets. Une collection appartient à UN projet et
   n'en change pas — aucune route ne la déplace — ; on EST d'un projet, `membre` ou
   `responsable` (`projet_acces`, le patron de `collection_acces` un étage plus haut :
   toujours une RÉFÉRENCE à un login ou à un nom de groupe, jamais une appartenance ; le
@@ -786,7 +880,7 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   mono-poste lisent encore dans la Recherche et l'Exploration le texte d'une copie gardée
   au fonds : leur portée totale la lit.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue vingt et une questions — dix jusqu'au 2026-10-10 (`peut_lire` /
+  serveur distingue vingt-deux questions — dix jusqu'au 2026-10-10 (`peut_lire` /
   `peut_ecrire` / `peut_administrer` / `peut_exporter`, `clause_album` /
   `clause_destruction` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`
   / `peut_exporter_quelque_part`), quatorze jusqu'au 2026-10-16 avec les quatre du projet
@@ -795,11 +889,18 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   (`clause_suppression_directe` / `peut_tenir_le_fonds` / `peut_nommer_le_demandeur`,
   COL-3, tranche 2), et les trois de la prise (`peut_lire_les_notices` /
   `clause_rejoindre_directe` / `peut_repondre_a`, COL-3, tranche 3a), vingt jusqu'au
-  2026-10-22, où s'ajoute `peut_remanier_tag` (ANN-8), vingt et une depuis le 2026-10-24
-  avec `peut_ouvrir_un_bac_a_sable` (COL-4) ; la 3a donne aussi à
+  2026-10-22, où s'ajoute `peut_remanier_tag` (ANN-8), vingt et une jusqu'au 2026-10-25
+  avec `peut_ouvrir_un_bac_a_sable` (COL-4), vingt-deux avec `peut_creer_collection`
+  (COL-3, tranche 3b, v36) ; la 3a donne aussi à
   `peut_nommer_le_demandeur` un second usage, nommer qui demande à qui doit CONSENTIR à un
-  `rejoindre` (`consentement`). Le client en reçoit neuf par une clé — six jusqu'au
-  2026-10-16, sept jusqu'au 2026-10-17, huit jusqu'au 2026-10-22 —, et trois par la FORME d'une réponse (ci-dessous). Une projet
+  `rejoindre` (`consentement`), et la 3b à `peut_repondre_a` et `peut_nommer_le_demandeur`
+  un genre de plus, la demande d'en partir entre deux projets (`projets`, ceux qui tiennent
+  le travail). Le client en reçoit dix par une clé — six jusqu'au
+  2026-10-16, sept jusqu'au 2026-10-17, huit jusqu'au 2026-10-22, neuf jusqu'au 2026-10-25
+  —, et trois par la FORME d'une réponse (ci-dessous). La dixième (COL-3, tranche 3b) :
+  `collection_creable`, projet par projet dans `GET /api/projets` — `peut_creer_collection`,
+  posée sur le réglage du projet, que l'écran ne déduit pas du rôle ; et, pour qui gère,
+  le réglage lui-même (`membres_creent_collections`). Une projet
   par projet, dans `GET /api/projets` : `gerable`
   (`mon_role` l'accompagne comme `mon_niveau` accompagne une collection : il dit sous quel
   rôle on y figure, et vaut `null` pour une portée totale, qui règle tout sans figurer
@@ -1076,9 +1177,12 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 35). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 36). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - **Chaque migration se vérifie sur une VRAIE base de la version précédente** — règle posée par Hugo le 2026-10-16. Une base « défaite » à la main (une base neuve dont on retire colonnes et tables, puis qu'on ramène en arrière par `user_version`) n'a ni destructions, ni journal, ni dossiers d'images : la v30 passait toute sa suite sur de telles bases, et la relecture croisée l'a prise en défaut deux fois sur une base faite par le code v29 — une planche détruite que seule une activité nommait, un album détruit dont seul le dossier d'images restait, deux identifiants rendus après migration. La vraie base se fabrique par `tools/fabriquer_base_de_version.py <commit> tests/bases/v<N>-<commit>.sql`, qui fait tourner le code du commit lui-même — ses routes, sous trois comptes, avec des destructions en haut de chaque table — et vide la base en SQL ; le test de la migration suivante la charge et migre (`tests/test_identifiants_v30.py` lit `tests/bases/v29-10a3a90.sql`). Le commit est le dernier état de la version précédente — la tête de `main` avant la migration.
-- **Des identifiants qui ne reviennent jamais** (v30, décision de Hugo du 2026-10-15) : `albums`, `planches`, `regions`, `personnages` portent `AUTOINCREMENT`, comme les tables neuves `document` et `demande`. Sans lui SQLite rend au suivant l'identifiant du dernier détruit, et le journal, qui désigne ses cibles par identifiant et leur survit, mêlait deux objets. `projet` le porte depuis la v31 (D8), par la même reconstruction, son compteur amorcé au-dessus de ce que le journal, `demande.projet_id` et `document.projet_origine_id` ont nommé (`database._HORS_JOURNAL`). `collection` le porte depuis la v35 (COL-4) : les bacs à sable en font naître et mourir chaque semaine, et ses identifiants se réattribuaient — son compteur est amorcé au-dessus de ce que le journal et `demande.collection_id` ont nommé ; le NOM gardé à côté de l'identifiant dans une demande (`demande.collection_nom`, `demande_document.titre`) et dans la charge d'un emploi (`journal.journaliser_emploi`) reste, pour une collection supprimée qui ne se lit plus ; `demande.projet_nom` et `document.projet_origine_nom` gardent celui d'un projet supprimé, que son identifiant ne nomme plus. La vraie base de la v30 est `tests/bases/v30-5e7f56b.sql` (`tests/test_migration_v31.py`) ; celle de la v34, `tests/bases/v34-35cc4a3.sql` (`tests/test_migration_v35.py`).
+- **Des identifiants qui ne reviennent jamais** (v30, décision de Hugo du 2026-10-15) : `albums`, `planches`, `regions`, `personnages` portent `AUTOINCREMENT`, comme les tables neuves `document` et `demande`. Sans lui SQLite rend au suivant l'identifiant du dernier détruit, et le journal, qui désigne ses cibles par identifiant et leur survit, mêlait deux objets. `projet` le porte depuis la v31 (D8), par la même reconstruction, son compteur amorcé au-dessus de ce que le journal, `demande.projet_id` et `document.projet_origine_id` ont nommé (`database._HORS_JOURNAL`). `collection` le porte depuis la v35 (COL-4) : les bacs à sable en font naître et mourir chaque semaine, et ses identifiants se réattribuaient — son compteur est amorcé au-dessus de ce que le journal et `demande.collection_id` ont nommé ; le NOM gardé à côté de l'identifiant dans une demande (`demande.collection_nom`, `demande_document.titre`) et dans la charge d'un emploi (`journal.journaliser_emploi`) reste, pour une collection supprimée qui ne se lit plus ; `demande.projet_nom` et `document.projet_origine_nom` gardent celui d'un projet supprimé, que son identifiant ne nomme plus. La vraie base de la v30 est `tests/bases/v30-5e7f56b.sql` (`tests/test_migration_v31.py`) ; celle de la v34, `tests/bases/v34-35cc4a3.sql` (`tests/test_migration_v35.py`) ; celle de
+la v35, `tests/bases/v35-f8dfa5c.sql` (`tests/test_migration_v36.py`), qui porte le jeu des
+bacs à sable, deux bacs à sable et une collection créée par un simple membre — la v36 ne
+pose qu'une colonne, `projet.membres_creent_collections`, à 0 pour tout l'existant.
 - **La v30 RECONSTRUIT des tables** (`_reconstruire_avec_autoincrement`) : on ne pose pas `AUTOINCREMENT` par `ALTER`. Table neuve, lignes copiées avec leurs identifiants, ancienne détruite, neuve renommée, index et vues recréés, dans une transaction, **clés étrangères SUSPENDUES** pendant qu'elle tourne — actives, détruire `albums` effacerait par cascade toutes les planches ; la moindre référence orpheline NEUVE défait tout (celles qu'une base portait déjà ne ferment pas l'instance). Le compteur de chaque table repart au-dessus du plus grand identifiant que le journal ait jamais nommé — `evenement` ET `activite` (cible, clés des charges, portée d'une passe automatique sans effet) —, et celui des albums en plus au-dessus du plus grand dossier `album_N` présent dans `corpus/` ou `derivatives/` : le journal d'une base v29 ne nomme aucun album. Un identifiant détruit que rien ne nomme plus peut revenir une fois. Gardée par la version et idempotente (une table qui porte déjà `AUTOINCREMENT` n'est pas touchée) ; une table d'une autre forme arrête tout avant la première reconstruction. Elle valide la transaction en cours avant de commencer (`PRAGMA foreign_keys` ne change pas dans une transaction) : une reconstruction qui échoue laisse la base en v29, prête à rejouer.
 - **La v35 reconstruit aussi `tags`** (`database._tags_par_espace`, COL-4) : SQLite ne retire pas par `ALTER` l'unicité d'une colonne, et `label` cesse d'être unique dans toute l'instance pour l'être PAR ESPACE (`tags.espace`, 0 pour l'instance, l'identifiant du bac à sable sinon ; `idx_tags_espace_label`). La forme de la v30 — clés étrangères suspendues (actives, détruire `tags` viderait `annotation_tags`), index et vues recréés —, par PRÉSENCE de la colonne. Les index qui nomment une colonne posée par migration (`idx_tags_espace_label`, `idx_projet_bac_a_sable_de`, unique partiel) se posent dans `_migrate`, jamais dans `SCHEMA_SQL`, qui tournerait avant la colonne.
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
@@ -1141,13 +1245,13 @@ Invariants :
 
 `journal.py` : couche **append-only** qui qualifie *qui a produit quoi* sans inverser la base. `activite` = un **run** (passe ML, ou session) ; `evenement` = un **acte** atomique immuable (avant/après JSON). Les passes ML sont enveloppées par `journal.passe_ml` (diff des régions → `regions.activite_id` = wasGeneratedBy + événements, **sans coupler** le code pipeline) ; les routes humaines journalisent leurs actes (l'**agent** vient de l'auth via le contextvar `agent_courant`, alimenté par une dépendance FastAPI globale — pas de `request` à threader). `evenement.cible_id` **n'est pas une FK** : le journal **survit à la suppression** de sa cible (substrat de l'undo **D1**) ; les actes d'annotation ciblent le `region_id` (stable), pas l'id d'annotation. **Un run qui ÉCHOUE ou qu'on INTERROMPT laisse une trace lui aussi** : `passe_ml` défait la transaction LUI-MÊME puis réinscrit une activité close (`{echec}` / `{interrompu}`) et la valide seule — sinon le `rollback` de l'appelant emportait la ligne qu'on venait d'écrire, et le journal ne gardait que ce qui avait marché (mesuré le 2026-09-08 : zéro activité après une passe ratée, en lot COMME en route directe). Le bilan reste **minimal** par contrainte et non par économie : `comptes` SORT de l'instance, y verser le message de l'exception enverrait des chemins serveur au dépôt. Et la tenue du journal ne doit jamais changer l'erreur que l'appelant voit — un `commit()` qui lève « database is locked » transformerait un 500 moteur en 409 « réessayer ». **`database.reindex_all` a la même maladie et un autre remède** (2026-09-09) : ses lots étant validés au fur et à mesure, une panne tardive laisse une activité déjà persistée, et réinscrire en produirait une SECONDE — elle commite donc sa trace d'ouverture tout de suite, puis la CLÔTURE sur échec. Elle rattrape `BaseException` là où `passe_ml` s'en tient à `Exception`, et l'asymétrie est justifiée : `tools/reindex_nlp.py` est une CLI qui tourne des minutes sur le fil principal, donc Ctrl+C y est l'interruption réaliste — `passe_ml` vit dans un fil de travail, où il n'arrive jamais. Indicateurs dérivés (`indicateurs_provenance`) dans les exports ; sérialisation **PROV-O / TEI** par `tools/provenance_export.py`. Cf. `docs/provenance-audit.md`.
 
-**Depuis la v30 (2026-10-16), le journal est aussi une ENTRÉE d'autorisation** (COL-3, tranche 2). Couche de provenance jusque-là, il décide désormais d'un geste : « supprimer définitivement sans rien demander » exige que PERSONNE D'AUTRE n'ait travaillé sur l'album, et cela se lit dans le journal (`autorisation._sql_travail_d_autrui`), par jointure sur ce qui VIT encore — les actes humains sur ses régions (région, annotation, locuteur, présence, attribut de case), les attributs de case dont aucun `lien` humain n'est écrit (auteur inconnu, donc un autre), les corrections grammaticales vivantes (`token_correction.auteur`), les validations de ses planches, les gestes sur son document dont la charge nomme CET album (une copie sœur partage le document : la notice retouchée sur l'une n'est pas un travail sur l'autre). Un travail supprimé depuis ne compte plus ; une passe automatique n'est attribuée qu'à son moteur ; un acte sans agent compte comme celui d'un autre. Ce qui n'était écrit nulle part l'est donc depuis : sous la cible **`document`** (cible_id = le document, jamais l'album) la naissance d'un album, chaque scan ajouté ou retiré, la notice modifiée, une contribution ajoutée ou retirée, la relecture d'une planche forcée, la destruction, et l'ORDRE des planches changé (UX-11) — ce dernier, marqué `acte: ordre_des_planches` dans sa charge, n'est PAS un travail sur l'album (Hugo, 2026-10-22 : `autorisation._SQL_ORDRE_DES_PLANCHES` l'écarte de la règle comme de ce que l'administrateur lit sous une demande) ; sous **`collection_album`** ses EMPLOIS — rangé (`lien`), retiré (`delien`), par `journal.journaliser_emploi`, routes et outil ; sous **`region_attribut`** un attribut de case posé ou retiré ; sous **`demande`** une demande déposée et sa réponse. Les quatre sont RETENUES de toute sortie (`tools/_commun.CIBLES_RETENUES`), ne donnent aucun rang dans les pseudonymes (`CIBLES_SANS_RANG` : les compter aurait renuméroté tous ceux qui annotent après un import), et ne s'annulent pas. Dans ce qu'un compte laisse en partant (`comptes.traces`), `document`, `collection_album` et `demande` ne comptent pas ; `region_attribut` compte — qualifier une case est du travail. Depuis COL-4 (décision du pilotage), aucun acte sur un objet d'un projet isolé ne compte, création et invitations d'un bac à sable comprises, qu'il vive encore ou soit parti avec un effacement (`database.sql_acte_isole` ; l'effacement écrit dans sa charge les planches et régions qu'il emporte) : ce qui disparaît avec le lundi ne retient personne.
+**Depuis la v30 (2026-10-16), le journal est aussi une ENTRÉE d'autorisation** (COL-3, tranche 2). Couche de provenance jusque-là, il décide désormais d'un geste : « supprimer définitivement sans rien demander » exige que PERSONNE D'AUTRE n'ait travaillé sur l'album, et cela se lit dans le journal (`autorisation._sql_travail_d_autrui`), par jointure sur ce qui VIT encore — les actes humains sur ses régions (région, annotation, locuteur, présence, attribut de case), les attributs de case dont aucun `lien` humain n'est écrit (auteur inconnu, donc un autre), les corrections grammaticales vivantes (`token_correction.auteur`), les validations de ses planches, les gestes sur son document dont la charge nomme CET album (une copie sœur partage le document : la notice retouchée sur l'une n'est pas un travail sur l'autre). Un travail supprimé depuis ne compte plus ; une passe automatique n'est attribuée qu'à son moteur ; un acte sans agent compte comme celui d'un autre. Ce qui n'était écrit nulle part l'est donc depuis : sous la cible **`document`** (cible_id = le document, jamais l'album) la naissance d'un album, chaque scan ajouté ou retiré, la notice modifiée, une contribution ajoutée ou retirée, la relecture d'une planche forcée, la destruction, et l'ORDRE des planches changé (UX-11) — ce dernier, marqué `acte: ordre_des_planches` dans sa charge, n'est PAS un travail sur l'album (Hugo, 2026-10-22 : `autorisation._SQL_ORDRE_DES_PLANCHES` l'écarte de la règle comme de ce que l'administrateur lit sous une demande), une remise à zéro (`repartir`, COL-3, tranche 3b) et un retrait du projet (`retire_du_projet`) — ces deux-là COMPTENT comme un travail sur l'album, l'option fermée tant que Hugo ne l'a pas tranché ; sous **`collection_album`** ses EMPLOIS — rangé (`lien`), retiré (`delien`), par `journal.journaliser_emploi`, routes et outil ; sous **`region_attribut`** un attribut de case posé ou retiré ; sous **`demande`** une demande déposée et sa réponse. Les quatre sont RETENUES de toute sortie (`tools/_commun.CIBLES_RETENUES`), ne donnent aucun rang dans les pseudonymes (`CIBLES_SANS_RANG` : les compter aurait renuméroté tous ceux qui annotent après un import), et ne s'annulent pas. Dans ce qu'un compte laisse en partant (`comptes.traces`), `document`, `collection_album` et `demande` ne comptent pas ; `region_attribut` compte — qualifier une case est du travail. Depuis COL-4 (décision du pilotage), aucun acte sur un objet d'un projet isolé ne compte, création et invitations d'un bac à sable comprises, qu'il vive encore ou soit parti avec un effacement (`database.sql_acte_isole` ; l'effacement écrit dans sa charge les planches et régions qu'il emporte) : ce qui disparaît avec le lundi ne retient personne.
 
 ### Annulation (undo, D1)
 
 `undo.py` : **remonte le journal A3** pour rejouer l'INVERSE de la dernière action d'annotation. Le journal EST l'historique (pas de pile ; append-only préservé) : annuler = exécuter l'inverse + ajouter un événement `annulation` (`cible_table='evenement'`, `cible_id`=l'acte annulé) ; la « dernière action annulable » = l'événement **humain** le plus récent, d'un type annulable, non déjà référencé par une annulation → `Ctrl+Z` répété remonte la pile. Inversions en mutations **brutes** (+ réindex FTS), **hors routes** (sinon rejournalisation) ; un seul `annulation` par undo ; atomique (rollback si échec). Périmètre : région (créer/modifier/supprimer+**cascade** recréée depuis l'instantané profond, mêmes `id`), annotation (note+tags), locuteur, présence — gardés comme les autres champs de CONC-3 : le Ctrl+Z d'un locuteur ou d'un personnage montré qu'un autre a changé depuis est refusé par le 409 nommé, qui offre « Passer ce geste » (ANN-8), et le Ctrl+Z d'une CRÉATION de région l'est aussi quand un autre lui a donné un locuteur, un personnage montré ou une situation (CONC-4, `undo._garder_liens_de_creation`) ; actes **machine non annulables**. **L'annulation ne crée jamais de tag** (ANN-8) : seuls les libellés de l'instantané de l'acte se résolvent — par la chaîne du journal `tags`, puis le libellé exact, puis la clé parmi les tags que l'agent voit (`undo._tag_a_rendre`) — ; les tags d'aujourd'hui se reposent par leur identifiant ; ce qui ne se résout pas ne revient pas (`tags_non_rendus`). `GET /api/undo/prochain` + `POST /api/undo` (404 si rien, 409 si l'acte ne s'annule pas) ; **UI Ctrl+Z** dans l'Atelier. Dormant : grammaire/validation, **redo**. Cf. `docs/undo.md`.
 
-**Avant d'écrire, deux questions, et un acte qui échoue à l'une est PASSÉ** (AUTH-14, 2026-10-15). `regions`, `planches`, `albums` et `personnages` n'avaient pas d'`AUTOINCREMENT` : l'identifiant d'un objet détruit revenait au suivant, et tout identifiant que le journal garde — `cible_id`, instantanés — pouvait désigner un AUTRE objet, dans une autre collection. **Depuis la v30 (2026-10-16) ils ne reviennent plus** (§ Schéma & migrations) ; les témoins ci-dessous RESTENT, pour les actes d'avant la v30 — leurs identifiants ont pu être repris avant elle — et comme défense en profondeur : un identifiant rendu par une transaction défaite, une ligne posée à la main. Les tests du cloisonnement de Ctrl+Z ramènent leur base à la numérotation d'avant pour les mesurer encore. (1) **Peut-on écrire maintenant à chaque endroit que l'inverse touche** — la région, la planche de CHAQUE nœud d'une suppression rétablie, le parent rendu, le personnage reposé ? `undo.annuler` prend `ecrivable` en argument OBLIGATOIRE, que la route tire des accesseurs gardés sous la portée de la requête (`undo.lieux`). Le résiduel du 2026-08-28, « un droit d'écriture ailleurs suffit », est fermé. (2) **L'objet est-il encore celui de l'acte ?** Quatre témoins, sans changement de schéma : aucune création journalisée sous cet identifiant depuis l'acte ; la planche au moment de l'acte ; l'album importé après l'acte ; une suppression journalisée depuis l'acte et non annulée. Un personnage doit être vu de l'agent et né avant l'acte ; un parent rendu se valide comme la route (`_validate_parent`). Si l'une répond non, ou si une contrainte de la base refuse l'inverse, l'acte est **passé** : une trace append-only (`type='abandon'`, `cible_table='annulation'`) le sort de la pile — retenue de toute sortie (`tools/_commun.CIBLES_RETENUES`), hors du compte des actes d'un compte —, et le Ctrl+Z suivant défait le geste d'avant. **Définitivement** : l'acte ne revient pas si l'objet est rétabli plus tard, c'est voulu. Le refus dit deux phrases et rien de l'objet — « Ne s'annule plus : *geste* — la région n'est plus à votre portée », ou « … — l'état d'avant ne peut plus être rétabli » ; une seule pour tout ce qui est hors de portée, sans quoi la différence entre « supprimée » et « reprise ailleurs » fuirait. Là où l'agent lit et écrit, le conflit de version (CONC-3) est inchangé. Les trous qui restent (une planche reprise dans un album importé avant l'acte, une région disparue et reprise sans événement, une reprise dans la même seconde) sont écrits dans `docs/undo.md` et dans la fiche ; la garde d'écriture les tient tous, c'est l'identité qui manque. Le remède de fond, des identifiants qui ne reviennent plus, attendait la migration v30 (`COL-3`) ; il est arrivé avec elle le 2026-10-16, et ne vaut que pour les identifiants nés après elle.
+**Avant d'écrire, deux questions, et un acte qui échoue à l'une est PASSÉ** (AUTH-14, 2026-10-15). `regions`, `planches`, `albums` et `personnages` n'avaient pas d'`AUTOINCREMENT` : l'identifiant d'un objet détruit revenait au suivant, et tout identifiant que le journal garde — `cible_id`, instantanés — pouvait désigner un AUTRE objet, dans une autre collection. **Depuis la v30 (2026-10-16) ils ne reviennent plus** (§ Schéma & migrations) ; les témoins ci-dessous RESTENT, pour les actes d'avant la v30 — leurs identifiants ont pu être repris avant elle — et comme défense en profondeur : un identifiant rendu par une transaction défaite, une ligne posée à la main. Les tests du cloisonnement de Ctrl+Z ramènent leur base à la numérotation d'avant pour les mesurer encore. **Un cinquième témoin depuis la tranche 3b** (E8) : une REMISE À ZÉRO de l'album — ou de la planche — journalisée depuis l'acte (`undo.remis_a_zero_depuis`, l'acte `repartir` sous le document) ; l'acte est passé, « l'état d'avant ne peut plus être rétabli » — Ctrl+Z ne remonte pas au-delà, et un geste d'un autre album ou d'une autre planche s'annule encore. (1) **Peut-on écrire maintenant à chaque endroit que l'inverse touche** — la région, la planche de CHAQUE nœud d'une suppression rétablie, le parent rendu, le personnage reposé ? `undo.annuler` prend `ecrivable` en argument OBLIGATOIRE, que la route tire des accesseurs gardés sous la portée de la requête (`undo.lieux`). Le résiduel du 2026-08-28, « un droit d'écriture ailleurs suffit », est fermé. (2) **L'objet est-il encore celui de l'acte ?** Quatre témoins, sans changement de schéma : aucune création journalisée sous cet identifiant depuis l'acte ; la planche au moment de l'acte ; l'album importé après l'acte ; une suppression journalisée depuis l'acte et non annulée. Un personnage doit être vu de l'agent et né avant l'acte ; un parent rendu se valide comme la route (`_validate_parent`). Si l'une répond non, ou si une contrainte de la base refuse l'inverse, l'acte est **passé** : une trace append-only (`type='abandon'`, `cible_table='annulation'`) le sort de la pile — retenue de toute sortie (`tools/_commun.CIBLES_RETENUES`), hors du compte des actes d'un compte —, et le Ctrl+Z suivant défait le geste d'avant. **Définitivement** : l'acte ne revient pas si l'objet est rétabli plus tard, c'est voulu. Le refus dit deux phrases et rien de l'objet — « Ne s'annule plus : *geste* — la région n'est plus à votre portée », ou « … — l'état d'avant ne peut plus être rétabli » ; une seule pour tout ce qui est hors de portée, sans quoi la différence entre « supprimée » et « reprise ailleurs » fuirait. Là où l'agent lit et écrit, le conflit de version (CONC-3) est inchangé. Les trous qui restent (une planche reprise dans un album importé avant l'acte, une région disparue et reprise sans événement, une reprise dans la même seconde) sont écrits dans `docs/undo.md` et dans la fiche ; la garde d'écriture les tient tous, c'est l'identité qui manque. Le remède de fond, des identifiants qui ne reviennent plus, attendait la migration v30 (`COL-3`) ; il est arrivé avec elle le 2026-10-16, et ne vaut que pour les identifiants nés après elle.
 
 ### Lexique situé (A4, v17)
 

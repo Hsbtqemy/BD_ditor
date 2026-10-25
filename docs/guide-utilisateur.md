@@ -564,6 +564,13 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
     motif ou sans la case, rien ne part, et le panneau le dit. Ce qui compte comme « avoir
     travaillé », et pourquoi un album créé avant l'arrivée du fonds se demande toujours :
     [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
+    **Depuis le 2026-10-21, la règle du serveur est plus large que ces mots** : le
+    **propriétaire** de toutes les collections de l'album, et le **responsable** de son
+    projet, l'effacent aussi sans rien demander, même si d'autres y ont travaillé — sauf la
+    dernière copie d'un document, qui se demande toujours à un administrateur. Le panneau
+    suit le serveur pour OFFRIR l'effacement, mais ses mots sont encore ceux du créateur
+    (*… vous l'avez créée, et personne d'autre n'y a travaillé*) : ils seront réécrits avec
+    l'écran de la tranche 3b, qui attend sa maquette.
   - **Une demande en attente se voit sur l'album**, dans la liste et dans sa fiche : *suppression demandée par
     vous*, ou *suppression demandée* sans nom — seuls un administrateur et la personne qui a
     demandé lisent qui l'a fait. Tant qu'elle attend, *Supprimer définitivement* le dit,
@@ -632,8 +639,10 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   planches (fiche d'un album) ; le lot paraît au-dessus de la sélection — cochez les passes,
   lancez. Progression, annulation et erreurs en direct, au-dessus de la liste.
 - **Collections** : créer une collection (*+ Créer une collection*) — elle naît dans le projet choisi en haut de la
-  page ; il suffit d'être connecté dans le projet de repli, et d'être membre du projet
-  dans un autre ; l'on en devient
+  page ; depuis le 2026-10-21, c'est une décision du projet : ses **responsables** et les
+  administrateurs créent toujours, ses **membres** seulement si le projet le leur ouvre
+  (réglage de la fiche du projet, fermé par défaut), personne d'autre — le projet de repli
+  compris, où il suffisait d'être connecté ; dans un bac à sable, rien ne change ; l'on en devient
   propriétaire, sauf un administrateur, qui l'administre sans la posséder et peut lui
   désigner un propriétaire dans *Qui entre* —, la décrire (description, dates), régler
   sa diffusion (régime, embargo, licence, base légale), désigner son référent, la renommer,
@@ -943,6 +952,7 @@ Elles sont documentées ; elles ne sont simplement pas dans l'interface.
 | Réindexer tout le corpus après un changement de modèle linguistique | `tools/reindex_nlp.py` | [`correction-grammaticale.md`](correction-grammaticale.md) |
 | Relire la résolution des planches importées avant cette fonctionnalité | `tools/reindex_materiel.py` | [`materiel-numerisation.md`](materiel-numerisation.md) |
 | Remplacer par des copies de travail les masters gardés avant la v34 — **efface les masters du serveur** | `tools/convertir_en_copies_de_travail.py` | [`materiel-numerisation.md`](materiel-numerisation.md), « La copie de travail » |
+| **Tranche 3b de COL-3, côté serveur — leur écran attend sa maquette** : *en partir* d'un travail jusqu'à un cran (dans le projet, ou entre deux projets sans nommer la source), *repartir de zéro* sur un album ou une planche, *retirer du projet* un album, lire avant d'effacer ce que d'autres y ont fait, régler si les membres d'un projet créent des collections | l'API de l'application (`POST /api/collections/{id}/prendre` en `amorcer`, `POST /api/albums/{id}/repartir`, `POST /api/planches/{id}/repartir`, `POST /api/albums/{id}/retirer-du-projet`, `GET /api/albums/{id}/travail-des-autres`, `PUT /api/projets/{id}/creation-de-collections`, et ce que l'écran tranché le 2026-10-25 lira : les aperçus de « Repartir de zéro » et de « Retirer du projet », l'avis d'un retrait jusqu'à « Vu ») | [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds* et §3, *Le projet* |
 | Créer un compte, un groupe | l'annuaire LLDAP, par son interface web (le fichier des comptes du portail n'est plus que le repli) | [`exploitation.md`](exploitation.md), « Basculer vers l'annuaire LLDAP » |
 
 L'**import PDF** est annoncé dans le menu mais désactivé : il n'est pas encore implémenté.
@@ -976,12 +986,16 @@ donnant le titre.
 **« Supprimer définitivement » envoie une demande au lieu d'effacer.**
 L'album n'est effacé tout de suite que si vous avez créé cette copie vous-même — importée, ou
 prise du fonds —, que personne d'autre n'y a travaillé, et que vous écrivez dans toutes ses
-collections. Un album créé avant
-l'arrivée du fonds n'a pas d'importateur écrit : sa suppression se demande toujours. Sous un
-compte partagé aussi. Cf. [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
+collections ; ou, depuis le 2026-10-21, si vous possédez toutes ses collections, ou êtes
+responsable de son projet — mais alors pas s'il est la dernière copie de son document, qui se
+demande toujours. Un album créé avant
+l'arrivée du fonds n'a pas d'importateur écrit : sa suppression par celui qui l'a créé se
+demande toujours. Sous un compte partagé, tout se demande. Cf.
+[`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
 
 **La corbeille d'une planche est grisée.**
-Une planche se supprime là où l'album se supprimerait sans rien demander, et nulle part
+Une planche se supprime là où l'album se supprimerait sans rien demander — par son créateur,
+le propriétaire de toutes ses collections ou le responsable de son projet —, et nulle part
 ailleurs. Touchez-la : elle dit à qui s'adresser. Un administrateur peut la supprimer.
 
 **Le bouton `＋` de l'Atelier a disparu.**

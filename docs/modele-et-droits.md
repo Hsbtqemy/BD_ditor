@@ -262,6 +262,38 @@ pas écrit non plus — il n'y a personne à nommer.
   d'autre n'y ait travaillé**. C'est le cas de l'import par erreur, qui n'a à attendre
   personne. Hors de ce cas, la suppression **se demande** à un administrateur.
 
+**Depuis le 2026-10-21, trois personnes effacent sans rien demander** (décision de Hugo, qui
+remplace les quatre conditions ci-dessus comme seul chemin). Effacer, c'est supprimer
+définitivement une copie, ou la ramener à un cran (*repartir de zéro*, plus bas) :
+
+1. **qui a créé la copie**, si personne d'autre n'y a travaillé — les quatre conditions
+   ci-dessus, inchangées, même si c'est la dernière copie de son document (l'import par
+   erreur) ;
+2. **le propriétaire de toutes les collections** où vit l'album, même si d'autres y ont
+   travaillé ;
+3. **le responsable du projet** de l'album, aux mêmes conditions que le propriétaire.
+
+Jamais sous un compte partagé, hors de son bac à sable. Et la **dernière copie** d'un
+document — quand aucune autre copie ne le porte hors d'un bac à sable ou du jeu — ne quitte
+le fonds commun par le propriétaire ou le responsable que **sur demande** à un
+administrateur, gardien du fonds : eux effacent le travail des autres, pas le document.
+
+La protection du travail des membres passe ainsi de la **permission** à la **visibilité** :
+avant d'effacer, qui peut le faire lit ce que d'autres y ont fait — qui, combien de gestes de
+chaque sorte, la date du dernier ; le travail recopié d'une autre copie y est compté sans
+nom, ses auteurs pouvant être d'un autre projet —, et le journal garde qui a effacé. Le
+responsable atteint un album comme tout le monde : il doit y écrire quelque part, dans sa
+collection de base le plus souvent ; un album qui ne vit que dans des collections qu'il ne
+lit pas lui reste hors de portée.
+
+**Retirer du projet** est le geste du responsable — et de l'administrateur — sur la
+composition : l'album quitte **toutes** les collections du projet, quels qu'en soient les
+propriétaires, et part au fonds **avec son travail**, comme sorti de sa dernière collection.
+Rien n'est détruit ; les propriétaires le voient disparaître — et chacun lit en tête de sa
+collection qui l'a retiré, quand, et le motif s'il en a été donné, jusqu'à ce qu'il le marque
+*Vu* ; un administrateur le rend, à une collection du même projet ; le journal, le fonds et la
+fiche du projet disent qui l'a retiré. Pas dans un bac à sable, où rien ne part au fonds.
+
 **« Personne d'autre n'y a travaillé »** se lit dans le journal de l'instance, sur ce qui
 existe encore. Compte comme travail tout geste d'une autre personne sur l'album : dessiner
 ou modifier une case ou une bulle, transcrire, annoter (note, tags), poser un locuteur, une
@@ -380,8 +412,38 @@ eu une copie ailleurs, et son identifiant — jamais son projet, sa collection, 
 a fait. C'est le prix des fichiers partagés (décision D6), accepté jusqu'à `IMG-2`, qui
 nommera les fichiers par image et non plus par album.
 
-**Ce que le fonds ne fait pas encore.** Partir du travail d'une autre copie — son découpage,
-sa transcription, ses annotations — viendra plus tard. Et l'administrateur, comme l'usage
+**En partir d'un travail, repartir de zéro** (tranche 3b ; règles côté serveur, leur écran
+attend sa maquette). *En partir*, c'est prendre une copie à soi **amorcée** avec le travail
+d'une autre jusqu'à un cran de l'échelle — le découpage, puis la transcription, puis la
+grammaire relue, puis les annotations ; la validation ne suit jamais. Le travail recopié
+reste celui de ses auteurs : la copie dit, région par région, d'où elle vient, et la règle de
+suppression le compte. Seuls les termes de vocabulaire visibles depuis la collection
+d'arrivée suivent ; les autres restent, et un aperçu dit combien, sans les nommer. Les
+personnages suivent.
+
+- **Dans le projet**, la règle de *rejoindre* : immédiat si vous possédez chacune des
+  collections où vit la copie dont vous partez, sinon une demande à leur propriétaire.
+- **Entre deux projets**, seul le responsable du projet d'arrivée demande, depuis les
+  notices : un **document** et un **cran**, jamais une copie. L'application adresse la
+  demande aux responsables des projets qui tiennent ce travail — une copie rangée, travaillée
+  au moins jusqu'au cran —, à un administrateur s'il n'y en a aucun. Le demandeur lit
+  « demandée », puis « acceptée » ou « refusée », et rien d'autre : il n'apprend pas si un
+  autre projet avait ce travail. Le responsable qui consent lit qui demande et pour quel
+  projet, choisit la copie de son projet d'où l'on part, et la copie neuve est au
+  demandeur ; un refus ferme la demande pour tous.
+
+*Repartir de zéro* ramène une copie — ou une seule de ses planches — à un cran plus bas que
+ce qu'elle porte, en gardant ses images : vers la grammaire, les annotations partent ; vers la
+transcription, en plus les corrections et la relecture ; vers le découpage, en plus le texte ;
+vers les images, toutes les cases et bulles. La validation part toujours, le verrou d'une
+planche reste. C'est la règle de l'effacement : les trois personnes ci-dessus le font
+directement, toute autre le **demande**, motif et certification à l'appui, à un
+administrateur — une planche n'a pas de demande à elle. Un seul geste, qui **ne s'annule
+pas** : Ctrl+Z ne remonte pas au-delà, et les gestes faits avant sur cet album (ou cette
+planche) ne s'annulent plus. Une copie remise à zéro le dit dans sa fiche (le cran, la date) ;
+qui l'a fait ne s'y lit que par qui écrit dans la copie.
+
+**Ce que le fonds ne fait pas encore.** L'administrateur, comme l'usage
 sur un seul poste, lit encore dans la Recherche et l'Exploration le texte d'un album gardé
 au fonds — et deux fois le texte d'un document dont il lit deux copies : ces deux pages
 portent sur tout ce qu'il lit, et il lit tout. Ce double compte vaut pour quiconque lit deux
@@ -509,7 +571,7 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 
 | Geste | lecture | écriture | propriétaire | `bd-admins` |
 |---|:---:|:---:|:---:|:---:|
-| **Créer** une collection — hors du projet de repli, il faut être membre du projet (cf. « Le projet », plus bas) | ✅ | ✅ | ✅ | ✅ |
+| **Créer** une collection — depuis le 2026-10-21, une décision du projet : ses responsables, et ses membres si le projet le leur ouvre (cf. « Le projet », plus bas) ; le niveau dans une collection n'y change rien | selon le projet | selon le projet | selon le projet | ✅ |
 | Voir les albums, planches, régions, annotations | ✅ | ✅ | ✅ | ✅ |
 | Chercher, explorer le contenu | ✅ | ✅ | ✅ | ✅ |
 | **Exporter** le contenu — un album (JSON-LD / CSV / TEI), les CSV de la Recherche et de l'Exploration, les figures, les exports de dépôt | avec la case | avec la case | ✅ | ✅ |
@@ -520,8 +582,10 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 | **Fusionner un tag, ou renommer ou supprimer un tag encore posé** — tag local à la collection ; retirer ou fusionner seulement s'il n'est posé que dans des albums où l'on écrit | — | — | ✅ | ✅ |
 | … un tag **global** | — | — | — | ✅ |
 | **Supprimer un album de la collection** — même la dernière : il est alors gardé au fonds | — | ✅ | ✅ | ✅ |
-| **Supprimer définitivement** un album ou une planche sans rien demander — à condition de l'avoir importé, que personne d'autre n'y ait travaillé, d'écrire dans *toutes* ses collections, et de ne pas être sous un compte partagé (§2, *Le fonds*) | — | ✅ | ✅ | ✅ |
-| **Demander** la suppression définitive d'un album, motif et certification à l'appui | — | ✅ | ✅ | — (il la fait) |
+| **Effacer** sans rien demander — supprimer définitivement un album ou une planche, ou repartir de zéro — en l'ayant créé, si personne d'autre n'y a travaillé et qu'on écrit dans *toutes* ses collections (§2, *Le fonds*) | — | ✅ | ✅ | ✅ |
+| … même si d'autres y ont travaillé, en possédant *toutes* ses collections — sauf la dernière copie d'un document, qui se demande (depuis le 2026-10-21) | — | — | ✅ | ✅ |
+| Lire, avant d'effacer, ce que d'autres ont fait sur l'album (qui, combien de gestes, quand) | — | si l'on peut effacer | si l'on peut effacer | ✅ |
+| **Demander** la suppression définitive d'un album, ou de repartir de zéro, motif et certification à l'appui | — | ✅ | ✅ | — (il la fait) |
 | **Rejoindre** le travail d'une autre collection du projet (cocher dans « Sur les collections ») sans rien demander — à condition de posséder *chacune* des collections où il vit ; sinon le demander | — | demander | ✅ (les siennes) | ✅ |
 | **Répondre** à une demande de rejoindre une copie de sa collection | — | — | ✅ (s'il possède toutes les collections de la copie) | ✅ |
 | Tenir le **fonds** : le voir, répondre aux demandes, rendre une copie gardée, importer au fonds | — | — | — | ✅ |
@@ -572,18 +636,22 @@ demande, et c'est eux qui y répondent.
 **Un groupe peut posséder une collection**, et c'est souvent le bon choix : un espace de
 travail survit rarement au départ d'une personne.
 
-**Créer une collection ne demande aucun droit — seulement une identité**, et son créateur en
-devient propriétaire. Refuser la création à qui n'a encore rien rendrait l'application
-inutilisable au premier jour de chacun. Deux cas ne posent pas de propriétaire, et c'est
-normal : en mono-poste, il n'y a personne à inscrire ; pour un administrateur, qui possède
-déjà tout, un lien personnel avec chaque collection créée fausserait la notion — s'il la veut,
-il se l'accorde.
+**Qui crée une collection : une décision du projet** (Hugo, 2026-10-21 — elle remplace
+« créer une collection ne demande aucun droit, seulement une identité », qui valait depuis
+AUTH-3, et sa précision du 2026-10-10 pour le projet de repli). Une collection est une étude,
+un cercle d'accès, une unité de dépôt : en ouvrir une dans un projet, c'est décider de ce
+qu'il contient. Créent donc les **responsables** du projet et les **administrateurs**, toujours ;
+les **membres** seulement si le projet le leur ouvre — un réglage de la fiche du projet,
+*les membres peuvent créer des collections*, **non** par défaut et pour tous les projets
+existants ; personne d'autre. Le projet de **repli**, où il suffisait d'être connecté, suit la
+même règle : sans responsable, seul un administrateur y crée. Un **bac à sable** n'est pas
+touché : son propriétaire en est le responsable, et ses invités y créent comme avant. Fermer
+le réglage n'enlève rien : les collections déjà créées restent à qui les a créées.
 
-**« Seulement une identité » vaut pour le projet de repli** (précisé le 2026-10-10). Une
-collection naît dans le projet où vous travaillez. Dans le projet de repli, rien n'a
-changé : être connecté suffit. Dans un **autre** projet, il faut en être **membre** — le
-refus le dit (« Créer une collection dans ce projet demande d'en être membre »), et il
-arrive à qui voit le nom du projet par une collection qu'il lit, sans en être.
+Le créateur devient propriétaire de la collection. Deux cas ne posent pas de propriétaire, et
+c'est normal : en mono-poste, il n'y a personne à inscrire ; pour un administrateur, qui
+possède déjà tout, un lien personnel avec chaque collection créée fausserait la notion — s'il
+la veut, il se l'accorde.
 
 ### Le projet : en être, le régler, en décider
 
@@ -592,7 +660,11 @@ Un projet (§2) a deux **rôles**, et l'instance deux **pouvoirs** qui ne se con
 | Geste | simple membre | responsable du projet | `bd-admins` |
 |---|:---:|:---:|:---:|
 | Lire le nom du projet, en haut de chaque page | ✅ | ✅ | ✅ |
-| **Créer une collection** dans le projet | ✅ | ✅ | ✅ |
+| **Créer une collection** dans le projet (depuis le 2026-10-21) | si le projet l'ouvre à ses membres | ✅ | ✅ |
+| **Régler** si les membres créent des collections | — | ✅ | ✅ |
+| **Effacer** sans rien demander un album du projet — supprimer définitivement, repartir de zéro — hors de la dernière copie d'un document (§2, *Le fonds*) | — | ✅ (s'il y écrit quelque part) | ✅ |
+| **Retirer du projet** un album : il quitte toutes les collections du projet, gardé au fonds avec son travail | — | ✅ | ✅ |
+| **Consentir** à ce qu'un autre projet parte du travail de celui-ci, et choisir la copie | — | ✅ | ✅ |
 | Lire ou annoter la **collection de base** du projet | selon le choix du projet (écriture, lecture, ou rien) | ✅ (propriétaire) | ✅ |
 | Lire ou annoter une **autre** collection du projet | par un accès de collection | par un accès de collection | ✅ |
 | **Régler** ce que les membres peuvent dans la collection de base | — | ✅ | ✅ |

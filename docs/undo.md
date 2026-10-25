@@ -485,6 +485,32 @@ reste vrai sous un compte collectif, et c'est la borne du remède : **dans** les
 minutes, deux personnes sous le même login peuvent encore défaire l'une l'acte de l'autre.
 Le délai réduit la fenêtre, il ne sépare pas les personnes — rien ne le peut ici.
 
+## Une remise à zéro arrête la pile (COL-3, tranche 3b, E8)
+
+*Repartir de zéro* ramène une copie — ou une seule de ses planches — à un cran plus bas que ce
+qu'elle porte (`socle._repartir`, Hugo, 2026-10-20 ; pour une planche, 2026-10-21). C'est UN
+acte, écrit sous le DOCUMENT (`repartir` dans la charge : le cran, celui d'où l'on part, la
+planche, ce qui est parti) — pas des centaines de suppressions de régions, que Ctrl+Z
+remonterait une à une. La cible `document` n'est pas dans la liste blanche (`undo._TABLES`) :
+**la remise à zéro ne s'annule pas**, et l'écran devra le dire avant de la faire.
+
+**Ctrl+Z ne remonte pas au-delà.** Un cinquième témoin, à côté des quatre de `_meme_objet` :
+`undo.remis_a_zero_depuis` regarde, non l'objet, mais ce qui s'est passé sur SON album depuis
+l'acte — une remise à zéro de l'album, ou de la planche de l'acte, journalisée après lui. Si
+oui, l'acte est PASSÉ (la trace `abandon` d'AUTH-14), avec la seconde phrase : « l'état d'avant
+ne peut plus être rétabli ». Sans ce témoin, défaire la dernière note posée avant une remise à
+zéro « vers la grammaire » ferait revenir une annotation sous une copie qu'on a voulue sans
+annotations ; et un acte sur une région partie avec la remise à zéro « vers les images »
+serait refusé, déjà, par le témoin de l'objet (« n'est plus à votre portée »). Le témoin est
+borné : une remise à zéro d'UNE planche ne passe que les actes de cette planche, et un geste
+fait avant sur un autre album s'annule encore. Chaque Ctrl+Z passe UN acte, comme pour tout
+acte qui ne s'annule plus : la pile se vide de ce qui précède la remise à zéro, acte après acte.
+
+Ce que le témoin ne voit pas, et c'est voulu : il passe TOUT acte d'avant sur l'album, même un
+acte dont la couche n'a pas été touchée (une géométrie de case, sous une remise à zéro « vers
+la grammaire »). C'est l'option fermée de « ne remonte pas au-delà » : une remise à zéro est
+un point d'arrêt de la pile, pas un tri couche par couche.
+
 ## Boucle
 
 - **API** : `GET /api/undo/prochain` (aperçu : `{evenement_id, description}` ou `null`) ·

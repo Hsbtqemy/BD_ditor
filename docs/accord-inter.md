@@ -68,6 +68,16 @@ pour trancher un désaccord si l'on ignore lesquelles.
 > en `evenement.csv` / `activite.csv`, colonne `agent` comprise. C'est une voie de sortie
 > distincte, plus large, et une case ouverte d'AUTH-1.
 
+> **Ce que l'accord ne suit pas : une correction RECOPIÉE** (COL-3, tranche 3b, E3 ; Hugo,
+> 2026-10-20). Une copie *amorcée* jusqu'à la grammaire reprend les corrections de sa
+> source — leur `auteur` avec elles —, mais aucun événement du journal n'est recopié : sans
+> quoi Ctrl+Z remonterait les gestes d'autrui, et chaque révision compterait deux fois. La
+> chaîne de révisions est indexée par `token_correction.id` ; la correction recopiée en a un
+> neuf, sans passé au journal. La première retouche faite sur la copie d'une correction faite
+> ailleurs n'est donc PAS comptée comme une révision inter-annotateurs. Comparer deux travaux
+> indépendants sur les mêmes bulles — deux copies sœurs — est la matière d'un vrai accord
+> parallèle, laissée à la tranche 4 (« Deux copies du même document se savent sœurs »).
+
 ## Usage
 
 ```bash
