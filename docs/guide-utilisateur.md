@@ -567,7 +567,10 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
     **Depuis le 2026-10-21, la règle du serveur est plus large que ces mots** : le
     **propriétaire** de toutes les collections de l'album, et le **responsable** de son
     projet, l'effacent aussi sans rien demander, même si d'autres y ont travaillé — sauf la
-    dernière copie d'un document, qui se demande toujours à un administrateur. Le panneau
+    dernière copie d'un document, qui se demande toujours à un administrateur, comme celle
+    qu'on a prise soi-même du fonds quand elle est devenue la dernière (seule la copie de
+    l'import échappe à cette règle). Repartir de zéro, lui, se fait aussi sur la dernière
+    copie. Le panneau
     suit le serveur pour OFFRIR l'effacement, mais ses mots sont encore ceux du créateur
     (*… vous l'avez créée, et personne d'autre n'y a travaillé*) : ils seront réécrits avec
     l'écran de la tranche 3b, qui attend sa maquette.
@@ -987,8 +990,9 @@ donnant le titre.
 L'album n'est effacé tout de suite que si vous avez créé cette copie vous-même — importée, ou
 prise du fonds —, que personne d'autre n'y a travaillé, et que vous écrivez dans toutes ses
 collections ; ou, depuis le 2026-10-21, si vous possédez toutes ses collections, ou êtes
-responsable de son projet — mais alors pas s'il est la dernière copie de son document, qui se
-demande toujours. Un album créé avant
+responsable de son projet. La dernière copie d'un document se demande toujours — sauf la copie
+de l'import, par qui l'a importée si personne d'autre n'y a travaillé ; une copie prise du
+fonds devenue la dernière se demande aussi. Un album créé avant
 l'arrivée du fonds n'a pas d'importateur écrit : sa suppression par celui qui l'a créé se
 demande toujours. Sous un compte partagé, tout se demande. Cf.
 [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.

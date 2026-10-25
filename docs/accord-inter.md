@@ -70,7 +70,8 @@ pour trancher un désaccord si l'on ignore lesquelles.
 
 > **Ce que l'accord ne suit pas : une correction RECOPIÉE** (COL-3, tranche 3b, E3 ; Hugo,
 > 2026-10-20). Une copie *amorcée* jusqu'à la grammaire reprend les corrections de sa
-> source — leur `auteur` avec elles —, mais aucun événement du journal n'est recopié : sans
+> source — leur `auteur` avec elles dans un même projet ; entre deux projets, sans auteur,
+> lues « recopiées » (Hugo, 2026-10-25) —, mais aucun événement du journal n'est recopié : sans
 > quoi Ctrl+Z remonterait les gestes d'autrui, et chaque révision compterait deux fois. La
 > chaîne de révisions est indexée par `token_correction.id` ; la correction recopiée en a un
 > neuf, sans passé au journal. La première retouche faite sur la copie d'une correction faite

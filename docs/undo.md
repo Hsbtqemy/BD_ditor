@@ -500,8 +500,14 @@ l'acte — une remise à zéro de l'album, ou de la planche de l'acte, journalis
 oui, l'acte est PASSÉ (la trace `abandon` d'AUTH-14), avec la seconde phrase : « l'état d'avant
 ne peut plus être rétabli ». Sans ce témoin, défaire la dernière note posée avant une remise à
 zéro « vers la grammaire » ferait revenir une annotation sous une copie qu'on a voulue sans
-annotations ; et un acte sur une région partie avec la remise à zéro « vers les images »
-serait refusé, déjà, par le témoin de l'objet (« n'est plus à votre portée »). Le témoin est
+annotations. Un acte sur une région partie avec la remise à zéro « vers les images » est
+reconnu lui aussi : le témoin lit la planche où vivait la région au moment de l'acte (le
+journal, `_planche_au_moment`), et se lit AVANT le témoin de l'objet et la question
+d'écriture — sans quoi la création d'une région effacée tombait dans la première phrase,
+« n'est plus à votre portée », pour un acte que l'agent lit toujours (relecture croisée de
+la 3b, constat 4). La seconde phrase ne se dit qu'à qui ÉCRIT encore la planche remise à
+zéro : à tout autre, la première, qui n'apprend rien de ce qui s'est passé sur un album
+qu'il ne lit peut-être plus. Le témoin est
 borné : une remise à zéro d'UNE planche ne passe que les actes de cette planche, et un geste
 fait avant sur un autre album s'annule encore. Chaque Ctrl+Z passe UN acte, comme pour tout
 acte qui ne s'annule plus : la pile se vide de ce qui précède la remise à zéro, acte après acte.
