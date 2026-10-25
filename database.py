@@ -3662,6 +3662,15 @@ def un_proprietaire_tient_toute_la_copie(conn: sqlite3.Connection, album_id: int
     ceux de `collection_acces` et, pour une collection de BASE, les responsables de son
     projet (la dérivation de D10, relue ici sans rien décider : `autorisation.Portee` reste
     seule à dire qui PEUT répondre). Une copie rangée nulle part : faux."""
+    return bool(proprietaires_communs(conn, album_id))
+
+
+def proprietaires_communs(conn: sqlite3.Connection, album_id: int) -> set:
+    """Les principaux `(genre, principal)` qui possèdent CHACUNE des collections où vit cette
+    copie — ceux à qui une demande consentie (un rejoindre, en partir dans un projet)
+    s'adresse, et que l'administrateur lit dans « À faire » (« attend … », écran de la 3b).
+    La règle de `un_proprietaire_tient_toute_la_copie`, qui la lit ; un FAIT, jamais une
+    décision. Une copie rangée nulle part : l'ensemble vide."""
     collections = [r[0] for r in conn.execute(
         "SELECT collection_id FROM collection_album WHERE album_id = ?", (album_id,))]
     communs = None
@@ -3674,7 +3683,7 @@ def un_proprietaire_tient_toute_la_copie(conn: sqlite3.Connection, album_id: int
             f"ON pa.projet_id = {sql_projet_de('c')} AND pa.role = 'responsable' "
             "WHERE c.id = ? AND c.base = 1", (cid,))}
         communs = proprietaires if communs is None else communs & proprietaires
-    return bool(communs)
+    return communs or set()
 
 
 def demandes_vers_collection(conn: sqlite3.Connection, collection_id: int) -> list[int]:

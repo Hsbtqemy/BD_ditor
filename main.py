@@ -479,6 +479,11 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     #     un geste que le serveur refuserait par un 409. Ni qui a demandé, ni pour quelle
     #     collection hors de son écriture.
     #
+    # COL-3, écran de la 3b (Hugo, 2026-10-25) — `copie_cran` : jusqu'à quel cran cette copie
+    # est NÉE (`copie.cran` : `origine` pour la copie d'origine, `images` pour une copie
+    # vierge, un cran plus haut pour une copie amorcée), que sa ligne dit (« copie · jusqu'à
+    # la transcription »). Le cran seul : ni la source (`depuis_album_id`), ni qui l'a créée.
+    #
     # COL-4 — les copies de RÉFÉRENCE du jeu n'apparaissent dans aucune liste, même pour une
     # portée totale, la seule qui les lise : elles ne sont le travail de personne, et une
     # copie qu'on y retoucherait partirait dans chaque bac à sable créé ensuite.
@@ -515,6 +520,7 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                                      AND NOT {sql_album_isole('_dc')})) AS derniere_copie,
                   NOT EXISTS (SELECT 1 FROM collection_album _fa
                               WHERE _fa.album_id = a.id) AS au_fonds,
+                  (SELECT _co.cran FROM copie _co WHERE _co.album_id = a.id) AS copie_cran,
                   (SELECT COUNT(*) FROM planches p WHERE p.album_id = a.id)
                       AS nb_planches,
                   (SELECT COUNT(*) FROM regions r JOIN planches p ON p.id = r.planche_id

@@ -38,8 +38,8 @@ import autorisation
 import journal
 from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET,
                       collection_de_base,
-                      creer_collection_de_base, nom_de_projet_reserve, sql_est_jeu,
-                      sql_projet_de)
+                      creer_collection_de_base, nom_de_projet_reserve, noms_lisibles,
+                      sql_est_jeu, sql_projet_de)
 
 from socle import (
     AccesMembresIn, CreationCollectionsIn, MembreIn, ProjetIn, ProjetUpdate,
@@ -106,6 +106,15 @@ def _vue(conn, portee: autorisation.Portee, p: dict) -> dict:
                bac_a_sable=p.get("bac_a_sable_de") is not None)}
     if p.get("bac_a_sable_de") is not None:
         vue.update(_vue_du_bac(portee, p))
+    elif not vue["collection_creable"] and vue["mon_role"] == autorisation.MEMBRE:
+        # Écran de la 3b (Hugo, sur maquette, 2026-10-25) — « + Créer une collection » reste
+        # à sa place, ÉTEINT, et dit au survol que seuls les responsables en créent dans ce
+        # projet, EN LES NOMMANT. Les noms des RESPONSABLES, donc, au seul MEMBRE que le
+        # réglage n'autorise pas — celui qui lit le bouton éteint : ni à qui crée, ni à qui ne
+        # voit le projet que par une collection. Le nom lisible d'un login (le miroir
+        # `utilisateur`), le login sinon ; un groupe responsable par son nom. Rien d'autre :
+        # ni les membres, ni les rôles.
+        vue["responsables"] = _noms_des_responsables(conn, p["id"])
     if gerable:
         vue["justification"] = p["justification"]
         # COL-3, tranche 2 — la demande de suppression qui attend, pour qui gère : sans
@@ -235,6 +244,19 @@ def _membres_de(conn, projet_id: int, *, sans_signal: bool = False) -> list[dict
     return lignes
 
 
+def _noms_des_responsables(conn, projet_id: int) -> list[str]:
+    """Les responsables d'un projet, tels qu'un écran les NOMME : le nom lisible d'un login
+    (`utilisateur.nom`), le login sinon ; un groupe, « groupe <nom> ». Dans l'ordre des
+    principaux."""
+    lignes = conn.execute(
+        "SELECT genre, principal FROM projet_acces WHERE projet_id = ? AND role = ? "
+        "ORDER BY genre DESC, principal", (projet_id, autorisation.RESPONSABLE)).fetchall()
+    noms = noms_lisibles(conn, [r["principal"] for r in lignes
+                                if r["genre"] == autorisation.UTILISATEUR])
+    return [noms.get(r["principal"]) or r["principal"] if r["genre"] == autorisation.UTILISATEUR
+            else f"groupe {r['principal']}" for r in lignes]
+
+
 def _compte_responsables(conn, projet_id: int) -> int:
     return conn.execute(
         "SELECT COUNT(*) FROM projet_acces WHERE projet_id = ? AND role = ?",
@@ -262,7 +284,9 @@ def list_projets(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(
 
     C'est ce que la barre du haut lira pour dire dans quel projet on travaille. Une
     portée vide rend une liste vide, comme partout ; une portée totale les rend tous.
-    Aucune identité n'en sort : la liste ne nomme ni membres ni responsables.
+    La liste ne nomme pas les membres. Elle nomme les RESPONSABLES d'un projet à un seul
+    lecteur — le membre que le réglage n'autorise pas à y créer de collection (écran de la
+    3b, Hugo, 2026-10-25 : le bouton éteint dit à qui le demander).
 
     COL-4 — le projet de JEU n'y paraît pour personne, pas même pour la portée totale : il
     ne se règle que par son outil.

@@ -51,7 +51,8 @@ from database import (CRAN_IMAGES, CRANS, DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE
                       DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
                       DEMANDE_REPARTIR, niveau_de_travail, rang_du_cran,
                       compter_repartir, copies_rangees_du_projet,
-                      est_isole, projets_qui_tiennent, titre_de_notice,
+                      est_isole, projets_qui_tiennent, proprietaires_communs,
+                      titre_de_notice,
                       DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                       GENRES_CONSENTIS, GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
                       REPONSE_REFUSEE, REPONSES_DEMANDE, collection_de_base, collection_row,
@@ -416,7 +417,25 @@ def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
         if detail and d["en_attente"] and d["genre"] == DEMANDE_AMORCER:
             x = d["documents"][0] if d["documents"] else None
             d["apercu"] = (_apercu(conn, x["copie"], d) if x and x["copie"] else None)
+        if detail and d["en_attente"] and d["genre"] in GENRES_CONSENTIS:
+            # Écran de la 3b (Hugo, 2026-10-25) — « attend … » : qui tient AUJOURD'HUI toutes
+            # les collections de la copie visée, à qui la demande s'adresse et que
+            # l'administrateur remplace en répondant, comme pour un rejoindre. Une liste vide
+            # dit que personne ne les tient toutes : c'est à lui.
+            x = d["documents"][0] if d["documents"] else None
+            d["attend"] = _attend(conn, x["copie"]) if x and x["copie"] else []
     return demandes
+
+
+def _attend(conn, copie: int) -> list[str]:
+    """Les principaux qui tiennent toutes les collections de `copie`, NOMMÉS — pour
+    l'administrateur seul (« attend … ») : le nom lisible d'un login, le login sinon ; un
+    groupe, « groupe <nom> »."""
+    communs = sorted(proprietaires_communs(conn, copie),
+                     key=lambda x: (x[0] != autorisation.UTILISATEUR, x[1]))
+    noms = noms_lisibles(conn, [p for g, p in communs if g == autorisation.UTILISATEUR])
+    return [noms.get(p) or p if g == autorisation.UTILISATEUR else f"groupe {p}"
+            for g, p in communs]
 
 
 def _apercu(conn, source: int, d: dict):

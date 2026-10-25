@@ -317,7 +317,8 @@ SORTIES_DECLAREES = {
         "GÈRE le projet — son responsable, ou un administrateur ; un simple membre reçoit "
         "un 403. Même forme que `…/acces` un étage plus bas : aucune colonne d'identité n'y "
         "est jointe, ni nom lisible, ni dernière visite. `GET /api/projets`, elle, ne nomme "
-        "ni membres ni responsables — seulement le propriétaire d'un bac à sable (COL-4)."),
+        "aucun membre — le propriétaire d'un bac à sable (COL-4), et les responsables d'un "
+        "projet au seul membre qui ne peut pas y créer de collection (écran de la 3b)."),
     ("route", "/api/projets"): (
         {"login"},
         "COL-4 — le login du PROPRIÉTAIRE d'un bac à sable (`bac_a_sable.proprietaire`, et le "
@@ -326,10 +327,15 @@ SORTIES_DECLAREES = {
         "s'efface quand ce compte le remet à neuf ; et l'ADMINISTRATEUR dans la vue Projets "
         "(`bacs_a_sable=1`), qui doit savoir à qui il est — il y voit qu'il existe, sa date "
         "d'effacement et son propriétaire, et rien de ce qu'il porte (Hugo, 2026-10-24). À "
-        "son propriétaire, « Mon bac à sable », sans login. C'est le seul login de la liste : "
-        "elle ne nomme ni membres ni responsables d'un projet. Aucun nom lisible, aucun "
-        "courriel ; elle ne sort de l'instance par aucun artefact. Balayée sur un bac à "
-        "sable d'un AUTRE compte où la sentinelle est invitée (le semis)."),
+        "son propriétaire, « Mon bac à sable », sans login. C'est le seul login que la "
+        "sentinelle y lit. Ce que le balayage ne voit PAS, écrit plutôt que tu : COL-3, écran "
+        "de la 3b (Hugo, 2026-10-25) — au seul MEMBRE d'un projet que le réglage n'autorise "
+        "pas à y créer de collection, `responsables` NOMME ses responsables (le nom lisible "
+        "du miroir `utilisateur`, le login sinon, un groupe par son nom) : son bouton éteint "
+        "dit à qui le demander. La sentinelle administre, donc crée partout, et ne le reçoit "
+        "pas ; `tests/test_ecran_3b_complements.py` en mesure les bornes. Aucun courriel ; "
+        "elle ne sort de l'instance par aucun artefact. Balayée sur un bac à sable d'un "
+        "AUTRE compte où la sentinelle est invitée (le semis)."),
     ("route", "/api/projets/{projet_id}/membres/choix"): (
         {"login"},
         "La vérification des membres DÉJÀ posés sur ce projet (COL-3) : mêmes logins que "
@@ -358,7 +364,10 @@ SORTIES_DECLAREES = {
         {"login", "nom"},
         "COL-3, tranche 2 — les demandes : qui demande, qui a répondu, et leurs noms "
         "lisibles. Une demande sans auteur ne se répond pas. Réservée à qui tient le fonds, "
-        "comme lui ; le motif y est, et ne sort par aucun artefact."),
+        "comme lui ; le motif y est, et ne sort par aucun artefact. Écran de la 3b : sous une "
+        "demande consentie, qui elle ATTEND (`attend`, les propriétaires qui tiennent toutes "
+        "les collections de la copie ; `sources[].responsables` entre deux projets), que "
+        "l'administrateur remplace en répondant."),
     ("route", "/api/collections/{collection_id}/demandes"): (
         {"login", "nom"},
         "COL-3, tranche 3 — les demandes de REJOINDRE qui attendent sur une copie de cette "
