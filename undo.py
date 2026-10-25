@@ -228,7 +228,7 @@ def _descendants(conn, region_id):
 _SANS_GARDE = ("ordre", "source", "planche_id")
 
 
-def _garder_creation(conn, region_id, apres, depuis=None):
+def _garder_creation(conn, region_id, apres, depuis=None, agent=None):
     """Refuse d'annuler la création d'une région que QUELQU'UN D'AUTRE a travaillée depuis.
 
     Supprimer la région emporterait ce travail sans instantané : l'annulation est une
@@ -238,6 +238,10 @@ def _garder_creation(conn, region_id, apres, depuis=None):
     `depuis` : l'acte de création — l'auteur ne se cherche qu'APRÈS lui (ANN-8, cf.
     `conflit.auteur_du_champ`) : avant la v30, ce qui précède dans le journal du même
     identifiant est un autre objet.
+
+    CONC-4 — les LIENS de la région se gardent aussi (`_garder_liens_de_creation`) : le
+    locuteur, le personnage montré et la situation partaient par cascade. `agent` : l'auteur
+    de la création, dont les liens ne bloquent pas.
     """
     actuel = journal.snapshot_region(conn, region_id)
     if actuel is None:
@@ -253,6 +257,7 @@ def _garder_creation(conn, region_id, apres, depuis=None):
                          (region_id, depuis or 0)).fetchone()
         raise conflit.Perime("annotations", region_id, "annotation", None,
                              conflit.auteur(conn, e) if e else None)
+    _garder_liens_de_creation(conn, region_id, depuis, agent)
     enfant = conn.execute("SELECT id FROM regions WHERE parent_id = ? ORDER BY id DESC LIMIT 1",
                           (region_id,)).fetchone()
     if enfant is not None:
@@ -264,6 +269,42 @@ def _garder_creation(conn, region_id, apres, depuis=None):
                          "ORDER BY id DESC LIMIT 1", (enfant["id"], depuis or 0)).fetchone()
         raise conflit.Perime("regions", region_id, "enfants", None,
                              conflit.auteur(conn, e) if e else None)
+
+
+# CONC-4 — les liens qu'une région emporte par cascade : (table, colonne, champ nommé par le
+# 409, sources de l'auteur). Un locuteur ou un personnage montré se pose aussi par l'annulation
+# d'un changement de type (`regions`, sous `locuteur` / `presence`) ; une situation ne se lit
+# que sous `region_attribut` — la clé `attributs` d'un changement de type est une liste.
+_LIENS_DE_CREATION = (
+    ("bulle_locuteur", "personnage_id", "locuteur",
+     (("bulle_locuteur", "personnage_id"), ("regions", "locuteur"))),
+    ("personnage_presence", "personnage_id", "presence",
+     (("personnage_presence", "personnage_id"), ("regions", "presence"))),
+    ("region_attribut", "valeur_id", "situation", (("region_attribut", "valeur_id"),)),
+)
+
+
+def _garder_liens_de_creation(conn, region_id, depuis, agent) -> None:
+    """Annuler la création d'une région n'emporte pas le locuteur, le personnage montré ni la
+    situation qu'un AUTRE lui a donnés (CONC-4 ; reproduit par la relecture croisée d'ANN-8,
+    `test_h5_…`). La suppression les effaçait par cascade, sans instantané pour les rendre.
+
+    Pour chaque lien que la région porte, l'acte qui l'a posé APRÈS la création
+    (`conflit.auteur_des_champs`, borné par `depuis`) : de l'auteur de la création, il passe —
+    une situation ne s'annule pas, et la poser sur sa propre case ne doit pas rendre sa
+    création inannulable ; d'un autre, ou d'aucun acte (outil, base retouchée : le journal
+    NOMME, il ne décide pas), l'annulation est refusée par le 409 nommé, rien d'écrit. Seul
+    compte ce qui RESTE : un lien posé puis retiré par un autre ne bloque rien."""
+    for table, colonne, champ, sources in _LIENS_DE_CREATION:
+        portes = [r[0] for r in conn.execute(
+            f"SELECT {colonne} FROM {table} WHERE region_id = ? ORDER BY {colonne}",
+            (region_id,))]
+        for valeur in portes:
+            qui = conflit.auteur_des_champs(conn, sources, region_id, valeur, depuis=depuis)
+            if qui is not None and qui["agent_type"] == "humain" and qui["login"] == agent:
+                continue
+            actuel = portes if table == "region_attribut" else valeur
+            raise conflit.Perime(table, region_id, champ, actuel, qui)
 
 
 def _supprimer_region(conn, region_id):
@@ -846,7 +887,7 @@ def _inverser(conn, e, voit=None) -> int:
     try:
         if table == "regions":
             if t == "creation":
-                _garder_creation(conn, cid, apres, depuis=e["id"])
+                _garder_creation(conn, cid, apres, depuis=e["id"], agent=e["agent"])
                 _supprimer_region(conn, cid)
             elif t == "modification":
                 _inverser_modification_region(conn, cid, avant, apres, voit, depuis=e["id"])

@@ -1237,3 +1237,100 @@ def test_le_mono_poste_n_a_pas_de_delai(client, planche, db_path):
     ancien = _creer_region(client, planche["id"])
     _vieillir(db_path, 60)
     assert client.post("/api/undo").json()["region_id"] == ancien["id"]
+
+
+# --------------------------------------------------------------------------- #
+# CONC-4 — annuler la création d'une région n'emporte pas les liens qu'un autre lui a donnés
+# --------------------------------------------------------------------------- #
+# Trouvé par la relecture croisée d'ANN-8 le 2026-10-21 (`test_h5_…`, dans sa copie) :
+# `_garder_creation` ne regardait que les colonnes, l'annotation et les enfants ; supprimer
+# la région emportait le locuteur, le personnage montré et la situation par CASCADE, sans
+# instantané pour les rendre. Les gestes de l'auteur de la création sont annulés AVANT elle
+# (ou ne s'annulent pas : la situation) ; ce qui reste et vient d'un autre se garde.
+def _situation(client, nom):
+    d = client.post("/api/attributs/dimensions", headers=ADMIN,
+                    json={"cible": "case", "nom": nom}).json()["id"]
+    return client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=ADMIN,
+                       json={"valeur": "intérieur"}).json()["id"]
+
+
+def _creation_refusee(client, rid, champ, login, db_path):
+    n = _ev_count(db_path)
+    res = client.post("/api/undo", headers=PROPRIO)
+    assert res.status_code == 409, res.text
+    conflit = res.json()["detail"]["conflit"]
+    assert conflit["champ"] == champ
+    assert (conflit["auteur"] or {}).get("login") == login
+    assert rid in _regions(db_path), "la région de l'autre a été supprimée"
+    assert _ev_count(db_path) == n
+    return res.json()["detail"]
+
+
+def test_annuler_la_creation_d_une_bulle_n_emporte_pas_le_locuteur_d_un_autre(
+        client, planche, db_path, derriere_proxy):
+    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="bulle")["id"]
+    (zed,) = _personnages(client, "Zed QA")
+    _poser(client, rid, "locuteur", zed, STAGIAIRE)
+    detail = _creation_refusee(client, rid, "locuteur", "stagiaire", db_path)
+    assert detail["conflit"]["valeur_actuelle"] == zed
+    assert "passable" in detail                     # « Passer ce geste », comme tout refus
+    assert _lien(db_path, "bulle_locuteur", rid) == zed
+
+
+def test_annuler_la_creation_d_une_boite_n_emporte_pas_le_personnage_montre_d_un_autre(
+        client, planche, db_path, derriere_proxy):
+    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="personnage")["id"]
+    (zed,) = _personnages(client, "Zed QA")
+    _poser(client, rid, "personnage", zed, STAGIAIRE)
+    _creation_refusee(client, rid, "presence", "stagiaire", db_path)
+    assert _lien(db_path, "personnage_presence", rid) == zed
+
+
+def test_annuler_la_creation_d_une_case_n_emporte_pas_la_situation_d_un_autre(
+        client, planche, db_path, derriere_proxy):
+    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="case")["id"]
+    v = _situation(client, "lieu")
+    assert client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v},
+                      headers=STAGIAIRE).status_code == 200
+    _creation_refusee(client, rid, "situation", "stagiaire", db_path)
+    assert _un(db_path, "SELECT 1 x FROM region_attribut WHERE region_id = ?", (rid,))
+
+
+def test_annuler_la_creation_d_une_case_qualifiee_par_son_auteur_passe(
+        client, planche, db_path, derriere_proxy):
+    """La situation ne s'annule pas (hors Ctrl+Z) : posée par l'auteur de la case lui-même,
+    elle ne doit pas rendre sa création inannulable. Le Ctrl+Z la défait avec la case,
+    comme avant."""
+    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="case")["id"]
+    v = _situation(client, "lieu")
+    assert client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v},
+                      headers=PROPRIO).status_code == 200
+    res = client.post("/api/undo", headers=PROPRIO)
+    assert res.status_code == 200, res.text
+    assert rid not in _regions(db_path)
+
+
+def test_un_lien_pose_puis_retire_par_un_autre_ne_bloque_pas(
+        client, planche, db_path, derriere_proxy):
+    """Seul compte ce qui RESTE sur la région : rien ne se perd."""
+    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="bulle")["id"]
+    (zed,) = _personnages(client, "Zed QA")
+    _poser(client, rid, "locuteur", zed, STAGIAIRE)
+    _retirer(client, rid, "locuteur", STAGIAIRE)
+    assert client.post("/api/undo", headers=PROPRIO).status_code == 200
+    assert rid not in _regions(db_path)
+
+
+def test_un_lien_sans_trace_au_journal_bloque_aussi(client, planche, db_path, derriere_proxy):
+    """Le journal NOMME, il ne décide pas (la règle de `conflit`) : un locuteur posé sans
+    acte — outil, base retouchée — est refusé, « modifié ailleurs »."""
+    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="bulle")["id"]
+    (zed,) = _personnages(client, "Zed QA")
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?)",
+                     (rid, zed))
+        conn.commit()
+    finally:
+        conn.close()
+    _creation_refusee(client, rid, "locuteur", None, db_path)
