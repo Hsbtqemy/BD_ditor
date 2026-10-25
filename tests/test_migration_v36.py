@@ -94,8 +94,11 @@ def _etat(db):
         "index": sorted(r["sql"] for r in _sql(
             db, "SELECT sql, tbl_name FROM sqlite_master WHERE type = 'index' "
                 "AND sql IS NOT NULL") if r["tbl_name"] not in neuves),
+        # `releves_effectifs` naît de la v37 (ANN-7) : une vue se recrée à chaque démarrage,
+        # sans données, et la base d'avant ne la porte pas.
         "vues": sorted(r["name"] for r in _sql(
-            db, "SELECT name FROM sqlite_master WHERE type = 'view'")),
+            db, "SELECT name FROM sqlite_master WHERE type = 'view'")
+            if r["name"] != "releves_effectifs"),
         "recherche": sorted(r["region_id"] for r in _sql(
             db, "SELECT region_id FROM recherche WHERE recherche MATCH 'otage'")),
     }

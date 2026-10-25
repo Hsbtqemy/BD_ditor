@@ -88,8 +88,11 @@ def _etat(db, *, sans=frozenset()):
             db, "SELECT sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL")
             if r["sql"] and not any(f" ON {t}(" in r["sql"] or f" ON {t} (" in r["sql"]
                                     or f"\n    ON {t}(" in r["sql"] for t in sans)),
+        # `releves_effectifs` naît de la v37 (ANN-7) : une vue se recrée à chaque démarrage,
+        # sans données, et la base d'avant ne la porte pas.
         "vues": sorted(r["name"] for r in _sql(
-            db, "SELECT name FROM sqlite_master WHERE type = 'view'")),
+            db, "SELECT name FROM sqlite_master WHERE type = 'view'")
+            if r["name"] != "releves_effectifs"),
         "recherche": sorted(r["region_id"] for r in _sql(
             db, "SELECT region_id FROM recherche WHERE recherche MATCH 'otage'")),
     }
@@ -134,6 +137,8 @@ def test_une_vraie_base_v36_migre_sans_rien_perdre(vraie_v36):
     for t in TABLES_V37:
         assert _sql(vraie_v36, f'SELECT COUNT(*) AS n FROM "{t}"')[0]["n"] == 0, t
     assert apres == avant
+    # La vue de l'état dérivé est née, et elle se lit sur la base migrée (vide).
+    assert _sql(vraie_v36, "SELECT COUNT(*) AS n FROM releves_effectifs")[0]["n"] == 0
     # La colonne neuve : NULL partout.
     assert _sql(vraie_v36, "SELECT COUNT(*) AS n FROM regions WHERE nom IS NOT NULL")[0][
         "n"] == 0
