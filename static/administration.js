@@ -1136,6 +1136,9 @@ async function pjChargerE7() {
   if (PJ.e7.size && PJ.albums === null) {
     PJ.albums = await apiGet("/api/albums").catch(() => []);
   }
+  // Sur l'axe « Bacs à sable », la liste est celle des bacs : la redessiner en projets
+  // l'écraserait (trouvé par test_e2e_bac_a_sable). Elle se relira en revenant aux projets.
+  if (PJ.axe !== "projets") return;
   pjRendreListe();
   pjE7Redessiner();
 }
