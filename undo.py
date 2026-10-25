@@ -1112,6 +1112,13 @@ def _meme_objet(conn, e) -> bool:
 
 def remis_a_zero_depuis(conn, e) -> bool:
     """L'album — ou la planche — où l'acte `e` a porté a-t-il été REMIS À ZÉRO depuis ?
+    Les planches concernées sont celles de `planches_remises_a_zero`."""
+    return bool(planches_remises_a_zero(conn, e))
+
+
+def planches_remises_a_zero(conn, e) -> list:
+    """Les planches où l'acte `e` a porté et qui ont été REMISES À ZÉRO depuis — elles, ou
+    leur album entier.
     COL-3, tranche 3b (E8, Hugo, 2026-10-20) : repartir de zéro est UN acte sous le document
     (`socle._repartir`, charge `repartir`), non annulable, qui efface d'un geste les couches
     au-dessus d'un cran ; Ctrl+Z ne remonte pas au-delà. Défaire un acte d'avant ferait
@@ -1121,14 +1128,21 @@ def remis_a_zero_depuis(conn, e) -> bool:
 
     Une remise à zéro d'une PLANCHE (`repartir.planche_id`) ne vaut que pour les actes de
     cette planche ; celle de l'album, pour tous les siens. Les planches de l'acte sont celles
-    de `lieux` : la région présente, ou la planche d'une suppression à rétablir."""
+    de `lieux` : la planche d'une suppression à rétablir, ou celle de la région — présente,
+    ou celle où elle vivait au moment de l'acte, lue au journal (`_planche_au_moment`) : une
+    région que la remise à zéro a EFFACÉE n'a plus de ligne, et c'est le cas même que le
+    témoin doit reconnaître (relecture croisée de la 3b, constat 4)."""
     ou = lieux(conn, e)
-    planches = set(ou["planches"])
+    planches = {pl for pl in ou["planches"] if pl is not None}
     for rid in ou["regions"]:
         r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (rid,)).fetchone()
         if r is not None:
             planches.add(r[0])
-    for pl in planches:
+        alors = _planche_au_moment(conn, rid, e)
+        if alors is not None:
+            planches.add(alors)
+    remises = []
+    for pl in sorted(planches):
         a = conn.execute("SELECT album_id FROM planches WHERE id = ?", (pl,)).fetchone()
         if a is not None and conn.execute(
                 "SELECT 1 FROM evenement WHERE cible_table = 'document' "
@@ -1138,8 +1152,8 @@ def remis_a_zero_depuis(conn, e) -> bool:
                 "AND (json_extract(apres, '$.repartir.planche_id') IS NULL "
                 "     OR json_extract(apres, '$.repartir.planche_id') = ?) LIMIT 1",
                 (e["id"], a[0], pl)).fetchone():
-            return True
-    return False
+            remises.append(pl)
+    return remises
 
 
 def _personnage_rendu(e) -> Optional[int]:
@@ -1227,12 +1241,18 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
     if e is None:
         return None
     voit = voit_valeur(ecrivable)
-    if not _meme_objet(conn, e) or not ecrivable(lieux(conn, e)):
-        raise NeSAnnulePlus(e, voit=voit)
     # COL-3, tranche 3b (E8) — une remise à zéro de l'album, ou de la planche, depuis l'acte :
-    # Ctrl+Z ne remonte pas au-delà (`remis_a_zero_depuis`).
-    if remis_a_zero_depuis(conn, e):
+    # Ctrl+Z ne remonte pas au-delà (`planches_remises_a_zero`). Lu AVANT l'objet et ses
+    # lieux : la création d'une région que la remise à zéro a effacée n'a plus d'objet, et
+    # tombait dans la première phrase, « n'est plus à votre portée », pour un acte que
+    # l'agent peut toujours lire (relecture croisée de la 3b, constat 4). La seconde phrase
+    # ne se dit qu'à qui écrit encore la planche remise à zéro : à tout autre, elle
+    # apprendrait ce qui s'est passé sur un album qu'il ne lit peut-être plus.
+    remises = planches_remises_a_zero(conn, e)
+    if remises and ecrivable({"regions": [], "planches": remises, "personnages": []}):
         raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE, voit)
+    if remises or not _meme_objet(conn, e) or not ecrivable(lieux(conn, e)):
+        raise NeSAnnulePlus(e, voit=voit)
     # Le personnage qu'on reposerait : créé après l'acte, ou invisible pour l'agent, ce n'est
     # plus celui de l'acte, ou pas un à lui montrer. Seconde phrase : elle ne dit pas s'il
     # existe. Absent, c'est la clé étrangère qui le dira, pendant l'inversion.

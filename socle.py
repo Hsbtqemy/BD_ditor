@@ -961,7 +961,7 @@ def _repartir(conn, portee: autorisation.Portee, album_id: int, cran: str, *,
     annulable — `undo._TABLES` est une liste blanche) : `repartir` dans la charge, le cran,
     celui d'où l'on part, la planche s'il y en a une, et ce qui est parti, compté. Pas des
     centaines de suppressions : le journal ne mentirait pas, mais Ctrl+Z les remonterait.
-    C'est cet acte que Ctrl+Z lit pour ne pas remonter au-delà (`undo.remis_a_zero_depuis`).
+    C'est cet acte que Ctrl+Z lit pour ne pas remonter au-delà (`undo.planches_remises_a_zero`).
     """
     conflit.verrouiller(conn)
     _refuser_le_jeu(conn, album_id=album_id)

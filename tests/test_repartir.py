@@ -150,6 +150,39 @@ def test_ctrl_z_ne_remonte_pas_au_dela(client, source, db_path):
                     (source["bulle"],))
 
 
+def test_ctrl_z_passe_les_creations_effacees_par_une_remise_aux_images(client, source,
+                                                                       db_path):
+    """Relecture croisée de la 3b, constat 4 : une région CRÉÉE puis effacée par une remise à
+    zéro « vers les images » n'a plus de ligne. Le témoin la reconnaît par la planche où elle
+    vivait au moment de l'acte (le journal), AVANT de demander si l'agent peut écrire la
+    région — qui n'existe plus : l'acte est passé avec la phrase de la remise à zéro, « l'état
+    d'avant ne peut plus être rétabli », et non « n'est plus à votre portée »."""
+    reg = _ok(client.post(f"/api/planches/{source['pl']}/regions", headers=LEA,
+                          json={"type": "case", "x": 5, "y": 5, "w": 9, "h": 9}), 201)["id"]
+    _ok(_repartir(client, source["a"], "images", LEA))
+    assert not _sql(db_path, "SELECT 1 FROM regions WHERE id = ?", (reg,))
+    r = client.post("/api/undo", headers=LEA)
+    assert r.status_code == 409, r.text
+    assert "ne peut plus être rétabli" in r.json()["detail"]["message"], r.text
+    assert r.json()["detail"]["ecarte"]
+    assert not _sql(db_path, "SELECT 1 FROM regions WHERE id = ?", (reg,))
+
+
+def test_apres_une_remise_a_zero_qui_n_ecrit_plus_ne_l_apprend_pas(client, source, db_path):
+    """La seconde phrase ne se dit qu'à qui écrit encore la planche remise à zéro : à `lea`,
+    passée en lecture sur Principale après la remise à zéro, la création effacée répond la
+    première, « n'est plus à votre portée » — elle n'apprend pas ce qui s'est passé sur un
+    album où elle n'écrit plus."""
+    reg = _ok(client.post(f"/api/planches/{source['pl']}/regions", headers=LEA,
+                          json={"type": "case", "x": 5, "y": 5, "w": 9, "h": 9}), 201)["id"]
+    _ok(_repartir(client, source["a"], "images", LEA))
+    _accorder(client, source["principale"], "lea", "lecture")
+    r = client.post("/api/undo", headers=LEA)
+    assert r.status_code == 409, r.text
+    assert "n'est plus à votre portée" in r.json()["detail"]["message"], r.text
+    assert not _sql(db_path, "SELECT 1 FROM regions WHERE id = ?", (reg,))
+
+
 def test_une_planche_repart_seule_et_le_reste_s_annule_encore(client, source, db_path):
     """Repartir sur UNE planche : elle seule perd son travail, et Ctrl+Z ne s'arrête que pour
     ses gestes — celui d'une autre planche du même album s'annule."""
