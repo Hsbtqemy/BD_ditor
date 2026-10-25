@@ -353,6 +353,13 @@ def _corps_des_ecritures(ref):
         ("PUT", "/api/albums/{album_id}"): (f"/api/albums/{a}", {"titre": "Altéré"}),
         ("DELETE", "/api/albums/{album_id}"): (f"/api/albums/{a}", None),
         ("DELETE", "/api/planches/{planche_id}"): (f"/api/planches/{pl}", None),
+        # COL-3, tranche 3b — repartir de zéro, et retirer du projet.
+        ("POST", "/api/albums/{album_id}/repartir"):
+            (f"/api/albums/{a}/repartir", {"cran": "images"}),
+        ("POST", "/api/planches/{planche_id}/repartir"):
+            (f"/api/planches/{pl}/repartir", {"cran": "images"}),
+        ("POST", "/api/albums/{album_id}/retirer-du-projet"):
+            (f"/api/albums/{a}/retirer-du-projet", None),
         ("POST", "/api/albums/{album_id}/import"): (f"/api/albums/{a}/import", "fichier"),
         ("POST", "/api/planches/{planche_id}/segmenter"): (f"/api/planches/{pl}/segmenter", None),
         ("POST", "/api/planches/{planche_id}/detecter-bulles"):
