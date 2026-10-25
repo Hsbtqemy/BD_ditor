@@ -20,7 +20,6 @@ validée, relue, verrouillée. `sam` écrit dans Principale et n'y a rien fait.
 """
 import pytest
 
-import database
 from conftest import ADMIN
 from test_amorcer import LEA, SAM, _travail, source  # noqa: F401
 from test_fonds import _accorder, _planche
@@ -178,8 +177,10 @@ def test_une_planche_repart_seule_et_le_reste_s_annule_encore(client, source, db
 def test_la_regle_est_celle_de_l_effacement(client, source, db_path):
     """`sam` écrit dans Principale sans y avoir rien fait ni la posséder : 403 nommé — la
     planche aussi, avec ses mots. `lectrice` ne l'écrit pas : 404. `proprio`, propriétaire
-    de Principale : la dernière copie d'un document ne se ramène pas sans demande ; avec une
-    sœur, il le fait. L'administrateur, toujours."""
+    de Principale : il en repart, même sur la DERNIÈRE copie du document — repartir garde
+    les images, rien ne sort du fonds (le pilotage, 2026-10-25, après la relecture croisée :
+    la règle de la dernière copie ne vaut que pour la suppression) —, et ne la supprime pas
+    seul. L'administrateur, toujours."""
     r = _repartir(client, source["a"], "grammaire", SAM)
     assert r.status_code == 403 and "se demande à un administrateur" in r.json()["detail"]
     rp = client.post(f"/api/planches/{source['pl']}/repartir", json={"cran": "images"},
@@ -188,15 +189,8 @@ def test_la_regle_est_celle_de_l_effacement(client, source, db_path):
     _accorder(client, source["principale"], "lectrice", "lecture")
     assert _repartir(client, source["a"], "grammaire", LECTRICE).status_code == 404
     _accorder(client, source["principale"], "proprio", "proprietaire")
-    assert _repartir(client, source["a"], "grammaire", PROPRIO).status_code == 403
-    conn = database.get_connection()
-    try:
-        database.creer_copie(conn, source["doc"], source["etude"], par="sam",
-                             depuis=source["a"], cran="images")
-        conn.commit()
-    finally:
-        conn.close()
     _ok(_repartir(client, source["a"], "grammaire", PROPRIO))
+    assert client.delete(f"/api/albums/{source['a']}", headers=PROPRIO).status_code == 403
     _ok(_repartir(client, source["a"], "transcription", ADMIN))
     assert _travail(db_path, source["a"])["annotations"] == 0
 

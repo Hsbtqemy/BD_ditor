@@ -924,16 +924,16 @@ def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
 # --------------------------------------------------------------------------- #
 # REPARTIR DE ZÉRO (COL-3, tranche 3b, E8) — ramener une copie à un cran
 # --------------------------------------------------------------------------- #
-# La règle est celle de l'effacement (`Portee.clause_suppression_directe`, Hugo,
-# 2026-10-21) : repartir efface le travail des autres comme le supprimer. Le refus se dit de
-# la même façon, sans dire laquelle des raisons manque.
-_MOTIF_REPARTIR = ("D'autres s'en servent, ou ce n'est pas vous qui l'avez importé, ou c'est "
-                   "la dernière copie de ce document : repartir de zéro sur cet album se "
-                   "demande à un administrateur.")
+# La règle est celle de l'effacement (`Portee.clause_repartir_directe`, Hugo, 2026-10-21) :
+# repartir efface le travail des autres comme le supprimer, par les mêmes chemins — SANS la
+# règle de la dernière copie, que le pilotage a réservée à la suppression le 2026-10-25 :
+# repartir garde les images, rien ne sort du fonds commun. Le refus se dit de la même façon,
+# sans dire laquelle des raisons manque.
+_MOTIF_REPARTIR = ("D'autres s'en servent, ou ce n'est pas vous qui l'avez importé : "
+                   "repartir de zéro sur cet album se demande à un administrateur.")
 _MOTIF_REPARTIR_PLANCHE = ("D'autres se servent de cet album, ou ce n'est pas vous qui l'avez "
-                           "importé, ou c'est la dernière copie de ce document : repartir de "
-                           "zéro sur l'une de ses planches se demande à un administrateur de "
-                           "l'instance.")
+                           "importé : repartir de zéro sur l'une de ses planches se demande à "
+                           "un administrateur de l'instance.")
 
 
 def _cran_de_repartir(cran) -> str:
@@ -965,7 +965,7 @@ def _repartir(conn, portee: autorisation.Portee, album_id: int, cran: str, *,
     """
     conflit.verrouiller(conn)
     _refuser_le_jeu(conn, album_id=album_id)
-    effacable, p_effacable = portee.clause_suppression_directe("a.id")
+    effacable, p_effacable = portee.clause_repartir_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {effacable}",
                     (album_id, *p_effacable)).fetchone() is None:
         raise HTTPException(403, motif_refus)

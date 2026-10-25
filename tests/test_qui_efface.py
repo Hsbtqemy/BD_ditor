@@ -192,6 +192,83 @@ def test_la_derniere_copie_se_demande_au_proprietaire_et_au_responsable(client, 
     assert client.delete(f"/api/albums/{efface['seul']}", headers=IMPORTEUR).status_code == 204
 
 
+def test_la_derniere_copie_ne_sort_pas_du_fonds_par_une_soeur_vierge(client, efface,
+                                                                      db_path):
+    """La relecture croisée de la 3b, constat 1 : « Seul », dernière copie de son document,
+    travaillée par `importeur`. `proprio2` (propriétaire de Principale) ne la fait pas sortir
+    seul du fonds — et pas davantage par un détour : il prend une copie VIERGE (immédiat : il
+    lit une copie dans le projet), efface l'originale (permis, une sœur existe), puis veut
+    effacer sa copie vierge. Il l'a créée et personne n'y a touché, mais elle n'est pas la
+    copie d'ORIGINE du document : devenue dernière, elle se DEMANDE à un administrateur
+    (décision du pilotage, 2026-10-25). Le document reste au fonds jusqu'à sa réponse."""
+    from test_prendre import _prendre, _zero
+    seul = efface["seul"]
+    _travailler(client, seul, IMPORTEUR)
+    doc = _sql(db_path, "SELECT document_id FROM albums WHERE id = ?", (seul,))[0]["document_id"]
+    bis = _collection(client, "Bis")                       # dans le repli
+    _accorder(client, bis, "proprio2", "proprietaire")
+    assert _destructible(client, PROPRIO2, seul) is False   # dernière copie : se demande
+    (ligne,) = _ok(_prendre(client, bis, [_zero(doc)], PROPRIO2))["documents"]
+    assert ligne["etat"] == "fait", ligne
+    soeur = ligne["copie_id"]
+    assert _destructible(client, PROPRIO2, soeur) is True   # une sœur vit : il l'efface seul
+    assert client.delete(f"/api/albums/{seul}", headers=PROPRIO2).status_code == 204
+    assert _destructible(client, PROPRIO2, soeur) is False
+    assert _clause(db_path, PROPRIO2, soeur) is False
+    assert client.delete(f"/api/albums/{soeur}", headers=PROPRIO2).status_code == 403
+    pl = _sql(db_path, "SELECT id FROM planches WHERE album_id = ?", (soeur,))[0]["id"]
+    assert client.delete(f"/api/planches/{pl}", headers=PROPRIO2).status_code == 403
+    assert _sql(db_path, "SELECT 1 FROM document WHERE id = ?", (doc,))
+    # La demande part : ce n'est pas « à faire soi-même ».
+    assert _demander(client, soeur, PROPRIO2).status_code == 201
+
+
+def test_le_createur_d_une_copie_prise_devenue_derniere_la_demande(client, efface, db_path):
+    """Le chemin 1, seul en cause : X3, copie vierge d'Astérix prise par `ecrivain`, que
+    personne n'a touchée. Tant qu'une sœur vit hors d'un projet isolé, il l'efface seul ;
+    ses sœurs détruites, elle est la dernière copie, et sa suppression se demande — alors
+    que la copie d'ORIGINE d'un document, dans la même situation, s'efface par son
+    importateur (`test_la_derniere_copie_se_demande_au_proprietaire_et_au_responsable`)."""
+    x3, doc = efface["x3"], efface["docs"]["d3"]
+    assert _clause(db_path, ECRIVAIN, x3) is True
+    _sql(db_path, "DELETE FROM albums WHERE document_id = ? AND id <> ?", (doc, x3))
+    assert _clause(db_path, ECRIVAIN, x3) is False
+    assert client.delete(f"/api/albums/{x3}", headers=ECRIVAIN).status_code == 403
+    # Repartir de zéro ne fait rien sortir du fonds : la dernière copie s'y ramène encore.
+    p = _portee(db_path, ECRIVAIN)
+    ou, params = p.clause_repartir_directe("a.id")
+    assert _sql(db_path, f"SELECT ({ou}) AS v FROM albums a WHERE a.id = ?",
+                (*params, x3))[0]["v"] == 1
+
+
+def test_repartir_de_zero_sur_la_derniere_copie_par_le_proprietaire(client, efface, db_path):
+    """Repartir de zéro garde les images : rien ne sort du fonds commun, et la règle de la
+    dernière copie ne vaut que pour la suppression (le pilotage, 2026-10-25). `proprio2`
+    possède Principale, où « Seul », dernière copie, a été travaillé par `importeur` : il en
+    repart (chemin 2), lit avant qui perd quoi, et ne la supprime toujours pas seul."""
+    seul = efface["seul"]
+    _travailler(client, seul, IMPORTEUR)
+    vue = _ok(client.get(f"/api/albums/{seul}/travail-des-autres", headers=PROPRIO2))
+    assert [e["agent"] for e in vue["travail_des_autres"]] == ["importeur"]
+    apercu = _ok(client.get(f"/api/albums/{seul}/repartir/apercu?cran=images",
+                            headers=PROPRIO2))
+    assert apercu["direct"] is True
+    r = client.post("/api/demandes", headers=PROPRIO2,
+                    json={"genre": "repartir", "album_id": seul, "cran": "images",
+                          "motif": "m", "certifie": True})
+    assert r.status_code == 409 and "vous-même" in r.json()["detail"], r.text
+    rendu = _ok(client.post(f"/api/albums/{seul}/repartir", headers=PROPRIO2,
+                            json={"cran": "images"}))
+    assert rendu["cran"] == "images"
+    assert not _sql(db_path, "SELECT 1 FROM regions r JOIN planches p ON p.id = r.planche_id "
+                             "WHERE p.album_id = ?", (seul,))
+    assert client.delete(f"/api/albums/{seul}", headers=PROPRIO2).status_code == 403
+    # Un compte PARTAGÉ n'en repart toujours pas seul, même propriétaire de toutes les
+    # collections : `atelier` possède celle de sa copie d'Astérix.
+    assert _ok(client.get(f"/api/albums/{efface['a_atelier']}/repartir/apercu?cran=images",
+                          headers=ATELIER))["direct"] is False
+
+
 def test_une_soeur_isolee_ne_garde_pas_le_document_au_fonds_commun(client, efface, db_path):
     """Les sœurs d'O sont X1 et Y1, dans Étude P. Étude P déclarée projet isolé (le jeu), O
     redevient la dernière copie du fonds commun : `proprio2` ne l'efface plus seul."""

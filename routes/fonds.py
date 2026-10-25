@@ -250,7 +250,7 @@ def _demander_un_repartir(conn, portee, album_id, cran, motif):
     cran = _cran_de_repartir(cran)
     a = _get_album(conn, portee, album_id, ecriture=True)
     conflit.verrouiller(conn)
-    soi_meme, p_soi_meme = portee.clause_suppression_directe("a.id")
+    soi_meme, p_soi_meme = portee.clause_repartir_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {soi_meme}",
                     (album_id, *p_soi_meme)).fetchone():
         raise HTTPException(409, "Vous pouvez repartir de zéro sur cet album vous-même : il "
@@ -535,9 +535,10 @@ def repartir_album(album_id: int, payload: RepartirIn, conn: sqlite3.Connection 
     """REPARTIR DE ZÉRO sur un album : le ramener au `cran` dit, en gardant ses images (E8,
     COL-3, tranche 3b) — `images`, `decoupage`, `transcription` ou `grammaire`.
 
-    La règle de l'effacement (`Portee.clause_suppression_directe`, Hugo, 2026-10-21) : son
+    La règle de l'effacement (`Portee.clause_repartir_directe`, Hugo, 2026-10-21) : son
     créateur s'il est seul à y avoir travaillé, le propriétaire de toutes ses collections,
-    le responsable de son projet — ces deux-là hors de la dernière copie d'un document.
+    le responsable de son projet — la dernière copie d'un document comprise : repartir garde
+    les images, rien ne sort du fonds commun (le pilotage, 2026-10-25).
     404 à qui n'y écrit pas ; 403 nommé à qui y écrit sans pouvoir l'effacer — il le
     DEMANDE (`POST /api/demandes`, genre `repartir`, motif et certification) ; 409 nommé si
     rien n'est au-dessus du cran. UN acte au journal, non annulable : l'écran doit le dire
@@ -578,7 +579,7 @@ def apercu_de_repartir(album_id: int, cran: str, planche: int | None = None,
     « Part », en nombres, validations comprises (`database.compter_repartir`, égal aux
     comptes de l'acte) ; `niveau`, le plus haut travail que la copie porte, pour éteindre
     les crans au-dessus ; `direct`, si l'appelant le fait lui-même ou le demande
-    (`Portee.clause_suppression_directe`). Pour qui ÉCRIT dans l'album : 404 sinon, et sur
+    (`Portee.clause_repartir_directe`). Pour qui ÉCRIT dans l'album : 404 sinon, et sur
     une planche d'un autre album ; 422 sur un cran hors de la liste."""
     cran = _cran_de_repartir(cran)
     _get_album(conn, portee, album_id, ecriture=True)
@@ -586,7 +587,7 @@ def apercu_de_repartir(album_id: int, cran: str, planche: int | None = None,
         p = _get_planche(conn, portee, planche, ecriture=True)
         if p["album_id"] != album_id:
             raise HTTPException(404, f"Planche {planche} introuvable")
-    ou, params = portee.clause_suppression_directe("a.id")
+    ou, params = portee.clause_repartir_directe("a.id")
     direct = conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                           (album_id, *params)).fetchone() is not None
     niveau = niveau_de_travail(conn, album_id, planche)
@@ -649,15 +650,15 @@ def travail_des_autres_avant_d_effacer(album_id: int, conn: sqlite3.Connection =
     demande, lue par la même source que la règle (`autorisation.sql_actes_sur_album`) : ce
     que l'écran montre est ce que la règle a lu.
 
-    Bornée à qui PEUT effacer cet album sans rien demander
-    (`Portee.clause_suppression_directe`) — son propriétaire, le responsable de son projet,
-    qui l'a créé, une portée totale : 404 à qui n'y écrit pas (l'accesseur gardé), 403 nommé
-    à qui y écrit sans pouvoir l'effacer. Le travail RECOPIÉ d'une autre copie se compte à
+    Bornée à qui PEUT effacer cet album sans rien demander — le supprimer ou en repartir
+    de zéro, la plus large des deux (`Portee.clause_repartir_directe`) : son propriétaire,
+    le responsable de son projet, qui l'a créé, une portée totale. 404 à qui n'y écrit pas
+    (l'accesseur gardé), 403 nommé à qui y écrit sans pouvoir l'effacer. Le travail RECOPIÉ d'une autre copie se compte à
     part, sans nom (`travail_recopie`) : il ne part pas avec celle-ci, et ses auteurs
     peuvent être d'un autre projet. Ce sont des GESTES, défaits compris, pas ce qui reste
     sur les planches."""
     a = _get_album(conn, portee, album_id, ecriture=True)
-    ou, params = portee.clause_suppression_directe("a.id")
+    ou, params = portee.clause_repartir_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                     (album_id, *params)).fetchone() is None:
         raise HTTPException(403, _MOTIF_TRAVAIL)

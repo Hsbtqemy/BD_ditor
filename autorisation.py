@@ -67,7 +67,8 @@ import sqlite3
 from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
-from database import (CRAN_ANNOTATIONS, DEMANDE_AMORCER_ENTRE_PROJETS, GENRES_CONSENTIS,
+from database import (CRAN_ANNOTATIONS, CRAN_ORIGINE, DEMANDE_AMORCER_ENTRE_PROJETS,
+                      GENRES_CONSENTIS,
                       NATURE_COLLECTIF, rang_du_cran,
                       sql_album_isole, sql_est_bac_a_sable, sql_est_isole, sql_est_jeu,
                       sql_projet_d_album, sql_projet_de, sql_rang_du_cran)
@@ -638,11 +639,11 @@ class Portee:
                 list(ids) * 2)
 
     def clause_suppression_directe(self, alias: str = "a.id") -> tuple[str, list]:
-        """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut EFFACER
-        sans rien demander — le supprimer DÉFINITIVEMENT, lui ou l'une de ses planches, ou le
-        RAMENER à un cran (« repartir de zéro », E8). COL-3, tranche 2 (Hugo, 2026-10-11),
-        RENVERSÉE en partie le 2026-10-21 (tranche 3b, « qui efface, qui retire, qui
-        crée »).
+        """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut SUPPRIMER
+        DÉFINITIVEMENT sans rien demander, lui ou l'une de ses planches. COL-3, tranche 2
+        (Hugo, 2026-10-11), RENVERSÉE en partie le 2026-10-21 (tranche 3b, « qui efface, qui
+        retire, qui crée »). Le RAMENER à un cran (« repartir de zéro », E8) suit les mêmes
+        chemins sans la règle de la dernière copie : `clause_repartir_directe`.
 
         « Supprimer » a deux réponses. Supprimer DE LA COLLECTION ne détruit rien : la
         copie part au fonds avec son travail, et c'est le geste de qui écrit dans la
@@ -652,10 +653,8 @@ class Portee:
         TROIS chemins sans demande depuis le 2026-10-21 — un compte PARTAGÉ n'en prend
         aucun, hors de son bac à sable :
 
-        1. le CRÉATEUR d'une copie que personne d'autre n'a touchée, MÊME si c'est la
-           dernière copie de son document (l'import par erreur, qui ne doit attendre
-           personne — Hugo, 2026-10-21, sur le cas où les deux règles se croisent). C'est la
-           règle d'avant, ses quatre moitiés toutes nécessaires :
+        1. le CRÉATEUR d'une copie que personne d'autre n'a touchée. C'est la règle
+           d'avant, ses quatre moitiés toutes nécessaires :
            - `clause_destruction`, INCHANGÉE (AUTH-10) : on écrit dans toutes les
              collections où la copie vit ;
            - CETTE COPIE a été créée PAR CET APPELANT (`copie.creee_par`, v31) : pour la
@@ -673,11 +672,22 @@ class Portee:
            accesseurs gardés comme tout le monde : la route d'une suppression demande d'y
            ÉCRIRE quelque part.
 
-        Les chemins 2 et 3 ne font jamais sortir seuls un document du fonds commun : la
-        DERNIÈRE copie d'un document — aucune autre copie vivante hors d'un projet isolé —
-        se demande à un administrateur, gardien du fonds. Ils ne valent pas dans un bac à
-        sable, qui a son chemin à lui (ci-dessous) : un invité qui y possède une collection
-        garde la règle commune du créateur.
+        La DERNIÈRE copie d'un document — aucune autre copie vivante hors d'un projet
+        isolé — se demande à un administrateur, gardien du fonds : la supprimer fait sortir
+        le document du fonds commun, images comprises. Les chemins 2 et 3 ne la prennent
+        jamais. Le chemin 1 ne la prend que pour la copie d'ORIGINE du document
+        (`copie.cran = 'origine'`) : l'import fait par erreur, que personne n'a touché, ne
+        doit attendre personne (Hugo, 2026-10-21, sur le cas où les deux règles se
+        croisent). Une copie née d'une PRISE, devenue dernière, se demande comme aux
+        chemins 2 et 3 (relecture croisée de la 3b, constat 1, tranché par le pilotage le
+        2026-10-25) — sans quoi la dernière copie sortait du fonds sans administrateur :
+        prendre une copie vierge (immédiat pour qui lit une copie dans le projet), effacer
+        l'originale travaillée par d'autres (permis, une sœur existe), puis effacer sa
+        copie vierge (« même dernière »).
+
+        Les chemins 2 et 3 ne valent pas dans un bac à sable, qui a son chemin à lui
+        (ci-dessous) : un invité qui y possède une collection garde la règle commune du
+        créateur.
 
         Ce que la règle ne lit PAS : une demande REFUSÉE (« garder » répond à une demande,
         il ne protège pas le document de qui peut l'effacer — relecture croisée, constat 7).
@@ -687,10 +697,36 @@ class Portee:
 
         La portée totale passe outre, et c'est écrit : l'administrateur et le mono-poste
         effacent tout, c'est le recours d'une demande."""
+        return self._clause_effacement(alias, derniere_copie_gardee=True)
+
+    def clause_repartir_directe(self, alias: str = "a.id") -> tuple[str, list]:
+        """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut RAMENER à
+        un cran sans rien demander — « repartir de zéro », sur l'album ou l'une de ses
+        planches (E8, COL-3, tranche 3b).
+
+        Les chemins de `clause_suppression_directe`, tels quels — le bac à sable, le
+        créateur seul, le propriétaire de toutes les collections, le responsable du projet,
+        jamais un compte partagé hors de son bac à sable —, SANS la règle de la dernière
+        copie : repartir garde les images, la notice et les planches, rien ne sort du fonds
+        commun (tranché par le pilotage le 2026-10-25, après la relecture croisée de la 3b).
+        La dernière copie d'un document se ramène donc à un cran par son propriétaire ou son
+        responsable, et ne se SUPPRIME que sur demande.
+
+        Plus large que la suppression, jamais plus étroite : qui peut supprimer peut
+        repartir. C'est aussi la borne de « qui perd quoi » (`GET
+        /api/albums/{id}/travail-des-autres`), qui sert les deux gestes."""
+        return self._clause_effacement(alias, derniere_copie_gardee=False)
+
+    def _clause_effacement(self, alias: str, *,
+                           derniere_copie_gardee: bool) -> tuple[str, list]:
+        """Les chemins de l'effacement sans demande, communs à la suppression et à
+        « repartir de zéro » ; `derniere_copie_gardee` dit si la dernière copie d'un
+        document en est exclue (la suppression) ou non (repartir)."""
         if self.tout:
             if self.bornee:
                 return self._bornee_sur_album(
-                    alias, self._ordinaire().clause_suppression_directe(alias))
+                    alias, self._ordinaire()._clause_effacement(
+                        alias, derniere_copie_gardee=derniere_copie_gardee))
             return "1", []
         if not self.utilisateur:
             return "0", []
@@ -707,7 +743,8 @@ class Portee:
             bac = (f"EXISTS (SELECT 1 FROM albums _sbs WHERE _sbs.id = {alias} "
                    f"AND {sql_projet_d_album('_sbs')} IN ({', '.join('?' * len(ids))}))")
             p_bac = [*ids]
-        tient, p_tient = self._sql_tient_l_album(alias)
+        tient, p_tient = self._sql_tient_l_album(
+            alias, derniere_copie_gardee=derniere_copie_gardee)
         detruire, p_detruire = self.clause_destruction(alias)
         if detruire == "0" and tient == "0":
             return bac, p_bac
@@ -730,18 +767,25 @@ class Portee:
             params += [*p_tient, *p_pas_partage]
         if detruire != "0":
             autrui, p_autrui = _sql_travail_d_autrui(alias, self.utilisateur)
+            # Le créateur : de la copie d'ORIGINE même dernière, de toute autre copie tant
+            # qu'une sœur garde le document au fonds commun (constat 1 de la relecture).
+            derniere = (f" AND (_sc.cran = '{CRAN_ORIGINE}' OR {_sql_une_soeur(alias)})"
+                        if derniere_copie_gardee else "")
             bon_marche = (f"({detruire} "
                           f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = {alias} "
-                          f"AND _sc.creee_par = ?) AND {pas_partage})")
+                          f"AND _sc.creee_par = ?{derniere}) AND {pas_partage})")
             cas.append(f"WHEN {bon_marche} THEN NOT {autrui}")
             params += [*p_detruire, self.utilisateur, *p_pas_partage, *p_autrui]
         return f"(CASE {' '.join(cas)} ELSE 0 END)", params
 
-    def _sql_tient_l_album(self, alias: str) -> tuple[str, list]:
+    def _sql_tient_l_album(self, alias: str, *,
+                           derniere_copie_gardee: bool = True) -> tuple[str, list]:
         """Les chemins 2 et 3 de `clause_suppression_directe` (Hugo, 2026-10-21), hors du
         compte partagé que l'appelant ajoute : on POSSÈDE chacune des collections où vit
-        l'album, ou l'on est RESPONSABLE de son projet — et l'album n'est pas la DERNIÈRE
-        copie de son document au fonds commun. `"0"` quand on ne possède ni ne gère rien.
+        l'album, ou l'on est RESPONSABLE de son projet — et, pour une suppression
+        (`derniere_copie_gardee`), l'album n'est pas la DERNIÈRE copie de son document au
+        fonds commun ; repartir de zéro ne lit pas cette moitié. `"0"` quand on ne possède
+        ni ne gère rien.
 
         Hors des bacs à sable, des deux côtés : une collection de bac à sable ne compte pas
         dans ce qu'on possède, un bac à sable dans ce qu'on gère — son propriétaire a son
@@ -766,10 +810,9 @@ class Portee:
             params += geres
         if not morceaux:
             return "0", []
-        soeur = (f"EXISTS (SELECT 1 FROM albums _ts1 JOIN albums _ts2 "
-                 f"ON _ts2.document_id = _ts1.document_id AND _ts2.id <> _ts1.id "
-                 f"WHERE _ts1.id = {alias} AND NOT {sql_album_isole('_ts2')})")
-        return f"(({' OR '.join(morceaux)}) AND {soeur})", params
+        if not derniere_copie_gardee:
+            return f"({' OR '.join(morceaux)})", params
+        return f"(({' OR '.join(morceaux)}) AND {_sql_une_soeur(alias)})", params
 
     def peut_tenir_le_fonds(self) -> bool:
         """A-t-on le droit de tenir le FONDS — le voir, rendre une copie gardée, répondre
@@ -1039,6 +1082,16 @@ class Portee:
 
 
 TOTALE = Portee(tout=True, admin=True)
+
+
+def _sql_une_soeur(alias: str) -> str:
+    """Fragment SQL VRAI si le document de la copie `alias` a une AUTRE copie vivante hors
+    d'un projet isolé — une copie du jeu ou d'un bac à sable, qui part avec lui, ne garde pas
+    un document au fonds commun. Faux : `alias` est la DERNIÈRE copie, que seul un
+    administrateur fait sortir du fonds (`Portee.clause_suppression_directe`)."""
+    return (f"EXISTS (SELECT 1 FROM albums _ts1 JOIN albums _ts2 "
+            f"ON _ts2.document_id = _ts1.document_id AND _ts2.id <> _ts1.id "
+            f"WHERE _ts1.id = {alias} AND NOT {sql_album_isole('_ts2')})")
 
 
 # --------------------------------------------------------------------------- #

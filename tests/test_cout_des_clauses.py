@@ -29,9 +29,12 @@ ZOE = {"Remote-User": "zoe", "Remote-Groups": "bd-admins"}        # administratr
 ZOE2 = {"Remote-User": "zoe2", "Remote-Groups": "bd-admins"}      # administratrice INVITÉE
 
 # Les clauses d'album : `_clause_album` en lecture et en écriture (l'enveloppe du jeu,
-# autour, est inchangée), puis les trois clauses de geste.
+# autour, est inchangée), puis les clauses de geste — « repartir de zéro » compris
+# (tranche 3b : les chemins de la suppression, sans la règle de la dernière copie).
 CLAUSES = (("_clause_album", False), ("_clause_album", True), ("clause_destruction", None),
-           ("clause_suppression_directe", None), ("clause_rejoindre_directe", None))
+           ("clause_suppression_directe", None), ("clause_repartir_directe", None),
+           ("clause_rejoindre_directe", None))
+EFFACEMENTS = ("clause_suppression_directe", "clause_repartir_directe")
 
 
 def _nouvelle(p, clause, ecriture):
@@ -48,8 +51,9 @@ def _ancienne(p, clause, ecriture):
         sql, prm = _ancienne(p._ordinaire(), clause, ecriture)
         return (f"(NOT EXISTS (SELECT 1 FROM albums _bba WHERE _bba.id = a.id "
                 f"AND {sql_est_bac_a_sable(sql_projet_d_album('_bba'))}) OR {sql})", prm)
-    if clause != "clause_suppression_directe" or p.tout:
+    if clause not in EFFACEMENTS or p.tout:
         return _nouvelle(p, clause, ecriture)
+    garde = clause == "clause_suppression_directe"
     if not p.utilisateur:
         return "0", []
     bac, p_bac = "0", []
@@ -64,7 +68,7 @@ def _ancienne(p, clause, ecriture):
     # ajoute en `OR`, sous la forme qui calcule tout. Leur fragment est celui du code
     # (`_sql_tient_l_album`) — ce test mesure l'assemblage en `CASE`, pas ce fragment, que
     # `tests/test_qui_efface.py` éprouve par ses comportements.
-    tient, p_tient = p._sql_tient_l_album("a.id")
+    tient, p_tient = p._sql_tient_l_album("a.id", derniere_copie_gardee=garde)
     if detruire == "0" and tient == "0":
         return bac, p_bac
     pas_partage = ("NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
@@ -72,9 +76,14 @@ def _ancienne(p, clause, ecriture):
     morceaux, params = [], []
     if detruire != "0":
         autrui, p_autrui = autorisation._sql_travail_d_autrui("a.id", p.utilisateur)
+        # Le créateur d'une copie qui n'est pas d'ORIGINE ne supprime pas seul la dernière
+        # copie (relecture croisée de la 3b, constat 1) ; repartir n'a pas cette moitié.
+        derniere = (f" AND (_sc.cran = 'origine' OR {autorisation._sql_une_soeur('a.id')})"
+                    if garde else "")
         morceaux.append(f"({detruire} "
                         f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = a.id "
-                        f"AND _sc.creee_par = ?) AND {pas_partage} AND NOT {autrui})")
+                        f"AND _sc.creee_par = ?{derniere}) AND {pas_partage} "
+                        f"AND NOT {autrui})")
         params += [*p_detruire, p.utilisateur, p.utilisateur, NATURE_COLLECTIF, *p_autrui]
     if tient != "0":
         morceaux.append(f"({tient} AND {pas_partage})")
