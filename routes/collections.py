@@ -25,7 +25,9 @@ recopiés à l'œil — c'est cette erreur-là qui a produit 49 tests rouges au 
 """
 from __future__ import annotations
 
+import json
 import sqlite3
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response
@@ -36,7 +38,8 @@ import comptes
 import conflit
 import journal
 from config import STATUTS_DIFFUSION
-from database import (DEMANDE_REJOINDRE, NATURES, clore_rejoindre_d_une_copie_au_fonds,
+from database import (DEMANDE_REJOINDRE, LONGUEUR_MOTIF, NATURES,
+                      clore_rejoindre_d_une_copie_au_fonds, noms_lisibles,
                       collection_row, collections,
                       document_d_album, etat_embargo, nom_reserve, poser_projet_de_copie,
                       projet_d_album, projet_de_collection,
@@ -44,7 +47,7 @@ from database import (DEMANDE_REJOINDRE, NATURES, clore_rejoindre_d_une_copie_au
                       un_proprietaire_tient_toute_la_copie)
 
 from socle import (
-    DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn,
+    DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn, RetirerIn,
     _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS,
     _bac_a_sable_de,
@@ -880,7 +883,8 @@ _MOTIF_RETIRER = ("Retirer un album de son projet revient au responsable du proj
 
 
 @router.post("/api/albums/{album_id}/retirer-du-projet")
-def retirer_du_projet(album_id: int, conn: sqlite3.Connection = Depends(db),
+def retirer_du_projet(album_id: int, payload: Optional[RetirerIn] = None,
+                      conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
     """RETIRER DU PROJET — le geste du responsable (COL-3, tranche 3b ; Hugo, 2026-10-21) :
     l'album quitte TOUTES les collections de son projet, quels qu'en soient les
@@ -900,8 +904,17 @@ def retirer_du_projet(album_id: int, conn: sqlite3.Connection = Depends(db),
     Ce qui s'écrit : la fin de chaque emploi (`delien`, sous `collection_album`, au nom de qui
     retire), puis UN acte sous le document qui le dit (`retire_du_projet` : le projet et les
     collections quittées) — les propriétaires le voient disparaître, et le journal dit qui
-    l'a retiré. Non annulable."""
-    _get_album(conn, portee, album_id)
+    l'a retiré. Non annulable.
+
+    Écran tranché par Hugo le 2026-10-25 : un MOTIF facultatif (`motif`, borné), que les
+    propriétaires lisent avec le retrait, en tête de leur collection, jusqu'à « Vu »
+    (`GET /api/collections/{id}/retraits`) ; le titre de l'album est écrit dans l'acte, pour
+    qu'ils sachent lequel est parti."""
+    motif = ((payload.motif if payload else None) or "").strip() or None
+    if motif is not None and len(motif) > LONGUEUR_MOTIF:
+        raise HTTPException(422, f"Le motif tient en {LONGUEUR_MOTIF} caractères au plus "
+                                 f"({len(motif)} reçus).")
+    a = _get_album(conn, portee, album_id)
     _refuser_le_jeu(conn, album_id=album_id)
     _refuser_le_bac_a_sable(conn, _MOTIF_BAC_SANS_FONDS, album_id=album_id)
     conflit.verrouiller(conn)
@@ -923,8 +936,68 @@ def retirer_du_projet(album_id: int, conn: sqlite3.Connection = Depends(db),
     journal.journaliser(conn, "modification", "document", document_d_album(conn, album_id),
                         apres={"album_id": album_id,
                                "retire_du_projet": {"projet_id": projet_id,
-                                                    "collections": quittees}})
+                                                    "collections": quittees,
+                                                    "titre": a["titre"], "motif": motif}})
     clore_rejoindre_d_une_copie_au_fonds(conn, album_id)
     conn.commit()
     return {"album_id": album_id, "projet_id": projet_id,
             "collections": [c["id"] for c in quittees], "au_fonds": True}
+
+
+# Les retraits d'une collection : les actes `retire_du_projet` (sous `document`) dont la
+# charge nomme cette collection parmi celles quittées. Les identifiants de collection ne
+# reviennent plus depuis la v35 : l'acte ne désigne jamais une autre étude.
+_SQL_RETRAITS = (
+    "SELECT e.id, e.agent, e.date, e.apres FROM evenement e "
+    "WHERE e.cible_table = 'document' AND e.type = 'modification' AND json_valid(e.apres) "
+    "AND EXISTS (SELECT 1 FROM json_each(e.apres, '$.retire_du_projet.collections') _j "
+    "            WHERE json_extract(_j.value, '$.id') = ?)")
+
+
+@router.get("/api/collections/{collection_id}/retraits")
+def retraits_de_la_collection(collection_id: int, conn: sqlite3.Connection = Depends(db),
+                              portee: autorisation.Portee = Depends(portee_courante)):
+    """Les albums RETIRÉS DU PROJET depuis cette collection, que l'appelant n'a pas encore
+    marqués « Vu » (COL-3, tranche 3b ; écran tranché par Hugo le 2026-10-25 : « « titre » a
+    été retiré du projet par … le … : il est gardé au fonds, avec son travail. Motif : … »,
+    en tête de l'onglet *Albums*, jusqu'à « Vu »).
+
+    Réservée à qui ADMINISTRE la collection — son propriétaire, par la base son responsable,
+    un administrateur : 404 à qui ne la lit pas, 403 nommé à qui la lit sans la posséder.
+    Chaque ligne nomme qui a retiré l'album (login et nom lisible) : c'est l'objet même de
+    l'avis. « Vu » se mémorise par LOGIN (`retrait_vu`) : un propriétaire qui l'a vu ne le
+    revoit plus, un autre propriétaire le lit encore."""
+    _get_collection(conn, portee, collection_id, administrer=True,
+                    motif="Les albums retirés d'une collection se lisent par son "
+                          "propriétaire.")
+    lignes = []
+    for r in conn.execute(_SQL_RETRAITS + " AND NOT EXISTS (SELECT 1 FROM retrait_vu v "
+                          "WHERE v.evenement_id = e.id AND v.login = ?) ORDER BY e.id",
+                          (collection_id, portee.utilisateur or "")):
+        charge = json.loads(r["apres"])
+        retrait = charge.get("retire_du_projet") or {}
+        lignes.append({"evenement_id": r["id"], "album_id": charge.get("album_id"),
+                       "titre": retrait.get("titre"), "par": r["agent"], "le": r["date"],
+                       "motif": retrait.get("motif")})
+    noms = noms_lisibles(conn, [x["par"] for x in lignes if x["par"]])
+    for x in lignes:
+        x["par_nom"] = noms.get(x["par"]) if x["par"] else None
+    return lignes
+
+
+@router.post("/api/collections/{collection_id}/retraits/{evenement_id}/vu", status_code=204)
+def retrait_vu(collection_id: int, evenement_id: int, conn: sqlite3.Connection = Depends(db),
+               portee: autorisation.Portee = Depends(portee_courante)):
+    """« Vu » : l'appelant ne lira plus ce retrait en tête de cette collection. Mêmes gardes
+    que la lecture ; 404 sur un acte qui n'est pas un retrait de cette collection, le même
+    qu'un acte absent. Idempotent. Rien ne s'écrit au journal : voir n'est pas agir."""
+    _get_collection(conn, portee, collection_id, administrer=True,
+                    motif="« Vu », sur le retrait d'un album, se dit par le propriétaire de "
+                          "la collection.")
+    if conn.execute(_SQL_RETRAITS + " AND e.id = ?",
+                    (collection_id, evenement_id)).fetchone() is None:
+        raise HTTPException(404, f"Retrait {evenement_id} introuvable")
+    conn.execute("INSERT OR IGNORE INTO retrait_vu (evenement_id, login) VALUES (?, ?)",
+                 (evenement_id, portee.utilisateur or ""))
+    conn.commit()
+    return Response(status_code=204)

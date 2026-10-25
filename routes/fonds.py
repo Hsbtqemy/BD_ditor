@@ -50,6 +50,7 @@ from pipeline import nlp
 from database import (CRAN_IMAGES, CRANS, DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE_PROJETS,
                       DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
                       DEMANDE_REPARTIR, niveau_de_travail, rang_du_cran,
+                      compter_repartir, copies_rangees_du_projet,
                       est_isole, projets_qui_tiennent, titre_de_notice,
                       DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                       GENRES_CONSENTIS, GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
@@ -65,6 +66,7 @@ from socle import (
     _MOTIF_REPARTIR_PLANCHE, _bac_a_sable_de, _clore_demandes, _cran_de_repartir,
     _deposer, _detruire_album, _en_attente_vers,
     _get_album, _get_collection, _get_planche, _get_projet, _nouvelle_copie, _plan_rejoindre,
+    _MOTIF_BAC_SANS_FONDS, _refuser_le_bac_a_sable,
     _repartir,
     _refuser_le_jeu, _retour_en_attente, _rows, _sans_accents, _supprimer_projet, db,
     portee_courante,
@@ -400,14 +402,44 @@ def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
             # travail, et leurs copies. Pour qui tient le fonds seulement (`detail`) : c'est
             # précisément ce que le demandeur ne doit pas apprendre. Une liste vide dit que
             # l'administrateur est seul à pouvoir répondre.
+            # Écran de la 3b (Hugo, 2026-10-25) : « attend … » — les responsables de chaque
+            # projet source, qu'il remplace en répondant —, et l'aperçu de chaque copie.
             projets = {r[0]: r[1] for r in conn.execute("SELECT id, nom FROM projet")}
             d["sources"] = []
             for x in d["documents"]:
                 for pid, copies in projets_qui_tiennent(
                         conn, x["document_id"], d["cran"], sauf=d["projet_id"]).items():
-                    d["sources"] += [{**c, "projet_id": pid, "projet_nom": projets.get(pid)}
+                    d["sources"] += [{**c, "projet_id": pid, "projet_nom": projets.get(pid),
+                                      "responsables": _responsables(conn, pid),
+                                      "apercu": _apercu(conn, c["album_id"], d)}
                                      for c in copies]
+        if detail and d["en_attente"] and d["genre"] == DEMANDE_AMORCER:
+            x = d["documents"][0] if d["documents"] else None
+            d["apercu"] = (_apercu(conn, x["copie"], d) if x and x["copie"] else None)
     return demandes
+
+
+def _apercu(conn, source: int, d: dict):
+    """Ce qu'une demande d'en partir copierait de `source` vers sa collection d'arrivée, en
+    NOMBRES (`database.compter_le_travail`) — l'aperçu que l'écran de la 3b montre à qui
+    répond. None quand la collection d'arrivée n'existe plus, ou le cran est illisible."""
+    if (d.get("cran") not in CRANS or d["cran"] == CRAN_IMAGES
+            or d.get("collection_id") is None
+            or collection_row(conn, d["collection_id"]) is None):
+        return None
+    return compter_le_travail(conn, source, d["cran"], d["collection_id"])
+
+
+def _responsables(conn, projet_id: int) -> list[dict]:
+    """Les responsables d'un projet, nommés — pour l'administrateur seul (« attend … »)."""
+    lignes = _rows(conn.execute(
+        "SELECT genre, principal FROM projet_acces WHERE projet_id = ? AND role = ? "
+        "ORDER BY genre, principal", (projet_id, autorisation.RESPONSABLE)))
+    noms = noms_lisibles(conn, [x["principal"] for x in lignes
+                                if x["genre"] == autorisation.UTILISATEUR])
+    for x in lignes:
+        x["nom"] = noms.get(x["principal"])
+    return lignes
 
 
 def _comptes_partages(conn) -> set:
@@ -535,6 +567,76 @@ def repartir_planche(planche_id: int, payload: RepartirIn,
                       motif_refus=_MOTIF_REPARTIR_PLANCHE)
     conn.commit()
     return rendu
+
+
+@router.get("/api/albums/{album_id}/repartir/apercu")
+def apercu_de_repartir(album_id: int, cran: str, planche: int | None = None,
+                       conn: sqlite3.Connection = Depends(db),
+                       portee: autorisation.Portee = Depends(portee_courante)):
+    """Ce que « repartir de zéro » vers `cran` retirerait de cet album — ou de sa planche
+    `planche` —, sans rien écrire : le panneau de l'écran de la 3b (Hugo, 2026-10-25) —
+    « Part », en nombres, validations comprises (`database.compter_repartir`, égal aux
+    comptes de l'acte) ; `niveau`, le plus haut travail que la copie porte, pour éteindre
+    les crans au-dessus ; `direct`, si l'appelant le fait lui-même ou le demande
+    (`Portee.clause_suppression_directe`). Pour qui ÉCRIT dans l'album : 404 sinon, et sur
+    une planche d'un autre album ; 422 sur un cran hors de la liste."""
+    cran = _cran_de_repartir(cran)
+    _get_album(conn, portee, album_id, ecriture=True)
+    if planche is not None:
+        p = _get_planche(conn, portee, planche, ecriture=True)
+        if p["album_id"] != album_id:
+            raise HTTPException(404, f"Planche {planche} introuvable")
+    ou, params = portee.clause_suppression_directe("a.id")
+    direct = conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
+                          (album_id, *params)).fetchone() is not None
+    niveau = niveau_de_travail(conn, album_id, planche)
+    return {"album_id": album_id, "planche_id": planche, "cran": cran,
+            "niveau": CRANS[niveau], "rien_a_retirer": rang_du_cran(cran) >= niveau,
+            "comptes": compter_repartir(conn, album_id, cran, planche_id=planche),
+            "direct": direct}
+
+
+@router.get("/api/albums/{album_id}/retirer-du-projet/apercu")
+def apercu_du_retrait(album_id: int, conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    """Ce que « Retirer du projet » ferait, AVANT de le faire — le panneau de l'écran de la
+    3b (Hugo, 2026-10-25) : les collections quittées et les PROPRIÉTAIRES qui le verront
+    disparaître (ceux de `collection_acces`, et pour la base, les responsables du projet),
+    et qui y a travaillé (« rien n'est effacé ») — la mesure de « qui perd quoi », le travail
+    recopié d'une autre copie compté sans nom. Pour qui peut retirer : 404 à qui ne lit pas
+    l'album, 403 nommé à qui le lit sans gérer son projet, 409 dans un bac à sable et sur
+    le jeu."""
+    a = _get_album(conn, portee, album_id)
+    _refuser_le_jeu(conn, album_id=album_id)
+    _refuser_le_bac_a_sable(conn, _MOTIF_BAC_SANS_FONDS, album_id=album_id)
+    projet_id = projet_d_album(conn, album_id)
+    if projet_id is None or not portee.peut_gerer_projet(projet_id):
+        raise HTTPException(403, "Retirer un album de son projet revient au responsable du "
+                                 "projet.")
+    collections = _rows(conn.execute(
+        "SELECT c.id, c.nom FROM collection_album ca JOIN collection c "
+        "ON c.id = ca.collection_id WHERE ca.album_id = ? ORDER BY c.id", (album_id,)))
+    logins = set()
+    for c in collections:
+        explicites = [{"genre": r[0], "principal": r[1]} for r in conn.execute(
+            "SELECT genre, principal FROM collection_acces WHERE collection_id = ? "
+            "AND niveau = ? ORDER BY genre, principal", (c["id"], autorisation.PROPRIETAIRE))]
+        derives = [{"genre": x["genre"], "principal": x["principal"]}
+                   for x in autorisation.acces_derives(conn, c["id"])
+                   if x["niveau"] == autorisation.PROPRIETAIRE]
+        c["proprietaires"] = explicites + [x for x in derives if x not in explicites]
+        logins |= {x["principal"] for x in c["proprietaires"]
+                   if x["genre"] == autorisation.UTILISATEUR}
+    noms = noms_lisibles(conn, sorted(logins))
+    for c in collections:
+        for x in c["proprietaires"]:
+            x["nom"] = noms.get(x["principal"]) if x["genre"] == autorisation.UTILISATEUR \
+                else None
+    vue = _travail_des_autres(conn, a["document_id"], album_id, portee.utilisateur,
+                              _comptes_partages(conn), recopie_a_part=not portee.tout)
+    return {"album_id": album_id, "projet_id": projet_id, "collections": collections,
+            "travail_des_autres": vue["travail_des_autres"],
+            "travail_recopie": vue.get("travail_recopie")}
 
 
 @router.get("/api/albums/{album_id}/travail-des-autres")
@@ -1656,7 +1758,7 @@ def demandes_recues_du_projet(projet_id: int, conn: sqlite3.Connection = Depends
         return []
     demandes = _rows(conn.execute(
         "SELECT d.id, d.genre, d.cran, d.demandeur, d.motif, d.date_creation, d.projet_id, "
-        "d.projet_nom, dd.document_id, dd.titre FROM demande d "
+        "d.projet_nom, d.collection_id, dd.document_id, dd.titre FROM demande d "
         "JOIN demande_document dd ON dd.demande_id = d.id "
         "WHERE d.genre = ? AND d.reponse IS NULL AND d.projet_id IS NOT ? ORDER BY d.id",
         (DEMANDE_AMORCER_ENTRE_PROJETS, projet_id)))
@@ -1670,12 +1772,19 @@ def demandes_recues_du_projet(projet_id: int, conn: sqlite3.Connection = Depends
         consentement = {"genre": d["genre"], "projets": list(sources)}
         if not portee.peut_nommer_le_demandeur(d["demandeur"], consentement=consentement):
             d["demandeur"] = None                  # par ceinture : la garde l'exclut déjà
-        d["copies"] = sources[projet_id]
+        # Écran de la 3b (Hugo, 2026-10-25) : « Depuis quelle copie », les copies trop peu
+        # travaillées ÉTEINTES — toutes les copies rangées du projet, `tient` disant celles
+        # qu'accepter peut nommer, chacune avec son aperçu en nombres.
+        tenues = {c["album_id"] for c in sources[projet_id]}
+        d["copies"] = [{**c, "tient": c["album_id"] in tenues,
+                        "apercu": _apercu(conn, c["album_id"], d)}
+                       for c in copies_rangees_du_projet(conn, d["document_id"], projet_id)]
         d["repondable"] = portee.peut_repondre_a(consentement)
         recues.append(d)
     noms = noms_lisibles(conn, [d["demandeur"] for d in recues if d["demandeur"]])
     for d in recues:
         d["demandeur_nom"] = noms.get(d["demandeur"]) if d["demandeur"] else None
+        d.pop("collection_id")              # le projet suffit à consentir
     return recues
 
 
@@ -1708,12 +1817,33 @@ def copies_gardees_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(
             "AND type = 'delien' AND json_extract(avant, '$.album_id') = ?",
             (c["album_id"],)).fetchone()
         c["garde_depuis"] = r[0] if r else None
+        c["retire_du_projet"] = _retrait_garde(conn, c["album_id"])
         retour = _retour_en_attente(conn, c["album_id"])
         c["retour"] = None if retour is None else {
             "id": retour["id"], "date_creation": retour["date_creation"],
             "collection_id": retour["collection_id"],
             "collection_nom": retour["collection_nom"]}
     return copies
+
+
+def _retrait_garde(conn, album_id: int):
+    """Le retrait du projet qui a envoyé cette copie au fonds, si aucune sortie ne l'a suivi
+    (écran de la 3b, « retiré du projet par … ») : qui, son nom, quand, le motif ; None
+    sinon."""
+    sortie = conn.execute(
+        "SELECT MAX(id) FROM evenement WHERE cible_table = 'collection_album' "
+        "AND type = 'delien' AND json_valid(avant) "
+        "AND json_extract(avant, '$.album_id') = ?", (album_id,)).fetchone()[0] or 0
+    r = conn.execute(
+        "SELECT id, agent, date, json_extract(apres, '$.retire_du_projet.motif') AS motif "
+        "FROM evenement WHERE cible_table = 'document' AND type = 'modification' "
+        "AND json_valid(apres) AND json_extract(apres, '$.retire_du_projet') IS NOT NULL "
+        "AND json_extract(apres, '$.album_id') = ? ORDER BY id DESC LIMIT 1",
+        (album_id,)).fetchone()
+    if r is None or r["id"] < sortie:
+        return None
+    nom = noms_lisibles(conn, [r["agent"]]).get(r["agent"]) if r["agent"] else None
+    return {"par": r["agent"], "par_nom": nom, "le": r["date"], "motif": r["motif"]}
 
 
 @router.get("/api/collections/{collection_id}/demandes")
@@ -1749,6 +1879,9 @@ def demandes_recues(collection_id: int, conn: sqlite3.Connection = Depends(db),
         if not portee.peut_nommer_le_demandeur(d["demandeur"], consentement=consentement):
             d["demandeur"] = None                  # par ceinture : la garde l'exclut déjà
         d["repondable"] = portee.peut_repondre_a(consentement)
+        # Écran de la 3b (Hugo, 2026-10-25) : la demande d'en partir se lit avec son aperçu.
+        d["apercu"] = (_apercu(conn, d["album_id"], d) if d["genre"] == DEMANDE_AMORCER
+                       else None)
     noms = noms_lisibles(conn, [d["demandeur"] for d in demandes if d["demandeur"]])
     for d in demandes:
         d["demandeur_nom"] = noms.get(d["demandeur"]) if d["demandeur"] else None

@@ -30,7 +30,8 @@ from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, DEMANDE_SUPPRESSION_D
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
                       liens_vus, relecture_planches, reindex_region, retirer_liens_caches,
-                      espace_d_album, sql_est_jeu, sql_projet_d_album, unindex_region)
+                      espace_d_album, sql_album_isole, sql_est_jeu, sql_projet_d_album,
+                      unindex_region)
 import autorisation
 import conflit
 import empreinte
@@ -75,7 +76,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
     _clore_demandes_vers, _clore_lignes_d_une_copie_detruite, _deposer, _en_attente_vers,
     _nouvelle_copie, _plan_rejoindre, _retour_en_attente,
-    RepartirIn, _MOTIF_REPARTIR, _MOTIF_REPARTIR_PLANCHE, _cran_de_repartir, _repartir,
+    RepartirIn, RetirerIn, _MOTIF_REPARTIR, _MOTIF_REPARTIR_PLANCHE, _cran_de_repartir, _repartir,
     _clause_lemme, _clause_personnage, _cle_tag, _collection_d_export, _collections_lues_d_albums,
     _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
@@ -506,6 +507,11 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                    AND EXISTS (SELECT 1 FROM albums _sa
                                WHERE _sa.document_id = a.document_id
                                  AND _sa.id <> a.id)) AS soeur,
+                  (({ecrire}) AND a.document_id IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM albums _dc
+                                   WHERE _dc.document_id = a.document_id
+                                     AND _dc.id <> a.id
+                                     AND NOT {sql_album_isole('_dc')})) AS derniere_copie,
                   NOT EXISTS (SELECT 1 FROM collection_album _fa
                               WHERE _fa.album_id = a.id) AS au_fonds,
                   (SELECT COUNT(*) FROM planches p WHERE p.album_id = a.id)
@@ -520,7 +526,7 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
            FROM albums a
            WHERE {ou} AND NOT {sql_est_jeu(sql_projet_d_album('a'))}
            ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""",
-        (*p_detruire, *p_ecrire, *p_ailleurs, *p_ecrire, *params)
+        (*p_detruire, *p_ecrire, *p_ailleurs, *p_ecrire, *p_ecrire, *params)
     ))
     # La demande se cherche par COPIE (`demande_document.album_id`), pas par document (COL-3,
     # tranche 3) : la copie sœur d'un autre projet afficherait sinon « suppression
@@ -552,6 +558,23 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
             repartir.setdefault(d["album_id"], {"id": d["id"],
                                                 "date_creation": d["date_creation"],
                                                 "cran": d["cran"]})
+    # COL-3, tranche 3b (écran tranché par Hugo, 2026-10-25) — une copie REMISE À ZÉRO le dit
+    # dans sa fiche : le dernier acte `repartir` sur l'album entier (pas sur une planche),
+    # son cran, celui d'où elle est repartie, sa date. QUI l'a fait ne se lit que par qui
+    # ÉCRIT dans la copie — ceux dont le travail pouvait partir — et par une portée totale ;
+    # une lectrice reçoit la puce sans nom (l'option fermée, à trancher).
+    repartie = {}
+    if ids:
+        voulus = set(ids)
+        for r in conn.execute(
+                "SELECT json_extract(apres, '$.album_id') AS album_id, agent, date, "
+                "json_extract(apres, '$.repartir.cran') AS cran, "
+                "json_extract(apres, '$.repartir.depuis_cran') AS depuis "
+                "FROM evenement WHERE cible_table = 'document' AND type = 'modification' "
+                "AND json_valid(apres) AND json_extract(apres, '$.repartir') IS NOT NULL "
+                "AND json_extract(apres, '$.repartir.planche_id') IS NULL ORDER BY id"):
+            if r["album_id"] in voulus:
+                repartie[r["album_id"]] = dict(r)
     rejoindre: dict[int, list] = {}
     if ids:
         for r in conn.execute(
@@ -577,11 +600,19 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
         # la liste au projet courant, et il le compare au `projet_id` des collections, lu
         # de la même façon. NULL : une copie qui n'a jamais eu de projet (importée au fonds).
         a["projet_id"] = a.pop("projet_effectif")
-        for champ in ("destructible", "ecrivable", "partage", "au_fonds", "soeur"):
+        for champ in ("destructible", "ecrivable", "partage", "au_fonds", "soeur",
+                      "derniere_copie"):
             a[champ] = bool(a[champ])
         a["rejoindre_demande"] = sorted(set(rejoindre.get(a["id"], [])))
         a["collections"] = [{"id": c["id"], "nom": c["nom"]} for c in rangements[a["id"]]]
         a["demande_repartir"] = repartir.get(a["id"])
+        r = repartie.get(a["id"])
+        a["repartie"] = None if r is None else {"cran": r["cran"], "depuis_cran": r["depuis"],
+                                                "le": r["date"]}
+        if r is not None and (portee.tout or a["ecrivable"]):
+            a["repartie"].update(par=r["agent"],
+                                 par_nom=noms_lisibles(conn, [r["agent"]]).get(r["agent"])
+                                 if r["agent"] else None)
         d = attente.get(a["id"])
         if d is None:
             a["demande"] = None

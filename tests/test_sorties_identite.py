@@ -225,6 +225,21 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
             (SENTINELLES["login"], autre)).lastrowid
         conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
                      "VALUES (?, ?, NULL, 'Cliquet')", (dem, doc))
+        # COL-3, tranche 3b (écran du 2026-10-25) — un RETRAIT du projet par le login
+        # sentinelle, qui nomme la collection du semis parmi celles quittées : sans lui,
+        # `…/collections/{id}/retraits` rendrait une liste vide. Et un PROPRIÉTAIRE de cette
+        # collection dont le login porte la sentinelle : sans lui, l'aperçu du retrait ne
+        # nommerait personne.
+        conn.execute(
+            "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, apres) "
+            "VALUES ('modification', ?, 'humain', 'document', ?, ?)",
+            (SENTINELLES["login"], doc,
+             json.dumps({"album_id": a["id"], "retire_du_projet": {
+                 "projet_id": projet["id"], "collections": [{"id": col["id"], "nom": "C"}],
+                 "titre": "Cliquet", "motif": None}})))
+        conn.execute("INSERT OR IGNORE INTO collection_acces (collection_id, genre, principal, "
+                     "niveau) VALUES (?, 'utilisateur', ?, 'proprietaire')",
+                     (col["id"], SENTINELLES["login"] + "proprio"))
         act = conn.execute(
             "INSERT INTO activite (type, agent, agent_type) VALUES ('session', ?, 'humain')",
             (SENTINELLES["login"],)).lastrowid
@@ -365,6 +380,18 @@ SORTIES_DECLAREES = {
         "responsable. Qui a déposé ne s'y nomme que pour soi-même et pour une portée totale "
         "(`Portee.peut_nommer_le_demandeur`) — ce que mesure ce balayage, la sentinelle étant "
         "administratrice. Qui a répondu n'y est pas. Réservée à qui gère le projet."),
+    ("route", "/api/collections/{collection_id}/retraits"): (
+        {"login", "nom"},
+        "COL-3, tranche 3b (écran tranché par Hugo le 2026-10-25) — les albums RETIRÉS DU "
+        "PROJET depuis cette collection : QUI les a retirés (login et nom lisible), quand, "
+        "et le motif. L'avis lui-même — « retiré du projet par … » — jusqu'à « Vu ». "
+        "Réservée à qui ADMINISTRE la collection ; aucun artefact n'en sort."),
+    ("route", "/api/albums/{album_id}/retirer-du-projet/apercu"): (
+        {"login"},
+        "COL-3, tranche 3b — avant de « Retirer du projet », les PROPRIÉTAIRES des "
+        "collections quittées (leur principal, et leur nom lisible quand le miroir le "
+        "connaît), qui le verront disparaître, et ce que d'autres y ont fait. Réservée à "
+        "qui gère le projet de l'album ; aucun artefact n'en sort."),
     ("route", "/api/projets/{projet_id}/demandes-recues"): (
         {"login", "nom"},
         "COL-3, tranche 3b (E7) — les demandes d'en partir ENTRE DEUX PROJETS qui s'adressent "
@@ -654,6 +681,8 @@ QUETES = {
     # cran, sans défaut : sans eux, 422, et la route quitterait le balayage. Au cran le
     # plus haut, elle compte tout ce qu'une copie emporterait.
     "/api/albums/{album_id}/amorcer/apercu": "collection={collection_id}&cran=annotations",
+    # COL-3, tranche 3b — l'aperçu de « repartir de zéro » exige son cran.
+    "/api/albums/{album_id}/repartir/apercu": "cran=images",
 }
 
 

@@ -628,6 +628,20 @@ CREATE TABLE IF NOT EXISTS copie (
 -- c'est LUI que lit l'export dans un bac à sable — document par document, jamais par bac à
 -- sable. `album_reference` SANS clé étrangère : la référence ne se détruit que par l'outil
 -- du jeu. Pas de `CHECK`, pour la raison écrite sur `utilisateur.nature`.
+-- RETRAIT_VU (v36, COL-3, tranche 3b ; écran tranché par Hugo le 2026-10-25) — après un
+-- « Retirer du projet », chaque propriétaire d'une collection quittée lit en tête de SA
+-- collection « … a été retiré du projet par … », jusqu'à ce qu'il clique « Vu ». Le geste
+-- se mémorise ICI, une ligne par acte et par LOGIN qui l'a vu : le journal est append-only,
+-- et y écrire un « vu » l'aurait fait compter comme un acte. `evenement_id` SANS clé : il
+-- désigne l'acte `retire_du_projet` (sous `document`), que rien n'efface. Rien n'en sort :
+-- ni route de lecture hors de l'avis lui-même, ni export.
+CREATE TABLE IF NOT EXISTS retrait_vu (
+    evenement_id   INTEGER NOT NULL,
+    login          TEXT NOT NULL,
+    vu_le          TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (evenement_id, login)
+);
+
 CREATE TABLE IF NOT EXISTS jeu_document (
     document_id      INTEGER PRIMARY KEY,
     album_reference  INTEGER NOT NULL,
@@ -3454,6 +3468,40 @@ def repartir_de_zero(conn: sqlite3.Connection, album_id: int, cran: str, *,
     return comptes
 
 
+def compter_repartir(conn: sqlite3.Connection, album_id: int, cran: str, *,
+                     planche_id: int | None = None) -> dict:
+    """Ce que `repartir_de_zero` RETIRERAIT de cette copie — ou de cette planche — vers le
+    `cran` dit, sans rien écrire : l'APERÇU du panneau « Repartir de zéro » (écran de la 3b,
+    Hugo, 2026-10-25 : « Part », en nombres, validations comprises). La même forme que les
+    comptes de l'acte, cran par cran — `tests/test_repartir.py` exige qu'ils soient égaux."""
+    if cran not in CRANS_DE_REPARTIR:
+        raise ValueError(f"cran d'arrivée inconnu : {cran!r}")
+    rang = rang_du_cran(cran)
+    une = ("", ()) if planche_id is None else (" AND p.id = ?", (planche_id,))
+    params = (album_id, *une[1])
+    regions = ("SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
+               f"WHERE p.album_id = ?{une[0]}")
+
+    def n(sql: str) -> int:
+        return conn.execute(sql, params).fetchone()[0]
+    comptes = {t: n(f"SELECT COUNT(*) FROM {table} WHERE region_id IN ({regions})")
+               for t, table in (("annotations", "annotations"), ("attributs", "region_attribut"),
+                                ("locuteurs", "bulle_locuteur"),
+                                ("presences", "personnage_presence"))}
+    if rang < rang_du_cran(CRAN_GRAMMAIRE):
+        comptes["corrections"] = n(
+            f"SELECT COUNT(*) FROM token_correction WHERE region_id IN ({regions})")
+    if rang < rang_du_cran(CRAN_TRANSCRIPTION):
+        comptes["textes"] = n(f"SELECT COUNT(*) FROM regions WHERE id IN ({regions}) "
+                              "AND (TRIM(COALESCE(ocr_texte, '')) <> '' OR touche <> 0)")
+    if rang < rang_du_cran(CRAN_DECOUPAGE):
+        comptes["regions"] = n(f"SELECT COUNT(*) FROM ({regions})")
+    comptes["planches_devalidees"] = n(
+        f"SELECT COUNT(*) FROM planches p WHERE p.album_id = ?{une[0]} "
+        "AND p.validee IS NOT NULL")
+    return comptes
+
+
 def projets_qui_tiennent(conn: sqlite3.Connection, document_id: int, cran: str, *,
                          sauf: int | None) -> dict[int, list[dict]]:
     """Les projets qui TIENNENT le travail d'un document jusqu'à un cran — ceux à qui une
@@ -3472,6 +3520,24 @@ def projets_qui_tiennent(conn: sqlite3.Connection, document_id: int, cran: str, 
     projet a ce travail, ce qu'E7 existe pour ne pas lui dire."""
     rang = rang_du_cran(cran)
     tiennent: dict[int, list[dict]] = {}
+    for projet_id, copie in _copies_rangees_d_un_document(conn, document_id, sauf):
+        if rang_du_cran(copie["niveau"]) >= rang:
+            tiennent.setdefault(projet_id, []).append(copie)
+    return tiennent
+
+
+def copies_rangees_du_projet(conn: sqlite3.Connection, document_id: int,
+                             projet_id: int) -> list[dict]:
+    """Les copies RANGÉES d'un document dans un projet, hors projet isolé, chacune avec son
+    `niveau` de travail : ce parmi quoi le responsable source choisit d'où l'on part (écran
+    de la 3b, « Depuis quelle copie », les copies trop peu travaillées éteintes)."""
+    return [c for pid, c in _copies_rangees_d_un_document(conn, document_id, None)
+            if pid == projet_id]
+
+
+def _copies_rangees_d_un_document(conn, document_id: int, sauf):
+    """`(projet, {album_id, titre, niveau})` pour chaque copie rangée du document, hors
+    projet isolé et hors `sauf`, la plus ancienne d'abord."""
     for r in conn.execute(
             f"SELECT a.id, a.titre, {sql_projet_d_album('a')} AS projet_id FROM albums a "
             "WHERE a.document_id = ? "
@@ -3479,11 +3545,8 @@ def projets_qui_tiennent(conn: sqlite3.Connection, document_id: int, cran: str, 
             f"AND NOT {sql_album_isole('a')} ORDER BY a.id", (document_id,)).fetchall():
         if r["projet_id"] is None or r["projet_id"] == sauf:
             continue
-        niveau = niveau_de_travail(conn, r["id"])
-        if niveau >= rang:
-            tiennent.setdefault(r["projet_id"], []).append(
-                {"album_id": r["id"], "titre": r["titre"], "niveau": CRANS[niveau]})
-    return tiennent
+        yield r["projet_id"], {"album_id": r["id"], "titre": r["titre"],
+                               "niveau": CRANS[niveau_de_travail(conn, r["id"])]}
 
 
 def titre_de_notice(conn: sqlite3.Connection, document_id: int) -> str | None:

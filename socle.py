@@ -2598,6 +2598,12 @@ class DemandeIn(BaseModel):
     cran: Optional[str] = None
 
 
+class RetirerIn(BaseModel):
+    """« Retirer du projet » (COL-3, tranche 3b) : un motif FACULTATIF, que les
+    propriétaires des collections quittées liront (écran tranché par Hugo, 2026-10-25)."""
+    motif: Optional[str] = None
+
+
 class RepartirIn(BaseModel):
     """Repartir de zéro (COL-3, tranche 3b, E8) : le cran VERS lequel on ramène la copie, ou
     la planche — `images`, `decoupage`, `transcription` ou `grammaire`."""

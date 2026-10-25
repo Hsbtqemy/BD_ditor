@@ -10,7 +10,8 @@ importé un album —, et une collection créée par un simple MEMBRE d'un proje
 (Sam, dans Étude B), ce que la v35 laissait faire.
 
 Ce que la v36 apporte (Hugo, 2026-10-21) : `projet.membres_creent_collections`, à 0 —
-« non » — pour tout l'existant, bacs à sable et jeu compris. Et rien d'autre : les lignes,
+« non » — pour tout l'existant, bacs à sable et jeu compris ; et la table `retrait_vu`,
+vide (l'écran de la 3b, tranché le 2026-10-25). Et rien d'autre : les lignes,
 les index, les vues, l'index plein texte, les compteurs, sont ceux d'avant. Ce qui change
 est le geste : le membre qui créait ne crée plus, ses collections restent les siennes.
 """
@@ -118,6 +119,9 @@ def test_une_vraie_base_v35_migre_sans_rien_perdre(vraie_v35):
     apres = _etat(vraie_v35)
     assert _sql(vraie_v35, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     assert database.SCHEMA_VERSION == 36
+    # Une table NEUVE, vide : les « Vu » d'un retrait du projet (écran de la 3b).
+    assert apres["comptes"].pop("retrait_vu") == 0
+    apres["tables"].remove("retrait_vu")
     assert apres == avant
     assert _seq(vraie_v35) == seq_avant
     assert _sql(vraie_v35, "PRAGMA foreign_key_check") == []
