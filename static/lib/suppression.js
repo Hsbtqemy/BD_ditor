@@ -39,6 +39,9 @@
      aucune copie. Même statut que le précédent : recopié pour la mesure, sans entrée dans
      `GENRES` tant que son écran attend la maquette. */
   const GENRE_AMORCER_ENTRE_PROJETS = "amorcer_entre_projets";
+  /* COL-3, tranche 3b — repartir de zéro (E8). Même statut : recopié pour la mesure, sans
+     entrée dans `GENRES` tant que son écran attend la maquette. */
+  const GENRE_REPARTIR = "repartir";
   const ACCEPTER = "acceptee";
   const REFUSER = "refusee";
   /* L'état d'une demande dont les documents ont reçu des réponses mêlées (D9) : jamais une
@@ -510,7 +513,7 @@
 
   return {
     GENRE_DOCUMENT, GENRE_PROJET, GENRE_ENTREE, GENRE_REJOINDRE, GENRE_RENDRE, GENRE_AMORCER,
-    GENRE_AMORCER_ENTRE_PROJETS, GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
+    GENRE_AMORCER_ENTRE_PROJETS, GENRE_REPARTIR, GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
     toutAccepter, REFUSER_LE_RESTE, explicationDemande, IMAGES_RESTENT,
     ACCEPTER, REFUSER, PARTIELLE, CERTIFICATION, SORTES,
     RECOCHER_SUR_DEMANDE, dateLue, demandeur, pastille, offrir, retrait, definitif, apresRetrait, apresDefinitif,

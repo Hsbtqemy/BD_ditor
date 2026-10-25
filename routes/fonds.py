@@ -49,6 +49,7 @@ import journal
 from pipeline import nlp
 from database import (CRAN_IMAGES, CRANS, DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE_PROJETS,
                       DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
+                      DEMANDE_REPARTIR, niveau_de_travail, rang_du_cran,
                       est_isole, projets_qui_tiennent, titre_de_notice,
                       DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                       GENRES_CONSENTIS, GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
@@ -59,10 +60,12 @@ from database import (CRAN_IMAGES, CRANS, DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE
                       un_proprietaire_tient_toute_la_copie)
 
 from socle import (
-    DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _MOTIF_BAC_ISOLE, _MOTIF_JEU_SOURCE,
-    _MOTIF_BAC_PROPRIETAIRE, _MOTIF_BAC_SANS_DEMANDE, _bac_a_sable_de, _clore_demandes,
+    DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, RepartirIn, ReponseIn, _MOTIF_BAC_ISOLE,
+    _MOTIF_JEU_SOURCE, _MOTIF_BAC_PROPRIETAIRE, _MOTIF_BAC_SANS_DEMANDE,
+    _MOTIF_REPARTIR_PLANCHE, _bac_a_sable_de, _clore_demandes, _cran_de_repartir,
     _deposer, _detruire_album, _en_attente_vers,
-    _get_album, _get_collection, _get_projet, _nouvelle_copie, _plan_rejoindre,
+    _get_album, _get_collection, _get_planche, _get_projet, _nouvelle_copie, _plan_rejoindre,
+    _repartir,
     _refuser_le_jeu, _retour_en_attente, _rows, _sans_accents, _supprimer_projet, db,
     portee_courante,
 )
@@ -169,6 +172,11 @@ def deposer_demande(payload: DemandeIn, conn: sqlite3.Connection = Depends(db),
                                  "document : `POST /api/collections/{id}/prendre`, ou en le "
                                  "rangeant dans la collection.")
     motif = _motif(payload.motif)
+    if payload.genre == DEMANDE_REPARTIR:
+        # E8 — le patron de la suppression d'un document : la certification, exigée ICI.
+        if payload.certifie is not True:
+            raise HTTPException(422, _MOTIF_CERTIFIER_REPARTIR)
+        return _demander_un_repartir(conn, portee, payload.album_id, payload.cran, motif)
     if payload.genre == DEMANDE_SUPPRESSION_DOCUMENT:
         # La certification (Hugo, 2026-10-15) : une case du formulaire, exigée ICI aussi —
         # un écran qui l'oublierait, ou un appel sans écran, ne doit pas la contourner.
@@ -219,6 +227,60 @@ def _demander_un_document(conn, portee, album_id, motif):
     journal.journaliser(conn, "creation", "demande", cur.lastrowid,
                         apres={"genre": DEMANDE_SUPPRESSION_DOCUMENT,
                                "document_id": a["document_id"], "album_id": album_id})
+    conn.commit()
+    return _vue_demande(conn, cur.lastrowid)
+
+
+_MOTIF_CERTIFIER_REPARTIR = ("Cochez la certification : repartir de zéro efface ce qui a été "
+                             "posé sur les planches au-dessus du cran choisi, et la demande ne "
+                             "part pas sans que vous certifiiez que ces données ne sont pas "
+                             "importantes.")
+
+
+def _demander_un_repartir(conn, portee, album_id, cran, motif):
+    """Demander à un administrateur de RAMENER une copie à un cran (E8, COL-3, tranche 3b),
+    quand on ne peut pas l'effacer soi-même. Le patron de `_demander_un_document` : 404 à qui
+    n'écrit pas dans l'album, 409 nommé si l'appelant peut le faire lui-même, si rien n'est
+    au-dessus du cran, si la même demande attend déjà sur cette copie (une par copie, quel
+    que soit le cran) ; dans un bac à sable, rien ne se demande."""
+    if album_id is None:
+        raise HTTPException(422, "Quel album ? (`album_id`)")
+    cran = _cran_de_repartir(cran)
+    a = _get_album(conn, portee, album_id, ecriture=True)
+    conflit.verrouiller(conn)
+    soi_meme, p_soi_meme = portee.clause_suppression_directe("a.id")
+    if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {soi_meme}",
+                    (album_id, *p_soi_meme)).fetchone():
+        raise HTTPException(409, "Vous pouvez repartir de zéro sur cet album vous-même : il "
+                                 "n'y a rien à demander.")
+    bac, _ = _bac_a_sable_de(conn, album_id=album_id)
+    if bac is not None:
+        raise HTTPException(403, _MOTIF_BAC_PROPRIETAIRE)
+    if a["document_id"] is None:
+        raise HTTPException(409, "Cet album n'est la copie d'aucun document : repartir de zéro "
+                                 "ne peut pas se demander. Signalez-le à un administrateur.")
+    niveau = niveau_de_travail(conn, album_id)
+    if rang_du_cran(cran) >= niveau:
+        raise HTTPException(409, f"Rien à retirer au-dessus du cran « {cran} » : cet album "
+                                 f"n'y porte que « {CRANS[niveau]} ».")
+    if conn.execute("SELECT 1 FROM demande d JOIN demande_document dd "
+                    "ON dd.demande_id = d.id WHERE d.genre = ? AND dd.album_id = ? "
+                    "AND d.reponse IS NULL", (DEMANDE_REPARTIR, album_id)).fetchone():
+        raise HTTPException(409, "Repartir de zéro sur cet album est déjà demandé : un "
+                                 "administrateur y répondra.")
+    projet_id = projet_d_album(conn, album_id)
+    projet = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
+    cur = conn.execute(
+        "INSERT INTO demande (genre, demandeur, motif, certifie_le, projet_id, projet_nom, "
+        "cran) VALUES (?, ?, ?, datetime('now'), ?, ?, ?)",
+        (DEMANDE_REPARTIR, portee.utilisateur, motif, projet_id,
+         projet[0] if projet else None, cran))
+    conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
+                 "VALUES (?, ?, ?, ?)", (cur.lastrowid, a["document_id"], album_id,
+                                         a["titre"]))
+    journal.journaliser(conn, "creation", "demande", cur.lastrowid,
+                        apres={"genre": DEMANDE_REPARTIR, "document_id": a["document_id"],
+                               "album_id": album_id, "cran": cran})
     conn.commit()
     return _vue_demande(conn, cur.lastrowid)
 
@@ -309,7 +371,8 @@ def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
             cles = [(d["genre"], x["document_id"]) for x in d["documents"]]
         d["refus_anterieurs"] = len({i for c in cles for i in refus.get(c, ())
                                      if i < d["id"]})
-        if detail and d["en_attente"] and d["genre"] == DEMANDE_SUPPRESSION_DOCUMENT:
+        if detail and d["en_attente"] and d["genre"] in (DEMANDE_SUPPRESSION_DOCUMENT,
+                                                         DEMANDE_REPARTIR):
             collectifs = _comptes_partages(conn)
             # Derrière un compte partagé, « personne d'autre » et « certifié par » ne
             # désignent pas une personne : le détail le dit, pour que l'écran le dise
@@ -432,6 +495,46 @@ def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: se
 _MOTIF_TRAVAIL = ("Ce que d'autres ont fait sur cet album se lit par qui peut l'effacer sans "
                   "rien demander : son propriétaire, le responsable de son projet, ou qui "
                   "l'a créé.")
+
+
+@router.post("/api/albums/{album_id}/repartir")
+def repartir_album(album_id: int, payload: RepartirIn, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    """REPARTIR DE ZÉRO sur un album : le ramener au `cran` dit, en gardant ses images (E8,
+    COL-3, tranche 3b) — `images`, `decoupage`, `transcription` ou `grammaire`.
+
+    La règle de l'effacement (`Portee.clause_suppression_directe`, Hugo, 2026-10-21) : son
+    créateur s'il est seul à y avoir travaillé, le propriétaire de toutes ses collections,
+    le responsable de son projet — ces deux-là hors de la dernière copie d'un document.
+    404 à qui n'y écrit pas ; 403 nommé à qui y écrit sans pouvoir l'effacer — il le
+    DEMANDE (`POST /api/demandes`, genre `repartir`, motif et certification) ; 409 nommé si
+    rien n'est au-dessus du cran. UN acte au journal, non annulable : l'écran doit le dire
+    (« ne s'annule pas »), et Ctrl+Z ne remonte pas au-delà."""
+    cran = _cran_de_repartir(payload.cran)
+    _get_album(conn, portee, album_id, ecriture=True)
+    if rang_du_cran(cran) >= rang_du_cran(CRANS[1]):
+        nlp.ensure_loaded()                 # le texte qui reste se réindexe, hors transaction
+    rendu = _repartir(conn, portee, album_id, cran)
+    conn.commit()
+    return rendu
+
+
+@router.post("/api/planches/{planche_id}/repartir")
+def repartir_planche(planche_id: int, payload: RepartirIn,
+                     conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
+    """REPARTIR DE ZÉRO sur UNE planche (Hugo, 2026-10-21, demandé par des testeurs) : les
+    mêmes crans et la même règle que l'album — celle de son album. Une planche n'a pas de
+    demande à elle (la décision B4, tenue pour elle aussi) : à qui y écrit sans pouvoir
+    l'effacer, un 403 qui renvoie à un administrateur. Un acte, non annulable."""
+    cran = _cran_de_repartir(payload.cran)
+    p = _get_planche(conn, portee, planche_id, ecriture=True)
+    if rang_du_cran(cran) >= rang_du_cran(CRANS[1]):
+        nlp.ensure_loaded()
+    rendu = _repartir(conn, portee, p["album_id"], cran, planche_id=planche_id,
+                      motif_refus=_MOTIF_REPARTIR_PLANCHE)
+    conn.commit()
+    return rendu
 
 
 @router.get("/api/albums/{album_id}/travail-des-autres")
@@ -615,6 +718,11 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
 
     if d["genre"] == DEMANDE_RENDRE:
         _accepter_un_retour(conn, portee, dict(d))
+        conn.commit()
+        return _vue_demande(conn, demande_id)
+
+    if d["genre"] == DEMANDE_REPARTIR:
+        _accepter_un_repartir(conn, portee, dict(d))
         conn.commit()
         return _vue_demande(conn, demande_id)
 
@@ -816,6 +924,26 @@ def _accepter_un_amorcer_entre_projets(conn, portee, d: dict, source, sources: d
                                cran=d["cran"])
     conn.execute("UPDATE demande_document SET copie_id = ? WHERE demande_id = ?",
                  (nouvelle, d["id"]))
+    _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
+
+
+def _accepter_un_repartir(conn, portee, d: dict) -> None:
+    """Une demande de REPARTIR DE ZÉRO acceptée (E8) : la copie demandée est ramenée au cran
+    demandé, par qui répond — la portée totale, qui efface tout (`_repartir`, sa garde et son
+    acte). La copie détruite depuis : la destruction a déjà clos la demande. Rien au-dessus
+    du cran (quelqu'un l'a fait entre-temps) : la demande est satisfaite, elle se clôt
+    acceptée sans rien écrire d'autre. Ne commite pas."""
+    ligne = conn.execute("SELECT album_id FROM demande_document WHERE demande_id = ? "
+                         "ORDER BY document_id LIMIT 1", (d["id"],)).fetchone()
+    copie = ligne["album_id"] if ligne else None
+    if copie is None or conn.execute("SELECT 1 FROM albums WHERE id = ?",
+                                     (copie,)).fetchone() is None:
+        raise HTTPException(409, "Cette copie n'existe plus : refusez cette demande.")
+    if d["cran"] not in CRANS[:-1]:
+        raise HTTPException(409, f"Cran illisible sur cette demande ({d['cran']}) : "
+                                 "refusez-la.")
+    if rang_du_cran(d["cran"]) < niveau_de_travail(conn, copie):
+        _repartir(conn, portee, copie, d["cran"])
     _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
 
 

@@ -1110,6 +1110,38 @@ def _meme_objet(conn, e) -> bool:
     return True
 
 
+def remis_a_zero_depuis(conn, e) -> bool:
+    """L'album — ou la planche — où l'acte `e` a porté a-t-il été REMIS À ZÉRO depuis ?
+    COL-3, tranche 3b (E8, Hugo, 2026-10-20) : repartir de zéro est UN acte sous le document
+    (`socle._repartir`, charge `repartir`), non annulable, qui efface d'un geste les couches
+    au-dessus d'un cran ; Ctrl+Z ne remonte pas au-delà. Défaire un acte d'avant ferait
+    revenir une couche de travail sous une copie qu'on a voulue vide — ou buterait sur une
+    région qui n'existe plus. Le cinquième témoin, à côté de ceux de `_meme_objet` : il ne
+    regarde pas l'objet, il regarde ce qui s'est passé SUR son album depuis l'acte.
+
+    Une remise à zéro d'une PLANCHE (`repartir.planche_id`) ne vaut que pour les actes de
+    cette planche ; celle de l'album, pour tous les siens. Les planches de l'acte sont celles
+    de `lieux` : la région présente, ou la planche d'une suppression à rétablir."""
+    ou = lieux(conn, e)
+    planches = set(ou["planches"])
+    for rid in ou["regions"]:
+        r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (rid,)).fetchone()
+        if r is not None:
+            planches.add(r[0])
+    for pl in planches:
+        a = conn.execute("SELECT album_id FROM planches WHERE id = ?", (pl,)).fetchone()
+        if a is not None and conn.execute(
+                "SELECT 1 FROM evenement WHERE cible_table = 'document' "
+                "AND type = 'modification' AND id > ? AND json_valid(apres) "
+                "AND json_extract(apres, '$.repartir') IS NOT NULL "
+                "AND json_extract(apres, '$.album_id') = ? "
+                "AND (json_extract(apres, '$.repartir.planche_id') IS NULL "
+                "     OR json_extract(apres, '$.repartir.planche_id') = ?) LIMIT 1",
+                (e["id"], a[0], pl)).fetchone():
+            return True
+    return False
+
+
 def _personnage_rendu(e) -> Optional[int]:
     """Le personnage que l'inverse d'un lien REPOSERAIT (lien qui en remplaçait un, ou
     retrait), ou None."""
@@ -1197,6 +1229,10 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
     voit = voit_valeur(ecrivable)
     if not _meme_objet(conn, e) or not ecrivable(lieux(conn, e)):
         raise NeSAnnulePlus(e, voit=voit)
+    # COL-3, tranche 3b (E8) — une remise à zéro de l'album, ou de la planche, depuis l'acte :
+    # Ctrl+Z ne remonte pas au-delà (`remis_a_zero_depuis`).
+    if remis_a_zero_depuis(conn, e):
+        raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE, voit)
     # Le personnage qu'on reposerait : créé après l'acte, ou invisible pour l'agent, ce n'est
     # plus celui de l'acte, ou pas un à lui montrer. Seconde phrase : elle ne dit pas s'il
     # existe. Absent, c'est la clé étrangère qui le dira, pendant l'inversion.

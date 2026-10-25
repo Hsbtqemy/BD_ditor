@@ -3261,9 +3261,16 @@ DEMANDE_AMORCER = "amorcer"
 # chemin qui le lit suppose cette copie. Ici `album_id` reste NULL, la collection d'arrivée
 # est nommée, `cran` posé ; acceptée, la copie neuve est dite par `copie_id`.
 DEMANDE_AMORCER_ENTRE_PROJETS = "amorcer_entre_projets"
+# COL-3, tranche 3b (E8, Hugo, 2026-10-20 et 2026-10-21) — REPARTIR DE ZÉRO : ramener une
+# copie à un cran (`demande.cran`), en gardant ses images, quand on ne peut pas l'effacer
+# soi-même (`Portee.clause_suppression_directe`). Le patron de la suppression d'un
+# document : motif et CERTIFICATION obligatoires, une demande par COPIE qui attend, un
+# administrateur répond. Une planche n'a pas de demande à elle (décision B4, tenue pour
+# elle aussi) : son refus renvoie à un administrateur.
+DEMANDE_REPARTIR = "repartir"
 GENRES_DEMANDE = (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                   DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
-                  DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE_PROJETS)
+                  DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE_PROJETS, DEMANDE_REPARTIR)
 # Les genres qui attendent le CONSENTEMENT des propriétaires des collections où vit la
 # copie visée — et non la réponse de qui tient le fonds (`Portee.peut_repondre_a`).
 GENRES_CONSENTIS = (DEMANDE_REJOINDRE, DEMANDE_AMORCER)
@@ -3325,6 +3332,112 @@ def niveau_de_travail(conn: sqlite3.Connection, album_id: int,
     if existe(regions):
         return rang_du_cran(CRAN_DECOUPAGE)
     return rang_du_cran(CRAN_IMAGES)
+
+
+# Les crans VERS lesquels on repart de zéro (E8) : tous sauf le plus haut, au-dessus duquel il
+# n'y a rien à retirer.
+CRANS_DE_REPARTIR = CRANS[:-1]
+
+
+def repartir_de_zero(conn: sqlite3.Connection, album_id: int, cran: str, *,
+                     planche_id: int | None = None) -> dict:
+    """RAMÈNE une copie — ou, `planche_id`, l'une de ses planches — au `cran` dit, en gardant
+    ses images (E8, COL-3, tranche 3b ; Hugo, 2026-10-20, et pour une planche le
+    2026-10-21). Rend ce qui est parti, compté : la charge de l'acte que l'appelant écrit.
+
+    Ce qui part, par cran d'arrivée — l'inverse de l'échelle d'E1 :
+    - vers `grammaire` : les annotations (notes et tags), les attributs de case, les
+      locuteurs, les présences ;
+    - vers `transcription` : en plus, les corrections grammaticales et la relecture forcée
+      des planches ;
+    - vers `decoupage` : en plus, le texte des régions (`ocr_texte` NULL, `touche` 0) et
+      leurs tokens ;
+    - vers `images` : toutes les régions, et la planche repart `importee`, sans date de
+      segmentation.
+    `validee` part à TOUT cran — le travail validé a changé ; `verrouillee` (et qui l'a
+    posé) RESTE — il protège des passes automatiques, et repartir de zéro n'en est pas une.
+    Le `statut` d'une planche ne change qu'au cran `images` : il ne commande rien.
+
+    L'index plein texte suit : les régions qui restent sont réindexées (spaCy, s'il est
+    chargé — l'appelant le charge HORS de sa transaction), celles qui partent en sortent.
+    Les effacements de l'index se font par lots : `recherche.region_id` est `UNINDEXED`, et
+    une région à la fois parcourrait l'index entier pour chacune (E9).
+
+    Ne DÉCIDE rien — qui peut repartir est `autorisation.Portee.clause_suppression_directe`,
+    et qu'il y ait quelque chose au-dessus du cran (`niveau_de_travail`) est à l'appelant.
+    N'écrit rien au journal (l'appelant écrit UN acte sous le document), ne commite pas.
+    Lève `ValueError` sur un cran qui n'est pas un cran d'arrivée."""
+    if cran not in CRANS_DE_REPARTIR:
+        raise ValueError(f"cran d'arrivée inconnu : {cran!r}")
+    rang = rang_du_cran(cran)
+    une = ("", ()) if planche_id is None else (" AND p.id = ?", (planche_id,))
+    planches = [r[0] for r in conn.execute(
+        f"SELECT p.id FROM planches p WHERE p.album_id = ?{une[0]} ORDER BY p.id",
+        (album_id, *une[1]))]
+    regions = [r[0] for r in conn.execute(
+        "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
+        f"WHERE p.album_id = ?{une[0]} ORDER BY r.id", (album_id, *une[1]))]
+    comptes = {}
+
+    def lots(ids):
+        for i in range(0, len(ids), _LOT_INDEX):
+            yield ids[i:i + _LOT_INDEX]
+
+    def retirer(table: str, cle: str = "region_id") -> int:
+        n = 0
+        for lot in lots(regions):
+            n += conn.execute(f"DELETE FROM {table} WHERE {cle} IN "
+                              f"({', '.join('?' * len(lot))})", lot).rowcount
+        return n
+
+    def sur_les_planches(sql: str, condition: str = "") -> int:
+        n = 0
+        for lot in lots(planches):
+            n += conn.execute(f"{sql} WHERE id IN ({', '.join('?' * len(lot))}){condition}",
+                              lot).rowcount
+        return n
+
+    comptes["annotations"] = retirer("annotations")             # annotation_tags en cascade
+    comptes["attributs"] = retirer("region_attribut")
+    comptes["locuteurs"] = retirer("bulle_locuteur")
+    comptes["presences"] = retirer("personnage_presence")
+    if rang < rang_du_cran(CRAN_GRAMMAIRE):
+        comptes["corrections"] = retirer("token_correction")
+        sur_les_planches("UPDATE planches SET relecture = NULL", " AND relecture IS NOT NULL")
+    if rang < rang_du_cran(CRAN_TRANSCRIPTION):
+        n = 0
+        for lot in lots(regions):
+            n += conn.execute(
+                f"UPDATE regions SET ocr_texte = NULL, touche = 0 "
+                f"WHERE id IN ({', '.join('?' * len(lot))}) "
+                "AND (TRIM(COALESCE(ocr_texte, '')) <> '' OR touche <> 0)", lot).rowcount
+        comptes["textes"] = n
+    # L'index et les tokens de chaque région : effacés par lots, puis réécrits pour celles qui
+    # restent — leurs tokens régénérés depuis le texte qu'elles gardent.
+    for lot in lots(regions):
+        conn.execute(f"DELETE FROM recherche WHERE region_id IN "
+                     f"({', '.join('?' * len(lot))})", lot)
+    retirer("tokens")
+    if rang < rang_du_cran(CRAN_DECOUPAGE):
+        # Une région enfant part avec son parent (`ON DELETE CASCADE`) : on compte ce qui
+        # part, pas ce que chaque `DELETE` a touché lui-même.
+        comptes["regions"] = len(regions)
+        retirer("regions", "id")                               # cascade : tout le reste
+        sur_les_planches("UPDATE planches SET statut = 'importee', date_segmentation = NULL")
+    else:
+        for rid in regions:
+            payload = _region_index_payload(conn, rid)
+            lemmes, tokens = "", []
+            if payload and (payload[0] or payload[1]):
+                from pipeline.nlp import analyse, lemmatise   # import paresseux
+                lemmes_ocr, tokens = analyse(payload[0])
+                lemmes = (lemmes_ocr + " " + lemmatise(payload[1])).strip()
+            fiable = bool(tokens) or not ((payload[0] if payload else "") or "").strip()
+            lemmes = _appliquer_corrections(conn, rid, tokens, lemmes, reancrer=fiable)
+            _index_region(conn, rid, payload, lemmes, tokens, neuve=True)
+    comptes["planches_devalidees"] = sur_les_planches("UPDATE planches SET validee = NULL",
+                                                      " AND validee IS NOT NULL")
+    return comptes
 
 
 def projets_qui_tiennent(conn: sqlite3.Connection, document_id: int, cran: str, *,

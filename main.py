@@ -23,7 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI,
                     DATA_DIR, IMG_EXTS, REFERENT_CONTACT, REFERENT_NOM, RELECTURE,
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
-from database import (DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT, annotation_vide,
+from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, DEMANDE_SUPPRESSION_DOCUMENT,
+                      annotation_vide,
                       citations_regions,
                       collection_par_defaut, contributions_album, creer_document,
                       dimensions_cm, document_d_album, init_db,
@@ -73,6 +74,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
     _clore_demandes_vers, _clore_lignes_d_une_copie_detruite, _deposer, _en_attente_vers,
     _nouvelle_copie, _plan_rejoindre, _retour_en_attente,
+    RepartirIn, _MOTIF_REPARTIR, _MOTIF_REPARTIR_PLANCHE, _cran_de_repartir, _repartir,
     _clause_lemme, _clause_personnage, _cle_tag, _collection_d_export, _collections_lues_d_albums,
     _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
@@ -535,6 +537,20 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                 f"AND dd.album_id IN ({', '.join('?' * len(ids))}) ORDER BY d.id",
                 (DEMANDE_SUPPRESSION_DOCUMENT, *ids)):
             attente.setdefault(d["album_id"], dict(d))
+    # COL-3, tranche 3b (E8) — la demande de REPARTIR DE ZÉRO qui attend sur cette copie :
+    # son cran et sa date, pour que l'écran n'offre pas de la redéposer (409) ; ni qui, ni
+    # pourquoi, qui se lisent dans le fonds.
+    repartir = {}
+    if ids:
+        for d in conn.execute(
+                "SELECT dd.album_id, d.id, d.date_creation, d.cran FROM demande d "
+                "JOIN demande_document dd ON dd.demande_id = d.id "
+                "WHERE d.genre = ? AND d.reponse IS NULL "
+                f"AND dd.album_id IN ({', '.join('?' * len(ids))}) ORDER BY d.id",
+                (DEMANDE_REPARTIR, *ids)):
+            repartir.setdefault(d["album_id"], {"id": d["id"],
+                                                "date_creation": d["date_creation"],
+                                                "cran": d["cran"]})
     rejoindre: dict[int, list] = {}
     if ids:
         for r in conn.execute(
@@ -564,6 +580,7 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
             a[champ] = bool(a[champ])
         a["rejoindre_demande"] = sorted(set(rejoindre.get(a["id"], [])))
         a["collections"] = [{"id": c["id"], "nom": c["nom"]} for c in rangements[a["id"]]]
+        a["demande_repartir"] = repartir.get(a["id"])
         d = attente.get(a["id"])
         if d is None:
             a["demande"] = None

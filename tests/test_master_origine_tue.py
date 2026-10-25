@@ -68,6 +68,8 @@ CORPS = {
     ("PATCH", "/api/planches/{planche_id}/relecture"): {"relecture": "faite"},
     ("POST", "/api/planches/{planche_id}/regions"):
         {"type": "case", "x": 0, "y": 0, "w": 5, "h": 5},
+    # COL-3, tranche 3b (E8) — repartir de zéro sur la planche du décor, qui porte une bulle.
+    ("POST", "/api/planches/{planche_id}/repartir"): {"cran": "images"},
 }
 
 # Celles qu'un décor de test peut ne pas atteindre, et pourquoi. Atteintes, elles sont

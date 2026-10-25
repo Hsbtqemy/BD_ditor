@@ -38,7 +38,8 @@ from pydantic import BaseModel, Field
 import autorisation
 import conflit
 import journal
-from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
+from database import (CRAN_IMAGES, CRANS, CRANS_DE_REPARTIR, DEMANDE_AMORCER,
+                      DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_REPARTIR,
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
                       NOM_BAC_A_SABLE, clause_appartenance, cle_tag, collection_de_base,
@@ -46,7 +47,8 @@ from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DE
                       demandes_vers_collection, espace_d_album, est_isole, est_jeu,
                       etat_des_reponses,
                       get_connection,
-                      nature_du_projet, prochain_effacement, projet_d_album,
+                      nature_du_projet, niveau_de_travail, prochain_effacement,
+                      projet_d_album, rang_du_cran, repartir_de_zero,
                       projet_de_collection, rangement_traverse, retirer_document_sans_copie,
                       sql_album_isole, sql_est_jeu, sql_projet_d_album, sql_projet_de,
                       unindex_region)
@@ -892,7 +894,8 @@ def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
     """Les demandes qui visaient CETTE copie et qu'elle ne peut plus satisfaire — un
     `rejoindre` (la ranger ailleurs), la ligne d'une entrée qui la REPREND du fonds, la
     demande de la RENDRE (`DEMANDE_RENDRE`, COL-3, écran de la 3a), celle d'EN PARTIR
-    (`DEMANDE_AMORCER`, tranche 3b : elle en est la source) — se closent avec elle : leur ligne est refusée, et l'état de la demande se recalcule
+    (`DEMANDE_AMORCER`, tranche 3b : elle en est la source), celle d'en REPARTIR DE ZÉRO
+    (`DEMANDE_REPARTIR`, tranche 3b : il n'y a plus rien à ramener) — se closent avec elle : leur ligne est refusée, et l'état de la demande se recalcule
     (`database.etat_des_reponses` — une entrée de plusieurs documents reste en attente si
     d'autres lignes attendent, `partielle` si d'autres ont été acceptées). Sans cela elles
     attendaient pour toujours, invisibles de qui doit consentir (relecture croisée de la
@@ -901,9 +904,9 @@ def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
         "SELECT dd.demande_id, dd.document_id FROM demande_document dd "
         "JOIN demande d ON d.id = dd.demande_id "
         "WHERE dd.album_id = ? AND dd.reponse IS NULL AND d.reponse IS NULL "
-        "AND d.genre IN (?, ?, ?, ?) ORDER BY dd.demande_id",
+        "AND d.genre IN (?, ?, ?, ?, ?) ORDER BY dd.demande_id",
         (album_id, DEMANDE_REJOINDRE, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_RENDRE,
-         DEMANDE_AMORCER)).fetchall()
+         DEMANDE_AMORCER, DEMANDE_REPARTIR)).fetchall()
     for demande_id, document_id in lignes:
         conn.execute("UPDATE demande_document SET reponse = ? WHERE demande_id = ? "
                      "AND document_id = ?", (REPONSE_REFUSEE, demande_id, document_id))
@@ -916,6 +919,71 @@ def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
         journal.journaliser(conn, "modification", "demande", demande_id,
                             apres={"documents": {str(document_id): REPONSE_REFUSEE},
                                    "copie_detruite": album_id, "reponse": etat})
+
+
+# --------------------------------------------------------------------------- #
+# REPARTIR DE ZÉRO (COL-3, tranche 3b, E8) — ramener une copie à un cran
+# --------------------------------------------------------------------------- #
+# La règle est celle de l'effacement (`Portee.clause_suppression_directe`, Hugo,
+# 2026-10-21) : repartir efface le travail des autres comme le supprimer. Le refus se dit de
+# la même façon, sans dire laquelle des raisons manque.
+_MOTIF_REPARTIR = ("D'autres s'en servent, ou ce n'est pas vous qui l'avez importé, ou c'est "
+                   "la dernière copie de ce document : repartir de zéro sur cet album se "
+                   "demande à un administrateur.")
+_MOTIF_REPARTIR_PLANCHE = ("D'autres se servent de cet album, ou ce n'est pas vous qui l'avez "
+                           "importé, ou c'est la dernière copie de ce document : repartir de "
+                           "zéro sur l'une de ses planches se demande à un administrateur de "
+                           "l'instance.")
+
+
+def _cran_de_repartir(cran) -> str:
+    """Un cran d'ARRIVÉE (`database.CRANS_DE_REPARTIR`) — 422 nommé sinon."""
+    if cran not in CRANS_DE_REPARTIR:
+        raise HTTPException(422, f"Repartir de zéro : jusqu'à quel cran ? "
+                                 f"({' | '.join(CRANS_DE_REPARTIR)})")
+    return cran
+
+
+def _repartir(conn, portee: autorisation.Portee, album_id: int, cran: str, *,
+              planche_id: int | None = None, motif_refus: str = _MOTIF_REPARTIR) -> dict:
+    """RAMÈNE une copie — ou l'une de ses planches — au `cran` dit, garde comprise (E8,
+    COL-3, tranche 3b). Le seul chemin du geste : les deux routes et la réponse « accepter »
+    à une demande y passent. Ne commite pas.
+
+    La garde se lit SOUS LE VERROU d'écriture, et l'effacement suit dans la même
+    transaction — la leçon de `_detruire_album` : lue hors transaction, elle laissait partir
+    un travail validé entre elle et l'écriture. Deux refus : la règle de l'effacement (403
+    nommé, `motif_refus`), et RIEN au-dessus du cran (409 nommé) — on repart VERS un cran
+    plus bas que ce que la copie porte (`database.niveau_de_travail`), jamais plus haut ni
+    au même.
+
+    UN acte au journal, sous le DOCUMENT (cible retenue de toute sortie, sans rang, non
+    annulable — `undo._TABLES` est une liste blanche) : `repartir` dans la charge, le cran,
+    celui d'où l'on part, la planche s'il y en a une, et ce qui est parti, compté. Pas des
+    centaines de suppressions : le journal ne mentirait pas, mais Ctrl+Z les remonterait.
+    C'est cet acte que Ctrl+Z lit pour ne pas remonter au-delà (`undo.remis_a_zero_depuis`).
+    """
+    conflit.verrouiller(conn)
+    _refuser_le_jeu(conn, album_id=album_id)
+    effacable, p_effacable = portee.clause_suppression_directe("a.id")
+    if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {effacable}",
+                    (album_id, *p_effacable)).fetchone() is None:
+        raise HTTPException(403, motif_refus)
+    niveau = niveau_de_travail(conn, album_id, planche_id)
+    if rang_du_cran(cran) >= niveau:
+        raise HTTPException(409, f"Rien à retirer au-dessus du cran « {cran} » : "
+                                 f"{'cette planche' if planche_id else 'cet album'} n'y porte "
+                                 f"que « {CRANS[niveau]} ».")
+    comptes = repartir_de_zero(conn, album_id, cran, planche_id=planche_id)
+    charge = {"cran": cran, "depuis_cran": CRANS[niveau], "comptes": comptes}
+    if planche_id is not None:
+        charge["planche_id"] = planche_id
+    journal.journaliser(conn, "modification", "document",
+                        conn.execute("SELECT document_id FROM albums WHERE id = ?",
+                                     (album_id,)).fetchone()[0],
+                        apres={"album_id": album_id, "repartir": charge})
+    return {"album_id": album_id, **({"planche_id": planche_id} if planche_id else {}),
+            **charge}
 
 
 def _sous_le_verrou(conn, effacer, *args) -> None:
@@ -2519,6 +2587,15 @@ class DemandeIn(BaseModel):
     projet_id: Optional[int] = None
     motif: Optional[str] = None
     certifie: bool = False
+    # COL-3, tranche 3b (E8) — le cran VERS lequel une demande de repartir de zéro ramène la
+    # copie (`database.CRANS_DE_REPARTIR`).
+    cran: Optional[str] = None
+
+
+class RepartirIn(BaseModel):
+    """Repartir de zéro (COL-3, tranche 3b, E8) : le cran VERS lequel on ramène la copie, ou
+    la planche — `images`, `decoupage`, `transcription` ou `grammaire`."""
+    cran: str
 
 
 class ReponseIn(BaseModel):
