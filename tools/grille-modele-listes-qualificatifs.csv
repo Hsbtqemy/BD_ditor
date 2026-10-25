@@ -1,0 +1,7 @@
+﻿liste_cle;liste;cle;libelle;definition
+sources;source du son;personnage;personnage;un personnage de la case
+sources;source du son;objet;objet;un objet de la case
+sources;source du son;hors-champ;hors champ;une source qu'on ne voit pas
+manieres;manière;taille;taille;des lettres plus grandes
+manieres;manière;couleur;couleur;des lettres colorées
+manieres;manière;forme;forme des lettres;des lettres déformées

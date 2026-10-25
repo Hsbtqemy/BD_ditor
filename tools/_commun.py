@@ -481,6 +481,12 @@ CIBLES_RETENUES = {
         "être local à une collection que l'artefact ne couvre pas, et la liste des régions "
         "qui le portaient, celles des autres études comprises. Ce que le dépôt doit savoir "
         "du vocabulaire part par ses records, sous son libellé d'aujourd'hui.",
+    "grille":
+        "ANN-7 — une grille d'annotation importée, publiée, retirée, activée ou masquée, une "
+        "coquille corrigée. C'est l'ADMINISTRATION d'un vocabulaire d'étude, pas une "
+        "annotation : la charge nomme un projet, une collection, et le plan d'une grille "
+        "peut révéler une étude en cours (`Portee.clause_grille`). Rien des grilles ne sort "
+        "avant la tranche 4 d'ANN-7, qui décidera de leur sortie (SKOS).",
 }
 
 
@@ -599,8 +605,13 @@ def evenements_publiables(conn, ordre: str = "ASC"):
 #:
 #: `tags` (ANN-8) dès sa naissance, pour la même raison : l'administrateur qui range le
 #: vocabulaire prendrait sinon un rang, et décalerait tous ceux qui annotent après lui.
+#:
+#: `grille` (ANN-7) dès sa naissance, pour la raison de `tags` : qui importe ou publie une
+#: grille administre un vocabulaire, il n'annote pas. Les RELEVÉS, eux, n'y sont pas (G10,
+#: Hugo, 2026-10-25) : ils comptent dans les rangs dès la tranche 1, pour que leur sortie, en
+#: tranche 4, ne renumérote pas tous ceux qui annotent.
 CIBLES_SANS_RANG = frozenset({"document", "collection_album", "demande", "region_attribut",
-                              "tags"})
+                              "tags", "grille"})
 
 
 def pseudonymes(conn) -> dict:

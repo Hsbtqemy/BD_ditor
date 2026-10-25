@@ -1,0 +1,16 @@
+﻿cle;rubrique;rubrique_cle;forme;libelle;variante_cle;variante;structure;definition;exemples;piege;liste;precision;lien;cible;cardinalite
+cri;A. Sons > Voix;sons > voix;simple;cri;;;;un cri poussé par un personnage, écrit en toutes lettres;AAAH ! | OUILLE;un cri n'est pas une onomatopée de choc : on le pose sur le cri, pas sur le bruit;;;;;
+onomatopee;A. Sons > Bruits > Chocs;sons > bruits > chocs;variantes;onomatopée de choc;;;;un mot qui imite le bruit d'un choc;;;;;;;
+onomatopee;;;;;bang;bang;;un choc sec, une détonation;BANG ! | PAN !;;;;;;
+onomatopee;;;;;crac;crac;;une rupture, un craquement;CRAC;;;;;;
+onomatopee;;;;;splash;splash;[liquide] + [chute];une chute dans un liquide;PLOUF | SPLASH;;;;;;
+ton-de-voix;A. Sons > Voix;sons > voix;variantes;ton de voix;;;;le ton de toute la zone, une fois par zone;;;;;;bulle | cartouche | texte;une
+ton-de-voix;;;;;chuchote;chuchoté;;écrit plus petit, ou dit à voix basse;;;;;;;
+ton-de-voix;;;;;crie;crié;;écrit en gros, ou dit à pleine voix;;;;;;;
+origine-du-son;B. Provenance;provenance;qualificatifs;origine du son;;;;d'où vient le son relevé;;;sources;lieu;;;
+echo;B. Provenance;provenance;qualificatifs;écho;;;;un son répété, plus faible;OH… OH… OH…;;sources;;;;
+intensite;C. Graphisme;graphisme;qualificatifs;intensité graphique;;;;comment le lettrage marque la force du son;;;manieres;;;;
+geste-graphique;C. Graphisme;graphisme;qualificatifs;geste graphique;;;;un trait qui accompagne le son;;;manieres;;;;
+reponse-a;D. Échanges;echanges;simple;réponse à une autre bulle;;;;la zone répond à une autre, qu'on désigne;;;;;oui;bulle;plusieurs
+ambiance;D. Échanges;echanges;simple;ambiance sonore de la planche;;;;le fond sonore de toute la planche;;;;;;planche;
+regard-camera;E. Image;image;simple;regard caméra;;;;le personnage regarde le lecteur;;;;;;case;

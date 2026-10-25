@@ -310,6 +310,10 @@ HORS_EXPORT = {
     ("GET", "/api/sauvegarde"):
         "réservée aux administrateurs (DROIT-1) : c'est la base ENTIÈRE, un geste "
         "d'exploitation, et ni la portée ni la case n'y ont de sens",
+    ("GET", "/api/grilles/{grille_id}/versions/{numero}/tableur"):
+        "ANN-7, G16 (Hugo, 2026-10-25) : le réexport d'une GRILLE au format du tableur, "
+        "réservé à qui gère son projet. DROIT-2 borne le CORPUS ; une grille est un "
+        "vocabulaire, et son plan ne porte aucune transcription ni aucun relevé",
 }
 # Le dépôt ShareDocs refuse bien qui n'a pas la case — sa garde est la PROPRIÉTÉ, plus
 # stricte, puisque tout propriétaire exporte d'office. Sa contre-épreuve suppose un

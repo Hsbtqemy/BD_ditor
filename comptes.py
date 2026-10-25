@@ -88,6 +88,8 @@ def traces(conn) -> tuple[dict, dict, dict, dict]:
         # demandé reste écrit sur la demande.
         # `tags` (ANN-8) pour la même raison : renommer, fusionner ou supprimer un tag range
         # le vocabulaire, et n'orpheline aucune annotation.
+        # `grille` (ANN-7) aussi : importer, publier, activer une grille administre un
+        # vocabulaire d'étude ; les RELEVÉS, eux, comptent — qualifier une zone est du travail.
         # COL-4 (décision du pilotage, contre-relecture D2) — ni ce qui vit dans un projet
         # ISOLÉ (bac à sable, jeu), ni ce qui est parti avec un bac à sable effacé
         # (`database.sql_acte_isole`), création et invitations du bac comprises : ce qui
@@ -96,7 +98,8 @@ def traces(conn) -> tuple[dict, dict, dict, dict]:
         "SELECT agent, COUNT(*) AS n FROM evenement "
         "WHERE agent_type = 'humain' AND agent IS NOT NULL "
         "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature', 'annulation', "
-        "                          'document', 'collection_album', 'demande', 'tags') "
+        "                          'document', 'collection_album', 'demande', 'tags', "
+        "                          'grille') "
         f"  AND NOT {sql_acte_isole('evenement')} "
         "GROUP BY agent")}
     # … ni un accès sur une collection d'un projet isolé, pour la même raison.

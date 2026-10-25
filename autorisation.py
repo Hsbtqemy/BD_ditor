@@ -1077,6 +1077,56 @@ class Portee:
             return False
         return self.peut_administrer(collection_id)
 
+    def clause_grille(self, alias: str = "g.id") -> tuple[str, list]:
+        """Fragment SQL restreignant `alias` (un id de grille) aux grilles dont on peut LIRE
+        LE PLAN publié — ou vivant, pour une grille ouverte. ANN-7, tranche 1 (cadrage R8 ;
+        §10 de la note, tranché le 2026-10-14 ; G5, Hugo, 2026-10-25). Même contrat que
+        `clause_album` : `(sql, params)`, `alias` écrit par le code appelant.
+
+        Une grille non partagée est un travail de recherche, et son seul plan peut révéler
+        une étude en cours — la question de `clause_terme`, un étage plus haut. Trois moitiés,
+        chacune nécessaire à un public :
+
+        - (a) être MEMBRE du projet qui possède la grille (G5) — responsable compris : un
+          membre d'une base protégée prépare l'étude sans lire encore d'album ;
+        - (b) LIRE un album d'un projet où la grille est ACTIVE (§10) : un annotateur qui a un
+          accès de collection sans être du projet doit lire la grille qu'il applique ;
+        - (c) LIRE un album qui porte un relevé de la grille (G5), même désactivée : sans quoi
+          désactiver rendrait illisible le sens des relevés qui restent « en lecture ».
+
+        Le BROUILLON n'en relève pas : il reste chez ses auteurs (`peut_gerer_projet`, à la
+        route). Une portée totale lit tout, BORNÉE hors des bacs à sable des autres (COL-4,
+        le patron de `clause_projet`)."""
+        if self.tout:
+            if self.bornee:
+                o, p = self._ordinaire().clause_grille(alias)
+                return (f"(NOT EXISTS (SELECT 1 FROM grille _bbg WHERE _bbg.id = {alias} AND "
+                        f"{sql_est_bac_a_sable('_bbg.projet_id')}) OR {o})", p)
+            return "1", []
+        morceaux, params = [], []
+        if self.projets:
+            ids = sorted(self.projets)
+            morceaux.append(f"EXISTS (SELECT 1 FROM grille _ga WHERE _ga.id = {alias} "
+                            f"AND _ga.projet_id IN ({', '.join('?' * len(ids))}))")
+            params += ids
+        lire, p_lire = self.clause_album("_gab.id")
+        if lire != "0":
+            morceaux.append(
+                f"EXISTS (SELECT 1 FROM projet_grille _gpg JOIN albums _gab "
+                f"ON {sql_projet_d_album('_gab')} = _gpg.projet_id "
+                f"WHERE _gpg.grille_id = {alias} AND {lire})")
+            params += p_lire
+            lire_r, p_lire_r = self.clause_album("_grp.album_id")
+            morceaux.append(
+                f"EXISTS (SELECT 1 FROM releve _grl LEFT JOIN regions _grg "
+                f"ON _grg.id = _grl.region_id JOIN planches _grp "
+                f"ON _grp.id = COALESCE(_grg.planche_id, _grl.planche_id) "
+                f"WHERE _grl.grille_id = {alias} AND {lire_r})")
+            params += p_lire_r
+        if not morceaux:
+            return "0", []
+        return "(" + " OR ".join(morceaux) + ")", params
+
     def peut_ecrire_quelque_part(self) -> bool:
         """A-t-on le droit d'écrire, où que ce soit ? Sert aux gestes qui ne visent aucune
         collection en particulier — enrichir le vocabulaire, par exemple. Sans cela, une

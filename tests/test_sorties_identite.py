@@ -138,6 +138,19 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
                json={"acces_membres": "ecriture"})
     base = next(c for c in client.get("/api/collections", headers=ident).json()
                 if c["base"] and c["projet_id"] == projet["id"])
+    # ANN-7, tranche 1 — une GRILLE importée par la sentinelle, publiée, active dans le
+    # projet : ses routes de lecture se balaient (`grille_id`, `numero`). Le modèle FICTIF.
+    modele = (REPO_ROOT / "tools" / "grille-modele.csv").read_bytes()
+    listes = (REPO_ROOT / "tools" / "grille-modele-listes-qualificatifs.csv").read_bytes()
+    r_grille = client.post(f"/api/projets/{projet['id']}/grilles/import", headers=ident,
+                           files={"fichier": ("e.csv", modele, "text/csv"),
+                                  "listes": ("l.csv", listes, "text/csv")},
+                           data={"nom": "Grille du semis", "porte_sur": "mots"})
+    assert r_grille.status_code == 200, r_grille.text
+    grille_id = r_grille.json()["grille_id"]
+    client.post(f"/api/grilles/{grille_id}/versions/1/publication", headers=ident)
+    client.put(f"/api/projets/{projet['id']}/grilles/{grille_id}/activation", headers=ident,
+               json={"version": 1})
     # COL-4 — un BAC À SABLE d'un AUTRE compte, où la sentinelle est invitée : `GET
     # /api/projets` y rend le login de son propriétaire (l'invité doit savoir chez qui il
     # est). Le propriétaire porte la sentinelle dans son login — un autre compte que celle
@@ -267,6 +280,7 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
             "dim_id": dim["id"],
             "projet_id": projet["id"],
             "base_id": base["id"],
+            "grille_id": grille_id, "numero": 1,
             # `chemin_web` vaut « derivatives/xxx.jpg » ; la route monte déjà sur
             # /derivatives, on ne garde donc que la partie qui suit.
             "chemin": (pl.get("chemin_web") or "").split("derivatives/")[-1]}
@@ -530,6 +544,9 @@ NON_BALAYE = {
     # devant DOUZE entrées. Un nombre posé au-dessus d'une liste où l'on ajoute vieillit
     # forcément, et il vieillit vers une phrase qui a encore du sens — donc que personne
     # ne relit. La liste se compte toute seule.
+    ("outil", "importer_grille.py"): (
+        "IMPORTE le tableur d'une grille d'annotation (ANN-7) : il écrit en base, au nom "
+        "d'aucun agent, et son compte rendu ne nomme que des clés et des libellés d'entrée."),
     ("outil", "importer_vocabulaire.py"): (
         "IMPORTE un tableur de vocabulaire : il écrit en base, et son compte rendu ne "
         "nomme que des termes."),
