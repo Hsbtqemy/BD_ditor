@@ -24,6 +24,10 @@
   <!-- ───────────── Bande 2 — Outils de la page ───────────── -->
   <header id="header">
     <div id="planche-info" class="planche-info">—</div>
+    <!-- CONC-4 : la planche ouverte a changé ailleurs ; l'infobulle dit combien. Dans la
+         bande des outils et non dans celle de la visionneuse : la Transcription recouvre
+         celle-ci, et le signal doit se voir dans tous les modes. -->
+    <button id="planche-actualiser" class="ghost small" hidden>⟳ Actualiser</button>
     <!-- UX-15 — le raccourci se promet à UN endroit, le `<kbd>` visible : le `title`
          ne porte plus que le NOM. Deux endroits, c'est un qu'on oublie d'éteindre —
          et pendant la Transcription la promesse S'ÉTEINT (cf. `.sans-raccourcis`
@@ -525,6 +529,7 @@
 <script src="/static/lib/dialog.js"></script>
 <script src="/static/lib/casse.js"></script>
 <script src="/static/lib/conflit.js"></script>
+<script src="/static/lib/signal-planche.js"></script>
 <script src="/static/lib/propositions.js"></script>
 <script src="/static/lib/membres-projet.js"></script>
 <script src="/static/lib/bac-a-sable.js"></script>

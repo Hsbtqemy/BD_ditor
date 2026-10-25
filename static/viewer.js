@@ -387,6 +387,141 @@ async function loadRegions(plancheId) {
   renderOverlay();
   updateStatus();
   renderPanel();                             // rafraîchit l'arbre
+  rebaserSignal(plancheId);                  // CONC-4 : l'écran montre ce que porte la base
+}
+
+/* ===================================================================
+   Le signal de la planche ouverte (CONC-4)
+   =================================================================== */
+/* Réécrit par Hugo le 2026-10-21 : ni temps réel ni rien — un SIGNAL. Les régions se
+   chargent à l'ouverture d'une planche et ne se rechargent plus ; une région créée,
+   modifiée ou supprimée ailleurs n'apparaissait jamais. L'Atelier compare donc, toutes les
+   `BDSignal.INTERVALLE_MS` (rien quand l'onglet est caché) et au retour sur l'onglet,
+   l'empreinte de la planche (`GET /api/planches/{id}/empreinte`, une par région) à celle
+   qu'il a prise en chargeant ses régions. Si quelque chose a changé AILLEURS, le bouton
+   « Actualiser » apparaît dans la barre d'outils — son infobulle dit combien — ; rien ne se
+   recharge d'office.
+
+   Les écritures de l'écran passent toutes par `apiSend` : on y note ce qu'elles TOUCHENT
+   (`BDSignal.regionsTouchees`), pour ne pas se signaler ses propres gestes. Une lecture que
+   croise une écriture ne tranche rien : la suivante le fera. La règle — et sa limite — est
+   dans `lib/signal-planche.js`. */
+const signalPlanche = { plancheId: null, base: null, touchees: null, gen: 0, jeton: 0,
+                        enVol: 0, ecritures: 0 };
+const toucheesVides = () => ({ tout: false, ids: new Set() });
+
+function noterTouchees(t, sousArbre) {
+  if (!t) return;
+  if (!signalPlanche.touchees) signalPlanche.touchees = toucheesVides();
+  if (t.tout) { signalPlanche.touchees.tout = true; return; }
+  for (const id of [...t.ids, ...sousArbre]) signalPlanche.touchees.ids.add(id);
+}
+
+(function noterLesEcritures() {
+  const envoyer = window.apiSend;
+  window.apiSend = async function (methode, chemin, corps, opts) {
+    const planche = state.planche ? state.planche.id : null;
+    const avant = BDSignal.regionsTouchees(methode, chemin, null, planche);
+    // Les enfants d'une région supprimée partent avec elle : on les lit AVANT, dans l'arbre.
+    const sousArbre = avant && avant.sousArbre ? [...descendantIds(avant.ids[0])] : [];
+    if (avant) signalPlanche.enVol++;
+    try {
+      const reponse = await envoyer(methode, chemin, corps, opts);
+      noterTouchees(BDSignal.regionsTouchees(methode, chemin, reponse, planche), sousArbre);
+      return reponse;
+    } catch (e) {
+      noterTouchees(avant, sousArbre);       // dans le doute, l'écriture a pu passer
+      throw e;
+    } finally {
+      if (avant) { signalPlanche.enVol--; signalPlanche.ecritures++; }
+      // La base n'a pas pu se prendre pendant l'écriture (un rechargement l'a croisée) :
+      // la prendre dès qu'elle se termine, plutôt qu'au prochain intervalle.
+      if (!signalPlanche.enVol && signalPlanche.base === null) verifierPlanche();
+    }
+  };
+})();
+
+/* L'écran vient de (re)lire les régions de la planche : la prochaine empreinte devient la
+   base, et le signal s'éteint. */
+function rebaserSignal(plancheId) {
+  signalPlanche.gen++;
+  signalPlanche.plancheId = plancheId;
+  signalPlanche.base = null;
+  signalPlanche.touchees = toucheesVides();
+  afficherSignal(null);
+  verifierPlanche();
+}
+
+async function verifierPlanche() {
+  const p = state.planche;
+  if (!p || document.hidden || signalPlanche.enVol || signalPlanche.plancheId !== p.id) return;
+  const jeton = ++signalPlanche.jeton, gen = signalPlanche.gen, ecritures = signalPlanche.ecritures;
+  let rep = null;
+  try { rep = await apiGet(`/api/planches/${p.id}/empreinte`); } catch (_) { return; }
+  // Une lecture plus récente, un rechargement, une autre planche, ou une écriture qui l'a
+  // croisée : elle ne tranche rien.
+  if (jeton !== signalPlanche.jeton || gen !== signalPlanche.gen) return;
+  if (!state.planche || state.planche.id !== p.id) return;
+  if (signalPlanche.enVol || signalPlanche.ecritures !== ecritures) return;
+  if (signalPlanche.base === null) {
+    signalPlanche.base = rep.regions;
+    signalPlanche.touchees = toucheesVides();
+    return;
+  }
+  const r = BDSignal.comparer(signalPlanche.base, rep.regions, signalPlanche.touchees);
+  signalPlanche.base = r.base;
+  signalPlanche.touchees = toucheesVides();
+  afficherSignal(r.autres);
+}
+
+function afficherSignal(autres) {
+  const b = $("#planche-actualiser");
+  if (!b) return;
+  const n = autres ? BDSignal.nombre(autres) : 0;
+  const montre = !b.hidden;
+  b.hidden = !n;
+  b.title = n ? BDSignal.titre(autres) : "";
+  if (n && !montre) annoncer("La planche a changé ailleurs : « Actualiser » la recharge.");
+}
+
+/* « Actualiser » : relire les régions de la planche SANS RIEN PERDRE de la saisie en cours.
+   Il passe par les gardes d'un changement de planche (CONC-3) : un conflit ouvert attend un
+   choix, et ce qui n'est pas encore enregistré part d'abord — avec sa valeur vue, si bien
+   qu'un champ changé ailleurs entre-temps ouvre le bandeau au lieu d'être écrasé. Une saisie
+   reprise PENDANT la relecture reste dans son champ : la note n'est pas rechargée, et le
+   texte transcrit garde la valeur vue qu'il avait. */
+async function actualiserPlanche() {
+  if (!state.planche) return;
+  if (conflitBloque()) return;
+  if (!partirApresEnregistrement(actualiserPlanche)) return;
+  flushSave();
+  const pid = state.planche.id;
+  const trAvant = state.mode === "transcription" ? trCurrent() : null;
+  await loadRegions(pid);                    // garde la sélection si elle existe encore
+  if (!state.planche || state.planche.id !== pid) return;
+  if (state.mode === "annotation" && state.selectedId != null) {
+    const sale = state.annotSale;
+    const enCours = sale.note || sale.ajoutes.size || sale.retires.size
+      || state.saveTimer || state.envoiNote;
+    if (!enCours) loadAnnotation(state.selectedId);
+    else chargerBlocsDuType(state.selectedId);   // le locuteur, le personnage, la situation
+  }
+  if (state.mode === "transcription") actualiserTranscription(trAvant);
+}
+
+function actualiserTranscription(avant) {
+  const ecrit = $("#tr-text").value;
+  const sale = avant && (state.trSaveTimer || state.envoiTr || ecrit !== (avant.ocr_texte || ""));
+  state.trRegions = readingSequence().filter((r) => TEXT_TYPES.has(r.type));
+  const i = avant ? state.trRegions.findIndex((r) => r.id === avant.id) : -1;
+  state.trIndex = i >= 0 ? i : Math.min(state.trIndex, Math.max(0, state.trRegions.length - 1));
+  buildTrMini();
+  if (sale && i >= 0) {
+    // La saisie reste, et la valeur VUE aussi : celle que l'écran montrait sous elle.
+    state.trRegions[i].ocr_texte = avant.ocr_texte;
+    return;
+  }
+  renderTranscription();
 }
 
 /* ===================================================================
@@ -4075,6 +4210,10 @@ function setupTiroirs() {
 
 async function init() {
   setupControls();
+  // CONC-4 — le signal de la planche ouverte : de temps en temps, et au retour sur l'onglet.
+  setInterval(verifierPlanche, BDSignal.INTERVALLE_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) verifierPlanche(); });
+  $("#planche-actualiser").onclick = actualiserPlanche;
   setupTiroirs();
   setupKeyboard();
   setupBack();

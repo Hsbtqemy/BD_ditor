@@ -665,6 +665,10 @@ kbd {
   color: var(--text-muted); flex: 0 1 auto;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* CONC-4 — « Actualiser » : n'apparaît que lorsque la planche a changé ailleurs. Comme les
+   autres commandes de la bande, il ne se plie pas ; ce qui lui manque est pris au nom de
+   planche, fait pour céder. */
+#planche-actualiser { white-space: nowrap; flex: 0 0 auto; }
 .modes { display: flex; gap: .4615rem; margin-left: auto; }
 .header-actions { display: flex; gap: .6154rem; align-items: center; }
 

@@ -32,6 +32,7 @@ from database import (DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT, annotatio
                       espace_d_album, sql_est_jeu, sql_projet_d_album, unindex_region)
 import autorisation
 import conflit
+import empreinte
 import journal
 import sante as sante_moteurs
 
@@ -987,6 +988,16 @@ def planche_regions(planche_id: int, conn: sqlite3.Connection = Depends(db),
     for r in regions:
         r["citation"] = cits.get(r["id"])   # {texte, planche, case[, bulle], global, total}
     return regions
+
+
+@app.get("/api/planches/{planche_id}/empreinte")
+def planche_empreinte(planche_id: int, conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    """CONC-4 — la version LÉGÈRE de la route ci-dessus : une empreinte par région, que
+    l'Atelier compare de temps en temps pour proposer « Actualiser » quand la planche ouverte
+    a changé ailleurs (cf. `empreinte.py`). Bornée comme elle, par le même accesseur gardé."""
+    _get_planche(conn, portee, planche_id)
+    return {"regions": empreinte.empreintes(conn, planche_id, portee)}
 
 
 @app.post("/api/planches/{planche_id}/regions", status_code=201)
