@@ -888,11 +888,24 @@ def region_tokens(region_id: int, conn: sqlite3.Connection = Depends(db),
 
 def _tokens_effectifs(conn, region_id: int) -> list:
     """Tokens EFFECTIFS d'une région (correction humaine ⊕ auto) + provenance —
-    jamais `tokens` brut (invariant projet)."""
-    return _rows(conn.execute(
-        "SELECT ordre, texte, lemme, pos, morph, provenance, a_revoir, "
-        "       corr_lemme, corr_pos, corr_morph, corr_auteur "
-        "FROM tokens_effectifs WHERE region_id = ? ORDER BY ordre", (region_id,)))
+    jamais `tokens` brut (invariant projet).
+
+    `corr_recopiee` (COL-3, tranche 3b) : la correction est arrivée avec la COPIE, telle
+    quelle — sa région a une source, et elle n'a pas été touchée depuis la naissance de la
+    copie. Entre deux projets elle arrive sans auteur (`database.copier_le_travail`) : l'écran
+    la dit « recopiée » plutôt que de la laisser sans personne."""
+    lignes = _rows(conn.execute(
+        "SELECT te.ordre, te.texte, te.lemme, te.pos, te.morph, te.provenance, te.a_revoir, "
+        "       te.corr_lemme, te.corr_pos, te.corr_morph, te.corr_auteur, "
+        "       EXISTS (SELECT 1 FROM token_correction _c "
+        "               JOIN region_origine _ro ON _ro.region_id = _c.region_id "
+        "               JOIN regions _r ON _r.id = _c.region_id "
+        "               JOIN planches _p ON _p.id = _r.planche_id "
+        "               JOIN copie _co ON _co.album_id = _p.album_id "
+        "               WHERE _c.region_id = te.region_id AND _c.ordre = te.ordre "
+        "                 AND _c.date_modif <= _co.creee_le) AS corr_recopiee "
+        "FROM tokens_effectifs te WHERE te.region_id = ? ORDER BY te.ordre", (region_id,)))
+    return [{**t, "corr_recopiee": bool(t["corr_recopiee"])} for t in lignes]
 
 
 def _norm_corr(v: Optional[str]) -> Optional[str]:

@@ -2792,7 +2792,12 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
       Ctrl+Z, ni les pseudonymes, ni le départ d'un compte ne voient une copie. Les dates
       de création et de modification d'une région, son `activite_id` (le moteur qui l'a
       produite) et l'`auteur` d'une correction suivent avec elles : ils disent quand et
-      par qui ce travail a été FAIT, pas copié.
+      par qui ce travail a été FAIT, pas copié — l'auteur DANS un même projet seulement.
+      ENTRE DEUX PROJETS, une correction recopiée arrive SANS auteur (Hugo, 2026-10-25,
+      après la relecture croisée de la 3b, constat 3) : le login d'un correcteur du projet
+      source se lisait sinon dans la copie — l'analyse d'un mot, le croisement par l'axe
+      « auteur », « qui perd quoi » —, nommé à des gens qui ne le connaissent pas. Elle se
+      lit « recopiée » (`routes/analyse._tokens_effectifs`, `corr_recopiee`).
     - **Seul le vocabulaire visible depuis la collection d'arrivée suit** (E5) : un tag, une
       valeur d'attribut et sa dimension globaux ou locaux à `collection_id`
       (`clause_appartenance`, la règle d'une collection et non d'une personne). Un terme
@@ -2873,8 +2878,13 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
     if grammaire:
         cols = [c[1] for c in conn.execute("PRAGMA table_info(token_correction)")
                 if c[1] not in ("id", "region_id")]
+        # Entre deux projets, l'auteur ne suit pas (constat 3 de la relecture de la 3b) :
+        # une source sans projet (importée au fonds) compte comme un autre projet.
+        entre_projets = projet_d_album(conn, depuis) != projet_de_collection(conn,
+                                                                             collection_id)
+        lus = ["NULL" if c == "auteur" and entre_projets else c for c in cols]
         copies["corrections"] = _par_region(
-            f"SELECT {', '.join(cols)} FROM token_correction WHERE region_id = ? ORDER BY id",
+            f"SELECT {', '.join(lus)} FROM token_correction WHERE region_id = ? ORDER BY id",
             f"INSERT INTO token_correction (region_id, {', '.join(cols)}) "
             f"VALUES (?, {', '.join('?' * len(cols))})")
     if annotations:

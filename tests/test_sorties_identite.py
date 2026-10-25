@@ -407,9 +407,11 @@ SORTIES_DECLAREES = {
         "l'album : qui (login et nom lisible), combien de gestes de chaque sorte, la date du "
         "dernier, et qui a créé la copie. La protection du travail des membres passe de la "
         "permission à la visibilité : c'est l'objet même de la route. Bornée à qui peut "
-        "effacer l'album sans rien demander (`Portee.clause_suppression_directe`) ; hors "
-        "portée totale, le travail RECOPIÉ d'une autre copie s'y compte sans nom, et "
-        "l'importateur du document n'y est pas. Aucun artefact n'en sort."),
+        "effacer l'album sans rien demander — le supprimer ou en repartir de zéro "
+        "(`Portee.clause_repartir_directe`) ; hors portée totale, le travail RECOPIÉ d'une "
+        "autre copie — sixième source, et correction grammaticale reçue telle quelle — s'y "
+        "compte sans nom, et l'importateur du document n'y est pas. Aucun artefact n'en "
+        "sort."),
     ("route", "/api/moi"): (
         {"login", "nom"},
         "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "

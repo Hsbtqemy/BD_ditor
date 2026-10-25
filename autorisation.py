@@ -1166,7 +1166,7 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     et l'auteur y est inconnu."""
     sources = _sources_du_travail(alias)
     sql = "(" + " OR ".join(f"EXISTS (SELECT 1 FROM {depuis} AND {agent} IS NOT ?)"
-                            for agent, _sorte, _quand, depuis in sources) + ")"
+                            for agent, _sorte, _quand, depuis, _recopie in sources) + ")"
     return sql, [login] * len(sources)
 
 
@@ -1200,10 +1200,20 @@ def _sql_chaine_des_sources(depart: str) -> str:
         "JOIN copie _tco2 ON _tco2.album_id = _tpp2.album_id) ")
 
 
-def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
+def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
     """Les six sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
-    quand, `FROM … WHERE …`) — la sorte est la `cible_table` de l'acte, ou le nom de la
-    table lue. Qui vaut NULL quand l'auteur n'est pas écrit."""
+    quand, `FROM … WHERE …`, recopié) — la sorte est la `cible_table` de l'acte, ou le nom
+    de la table lue. Qui vaut NULL quand l'auteur n'est pas écrit.
+
+    « Recopié » est une expression SQL, vraie pour une ligne de travail RECOPIÉ — fait
+    ailleurs, avant la copie, et que la copie porte (tranche 3b) : toute la sixième source,
+    et dans la troisième les corrections grammaticales que la copie a reçues telles quelles
+    (sa région a une source, et la correction n'a pas été touchée depuis la naissance de la
+    copie : `date_modif` antérieure ou égale à `copie.creee_le`, la date de la source étant
+    recopiée avec la ligne). Un écran qui ne tient pas le fonds ne nomme pas ces lignes
+    (relecture croisée de la 3b, constat 3 : la troisième nommait l'importeur d'un autre
+    projet sous « qui perd quoi »). Elle ne change rien à la RÈGLE, qui compte ces lignes
+    comme les autres."""
     cibles = ", ".join(f"'{c}'" for c in _CIBLES_DE_REGION)
     annotation = ", ".join(f"'{c}'" for c in _CIBLES_D_ANNOTATION)
     regions_de_l_album = ("SELECT _tr0.id FROM regions _tr0 JOIN planches _tp0 "
@@ -1212,7 +1222,7 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
         ("_te.agent", "_te.cible_table", "_te.date",
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
          f"JOIN evenement _te ON _te.cible_table IN ({cibles}) AND _te.cible_id = _tr.id "
-         f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain'"),
+         f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain'", "0"),
         ("NULL", "'region_attribut'", "NULL",
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
          "JOIN region_attribut _tra ON _tra.region_id = _tr.id "
@@ -1221,21 +1231,24 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
          "AND (_tre.cible_id = _tra.region_id OR _tre.cible_id IN ("
          + _sql_chaine_des_sources("SELECT _tra.region_id") + "SELECT s FROM _tch)) "
          "AND _tre.type = 'lien' AND _tre.agent_type = 'humain' "
-         "AND json_extract(_tre.apres, '$.valeur_id') = _tra.valeur_id)"),
+         "AND json_extract(_tre.apres, '$.valeur_id') = _tra.valeur_id)", "0"),
         ("_tt.auteur", "'token_correction'", "_tt.date_modif",
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
          "JOIN token_correction _tt ON _tt.region_id = _tr.id "
-         f"WHERE _tp.album_id = {alias}"),
+         f"WHERE _tp.album_id = {alias}",
+         "EXISTS (SELECT 1 FROM region_origine _tro3 JOIN copie _tco3 "
+         "ON _tco3.album_id = _tp.album_id WHERE _tro3.region_id = _tr.id "
+         "AND _tt.date_modif <= _tco3.creee_le)"),
         ("_te.agent", "'planches'", "_te.date",
          "planches _tp JOIN evenement _te "
          "ON _te.cible_table = 'planches' AND _te.cible_id = _tp.id "
-         f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain'"),
+         f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain'", "0"),
         ("_te.agent", "'document'", "_te.date",
          "albums _ta JOIN evenement _te "
          "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
          f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' "
          f"AND {_SQL_ALBUM_DE_LA_CHARGE} = _ta.id AND NOT {_SQL_NAISSANCE_D_UNE_COPIE} "
-         f"AND NOT {_SQL_ORDRE_DES_PLANCHES}"),
+         f"AND NOT {_SQL_ORDRE_DES_PLANCHES}", "0"),
         ("_te.agent", "_te.cible_table", "_te.date",
          "evenement _te JOIN ("
          + _sql_chaine_des_sources(regions_de_l_album) + "SELECT s, borne, rang FROM _tch"
@@ -1243,7 +1256,7 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
          f"WHERE _te.cible_table IN ({cibles}) AND _te.agent_type = 'humain' "
          "AND _te.date <= _tsrc.borne "
          f"AND (_te.cible_table NOT IN ({annotation}) "
-         f"OR _tsrc.rang >= {rang_du_cran(CRAN_ANNOTATIONS)})"),
+         f"OR _tsrc.rang >= {rang_du_cran(CRAN_ANNOTATIONS)})", "1"),
     ]
 
 
@@ -1287,16 +1300,15 @@ def sql_actes_sur_album(alias: str) -> str:
     document). Lu à la source même de la règle, au moment de la lecture. Ce n'est pas une
     question d'accès : la route qui le rend porte sa propre garde.
 
-    `recopie` (tranche 3b) vaut 1 pour un geste de la SIXIÈME source — fait sur une région
-    SOURCE avant la copie, et que la copie porte : il n'est pas perdu quand elle part, la
-    source le garde si elle vit, et son auteur a travaillé dans une autre copie, peut-être
-    un autre projet. Un écran qui ne tient pas le fonds ne le nomme pas
-    (`routes/fonds.travail_des_autres_avant_d_effacer`)."""
-    sources = _sources_du_travail(alias)
+    `recopie` (tranche 3b) vaut 1 pour un geste RECOPIÉ — fait avant la copie, sur une
+    région source (la sixième source) ou une correction grammaticale reçue telle quelle (la
+    troisième) : il n'est pas perdu quand elle part, la source le garde si elle vit, et son
+    auteur a travaillé dans une autre copie, peut-être un autre projet. Un écran qui ne
+    tient pas le fonds ne le nomme pas (`routes/fonds.travail_des_autres_avant_d_effacer`)."""
     return " UNION ALL ".join(
         f"SELECT {agent} AS agent, {sorte} AS sorte, {quand} AS quand, "
-        f"{1 if i == len(sources) - 1 else 0} AS recopie FROM {depuis}"
-        for i, (agent, sorte, quand, depuis) in enumerate(sources))
+        f"CASE WHEN {recopie} THEN 1 ELSE 0 END AS recopie FROM {depuis}"
+        for agent, sorte, quand, depuis, recopie in _sources_du_travail(alias))
 
 
 # --------------------------------------------------------------------------- #

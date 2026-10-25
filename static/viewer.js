@@ -842,6 +842,24 @@ function renderGramList() {
     box.appendChild(state.gramOpen === t.ordre ? gramEditorRow(t) : gramLine(t));
 }
 
+// Qui a corrigé ou validé ce mot (INFRA-2) — ou, pour une correction arrivée avec une copie
+// d'un AUTRE projet, qui y arrive sans auteur (COL-3, tranche 3b ; Hugo, 2026-10-25),
+// « recopiée ». Rien pour l'auto.
+function gramAuteur(t) {
+  if (t.provenance === "auto") return null;
+  if (t.corr_auteur) {
+    const by = gel("span", "gram-auteur", "· " + t.corr_auteur);
+    by.title = "Corrigé / validé par " + t.corr_auteur;
+    return by;
+  }
+  if (t.corr_recopiee) {
+    const by = gel("span", "gram-auteur", "· recopiée");
+    by.title = "Correction recopiée avec la copie, depuis un autre travail";
+    return by;
+  }
+  return null;
+}
+
 function gramLine(t) {
   const row = gel("div", "gram-line prov-" + t.provenance + (t.a_revoir ? " a-revoir" : ""));
   row.append(gel("span", "gram-mot", t.texte),
@@ -850,11 +868,8 @@ function gramLine(t) {
   const meta = gel("span", "gram-meta");
   meta.appendChild(gel("span", "prov-chip prov-" + t.provenance, PROV_LABEL[t.provenance]));
   if (t.a_revoir) { const w = gel("span", "gram-warn", "⚠"); w.title = "à revérifier"; meta.appendChild(w); }
-  if (t.corr_auteur && t.provenance !== "auto") {      // INFRA-2 : qui a corrigé/validé
-    const by = gel("span", "gram-auteur", "· " + t.corr_auteur);
-    by.title = "Corrigé / validé par " + t.corr_auteur;
-    meta.appendChild(by);
-  }
+  const by = gramAuteur(t);                  // INFRA-2 : qui a corrigé/validé
+  if (by) meta.appendChild(by);
   row.appendChild(meta);
   row.title = "Cliquer pour corriger";
   row.onclick = async () => { await applyOpenEditor(); state.gramOpen = t.ordre; renderGramList(); };
@@ -867,11 +882,8 @@ function gramEditorRow(t) {
   head.append(gel("span", "gram-mot", t.texte),
               gel("span", "prov-chip prov-" + t.provenance, PROV_LABEL[t.provenance]));
   if (t.a_revoir) head.appendChild(gel("span", "gram-warn", "⚠ à revérifier"));
-  if (t.corr_auteur && t.provenance !== "auto") {      // INFRA-2 : qui a corrigé/validé
-    const by = gel("span", "gram-auteur", "· " + t.corr_auteur);
-    by.title = "Corrigé / validé par " + t.corr_auteur;
-    head.appendChild(by);
-  }
+  const by = gramAuteur(t);                  // INFRA-2 : qui a corrigé/validé
+  if (by) head.appendChild(by);
 
   const lem = document.createElement("input");
   lem.className = "gram-in"; lem.value = t.corr_lemme || "";

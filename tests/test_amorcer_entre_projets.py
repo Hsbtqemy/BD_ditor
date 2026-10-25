@@ -367,6 +367,44 @@ def test_le_responsable_source_ne_consent_qu_avec_une_copie_qu_il_lit(client, ai
     _ok(_repondre(client, d["id"], "acceptee", RESP2, album_id=o))
 
 
+def test_entre_deux_projets_une_correction_recopiee_arrive_sans_auteur(client, ailleurs,
+                                                                       db_path):
+    """Relecture croisée de la 3b, constat 3, et la décision de Hugo du 2026-10-25 : ENTRE
+    deux projets, une correction grammaticale recopiée arrive SANS auteur, et se lit
+    « recopiée ». Ni l'analyse du mot, ni la concordance par auteur, ni « qui perd quoi »
+    ne nomment le correcteur du projet source dans la copie ; la source, elle, le garde."""
+    s = ailleurs
+    o = s["albums"]["d1"]
+    pl = client.get(f"/api/albums/{o}/planches", headers=IMPORTEUR).json()[0]["id"]
+    bulle = [x for x in client.get(f"/api/planches/{pl}/regions", headers=IMPORTEUR).json()
+             if x["type"] == "bulle"][0]["id"]
+    _sql(db_path, "DELETE FROM tokens WHERE region_id = ?", (bulle,))
+    _sql(db_path, "INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                  "VALUES (?, 0, 'TINTIN', 'tintin', 'PROPN', '')", (bulle,))
+    _sql(db_path, "INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, etat, "
+                  "auteur) VALUES (?, 0, 'TINTIN', 'Tintin', 'PROPN', 'corrige', "
+                  "'importeur')", (bulle,))
+    ligne = _demander_ailleurs(client, s, cran="grammaire")
+    vue = _ok(_repondre(client, ligne["demande_id"], "acceptee", RESP2, album_id=o))
+    neuve = vue["documents"][0]["copie_id"]
+    copiee = _sql(db_path, "SELECT region_id FROM region_origine WHERE region_source_id = ?",
+                  (bulle,))[0]["region_id"]
+    assert _sql(db_path, "SELECT auteur FROM token_correction WHERE region_id = ?",
+                (copiee,)) == [{"auteur": None}]
+    toks = _ok(client.get(f"/api/regions/{copiee}/tokens", headers=RESP))
+    assert [(t["corr_auteur"], t["corr_recopiee"], t["provenance"]) for t in toks] == [
+        (None, True, "corrige")], toks
+    conc = client.get("/api/analyse/concordance", headers=RESP,
+                      params={"auteur": "importeur", "album": neuve})
+    assert conc.status_code == 200 and "importeur" not in conc.text, conc.text
+    qui = client.get(f"/api/albums/{neuve}/travail-des-autres", headers=RESP)
+    assert qui.status_code == 200 and "importeur" not in qui.text, qui.text
+    assert qui.json()["travail_recopie"]["gestes"]["token_correction"] == 1
+    # La source garde son correcteur.
+    assert _sql(db_path, "SELECT auteur FROM token_correction WHERE region_id = ?",
+                (bulle,)) == [{"auteur": "importeur"}]
+
+
 def test_un_refus_la_ferme_pour_tous(client, ailleurs):
     ligne = _demander_ailleurs(client, ailleurs)
     _ok(_repondre(client, ligne["demande_id"], "refusee", RESP2))

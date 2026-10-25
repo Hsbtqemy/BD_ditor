@@ -296,6 +296,40 @@ def test_qui_copie_son_propre_travail_supprime_seul(client, db_path, source):
     assert _destructible(client, b, LEA) is True
 
 
+def test_dans_le_projet_une_correction_recopiee_garde_son_auteur_et_se_tait(client, db_path,
+                                                                           source):
+    """Relecture croisée de la 3b, constat 3. DANS un même projet, l'auteur d'une correction
+    grammaticale suit la copie (Hugo, 2026-10-25), et elle se lit « recopiée ». Sous « qui
+    perd quoi », ce travail recopié se compte à part, sans nom, pour qui ne tient pas le
+    fonds — la troisième source comme la sixième : il a été fait dans une autre copie, et
+    ne part pas avec celle-ci. Corrigée ensuite sur la copie, elle n'est plus recopiée."""
+    b = _copier(source, "grammaire")
+    _accorder(client, source["etude"], "proprio", "proprietaire")
+    bulle = _sql(db_path, "SELECT region_id FROM region_origine WHERE region_source_id = ?",
+                 (source["bulle"],))[0]["region_id"]
+    assert _sql(db_path, "SELECT auteur FROM token_correction WHERE region_id = ?",
+                (bulle,)) == [{"auteur": "lea"}]
+    toks = client.get(f"/api/regions/{bulle}/tokens", headers=LEA).json()
+    assert [(t["corr_auteur"], t["corr_recopiee"]) for t in toks] == [("lea", True)], toks
+    vue = client.get(f"/api/albums/{b}/travail-des-autres", headers={"Remote-User": "proprio"})
+    assert vue.status_code == 200, vue.text
+    vue = vue.json()
+    assert vue["travail_des_autres"] == [], vue
+    assert vue["travail_recopie"]["gestes"]["token_correction"] == 1
+    # La source garde la sienne, qui n'est pas recopiée.
+    toks = client.get(f"/api/regions/{source['bulle']}/tokens", headers=LEA).json()
+    assert [t["corr_recopiee"] for t in toks] == [False]
+    _sql(db_path, "UPDATE token_correction SET date_modif = datetime('now', '+1 day'), "
+                  "auteur = 'sam' WHERE region_id = ?", (bulle,))
+    toks = client.get(f"/api/regions/{bulle}/tokens", headers=LEA).json()
+    assert [(t["corr_auteur"], t["corr_recopiee"]) for t in toks] == [("sam", False)], toks
+    # Et « qui perd quoi » la nomme : elle a été faite sur CETTE copie.
+    vue = client.get(f"/api/albums/{b}/travail-des-autres",
+                     headers={"Remote-User": "proprio"}).json()
+    assert [(e["agent"], e["gestes"]) for e in vue["travail_des_autres"]] == [
+        ("sam", {"token_correction": 1})], vue
+
+
 def test_le_travail_fait_sur_la_source_apres_la_copie_ne_compte_pas(client, db_path, source):
     b = _copier(source, "annotations")
     _sql(db_path, "UPDATE copie SET creee_le = datetime('now', '-1 hour') WHERE album_id = ?",
