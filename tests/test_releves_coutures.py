@@ -684,3 +684,41 @@ def test_un_doute_d_un_autre_sur_la_region_source_ne_compte_pas_sur_la_copie(
                        "WHERE p.album_id = ? AND r.origine_id = ?", (copie, r["id"]))[0][
         "n"] == 1
     assert _autrui(copie, "stag") is olga_pose
+
+
+# --------------------------------------------------------------------------- #
+# Contre-relecture n°2 — copie de copie (n3, n3bis)
+# --------------------------------------------------------------------------- #
+def test_copie_de_copie_la_modification_d_olga_sur_une_region_compte(client, decor, db_path):
+    """n3 — Olga modifie le relevé de la stagiaire à la PREMIÈRE source ; la copie de la copie
+    emporte sa variante. Au-delà du premier maillon, la forme fermée — un relevé recopié vit
+    sur la région — compte trop plutôt que trop peu (consigne du pilotage)."""
+    a, pl = _album_de_la_stagiaire(client, decor)
+    b = ok(client.post(f"/api/planches/{pl}/regions", headers=STAG,
+                       json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9}), 201)["id"]
+    r = poser(client, decor, qui=STAG, region_id=b, entree_cle="ton-de-voix",
+              variante_cle="chuchote")
+    ok(client.put(f"/api/releves/{r['id']}", headers=OLGA,
+                  json={"variante_cle": "crie", "vu": {"variante_cle": "chuchote"}}))
+    c1 = _copie_par(a, decor["c2"], "stag")
+    assert _autrui(c1, "stag")
+    c2 = _copie_par(c1, decor["c"], "stag")
+    (rec,) = _q(db_path, "SELECT r.variante_cle FROM releve r JOIN regions g "
+                         "ON g.id = r.region_id JOIN planches p ON p.id = g.planche_id "
+                         "WHERE p.album_id = ?", (c2,))
+    assert rec["variante_cle"] == "crie"
+    assert _autrui(c2, "stag") and not _directe(c2, decor["c"], "stag")
+
+
+def test_copie_de_copie_la_modification_d_olga_en_surface_compte(client, decor, db_path):
+    """n3bis, le témoin : en surface, la neuvième source remonte la chaîne."""
+    gid = _grille_de_planche(client, decor)
+    a, pl = _album_de_la_stagiaire(client, decor)
+    r = ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": gid, "version": 1, "planche_id": pl, "entree_cle": "climat",
+        "variante_cle": "calme"}), 201)
+    ok(client.put(f"/api/releves/{r['id']}", headers=OLGA,
+                  json={"variante_cle": "tendu", "vu": {"variante_cle": "calme"}}))
+    c1 = _copie_par(a, decor["c2"], "stag")
+    c2 = _copie_par(c1, decor["c"], "stag")
+    assert _autrui(c2, "stag")

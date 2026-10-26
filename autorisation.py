@@ -1356,11 +1356,14 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' "
          f"AND {_SQL_ALBUM_DE_LA_CHARGE} = _ta.id AND NOT {_SQL_NAISSANCE_D_UNE_COPIE} "
          f"AND NOT {_SQL_ORDRE_DES_PLANCHES} AND NOT {_SQL_EFFACER_OU_RETIRER}", "0"),
+        # `CROSS JOIN` : la chaîne d'abord, puis le journal par son index
+        # (`idx_evenement_cible`) — sans statistiques, SQLite partait du journal et lui
+        # bâtissait un index automatique à chaque requête (contre-relecture n°2).
         ("_te.agent", "_te.cible_table", "_te.date",
-         "evenement _te JOIN ("
-         + _sql_chaine_des_sources(regions_de_l_album) + "SELECT d, s, borne, rang FROM _tch"
-         f") _tsrc ON _te.cible_id = _tsrc.s "
-         f"WHERE _te.cible_table IN ({cibles}) AND _te.agent_type = 'humain' "
+         "(" + _sql_chaine_des_sources(regions_de_l_album) + "SELECT d, s, borne, rang FROM _tch"
+         ") _tsrc CROSS JOIN evenement _te "
+         f"WHERE _te.cible_table IN ({cibles}) AND _te.cible_id = _tsrc.s "
+         "AND _te.agent_type = 'humain' "
          "AND _te.date <= _tsrc.borne "
          # Les DOUTES ne suivent pas une copie : ils ne comptent nulle part comme travail
          # recopié (décision du pilotage, 2026-10-26 ; le pendant de la neuvième source).
@@ -1504,13 +1507,21 @@ _SQL_COUCHE_VIT = (
     # point 4) : une PASSE (marquée, rouverte) vit si une passe RECOPIÉE vit sur la région de
     # la copie — une passe posée ensuite, rouverte puis marquée, ne ranime pas celle de la
     # source (décision du pilotage, 2026-10-26, la doctrine de la 3b) ; tout autre acte porte
-    # un relevé (`releve_id` de sa charge), et vit si un relevé recopié DE CE relevé-là
-    # (`origine_id`) vit sur la région — un autre relevé recopié n'en ranime aucun.
+    # un relevé (`releve_id` de sa charge). Au PREMIER maillon — la région source est celle
+    # dont la région de la copie a été tirée (`region_origine`) —, il vit si un relevé
+    # recopié DE CE relevé-là (`origine_id`) vit sur la région : un autre relevé recopié n'en
+    # ranime aucun. Au-delà (copie de copie), l'`origine_id` désigne le relevé de la copie
+    # intermédiaire, pas celui de l'acte : la forme FERMÉE, un relevé recopié vit sur la
+    # région, compte trop plutôt que trop peu (contre-relecture n°2, consigne du pilotage).
     + " WHEN 'releve' THEN CASE WHEN _te.type IN ('passe', 'passe_rouverte') "
       "THEN EXISTS (SELECT 1 FROM passe _tvp WHERE _tvp.region_id = _tsrc.d "
       "AND _tvp.recopiee = 1) "
+      "WHEN EXISTS (SELECT 1 FROM region_origine _tvo WHERE _tvo.region_id = _tsrc.d "
+      "AND _tvo.region_source_id = _tsrc.s) "
+      "THEN EXISTS (SELECT 1 FROM releve _tv WHERE _tv.region_id = _tsrc.d "
+      f"AND _tv.origine_id = {_SQL_RELEVE_DE_LA_CHARGE}) "
       "ELSE EXISTS (SELECT 1 FROM releve _tv WHERE _tv.region_id = _tsrc.d "
-      f"AND _tv.origine_id = {_SQL_RELEVE_DE_LA_CHARGE}) END"
+      "AND _tv.origine_id IS NOT NULL) END"
     + " ELSE 1 END)")
 
 
