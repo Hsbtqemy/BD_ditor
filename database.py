@@ -225,8 +225,12 @@ CREATE TABLE IF NOT EXISTS regions (
     -- (« le téléphone », « l'affiche »), NULL pour tout autre type. Le type `detail` lui-même
     -- vient avec l'écran qui le trace (tranche 2) ; la colonne naît avec la migration de la
     -- tranche 1 pour qu'il n'en faille pas une seconde. Elle ne sort par aucun export :
-    -- `_region_tree` et les outils de sortie nomment leurs champs un à un. Commentaire SOUS
-    -- la dernière colonne (cf. celui de `collection.projet_id`).
+    -- `_region_tree` et les outils de sortie nomment leurs champs un à un. Elle est en
+    -- revanche PUBLIÉE par les routes de région de l'Atelier (leur `SELECT *`), et c'est une
+    -- DÉCISION, pas un défaut (relecture croisée d'ANN-7, constat 5) : un champ de TRAVAIL
+    -- interne, que l'écran de la tranche 2 lira et écrira, lisible de qui lit la région comme
+    -- son texte. Ctrl+Z la rend avec la région (`journal._REGION_COLS`). Commentaire SOUS la
+    -- dernière colonne (cf. celui de `collection.projet_id`).
 );
 
 CREATE TABLE IF NOT EXISTS tags (

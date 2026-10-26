@@ -32,8 +32,11 @@ agent_courant: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "agent_courant", default=None)
 
 # Colonnes « métier » d'une région capturées dans un instantané (hors id/dates/audit).
+# `nom` (v37, ANN-7, G17 ; relecture croisée, constat 5) : le nom libre d'une zone de détail,
+# que l'annulation d'une suppression ou d'une modification de région doit rendre comme le
+# reste. Les charges ne sortent pas de l'instance (`tools/_commun.COLONNES_EVENEMENT_PUBLIEES`).
 _REGION_COLS = ("planche_id", "parent_id", "type", "x", "y", "w", "h",
-                "ordre", "ocr_texte", "source")
+                "ordre", "ocr_texte", "source", "nom")
 
 
 def _js(valeur: Any) -> Optional[str]:

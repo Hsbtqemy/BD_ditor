@@ -291,3 +291,34 @@ def test_le_409_d_un_autre_releve_une_se_lit_en_mots(client, decor, db_path):
         "Conflit : le relevé a été modifié par Lea Responsable, le "
         f"{refus['conflit']['auteur']['le']} (UTC) depuis que vous l'avez vu. "
         "Votre modification n'est pas enregistrée.")
+
+
+# --------------------------------------------------------------------------- #
+# `regions.nom` (v37, G17 ; relecture croisée, constat 5) — Ctrl+Z le rend
+# --------------------------------------------------------------------------- #
+def test_ctrl_z_d_une_suppression_de_region_rend_son_nom(client, decor, db_path):
+    """Le nom libre d'une zone (aucune route ne l'écrit encore : SQL) revient avec elle."""
+    b = decor["autre_bulle"]
+    c = sqlite3.connect(db_path)
+    c.execute("UPDATE regions SET nom = 'le téléphone' WHERE id = ?", (b,))
+    c.commit()
+    c.close()
+    ok(client.delete(f"/api/regions/{b}", headers=STAG), 204)
+    e = _q(db_path, "SELECT avant FROM evenement WHERE cible_table = 'regions' "
+                    "AND type = 'suppression' ORDER BY id DESC LIMIT 1")[0]
+    assert '"nom": "le téléphone"' in e["avant"]
+    undo(client)
+    assert _q(db_path, "SELECT nom FROM regions WHERE id = ?", (b,)) == [
+        {"nom": "le téléphone"}]
+
+
+def test_ctrl_z_d_une_modification_de_region_garde_son_nom(client, decor, db_path):
+    b = decor["autre_bulle"]
+    c = sqlite3.connect(db_path)
+    c.execute("UPDATE regions SET nom = 'l''affiche' WHERE id = ?", (b,))
+    c.commit()
+    c.close()
+    ok(client.put(f"/api/regions/{b}", headers=STAG, json={"ocr_texte": "OH"}))
+    undo(client)
+    assert _q(db_path, "SELECT nom, ocr_texte FROM regions WHERE id = ?", (b,)) == [
+        {"nom": "l'affiche", "ocr_texte": None}]
