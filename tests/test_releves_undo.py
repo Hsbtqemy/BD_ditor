@@ -232,15 +232,67 @@ def test_ctrl_z_d_une_creation_garde_une_passe_seule(client, decor, db_path):
         "n"] == 1
 
 
-def test_ctrl_z_d_une_creation_garde_sa_propre_passe(client, decor, db_path):
-    """Quel qu'en soit l'auteur : une passe ne s'annule pas, et Ctrl+Z ne la défait pas en
-    défaisant la région."""
+def test_ctrl_z_d_une_creation_n_est_pas_bloque_par_sa_propre_passe(client, decor, db_path):
+    """RENVERSÉ par le pilotage le 2026-10-26 (contre-relecture, r5) : ce test exigeait que sa
+    propre passe rende sa création inannulable (« quel qu'en soit l'auteur »). La doctrine de
+    CONC-4 pour la situation l'emporte — la marquer sur sa propre zone ne doit pas rendre sa
+    création inannulable : la passe part avec la région. Celle d'un autre bloque toujours."""
     rid = _bulle_de_la_stagiaire(client, decor)
     ok(client.put(f"/api/regions/{rid}/passes/{decor['grille_id']}", headers=STAG, json={}))
+    undo(client)
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM regions WHERE id = ?", (rid,))[0]["n"] == 0
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM passe WHERE region_id = ?", (rid,))[0][
+        "n"] == 0
+
+
+def test_ctrl_z_d_une_creation_bloque_par_la_passe_d_un_autre_a_cote_de_la_sienne(
+        client, decor, db_path):
+    rid = _bulle_de_la_stagiaire(client, decor)
+    ok(client.put(f"/api/regions/{rid}/passes/{decor['grille_id']}", headers=STAG, json={}))
+    ok(client.put(f"/api/regions/{rid}/passes/{decor['grille_id']}", headers=LEA,
+                  json={"rubrique_cle": "echanges"}))
     refus = undo(client, attendu=(409,))["detail"]
     assert refus["conflit"]["champ"] == "passe"
-    assert refus["conflit"]["auteur"]["meme_compte"] is True
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+
+
+def test_le_409_d_une_creation_nomme_l_auteur_du_releve_et_non_le_dernier_acte(client, decor,
+                                                                              db_path):
+    """Contre-relecture, r1 : la stagiaire marque une passe APRÈS le relevé de Léa ; le refus
+    nommait la stagiaire elle-même (le dernier acte sous la cible `releve`)."""
+    rid = _bulle_de_la_stagiaire(client, decor)
+    poser(client, decor, qui=LEA, region_id=rid, entree_cle="ton-de-voix", variante_cle="crie")
+    ok(client.put(f"/api/regions/{rid}/passes/{decor['grille_id']}", headers=STAG, json={}))
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "releve"
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+    assert refus["conflit"]["auteur"]["meme_compte"] is False
+
+
+def test_le_409_d_une_creation_ne_nomme_pas_son_propre_releve_annule(client, decor, db_path):
+    """Contre-relecture, r1b : son propre relevé, annulé d'abord, ne se nomme plus."""
+    rid = _bulle_de_la_stagiaire(client, decor)
+    poser(client, decor, qui=LEA, region_id=rid, entree_cle="ton-de-voix", variante_cle="crie")
+    poser(client, decor, qui=STAG, region_id=rid, entree_cle="reponse-a",
+          lien_region_id=decor["autre_bulle"])
+    undo(client)                                   # défait son relevé
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+
+
+def test_ctrl_z_d_une_creation_garde_le_lien_entrant_d_un_autre(client, decor, db_path):
+    """Contre-relecture, r2 : Léa pose sur une AUTRE bulle un relevé qui désigne la bulle de la
+    stagiaire par son lien ; annuler la création le laissait « à revoir », en 200."""
+    rid = _bulle_de_la_stagiaire(client, decor)
+    r = poser(client, decor, qui=LEA, region_id=decor["zones"]["bulle"],
+              entree_cle="reponse-a", lien_region_id=rid)
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "lien_region_id"
+    assert refus["conflit"]["auteur"]["login"] == "lea" and refus["passable"]
+    assert refus["message"].startswith("Conflit : le lien a été modifié par Lea Responsable")
     assert _q(db_path, "SELECT COUNT(*) AS n FROM regions WHERE id = ?", (rid,))[0]["n"] == 1
+    assert _q(db_path, "SELECT lien_region_id FROM releve WHERE id = ?", (r["id"],)) == [
+        {"lien_region_id": rid}]
 
 
 def test_ctrl_z_d_une_creation_garde_le_releve_d_un_descendant(client, decor, db_path):

@@ -139,6 +139,13 @@ def auteur(conn: sqlite3.Connection, e) -> dict:
             "le": (e["date"] or "").replace(" ", "T") + "Z"}
 
 
+def auteur_nomme(conn: sqlite3.Connection, login: Optional[str], date: Optional[str]) -> dict:
+    """`auteur` pour un objet qui VIT et porte lui-même son auteur et sa date (un relevé :
+    `modifie_par` / `auteur`, une passe : `par`) plutôt qu'un acte du journal — ANN-7. Un
+    login absent (recopié entre deux projets) se dit « ailleurs »."""
+    return auteur(conn, {"agent": login, "agent_type": "humain", "date": date})
+
+
 def auteur_du_champ(conn: sqlite3.Connection, cible_table: str, cible_id: int, champ: str,
                     valeur: Any, *, depuis: Optional[int] = None,
                     objet: Optional[tuple] = None) -> Optional[dict]:
