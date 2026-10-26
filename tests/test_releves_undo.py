@@ -374,3 +374,76 @@ def test_ctrl_z_d_une_modification_de_region_garde_son_nom(client, decor, db_pat
     undo(client)
     assert _q(db_path, "SELECT nom, ocr_texte FROM regions WHERE id = ?", (b,)) == [
         {"nom": "l'affiche", "ocr_texte": None}]
+
+
+# --------------------------------------------------------------------------- #
+# Contre-relecture n°2 — une retouche de soi ne fait pas passer le relevé d'un autre pour le
+# sien (n1, n2)
+# --------------------------------------------------------------------------- #
+def test_ctrl_z_d_une_retouche_rend_qui_avait_modifie_le_releve(client, decor, db_path):
+    """n2 — Léa pose, la stagiaire retouche puis annule : `modifie_par` revient à ce qu'il
+    était, et le refus de la création nomme Léa, pas la stagiaire."""
+    rid = _bulle_de_la_stagiaire(client, decor)
+    r = poser(client, decor, qui=LEA, region_id=rid, entree_cle="ton-de-voix",
+              variante_cle="crie")
+    ok(client.put(f"/api/releves/{r['id']}", headers=STAG,
+                  json={"variante_cle": "chuchote", "vu": {"variante_cle": "crie"}}))
+    undo(client)
+    assert _q(db_path, "SELECT variante_cle, modifie_par, modifie_le FROM releve WHERE id = ?",
+              (r["id"],)) == [{"variante_cle": "crie", "modifie_par": None,
+                               "modifie_le": None}]
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+
+
+def test_le_lien_entrant_retouche_par_soi_bloque_encore(client, decor, db_path):
+    """n1 — le relevé de Léa qui désigne la bulle, retouché par la stagiaire puis rétabli par
+    Ctrl+Z, reste celui de Léa : la création ne s'annule pas."""
+    rid = _bulle_de_la_stagiaire(client, decor)
+    r = poser(client, decor, qui=LEA, region_id=decor["zones"]["bulle"],
+              entree_cle="reponse-a", lien_region_id=rid)
+    ok(client.put(f"/api/releves/{r['id']}", headers=STAG,
+                  json={"lien_region_id": decor["autre_bulle"]}))
+    undo(client)
+    assert _q(db_path, "SELECT lien_region_id, modifie_par FROM releve WHERE id = ?",
+              (r["id"],)) == [{"lien_region_id": rid, "modifie_par": None}]
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "lien_region_id"
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM regions WHERE id = ?", (rid,))[0]["n"] == 1
+
+
+def _retouche_restee(client, d, r, corps):
+    """La stagiaire retouche le relevé de Léa, puis la grille est désactivée : son Ctrl+Z de
+    la retouche est PASSÉ (seconde phrase), et `modifie_par` reste le sien."""
+    ok(client.put(f"/api/releves/{r['id']}", headers=STAG, json=corps))
+    ok(client.delete(f"/api/projets/{d['p']}/grilles/{d['grille_id']}/activation",
+                     headers=LEA), 204)
+    refus = undo(client, attendu=(409,))["detail"]
+    assert "ne peut plus être rétabli" in refus["message"]
+
+
+def test_un_lien_entrant_retouche_par_soi_reste_celui_d_un_autre(client, decor, db_path):
+    """La garde lit l'AUTEUR du relevé, ou tout acte d'un autre à son journal — jamais le
+    seul dernier retoucheur : la stagiaire a fait pointer le relevé de Léa sur sa bulle, et
+    ce relevé reste celui de Léa."""
+    rid = _bulle_de_la_stagiaire(client, decor)
+    r = poser(client, decor, qui=LEA, region_id=decor["zones"]["bulle"],
+              entree_cle="reponse-a", lien_region_id=decor["autre_bulle"])
+    _retouche_restee(client, decor, r, {"lien_region_id": rid})
+    assert _q(db_path, "SELECT modifie_par FROM releve WHERE id = ?", (r["id"],)) == [
+        {"modifie_par": "stag"}]
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "lien_region_id"
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+
+
+def test_le_409_nomme_l_auteur_et_non_le_dernier_retoucheur(client, decor, db_path):
+    rid = _bulle_de_la_stagiaire(client, decor)
+    r = poser(client, decor, qui=LEA, region_id=rid, entree_cle="ton-de-voix",
+              variante_cle="crie")
+    _retouche_restee(client, decor, r, {"variante_cle": "chuchote",
+                                        "vu": {"variante_cle": "crie"}})
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "releve"
+    assert refus["conflit"]["auteur"]["login"] == "lea"

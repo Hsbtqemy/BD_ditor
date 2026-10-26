@@ -314,13 +314,12 @@ def _garder_releves_de_creation(conn, region_id, agent) -> None:
     marques = ", ".join("?" * len(zones))
     # Un relevé : celui d'un autre d'abord, le plus récent sinon.
     r = conn.execute(
-        f"SELECT COALESCE(modifie_par, auteur) AS qui, COALESCE(modifie_le, cree_le) AS le "
-        f"FROM releve WHERE region_id IN ({marques}) "
-        f"ORDER BY (COALESCE(modifie_par, auteur) IS ?), COALESCE(modifie_le, cree_le) DESC, "
-        f"id DESC LIMIT 1", (*zones, agent)).fetchone()
+        f"SELECT * FROM releve r WHERE region_id IN ({marques}) "
+        f"ORDER BY {_SQL_RELEVE_D_UN_AUTRE} DESC, COALESCE(modifie_le, cree_le) DESC, "
+        f"id DESC LIMIT 1", (*zones, agent, agent)).fetchone()
     if r is not None:
         raise conflit.Perime("releve", region_id, "releve", None,
-                             conflit.auteur_nomme(conn, r["qui"], r["le"]))
+                             _auteur_d_un_releve(conn, r, agent))
     p = conn.execute(f"SELECT par AS qui, le FROM passe WHERE region_id IN ({marques}) "
                      f"AND par IS NOT ? ORDER BY le DESC, id DESC LIMIT 1",
                      (*zones, agent)).fetchone()
@@ -328,14 +327,38 @@ def _garder_releves_de_creation(conn, region_id, agent) -> None:
         raise conflit.Perime("releve", region_id, "passe", None,
                              conflit.auteur_nomme(conn, p["qui"], p["le"]))
     lien = conn.execute(
-        f"SELECT COALESCE(modifie_par, auteur) AS qui, COALESCE(modifie_le, cree_le) AS le, "
-        f"lien_region_id FROM releve WHERE lien_region_id IN ({marques}) "
-        f"AND COALESCE(modifie_par, auteur) IS NOT ? "
+        f"SELECT * FROM releve r WHERE lien_region_id IN ({marques}) "
+        f"AND {_SQL_RELEVE_D_UN_AUTRE} "
         f"ORDER BY COALESCE(modifie_le, cree_le) DESC, id DESC LIMIT 1",
-        (*zones, agent)).fetchone()
+        (*zones, agent, agent)).fetchone()
     if lien is not None:
         raise conflit.Perime("releve", region_id, "lien_region_id", lien["lien_region_id"],
-                             conflit.auteur_nomme(conn, lien["qui"], lien["le"]))
+                             _auteur_d_un_releve(conn, lien, agent))
+
+
+# Un relevé (alias `r`) est-il celui d'un AUTRE que l'agent (deux `?`, l'agent deux fois) ?
+# La forme FERMÉE (contre-relecture n°2, consigne du pilotage) : son AUTEUR n'est pas l'agent
+# — un auteur inconnu, recopié entre deux projets, est un autre —, ou un autre humain a agi
+# sur lui au journal (sa cible, sa charge `releve_id`), défait ou non. Jamais le seul dernier
+# retoucheur : une retouche de soi ne fait pas passer le relevé d'un autre pour le sien.
+_SQL_RELEVE_D_UN_AUTRE = (
+    "(r.auteur IS NOT ? OR EXISTS (SELECT 1 FROM evenement _ue "
+    "WHERE ((_ue.cible_table = 'releve' AND _ue.cible_id = r.region_id) "
+    "OR (_ue.cible_table = 'releve_planche' AND _ue.cible_id = r.planche_id)) "
+    "AND _ue.agent_type = 'humain' AND _ue.agent IS NOT ? "
+    "AND COALESCE(CASE WHEN json_valid(_ue.apres) THEN json_extract(_ue.apres, '$.releve_id') "
+    "END, CASE WHEN json_valid(_ue.avant) THEN json_extract(_ue.avant, '$.releve_id') END) "
+    "= r.id))")
+
+
+def _auteur_d_un_releve(conn, r, agent) -> Optional[dict]:
+    """Qui nommer pour un relevé qui bloque : un auteur AUTRE que l'agent parmi `auteur` puis
+    `modifie_par` ; sinon personne — le refus dit « ailleurs » (contre-relecture n°2)."""
+    if r["auteur"] is not None and r["auteur"] != agent:
+        return conflit.auteur_nomme(conn, r["auteur"], r["cree_le"])
+    if r["modifie_par"] is not None and r["modifie_par"] != agent:
+        return conflit.auteur_nomme(conn, r["modifie_par"], r["modifie_le"])
+    return None
 
 
 # CONC-4 — les liens qu'une région emporte par cascade : (table, colonne de la charge, champ
@@ -1080,6 +1103,12 @@ def _inverser_releve(conn, e, avant, apres) -> None:
                           in enumerate(zip(avant.get("mots") or [], avant.get("formes") or []))])
         conn.execute("UPDATE releve SET texte_ancre = ? WHERE id = ?",
                      (avant.get("texte_ancre"), rid))
+    # Qui l'avait modifié, et quand, revient avec les valeurs (contre-relecture n°2) : une
+    # retouche annulée ne laisse pas le relevé d'un autre passer pour le sien. Un acte d'avant
+    # que la charge ne le porte n'y touche pas.
+    if changes and "modifie_par" in avant:
+        conn.execute("UPDATE releve SET modifie_par = ?, modifie_le = ? WHERE id = ?",
+                     (avant.get("modifie_par"), avant.get("modifie_le"), rid))
 
 
 def _rendre_releves(conn, snap) -> int:

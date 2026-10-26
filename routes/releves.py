@@ -576,7 +576,10 @@ def modifier_releve(releve_id: int, payload: ReleveUpdate,
         conn.execute("UPDATE releve SET texte_ancre = ? WHERE id = ?", (texte_ancre, releve_id))
     conn.execute("UPDATE releve SET modifie_par = ?, modifie_le = datetime('now') "
                  "WHERE id = ?", (portee.utilisateur, releve_id))
-    avant = {"releve_id": releve_id, **{c: actuel[c] for c in change}}
+    # `modifie_par` / `modifie_le` d'avant : Ctrl+Z les rend avec les valeurs (contre-
+    # relecture n°2) — sans quoi une retouche annulée laissait le relevé d'un autre « à soi ».
+    avant = {"releve_id": releve_id, **{c: actuel[c] for c in change},
+             "modifie_par": actuel["modifie_par"], "modifie_le": actuel["modifie_le"]}
     apres = {"releve_id": releve_id, **change}
     if "mots" in change:
         avant.update(formes=actuel["formes"], texte_ancre=actuel["texte_ancre"])
