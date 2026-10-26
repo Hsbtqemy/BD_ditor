@@ -16,6 +16,7 @@ import autorisation
 import database
 import main
 from conftest import ADMIN, make_png
+from grilles_decor import grille_active
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import preparer_jeu  # noqa: E402
@@ -327,7 +328,7 @@ def test_le_jeu_ne_se_regle_pas(client, reference):
 # une contribution, l'ordre des planches passaient tous).
 def _corps_des_ecritures(ref):
     a, pl, rg, ct = ref["album"], ref["planche"], ref["region"], ref["contribution"]
-    v, p = ref["valeur"], ref["personnage"]
+    v, p, g = ref["valeur"], ref["personnage"], ref["grille"]
     return {
         ("PUT", "/api/regions/{region_id}/tokens/{ordre}"):
             (f"/api/regions/{rg}/tokens/0", {"lemme": "x"}),
@@ -391,6 +392,17 @@ def _corps_des_ecritures(ref):
         ("PUT", "/api/albums/{album_id}/ordre-des-planches"):
             (f"/api/albums/{a}/ordre-des-planches", {"ordre": [pl], "vu": [pl]}),
         ("DELETE", "/api/contributions/{contribution_id}"): (f"/api/contributions/{ct}", None),
+        # ANN-7, tranche 1 — marquer et rouvrir une passe, sur une région et sur la planche
+        # entière, d'une grille ACTIVE sur le projet du jeu (`reference_complete`) : sans la
+        # garde, la passe s'écrirait, et l'empreinte le verrait.
+        ("PUT", "/api/regions/{region_id}/passes/{grille_id}"):
+            (f"/api/regions/{rg}/passes/{g}", {}),
+        ("DELETE", "/api/regions/{region_id}/passes/{grille_id}"):
+            (f"/api/regions/{rg}/passes/{g}", None),
+        ("PUT", "/api/planches/{planche_id}/passes/{grille_id}"):
+            (f"/api/planches/{pl}/passes/{g}", {}),
+        ("DELETE", "/api/planches/{planche_id}/passes/{grille_id}"):
+            (f"/api/planches/{pl}/passes/{g}", None),
     }
 
 
@@ -418,7 +430,14 @@ def _empreinte(db, album):
                   "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
                   "SELECT x.* FROM personnage_presence x JOIN regions r ON r.id = x.region_id "
                   "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
-                  "SELECT * FROM collection_album WHERE album_id = ? ORDER BY collection_id"):
+                  "SELECT * FROM collection_album WHERE album_id = ? ORDER BY collection_id",
+                  # ANN-7 — les relevés et les passes, d'une région ou de la surface.
+                  "SELECT x.* FROM releve x LEFT JOIN regions r ON r.id = x.region_id "
+                  "JOIN planches p ON p.id = COALESCE(r.planche_id, x.planche_id) "
+                  "WHERE p.album_id = ? ORDER BY x.id",
+                  "SELECT x.* FROM passe x LEFT JOIN regions r ON r.id = x.region_id "
+                  "JOIN planches p ON p.id = COALESCE(r.planche_id, x.planche_id) "
+                  "WHERE p.album_id = ? ORDER BY x.id"):
             lignes.append(c.execute(q, (album,)).fetchall())
         return lignes
     finally:
@@ -427,8 +446,8 @@ def _empreinte(db, album):
 
 @pytest.fixture
 def reference_complete(client, db_path, reference, png_bytes):
-    """La référence de l'exemple, avec une case, une contribution, une valeur d'attribut et
-    un personnage à attribuer."""
+    """La référence de l'exemple, avec une case, une contribution, une valeur d'attribut, un
+    personnage à attribuer — et une grille ACTIVE sur le projet du jeu (ANN-7)."""
     regions = _sql(db_path, "SELECT id, type FROM regions WHERE planche_id = ? ORDER BY id",
                    (reference["planche"],))
     case = next(r["id"] for r in regions if r["type"] == "case")
@@ -446,8 +465,22 @@ def reference_complete(client, db_path, reference, png_bytes):
                     json={"valeur": "gros plan"}).json()["id"]
     p = client.post("/api/personnages", headers=ADMIN, json={"nom": "Spirou"}).json()["id"]
     ailleurs = client.post("/api/collections", headers=ADMIN, json={"nom": "Ailleurs"}).json()
+    # ANN-7 — la grille du modèle FICTIF, née dans le projet de repli, puis activée sur le
+    # projet du JEU par SQL : aucune route ne règle le jeu (`test_le_jeu_ne_se_regle_pas`).
+    # Active, elle laisse passer la garde de l'activation : seule celle de la référence
+    # refuse une passe ou un relevé, et sans elle l'écriture aurait lieu.
+    repli = _sql(db_path, "SELECT id FROM projet WHERE repli = 1")[0]["id"]
+    g = grille_active(client, repli, qui=ADMIN)["grille_id"]
+    c = sqlite3.connect(db_path)
+    try:
+        c.execute("INSERT INTO projet_grille (projet_id, grille_id, version_id) "
+                  "SELECT ?, grille_id, version_id FROM projet_grille WHERE projet_id = ? "
+                  "AND grille_id = ?", (reference["projet"], repli, g))
+        c.commit()
+    finally:
+        c.close()
     return {**reference, "region": bulle, "case": case, "contribution": ct, "valeur": v,
-            "personnage": p, "ailleurs": ailleurs["id"]}
+            "personnage": p, "ailleurs": ailleurs["id"], "grille": g}
 
 
 def test_aucune_ecriture_ne_touche_la_reference(client, db_path, reference_complete,
@@ -466,11 +499,18 @@ def test_aucune_ecriture_ne_touche_la_reference(client, db_path, reference_compl
             if any(k in route.path for k in _CLES_D_OBJET):
                 ecritures.add((m, route.path))
     assert ecritures - set(table) == set(), "route d'écriture neuve, à déclarer ici"
-    # Les deux qui nomment l'album dans leur CORPS.
+    # Celles qui nomment l'album — ou une région, une planche — dans leur CORPS.
     jouees = [(m, chemin, corps) for (m, _p), (chemin, corps) in sorted(table.items())]
     jouees += [("POST", "/api/sharedocs/importer",
                 {"album_id": ref["album"], "chemins": ["x/p.png"]}),
-               ("POST", "/api/jobs", {"passes": ["segmenter"], "album_ids": [ref["album"]]})]
+               ("POST", "/api/jobs", {"passes": ["segmenter"], "album_ids": [ref["album"]]}),
+               # ANN-7 — poser un relevé sur une bulle de la référence, et sur sa surface.
+               ("POST", "/api/releves", {"region_id": ref["region"], "grille_id": ref["grille"],
+                                         "version": 1, "entree_cle": "ton-de-voix",
+                                         "variante_cle": "crie"}),
+               ("POST", "/api/releves", {"planche_id": ref["planche"],
+                                         "grille_id": ref["grille"], "version": 1,
+                                         "entree_cle": "ambiance"})]
     avant = _empreinte(db_path, ref["album"])
     for m, chemin, corps in jouees:
         if corps == "fichier":

@@ -508,9 +508,15 @@ def test_la_clause_aux_extremites_et_ses_parametres_lies():
     sans_rangs = sql.replace(database.sql_rang_du_cran("_tco.cran"), "") \
         .replace(database.sql_rang_du_cran("_tco2.cran"), "")
     assert "o'brien" not in sql and "3" not in sans_rangs.replace("_t", "")
-    # Six sources du travail d'autrui depuis la v32, plus le créateur, le geste sur la
-    # dernière copie (v36, `geste_sur_copie`) et le compte partagé.
-    assert sql.count("?") == len(params) and params.count("o'brien") == 9
+    # Huit sources du travail d'autrui, plus le créateur, le geste sur la dernière copie
+    # (v36, `geste_sur_copie`) et le compte partagé. Six depuis la v32 ; les deux de la v37
+    # (ANN-7, tranche 1, R11) sont le travail RECOPIÉ sur la SURFACE d'une planche — un
+    # relevé (`releve.auteur`, `_tsr`) et une passe (`passe.par`, `_tsp`) arrivés avec une
+    # copie amorcée, que la chaîne de `region_origine`, faite de régions, ne remonte pas. Les
+    # relevés et passes d'une RÉGION passent par la première et la sixième (cible `releve`
+    # dans `_CIBLES_DE_REGION`), ceux d'une surface faits ici par la quatrième (cible
+    # `releve_planche`, avec les validations) : aucun paramètre de plus.
+    assert sql.count("?") == len(params) and params.count("o'brien") == 11
     assert autorisation.TOTALE.peut_tenir_le_fonds() is True
     assert autorisation.Portee(admin=True, utilisateur="x").peut_tenir_le_fonds() is False
 

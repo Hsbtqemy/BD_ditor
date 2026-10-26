@@ -1243,7 +1243,10 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     région source avant la copie compte — un texte modifié puis copié au seul cran du
     découpage aussi, la cible `regions` ne distinguant pas la géométrie du texte.
 
-    Les six sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
+    Deux de plus depuis la v37 (ANN-7, tranche 1, R11) : le relevé et la passe RECOPIÉS
+    sur la SURFACE d'une planche, que la chaîne de `region_origine` ne remonte pas.
+
+    Les huit sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
     `sql_actes_sur_album` : ce que l'administrateur voit du travail des autres, sous une
     demande, est ce que cette règle a lu — deux écritures finiraient par ne plus dire
     pareil. Un attribut de case dont un `lien` humain a été écrit est compté par son acte
@@ -1286,13 +1289,13 @@ def _sql_chaine_des_sources(depart: str) -> str:
 
 
 def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
-    """Les six sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
+    """Les huit sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
     quand, `FROM … WHERE …`, recopié) — la sorte est la `cible_table` de l'acte, ou le nom
     de la table lue. Qui vaut NULL quand l'auteur n'est pas écrit.
 
     « Recopié » est une expression SQL, vraie pour une ligne de travail RECOPIÉ — fait
     ailleurs, avant la copie, et que la copie porte (tranche 3b) : toute la sixième source,
-    et dans la troisième les corrections grammaticales que la copie a reçues telles quelles
+    les deux de la v37 (ANN-7), et dans la troisième les corrections grammaticales que la copie a reçues telles quelles
     et que personne n'a corrigées depuis (la marque EXPLICITE `token_correction.recopiee`,
     v36 — décision du pilotage du 2026-10-25 : la date confondait une correction faite dans
     la même seconde, et la validation la réécrivait). Un écran qui ne tient pas le fonds ne nomme pas ces lignes

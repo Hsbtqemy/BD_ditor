@@ -40,6 +40,7 @@ from pathlib import Path
 import pytest
 
 import inventaire_routes
+from grilles_decor import grille_active
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 JETON = "zzorigine7jeton"
@@ -70,6 +71,9 @@ CORPS = {
         {"type": "case", "x": 0, "y": 0, "w": 5, "h": 5},
     # COL-3, tranche 3b (E8) — repartir de zéro sur la planche du décor, qui porte une bulle.
     ("POST", "/api/planches/{planche_id}/repartir"): {"cran": "images"},
+    # ANN-7, tranche 1 — marquer terminée la passe de la grille du décor sur la planche
+    # entière : la grille sans rubrique, sans valeur vue.
+    ("PUT", "/api/planches/{planche_id}/passes/{grille_id}"): {},
 }
 
 # Celles qu'un décor de test peut ne pas atteindre, et pourquoi. Atteintes, elles sont
@@ -92,11 +96,19 @@ def _decor(client, png_bytes, db_path) -> dict:
     c.commit()
     ligne = c.execute("SELECT document_id, projet_id FROM albums WHERE id = ?",
                       (a["id"],)).fetchone()
-    c.close()
     col = client.get(f"/api/albums/{a['id']}/collections").json()[0]
+    projet = ligne[1] or col.get("projet_id") or 1
+    # ANN-7 (tranche 1) — une grille ACTIVE sur le projet de l'album, pour les routes qui
+    # nomment `{grille_id}` : une passe ne se marque ni ne se rouvre sur une grille inactive
+    # (409). Le modèle FICTIF du dépôt, publié en version 1 ; une seule par projet, que les
+    # décors successifs d'un même test partagent (un second import du même nom serait refusé).
+    deja = c.execute("SELECT grille_id FROM projet_grille WHERE projet_id = ?",
+                     (projet,)).fetchone()
+    c.close()
+    grille = deja[0] if deja else grille_active(client, projet, qui={})["grille_id"]
     return {"album_id": a["id"], "planche_id": p["id"], "region_id": r["id"],
-            "collection_id": col["id"], "document_id": ligne[0],
-            "projet_id": ligne[1] or col.get("projet_id") or 1, "import": p}
+            "collection_id": col["id"], "document_id": ligne[0], "projet_id": projet,
+            "grille_id": grille, "numero": 1, "import": p}
 
 
 def _concret(gabarit: str, decor: dict):
