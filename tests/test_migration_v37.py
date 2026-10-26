@@ -240,3 +240,22 @@ def test_sur_la_base_migree_le_schema_tient_ses_gardes(vraie_v36):
     finally:
         c.rollback()
         c.close()
+
+
+def test_la_passe_porte_sa_marque_de_recopie(vraie_v36):
+    """`passe.recopiee` (relecture croisée d'ANN-7, constat 2) : née avec sa table, à 0 par
+    défaut, NOT NULL ; et posée par PRÉSENCE sur une table `passe` qui serait née sans elle."""
+    database.init_db()
+    cols = {c["name"]: c for c in _sql(vraie_v36, "PRAGMA table_info(passe)")}
+    assert cols["recopiee"]["notnull"] == 1 and cols["recopiee"]["dflt_value"] == "0"
+    c = sqlite3.connect(vraie_v36)
+    try:
+        c.execute("ALTER TABLE passe DROP COLUMN recopiee")
+        c.execute("PRAGMA user_version = 36")
+        c.commit()
+    finally:
+        c.close()
+    assert "recopiee" not in {c["name"] for c in _sql(vraie_v36, "PRAGMA table_info(passe)")}
+    database.init_db()
+    cols = {c["name"]: c for c in _sql(vraie_v36, "PRAGMA table_info(passe)")}
+    assert cols["recopiee"]["notnull"] == 1 and cols["recopiee"]["dflt_value"] == "0"

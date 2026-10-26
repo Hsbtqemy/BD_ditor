@@ -1086,9 +1086,10 @@ def _rendre_releves(conn, snap) -> int:
                 manque += 1
                 continue
             conn.execute("INSERT OR IGNORE INTO passe (id, region_id, planche_id, grille_id, "
-                         "version_id, rubrique_cle, par, le) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)",
+                         "version_id, rubrique_cle, par, le, recopiee) "
+                         "VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)",
                          (p["id"], n["id"], p["grille_id"], p["version_id"],
-                          p["rubrique_cle"], p["par"], p["le"]))
+                          p["rubrique_cle"], p["par"], p["le"], p.get("recopiee", 0)))
     return manque
 
 

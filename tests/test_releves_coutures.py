@@ -12,8 +12,8 @@ import pytest
 import database
 import pipeline.segmentation as seg
 from conftest import ADMIN, make_png
-from grilles_decor import (BEA, IVAN, LEA, STAG, bac_de_bea, grille_active, importer, monter,
-                           ok)
+from grilles_decor import (BEA, IVAN, LEA, OLGA, STAG, bac_de_bea, csv_de, grille_active,
+                           importer, monter, ok)
 
 
 @pytest.fixture
@@ -334,3 +334,173 @@ def test_les_releves_d_un_bac_efface_ne_comptent_pas_dans_les_traces(client, dec
         assert "ivan" not in actes and actes.get("stag", 0) >= 1
     finally:
         c.close()
+
+
+# --------------------------------------------------------------------------- #
+# Le travail RECOPIÉ sur la surface d'une planche (relecture croisée, constats 2 et 3)
+# --------------------------------------------------------------------------- #
+def _autrui(album, login):
+    import autorisation
+    sql, params = autorisation._sql_travail_d_autrui("a.id", login)
+    c = database.get_connection()
+    try:
+        return bool(c.execute(f"SELECT {sql} FROM albums a WHERE a.id = ?",
+                              (*params, album)).fetchone()[0])
+    finally:
+        c.close()
+
+
+def _directe(album, collection, login):
+    """La créatrice SEULE (le chemin 1 de `clause_suppression_directe`)."""
+    import autorisation
+    c = database.get_connection()
+    try:
+        p = autorisation.Portee(ecriture=frozenset({collection}), utilisateur=login)
+        ou, params = p.clause_suppression_directe("a.id")
+        return bool(c.execute(f"SELECT {ou} FROM albums a WHERE a.id = ?",
+                              (*params, album)).fetchone()[0])
+    finally:
+        c.close()
+
+
+def _copie_par(album, collection, par):
+    c = database.get_connection()
+    try:
+        cid = _copie(c, album, collection, par=par)
+        c.commit()
+        return cid
+    finally:
+        c.close()
+
+
+def _album_de_la_stagiaire(client, d):
+    a = ok(client.post("/api/albums", headers=STAG,
+                       json={"titre": "Album S", "collection_id": d["c"]}), 201)["id"]
+    pl = ok(client.post(f"/api/albums/{a}/import", headers=STAG,
+                        files={"file": ("p.png", make_png(), "image/png")}), 201)["id"]
+    return a, pl
+
+
+def test_une_passe_de_surface_recopiee_compte_meme_apres_une_autre_passe(client, decor,
+                                                                        db_path):
+    """Constat 2 — la passe qu'Olga a marquée à la source, recopiée sur la planche de la copie,
+    reste le travail d'Olga quand la stagiaire en marque une AUTRE sur la même planche. La
+    huitième source la lisait par l'absence d'un acte `passe` sur la planche."""
+    g = decor["grille_id"]
+    a, pl = _album_de_la_stagiaire(client, decor)
+    ok(client.put(f"/api/planches/{pl}/passes/{g}", headers=OLGA, json={}))
+    copie = _copie_par(a, decor["c2"], "stag")
+    (pl_copie,) = [x["id"] for x in _q(db_path, "SELECT id FROM planches WHERE album_id = ?",
+                                       (copie,))]
+    assert _q(db_path, "SELECT par, recopiee FROM passe WHERE planche_id = ?", (pl_copie,)) \
+        == [{"par": "olga", "recopiee": 1}]
+    assert _autrui(copie, "stag") and not _directe(copie, decor["c2"], "stag")
+    ok(client.put(f"/api/planches/{pl_copie}/passes/{g}", headers=STAG,
+                  json={"rubrique_cle": "echanges"}))
+    assert _autrui(copie, "stag") and not _directe(copie, decor["c2"], "stag")
+    # La marquer de nouveau, telle quelle, n'en fait pas la passe de la stagiaire.
+    ok(client.put(f"/api/planches/{pl_copie}/passes/{g}", headers=STAG, json={}))
+    assert _q(db_path, "SELECT par, recopiee FROM passe WHERE planche_id = ? "
+                       "AND rubrique_cle = ''", (pl_copie,)) == [{"par": "olga", "recopiee": 1}]
+    assert _autrui(copie, "stag")
+    # Rouverte puis marquée : une ligne neuve, à elle, sans la marque.
+    ok(client.delete(f"/api/planches/{pl_copie}/passes/{g}", headers=STAG), 204)
+    ok(client.put(f"/api/planches/{pl_copie}/passes/{g}", headers=STAG, json={}))
+    assert _q(db_path, "SELECT par, recopiee FROM passe WHERE planche_id = ? "
+                       "AND rubrique_cle = ''", (pl_copie,)) == [{"par": "stag", "recopiee": 0}]
+
+
+def test_une_passe_de_region_recopiee_porte_la_marque_et_ctrl_z_la_rend(client, decor,
+                                                                       db_path):
+    """La marque suit la passe d'une région recopiée, et la suppression de cette région
+    rétablie par Ctrl+Z la rend avec sa marque."""
+    b = decor["zones"]["bulle"]
+    ok(client.put(f"/api/regions/{b}/passes/{decor['grille_id']}", headers=OLGA, json={}))
+    copie = _copie_par(decor["album"], decor["c2"], "stag")
+    (passe,) = _q(db_path, "SELECT s.* FROM passe s JOIN regions g ON g.id = s.region_id "
+                           "JOIN planches p ON p.id = g.planche_id WHERE p.album_id = ?",
+                  (copie,))
+    assert passe["recopiee"] == 1 and passe["par"] == "olga"
+    ok(client.delete(f"/api/regions/{passe['region_id']}", headers=STAG), 204)
+    ok(client.post("/api/undo", headers=STAG))
+    assert _q(db_path, "SELECT par, recopiee FROM passe WHERE id = ?", (passe["id"],)) == [
+        {"par": "olga", "recopiee": 1}]
+
+
+ENTETE_GRILLE = ["cle", "rubrique", "rubrique_cle", "forme", "libelle", "variante_cle",
+                 "variante", "structure", "definition", "exemples", "piege", "liste",
+                 "precision", "lien", "cible", "cardinalite"]
+
+
+def _grille_de_planche(client, d):
+    lignes = [ENTETE_GRILLE,
+              ["climat", "A", "a", "variantes", "climat", "", "", "", "", "", "", "", "", "",
+               "planche", ""],
+              ["climat", "", "", "", "", "calme", "calme", "", "", "", "", "", "", "", "", ""],
+              ["climat", "", "", "", "", "tendu", "tendu", "", "", "", "", "", "", "", "", ""]]
+    gid = importer(client, d["p"], LEA, entrees=csv_de(lignes), listes=None, nom="Climats",
+                   porte_sur="planche")["grille_id"]
+    ok(client.post(f"/api/grilles/{gid}/versions/1/publication", headers=LEA))
+    ok(client.put(f"/api/projets/{d['p']}/grilles/{gid}/activation", headers=LEA,
+                  json={"version": 1}))
+    return gid
+
+
+@pytest.mark.parametrize("qui, attendu", [(OLGA, True), (STAG, False)])
+def test_un_releve_de_surface_recopie_porte_ce_qu_un_autre_y_a_fait_a_la_source(
+        client, decor, db_path, qui, attendu):
+    """Constat 3 — la stagiaire pose un relevé sur la surface ; Olga change sa variante à la
+    SOURCE ; la copie emporte la variante d'Olga. Le relevé copié ne compte plus par son seul
+    `auteur` : les actes sur sa source, antérieurs à la copie, sont du travail d'autrui —
+    sauf ceux de la stagiaire elle-même (le témoin)."""
+    gid = _grille_de_planche(client, decor)
+    a, pl = _album_de_la_stagiaire(client, decor)
+    r = ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": gid, "version": 1, "planche_id": pl, "entree_cle": "climat",
+        "variante_cle": "calme"}), 201)
+    ok(client.put(f"/api/releves/{r['id']}", headers=qui,
+                  json={"variante_cle": "tendu", "vu": {"variante_cle": "calme"}}))
+    copie = _copie_par(a, decor["c2"], "stag")
+    (rec,) = _q(db_path, "SELECT r.* FROM releve r JOIN planches p ON p.id = r.planche_id "
+                         "WHERE p.album_id = ?", (copie,))
+    assert rec["variante_cle"] == "tendu" and rec["origine_id"] == r["id"]
+    assert _autrui(copie, "stag") is attendu
+    assert _directe(copie, decor["c2"], "stag") is not attendu
+
+
+def test_un_acte_a_la_source_apres_la_copie_ne_compte_pas(client, decor, db_path):
+    """La borne : ce qu'Olga fait sur la source APRÈS la copie n'est pas dans la copie."""
+    gid = _grille_de_planche(client, decor)
+    a, pl = _album_de_la_stagiaire(client, decor)
+    r = ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": gid, "version": 1, "planche_id": pl, "entree_cle": "climat",
+        "variante_cle": "calme"}), 201)
+    copie = _copie_par(a, decor["c2"], "stag")
+    # La copie est datée à la seconde : l'acte d'Olga doit lui être postérieur.
+    c = database.get_connection()
+    try:
+        c.execute("UPDATE copie SET creee_le = datetime('now', '-1 minute') "
+                  "WHERE album_id = ?", (copie,))
+        c.commit()
+    finally:
+        c.close()
+    ok(client.put(f"/api/releves/{r['id']}", headers=OLGA,
+                  json={"variante_cle": "tendu", "vu": {"variante_cle": "calme"}}))
+    assert not _autrui(copie, "stag")
+
+
+@pytest.mark.parametrize("olga_modifie", [False, True])
+def test_un_releve_de_region_recopie_compte_ce_qu_un_autre_y_a_fait(client, decor, db_path,
+                                                                    olga_modifie):
+    """Le témoin de la sixième source, qui reste tel quel : sur une RÉGION, la modification
+    d'Olga à la source compte, et sans elle rien ne compte."""
+    a, pl = _album_de_la_stagiaire(client, decor)
+    b = ok(client.post(f"/api/planches/{pl}/regions", headers=STAG,
+                       json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9}), 201)["id"]
+    r = poser(client, decor, qui=STAG, region_id=b, entree_cle="ton-de-voix",
+              variante_cle="chuchote")
+    if olga_modifie:
+        ok(client.put(f"/api/releves/{r['id']}", headers=OLGA,
+                      json={"variante_cle": "crie", "vu": {"variante_cle": "chuchote"}}))
+    copie = _copie_par(a, decor["c2"], "stag")
+    assert _autrui(copie, "stag") == olga_modifie

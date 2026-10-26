@@ -936,7 +936,16 @@ CREATE TABLE IF NOT EXISTS passe (
     version_id    INTEGER REFERENCES grille_version(id),
     rubrique_cle  TEXT NOT NULL DEFAULT '',
     par           TEXT,
-    le            TEXT DEFAULT (datetime('now'))
+    le            TEXT DEFAULT (datetime('now')),
+    recopiee      INTEGER NOT NULL DEFAULT 0
+    -- 1 si la passe est arrivée avec une copie amorcée (`copier_le_travail`), telle
+    -- quelle : la règle de suppression la compte alors comme le travail de `par`, fait
+    -- ailleurs (`autorisation._sources_du_travail`). Une marque EXPLICITE, comme celle des
+    -- `COUCHES_RECOPIEES` (décision du pilotage du 2026-10-25 : une marque, jamais une
+    -- date) : une passe RE-MARQUÉE — rouverte puis marquée — est une ligne neuve, à 0 ;
+    -- la marquer quand elle l'est déjà ne change rien, comme valider une correction
+    -- recopiée n'en fait pas l'auteur. Commentaire SOUS la dernière colonne (cf. celui de
+    -- `collection.projet_id`).
 );
 CREATE INDEX IF NOT EXISTS idx_passe_region ON passe(region_id);
 CREATE INDEX IF NOT EXISTS idx_passe_planche ON passe(planche_id);
@@ -1868,6 +1877,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # d'un détail, G17), posée par PRÉSENCE, NULL pour tout l'existant.
     if "regions" in _tables and "nom" not in _cols("regions"):
         conn.execute("ALTER TABLE regions ADD COLUMN nom TEXT")
+    # `passe.recopiee` naît avec sa table (SCHEMA_SQL) ; posée aussi par PRÉSENCE, pour une
+    # table `passe` née sans elle — à 0 : rien n'a encore été recopié.
+    if "passe" in _tables and "recopiee" not in _cols("passe"):
+        conn.execute("ALTER TABLE passe ADD COLUMN recopiee INTEGER NOT NULL DEFAULT 0")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -3373,7 +3386,8 @@ def _copier_les_releves(conn: sqlite3.Connection, depuis: int, collection_id: in
     sa planche est celle de la copie, son lien renuméroté (une région hors de la copie : le
     lien tombe, son texte reste), `origine_id` son relevé source. Son AUTEUR suit dans un
     même projet ; entre deux projets il arrive sans auteur (G9 : un login nommé à des gens
-    qui ne le connaissent pas). Les passes de ces grilles suivent ; les doutes NON (une
+    qui ne le connaissent pas). Les passes de ces grilles suivent, marquées `recopiee` (la
+    règle de suppression les compte comme le travail de leur `par`) ; les doutes NON (une
     conversation de l'équipe source, qui nomme ses membres). Rend (relevés, passes, laissés)."""
     actives = _grilles_actives_a_l_arrivee(conn, collection_id)
     entre_projets = projet_d_album(conn, depuis) != projet_de_collection(conn, collection_id)
@@ -3410,7 +3424,7 @@ def _copier_les_releves(conn: sqlite3.Connection, depuis: int, collection_id: in
             continue
         n_passes += conn.execute(
             "INSERT OR IGNORE INTO passe (region_id, planche_id, grille_id, version_id, "
-            "rubrique_cle, par, le) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "rubrique_cle, par, le, recopiee) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
             (regions.get(p["region_id"]) if p["region_id"] is not None else None,
              planches.get(p["planche_id"]) if p["planche_id"] is not None else None,
              p["grille_id"], p["version_id"], p["rubrique_cle"],

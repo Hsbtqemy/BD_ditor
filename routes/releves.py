@@ -781,6 +781,9 @@ def lever_le_doute(doute_id: int, payload: LeveeIn, conn: sqlite3.Connection = D
 # identique passe sans conflit) ; « Rouvrir » la retire. Elle distingue « 0 élision » de
 # « pas regardé » (note §9) et ne tient à aucun relevé. Au journal sous la cible de sa zone,
 # par ses types (`passe`, `passe_rouverte`), hors de Ctrl+Z.
+# Une passe RECOPIÉE (`passe.recopiee`, arrivée avec une copie amorcée) le reste tant
+# qu'on ne la rouvre pas : la marquer de nouveau ne change rien — c'est l'écriture
+# identique —, et la rouvrir puis la marquer pose une ligne neuve, à soi, à 0.
 class PasseIn(BaseModel):
     rubrique_cle: str = ""
     vu: Optional[dict] = None

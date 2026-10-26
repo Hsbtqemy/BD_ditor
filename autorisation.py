@@ -1243,10 +1243,18 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     région source avant la copie compte — un texte modifié puis copié au seul cran du
     découpage aussi, la cible `regions` ne distinguant pas la géométrie du texte.
 
-    Deux de plus depuis la v37 (ANN-7, tranche 1, R11) : le relevé et la passe RECOPIÉS
-    sur la SURFACE d'une planche, que la chaîne de `region_origine` ne remonte pas.
+    Trois de plus depuis la v37 (ANN-7, tranche 1, R11) : le relevé et la passe RECOPIÉS
+    sur la SURFACE d'une planche, que la chaîne de `region_origine` ne remonte pas — lus sur
+    leurs colonnes, l'auteur du relevé et qui a marqué la passe (sa marque `recopiee`) —, et
+    ce qui a été fait sur le relevé SOURCE d'un relevé de surface recopié (relecture croisée,
+    constat 3 : une modification par un autre, à la source, ne comptait pas). Cette dernière
+    est le patron de la sixième, la chaîne d'`origine_id` au lieu de celle de
+    `region_origine` : tout acte humain `releve_planche` dont la charge porte le relevé
+    source, antérieur à la copie qui l'a emporté. Un relevé source retiré depuis arrête la
+    chaîne — la planche où lire ses actes ne se lit que sur lui — ; la colonne `auteur` du
+    relevé copié compte toujours.
 
-    Les huit sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
+    Les neuf sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
     `sql_actes_sur_album` : ce que l'administrateur voit du travail des autres, sous une
     demande, est ce que cette règle a lu — deux écritures finiraient par ne plus dire
     pareil. Un attribut de case dont un `lien` humain a été écrit est compté par son acte
@@ -1289,13 +1297,13 @@ def _sql_chaine_des_sources(depart: str) -> str:
 
 
 def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
-    """Les huit sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
+    """Les neuf sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
     quand, `FROM … WHERE …`, recopié) — la sorte est la `cible_table` de l'acte, ou le nom
     de la table lue. Qui vaut NULL quand l'auteur n'est pas écrit.
 
     « Recopié » est une expression SQL, vraie pour une ligne de travail RECOPIÉ — fait
     ailleurs, avant la copie, et que la copie porte (tranche 3b) : toute la sixième source,
-    les deux de la v37 (ANN-7), et dans la troisième les corrections grammaticales que la copie a reçues telles quelles
+    les trois de la v37 (ANN-7), et dans la troisième les corrections grammaticales que la copie a reçues telles quelles
     et que personne n'a corrigées depuis (la marque EXPLICITE `token_correction.recopiee`,
     v36 — décision du pilotage du 2026-10-25 : la date confondait une correction faite dans
     la même seconde, et la validation la réécrivait). Un écran qui ne tient pas le fonds ne nomme pas ces lignes
@@ -1355,13 +1363,52 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
         ("_tsr.auteur", "'releve_planche'", "_tsr.cree_le",
          "planches _tp JOIN releve _tsr ON _tsr.planche_id = _tp.id "
          f"WHERE _tp.album_id = {alias} AND _tsr.origine_id IS NOT NULL", "1"),
+        # La passe recopiée se reconnaît à sa marque EXPLICITE (`passe.recopiee`, v37 ;
+        # relecture croisée d'ANN-7, constat 2) : la lire par l'absence d'un acte `passe` sur
+        # la planche oubliait celle d'un autre dès qu'une AUTRE passe y était marquée.
         ("_tsp.par", "'releve_planche'", "_tsp.le",
          "planches _tp JOIN passe _tsp ON _tsp.planche_id = _tp.id "
-         f"WHERE _tp.album_id = {alias} AND EXISTS (SELECT 1 FROM copie _tsc "
-         "WHERE _tsc.album_id = _tp.album_id AND _tsc.depuis_album_id IS NOT NULL) "
-         "AND NOT EXISTS (SELECT 1 FROM evenement _tse WHERE _tse.cible_table = "
-         "'releve_planche' AND _tse.cible_id = _tp.id AND _tse.type = 'passe')", "1"),
+         f"WHERE _tp.album_id = {alias} AND _tsp.recopiee = 1", "1"),
+        # ANN-7 (relecture croisée, constat 3) — les actes sur le relevé SOURCE d'un relevé
+        # de surface recopié, antérieurs à la copie : le patron de la sixième source.
+        ("_te.agent", "_te.cible_table", "_te.date",
+         "evenement _te JOIN (" + _sql_chaine_des_releves(alias)
+         + "SELECT d, s, planche, borne FROM _trc) _trs "
+         "ON _te.cible_table = 'releve_planche' AND _te.cible_id = _trs.planche "
+         "WHERE _te.agent_type = 'humain' AND _te.date <= _trs.borne "
+         f"AND {_SQL_RELEVE_DE_LA_CHARGE} = _trs.s", "1"),
     ]
+
+
+def _sql_chaine_des_releves(alias: str) -> str:
+    """`WITH RECURSIVE …` qui rend, pour chaque relevé de SURFACE recopié de l'album `alias`,
+    chacun de ses relevés SOURCES en remontant `origine_id` — en `(d, s, planche, borne)` :
+    le relevé de départ, le relevé source, la planche où les actes de la source sont écrits
+    (la cible `releve_planche`), et la date de la copie qui l'a emporté, la plus ancienne de
+    la chaîne (un acte ne compte qu'avant elle). Le patron de `_sql_chaine_des_sources`. Une
+    source retirée arrête la chaîne : sa planche ne se lit que sur elle."""
+    return (
+        "WITH RECURSIVE _trc(d, s, planche, borne) AS ("
+        "SELECT _trc0.id, _trc0.origine_id, _trs0.planche_id, _tcc0.creee_le "
+        "FROM releve _trc0 JOIN planches _tpc0 ON _tpc0.id = _trc0.planche_id "
+        "JOIN copie _tcc0 ON _tcc0.album_id = _tpc0.album_id "
+        "JOIN releve _trs0 ON _trs0.id = _trc0.origine_id "
+        f"WHERE _tpc0.album_id = {alias} AND _trs0.planche_id IS NOT NULL "
+        "UNION "
+        "SELECT _trc.d, _trs1.origine_id, _trs2.planche_id, MIN(_trc.borne, _tcc1.creee_le) "
+        "FROM _trc JOIN releve _trs1 ON _trs1.id = _trc.s "
+        "JOIN planches _tpc1 ON _tpc1.id = _trs1.planche_id "
+        "JOIN copie _tcc1 ON _tcc1.album_id = _tpc1.album_id "
+        "JOIN releve _trs2 ON _trs2.id = _trs1.origine_id "
+        "WHERE _trs2.planche_id IS NOT NULL) ")
+
+
+# Le relevé que nomme la charge d'un acte sur un relevé (`releve_id`, posé par chaque acte de
+# `routes/releves.py` — pose, modification, retrait, doute) : `apres` d'abord, `avant` sinon.
+# Une charge illisible ne nomme rien (cf. `_SQL_ALBUM_DE_LA_CHARGE`).
+_SQL_RELEVE_DE_LA_CHARGE = (
+    "COALESCE(CASE WHEN json_valid(_te.apres) THEN json_extract(_te.apres, '$.releve_id') END, "
+    "CASE WHEN json_valid(_te.avant) THEN json_extract(_te.avant, '$.releve_id') END)")
 
 
 # L'album que nomme la charge d'un acte sous la cible `document` — `apres` d'abord (une

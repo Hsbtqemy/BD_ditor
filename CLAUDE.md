@@ -759,7 +759,13 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   l'auteur de la source, ni le validateur entre deux projets), elle passe `valide`, et qui
   l'a validée se lit au journal. La sixième source ne compte une couche d'annotation que
   tant que la couche RECOPIÉE vit : une couche posée ensuite ne ranime pas celle de la
-  source. *Repartir de zéro*
+  source. Une PASSE de grille recopiée porte la même marque (`passe.recopiee`, v37, ANN-7 ;
+  relecture croisée, constat 2), que la règle de suppression lit pour la surface d'une
+  planche au lieu de l'absence d'un acte `passe` — qui l'oubliait dès qu'une autre passe y
+  était marquée ; la marquer de nouveau la garde, la rouvrir puis la marquer pose une ligne
+  neuve à 0. Et un relevé de SURFACE recopié compte, outre son auteur, les actes faits sur son
+  relevé SOURCE avant la copie, par la chaîne d'`origine_id` (constat 3, le patron de la
+  sixième source). *Repartir de zéro*
   (E8) ramène une copie — ou UNE planche, Hugo, 2026-10-21 — à un cran plus bas que ce
   qu'elle porte (`POST /api/albums/{id}/repartir`, `POST /api/planches/{id}/repartir`) :
   l'inverse de l'échelle, `validee` part, `verrouillee` reste, l'index suit
