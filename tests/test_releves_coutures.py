@@ -504,3 +504,26 @@ def test_un_releve_de_region_recopie_compte_ce_qu_un_autre_y_a_fait(client, deco
                       json={"variante_cle": "crie", "vu": {"variante_cle": "chuchote"}}))
     copie = _copie_par(a, decor["c2"], "stag")
     assert _autrui(copie, "stag") == olga_modifie
+
+
+def test_une_passe_posee_ensuite_sur_la_copie_ne_ranime_pas_la_passe_source(client, decor,
+                                                                           db_path):
+    """La doctrine de la 3b sur une RÉGION (décision du pilotage, 2026-10-26) : la passe
+    d'Olga, recopiée sur la bulle de la copie, compte tant qu'elle vit ; rouverte puis marquée
+    par la stagiaire, la passe neuve (à 0) ne fait plus compter l'acte d'Olga à la source."""
+    g = decor["grille_id"]
+    a, pl = _album_de_la_stagiaire(client, decor)
+    b = ok(client.post(f"/api/planches/{pl}/regions", headers=STAG,
+                       json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9}), 201)["id"]
+    ok(client.put(f"/api/regions/{b}/passes/{g}", headers=OLGA, json={}))
+    copie = _copie_par(a, decor["c2"], "stag")
+    (b_copie,) = [x["region_id"] for x in _q(
+        db_path, "SELECT o.region_id FROM region_origine o JOIN regions g ON g.id = o.region_id "
+                 "JOIN planches p ON p.id = g.planche_id WHERE o.region_source_id = ? "
+                 "AND p.album_id = ?", (b, copie))]
+    assert _autrui(copie, "stag")
+    ok(client.delete(f"/api/regions/{b_copie}/passes/{g}", headers=STAG), 204)
+    ok(client.put(f"/api/regions/{b_copie}/passes/{g}", headers=STAG, json={}))
+    assert _q(db_path, "SELECT par, recopiee FROM passe WHERE region_id = ?", (b_copie,)) == [
+        {"par": "stag", "recopiee": 0}]
+    assert not _autrui(copie, "stag")

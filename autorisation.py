@@ -1477,11 +1477,13 @@ _SQL_COUCHE_VIT = (
                "AND _tv.recopiee = 1)"
                for t in ("annotations", "bulle_locuteur", "personnage_presence",
                          "region_attribut"))
-    # ANN-7 — un relevé recopié porte son relevé source (`origine_id`) ; une passe, rien :
-    # elle vit si une passe vit sur la région de la copie.
+    # ANN-7 — un relevé recopié porte son relevé source (`origine_id`) ; une passe, sa marque
+    # `recopiee` (v37) : elle vit si une passe RECOPIÉE vit sur la région de la copie — une
+    # passe posée ensuite, rouverte puis marquée, ne ranime pas celle de la source (décision
+    # du pilotage, 2026-10-26, la doctrine de la 3b).
     + " WHEN 'releve' THEN (EXISTS (SELECT 1 FROM releve _tv WHERE _tv.region_id = _tsrc.d "
       "AND _tv.origine_id IS NOT NULL) OR EXISTS (SELECT 1 FROM passe _tvp "
-      "WHERE _tvp.region_id = _tsrc.d))"
+      "WHERE _tvp.region_id = _tsrc.d AND _tvp.recopiee = 1))"
     + " ELSE 1 END)")
 
 
