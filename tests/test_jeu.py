@@ -329,7 +329,18 @@ def test_le_jeu_ne_se_regle_pas(client, reference):
 def _corps_des_ecritures(ref):
     a, pl, rg, ct = ref["album"], ref["planche"], ref["region"], ref["contribution"]
     v, p, g = ref["valeur"], ref["personnage"], ref["grille"]
+    rl, dt = ref["releve"], ref["doute"]
     return {
+        # ANN-7 (relecture croisée, constat 7) — un relevé et un doute SEMÉS par SQL sur la
+        # référence : les modifier, les retirer, y répondre, les lever s'arrête au 409 du jeu.
+        ("PUT", "/api/releves/{releve_id}"): (f"/api/releves/{rl}", {"precision": "altérée"}),
+        ("DELETE", "/api/releves/{releve_id}"): (f"/api/releves/{rl}", None),
+        ("POST", "/api/releves/{releve_id}/doutes"):
+            (f"/api/releves/{rl}/doutes", {"texte": "Altéré ?"}),
+        ("POST", "/api/doutes/{doute_id}/messages"):
+            (f"/api/doutes/{dt}/messages", {"texte": "Altéré."}),
+        ("POST", "/api/doutes/{doute_id}/levee"):
+            (f"/api/doutes/{dt}/levee", {"issue": "retire"}),
         ("PUT", "/api/regions/{region_id}/tokens/{ordre}"):
             (f"/api/regions/{rg}/tokens/0", {"lemme": "x"}),
         ("POST", "/api/regions/{region_id}/grammaire/valider"):
@@ -406,7 +417,8 @@ def _corps_des_ecritures(ref):
     }
 
 
-_CLES_D_OBJET = ("{album_id}", "{planche_id}", "{region_id}", "{contribution_id}")
+_CLES_D_OBJET = ("{album_id}", "{planche_id}", "{region_id}", "{contribution_id}",
+                 "{releve_id}", "{doute_id}")
 
 
 def _empreinte(db, album):
@@ -437,7 +449,13 @@ def _empreinte(db, album):
                   "WHERE p.album_id = ? ORDER BY x.id",
                   "SELECT x.* FROM passe x LEFT JOIN regions r ON r.id = x.region_id "
                   "JOIN planches p ON p.id = COALESCE(r.planche_id, x.planche_id) "
-                  "WHERE p.album_id = ? ORDER BY x.id"):
+                  "WHERE p.album_id = ? ORDER BY x.id",
+                  # … et les doutes de ses relevés, avec leur fil.
+                  "SELECT d.*, m.id AS m_id, m.auteur, m.texte FROM doute d "
+                  "JOIN releve x ON x.id = d.releve_id LEFT JOIN regions r ON r.id = "
+                  "x.region_id JOIN planches p ON p.id = COALESCE(r.planche_id, x.planche_id) "
+                  "LEFT JOIN doute_message m ON m.doute_id = d.id "
+                  "WHERE p.album_id = ? ORDER BY d.id, m.id"):
             lignes.append(c.execute(q, (album,)).fetchall())
         return lignes
     finally:
@@ -476,11 +494,23 @@ def reference_complete(client, db_path, reference, png_bytes):
         c.execute("INSERT INTO projet_grille (projet_id, grille_id, version_id) "
                   "SELECT ?, grille_id, version_id FROM projet_grille WHERE projet_id = ? "
                   "AND grille_id = ?", (reference["projet"], repli, g))
+        # ANN-7 (constat 7) — un relevé sur la bulle de la référence, dans la version active,
+        # et un doute OUVERT avec son premier message : aucune route ne les poserait.
+        vid = c.execute("SELECT version_id FROM projet_grille WHERE projet_id = ? "
+                        "AND grille_id = ?", (reference["projet"], g)).fetchone()[0]
+        rl = c.execute("INSERT INTO releve (region_id, grille_id, version_id, entree_cle, "
+                       "variante_cle, une, auteur) VALUES (?, ?, ?, 'ton-de-voix', 'crie', 1, "
+                       "'lea')", (bulle, g, vid)).lastrowid
+        dt = c.execute("INSERT INTO doute (releve_id, ouvert_par) VALUES (?, 'lea')",
+                       (rl,)).lastrowid
+        c.execute("INSERT INTO doute_message (doute_id, auteur, texte) VALUES (?, 'lea', "
+                  "'Vraiment ?')", (dt,))
         c.commit()
     finally:
         c.close()
     return {**reference, "region": bulle, "case": case, "contribution": ct, "valeur": v,
-            "personnage": p, "ailleurs": ailleurs["id"], "grille": g}
+            "personnage": p, "ailleurs": ailleurs["id"], "grille": g, "releve": rl,
+            "doute": dt}
 
 
 def test_aucune_ecriture_ne_touche_la_reference(client, db_path, reference_complete,
