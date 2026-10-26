@@ -663,3 +663,24 @@ def test_le_releve_d_un_autre_a_la_source_vit_par_sa_copie(client, decor, db_pat
                                 "AND r.entree_cle = 'cri'", (copie,))
     ok(client.delete(f"/api/releves/{olga_copie['id']}", headers=STAG), 204)
     assert not _autrui(copie, "stag")
+
+
+@pytest.mark.parametrize("olga_pose", [False, True])
+def test_un_doute_d_un_autre_sur_la_region_source_ne_compte_pas_sur_la_copie(
+        client, decor, db_path, olga_pose):
+    """Les doutes ne suivent pas une copie, donc ils ne comptent nulle part comme travail
+    recopié (décision du pilotage, 2026-10-26) : le doute d'Olga sur un relevé de la région
+    source n'est pas un travail sur la copie, même tant que la copie de ce relevé y vit — son
+    RELEVÉ, s'il est d'elle, si."""
+    a, pl = _album_de_la_stagiaire(client, decor)
+    b = ok(client.post(f"/api/planches/{pl}/regions", headers=STAG,
+                       json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9}), 201)["id"]
+    r = poser(client, decor, qui=OLGA if olga_pose else STAG, region_id=b,
+              entree_cle="ton-de-voix", variante_cle="chuchote")
+    ok(client.post(f"/api/releves/{r['id']}/doutes", headers=OLGA, json={"texte": "?"}), 201)
+    copie = _copie_par(a, decor["c2"], "stag")
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve r JOIN regions g ON g.id = "
+                       "r.region_id JOIN planches p ON p.id = g.planche_id "
+                       "WHERE p.album_id = ? AND r.origine_id = ?", (copie, r["id"]))[0][
+        "n"] == 1
+    assert _autrui(copie, "stag") is olga_pose

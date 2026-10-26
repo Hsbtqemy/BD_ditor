@@ -1261,8 +1261,8 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     porte le relevé source, antérieur à la copie qui l'a emporté, cherché sur les planches de
     l'album d'où la copie a été tirée (`copie.depuis_album_id`) — la planche est la cible de
     ces actes, et elle survit au relevé : un relevé source retiré depuis n'arrête pas la
-    chaîne (contre-relecture). Les DOUTES de la source n'y comptent pas : ils ne suivent pas
-    la copie (décision du pilotage, 2026-10-26).
+    chaîne (contre-relecture). Les DOUTES de la source n'y comptent pas, ni dans la sixième :
+    ils ne suivent pas la copie (décision du pilotage, 2026-10-26).
 
     Les dix sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
     `sql_actes_sur_album` : ce que l'administrateur voit du travail des autres, sous une
@@ -1362,6 +1362,9 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          f") _tsrc ON _te.cible_id = _tsrc.s "
          f"WHERE _te.cible_table IN ({cibles}) AND _te.agent_type = 'humain' "
          "AND _te.date <= _tsrc.borne "
+         # Les DOUTES ne suivent pas une copie : ils ne comptent nulle part comme travail
+         # recopié (décision du pilotage, 2026-10-26 ; le pendant de la neuvième source).
+         "AND _te.type NOT LIKE 'doute%' "
          f"AND (_te.cible_table NOT IN ({annotation}) "
          f"OR (_tsrc.rang >= {rang_du_cran(CRAN_ANNOTATIONS)} AND {_SQL_COUCHE_VIT})) "
          "AND (_te.cible_table <> 'regions' OR _te.type <> 'validation' "

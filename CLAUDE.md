@@ -770,7 +770,7 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   planches de l'album source — un relevé source retiré depuis compte encore —, doutes
   exceptés : ils ne suivent pas la copie (constat 3 et contre-relecture, le patron de la
   sixième source). Sur une région, l'acte dit sa couche : une passe vit par la passe
-  recopiée, un relevé par SA copie (`origine_id`). *Repartir de zéro*
+  recopiée, un relevé par SA copie (`origine_id`), et un doute jamais. *Repartir de zéro*
   (E8) ramène une copie — ou UNE planche, Hugo, 2026-10-21 — à un cran plus bas que ce
   qu'elle porte (`POST /api/albums/{id}/repartir`, `POST /api/planches/{id}/repartir`) :
   l'inverse de l'échelle, `validee` part, `verrouillee` reste, l'index suit
