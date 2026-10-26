@@ -678,6 +678,23 @@ rendues :
 | Q13 | L'avertissement « Supprimer définitivement… » (libellé du 2026-09-17) | Passe de l'acte `structurer` à l'acte `decider`, tel quel |
 | Q14 | Une demande qui ne s'adresserait qu'à un responsable compte partagé | Va à l'administrateur : un compte partagé n'est jamais destinataire |
 
+**Tranché le 2026-10-26.** Hugo a répondu à Q1, Q3, Q4 et Q5 ; le pilotage a pris les dix
+autres telles que proposées, parce qu'elles découlent des décisions de la séance.
+
+- **Q1 — Hugo : ses accès partent avec lui**, comme proposé.
+- **Q3 — Hugo : les noms, sans les rôles**, comme proposé.
+- **Q4 — Hugo, CONTRE la proposition** : « le bac à sable n'a pas d'importance, encore une fois.
+  L'import, la suppression, ça n'a pas trop d'effets ». Dans un bac à sable, **quiconque y écrit
+  efface** (supprimer un album ou une planche, repartir de zéro), invité compris, son import ou
+  non. Rien ne s'y demande, comme avant. Le compte partagé y efface comme les autres (COL-4).
+- **Q5 — Hugo, CONTRE la proposition** : une planche n'est pas le document, qui reste au fonds.
+  Supprimer une planche, même d'une dernière copie, suit la règle de **repartir de zéro** : le
+  responsable ou le propriétaire de toutes les collections la supprime, et la demande d'un
+  annotateur va au responsable. Seule la suppression d'un ALBUM qui est la dernière copie va à
+  l'administrateur.
+- **Q2, Q6 à Q14 — le pilotage, comme proposé.** Q2 est forcée par l'invariant d'AUTH-6
+  (l'annuaire ne décide d'aucun accès) ; Q9, la forme, se tranche sur maquette.
+
 ---
 
 ## Ce que cette note n'a pas pu établir
