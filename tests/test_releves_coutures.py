@@ -527,3 +527,139 @@ def test_une_passe_posee_ensuite_sur_la_copie_ne_ranime_pas_la_passe_source(clie
     assert _q(db_path, "SELECT par, recopiee FROM passe WHERE region_id = ?", (b_copie,)) == [
         {"par": "stag", "recopiee": 0}]
     assert not _autrui(copie, "stag")
+
+
+# --------------------------------------------------------------------------- #
+# Contre-relecture (2026-10-26) — la chaîne d'`origine_id`, `modifie_par`, les doutes, et
+# les deux couches de la cible `releve`
+# --------------------------------------------------------------------------- #
+def _releve_de_surface_modifie_par_olga(client, d, db_path):
+    gid = _grille_de_planche(client, d)
+    a, pl = _album_de_la_stagiaire(client, d)
+    r = ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": gid, "version": 1, "planche_id": pl, "entree_cle": "climat",
+        "variante_cle": "calme"}), 201)
+    ok(client.put(f"/api/releves/{r['id']}", headers=OLGA,
+                  json={"variante_cle": "tendu", "vu": {"variante_cle": "calme"}}))
+    copie = _copie_par(a, d["c2"], "stag")
+    return a, pl, r, copie
+
+
+def test_un_releve_source_retire_n_arrete_pas_la_chaine(client, decor, db_path):
+    """Contre-relecture, r3 — la modification d'Olga vit dans la copie ; la stagiaire retire
+    le relevé SOURCE : ses actes, écrits sous la planche source, comptent encore. Le patron de
+    la sixième source, qui survit à la suppression de la région source."""
+    gid = _grille_de_planche(client, decor)
+    a, pl = _album_de_la_stagiaire(client, decor)
+    r = ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": gid, "version": 1, "planche_id": pl, "entree_cle": "climat",
+        "variante_cle": "calme"}), 201)
+    ok(client.put(f"/api/releves/{r['id']}", headers=OLGA,
+                  json={"variante_cle": "tendu", "vu": {"variante_cle": "calme"}}))
+    # La stagiaire y revient ensuite à la source : `modifie_par` ne nomme plus Olga, seul le
+    # journal de la source dit ce qu'elle y a fait.
+    ok(client.put(f"/api/releves/{r['id']}", headers=STAG,
+                  json={"variante_cle": "calme", "vu": {"variante_cle": "tendu"}}))
+    copie = _copie_par(a, decor["c2"], "stag")
+    assert _q(db_path, "SELECT r.modifie_par FROM releve r JOIN planches p ON "
+                       "p.id = r.planche_id WHERE p.album_id = ?", (copie,)) == [
+        {"modifie_par": "stag"}]
+    assert _autrui(copie, "stag")
+    ok(client.delete(f"/api/releves/{r['id']}", headers=STAG), 204)
+    assert _autrui(copie, "stag") and not _directe(copie, decor["c2"], "stag")
+
+
+def test_le_dernier_modificateur_a_la_source_se_lit_sur_la_copie(client, decor, db_path):
+    """`modifie_par`, que la copie emporte, compte même quand le journal de la source ne dit
+    plus rien (simulé : ses actes ne désignent plus aucune planche) ; une modification faite
+    ensuite DANS la copie par la stagiaire le remplace."""
+    _a, pl, _r, copie = _releve_de_surface_modifie_par_olga(client, decor, db_path)
+    c = database.get_connection()
+    try:
+        c.execute("UPDATE evenement SET cible_id = -1 WHERE cible_table = 'releve_planche' "
+                  "AND cible_id = ?", (pl,))
+        c.commit()
+    finally:
+        c.close()
+    assert _autrui(copie, "stag")
+    (rec,) = _q(db_path, "SELECT r.id FROM releve r JOIN planches p ON p.id = r.planche_id "
+                         "WHERE p.album_id = ?", (copie,))
+    c = database.get_connection()
+    try:
+        c.execute("UPDATE copie SET creee_le = datetime('now', '-1 minute') "
+                  "WHERE album_id = ?", (copie,))
+        c.commit()
+    finally:
+        c.close()
+    ok(client.put(f"/api/releves/{rec['id']}", headers=STAG,
+                  json={"variante_cle": "calme", "vu": {"variante_cle": "tendu"}}))
+    assert not _autrui(copie, "stag")
+
+
+def test_la_suppression_de_la_region_source_ne_change_rien_a_la_sixieme(client, decor,
+                                                                       db_path):
+    """Le témoin (r3bis) : sur une région, la sixième source survit à la région source."""
+    a, pl = _album_de_la_stagiaire(client, decor)
+    b = ok(client.post(f"/api/planches/{pl}/regions", headers=STAG,
+                       json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9}), 201)["id"]
+    r = poser(client, decor, qui=STAG, region_id=b, entree_cle="ton-de-voix",
+              variante_cle="chuchote")
+    ok(client.put(f"/api/releves/{r['id']}", headers=OLGA,
+                  json={"variante_cle": "crie", "vu": {"variante_cle": "chuchote"}}))
+    copie = _copie_par(a, decor["c2"], "stag")
+    ok(client.delete(f"/api/releves/{r['id']}", headers=STAG), 204)
+    ok(client.delete(f"/api/regions/{b}", headers=STAG), 204)
+    assert _autrui(copie, "stag")
+
+
+def test_un_doute_a_la_source_ne_compte_pas_sur_la_copie(client, decor, db_path):
+    """Contre-relecture, r4 — les doutes ne suivent pas une copie (« À la copie, les passes
+    suivent, les doutes non ») : celui qu'Olga a ouvert sur le relevé source n'est pas un
+    travail sur la copie (décision du pilotage, 2026-10-26)."""
+    a, pl = _album_de_la_stagiaire(client, decor)
+    r = poser(client, decor, qui=STAG, planche_id=pl, entree_cle="ambiance")
+    ok(client.post(f"/api/releves/{r['id']}/doutes", headers=OLGA, json={"texte": "?"}), 201)
+    copie = _copie_par(a, decor["c2"], "stag")
+    assert not _autrui(copie, "stag")
+    assert _directe(copie, decor["c2"], "stag")
+
+
+def test_un_releve_recopie_ne_ranime_pas_la_passe_source(client, decor, db_path):
+    """Contre-relecture, r6 — la passe d'Olga sur la région source, rouverte puis remarquée
+    dans la copie, ne compte plus, même quand un relevé RECOPIÉ (celui de la stagiaire) vit
+    sur la région : l'acte dit sa couche, et chaque couche vit à part."""
+    g = decor["grille_id"]
+    a, pl = _album_de_la_stagiaire(client, decor)
+    b = ok(client.post(f"/api/planches/{pl}/regions", headers=STAG,
+                       json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9}), 201)["id"]
+    poser(client, decor, qui=STAG, region_id=b, entree_cle="ton-de-voix",
+          variante_cle="chuchote")
+    ok(client.put(f"/api/regions/{b}/passes/{g}", headers=OLGA, json={}))
+    copie = _copie_par(a, decor["c2"], "stag")
+    (b_copie,) = [x["region_id"] for x in _q(
+        db_path, "SELECT o.region_id FROM region_origine o JOIN regions g ON g.id = o.region_id "
+                 "JOIN planches p ON p.id = g.planche_id WHERE o.region_source_id = ? "
+                 "AND p.album_id = ?", (b, copie))]
+    assert _autrui(copie, "stag")
+    ok(client.delete(f"/api/regions/{b_copie}/passes/{g}", headers=STAG), 204)
+    ok(client.put(f"/api/regions/{b_copie}/passes/{g}", headers=STAG, json={}))
+    assert not _autrui(copie, "stag")
+
+
+def test_le_releve_d_un_autre_a_la_source_vit_par_sa_copie(client, decor, db_path):
+    """Le pendant : un relevé d'Olga sur la région source compte tant que SA copie vit sur la
+    région de la copie — et plus quand on la retire, même si un autre relevé recopié y vit."""
+    a, pl = _album_de_la_stagiaire(client, decor)
+    b = ok(client.post(f"/api/planches/{pl}/regions", headers=STAG,
+                       json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9}), 201)["id"]
+    ok(client.put(f"/api/regions/{b}", headers=STAG, json={"ocr_texte": "AAAH !"}))
+    poser(client, decor, qui=STAG, region_id=b, entree_cle="ton-de-voix",
+          variante_cle="chuchote")
+    poser(client, decor, qui=OLGA, region_id=b, entree_cle="cri", mots=[0])
+    copie = _copie_par(a, decor["c2"], "stag")
+    assert _autrui(copie, "stag")
+    (olga_copie,) = _q(db_path, "SELECT r.id FROM releve r JOIN regions g ON g.id = r.region_id "
+                                "JOIN planches p ON p.id = g.planche_id WHERE p.album_id = ? "
+                                "AND r.entree_cle = 'cri'", (copie,))
+    ok(client.delete(f"/api/releves/{olga_copie['id']}", headers=STAG), 204)
+    assert not _autrui(copie, "stag")

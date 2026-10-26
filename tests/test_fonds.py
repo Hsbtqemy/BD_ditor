@@ -509,16 +509,17 @@ def test_la_clause_aux_extremites_et_ses_parametres_lies():
         .replace(database.sql_rang_du_cran("_tco2.cran"), "")
     assert "o'brien" not in sql and "3" not in sans_rangs.replace("_t", "")
     # Neuf sources du travail d'autrui, plus le créateur, le geste sur la dernière copie
-    # (v36, `geste_sur_copie`) et le compte partagé. Six depuis la v32 ; les trois de la v37
+    # (v36, `geste_sur_copie`) et le compte partagé. Six depuis la v32 ; les quatre de la v37
     # (ANN-7, tranche 1, R11) sont le travail RECOPIÉ sur la SURFACE d'une planche — un
-    # relevé (`releve.auteur`, `_tsr`) et une passe (`passe.recopiee`, `_tsp`) arrivés avec
-    # une copie amorcée, que la chaîne de `region_origine`, faite de régions, ne remonte pas,
-    # et les actes sur le relevé SOURCE d'un relevé de surface recopié (la chaîne
-    # d'`origine_id`, relecture croisée, constat 3). Les
+    # relevé (`releve.auteur` et `releve.modifie_par`, `_tsr`) et une passe
+    # (`passe.recopiee`, `_tsp`) arrivés avec une copie amorcée, que la chaîne de
+    # `region_origine`, faite de régions, ne remonte pas, et les actes sur le relevé SOURCE
+    # d'un relevé de surface recopié (la chaîne d'`origine_id`, relecture croisée, constat 3
+    # et contre-relecture). Les
     # relevés et passes d'une RÉGION passent par la première et la sixième (cible `releve`
     # dans `_CIBLES_DE_REGION`), ceux d'une surface faits ici par la quatrième (cible
     # `releve_planche`, avec les validations) : aucun paramètre de plus.
-    assert sql.count("?") == len(params) and params.count("o'brien") == 12
+    assert sql.count("?") == len(params) and params.count("o'brien") == 13
     assert autorisation.TOTALE.peut_tenir_le_fonds() is True
     assert autorisation.Portee(admin=True, utilisateur="x").peut_tenir_le_fonds() is False
 

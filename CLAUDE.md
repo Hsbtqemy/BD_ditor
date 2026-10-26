@@ -764,9 +764,13 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   planche au lieu de l'absence d'un acte `passe` — qui l'oubliait dès qu'une autre passe y
   était marquée —, et sur une région pour dire si la passe recopiée VIT encore (une passe
   posée ensuite ne ranime pas celle de la source) ; la marquer de nouveau la garde, la
-  rouvrir puis la marquer pose une ligne neuve à 0. Et un relevé de SURFACE recopié compte, outre son auteur, les actes faits sur son
-  relevé SOURCE avant la copie, par la chaîne d'`origine_id` (constat 3, le patron de la
-  sixième source). *Repartir de zéro*
+  rouvrir puis la marquer pose une ligne neuve à 0. Et un relevé de SURFACE recopié
+  compte, outre son auteur et son dernier modificateur à la source (`modifie_par`), les
+  actes faits sur son relevé SOURCE avant la copie, par la chaîne d'`origine_id` et les
+  planches de l'album source — un relevé source retiré depuis compte encore —, doutes
+  exceptés : ils ne suivent pas la copie (constat 3 et contre-relecture, le patron de la
+  sixième source). Sur une région, l'acte dit sa couche : une passe vit par la passe
+  recopiée, un relevé par SA copie (`origine_id`). *Repartir de zéro*
   (E8) ramène une copie — ou UNE planche, Hugo, 2026-10-21 — à un cran plus bas que ce
   qu'elle porte (`POST /api/albums/{id}/repartir`, `POST /api/planches/{id}/repartir`) :
   l'inverse de l'échelle, `validee` part, `verrouillee` reste, l'index suit
@@ -1380,9 +1384,12 @@ de CONC-3. La suppression d'une région rétablie rend ses relevés, leurs doute
 passes, depuis l'instantané profond ; ceux qui ne se rétablissent plus sont comptés
 (`releves_non_rendus`). Retirer un relevé par la levée d'un doute s'annule comme un retrait.
 Le Ctrl+Z d'une CRÉATION de région est refusé par le 409 nommé, qui offre « Passer ce
-geste », dès qu'un relevé ou une passe vit sur elle ou sur l'un de ses descendants, quel
-qu'en soit l'auteur et même d'une grille désactivée (`undo._garder_releves_de_creation`, le
-patron de l'annotation) : la suppression brute les emportait par CASCADE, sans instantané.
+geste », dès qu'un relevé vit sur elle ou sur l'un de ses descendants, quel qu'en soit
+l'auteur et même d'une grille désactivée (le patron de l'annotation), qu'une passe d'un
+AUTRE y vit — la sienne part avec la région, la doctrine de CONC-4 pour la situation
+(pilotage, 2026-10-26) —, ou qu'un relevé d'un autre la désigne par son LIEN
+(`undo._garder_releves_de_creation`) : la suppression brute emportait relevés et passes par
+CASCADE, sans instantané. Le refus nomme l'auteur de ce qui bloque, lu sur l'objet.
 
 **Avant d'écrire, deux questions, et un acte qui échoue à l'une est PASSÉ** (AUTH-14, 2026-10-15). `regions`, `planches`, `albums` et `personnages` n'avaient pas d'`AUTOINCREMENT` : l'identifiant d'un objet détruit revenait au suivant, et tout identifiant que le journal garde — `cible_id`, instantanés — pouvait désigner un AUTRE objet, dans une autre collection. **Depuis la v30 (2026-10-16) ils ne reviennent plus** (§ Schéma & migrations) ; les témoins ci-dessous RESTENT, pour les actes d'avant la v30 — leurs identifiants ont pu être repris avant elle — et comme défense en profondeur : un identifiant rendu par une transaction défaite, une ligne posée à la main. Les tests du cloisonnement de Ctrl+Z ramènent leur base à la numérotation d'avant pour les mesurer encore. **Un cinquième témoin depuis la tranche 3b** (E8) : une REMISE À ZÉRO de l'album — ou de la planche — journalisée depuis l'acte (`undo.planches_remises_a_zero`, l'acte `repartir` sous le document) ; l'acte est passé, « l'état d'avant ne peut plus être rétabli » — Ctrl+Z ne remonte pas au-delà, et un geste d'un autre album ou d'une autre planche s'annule encore. Il se lit AVANT l'objet et ses lieux, par la planche où vivait la région au moment de l'acte (le journal) : la création d'une région que la remise à zéro a effacée tombait sinon dans la première phrase (relecture croisée de la 3b, constat 4). Sa phrase ne se dit qu'à qui écrit encore la planche remise à zéro ; à tout autre, la première. (1) **Peut-on écrire maintenant à chaque endroit que l'inverse touche** — la région, la planche de CHAQUE nœud d'une suppression rétablie, le parent rendu, le personnage reposé ? `undo.annuler` prend `ecrivable` en argument OBLIGATOIRE, que la route tire des accesseurs gardés sous la portée de la requête (`undo.lieux`). Le résiduel du 2026-08-28, « un droit d'écriture ailleurs suffit », est fermé. (2) **L'objet est-il encore celui de l'acte ?** Quatre témoins, sans changement de schéma : aucune création journalisée sous cet identifiant depuis l'acte ; la planche au moment de l'acte ; l'album importé après l'acte ; une suppression journalisée depuis l'acte et non annulée. Un personnage doit être vu de l'agent et né avant l'acte ; un parent rendu se valide comme la route (`_validate_parent`). Si l'une répond non, ou si une contrainte de la base refuse l'inverse, l'acte est **passé** : une trace append-only (`type='abandon'`, `cible_table='annulation'`) le sort de la pile — retenue de toute sortie (`tools/_commun.CIBLES_RETENUES`), hors du compte des actes d'un compte —, et le Ctrl+Z suivant défait le geste d'avant. **Définitivement** : l'acte ne revient pas si l'objet est rétabli plus tard, c'est voulu. Le refus dit deux phrases et rien de l'objet — « Ne s'annule plus : *geste* — la région n'est plus à votre portée », ou « … — l'état d'avant ne peut plus être rétabli » ; une seule pour tout ce qui est hors de portée, sans quoi la différence entre « supprimée » et « reprise ailleurs » fuirait. Là où l'agent lit et écrit, le conflit de version (CONC-3) est inchangé. Les trous qui restent (une planche reprise dans un album importé avant l'acte, une région disparue et reprise sans événement, une reprise dans la même seconde) sont écrits dans `docs/undo.md` et dans la fiche ; la garde d'écriture les tient tous, c'est l'identité qui manque. Le remède de fond, des identifiants qui ne reviennent plus, attendait la migration v30 (`COL-3`) ; il est arrivé avec elle le 2026-10-16, et ne vaut que pour les identifiants nés après elle.
 
