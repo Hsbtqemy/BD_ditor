@@ -998,8 +998,8 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   avec `peut_ouvrir_un_bac_a_sable` (COL-4), vingt-deux avec `peut_creer_collection`
   (COL-3, tranche 3b, v36), vingt-trois avec `clause_grille` (ANN-7, tranche 1, v37 : lire le
   plan d'une grille — membre de son projet, lecteur d'un album d'un projet où elle est
-  active, ou d'un album qui porte un de ses relevés ; le brouillon reste à qui gère le
-  projet) ; la 3a donne aussi à
+  active, ou d'un album qui porte un de ses relevés ; le brouillon — et jusqu'au nom d'une
+  grille qui n'a que lui — reste à qui gère le projet) ; la 3a donne aussi à
   `peut_nommer_le_demandeur` un second usage, nommer qui demande à qui doit CONSENTIR à un
   `rejoindre` (`consentement`), et la 3b à `peut_repondre_a` et `peut_nommer_le_demandeur`
   un genre de plus, la demande d'en partir entre deux projets (`projets`, ceux qui tiennent

@@ -269,6 +269,24 @@ def test_le_brouillon_reste_chez_ses_auteurs(client, decor):
         "versions"]] == ["brouillon"]
 
 
+def test_une_grille_qui_n_est_qu_un_brouillon_n_a_pas_de_nom_pour_un_membre(client, decor):
+    """Relecture croisée, constat 4 — un simple membre du projet ne lit pas même le NOM d'une
+    grille sans version publiée ni vivante : le même 404 qu'un identifiant qui n'existe pas,
+    sur la fiche comme dans la liste. Publiée, la moitié (a) de `clause_grille` la lui ouvre."""
+    gid = importer(client, decor["p"], LEA, nom="Étude secrète des jurons")["grille_id"]
+    refus = client.get(f"/api/grilles/{gid}", headers=SAM)
+    absente = client.get("/api/grilles/999999", headers=SAM)
+    assert refus.status_code == absente.status_code == 404
+    assert "jurons" not in refus.text
+    assert refus.json()["detail"] == absente.json()["detail"].replace("999999", str(gid))
+    lst = ok(client.get(f"/api/projets/{decor['p']}/grilles", headers=SAM))
+    assert "jurons" not in json.dumps(lst, ensure_ascii=False)
+    ok(client.get(f"/api/grilles/{gid}", headers=LEA))          # qui gère, oui
+    ok(client.post(f"/api/grilles/{gid}/versions/1/publication", headers=LEA))
+    assert ok(client.get(f"/api/grilles/{gid}", headers=SAM))["nom"] == \
+        "Étude secrète des jurons"
+
+
 def test_qui_lit_le_plan_publie(client, decor, db_path):
     """`clause_grille` (R8, G5) sous les quatre identités : (a) un membre du projet, même
     sans album lu ; (b) qui lit un album d'un projet où la grille est ACTIVE ; (c) qui lit un

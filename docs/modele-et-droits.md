@@ -1079,7 +1079,7 @@ leurs qualificatifs. Elle appartient à UN projet, et c'est à ce projet que tou
 | Geste | Qui |
 |---|---|
 | Importer une grille ou une nouvelle version, la publier, corriger une coquille, l'activer, la désactiver, la retirer, la supprimer quand rien ne l'emploie | qui **gère** le projet : son responsable, un administrateur |
-| Lire un brouillon | les mêmes, et personne d'autre |
+| Lire un brouillon | les mêmes, et personne d'autre — une grille qui n'a encore qu'un brouillon n'existe pas pour les autres, pas même son nom |
 | Lire le plan d'une version publiée | les membres du projet ; quiconque lit un album d'un projet où la grille est active ; quiconque lit un album qui porte un de ses relevés, même désactivée |
 | La masquer dans une collection | qui **administre** la collection (son propriétaire) — un filtre de ce qu'on propose, pas une garde |
 | Poser, modifier, retirer un relevé ; ouvrir un doute, y répondre, le lever ; marquer une passe « terminée » ou la rouvrir | quiconque **écrit** dans l'album, sur une grille active de son projet |

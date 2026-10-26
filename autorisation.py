@@ -72,6 +72,8 @@ from database import (CRAN_ANNOTATIONS, CRAN_ORIGINE, DEMANDE_AMORCER_ENTRE_PROJ
                       NATURE_COLLECTIF, rang_du_cran,
                       sql_album_isole, sql_est_bac_a_sable, sql_est_isole, sql_est_jeu,
                       sql_projet_d_album, sql_projet_de, sql_rang_du_cran)
+from grilles import ETAT_PUBLIEE as ETAT_VERSION_PUBLIEE
+from grilles import ETAT_VIVANTE as ETAT_VERSION_VIVANTE
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
 # modifie pas ce qu'on ne voit pas, et on n'administre pas ce qu'on ne peut pas modifier.
@@ -1088,15 +1090,18 @@ class Portee:
         chacune nécessaire à un public :
 
         - (a) être MEMBRE du projet qui possède la grille (G5) — responsable compris : un
-          membre d'une base protégée prépare l'étude sans lire encore d'album ;
+          membre d'une base protégée prépare l'étude sans lire encore d'album —, dès qu'elle a
+          une version PUBLIÉE ou VIVANTE : une grille qui n'est qu'un brouillon n'existe pas
+          pour lui, pas même son nom (relecture croisée, constat 4) ;
         - (b) LIRE un album d'un projet où la grille est ACTIVE (§10) : un annotateur qui a un
           accès de collection sans être du projet doit lire la grille qu'il applique ;
         - (c) LIRE un album qui porte un relevé de la grille (G5), même désactivée : sans quoi
           désactiver rendrait illisible le sens des relevés qui restent « en lecture ».
 
         Le BROUILLON n'en relève pas : il reste chez ses auteurs (`peut_gerer_projet`, à la
-        route). Une portée totale lit tout, BORNÉE hors des bacs à sable des autres (COL-4,
-        le patron de `clause_projet`)."""
+        route) — une grille sans autre version, jusqu'à son nom ; (b) et (c) supposent une
+        activation, donc une version publiée. Une portée totale lit tout, BORNÉE hors des
+        bacs à sable des autres (COL-4, le patron de `clause_projet`)."""
         if self.tout:
             if self.bornee:
                 o, p = self._ordinaire().clause_grille(alias)
@@ -1107,8 +1112,10 @@ class Portee:
         if self.projets:
             ids = sorted(self.projets)
             morceaux.append(f"EXISTS (SELECT 1 FROM grille _ga WHERE _ga.id = {alias} "
-                            f"AND _ga.projet_id IN ({', '.join('?' * len(ids))}))")
-            params += ids
+                            f"AND _ga.projet_id IN ({', '.join('?' * len(ids))}) "
+                            "AND EXISTS (SELECT 1 FROM grille_version _gav "
+                            "WHERE _gav.grille_id = _ga.id AND _gav.etat IN (?, ?)))")
+            params += [*ids, ETAT_VERSION_PUBLIEE, ETAT_VERSION_VIVANTE]
         lire, p_lire = self.clause_album("_gab.id")
         if lire != "0":
             morceaux.append(

@@ -49,7 +49,12 @@ def _get_grille(conn, portee: autorisation.Portee, grille_id: int, *,
                 gerer: bool = False) -> dict:
     """La grille qu'on peut LIRE — par `clause_grille`, ou parce qu'on gère son projet (son
     brouillon est à soi) —, 404 sinon ; et, si `gerer`, dont on gère le projet, 403 nommé
-    sinon : son nom est déjà à l'écran, un « introuvable » mentirait."""
+    sinon : son nom est déjà à l'écran, un « introuvable » mentirait.
+
+    Une grille qui n'a encore aucune version publiée ni vivante n'est qu'un BROUILLON : à qui
+    ne gère pas son projet — un simple membre compris —, elle est introuvable, du même 404
+    qu'un identifiant qui n'existe pas, et son nom ne sort pas (relecture croisée, constat 4 ;
+    `clause_grille`, moitié (a)). La liste des grilles du projet suit la même clause."""
     ou, params = portee.clause_grille("g.id")
     g = _row(conn.execute("SELECT g.* FROM grille g WHERE g.id = ?", (grille_id,)))
     if g is None:
