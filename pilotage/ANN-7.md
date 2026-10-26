@@ -1,9 +1,11 @@
 ---
 chantier: ANN-7
-statut: à venir
+statut: interrompu
 ---
 
 # ANN-7 — les grilles d'annotation : un seul modèle, plusieurs vocabulaires, un catalogue
+
+**Arrêté sur** — 2026-10-26, `3dc6b48` : **la tranche 1 est sur `dev` (local, non poussée)**, 21 commits de `f511997` (rejoué) à `3dc6b48`, cherry-pickés sur `53d258e` sans conflit, suite par défaut 3 198 verts sur la copie d'intégration. La v37 (grilles, versions, entrées, relevés, passes, doutes ; `regions.nom`, `passe.recopiee`), l'import d'une grille en tableur (`tools/importer_grille.py`, `tools/grille-modele.csv`), les routes des relevés, des passes et des doutes, la règle du travail d'autrui étendue (dix sources), Ctrl+Z des relevés. Relu QUATRE fois — relecture croisée (six constats), contre-relecture (sept), contre-relecture n°2 (trois), vérification finale — : la règle « personne d'autre n'y a travaillé » a produit à chaque tour des cas limites de copie de copie, réglés au dernier tour par la forme FERMÉE (compter trop plutôt que trop peu) ; c'est l'un des arguments de la séance de simplification des règles d'effacement (`pilotage/COL-3.md`, zone « Le responsable voit tout son projet »). Pas en production avant le lot 5. À la reprise : la tranche 2 (la page Annotation d'`ANN-6`, sur la maquette v3), et la relecture du brouillon de la grille par la gestionnaire et les linguistes.
 
 **Point de départ** — 2026-10-14. La grille des linguistes (cf. `ANN-6`) a posé une question
 plus large qu'elle-même : l'outil annote-t-il avec CE vocabulaire, ou avec des vocabulaires ?
@@ -356,6 +358,7 @@ dès le lot 1, en parallèle : le code attend son lot, pas la conception.*
   et le fonds de `COL-3` partagent le patron du pot commun, et gagnent à être conçus ensemble
   **Tranché par Hugo le 2026-10-14** : `COL-3` d'abord (fusion de sa tranche 1, puis sa tranche 2), puis le modèle des grilles, en quatre tranches (`docs/grilles-et-releves.md`, §1). Commits sur `dev`, sans push, chacun après revue
 - [x] **La cible « planche » attend le modèle d'`IMG-2`, ou le tranche** — attendu : avant que la tranche 1 fige « la planche » comme cible d'une entrée, dit si c'est la PAGE (unité imprimée, numérotée, citée) ou la SURFACE (le repère où vivent les régions). Ouvert le 2026-10-16 : `docs/images-pages-surfaces.md` propose de séparer image, page et surface, que la planche confond aujourd'hui ; les régions changeraient alors de repère **Tranché par Hugo le 2026-10-16, dans `IMG-2` : la cible « planche » est la SURFACE** — pour une double page, la double page entière, que l'écran nomme « la planche (ou la double page) » ; une cible « page » viendra si une grille en a besoin
+- [x] **La tranche 1 est codée et relue** — attendu : sur `dev`, suite verte, relue croisée parce qu'elle touche les droits. **Fait le 2026-10-26, `3dc6b48`** (sur `dev` local) : le cadrage `docs/ann7-tranche1-cadrage.md` codé, quatre tours de relecture, chaque garde éprouvée par mutant
 - [ ] **La gestionnaire est responsable du projet de la grille des linguistes** — attendu : au
   déploiement de la tranche 1, dans « Qui y entre » du projet retenu (« Principal » ou
   « LingApp »), la gestionnaire figure avec le rôle « responsable » ; sinon seul un
