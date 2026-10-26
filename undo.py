@@ -254,6 +254,9 @@ def _garder_creation(conn, region_id, apres, depuis=None, agent=None, voit=None)
     locuteur, le personnage montré et la situation partaient par cascade. `agent` : l'auteur
     de la création, dont les liens ne bloquent pas ; `voit` : les valeurs de situation que
     l'agent lit (cf. `_garder_liens_de_creation`).
+
+    ANN-7 — les RELEVÉS et les PASSES de la région et de ses descendants se gardent comme
+    l'annotation, quel qu'en soit l'auteur (`_garder_releves_de_creation`).
     """
     actuel = journal.snapshot_region(conn, region_id)
     if actuel is None:
@@ -269,6 +272,7 @@ def _garder_creation(conn, region_id, apres, depuis=None, agent=None, voit=None)
                          (region_id, depuis or 0)).fetchone()
         raise conflit.Perime("annotations", region_id, "annotation", None,
                              conflit.auteur(conn, e) if e else None)
+    _garder_releves_de_creation(conn, region_id, depuis)
     _garder_liens_de_creation(conn, region_id, depuis, agent, voit)
     enfant = conn.execute("SELECT id FROM regions WHERE parent_id = ? ORDER BY id DESC LIMIT 1",
                           (region_id,)).fetchone()
@@ -281,6 +285,35 @@ def _garder_creation(conn, region_id, apres, depuis=None, agent=None, voit=None)
                          "ORDER BY id DESC LIMIT 1", (enfant["id"], depuis or 0)).fetchone()
         raise conflit.Perime("regions", region_id, "enfants", None,
                              conflit.auteur(conn, e) if e else None)
+
+
+def _garder_releves_de_creation(conn, region_id, depuis) -> None:
+    """Annuler la création d'une région n'emporte pas les relevés ni les passes qui vivent sur
+    elle ou sur l'un de ses descendants (ANN-7, tranche 1 ; relecture croisée, constat 1).
+    `_supprimer_region` est une mutation brute : le CASCADE les effaçait sans instantané pour
+    les rendre — le relevé et la passe qu'un autre avait posés sur la bulle d'une stagiaire
+    partaient avec son Ctrl+Z, en 200.
+
+    Le patron des ANNOTATIONS, et non celui des liens : quel qu'en soit l'auteur. Ses propres
+    relevés plus récents sont annulés AVANT la création ; une passe, un doute ne s'annulent
+    pas, et ce qui en reste ici bloque aussi — Ctrl+Z ne défait pas « terminée ». Un relevé
+    d'une grille DÉSACTIVÉE compte comme les autres : désactiver ne supprime aucun relevé, il
+    se lit encore. Le 409 nommé de CONC-3, que « Passer ce geste » franchit ; l'auteur nommé
+    est celui du dernier acte, après la création, sur un relevé, un doute ou une passe de ces
+    régions (cible `releve`)."""
+    zones = _descendants(conn, region_id)
+    marques = ", ".join("?" * len(zones))
+    releve, passe = conn.execute(
+        f"SELECT EXISTS (SELECT 1 FROM releve WHERE region_id IN ({marques})), "
+        f"EXISTS (SELECT 1 FROM passe WHERE region_id IN ({marques}))",
+        (*zones, *zones)).fetchone()
+    if not (releve or passe):
+        return
+    e = conn.execute(f"SELECT * FROM evenement WHERE cible_table = 'releve' "
+                     f"AND cible_id IN ({marques}) AND id > ? ORDER BY id DESC LIMIT 1",
+                     (*zones, depuis or 0)).fetchone()
+    raise conflit.Perime("releve", region_id, "releve" if releve else "passe", None,
+                         conflit.auteur(conn, e) if e else None)
 
 
 # CONC-4 — les liens qu'une région emporte par cascade : (table, colonne de la charge, champ

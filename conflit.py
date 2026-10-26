@@ -43,6 +43,10 @@ LIBELLES = {
     "mots": "le passage",
     "doute": "le doute",
     "passe": "la passe",
+    # Un relevé entier : un autre de la même entrée `une` posé sur la cible depuis
+    # (`undo._inverser_releve`), ou un relevé qui vit sur une région dont on annule la
+    # création (`undo._garder_releves_de_creation`).
+    "releve": "le relevé",
 }
 
 

@@ -191,3 +191,103 @@ def test_ctrl_z_ne_defait_pas_une_modification_qu_un_autre_a_recouverte(client, 
     refus = undo(client, attendu=(409,))["detail"]
     assert refus["conflit"]["champ"] == "variante_cle"
     assert _q(db_path, "SELECT variante_cle FROM releve")[0]["variante_cle"] == "splash"
+
+
+# --------------------------------------------------------------------------- #
+# Ctrl+Z d'une CRÉATION de région et les relevés qui vivent dessus (relecture croisée,
+# constat 1) — le CASCADE de `_supprimer_region` les emportait sans instantané, en 200.
+# --------------------------------------------------------------------------- #
+def _bulle_de_la_stagiaire(client, d):
+    return ok(client.post(f"/api/planches/{d['planche']}/regions", headers=STAG,
+                          json={"type": "bulle", "x": 50, "y": 50, "w": 9, "h": 9}), 201)["id"]
+
+
+def test_ctrl_z_d_une_creation_ne_supprime_pas_le_releve_ni_la_passe_d_un_autre(client, decor,
+                                                                                db_path):
+    rid = _bulle_de_la_stagiaire(client, decor)
+    poser(client, decor, qui=LEA, region_id=rid, entree_cle="ton-de-voix", variante_cle="crie")
+    ok(client.put(f"/api/regions/{rid}/passes/{decor['grille_id']}", headers=LEA, json={}))
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "releve"
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+    assert refus["message"].startswith("Conflit : le relevé a été modifié par Lea Responsable")
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve WHERE region_id = ?", (rid,))[0][
+        "n"] == 1
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM passe WHERE region_id = ?", (rid,))[0][
+        "n"] == 1
+    # « Passer ce geste » : la création sort de la pile, la bulle et son travail restent.
+    ok(client.post("/api/undo/passer", headers=STAG,
+                   json={"evenement_id": refus["passable"]["evenement_id"]}))
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM regions WHERE id = ?", (rid,))[0]["n"] == 1
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve WHERE region_id = ?", (rid,))[0][
+        "n"] == 1
+
+
+def test_ctrl_z_d_une_creation_garde_une_passe_seule(client, decor, db_path):
+    rid = _bulle_de_la_stagiaire(client, decor)
+    ok(client.put(f"/api/regions/{rid}/passes/{decor['grille_id']}", headers=LEA, json={}))
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "passe" and refus["passable"]
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM passe WHERE region_id = ?", (rid,))[0][
+        "n"] == 1
+
+
+def test_ctrl_z_d_une_creation_garde_sa_propre_passe(client, decor, db_path):
+    """Quel qu'en soit l'auteur : une passe ne s'annule pas, et Ctrl+Z ne la défait pas en
+    défaisant la région."""
+    rid = _bulle_de_la_stagiaire(client, decor)
+    ok(client.put(f"/api/regions/{rid}/passes/{decor['grille_id']}", headers=STAG, json={}))
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "passe"
+    assert refus["conflit"]["auteur"]["meme_compte"] is True
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM regions WHERE id = ?", (rid,))[0]["n"] == 1
+
+
+def test_ctrl_z_d_une_creation_garde_le_releve_d_un_descendant(client, decor, db_path):
+    case = ok(client.post(f"/api/planches/{decor['planche']}/regions", headers=STAG,
+                          json={"type": "case", "x": 40, "y": 40, "w": 50, "h": 50}),
+              201)["id"]
+    bulle = ok(client.post(f"/api/planches/{decor['planche']}/regions", headers=LEA,
+                           json={"type": "bulle", "x": 45, "y": 45, "w": 9, "h": 9,
+                                 "parent_id": case}), 201)["id"]
+    poser(client, decor, qui=LEA, region_id=bulle, entree_cle="ton-de-voix",
+          variante_cle="crie")
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "releve"
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve WHERE region_id = ?", (bulle,))[0][
+        "n"] == 1
+
+
+def test_ctrl_z_d_une_creation_garde_le_releve_d_une_grille_desactivee(client, decor,
+                                                                       db_path):
+    """« Désactiver ne supprime aucun relevé » : il se lit encore, et une annulation ne
+    l'emporte pas davantage."""
+    rid = _bulle_de_la_stagiaire(client, decor)
+    poser(client, decor, qui=LEA, region_id=rid, entree_cle="ton-de-voix", variante_cle="crie")
+    ok(client.delete(f"/api/projets/{decor['p']}/grilles/{decor['grille_id']}/activation",
+                     headers=LEA), 204)
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "releve"
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve WHERE region_id = ?", (rid,))[0][
+        "n"] == 1
+
+
+def test_ctrl_z_d_une_creation_sans_releve_passe_toujours(client, decor, db_path):
+    rid = _bulle_de_la_stagiaire(client, decor)
+    undo(client)
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM regions WHERE id = ?", (rid,))[0]["n"] == 0
+
+
+def test_le_409_d_un_autre_releve_une_se_lit_en_mots(client, decor, db_path):
+    """Constat 6 — le champ `releve` a son libellé : le refus ne dit plus « releve »."""
+    b = decor["zones"]["bulle"]
+    r = poser(client, decor, region_id=b, entree_cle="ton-de-voix", variante_cle="crie")
+    ok(client.delete(f"/api/releves/{r['id']}", headers=STAG), 204)
+    poser(client, decor, qui=LEA, region_id=b, entree_cle="ton-de-voix",
+          variante_cle="chuchote")
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "releve"
+    assert refus["message"] == (
+        "Conflit : le relevé a été modifié par Lea Responsable, le "
+        f"{refus['conflit']['auteur']['le']} (UTC) depuis que vous l'avez vu. "
+        "Votre modification n'est pas enregistrée.")
