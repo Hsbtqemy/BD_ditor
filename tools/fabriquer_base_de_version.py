@@ -47,7 +47,12 @@ Ce que le parcours pose, et pourquoi :
 - à partir de la v36 (`_parcours_v36`, ANN-7, tranche 1) : des régions des cinq types, des
   textes à apostrophes et à tirets ; une copie sœur amorcée au cran `annotations` ; un album
   retiré du projet ; le réglage de création ouvert ; une planche et une région détruites en
-  haut de leur table.
+  haut de leur table ;
+- à partir de la v37 (`_parcours_v37`, COL-3, tranche 3c) : une grille importée, publiée,
+  activée, un relevé, une passe, un doute ; des accès de collection donnés hors de tout
+  projet ; une collection que la responsable de son projet ne lit pas ; des copies créées
+  par une simple écrivaine et touchées par une autre (`geste_sur_copie`) ; des demandes
+  d'effacement en attente et une close ; un compte partagé responsable d'un projet.
 
 Le parcours n'emploie que des routes stables depuis la v29. Si une version les change, il
 gagne une branche sur `database.SCHEMA_VERSION` plutôt que de perdre l'ancienne forme :
@@ -241,6 +246,8 @@ def _jouer_le_parcours(main, database, journal) -> dict:
             faits.update(_parcours_v35(c, database, faits))
         if database.SCHEMA_VERSION >= 36:
             faits.update(_parcours_v36(c, faits))
+        if database.SCHEMA_VERSION >= 37:
+            faits.update(_parcours_v37(c, faits))
     return faits
 
 
@@ -549,6 +556,106 @@ def _parcours_v36(c, faits: dict) -> dict:
             "planche_detruite_v36": haute, "region_detruite_v36": region_haute}
 
 
+NORA = {"Remote-User": "nora", "Remote-Name": "Nora"}
+
+
+def _parcours_v37(c, faits: dict) -> dict:
+    """Ce qu'une base v37 doit porter pour que la v38 ait de quoi se tromper (COL-3, tranche
+    3c : la règle d'effacement simplifiée, plus aucun accès hors projet, la demande d'une
+    planche) — et ce que la v37 a apporté (ANN-7, tranche 1) : une GRILLE importée, publiée
+    et activée sur Étude B, un relevé, une passe, un doute. Ce que la v38 migre : des accès
+    HORS PROJET — Nora (un compte) et `invites` (un groupe), d'aucun projet, en écriture sur
+    la Collection B, et Omar sur la Collection de Léa, du repli ; une collection d'un projet
+    que sa responsable ne lit pas, possédée par un membre, avec un album dedans (« Carnet
+    d'arrivant », dans « Par un membre ») ; des copies créées par une simple écrivaine
+    (Nora), touchées par elle et par Léa (`geste_sur_copie`) ; des demandes d'effacement EN
+    ATTENTE — une suppression sur une copie qui a des sœurs, une sur une dernière copie, un
+    `repartir` — et une close ; un compte PARTAGÉ (`atelier`) responsable d'un projet. Rien
+    de tel dans un bac à sable (les routes ne le permettent pas : le test de la v38 le pose
+    à la main). Par les routes du code v37, avec le modèle de grille du code extrait."""
+    etude, collection_b = faits["projet_etude"], faits["collection_b"]
+    for qui in (NORA, {"Remote-User": "omar"}, {"Remote-User": "atelier"}):
+        c.get("/api/moi", headers=qui)
+    # Une grille fermée, importée, publiée et activée sur Étude B par sa responsable.
+    outils = Path.cwd() / "tools"
+    files = {"fichier": ("grille.csv", (outils / "grille-modele.csv").read_bytes(), "text/csv"),
+             "listes": ("listes.csv",
+                        (outils / "grille-modele-listes-qualificatifs.csv").read_bytes(),
+                        "text/csv")}
+    grille = _ok(c.post(f"/api/projets/{etude}/grilles/import", headers=LEA, files=files,
+                        data={"nom": "Signaux", "ouverte": "false", "porte_sur": "mots",
+                              "a_blanc": "false"}), 200)["grille_id"]
+    _ok(c.post(f"/api/grilles/{grille}/versions/1/publication", headers=LEA), 200)
+    _ok(c.put(f"/api/projets/{etude}/grilles/{grille}/activation", headers=LEA,
+              json={"version": 1}), 200)
+    bulle = faits["regions_cinq_types"]["bulle"]
+    mot = _ok(c.get(f"/api/regions/{bulle}/mots", headers=LEA), 200)["mots"][0]["rang"]
+    releve = _ok(c.post("/api/releves", headers=LEA,
+                        json={"grille_id": grille, "version": 1, "region_id": bulle,
+                              "entree_cle": "cri", "mots": [mot]}), 201)["id"]
+    _ok(c.put(f"/api/regions/{bulle}/passes/{grille}", headers=LEA, json={}), 200)
+    doute = _ok(c.post(f"/api/releves/{releve}/doutes", headers=LEA,
+                       json={"texte": "Un cri, ou une onomatopée ?"}), 201)["id"]
+    # Les accès hors projet : un compte et un groupe sur une collection d'Étude B, un compte
+    # sur une collection du repli. Aucun d'eux n'est d'un projet.
+    for cid, genre, principal in ((collection_b, "utilisateur", "nora"),
+                                  (collection_b, "groupe", "invites"),
+                                  (faits["collection_de_lea"], "utilisateur", "omar")):
+        _ok(c.put(f"/api/collections/{cid}/acces", headers=LEA,
+                  json={"genre": genre, "principal": principal, "niveau": "ecriture"}), 200)
+    # Une collection d'Étude B que sa responsable ne lit pas, possédée par un membre (Sam),
+    # avec un album dedans.
+    carnet = _ok(c.post("/api/albums", headers=SAM,
+                        json={"titre": "Carnet d'arrivant",
+                              "collection_id": faits["collection_d_un_membre"]}), 201)["id"]
+    _ok(c.post(f"/api/albums/{carnet}/import", headers=SAM,
+               files={"file": ("p.png", _png(), "image/png")}), 201)
+
+    def copie_de_nora(titre):
+        """Une copie créée par Nora, simple écrivaine : une région à elle, une à Léa."""
+        a = _ok(c.post("/api/albums", headers=NORA,
+                       json={"titre": titre, "collection_id": collection_b}), 201)["id"]
+        pl = _ok(c.post(f"/api/albums/{a}/import", headers=NORA,
+                        files={"file": ("p.png", _png(), "image/png")}), 201)["id"]
+        for qui, x in ((NORA, 0), (LEA, 10)):
+            r = _ok(c.post(f"/api/planches/{pl}/regions", headers=qui,
+                           json={"type": "bulle", "x": x, "y": 0, "w": 9, "h": 9}), 201)["id"]
+            _ok(c.put(f"/api/regions/{r}", headers=qui, json={"ocr_texte": "LE OTAGE"}), 200)
+        return a
+
+    def demander(album_id, genre="suppression_document", **champs):
+        return _ok(c.post("/api/demandes", headers=NORA,
+                          json={"genre": genre, "album_id": album_id, "certifie": True,
+                                "motif": "Plus utile.", **champs}), 201)["id"]
+
+    carnet_nora = copie_de_nora("Carnet de Nora")
+    carnet_nora_2 = copie_de_nora("Carnet de Nora 2")
+    attente = {
+        # La Source des sœurs a des copies sœurs ; Nora y écrit, ne l'a pas créée.
+        "suppression_avec_soeur": demander(faits["album_source_des_soeurs"]),
+        # Le Carnet de Nora est la dernière copie de son document ; Léa y a travaillé.
+        "suppression_derniere_copie": demander(carnet_nora),
+        "repartir": demander(carnet_nora_2, genre="repartir", cran="images"),
+    }
+    close = demander(carnet_nora_2)
+    _ok(c.post(f"/api/demandes/{close}/reponse", headers=ADMIN,
+               json={"reponse": "refusee"}), 200)
+    # Un compte PARTAGÉ, responsable d'un projet.
+    _ok(c.patch("/api/comptes/atelier/nature", headers=ADMIN, json={"nature": "collectif"}),
+        200)
+    _ok(c.put(f"/api/projets/{etude}/membres", headers=ADMIN,
+              json={"genre": "utilisateur", "principal": "atelier", "role": "responsable"}),
+        200)
+    return {"grille": grille, "releve": releve, "doute": doute,
+            "acces_hors_projet": [[collection_b, "utilisateur", "nora"],
+                                  [collection_b, "groupe", "invites"],
+                                  [faits["collection_de_lea"], "utilisateur", "omar"]],
+            "album_carnet_d_arrivant": carnet,
+            "copies_de_nora": [carnet_nora, carnet_nora_2],
+            "demandes_v37": {"en_attente": attente, "close": close},
+            "compte_partage_responsable": "atelier"}
+
+
 def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict) -> None:
     conn = sqlite3.connect(base)
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -596,6 +703,13 @@ def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict)
             "SELECT type, COUNT(*) FROM regions GROUP BY type ORDER BY type").fetchall())
         faits["crans_des_copies"] = dict(conn.execute(
             "SELECT cran, COUNT(*) FROM copie GROUP BY cran ORDER BY cran").fetchall())
+    if version >= 37:
+        faits["comptes"].update({t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                                 for t in ("grille", "grille_version", "projet_grille",
+                                           "releve", "passe", "doute", "collection_acces")})
+        faits["demandes_par_reponse"] = dict(conn.execute(
+            "SELECT COALESCE(reponse, 'en attente'), COUNT(*) FROM demande "
+            "GROUP BY 1 ORDER BY 1").fetchall())
     try:
         relatif = sortie.relative_to(RACINE).as_posix()
     except ValueError:
