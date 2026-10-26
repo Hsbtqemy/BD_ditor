@@ -20,6 +20,7 @@
     root.serieTome = api.serieTome;
     root.etatExport = api.etatExport;
     root.noteExport = api.noteExport;
+    root.pendantEnvoi = api.pendantEnvoi;
   }
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
@@ -215,6 +216,47 @@
     return [serie, /^\d+$/.test(tome) ? "T" + tome : tome].filter(Boolean).join(" · ");
   }
 
+  /* COL-3, tranche 3b (Hugo, 2026-10-26) — UN ENVOI SE VOIT SUR SON BOUTON. Pendant la
+     requête, le bouton qui envoie dit « Envoi… » et porte `aria-busy="true"`, puis reprend
+     son libellé — que la requête réussisse ou échoue (`finally`). Ni spinner ni phrase de
+     plus : un bouton seulement grisé ne se remarquait pas, et la ligne passait à « demandé »
+     sans qu'on ait vu partir quoi que ce soit.
+
+     L'écran reste stable : le bouton garde la largeur qu'il avait (mesurée, posée en style
+     le temps de l'envoi, rendue ensuite), « Envoi… » ne le fait ni rétrécir ni grandir —
+     `button[aria-busy="true"]` ne passe pas à la ligne (`static/style.css`).
+
+     `envoi` est une fonction qui rend une promesse (ou une valeur) : elle n'est appelée
+     qu'une fois le bouton marqué. Ce qu'elle rend, ou lève, ressort tel quel. Un bouton
+     déjà occupé ne relance rien (un double clic n'envoie pas deux fois) : la fonction rend
+     alors `undefined` sans appeler `envoi`. Un bouton que la réponse a redessiné (la fiche
+     se redessine) est rendu quand même, détaché : cela ne fait rien de visible.
+
+     Le libellé est un TEXTE : les boutons d'envoi n'ont pas de balisage dedans. `disabled`
+     (comme avant) empêche le second clic au navigateur. */
+  const LIBELLE_ENVOI = "Envoi…";
+  async function pendantEnvoi(bouton, envoi, libelle = LIBELLE_ENVOI) {
+    if (!bouton) return envoi();
+    if (bouton.getAttribute("aria-busy") === "true") return undefined;
+    const avant = { texte: bouton.textContent, desactive: !!bouton.disabled,
+                    largeur: bouton.style.width };
+    const mesure = typeof bouton.getBoundingClientRect === "function"
+      ? bouton.getBoundingClientRect().width : 0;
+    if (mesure > 0) bouton.style.width = mesure + "px";
+    bouton.textContent = libelle;
+    bouton.setAttribute("aria-busy", "true");
+    bouton.disabled = true;
+    try {
+      return await envoi();
+    } finally {
+      bouton.textContent = avant.texte;
+      bouton.removeAttribute("aria-busy");
+      bouton.disabled = avant.desactive;
+      bouton.style.width = avant.largeur;
+    }
+  }
+  pendantEnvoi.LIBELLE = LIBELLE_ENVOI;
+
   return { $, apiGet, apiSend, escapeHtml, toast, messageErreur, identite,
-           etatExport, noteExport, serieTome };
+           etatExport, noteExport, serieTome, pendantEnvoi };
 });

@@ -167,3 +167,79 @@ test("serieTome : la série et son rang, tels qu'on les lit devant le titre", ()
   assert.equal(serieTome({}), "");
   assert.equal(serieTome(null), "");
 });
+
+
+/* ---- pendantEnvoi : un envoi se voit sur son bouton (COL-3, tranche 3b) ---- */
+const { pendantEnvoi } = require("../../static/lib/common.js");
+
+/* Une doublure de bouton : ce que la fonction lit et écrit, rien de plus. */
+function doublureBouton(texte, { largeur = 120, desactive = false } = {}) {
+  const attrs = new Map();
+  return {
+    textContent: texte,
+    disabled: desactive,
+    style: { width: "" },
+    getBoundingClientRect: () => ({ width: largeur }),
+    getAttribute: (n) => (attrs.has(n) ? attrs.get(n) : null),
+    setAttribute: (n, v) => attrs.set(n, String(v)),
+    removeAttribute: (n) => attrs.delete(n),
+  };
+}
+
+test("pendantEnvoi : « Envoi… », aria-busy et la largeur gardée PENDANT la requête", async () => {
+  const b = doublureBouton("Accepter", { largeur: 137.5 });
+  let vu = null;
+  const r = await pendantEnvoi(b, async () => {
+    vu = { texte: b.textContent, busy: b.getAttribute("aria-busy"),
+           desactive: b.disabled, largeur: b.style.width };
+    return 42;
+  });
+  assert.deepEqual(vu, { texte: "Envoi…", busy: "true", desactive: true, largeur: "137.5px" });
+  assert.equal(r, 42);                                    // ce que rend l'envoi ressort tel quel
+  assert.equal(b.textContent, "Accepter");
+  assert.equal(b.getAttribute("aria-busy"), null);
+  assert.equal(b.disabled, false);
+  assert.equal(b.style.width, "");
+});
+
+test("pendantEnvoi : le libellé revient aussi quand la requête ÉCHOUE, et l'erreur ressort", async () => {
+  const b = doublureBouton("Envoyer la demande");
+  await assert.rejects(pendantEnvoi(b, async () => { throw new Error("refusé"); }), /refusé/);
+  assert.equal(b.textContent, "Envoyer la demande");
+  assert.equal(b.getAttribute("aria-busy"), null);
+  assert.equal(b.disabled, false);
+  assert.equal(b.style.width, "");
+});
+
+test("pendantEnvoi : un bouton déjà occupé ne relance rien (double clic)", async () => {
+  const b = doublureBouton("Refuser");
+  let appels = 0;
+  let liberer;
+  const premier = pendantEnvoi(b, () => { appels++; return new Promise((ok) => { liberer = ok; }); });
+  const second = await pendantEnvoi(b, async () => { appels++; });
+  assert.equal(second, undefined);
+  assert.equal(appels, 1);
+  assert.equal(b.textContent, "Envoi…");                 // le second n'a rien rendu trop tôt
+  liberer("fait");
+  assert.equal(await premier, "fait");
+  assert.equal(b.textContent, "Refuser");
+});
+
+test("pendantEnvoi rend l'état d'avant : un bouton désactivé le reste, une largeur posée revient", async () => {
+  const b = doublureBouton("Copier", { desactive: true });
+  b.style.width = "9em";
+  await pendantEnvoi(b, () => "x");                       // une valeur, pas une promesse
+  assert.equal(b.disabled, true);
+  assert.equal(b.style.width, "9em");
+});
+
+test("pendantEnvoi sans bouton envoie quand même", async () => {
+  assert.equal(await pendantEnvoi(null, async () => "seul"), "seul");
+});
+
+test("pendantEnvoi : un bouton qu'on ne sait pas mesurer ne reçoit pas de largeur", async () => {
+  const b = doublureBouton("Vu", { largeur: 0 });
+  let largeur = null;
+  await pendantEnvoi(b, () => { largeur = b.style.width; });
+  assert.equal(largeur, "");
+});

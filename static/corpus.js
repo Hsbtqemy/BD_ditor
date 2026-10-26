@@ -2348,10 +2348,10 @@ function fermerSuppression() {
 async function spRetirer(bouton) {
   const a = SUPPR.album;
   if (!a || bouton.disabled) return;
-  bouton.disabled = true;
   try {
-    await apiSend("DELETE", `/api/albums/${a.id}/collections/${bouton.dataset.retirer}`);
-  } catch (e) { spMsg(e.message, true); bouton.disabled = false; return; }
+    await pendantEnvoi(bouton, () =>
+      apiSend("DELETE", `/api/albums/${a.id}/collections/${bouton.dataset.retirer}`));
+  } catch (e) { spMsg(e.message, true); return; }
   fermerSuppression();
   state.checkedAlbums.delete(a.id);
   await loadAlbums();
@@ -2375,21 +2375,19 @@ async function spDefinitif() {
       return;
     }
   }
-  bouton.disabled = true;
   try {
-    if (d.mode === "direct") await apiSend("DELETE", `/api/albums/${a.id}`);
-    else await apiSend("POST", "/api/demandes",
-                       { genre: BDSuppression.GENRE_DOCUMENT, album_id: a.id, motif,
-                         certifie: true });
+    await pendantEnvoi(bouton, () => d.mode === "direct"
+      ? apiSend("DELETE", `/api/albums/${a.id}`)
+      : apiSend("POST", "/api/demandes",
+                { genre: BDSuppression.GENRE_DOCUMENT, album_id: a.id, motif,
+                  certifie: true }));
   } catch (e) {
     spMsg(e.message, true);
-    bouton.disabled = false;
     // Le serveur a pu changer d'avis entre la liste et le geste (une demande déposée par un
     // autre, un travail ajouté) : la ligne se relit, sans fermer le panneau.
     loadAlbums().catch(() => {});
     return;
   }
-  bouton.disabled = false;
   fermerSuppression();
   if (d.mode === "direct") state.checkedAlbums.delete(a.id);
   await loadAlbums();
@@ -2539,21 +2537,16 @@ async function rpValider() {
     }
   }
   const planche = REP.planche, cran = REP.cran, mode = REP.mode;
-  ok.disabled = true;
   try {
-    if (mode === "direct") {
-      await apiSend("POST", planche ? `/api/planches/${planche.id}/repartir`
-                                    : `/api/albums/${a.id}/repartir`, { cran });
-    } else {
-      await apiSend("POST", "/api/demandes", { genre: BDSuppression.GENRE_REPARTIR,
-                                               album_id: a.id, cran, motif, certifie: true });
-    }
+    await pendantEnvoi(ok, () => mode === "direct"
+      ? apiSend("POST", planche ? `/api/planches/${planche.id}/repartir`
+                                : `/api/albums/${a.id}/repartir`, { cran })
+      : apiSend("POST", "/api/demandes", { genre: BDSuppression.GENRE_REPARTIR,
+                                           album_id: a.id, cran, motif, certifie: true }));
   } catch (e) {
-    ok.disabled = false;
     rpMsg(e.message, true);
     return;
   }
-  ok.disabled = false;
   fermerRepartir();
   const ou = planche ? `, ${plancheNomLu(planche).replace(/^la /, "")},` : "";
   toast(mode === "direct"
@@ -2612,16 +2605,14 @@ async function rtValider() {
   const a = RET.album, ok = $("#rt-ok");
   if (!a || ok.disabled) return;
   const motif = $("#rt-motif").value.trim();
-  ok.disabled = true;
   let r;
   try {
-    r = await apiSend("POST", `/api/albums/${a.id}/retirer-du-projet`, motif ? { motif } : {});
+    r = await pendantEnvoi(ok, () =>
+      apiSend("POST", `/api/albums/${a.id}/retirer-du-projet`, motif ? { motif } : {}));
   } catch (e) {
-    ok.disabled = false;
     rtMsg(e.message, true);
     return;
   }
-  ok.disabled = false;
   fermerRetirer();
   const p = PROJETS.find((x) => x.id === (r && r.projet_id));
   RETRAITS.collection = null;                // les avis des collections quittées ont changé
@@ -3009,7 +3000,7 @@ function rendreE7() {
   </section>`;
 }
 
-async function repondreE7(id, accepter) {
+async function repondreE7(id, accepter, bouton) {
   const d = P3A.e7.find((x) => x.id === id);
   if (!d) return;
   const choix = accepter ? BDEchelle.nomCopieChoisie(d.copies, state.albums, P3A.e7Choix.get(id)) : null;
@@ -3017,7 +3008,7 @@ async function repondreE7(id, accepter) {
   const corps = { reponse: accepter ? BDSuppression.ACCEPTER : BDSuppression.REFUSER };
   if (accepter) corps.album_id = choix.id;
   try {
-    await apiSend("POST", `/api/demandes/${id}/reponse`, corps);
+    await pendantEnvoi(bouton, () => apiSend("POST", `/api/demandes/${id}/reponse`, corps));
   } catch (e) {
     P3A.e7Msg = { texte: e.message, erreur: true };
     rendreE7();
@@ -3126,11 +3117,9 @@ async function repondreDemande(bouton) {
   const f = $("#col-fiche");
   const c = f ? collection(f.dataset.id) : null;
   const d = c ? (P3A.recues.get(c.id) || []).find((x) => x.id === id) : null;
-  bouton.disabled = true;
   try {
-    await apiSend("POST", `/api/demandes/${id}/reponse`, { reponse });
+    await pendantEnvoi(bouton, () => apiSend("POST", `/api/demandes/${id}/reponse`, { reponse }));
   } catch (e) {
-    bouton.disabled = false;
     colMsg($("#bi-recues-msg"), e.message, true);
     return;
   }
@@ -3312,9 +3301,8 @@ async function envoyerPrise() {
   });
   const corps = { documents };
   if (pr.motif.trim()) corps.motif = pr.motif.trim();
-  ok.disabled = true;
   let r;
-  try { r = await apiSend("POST", `/api/collections/${pr.dest}/prendre`, corps); }
+  try { r = await pendantEnvoi(ok, () => apiSend("POST", `/api/collections/${pr.dest}/prendre`, corps)); }
   catch (e) {
     pr.msg = e.message; pr.erreur = true;
     rendreNotices();
@@ -3506,12 +3494,11 @@ async function copierDansProjet(bouton) {
   const ligne = cran === "images"
     ? { document_id: a.document_id, reponse: "zero", album_id: a.id }
     : { document_id: a.document_id, reponse: "amorcer", album_id: a.id, cran };
-  bouton.disabled = true;
   let r;
   try {
-    r = await apiSend("POST", `/api/collections/${dp.collection}/prendre`, { documents: [ligne] });
+    r = await pendantEnvoi(bouton, () =>
+      apiSend("POST", `/api/collections/${dp.collection}/prendre`, { documents: [ligne] }));
   } catch (e) {
-    bouton.disabled = false;
     dp.msg = e.message; dp.erreur = true;
     colMsg($("#bi-dp-msg"), dp.msg, true);
     return;
@@ -3540,17 +3527,19 @@ async function prendreDansProjet(bouton) {
   const a = state.albums.find((x) => x.id === Number(bouton.dataset.id));
   if (!a) return;
   const reponse = bouton.dataset.dp;
-  bouton.disabled = true;
   let r;
   try {
-    r = await apiSend("POST", `/api/collections/${dp.collection}/prendre`, {
-      documents: [{ document_id: a.document_id, reponse, album_id: a.id }] });
+    r = await pendantEnvoi(bouton, () =>
+      apiSend("POST", `/api/collections/${dp.collection}/prendre`, {
+        documents: [{ document_id: a.document_id, reponse, album_id: a.id }] }));
   } catch (e) {
-    bouton.disabled = false;
     dp.msg = e.message; dp.erreur = true;
     rendreDansProjet();
     return;
   }
+  // Le libellé est revenu ; le bouton reste éteint jusqu'au redessin de la liste, qui peut
+  // attendre la relecture des albums : un second clic referait la même prise.
+  bouton.disabled = true;
   const l = (r.documents || [])[0] || {};
   dp.reponses.set(a.id, BDBiblio.reponsePrise(l));
   const c = collection(dp.collection);
@@ -3939,9 +3928,9 @@ function brancherFiche() {
     // COL-3, écran de la 3b — en tête de la fiche du projet : les demandes d'en partir venues
     // d'un autre projet ; en tête de l'onglet Albums : les retraits, jusqu'à « Vu ».
     const e7a = t.closest("button[data-e7-accepter]");
-    if (e7a) { repondreE7(Number(e7a.dataset.e7Accepter), true); return; }
+    if (e7a) { repondreE7(Number(e7a.dataset.e7Accepter), true, e7a); return; }
     const e7r = t.closest("button[data-e7-refuser]");
-    if (e7r) { repondreE7(Number(e7r.dataset.e7Refuser), false); return; }
+    if (e7r) { repondreE7(Number(e7r.dataset.e7Refuser), false, e7r); return; }
     const vu = t.closest("button[data-retrait-vu]");
     if (vu) { retraitVu(vu); return; }
     const oc = t.closest("[data-ouvrir-col]");

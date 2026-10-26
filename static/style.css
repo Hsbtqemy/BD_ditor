@@ -794,6 +794,13 @@ a.icon-btn { display: inline-flex; align-items: center; justify-content: center;
 .icon-btn:disabled:hover { background: var(--bg-input); color: var(--text); }
 .danger:disabled:hover { filter: none; }
 
+/* COL-3, tranche 3b (Hugo, 2026-10-26) — un envoi se voit sur son bouton : « Envoi… » le
+   temps de la requête (`pendantEnvoi`, `static/lib/common.js`). Il garde sa largeur, posée
+   par la fonction : le libellé ne passe pas à la ligne et ne déborde pas. Moins éteint qu'un
+   bouton simplement désactivé, pour qu'on le LISE — le gris seul ne se remarquait pas. */
+button[aria-busy="true"] { white-space: nowrap; overflow: hidden; }
+button[aria-busy="true"]:disabled { opacity: .75; cursor: progress; }
+
 .dropdown { position: relative; }
 .dropdown-menu {
   position: absolute; right: 0; top: 110%; z-index: 20;

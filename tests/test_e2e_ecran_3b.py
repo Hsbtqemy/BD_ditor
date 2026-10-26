@@ -20,6 +20,8 @@ l'ÉCRAN en fait :
 - « Supprimer… » dit le chemin réel (le responsable n'est jamais dit créateur), la dernière
   copie se demande ; « Retirer du projet… » et l'avis chez la propriétaire, jusqu'à « Vu » ;
 - « À faire » : les deux tranches neuves, « attend … » ;
+- un envoi se voit sur son bouton : « Envoi… », de la même largeur, puis le libellé, même
+  en erreur ;
 - la lectrice ne voit aucun de ces gestes ; tout tient à 320 px sous une grande police.
 
 Chaque geste est mesuré sur la requête PARTIE, pas seulement sur l'état final : le serveur
@@ -594,6 +596,89 @@ def test_a_faire_en_partir_attend_et_repond_a_la_place(page, decor):
     expect(vierge.locator(".e7-aucune")).to_be_visible(timeout=5000)
     expect(vierge.locator("[data-fd-accepter]")).to_have_count(0)
     expect(vierge.locator("[data-fd-refuser]")).to_have_text("Refuser")
+
+
+# =========================================================================== #
+# Un envoi se voit sur son bouton (Hugo, 2026-10-26)
+# =========================================================================== #
+def _tenir(page, motif):
+    """La requête est TENUE tant que le test ne la rend pas : l'état « pendant » se lit
+    sans course contre le serveur."""
+    tenues = []
+    page.route(motif, lambda route: tenues.append(route))
+    return tenues
+
+
+def _attendre_tenue(page, tenues):
+    for _ in range(50):
+        if tenues:
+            return tenues[0]
+        page.wait_for_timeout(100)
+    raise AssertionError("la requête n'est jamais partie")
+
+
+def _largeur(bouton):
+    return bouton.bounding_box()["width"]
+
+
+def test_un_envoi_se_voit_sur_son_bouton(page, decor):
+    """Pendant la requête, le bouton qui envoie dit « Envoi… » et porte `aria-busy`, sans
+    changer de largeur ; il reprend son libellé quand la réponse arrive, y compris en
+    ERREUR. Mesuré sur deux panneaux : « Retirer du projet… » dans la Bibliothèque, et une
+    réponse de « À faire » dans l'Administration."""
+    d = decor
+    # --- La Bibliothèque : « Retirer du projet… », refusé par le serveur.
+    fiche = _fiche_album(page, d, "paule", "Gorille", "Corpus")
+    fiche.locator('[data-act="retirer"]').click()
+    ok = page.locator("#rt-ok")
+    expect(ok).to_be_visible(timeout=5000)
+    expect(ok).to_have_text("Retirer du projet")
+    avant = _largeur(ok)
+    tenues = _tenir(page, "**/api/albums/*/retirer-du-projet")
+    ok.click()
+    route = _attendre_tenue(page, tenues)
+    expect(ok).to_have_text("Envoi…")
+    expect(ok).to_have_attribute("aria-busy", "true")
+    expect(ok).to_be_disabled()
+    assert abs(_largeur(ok) - avant) < 0.5, (avant, _largeur(ok))
+    route.fulfill(status=409, json={"detail": "Refus de test : rien n'a bougé."})
+    expect(page.locator("#rt-msg")).to_have_text("Refus de test : rien n'a bougé.", timeout=5000)
+    expect(ok).to_have_text("Retirer du projet")
+    expect(ok).not_to_have_attribute("aria-busy", "true")
+    expect(ok).to_be_enabled()
+    assert abs(_largeur(ok) - avant) < 0.5
+    page.unroute("**/api/albums/*/retirer-du-projet")
+
+    # --- L'Administration : une réponse de « À faire », en erreur puis pour de bon.
+    with _client(d["base"], _comme("noe")) as c:
+        _ok(c.post(f"/api/collections/{d['cols']['Exercices']}/prendre", json={
+            "documents": [{"document_id": d["docs"]["Zorglub"], "reponse": "amorcer",
+                           "album_id": d["albums"]["Zorglub"], "cran": "decoupage"}]}))
+    _ouvrir(page, d, "admin", "/administration?vue=afaire")
+    ligne = page.locator(".af-ligne.af-genre-amorcer", has_text="Zorglub")
+    expect(ligne).to_be_visible(timeout=5000)
+    ligne.locator("[data-af-deplier]").click()
+    accepter = ligne.locator("[data-fd-accepter]")
+    expect(accepter).to_be_visible(timeout=5000)
+    libelle = accepter.inner_text()
+    assert libelle and libelle != "Envoi…"
+    avant = _largeur(accepter)
+    tenues = _tenir(page, "**/api/demandes/*/reponse")
+    accepter.click()
+    route = _attendre_tenue(page, tenues)
+    expect(accepter).to_have_text("Envoi…")
+    expect(accepter).to_have_attribute("aria-busy", "true")
+    assert abs(_largeur(accepter) - avant) < 0.5, (avant, _largeur(accepter))
+    route.fulfill(status=409, json={"detail": "Réponse refusée pour le test."})
+    expect(ligne.locator(".fd-ligne-msg")).to_have_text("Réponse refusée pour le test.",
+                                                        timeout=5000)
+    expect(accepter).to_have_text(libelle)
+    expect(accepter).not_to_have_attribute("aria-busy", "true")
+    expect(accepter).to_be_enabled()
+    page.unroute("**/api/demandes/*/reponse")
+    # Le second essai passe : le bouton rendu marche encore.
+    accepter.click()
+    expect(page.locator("#af-msg")).to_contain_text("a sa copie dans", timeout=5000)
 
 
 # =========================================================================== #

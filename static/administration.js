@@ -1179,7 +1179,7 @@ function pjE7(p) {
     ${pjLigneDeGeste("e7", "p")}`;
 }
 
-async function pjRepondreE7(id, accepter) {
+async function pjRepondreE7(id, accepter, bouton) {
   const p = pjProjet();
   const d = p && (PJ.e7.get(p.id) || []).find((x) => x.id === id);
   if (!d) return;
@@ -1187,7 +1187,7 @@ async function pjRepondreE7(id, accepter) {
   if (accepter && !choix) return;
   const corps = { reponse: accepter ? BDSuppression.ACCEPTER : BDSuppression.REFUSER };
   if (accepter) corps.album_id = choix.id;
-  try { await apiSend("POST", `/api/demandes/${id}/reponse`, corps); }
+  try { await pendantEnvoi(bouton, () => apiSend("POST", `/api/demandes/${id}/reponse`, corps)); }
   catch (e) { pjMsg($("#pj-e7-msg"), e.message || "Échec", true); return; }
   const reste = (PJ.e7.get(p.id) || []).filter((x) => x.id !== id);
   if (reste.length) PJ.e7.set(p.id, reste); else PJ.e7.delete(p.id);
@@ -2135,8 +2135,8 @@ function pjDemarrer() {
       PJ.rendreOuvert = null;
       pjFondsRedessiner(`[data-pj-rendre="${id}"]`);
     } else if (b.dataset.pjRendreOk) pjRendreCopie(Number(b.dataset.pjRendreOk));
-    else if (b.dataset.pjE7Accepter) pjRepondreE7(Number(b.dataset.pjE7Accepter), true);
-    else if (b.dataset.pjE7Refuser) pjRepondreE7(Number(b.dataset.pjE7Refuser), false);
+    else if (b.dataset.pjE7Accepter) pjRepondreE7(Number(b.dataset.pjE7Accepter), true, b);
+    else if (b.dataset.pjE7Refuser) pjRepondreE7(Number(b.dataset.pjE7Refuser), false, b);
   });
   // Une radio de « Ce que la base ouvre aux membres » : rien ne s'applique, la phrase et
   // « Appliquer » paraissent sous elles. Celles du formulaire de création ne font rien ici.
@@ -2662,7 +2662,7 @@ async function fdApres(el, texte, projetTouche) {
    confirment : ce sont les seules réponses qui effacent quelque chose. Une entrée encore en
    attente après la réponse reste dépliée, et le message se lit sur SA ligne ; une demande
    close disparaît, et le message se lit en tête de « À faire ». */
-async function fdRepondre(id, reponse, documentId, source) {
+async function fdRepondre(id, reponse, documentId, source, bouton) {
   const d = (FD.demandes || []).find((x) => x.id === id);
   if (!d) return;
   const ligne = $(`#fd-demande-msg-${id}`);
@@ -2698,7 +2698,7 @@ async function fdRepondre(id, reponse, documentId, source) {
   }
   let vue;
   try {
-    vue = await apiSend("POST", `/api/demandes/${id}/reponse`, corps);
+    vue = await pendantEnvoi(bouton, () => apiSend("POST", `/api/demandes/${id}/reponse`, corps));
   } catch (e) { afMsg(ligne, e.message || "Échec", true); return; }
   const enAttente = !!(vue && vue.en_attente);
   const doc = documentId === undefined ? null
@@ -3221,7 +3221,7 @@ function afDemarrer() {
       const source = b.dataset.fdSource ? Number(b.dataset.fdSource) : undefined;
       fdRepondre(Number(b.dataset.fdAccepter || b.dataset.fdRefuser),
                  b.dataset.fdAccepter ? BDSuppression.ACCEPTER : BDSuppression.REFUSER, doc,
-                 source);
+                 source, b);
     }
     else if (b.dataset.afSignal !== undefined || b.dataset.afInfo !== undefined) {
       const c = BDComptes.cibleSignal(b.dataset.afSignal !== undefined
