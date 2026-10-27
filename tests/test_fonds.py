@@ -488,17 +488,20 @@ def test_le_refus_ne_dit_pas_laquelle_des_conditions_manque(client, db_path, dec
     assert "collegue" not in pas_importee.text and "Autre" not in pas_importee.text
 
 
-def test_une_planche_suit_la_regle_de_repartir(client, decor):
-    """B4, RENVERSÉ par la tranche 3c (Q5, Hugo, 2026-10-26) — une planche n'est pas le
-    document : elle se supprime par qui tient l'espace, même sur la DERNIÈRE copie du
-    document, comme on repart de zéro. L'importatrice, qui n'a que l'écriture, ne la
-    supprime plus seule ; le refus dit qui le peut."""
+def test_une_planche_suit_la_regle_du_document(client, decor):
+    """B4, revu par la tranche 3c (Q5, Hugo, 2026-10-26, complétée le 2026-10-27) — une
+    planche se supprime par qui tient l'espace, SAUF sur la DERNIÈRE copie du document, qui
+    va à l'administrateur comme l'album : sans quoi on vidait la dernière copie planche à
+    planche. L'importatrice, qui n'a que l'écriture, ne la supprime plus seule ; le refus
+    dit qui le peut."""
     seconde = _planche(client, decor["erreur"], IMPORTEUSE)
     r = client.delete(f"/api/planches/{seconde}", headers=IMPORTEUSE)
     assert r.status_code == 403 and "responsable de son projet" in r.json()["detail"]
     _accorder(client, decor["principale"], "proprio", "proprietaire")
     assert _albums(client, PROPRIO)[decor["erreur"]]["destructible"] is False   # dernière
-    assert client.delete(f"/api/planches/{seconde}", headers=PROPRIO).status_code == 204
+    r = client.delete(f"/api/planches/{seconde}", headers=PROPRIO)
+    assert r.status_code == 403 and "dernière copie" in r.json()["detail"], r.text
+    assert client.delete(f"/api/planches/{seconde}", headers=ADMIN).status_code == 204
     r = client.delete(f"/api/planches/{decor['planche']}", headers=COLLEGUE)
     assert r.status_code == 403 and "une planche" in r.json()["detail"]
     assert client.delete(f"/api/planches/{decor['planche']}", headers=ADMIN).status_code == 204
@@ -754,8 +757,10 @@ def test_les_refus_d_une_demande_se_nomment(client, decor):
     r = client.post("/api/demandes", headers=COLLEGUE,
                     json={"genre": "autre", "album_id": aid, "motif": "x"})
     assert r.status_code == 422
-    # Qui ne fait que lire, et un album qui n'existe pas : la même absence.
-    assert _demander(client, aid, LECTRICE).status_code == 404
+    # Qui ne fait que lire : un 403 nommé, comme au `DELETE` (relecture croisée de la 3c,
+    # remarque 8 : l'album est lisible) ; un album qui n'existe pas : 404.
+    r = _demander(client, aid, LECTRICE)
+    assert r.status_code == 403 and "vous ne faites que le lire" in r.json()["detail"]
     assert _demander(client, 99999, COLLEGUE).status_code == 404
 
 

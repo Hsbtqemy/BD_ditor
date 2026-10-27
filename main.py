@@ -64,6 +64,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     OrdrePlanchesIn, ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
     _MOTIF_DESTRUCTION_BAC, _motif_d_effacement, _supprimer_planche,
+    _consentement_d_effacement,
     _effacer_les_images_d_une_planche, _journaliser_scan,
     _MOTIF_JEU, _refuser_le_jeu, _refuser_la_reference,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_ISOLE, _MOTIF_BAC_PROPRIETAIRE,
@@ -634,8 +635,8 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
             continue
         a["demande"] = {"id": d["id"], "date_creation": d["date_creation"]}
         if portee.peut_nommer_le_demandeur(
-                d["demandeur"], consentement={"genre": DEMANDE_SUPPRESSION_DOCUMENT,
-                                              "projet": a["projet_id"]}):
+                d["demandeur"], consentement=_consentement_d_effacement(
+                    conn, portee, DEMANDE_SUPPRESSION_DOCUMENT, a["projet_id"])):
             a["demande"].update(demandeur=d["demandeur"],
                                 demandeur_nom=noms.get(d["demandeur"]))
     return albums
@@ -774,9 +775,10 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
     p = _get_planche(conn, portee, planche_id)
     # AUTH-10 — une planche n'a pas d'appartenance propre et ne peut pas « sortir » : sans
     # cette garde, elle restait le chemin par lequel on vide un album partagé, une à une.
-    # COL-3, tranche 3c (Q5, Hugo, 2026-10-26, qui renverse B4) — la règle est celle de
-    # REPARTIR DE ZÉRO : qui tient l'espace la supprime, même d'une dernière copie, et
-    # l'accesseur est en LECTURE (le responsable qui lit l'album). Les autres la DEMANDENT
+    # COL-3, tranche 3c (Q5, complétée par Hugo le 2026-10-27) — la règle est celle de la
+    # SUPPRESSION de l'album : qui tient l'espace la supprime, sauf sur la DERNIÈRE copie
+    # d'un document, qui va à l'administrateur ; l'accesseur est en LECTURE (le responsable
+    # qui lit l'album). Les autres la DEMANDENT
     # (F5, `POST /api/demandes`, genre `suppression_planche`). La garde, la suppression et le
     # ménage des images vivent dans `socle._supprimer_planche`, que traverse aussi la réponse
     # « accepter » à une demande.
@@ -830,7 +832,8 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
     ids = [p["id"] for p in planches]
     if ids:
         projet = projet_d_album(conn, album_id)
-        consentement = {"genre": DEMANDE_SUPPRESSION_PLANCHE, "projet": projet}
+        consentement = _consentement_d_effacement(conn, portee, DEMANDE_SUPPRESSION_PLANCHE,
+                                                  projet)
         lignes = conn.execute(
             "SELECT id, genre, planche_id, date_creation, cran, demandeur FROM demande "
             f"WHERE planche_id IN ({', '.join('?' * len(ids))}) AND reponse IS NULL "

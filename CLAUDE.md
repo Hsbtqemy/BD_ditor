@@ -539,10 +539,12 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   désigne (D6) — ou la
   refuse : la demande reste, close, et peut être redéposée ; « garder » ne lie pas qui tient
   l'espace, la règle ne lisant pas les demandes. Toute destruction faite par un autre
-  chemin clôt les demandes qui la visaient. **Une planche suit la règle de REPARTIR DE
-  ZÉRO** depuis la tranche 3c (Q5, Hugo, 2026-10-26, qui renverse B4 : une planche n'est pas
-  le document) — qui tient l'espace la supprime, même d'une dernière copie ; le 403 dit qui
-  le peut. Le refus de l'album est un 403 nommé qui dit qui le peut — le responsable du
+  chemin clôt les demandes qui la visaient. **Une planche suit la règle de la suppression
+  de l'album** (Q5, Hugo, 2026-10-26, complétée le 2026-10-27 sur le constat 3 de la
+  relecture croisée de la 3c) — qui tient l'espace la supprime, SAUF sur la dernière copie
+  d'un document, qui va à l'administrateur comme l'album : sans quoi le responsable vidait
+  la dernière copie planche à planche, images comprises ; le 403 dit qui le peut. Repartir
+  de zéro sur une planche garde la règle de repartir. Le refus de l'album est un 403 nommé qui dit qui le peut — le responsable du
   projet, qui tient toutes ses collections, un administrateur pour la dernière copie — sans
   dire laquelle des conditions manque à l'appelant. La portée totale passe outre : c'est
   le recours d'une demande. **La garde se lit sous le verrou d'écriture**
@@ -571,16 +573,20 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   (`database.GENRES_EFFACEMENT`) — **va au RESPONSABLE du projet de la copie** : le
   destinataire se DÉRIVE de `demande.projet_id` au moment de répondre, jamais stocké (Q10) —
   ses responsables non partagés (Q14) ; l'administrateur seul pour la DERNIÈRE copie d'un
-  document (suppression d'album), une copie gardée au fonds (Q12), un projet sans
+  document (suppression d'album ou de planche, Q5 complétée le 2026-10-27), une copie
+  gardée au fonds (Q12), un projet sans
   responsable ; l'administrateur répond toujours, en recours, et `GET /api/demandes` lui dit
   qui la demande attend (`attend`, vide : « à vous »). `Portee.peut_repondre_a` et
   `peut_nommer_le_demandeur` connaissent ces genres (le responsable du projet `projet`) ;
   `repondable` = elle s'adresse à lui ET la clause d'effacement de qui répond ; le
   propriétaire de toutes les collections n'est pas destinataire (Q8). Le responsable les lit
-  par `GET /api/projets/{id}/demandes-d-effacement` (à qui gère le projet ; celles dont il
+  par `GET /api/projets/{id}/demandes-d-effacement` (à qui gère le projet, jamais à un
+  compte partagé, qui ne lit pas non plus le nom du demandeur — relecture croisée de la 3c ;
+  celles dont il
   lit la copie : le demandeur, le motif, la certification, la planche, `derniere_copie`,
   `repondable`, « qui perd quoi ») et y répond par la route commune. Les DÉPOSE qui écrit
-  dans l'album ou gère son projet (Q7). Une planche se demande comme l'album — motif et
+  dans l'album ou gère son projet (Q7) ; une lectrice reçoit un 403 nommé, comme au
+  `DELETE`. Une planche se demande comme l'album — motif et
   certification, une par planche et par genre, refusée sous une suppression d'album qui
   attend —, relue sur SON album à l'acceptation (`socle._supprimer_planche`, le seul chemin
   de sa suppression) ; sa suppression clôt ses demandes, la destruction de l'album aussi.
@@ -590,13 +596,16 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   Effacer — supprimer une copie, la ramener à un cran, ou en supprimer une planche — se
   fait sans demande par (1) le PROPRIÉTAIRE de TOUTES les collections où vit l'album, même si
   d'autres y ont travaillé ; (2) le RESPONSABLE du projet de l'album, sur un album RANGÉ de
-  son projet (une copie gardée au fonds reste à l'administrateur, Q12) ; (3)
+  son projet et dans les SEULES collections des projets qu'il gère (une copie gardée au
+  fonds reste à l'administrateur, Q12 ; un album rangé aussi ailleurs, sur une base
+  retouchée, n'est pas à lui) ; (3)
   l'administrateur. Les autres DEMANDENT, son créateur comme tout annotateur : le chemin du
   créateur (« la copie qu'il a créée, que personne d'autre n'a touchée ») est RETIRÉ, avec
   lui l'exception de la copie d'origine, et la règle ne lit plus le journal. Jamais un
   compte PARTAGÉ hors de son bac à sable (F7). La DERNIÈRE copie d'un document — aucune
-  autre copie vivante hors d'un projet isolé — ne se SUPPRIME que par un administrateur ;
-  repartir de zéro, et supprimer une PLANCHE (Q5), ne connaissent pas cette règle
+  autre copie vivante hors d'un projet isolé — ne se SUPPRIME que par un administrateur,
+  ni elle ni l'une de ses PLANCHES (Q5, complétée le 2026-10-27) ; repartir de zéro ne
+  connaît pas cette règle
   (`Portee.clause_repartir_directe`) : les images restent, rien ne sort du fonds commun. Dans
   un BAC À SABLE, son propriétaire efface tout, et QUICONQUE Y ÉCRIT efface (Q4, Hugo,
   2026-10-26, contre la proposition : « le bac à sable n'a pas d'importance ») ; rien ne s'y
@@ -913,12 +922,18 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   collection que si l'on est du PROJET de la collection, la base et le repli compris
   (`database.est_du_projet_par_reference`, la référence exacte — un compte qui n'en est que
   par un groupe n'entre pas par son login, Q2) : `PUT …/acces` et
-  `gerer_collections.py creer --proprietaire` refusent par un 409 nommé ; qui SORT du projet
+  `gerer_collections.py creer --proprietaire` refusent par un 409 nommé, et créer une
+  collection aussi, hors portée totale et hors bac à sable, à qui n'est du projet que par un
+  groupe — elle serait à lui par son login (relecture croisée de la 3c, constat 1 : « entrez
+  par votre login ») ; qui SORT du projet
   perd ses accès de collection, journalisés (`delien`), 409 nommé s'il est le dernier
   propriétaire de l'une d'elles ; le propriétaire d'une collection lit les NOMS des membres
-  du projet, sans les rôles (`membres` de `GET …/acces-du-projet`). La v38 fait entrer dans
+  du projet, sans les rôles (`membres` de `GET …/acces-du-projet` ; ses `lignes` nomment
+  déjà les responsables, propriétaires de la base et lecteurs des autres collections). La v38 fait entrer dans
   son projet, au rôle `membre`, tout principal qui y tenait un accès de collection hors
-  projet (ni bac à sable ni jeu). Ce qui reste vrai : être MEMBRE d'un projet n'ouvre aucune
+  projet (ni bac à sable ni jeu) — et donc dans la BASE du projet au niveau `acces_membres` :
+  qui ne lisait qu'une collection peut écrire, après elle, dans une base ouverte ; voulu (le
+  pilotage, 2026-10-27, sur « les faire entrer » de Hugo ; 0 accès concerné en production). Ce qui reste vrai : être MEMBRE d'un projet n'ouvre aucune
   AUTRE collection que sa base, et les clauses qui filtrent les données ne connaissent pas
   les projets. Une collection appartient à UN projet et
   n'en change pas — aucune route ne la déplace — ; on EST d'un projet, `membre` ou

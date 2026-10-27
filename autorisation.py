@@ -626,9 +626,10 @@ class Portee:
         """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut SUPPRIMER
         DÉFINITIVEMENT sans rien demander. COL-3, tranche 2 (Hugo, 2026-10-11), RENVERSÉE le
         2026-10-21 (tranche 3b), puis SIMPLIFIÉE le 2026-10-26 (tranche 3c, F3 : « qui tient
-        l'espace efface, les autres demandent »). Le RAMENER à un cran (« repartir de
-        zéro », E8) — et supprimer l'une de ses PLANCHES (Q5) — suit les mêmes chemins sans
-        la règle de la dernière copie : `clause_repartir_directe`.
+        l'espace efface, les autres demandent »). Supprimer l'une de ses PLANCHES suit
+        cette règle aussi, dernière copie comprise (Q5, complétée par Hugo le 2026-10-27). Le
+        RAMENER à un cran (« repartir de zéro », E8), album ou planche, suit les mêmes
+        chemins sans la règle de la dernière copie : `clause_repartir_directe`.
 
         « Supprimer » a deux réponses. Supprimer DE LA COLLECTION ne détruit rien : la
         copie part au fonds avec son travail, et c'est le geste de qui écrit dans la
@@ -666,8 +667,8 @@ class Portee:
     def clause_repartir_directe(self, alias: str = "a.id") -> tuple[str, list]:
         """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut RAMENER à
         un cran sans rien demander — « repartir de zéro », sur l'album ou l'une de ses
-        planches (E8, COL-3, tranche 3b) —, ou dont on peut SUPPRIMER une planche (Q5, Hugo,
-        2026-10-26 : une planche n'est pas le document, qui reste au fonds).
+        planches (E8, COL-3, tranche 3b). (Supprimer une planche suit la règle de la
+        suppression, dernière copie comprise : Q5, complétée le 2026-10-27.)
 
         Les chemins de `clause_suppression_directe`, tels quels — le propriétaire de toutes
         les collections, le responsable du projet, la portée totale, quiconque écrit dans un
@@ -749,12 +750,22 @@ class Portee:
             params += possede
         geres = sorted(self.projets_geres - self.bacs_a_sable)
         if geres:
+            # … et aucune de ses collections n'est d'un projet qu'il ne gère pas : sur une base
+            # retouchée, un album rangé à travers deux projets ne s'efface pas par le
+            # responsable de l'un (relecture croisée de la 3c, constat 6). Le rangement ne
+            # traverse pas les projets (`database.rangement_traverse`) : par les routes, la
+            # moitié est toujours vraie.
+            marques_g = ", ".join("?" * len(geres))
             morceaux.append(
                 f"EXISTS (SELECT 1 FROM albums _tg WHERE _tg.id = {alias} "
-                f"AND {sql_projet_d_album('_tg')} IN ({', '.join('?' * len(geres))}) "
+                f"AND {sql_projet_d_album('_tg')} IN ({marques_g}) "
                 f"AND EXISTS (SELECT 1 FROM collection_album _tgc "
-                f"WHERE _tgc.album_id = _tg.id))")
-            params += geres
+                f"WHERE _tgc.album_id = _tg.id) "
+                f"AND NOT EXISTS (SELECT 1 FROM collection_album _tgx "
+                f"JOIN collection _tgy ON _tgy.id = _tgx.collection_id "
+                f"WHERE _tgx.album_id = _tg.id AND {sql_projet_de('_tgy')} "
+                f"NOT IN ({marques_g})))")
+            params += [*geres, *geres]
         if not morceaux:
             return "0", []
         if not derniere_copie_gardee:

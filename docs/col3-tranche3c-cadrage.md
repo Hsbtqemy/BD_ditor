@@ -682,7 +682,10 @@ rendues :
 autres telles que proposées, parce qu'elles découlent des décisions de la séance.
 
 - **Q1 — Hugo : ses accès partent avec lui**, comme proposé.
-- **Q3 — Hugo : les noms, sans les rôles**, comme proposé.
+- **Q3 — Hugo : les noms, sans les rôles**, comme proposé. Ce que cela veut dire, écrit après
+  la relecture croisée du 2026-10-27 : la liste `membres` d'`acces-du-projet` ne porte pas le
+  rôle — mais les `lignes` de la même réponse nomment déjà les responsables du projet
+  (propriétaires de la base, lecteurs des autres collections par F1), et rien ne les tait.
 - **Q4 — Hugo, CONTRE la proposition** : « le bac à sable n'a pas d'importance, encore une fois.
   L'import, la suppression, ça n'a pas trop d'effets ». Dans un bac à sable, **quiconque y écrit
   efface** (supprimer un album ou une planche, repartir de zéro), invité compris, son import ou
@@ -692,6 +695,14 @@ autres telles que proposées, parce qu'elles découlent des décisions de la sé
   responsable ou le propriétaire de toutes les collections la supprime, et la demande d'un
   annotateur va au responsable. Seule la suppression d'un ALBUM qui est la dernière copie va à
   l'administrateur.
+- **Q5 complétée — Hugo, 2026-10-27**, sur le constat 3 de la relecture croisée : la règle
+  ci-dessus laissait le responsable VIDER la dernière copie planche à planche, images
+  comprises, sans administrateur — le détour que la règle de l'album fermait. Il se ferme :
+  **supprimer une planche de la DERNIÈRE copie va à l'administrateur, comme l'album** (la
+  clause de la suppression, `clause_suppression_directe`) ; la demande d'une telle planche
+  s'adresse à l'administrateur. **Repartir de zéro** sur une planche garde la règle de
+  repartir. Hors de la dernière copie, rien ne change : le responsable ou le propriétaire de
+  toutes les collections supprime la planche, et la demande d'un annotateur va au responsable.
 - **Q2, Q6 à Q14 — le pilotage, comme proposé.** Q2 est forcée par l'invariant d'AUTH-6
   (l'annuaire ne décide d'aucun accès) ; Q9, la forme, se tranche sur maquette.
 

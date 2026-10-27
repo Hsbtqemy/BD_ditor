@@ -8,8 +8,9 @@ planche se demande aussi (F4, F5 ; Q5, Q7, Q8, Q10, Q12, Q14 ; Hugo, 2026-10-26)
   recours. Le propriétaire de toutes les collections n'est pas destinataire (Q8).
 - `repondable` = à qui elle s'adresse ET la clause d'effacement de qui répond.
 - Déposer : qui écrit dans l'album, ou qui gère son projet (Q7) ; une lectrice, non.
-- Une planche : `suppression_planche`, ou `repartir` avec `planche_id` — la règle de repartir
-  de zéro (Q5) ; la planche relue sur son album ; les clôtures.
+- Une planche : `suppression_planche` — la règle de la suppression de l'album, dernière copie
+  comprise (Q5, complétée par Hugo le 2026-10-27) —, ou `repartir` avec `planche_id` — la
+  règle de repartir de zéro ; la planche relue sur son album ; les clôtures.
 
 Le décor : « Séminaire », `resp` responsable, `proprio` propriétaire du « Carnet » où
 `ecrivain` écrit. Dans le Carnet, « Seul » (la seule copie de son document) et « Doublé »
@@ -141,11 +142,21 @@ def test_qui_n_est_pas_destinataire_ne_connait_pas_la_demande(client, d):
 
 def test_un_responsable_compte_partage_n_est_jamais_destinataire(client, d):
     """Q14 — déclaré partagé, `resp` ne répond plus (403), et `attend` ne le nomme pas : la
-    demande va à l'administrateur."""
+    demande va à l'administrateur. Et il ne la LIT plus (relecture croisée de la 3c,
+    remarque 7, forme fermée) : ni la liste du projet (403), ni le nom du demandeur sur la
+    liste des albums ou des planches."""
     did = _ok(_demander(client, ECRIVAIN, album_id=d["double"]), 201)["id"]
+    pdid = _ok(_demander(client, ECRIVAIN, genre="suppression_planche",
+                         planche_id=d["pl_seul"]), 201)["id"]
+    assert _recues(client, d)[did]["demandeur"] == "ecrivain"         # avant : il les lit
     client.get("/api/moi", headers=RESP)
     _ok(client.patch("/api/comptes/resp/nature", headers=ADMIN, json={"nature": "collectif"}))
-    assert _recues(client, d)[did]["repondable"] is False
+    r = client.get(f"/api/projets/{d['projet']}/demandes-d-effacement", headers=RESP)
+    assert r.status_code == 403 and "compte partagé" in r.json()["detail"], r.text
+    vu = next(a for a in _ok(client.get("/api/albums", headers=RESP)) if a["id"] == d["double"])
+    assert vu["demande"]["id"] == did and "demandeur" not in vu["demande"]
+    pl = _ok(client.get(f"/api/albums/{d['seul']}/planches", headers=RESP))[0]["demande"]
+    assert pl["id"] == pdid and "demandeur" not in pl
     assert _repondre(client, did, "acceptee", RESP).status_code == 403
     vues = {v["id"]: v for v in _ok(client.get("/api/demandes", headers=ADMIN))}
     assert vues[did]["attend"] == []
@@ -165,15 +176,19 @@ def test_le_responsable_lit_qui_demande_sur_la_liste_des_albums(client, d):
 # =========================================================================== #
 def test_qui_depose_une_demande(client, d):
     """Qui écrit, ou qui GÈRE le projet — `resp` lit « Seul » sans y écrire, et demande au
-    administrateur la dernière copie ; une lectrice, non (404)."""
-    assert _demander(client, LECTRICE, album_id=d["seul"]).status_code == 404
+    administrateur la dernière copie ; une lectrice, non — un 403 NOMMÉ, comme au `DELETE`
+    (relecture croisée de la 3c, remarque 8) ; qui ne lit pas l'album, 404."""
+    r = _demander(client, LECTRICE, album_id=d["seul"])
+    assert r.status_code == 403 and "vous ne faites que le lire" in r.json()["detail"], r.text
+    assert _demander(client, AUTRE, album_id=d["seul"]).status_code == 404
     did = _ok(_demander(client, RESP, album_id=d["seul"]), 201)["id"]
     assert _sql(d["db"], "SELECT demandeur, projet_id FROM demande WHERE id = ?", (did,)) == [
         {"demandeur": "resp", "projet_id": d["projet"]}]
     r = _demander(client, ECRIVAIN, album_id=d["seul"])
     assert r.status_code == 409 and "administrateur" in r.json()["detail"]
     r = _demander(client, LECTRICE, album_id=d["double"])
-    assert r.status_code == 404
+    assert r.status_code == 403
+    assert not _sql(d["db"], "SELECT 1 FROM demande WHERE demandeur = 'lectrice'")
     _ok(_demander(client, ECRIVAIN, album_id=d["double"]), 201)
     r = _demander(client, ECRIVAIN, album_id=d["double"])
     assert r.status_code == 409 and "responsable du projet" in r.json()["detail"]
@@ -184,9 +199,9 @@ def test_qui_depose_une_demande(client, d):
 # =========================================================================== #
 def test_une_planche_se_demande_et_le_responsable_la_supprime(client, d):
     """La certification exigée (422) ; une seule en attente (409) ; acceptée par `resp`, la
-    planche part — même d'une dernière copie (Q5) — et la demande se clôt ; la ligne de la
+    planche part — d'une copie qui a une sœur — et la demande se clôt ; la ligne de la
     planche disait « demandée »."""
-    pl = d["pl_seul"]
+    pl = d["pl_double"]
     r = _demander(client, ECRIVAIN, genre="suppression_planche", planche_id=pl,
                   certifie=False)
     assert r.status_code == 422
@@ -195,10 +210,10 @@ def test_une_planche_se_demande_et_le_responsable_la_supprime(client, d):
                 (did,)) == [{"planche_id": pl, "planche_numero": 1}]
     assert _demander(client, ECRIVAIN, genre="suppression_planche",
                      planche_id=pl).status_code == 409
-    planches = _ok(client.get(f"/api/albums/{d['seul']}/planches", headers=ECRIVAIN))
+    planches = _ok(client.get(f"/api/albums/{d['double']}/planches", headers=ECRIVAIN))
     assert planches[0]["demande"]["genre"] == "suppression_planche"
     assert planches[0]["demande"]["demandeur"] == "ecrivain"
-    lue = _ok(client.get(f"/api/albums/{d['seul']}/planches", headers=LECTRICE))[0]["demande"]
+    lue = _ok(client.get(f"/api/albums/{d['double']}/planches", headers=LECTRICE))[0]["demande"]
     assert "demandeur" not in lue
     x = _recues(client, d)[did]
     assert (x["planche_id"], x["planche_numero"], x["repondable"]) == (pl, 1, True)
@@ -209,10 +224,69 @@ def test_une_planche_se_demande_et_le_responsable_la_supprime(client, d):
 
 
 def test_qui_peut_le_faire_lui_meme_ne_demande_pas_une_planche(client, d):
-    r = _demander(client, PROPRIO, genre="suppression_planche", planche_id=d["pl_seul"])
+    """Le propriétaire du Carnet supprime la planche de « Doublé » lui-même (409 à la
+    demande) ; celle de « Seul », dernière copie, il la DEMANDE (Q5 complétée) ; une
+    lectrice, 403 nommé."""
+    r = _demander(client, PROPRIO, genre="suppression_planche", planche_id=d["pl_double"])
     assert r.status_code == 409 and "vous-même" in r.json()["detail"]
+    _ok(_demander(client, PROPRIO, genre="suppression_planche", planche_id=d["pl_seul"]), 201)
     assert _demander(client, LECTRICE, genre="suppression_planche",
-                     planche_id=d["pl_seul"]).status_code == 404
+                     planche_id=d["pl_double"]).status_code == 403
+
+
+def test_une_planche_de_la_derniere_copie_va_a_l_administrateur(client, d):
+    """Q5 complétée par Hugo le 2026-10-27 (relecture croisée de la 3c, constat 3) : le
+    responsable — et le propriétaire de toutes les collections — ne VIDENT pas la dernière
+    copie planche à planche : 403 nommé, la planche et ses images restent. La demande d'une
+    telle planche s'adresse à l'administrateur (`attend` vide, `resp` ne peut y répondre),
+    qui l'accepte. Sur la copie qui a une sœur, `resp` la supprime ; et repartir de zéro sur
+    la planche de la dernière copie reste à lui."""
+    import main
+    from pathlib import Path
+    chemins = _sql(d["db"], "SELECT chemin_tiff, chemin_web FROM planches WHERE id = ?",
+                   (d["pl_seul"],))[0]
+    fichiers = [Path(main.DATA_DIR) / ch for ch in chemins.values() if ch]
+    assert len(fichiers) == 2 and all(f.exists() for f in fichiers)
+    for qui in (RESP, PROPRIO):
+        r = client.delete(f"/api/planches/{d['pl_seul']}", headers=qui)
+        assert r.status_code == 403 and "dernière copie" in r.json()["detail"], r.text
+    assert _sql(d["db"], "SELECT 1 FROM planches WHERE id = ?", (d["pl_seul"],))
+    assert all(f.exists() for f in fichiers)
+    did = _ok(_demander(client, ECRIVAIN, genre="suppression_planche",
+                        planche_id=d["pl_seul"]), 201)["id"]
+    x = _recues(client, d)[did]
+    assert (x["derniere_copie"], x["repondable"]) == (True, False)
+    r = _repondre(client, did, "acceptee", RESP)
+    assert r.status_code == 403 and "dernière copie" in r.json()["detail"], r.text
+    vues = {v["id"]: v for v in _ok(client.get("/api/demandes", headers=ADMIN))}
+    assert vues[did]["attend"] == []
+    assert client.delete(f"/api/planches/{d['pl_double']}", headers=RESP).status_code == 204
+    _ok(client.post(f"/api/planches/{d['pl_seul']}/regions", headers=ECRIVAIN,
+                    json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)
+    _ok(client.post(f"/api/planches/{d['pl_seul']}/repartir", headers=RESP,
+                    json={"cran": "images"}))
+    _ok(_repondre(client, did, "acceptee", ADMIN))
+    assert not _sql(d["db"], "SELECT 1 FROM planches WHERE id = ?", (d["pl_seul"],))
+
+
+def test_le_responsable_n_efface_pas_un_album_range_aussi_dans_un_autre_projet(client, d):
+    """Relecture croisée de la 3c, constat 6 — sur une base retouchée, « Doublé » est rangé
+    AUSSI dans la base du projet voisin, où son responsable a travaillé : le responsable du
+    Séminaire ne l'efface pas sans demander (403), ni ne le remet à zéro ; le voisin non
+    plus."""
+    voisin_base = _sql(d["db"], "SELECT id FROM collection WHERE base = 1 AND projet_id = ?",
+                       (d["autre"],))[0]["id"]
+    _sql(d["db"], "INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+         (voisin_base, d["double"]))
+    _ok(client.post(f"/api/planches/{d['pl_double']}/regions", headers=AUTRE,
+                    json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)
+    for qui in (RESP, AUTRE):
+        assert client.delete(f"/api/albums/{d['double']}", headers=qui).status_code == 403
+        assert client.post(f"/api/albums/{d['double']}/repartir", headers=qui,
+                           json={"cran": "images"}).status_code == 403
+    assert _sql(d["db"], "SELECT 1 FROM albums WHERE id = ?", (d["double"],))
+    vu = next(a for a in _ok(client.get("/api/albums", headers=RESP)) if a["id"] == d["double"])
+    assert (vu["destructible"], vu["effacable"]) == (False, False)
 
 
 def test_une_planche_d_un_autre_album_ne_se_supprime_pas_par_la_demande(client, d):

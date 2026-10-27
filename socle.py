@@ -38,7 +38,7 @@ from pydantic import BaseModel, Field
 import autorisation
 import conflit
 import journal
-from database import (CRAN_IMAGES, CRANS, CRANS_DE_REPARTIR, DEMANDE_AMORCER,
+from database import (CRAN_IMAGES, NATURE_COLLECTIF, CRANS, CRANS_DE_REPARTIR, DEMANDE_AMORCER,
                       DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_REPARTIR,
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PLANCHE,
@@ -779,15 +779,17 @@ def _refuser_le_bac_a_sable(conn, motif: str, status: int = 409, **objet) -> Non
 # bac à sable, qui y écrit. Les autres demandent. La phrase dit qui peut, sans dire laquelle
 # des conditions manque à l'appelant, et les gestes qui lui restent : demander, ou supprimer
 # l'album de sa collection — il est gardé au fonds. La DERNIÈRE copie d'un document ne se
-# supprime que par un administrateur ; une PLANCHE suit la règle de repartir de zéro (Q5).
+# supprime que par un administrateur — ni l'une de ses PLANCHES (Q5, complétée le
+# 2026-10-27) ; repartir de zéro, album ou planche, n'a pas cette règle.
 _MOTIF_DESTRUCTION = ("Supprimer définitivement cet album revient au responsable de son projet "
                       "ou à qui tient toutes ses collections — et, si c'est la dernière copie "
                       "de ce document, à un administrateur. Vous pouvez le demander, ou le "
                       "supprimer de votre collection, où il est gardé au fonds avec son "
                       "travail.")
 _MOTIF_DESTRUCTION_PLANCHE = ("Supprimer une planche de cet album revient au responsable de son "
-                              "projet ou à qui tient toutes ses collections : vous pouvez le "
-                              "demander.")
+                              "projet ou à qui tient toutes ses collections — et, si c'est la "
+                              "dernière copie de ce document, à un administrateur : vous "
+                              "pouvez le demander.")
 
 
 # Dans un bac à sable, le refus ne renvoie ni à un administrateur ni au fonds : ni l'un ni
@@ -795,6 +797,20 @@ _MOTIF_DESTRUCTION_PLANCHE = ("Supprimer une planche de cet album revient au res
 # à qui n'y écrit pas : le lundi qui l'efface.
 _MOTIF_DESTRUCTION_BAC = ("Dans un bac à sable, une copie s'efface par qui y écrit : sinon, "
                           "elle s'efface avec le bac à sable.")
+
+
+def _consentement_d_effacement(conn, portee: autorisation.Portee, genre: str, projet):
+    """Le `consentement` qui fait lire QUI demande un effacement au responsable du projet de
+    la copie (`Portee.peut_nommer_le_demandeur`, F4) — `None` pour un compte PARTAGÉ, qui
+    n'est jamais destinataire d'une demande (Q14) : il ne lit pas le nom non plus
+    (relecture croisée de la 3c, remarque 7, forme fermée). La nature d'un compte se lit
+    ici, à la route ; `autorisation.py` ne la lit qu'au `pas_partage` de la règle
+    d'effacement."""
+    if portee.utilisateur and conn.execute(
+            "SELECT 1 FROM utilisateur WHERE login = ? AND nature = ?",
+            (portee.utilisateur, NATURE_COLLECTIF)).fetchone():
+        return None
+    return {"genre": genre, "projet": projet}
 
 
 def _motif_d_effacement(conn, album_id: int, motif: str) -> str:
@@ -806,17 +822,15 @@ def _motif_d_effacement(conn, album_id: int, motif: str) -> str:
 def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int, *,
                         planche: bool = False, reference_du_jeu: bool = False) -> None:
     """403 si l'on ne peut pas supprimer DÉFINITIVEMENT cet album — ou, `planche`, l'une
-    de ses planches. Une planche suit la règle de REPARTIR DE ZÉRO, et non celle du document
-    (Q5, Hugo, 2026-10-26, qui renverse B4 : une planche n'est pas le document, qui reste au
-    fonds) — la dernière copie d'un document comprise.
+    de ses planches : la même règle, dernière copie comprise (Q5, Hugo, 2026-10-26, complétée le 2026-10-27 : supprimer une planche de la DERNIÈRE copie d'un document va à l'administrateur, comme l'album — sans quoi on vidait la dernière copie planche à planche). Elle se DEMANDE
+    sinon (F5, qui renverse B4).
 
     COL-4 — une copie de RÉFÉRENCE du jeu ne se détruit pas, quelle que soit la portée : 409
     nommé (`_refuser_le_jeu`). `reference_du_jeu` lève ce seul refus, et seul l'outil du jeu
     le passe — quand plus aucun bac à sable ne tient de copie d'un document retiré du jeu."""
     if not reference_du_jeu:
         _refuser_le_jeu(conn, album_id=album_id)
-    ou, params = (portee.clause_repartir_directe("a.id") if planche
-                  else portee.clause_suppression_directe("a.id"))
+    ou, params = portee.clause_suppression_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                     (album_id, *params)).fetchone() is None:
         raise HTTPException(403, _motif_d_effacement(
@@ -925,7 +939,7 @@ def _supprimer_planche(conn, portee: autorisation.Portee, planche: dict) -> None
     la réponse « accepter » à une demande de suppression d'une planche (COL-3, tranche 3c,
     F5) y passent. Il COMMITE, puis efface les images qu'aucune autre planche n'emploie.
 
-    La garde (`_exiger_destruction(planche=True)` : la règle de repartir de zéro, Q5) se lit
+    La garde (`_exiger_destruction(planche=True)` : la règle de la suppression, Q5) se lit
     SOUS LE VERROU d'écriture, comme pour l'album : sinon un travail validé entre la garde et
     le `DELETE` partirait avec la planche. Les relevés et les passes de sa SURFACE partent
     d'abord (leur clé sur la planche est sans action ; ceux de ses régions partent par

@@ -200,6 +200,46 @@ def test_le_genre_compte_et_un_membre_par_un_groupe_n_entre_pas_par_son_login(cl
     assert r.status_code == 409, r.text
 
 
+def test_qui_n_est_du_projet_que_par_un_groupe_ne_cree_pas_de_collection(client, projet):
+    """Relecture croisée de la 3c, constat 1 — la voie 2 par la CRÉATION : la collection
+    qu'on crée est à soi par son LOGIN ; un responsable qui n'est du projet que par un groupe
+    s'en serait fait propriétaire hors projet. 409 nommé (« par votre login »), rien de
+    créé ; entré par son login, il crée. L'administrateur, lui, crée sans être du projet."""
+    assert _membre(client, projet["projet"], "g-resp", role="responsable",
+                   genre="groupe").status_code in (200, 201)
+    alice = {"Remote-User": "alice", "Remote-Groups": "g-resp"}
+    r = client.post("/api/collections", headers=alice,
+                    json={"nom": "Chez Alice", "projet_id": projet["projet"]})
+    assert r.status_code == 409 and "par votre login" in r.json()["detail"], r.text
+    assert not _sql(projet["db"], "SELECT 1 FROM collection WHERE nom = 'Chez Alice'")
+    assert not _sql(projet["db"], "SELECT 1 FROM collection_acces WHERE principal = 'alice'")
+    assert _membre(client, projet["projet"], "alice").status_code in (200, 201)
+    cid = _ok(client.post("/api/collections", headers=alice,
+                          json={"nom": "Chez Alice", "projet_id": projet["projet"]}), 201)["id"]
+    assert _sql(projet["db"], "SELECT niveau FROM collection_acces WHERE collection_id = ? "
+                              "AND principal = 'alice'", (cid,)) == [{"niveau": "proprietaire"}]
+    _ok(client.post("/api/collections", headers=ADMIN,
+                    json={"nom": "Par l'admin", "projet_id": projet["projet"]}), 201)
+
+
+def test_comptes_et_groupes_dit_la_lecture_des_responsables(client, projet):
+    """Relecture croisée de la 3c, constat 5 — « 👥 Comptes et groupes » montre la lecture
+    DÉRIVÉE du responsable sur toute collection de son projet (F1), comme
+    `…/acces-du-projet` : sur la collection, et dans la fiche du compte, marquée « par le
+    projet » ; et pas sur le projet voisin."""
+    client.get("/api/moi", headers=RESP)
+    vue = _ok(client.get("/api/comptes-et-groupes", headers=ADMIN))
+    cols = {c["id"]: c for c in vue["collections"]}
+    for cid in (projet["carnet"], projet["vide"]):
+        assert {"par": "compte", "login": "resp", "groupe": None, "niveau": "lecture",
+                "exporter": False, "par_projet": "Séminaire"} in cols[cid]["acces"], cid
+    assert not any(a["login"] == "resp" for a in cols[projet["c_voisin"]]["acces"])
+    resp = next(c for c in vue["comptes"] if c["login"] == "resp")
+    lues = {(e["id"], e["niveau"], e["par"]) for e in resp["collections"]}
+    assert {(projet["carnet"], "lecture", "projet"), (projet["vide"], "lecture", "projet"),
+            (projet["base"], "proprietaire", "projet")} <= lues
+
+
 def test_le_refus_vient_apres_la_garde_d_administration(client, projet):
     """403 à qui lit sans posséder, 404 à qui ne lit pas : inchangés, et AVANT le 409."""
     assert _acces(client, projet["carnet"], "inconnu", "lecture",

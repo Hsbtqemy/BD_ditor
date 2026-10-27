@@ -316,6 +316,19 @@ def create_collection(payload: CollectionIn, conn: sqlite3.Connection = Depends(
     if not portee.peut_creer_collection(projet_id, membres_creent=bool(reglage[0]),
                                         bac_a_sable=reglage[1] is not None):
         raise HTTPException(403, _MOTIF_CREER)
+    # COL-3, tranche 3c (F2, Q2 ; relecture croisée, constat 1) — qui crée en devient
+    # propriétaire PAR SON LOGIN : il faut donc qu'il soit du projet par son login. Un
+    # responsable ou un membre qui n'en est que PAR UN GROUPE ferait naître un accès hors
+    # projet, qu'il garderait quand le groupe sort. Hors portée totale et hors bac à sable
+    # (son propriétaire et ses invités y entrent par leur login).
+    if (portee.utilisateur and not portee.couvre_projet(projet_id) and reglage[1] is None
+            and not est_du_projet_par_reference(conn, projet_id, autorisation.UTILISATEUR,
+                                                portee.utilisateur)):
+        p = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
+        raise HTTPException(409, f"Vous n'êtes du projet « {p['nom'] if p else '?'} » que par "
+                                 "un groupe : la collection que vous créez serait à vous, par "
+                                 "votre login. Entrez dans le projet par votre login d'abord — "
+                                 "c'est son responsable qui le fait.")
     cur = conn.execute(
         "INSERT INTO collection (nom, description, projet_id) VALUES (?, ?, ?)",
         (nom, payload.description, projet_id))
@@ -562,10 +575,13 @@ def list_acces_du_projet(collection_id: int, conn: sqlite3.Connection = Depends(
     responsables du projet (F1, tranche 3c) ; dans un projet isolé, rien.
 
     `membres` (COL-3, tranche 3c, F2 et Q3, Hugo, 2026-10-26) : qui est du projet — `genre`,
-    `principal`, et le `nom` lisible d'un login (le miroir `utilisateur`), SANS les rôles —,
-    pour que « Qui entre » ne propose que ceux qu'un accès peut viser : on n'entre dans une
-    collection que si l'on est du projet. Une exposition NEUVE, que la décision emporte :
-    lire une collection ne nommait pas les membres de son projet ; l'administrer les nomme."""
+    `principal`, et le `nom` lisible d'un login (le miroir `utilisateur`) —, pour que « Qui
+    entre » ne propose que ceux qu'un accès peut viser : on n'entre dans une collection que
+    si l'on est du projet. Une exposition NEUVE, que la décision emporte : lire une
+    collection ne nommait pas les membres de son projet ; l'administrer les nomme. La liste
+    `membres` ne porte pas le RÔLE ; les `lignes`, elles, nomment déjà les responsables du
+    projet — propriétaires de la base, lecteurs des autres collections (F1) —, et Q3 n'a
+    jamais voulu dire qu'on les taise (relecture croisée de la 3c, remarque 7)."""
     c = _get_collection(conn, portee, collection_id, administrer=True)
     projet_id = projet_de_collection(conn, collection_id)
     p = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()

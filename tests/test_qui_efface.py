@@ -236,10 +236,11 @@ def test_la_derniere_copie_ne_sort_pas_du_fonds_par_une_soeur_vierge(client, eff
     assert _destructible(client, PROPRIO2, soeur) is False
     assert _clause(db_path, PROPRIO2, soeur) is False
     assert client.delete(f"/api/albums/{soeur}", headers=PROPRIO2).status_code == 403
-    # Une PLANCHE de la dernière copie, elle, se supprime par qui tient l'espace (Q5, Hugo,
-    # 2026-10-26) : le document reste au fonds.
+    # Ni l'une de ses PLANCHES (Q5, complétée par Hugo le 2026-10-27) : sans quoi le détour
+    # se rouvrait planche à planche.
     pl = _sql(db_path, "SELECT id FROM planches WHERE album_id = ?", (soeur,))[0]["id"]
-    assert client.delete(f"/api/planches/{pl}", headers=PROPRIO2).status_code == 204
+    assert client.delete(f"/api/planches/{pl}", headers=PROPRIO2).status_code == 403
+    assert _sql(db_path, "SELECT 1 FROM planches WHERE id = ?", (pl,))
     assert _sql(db_path, "SELECT 1 FROM document WHERE id = ?", (doc,))
     # La demande part : ce n'est pas « à faire soi-même ».
     assert _demander(client, soeur, PROPRIO2).status_code == 201

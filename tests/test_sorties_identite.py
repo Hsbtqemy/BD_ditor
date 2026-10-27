@@ -224,9 +224,20 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
         # aucun demandeur : deux surfaces qui nomment passeraient pour muettes.
         doc = conn.execute("SELECT document_id FROM albums WHERE id = ?",
                            (a["id"],)).fetchone()[0]
+        # COL-3, tranche 3c (relecture croisée, constat 3) — son PROJET est posé, comme la
+        # route le pose : `…/projets/{id}/demandes-d-effacement` ne lit que celles de SON
+        # projet, et passait sinon pour muette. Et une demande sur une PLANCHE : la liste des
+        # planches d'un album dit désormais qui la demande.
         dem = conn.execute(
-            "INSERT INTO demande (genre, demandeur, motif) "
-            "VALUES ('suppression_document', ?, 'semis')", (SENTINELLES["login"],)).lastrowid
+            "INSERT INTO demande (genre, demandeur, motif, projet_id) "
+            "VALUES ('suppression_document', ?, 'semis', ?)",
+            (SENTINELLES["login"], projet["id"])).lastrowid
+        conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
+                     "VALUES (?, ?, ?, 'Cliquet')", (dem, doc, a["id"]))
+        dem = conn.execute(
+            "INSERT INTO demande (genre, demandeur, motif, projet_id, planche_id, "
+            "planche_numero) VALUES ('suppression_planche', ?, 'semis', ?, ?, 1)",
+            (SENTINELLES["login"], projet["id"], pl["id"])).lastrowid
         conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
                      "VALUES (?, ?, ?, 'Cliquet')", (dem, doc, a["id"]))
         # COL-3, tranche 3 — une demande de REJOINDRE l'album depuis sa collection, et une
@@ -412,6 +423,15 @@ SORTIES_DECLAREES = {
         "pas à partager un travail avec quelqu'un dont on ignore le nom, ce que le cadrage a "
         "accepté par écrit. Le nom passe par `Portee.peut_nommer_le_demandeur(consentement=…)`. "
         "Aucun artefact n'en sort (`demande` est une cible retenue)."),
+    ("route", "/api/projets/{projet_id}/demandes-d-effacement"): (
+        {"login", "nom"},
+        "COL-3, tranche 3c (F4) — les demandes d'effacement d'un projet, à qui le GÈRE (404 / "
+        "403 nommé ; un compte partagé, jamais destinataire, 403) : QUI demande et son nom, et "
+        "« qui perd quoi » — ceux qui ont travaillé sur la copie, nommés, le travail recopié "
+        "d'une autre copie compté sans nom hors portée totale. On n'efface pas le travail de "
+        "quelqu'un sur la demande d'un inconnu, ni sans savoir qui le perd ; le responsable lit "
+        "toutes les collections de son projet (F1) et ne découvre personne qu'il ne voie déjà. "
+        "Aucun artefact n'en sort (`demande` est une cible retenue)."),
     ("route", "/api/collections/{collection_id}/acces-du-projet"): (
         {"login", "nom"},
         "COL-3, écran de la 3a — les accès que le PROJET tient sur sa collection de base : "
@@ -467,6 +487,11 @@ SORTIES_DECLAREES = {
         "le miroir `utilisateur`, donc dans la seule sauvegarde."),
     ("route", "/api/albums/{album_id}/planches"): (
         {"login", "nom"},
+        "COL-3, tranche 3c (F5) — aussi `demande.demandeur` et son nom lisible : la demande "
+        "d'effacement qui attend sur une planche nomme qui l'a déposée au demandeur, au "
+        "responsable du projet de la copie (s'il n'est pas un compte partagé) et à la portée "
+        "totale (`Portee.peut_nommer_le_demandeur`) ; aux autres lecteurs, la demande sans le "
+        "nom. "
         "`planches.verrou_par` — qui détient le verrou d'une planche. Nécessaire au geste : "
         "sans lui on ne sait pas à qui demander la libération. Le NOM LISIBLE l'accompagne "
         "depuis le 2026-08-31 (`verrou_par_nom`, miroir `utilisateur`) : un écran qui "

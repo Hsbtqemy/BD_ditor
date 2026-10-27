@@ -67,6 +67,25 @@ def _ranger(client, album_id, cid):
     assert r.status_code == 201, r.text
 
 
+def _une_soeur(client, album_id):
+    """Une copie SŒUR de l'album, prise par l'administrateur dans une collection à part :
+    l'album n'est plus la DERNIÈRE copie de son document, et l'une de ses planches se
+    supprime alors par qui tient l'espace (Q5, complétée par Hugo le 2026-10-27 : sur la
+    dernière copie, elle va à l'administrateur comme l'album)."""
+    import database
+    conn = database.get_connection()
+    try:
+        doc = conn.execute("SELECT document_id FROM albums WHERE id = ?",
+                           (album_id,)).fetchone()[0]
+    finally:
+        conn.close()
+    cid = _collection(client, f"Sœur de {album_id}")
+    r = client.post(f"/api/collections/{cid}/prendre", headers=ADMIN,
+                    json={"documents": [{"document_id": doc, "reponse": "zero",
+                                         "album_id": album_id}]})
+    assert r.status_code == 200 and r.json()["documents"][0]["etat"] == "fait", r.text
+
+
 def _accorder(client, cid, principal, niveau, genre="utilisateur"):
     # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
     du_projet(client, cid, genre, principal)
@@ -165,18 +184,22 @@ def test_sortir_reste_permis_et_ne_detruit_rien(client, decor):
 # ── ce que la règle ne doit PAS fermer ───────────────────────────────────────────────────
 def test_ecrire_dans_toutes_ses_collections_ne_suffit_plus(client, decor):
     """Tranche 3c (F3) — RENVERSÉ : `passeuse` écrit dans les deux collections de l'album
-    partagé ; elle ne le détruit plus, ni l'une de ses planches. Possédant les deux, elle en
-    supprime une planche (la règle de repartir de zéro, Q5) ; l'album, seule copie de son
-    document, ne se supprime que par un administrateur."""
+    partagé ; elle ne le détruit plus, ni l'une de ses planches. Possédant les deux, elle
+    n'efface toujours rien d'une SEULE copie de son document — ni l'album ni une planche, qui
+    vont à l'administrateur (Q5, complétée le 2026-10-27) ; une sœur née ailleurs, elle
+    supprime la planche, puis l'album."""
     assert client.delete(f"/api/planches/{decor['planche_partagee']}",
                          headers=PASSEUSE).status_code == 403
     assert client.delete(f"/api/albums/{decor['partage']}", headers=PASSEUSE).status_code == 403
     _accorder(client, decor["principale"], "passeuse", "proprietaire")
     _accorder(client, decor["incubateur"], "passeuse", "proprietaire")
+    r = client.delete(f"/api/planches/{decor['planche_partagee']}", headers=PASSEUSE)
+    assert r.status_code == 403 and "dernière copie" in r.json()["detail"], r.text
+    assert client.delete(f"/api/albums/{decor['partage']}", headers=PASSEUSE).status_code == 403
+    _une_soeur(client, decor["partage"])
     assert client.delete(f"/api/planches/{decor['planche_partagee']}",
                          headers=PASSEUSE).status_code == 204
-    assert client.delete(f"/api/albums/{decor['partage']}", headers=PASSEUSE).status_code == 403
-    assert client.delete(f"/api/albums/{decor['partage']}", headers=ADMIN).status_code == 204
+    assert client.delete(f"/api/albums/{decor['partage']}", headers=PASSEUSE).status_code == 204
     assert decor["partage"] not in _albums(client, ADMIN)
 
 
@@ -219,13 +242,14 @@ def test_en_mono_poste_rien_ne_change(client, album, planche):
 def test_un_droit_recu_par_un_groupe_suit_la_meme_regle(client, derriere_proxy):
     """La portée cumule les accès du login et ceux de ses groupes : la règle doit valoir pour
     les deux. Un groupe qui ne possède qu'un côté n'efface pas ; les deux, il efface (une
-    planche : la règle de repartir de zéro, tranche 3c)."""
+    planche d'un album qui n'est pas la dernière copie de son document, tranche 3c)."""
     membre = {"Remote-User": "membre", "Remote-Groups": "equipe"}
     a, b = _collection(client, "A"), _collection(client, "B")
     _accorder(client, a, "equipe", "proprietaire", genre="groupe")
     album = _album(client, "Partagé", a, membre)
     planche = _planche(client, album, membre)
     _ranger(client, album, b)
+    _une_soeur(client, album)
     assert _albums(client, membre)[album]["effacable"] is False
     assert client.delete(f"/api/planches/{planche}", headers=membre).status_code == 403
     _accorder(client, b, "equipe", "proprietaire", genre="groupe")
@@ -265,6 +289,8 @@ def test_toutes_veut_dire_toutes_et_le_refus_ne_compte_pas(client, derriere_prox
     a_deux = _album(client, "À deux", a, qui)
     p_deux = _planche(client, a_deux, qui)
     _ranger(client, a_deux, c)
+    _une_soeur(client, a_trois)                  # ni l'un ni l'autre n'est la dernière copie
+    _une_soeur(client, a_deux)
     refus_trois = client.delete(f"/api/planches/{p_trois}", headers=qui)
     refus_deux = client.delete(f"/api/planches/{p_deux}", headers=qui)
     assert refus_trois.status_code == refus_deux.status_code == 403

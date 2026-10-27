@@ -212,3 +212,49 @@ def test_la_base_migree_a_la_forme_d_une_base_neuve(vraie_v37, tmp_path):
         return demande, "geste_sur_copie" in tables
     assert forme(vraie_v37) == forme(neuve)
     assert forme(neuve)[1] is False
+
+
+class _Requete:
+    def __init__(self, login, groupes=""):
+        self.headers = {"Remote-User": login, "Remote-Groups": groupes}
+
+
+def test_ce_que_la_migration_ouvre_se_lit_sur_une_portee_resolue(vraie_v37, monkeypatch):
+    """Relecture croisée de la 3c, constat 2, et la décision du pilotage (2026-10-27) : faire
+    membre un principal hors projet le fait entrer dans la BASE du projet au niveau
+    `acces_membres` (D10) — voulu (F2, « les faire entrer »). Mesuré sur une PORTÉE résolue,
+    principal par principal : avant, après ; ce qui s'ajoute est la base de son projet, au
+    niveau du projet, et rien d'autre."""
+    import autorisation
+    monkeypatch.setattr(autorisation, "AUTH_PROXY", True)
+    hors = sorted(_hors_projet(vraie_v37))
+    bases = {r["projet"]: (r["id"], r["acces_membres"]) for r in _sql(
+        vraie_v37, "SELECT projet_id AS projet, id, acces_membres FROM collection "
+                   "WHERE base = 1")}
+
+    def portee(genre, principal):
+        req = (_Requete(principal) if genre == "utilisateur"
+               else _Requete("compte-du-groupe", principal))
+        conn = database.get_connection()
+        try:
+            return autorisation.resoudre(conn, req)
+        finally:
+            conn.close()
+
+    avant = {(g, p): portee(g, p) for _, g, p in hors}
+    database.init_db()
+    ouvert = []
+    for projet, genre, principal in hors:
+        apres = portee(genre, principal)
+        base, niveau = bases[projet]
+        lu = apres.lecture - avant[genre, principal].lecture
+        ecrit = apres.ecriture - avant[genre, principal].ecriture
+        assert lu <= {base} and ecrit <= {base}, (principal, lu, ecrit)
+        assert (base in lu or base in avant[genre, principal].lecture) == (niveau is not None)
+        assert (base in ecrit or base in avant[genre, principal].ecriture) == (
+            niveau == "ecriture")
+        assert not (apres.propriete - avant[genre, principal].propriete)
+        if ecrit:
+            ouvert.append(principal)
+    # Le décor de la vraie base l'éprouve : au moins un principal ÉCRIT désormais dans une base.
+    assert ouvert, "prémisse : la base porte un projet à base ouverte et un accès hors projet"

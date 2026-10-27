@@ -1896,6 +1896,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # les routes tiennent à part : un accès de bac à sable y est déjà tenu par le
         # projet). Le projet d'une collection sans `projet_id` est le repli
         # (`sql_projet_de`). Mesuré en production le 2026-10-26 : 0 ligne.
+        # CE QUE CELA OUVRE, et c'est voulu (relecture croisée de la 3c, constat 2 ; le
+        # pilotage, 2026-10-27, sur la décision de Hugo de « les faire entrer ») : un membre
+        # entre dans la BASE du projet au niveau que le projet a choisi (`acces_membres`,
+        # D10). Un principal hors projet qui ne lisait qu'une collection peut donc, après la
+        # migration, écrire dans la base d'un projet à base ouverte. La règle de F2 tient.
         if {"collection_acces", "collection", "projet", "projet_acces"} <= _tables:
             conn.execute(
                 "INSERT OR IGNORE INTO projet_acces (projet_id, genre, principal, role) "

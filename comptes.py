@@ -209,11 +209,12 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
     # `autorisation.Portee` sans aucune ligne d'accès. La vue les montre comme des accès,
     # marqués « par le projet » (`par_projet`, le nom du projet) : sans eux, la fiche d'un
     # compte disait « aucune collection ne lui est ouverte » à un membre qui écrit dans la
-    # base. La règle est `autorisation.acces_derives`, lue ici sans rien décider.
+    # base. La règle est `autorisation.acces_derives`, lue ici sans rien décider. Depuis la
+    # tranche 3c (F1 ; relecture croisée, constat 5), elle dit aussi, sur toute AUTRE
+    # collection d'un projet ordinaire, la LECTURE de ses responsables : la vue la montre de
+    # même, sur chaque collection et non sur la seule base.
     derives = []
     for c in cols.values():
-        if not c.get("base"):
-            continue
         for d in autorisation.acces_derives(conn, c["id"]):
             derives.append({"collection_id": c["id"], **d, "par_projet": c.get("projet_nom")})
     derives_compte, derives_groupe = {}, {}
