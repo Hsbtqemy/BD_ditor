@@ -184,13 +184,11 @@ def test_le_responsable_d_un_autre_projet_n_efface_rien_ici(client, efface, db_p
 
 
 def test_le_responsable_efface_par_la_base_dans_son_propre_projet(client, efface, db_path):
-    """O, l'originale, vit dans Principale (repli) : rangée aussi dans la base du repli, elle
-    s'écrit par `resp2`, qui l'efface — alors que `proprio2` possède Principale et
-    qu'`importeur` y a travaillé. Sans la base, il ne l'écrit pas : la route répond 404."""
-    assert client.delete(f"/api/albums/{efface['o']}", headers=RESP2).status_code == 404
+    """O, l'originale, vit dans Principale (repli) : `resp2`, responsable du repli, la LIT
+    depuis la tranche 3c (F1) sans y écrire, et l'efface — alors que `proprio2` possède
+    Principale et qu'`importeur` y a travaillé. (Jusqu'à la 3c, il fallait la ranger dans la
+    base du repli pour qu'il l'atteigne.)"""
     assert _clause(db_path, RESP2, efface["o"]) is True
-    base_repli = database.collection_de_base(database.get_connection(), efface["repli"])
-    _ranger(efface["o"], base_repli)
     assert _destructible(client, RESP2, efface["o"]) is True
     assert client.delete(f"/api/albums/{efface['o']}", headers=RESP2).status_code == 204
 

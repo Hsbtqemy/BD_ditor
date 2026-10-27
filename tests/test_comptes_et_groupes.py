@@ -22,6 +22,7 @@ import comptes  # noqa: E402
 import config  # noqa: E402
 import database  # noqa: E402
 
+from conftest import du_projet
 from conftest import ADMIN  # noqa: E402
 
 
@@ -53,6 +54,8 @@ def _collection(client, nom):
 
 
 def _acces(client, cid, genre, principal, niveau="lecture", exporter=False):
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
+    du_projet(client, cid, genre, principal)
     r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                    json={"genre": genre, "principal": principal, "niveau": niveau,
                          "exporter": exporter})
@@ -147,7 +150,10 @@ def test_les_comptes_reunissent_annuaire_miroir_et_acces(client, derriere_proxy,
     assert (arrivant["actes"], arrivant["acces_explicites"], arrivant["verdict"]) == \
         (0, 0, "rien à orpheliner")
     eve = _par(vue["comptes"], "login", "eve")
-    assert (eve["acces_explicites"], eve["verdict"]) == (1, "laisse des accès")
+    # Eve est entrée dans le projet pour recevoir son accès (COL-3, tranche 3c, F2) : elle
+    # laisse aussi une entrée de projet.
+    assert (eve["acces_explicites"], eve["verdict"]) == (
+        1, "laisse des accès et des entrées de projet")
 
 
 def test_les_comptes_qui_ne_servent_que_l_annuaire_ne_sont_pas_des_arrivants(

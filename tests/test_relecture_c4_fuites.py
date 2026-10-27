@@ -60,8 +60,9 @@ def test_rejoindre_demande_ne_nomme_que_ou_l_on_ecrit(client, deux_projets):
     assert _vus(client, PROPRIO)[cx]["rejoindre_demande"] == [y]
     assert _vus(client, LECTRICE)[cx]["rejoindre_demande"] == []
     assert _vus(client, LECTRICE)[cx]["soeur"] is False
-    # Le responsable de P1 ne lit aucune collection : il ne voit pas la copie.
-    assert cx not in _vus(client, RESP)
+    # Le responsable de P1 LIT toutes ses collections depuis la tranche 3c (F1) : il voit la
+    # copie, mais n'y écrit pas — `rejoindre_demande` ne nomme rien pour lui.
+    assert _vus(client, RESP)[cx]["rejoindre_demande"] == []
     # Un écrivain de Y SEULE ne lit pas cx : rien.
     _accorder(client, y, "ecry", "ecriture")
     assert cx not in _vus(client, {"Remote-User": "ecry"})

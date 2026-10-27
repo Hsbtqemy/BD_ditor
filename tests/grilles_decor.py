@@ -13,6 +13,7 @@ import io
 import sqlite3
 from pathlib import Path
 
+from conftest import du_projet
 from conftest import ADMIN, make_png
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -117,6 +118,7 @@ def monter(client, db_path) -> dict:
     for col, qui, niveau in ((c, "olga", "proprietaire"), (c, "ana", "lecture"),
                              (c, "stag", "ecriture"), (c, "groupe-tp", "ecriture"),
                              (c2, "stag", "ecriture")):
+        du_projet(client, col, "utilisateur", qui, headers=ADMIN)
         ok(client.put(f"/api/collections/{col}/acces", headers=LEA,
                       json={"genre": "utilisateur", "principal": qui, "niveau": niveau}))
     a = ok(client.post("/api/albums", headers=LEA,

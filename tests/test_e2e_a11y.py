@@ -38,6 +38,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 # AUTH-2 : `ADMIN` monte le décor avec les droits qu'il faut (sans effet hors proxy).
+from conftest import du_projet
 from conftest import (ADMIN, ECRITURE, SANTE_PROFOND, SANTE_RAPIDE,  # noqa: E402
                       make_png, requires_kumiko)
 from playwright.sync_api import expect  # noqa: E402
@@ -1037,6 +1038,8 @@ def test_a11y_qui_entre(page, seeded, theme):
         r = c.post("/api/collections", json={"nom": "Corpus colonial"})
         assert r.status_code == 201, r.text
         cid = r.json()["id"]
+        du_projet(c, cid, "groupe", "annotateurs", headers=ECRITURE)
+        du_projet(c, cid, "groupe", "bd-lettrage", headers=ECRITURE)   # COL-3, tranche 3c (F2) — on n'entre dans
         r = c.put(f"/api/collections/{cid}/acces", json={
             "genre": "groupe", "principal": "annotateurs", "niveau": "ecriture"})
         assert r.status_code == 200, r.text
@@ -1281,6 +1284,7 @@ def test_a11y_supprimer_deux_reponses(page, live_server, theme):
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=admin) as c:
         cid = c.post("/api/collections", json={"nom": "Étude"}).json()["id"]
         aid = c.post("/api/albums", json={"titre": "Doublon", "collection_id": cid}).json()["id"]
+        du_projet(c, cid, "utilisateur", "sam", headers=ECRITURE)
         r = c.put(f"/api/collections/{cid}/acces",
                   json={"genre": "utilisateur", "principal": "sam", "niveau": "ecriture"})
         assert r.status_code == 200, r.text
@@ -1317,6 +1321,7 @@ def test_a11y_le_fonds_et_ses_demandes(page, live_server, theme):
         a1 = c.post("/api/albums", json={"titre": "Doublon", "collection_id": cid}).json()["id"]
         a2 = c.post("/api/albums", json={"titre": "Gardé", "collection_id": cid}).json()["id"]
         assert c.delete(f"/api/albums/{a2}/collections/{cid}").status_code == 204
+        du_projet(c, cid, "utilisateur", "sam", headers=ECRITURE)
         r = c.put(f"/api/collections/{cid}/acces",
                   json={"genre": "utilisateur", "principal": "sam", "niveau": "ecriture"})
         assert r.status_code == 200, r.text
@@ -1495,6 +1500,7 @@ def test_a11y_comptes_et_groupes(page, seeded, theme):
         for genre, nom, niveau in (("utilisateur", "arrivant", "proprietaire"),
                                    ("groupe", "annotateurs", "ecriture"),
                                    ("groupe", "ancien-cours", "lecture")):
+            du_projet(c, collection, genre, nom, headers=ECRITURE)
             r = c.put(f"/api/collections/{collection}/acces", headers=ECRITURE,
                       json={"genre": genre, "principal": nom, "niveau": niveau})
             assert r.status_code == 200, r.text
@@ -1727,6 +1733,7 @@ def test_le_participant_non_proprietaire_voit_le_referent(page, seeded, niveau):
         assert c.patch(f"/api/collections/{cid}",
                        json={"referent_nom": "Ana Ruiz",
                              "referent_contact": "ana@labo.fr"}).status_code == 200
+        du_projet(c, cid, "utilisateur", "bob", headers=ECRITURE)
         assert c.put(f"/api/collections/{cid}/acces",
                       json={"principal": "bob", "genre": "utilisateur",
                             "niveau": niveau}).status_code in (200, 201)
@@ -2039,8 +2046,10 @@ def test_a11y_qui_entre_signaux_et_cartes(page, live_server, theme):
                                  if k not in ("Remote-User", "Remote-Groups")}})
     try:
         cid = c.post("/api/collections", json={"nom": "Corpus a11y"}).json()["id"]
+        du_projet(c, cid, "utilisateur", "arrivant", headers=ECRITURE)
         c.put(f"/api/collections/{cid}/acces",
               json={"genre": "utilisateur", "principal": "arrivant", "niveau": "lecture"})
+        du_projet(c, cid, "groupe", "bd-etudiants", headers=ECRITURE)
         c.put(f"/api/collections/{cid}/acces",
               json={"genre": "groupe", "principal": "bd-etudiants", "niveau": "ecriture"})
     finally:

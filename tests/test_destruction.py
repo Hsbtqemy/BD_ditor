@@ -34,6 +34,7 @@ from pathlib import Path
 import pytest
 
 import autorisation
+from conftest import du_projet
 from conftest import ADMIN, make_png
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -67,6 +68,8 @@ def _ranger(client, album_id, cid):
 
 
 def _accorder(client, cid, principal, niveau, genre="utilisateur"):
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
+    du_projet(client, cid, genre, principal)
     r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                    json={"genre": genre, "principal": principal, "niveau": niveau})
     assert r.status_code == 200, r.text

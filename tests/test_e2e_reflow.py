@@ -38,6 +38,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from conftest import du_projet
 from conftest import ECRITURE, make_png         # noqa: E402
 from tools.mesurer_reflow import (DEPLIES, ECRASEMENT, INVENTAIRE, SONDE,  # noqa: E402
                                   decrire_ecrasement, deplier)
@@ -523,6 +524,7 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
         for genre, nom, niveau in (("groupe", "annotateurs", "lecture"),
                                    ("utilisateur", "arrivant", "ecriture"),
                                    ("groupe", "ancien-cours-de-bande-dessinee-2025", "proprietaire")):
+            du_projet(c, cid, genre, nom, headers=ECRITURE)
             r = c.put(f"/api/collections/{cid}/acces",
                       json={"genre": genre, "principal": nom, "niveau": niveau})
             assert r.status_code == 200, r.text
@@ -721,6 +723,7 @@ def test_comptes_et_groupes_ne_perdent_pas_de_contenu(page, live_server, police)
         for genre, nom, niveau in (("groupe", "annotateurs", "lecture"),
                                    ("utilisateur", "camille", "ecriture"),
                                    ("groupe", "ancien-cours-de-bande-dessinee-2025", "proprietaire")):
+            du_projet(c, collection, genre, nom, headers=ECRITURE)
             r = c.put(f"/api/collections/{collection}/acces", headers=ECRITURE,
                       json={"genre": genre, "principal": nom, "niveau": niveau})
             assert r.status_code == 200, r.text

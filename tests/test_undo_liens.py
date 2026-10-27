@@ -13,6 +13,7 @@ réponse dit COMBIEN de liens sont restés en route, sans rien dire de l'objet.
 """
 import sqlite3
 
+from conftest import du_projet
 from conftest import ADMIN, make_png
 
 
@@ -163,6 +164,7 @@ def test_un_personnage_que_l_agent_ne_voit_plus_ne_revient_pas(client, planche, 
                      201).json()["id"]
     incubateur = _ok(client.post("/api/collections", json={"nom": "Incubateur"}, headers=ADMIN),
                      201).json()["id"]
+    du_projet(client, principale, "utilisateur", "alice", headers=ADMIN)
     _ok(client.put(f"/api/collections/{principale}/acces", headers=ADMIN,
                    json={"genre": "utilisateur", "principal": "alice", "niveau": "ecriture"}), 200)
 

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 import database
+import migration_v38
 import main
 
 TABLES = ("albums", "planches", "regions", "personnages")
@@ -359,7 +360,11 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
     (tmp_path / "corpus" / "album_4" / "planche_0001.png").write_bytes(b"ANCIEN")
     avant = _etat(vraie_v29)
     assert avant["recherche"] and avant["tokens"], "la base chargée n'a rien à comparer"
+    membres_avant = migration_v38.membres(vraie_v29)
     database.init_db()
+    # La v38 (COL-3, tranche 3c) fait entrer dans leur projet les accès hors projet :
+    # éprouvée par `tests/test_migration_v38.py`, elle sort de la comparaison.
+    migration_v38.retirer_les_membres_de_la_v38(vraie_v29, membres_avant)
     apres = _etat(vraie_v29)
     # La v31 (COL-3, tranche 3) passe aussi, et pose la provenance de chaque copie.
     neuves = {"document", "demande", "demande_document", "copie"}
@@ -367,8 +372,9 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
     neuves |= {"region_origine"}
     # La v35 (COL-4) aussi : `jeu_document`, vide.
     neuves |= {"jeu_document"}
-    # La v36 (COL-3, tranche 3b) aussi : `retrait_vu` et `geste_sur_copie`, vides.
-    neuves |= {"retrait_vu", "geste_sur_copie"}
+    # La v36 (COL-3, tranche 3b) aussi : `retrait_vu` (`geste_sur_copie`, qu'elle créait,
+    # part avec la v38).
+    neuves |= {"retrait_vu"}
     # La v37 (ANN-7, tranche 1) aussi : seize tables neuves, vides, et `regions.nom`.
     neuves |= set(database.TABLES_DES_GRILLES)
     # Et la base NEUVE du projet de repli (D10 ; Hugo, 2026-10-17) : une collection de plus.

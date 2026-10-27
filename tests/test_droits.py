@@ -25,6 +25,7 @@ import main  # noqa: E402
 
 from autorisation import (ACTES, ECRITURE, HORS_RANG, LECTURE, NIVEAUX,  # noqa: E402
                           PROPRIETAIRE, Portee)
+from conftest import du_projet
 from conftest import ADMIN, make_png  # noqa: E402
 
 C = 7   # une collection quelconque
@@ -68,6 +69,7 @@ def _decor(client):
     membres = {}
     for niveau in NIVEAUX:
         membres[niveau] = f"membre-{niveau}"
+        du_projet(client, cid, "utilisateur", membres[niveau], headers=ADMIN)
         r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                        json={"genre": "utilisateur", "principal": membres[niveau],
                              "niveau": niveau})
@@ -121,6 +123,7 @@ def test_chaque_acte_se_joue_au_niveau_qu_il_declare(client, derriere_proxy, mon
         return "verrouillée" in r.json()["detail"]
 
     def decider(h):
+        du_projet(client, cid, "utilisateur", "invite", headers=ADMIN)
         r = client.put(f"/api/collections/{cid}/acces", headers=h,
                        json={"genre": "utilisateur", "principal": "invite", "niveau": "lecture"})
         assert r.status_code in (200, 201, 403), r.text

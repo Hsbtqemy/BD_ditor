@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 
 import database
+import migration_v38
 import main
 from conftest import ADMIN
 
@@ -84,7 +85,9 @@ def _etat(db):
                                                and k == "membres_creent_collections")
                                        and not (t in database.COUCHES_RECOPIEES
                                                 and k == "recopiee")
-                                       and not (t == "regions" and k == "nom")},
+                                       and not (t == "regions" and k == "nom")
+                                       # La v38 (COL-3, tranche 3c) : deux colonnes.
+                                       and k not in migration_v38.COLONNES_V38.get(t, ())},
                                       sort_keys=True, ensure_ascii=False)
                            for r in _sql(db, f'SELECT * FROM "{t}"'))
     return {
@@ -128,15 +131,15 @@ def test_la_base_chargee_est_bien_une_v35_qui_a_vecu(vraie_v35):
 def test_une_vraie_base_v35_migre_sans_rien_perdre(vraie_v35):
     avant = _etat(vraie_v35)
     seq_avant = _seq(vraie_v35)
+    membres_avant = migration_v38.membres(vraie_v35)
     database.init_db()
+    migration_v38.retirer_les_membres_de_la_v38(vraie_v35, membres_avant)
     apres = _etat(vraie_v35)
     assert _sql(vraie_v35, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     # Une table NEUVE, vide : les « Vu » d'un retrait du projet (écran de la 3b).
     assert apres["comptes"].pop("retrait_vu") == 0
     apres["tables"].remove("retrait_vu")
-    # … et celle de qui a jamais touché une copie : vide, l'existant n'y est pas.
-    assert apres["comptes"].pop("geste_sur_copie") == 0
-    apres["tables"].remove("geste_sur_copie")
+    # (La v36 créait aussi `geste_sur_copie`, que la v38 retire : COL-3, tranche 3c.)
     assert apres == avant
     for t in database.COUCHES_RECOPIEES:
         assert _sql(vraie_v35, f"SELECT COUNT(*) AS n FROM {t} WHERE recopiee = 1")[0]["n"] == 0

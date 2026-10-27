@@ -697,8 +697,11 @@ def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict)
             "THEN 'bac à sable' WHEN repli = 1 THEN 'repli' ELSE 'ordinaire' END AS n, "
             "COUNT(*) FROM projet GROUP BY n ORDER BY n").fetchall())
     if version >= 36:
+        # `geste_sur_copie` n'a vécu que de la v36 à la v37 : la v38 la retire (COL-3,
+        # tranche 3c, Q11).
         faits["comptes"].update({t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-                                 for t in ("geste_sur_copie", "retrait_vu")})
+                                 for t in (("geste_sur_copie", "retrait_vu")
+                                           if version < 38 else ("retrait_vu",))})
         faits["regions_par_type"] = dict(conn.execute(
             "SELECT type, COUNT(*) FROM regions GROUP BY type ORDER BY type").fetchall())
         faits["crans_des_copies"] = dict(conn.execute(

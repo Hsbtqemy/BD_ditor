@@ -27,6 +27,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 from playwright.sync_api import expect  # noqa: E402
 
 import database  # noqa: E402
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], indirect=True)]
@@ -64,6 +65,7 @@ def _decor(base):
             r = c.post(f"/api/albums/{albums[titre]}/import",
                        files={"file": ("p.png", make_png(), "image/png")})
             assert r.status_code == 201, r.text
+        du_projet(c, cid, "utilisateur", "sam", headers=ECRITURE)
         r = c.put(f"/api/collections/{cid}/acces",
                   json={"genre": "utilisateur", "principal": "sam", "niveau": "ecriture"})
         assert r.status_code == 200, r.text
@@ -447,6 +449,7 @@ def test_a_faire_ne_dit_suppression_que_d_une_suppression(page, live_server):
                          "motif": "Pour le séminaire"})
         assert r.status_code == 200 and r.json()["documents"][0]["etat"] == "demande", r.text
     with _client(live_server) as c:
+        du_projet(c, d['archives'], "utilisateur", "sam", headers=ECRITURE)
         r = c.put(f"/api/collections/{d['archives']}/acces",
                   json={"genre": "utilisateur", "principal": "sam", "niveau": "ecriture"})
         assert r.status_code == 200, r.text

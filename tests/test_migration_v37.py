@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 import database
+import migration_v38
 import main
 
 BASE_V36 = Path(__file__).resolve().parent / "bases" / "v36-b9183c0.sql"
@@ -35,7 +36,7 @@ LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
           "copie", "demande", "demande_document", "region_origine", "contribution",
           "tokens", "token_correction", "tags", "domaine", "attribut_dimension",
-          "attribut_valeur", "evenement", "activite", "jeu_document", "geste_sur_copie",
+          "attribut_valeur", "evenement", "activite", "jeu_document",
           "region_attribut", "bulle_locuteur", "personnage_presence")
 
 
@@ -77,7 +78,8 @@ def _etat(db, *, sans=frozenset()):
     lignes = {}
     for t in LIGNES:
         lignes[t] = sorted(json.dumps({k: v for k, v in r.items()
-                                       if not (t == "regions" and k == "nom")},
+                                       if not (t == "regions" and k == "nom")
+                                       and k not in migration_v38.COLONNES_V38.get(t, ())},
                                       sort_keys=True, ensure_ascii=False)
                            for r in _sql(db, f'SELECT * FROM "{t}"'))
     return {
@@ -126,10 +128,15 @@ def test_la_base_chargee_est_bien_une_v36_qui_a_vecu(vraie_v36):
 
 def test_une_vraie_base_v36_migre_sans_rien_perdre(vraie_v36):
     avant = _etat(vraie_v36)
+    # La v38 (COL-3, tranche 3c) retire `geste_sur_copie` : elle sort de la comparaison.
+    avant["tables"].remove("geste_sur_copie")
+    avant["comptes"].pop("geste_sur_copie")
     seq_avant = _seq(vraie_v36)
+    membres_avant = migration_v38.membres(vraie_v36)
     database.init_db()
+    migration_v38.retirer_les_membres_de_la_v38(vraie_v36, membres_avant)
     assert _sql(vraie_v36, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
-    assert database.SCHEMA_VERSION == 37
+    assert database.SCHEMA_VERSION >= 37
     apres = _etat(vraie_v36, sans=TABLES_V37)
     tables = {r["name"] for r in _sql(vraie_v36, "SELECT name FROM sqlite_master "
                                                  "WHERE type = 'table'")}

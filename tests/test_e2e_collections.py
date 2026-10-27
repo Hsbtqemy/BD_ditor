@@ -24,6 +24,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 from playwright.sync_api import expect  # noqa: E402
 
@@ -58,6 +59,10 @@ def decor(live_server):
         aid = c.post("/api/albums", json={"titre": "Collections", "auteur": "X"}).json()["id"]
         c.post(f"/api/albums/{aid}/import",
                files={"file": ("p.png", make_png(), "image/png")})
+        # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet : les noms que l'écran fait entrer en sont d'abord. (Toutes ses collections sont du repli.)
+        repli = c.get(f"/api/albums/{aid}/collections").json()[0]["id"]
+        for genre in ("groupe", "utilisateur"):
+            du_projet(c, repli, genre, "annotateurs", headers=ECRITURE)
     finally:
         c.close()
     return {"base": live_server, "album": aid}
@@ -372,6 +377,7 @@ def test_un_refus_d_acces_survit_au_rechargement_de_la_collection(page, decor):
     collection que plus personne n'administre (AUTH-3)."""
     with _client(decor["base"]) as c:
         cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
+        du_projet(c, cid, "utilisateur", "pilote", headers=ECRITURE)
         r = c.put(f"/api/collections/{cid}/acces", json={
             "genre": "utilisateur", "principal": "pilote", "niveau": "proprietaire"})
         assert r.status_code == 200, r.text
@@ -568,6 +574,7 @@ def test_un_refus_d_acces_survit_a_une_relecture_ratee(page, decor):
     de la LISTE des collections n'est plus en jeu : un geste d'accès ne la relit pas."""
     with _client(decor["base"]) as c:
         cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
+        du_projet(c, cid, "utilisateur", "pilote", headers=ECRITURE)
         r = c.put(f"/api/collections/{cid}/acces", json={
             "genre": "utilisateur", "principal": "pilote", "niveau": "proprietaire"})
         assert r.status_code == 200, r.text
@@ -604,9 +611,11 @@ def test_la_modale_d_album_ne_propose_que_ou_l_on_ecrit(page, live_server):
         ids = {n: c.post("/api/collections", json={"nom": n}).json()["id"]
                for n in ("Lue", "Écrite", "Autre écrite")}
         for n, niveau in (("Lue", "lecture"), ("Écrite", "ecriture"), ("Autre écrite", "ecriture")):
+            du_projet(c, ids[n], "utilisateur", "zoe", headers=ECRITURE)
             r = c.put(f"/api/collections/{ids[n]}/acces",
                       json={"genre": "utilisateur", "principal": "zoe", "niveau": niveau})
             assert r.status_code == 200, r.text
+        du_projet(c, ids['Lue'], "utilisateur", "yann", headers=ECRITURE)
         c.put(f"/api/collections/{ids['Lue']}/acces",
               json={"genre": "utilisateur", "principal": "yann", "niveau": "lecture"})
         album = c.post("/api/albums", json={"titre": "Rangé dans Écrite",
@@ -728,6 +737,7 @@ def _decor_suppression(live_server):
         for ou, qui, niveau in (("Incubateur", "sam", "ecriture"), ("Incubateur", "lia", "lecture"),
                                 ("Incubateur", "noa", "ecriture"), ("Archives", "noa", "lecture"),
                                 ("Incubateur", "paz", "ecriture"), ("Archives", "paz", "ecriture")):
+            du_projet(c, ids[ou], "utilisateur", qui, headers=ECRITURE)
             r = c.put(f"/api/collections/{ids[ou]}/acces",
                       json={"genre": "utilisateur", "principal": qui, "niveau": niveau})
             assert r.status_code == 200, r.text
@@ -955,8 +965,10 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
 def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_server):
     """COL-3, tranche 2 — sous Sam, qui n'écrit que dans « Incubateur ».
 
-    - « Erreur », qu'il a importé et où personne d'autre n'a travaillé : « Supprimer
-      définitivement » efface tout de suite, et la corbeille de sa planche est active.
+    - « Erreur », qu'il a importé et où personne d'autre n'a travaillé : depuis la tranche 3c
+      de COL-3 (F3), le créateur n'efface plus seul — qui tient l'espace efface, les autres
+      demandent ; la corbeille de sa planche est éteinte, et « Supprimer définitivement »
+      se demande.
     - « Seul », importé par un autre et rangé là seulement : supprimer de la collection
       l'enverrait AU FONDS — le panneau le dit ; supprimer définitivement se DEMANDE. Une
       demande sans motif ne part pas ; avec, la requête PORTE le motif (mutant 17), la
@@ -970,9 +982,10 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
     _comme(page, live_server, "sam")
     _ligne(page, "Erreur").wait_for(timeout=5000)
 
-    # Les planches suivent la règle du document.
+    # Les planches suivent la règle de repartir de zéro (tranche 3c, Q5) : Sam ne tient pas
+    # « Incubateur », sa corbeille est éteinte même sur ce qu'il a importé.
     _ouvrir_detail(page, "Erreur")
-    expect(page.locator("#album-detail button[data-delp]")).to_have_count(1)
+    expect(page.locator("#album-detail button[data-delp]")).to_have_count(0)
     _ouvrir_detail(page, "Seul")
     expect(page.locator("#album-detail button[data-delp]")).to_have_count(0)
     eteinte = page.locator("#album-detail button[data-delp-refus]")
@@ -1060,20 +1073,12 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
                                            "Le travail continue ailleurs.")).to_be_visible()
     _ligne(page, "Partagé").wait_for(state="detached", timeout=5000)
 
-    # ── « Erreur » : il l'a importé, il l'efface ─────────────────────────────────────────
+    # ── « Erreur » : il l'a importé, il le DEMANDE (tranche 3c, F3) ──────────────────────
     _ouvrir_suppression(page, "Erreur")
-    # COL-3, écran de la 3b : le chemin se dit à part — et il ne se dit « créée » qu'à qui
-    # l'a créée, seul à y avoir travaillé.
-    expect(page.locator("#sp-def-raison")).to_have_text(
-        "Vous avez créé cette copie, et personne d'autre n'y a travaillé : rien à demander.",
-        timeout=5000)
-    expect(page.locator("#sp-motif")).to_be_hidden()
-    expect(page.locator("#sp-certif")).to_be_hidden()
-    expect(page.locator("#sp-def")).to_have_text("Supprimer définitivement")
-    page.click("#sp-def")
-    expect(page.locator(".toast", has_text="« Erreur » est supprimé définitivement")).to_be_visible(
-        timeout=5000)
-    _ligne(page, "Erreur").wait_for(state="detached", timeout=5000)
+    expect(page.locator("#sp-motif")).to_be_visible(timeout=5000)
+    expect(page.locator("#sp-certif")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator("#suppr-modal")).to_be_hidden()
 
     # ── Lia lit la pastille, sans le nom de qui a demandé (Hugo, 2026-10-15) ─────────────
     _comme(page, live_server, "lia")
@@ -1082,7 +1087,7 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
 
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
         reste = {a["id"]: a for a in c.get("/api/albums").json()}
-        assert albums["Erreur"] not in reste
+        assert albums["Erreur"] in reste                    # demandé, pas effacé
         assert reste[albums["Partagé"]]["nb_planches"] == 1
         assert reste[albums["Seul"]]["nb_planches"] == 1          # demandé, pas effacé
         rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Partagé']}/collections").json()]

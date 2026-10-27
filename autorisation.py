@@ -31,9 +31,13 @@ lesquels on gère (`est_du_projet`, `peut_gerer_projet`, `peut_decider_des_proje
 `clause_projet`). Il ne s'en sert pour ouvrir qu'UNE collection par projet, sa collection de
 BASE (D10, Hugo, 2026-10-17) : ses responsables en sont propriétaires, ses membres y entrent
 au niveau que le projet a choisi (écriture, lecture, ou rien) — une dérivation faite dans
-`Portee.__init__`, jamais recopiée dans `collection_acces`. Toute autre collection du projet
-garde son « Qui entre » seul : entrer dans un projet n'ouvre aucune d'elles, et un accès de
-collection se passe d'être du projet.
+`Portee.__init__`, jamais recopiée dans `collection_acces`. Et depuis la tranche 3c (F1,
+Hugo, 2026-10-26), ses RESPONSABLES LISENT toutes ses autres collections — une lecture
+dérivée de même, qui n'ouvre ni l'écriture, ni l'export, ni « Qui entre ». Toute autre
+collection garde son « Qui entre » pour le reste : entrer dans un projet comme MEMBRE n'ouvre
+aucune d'elles. Et l'on n'entre dans une collection que si l'on est du projet (F2, tranche
+3c) : une règle d'ÉCRITURE de `collection_acces`, tenue par la route et l'outil
+(`database.est_du_projet_par_reference`), que ce module ne lit pas.
 
 Trois principes.
 
@@ -146,13 +150,14 @@ def description_des_droits() -> dict:
 # Rôles dans un PROJET (COL-3), du plus faible au plus fort. Le responsable est membre :
 # le cumul se fait dans `Portee.__init__`, une fois, pour la raison écrite sur les niveaux.
 #
-# CE QUE CES RÔLES NE SONT PAS : des niveaux d'accès sur les collections du projet. Une
-# seule exception, et elle est voulue (D10, Hugo, 2026-10-17) : la collection de BASE du
-# projet, dont le responsable est propriétaire et où le membre entre au niveau
-# `acces_membres` — dérivée dans `Portee.__init__`, à partir de `bases_des_projets`. Aucune
-# des clauses qui filtrent les données (`clause_album`, `clause_terme`) ne connaît les
-# projets : elles lisent les ensembles que la dérivation a
-# remplis. Toute autre collection garde son « Qui entre ».
+# CE QUE CES RÔLES NE SONT PAS : des niveaux d'accès sur les collections du projet. Deux
+# exceptions, et elles sont voulues : la collection de BASE du projet, dont le responsable
+# est propriétaire et où le membre entre au niveau `acces_membres` (D10, Hugo, 2026-10-17) ;
+# et la LECTURE de toutes les autres collections du projet par son responsable (F1, tranche
+# 3c, Hugo, 2026-10-26) — dérivées dans `Portee.__init__`, à partir de `bases_des_projets`
+# et de `collections_des_projets`. Aucune des clauses qui filtrent les données
+# (`clause_album`, `clause_terme`) ne connaît les projets : elles lisent les ensembles que la
+# dérivation a remplis. Toute autre collection garde son « Qui entre ».
 MEMBRE = "membre"
 RESPONSABLE = "responsable"
 ROLES_PROJET = (MEMBRE, RESPONSABLE)
@@ -258,7 +263,7 @@ class Portee:
                  lecture: frozenset = frozenset(), ecriture: frozenset = frozenset(),
                  propriete: frozenset = frozenset(), export: frozenset = frozenset(),
                  projets: frozenset = frozenset(), projets_geres: frozenset = frozenset(),
-                 bases: tuple = (),
+                 bases: tuple = (), lues_par_le_projet: frozenset = frozenset(),
                  utilisateur: Optional[str] = None, groupes: tuple = (),
                  bacs_a_sable: frozenset = frozenset(), bacs_a_soi: frozenset = frozenset(),
                  collections_bac: frozenset = frozenset(), hors_isoles: bool = False,
@@ -308,6 +313,14 @@ class Portee:
         # s'aggrave pas. `pour_export` ne repasse pas `bases` : il réduit des ensembles déjà
         # dérivés, et les redériver rouvrirait à l'export ce que la case refuse.
         propriete, ecriture, lecture = set(propriete), set(ecriture), set(lecture)
+        # F1 (COL-3, tranche 3c, Hugo, 2026-10-26) — le RESPONSABLE d'un projet LIT toutes ses
+        # collections (`lues_par_le_projet`, lues par `collections_des_projets` pour les
+        # projets qu'on gère, hors bacs à sable). Une LECTURE, ajoutée avant le cumul et
+        # jamais à `ecriture` ni à `export` (la formule d'`export`, plus bas, réduit à la
+        # lecture : elle n'ajoute rien) ; DÉRIVÉE comme la base, jamais recopiée : qui cesse
+        # d'être responsable cesse de lire. `pour_export` et `pour_le_corpus` repassent les
+        # ensembles déjà dérivés sans redériver.
+        lecture |= set(lues_par_le_projet)
         for projet_id, collection_id, niveau in bases:
             if projet_id in self.projets_geres:
                 propriete.add(collection_id)
@@ -487,8 +500,8 @@ class Portee:
     def est_du_projet(self, projet_id: int) -> bool:
         """Est-on MEMBRE de ce projet ? Ce que cela permet : y créer une collection, et
         entrer dans sa collection de BASE au niveau que le projet a choisi (D10, dérivé
-        dans `__init__`). Ce que cela ne permet pas : lire aucune AUTRE de ses
-        collections."""
+        dans `__init__`). Ce que cela ne permet pas, au simple membre : lire aucune AUTRE de
+        ses collections — son RESPONSABLE les lit toutes (F1, tranche 3c)."""
         return self.couvre_projet(projet_id) or projet_id in self.projets
 
     def peut_creer_collection(self, projet_id: int, *, membres_creent: bool,
@@ -541,9 +554,10 @@ class Portee:
 
         Deux moitiés. Les projets dont on est membre ; et ceux d'une collection qu'on
         LIT, même sans en être — la visibilité DÉRIVÉE. La seconde n'est pas une largesse :
-        avoir un accès de collection sans être du projet continue de marcher, et la
-        personne doit pouvoir lire le nom du projet où elle travaille. Le lui cacher
-        donnerait à l'écran une collection sans projet.
+        un accès de collection posé avant la tranche 3c sans être du projet (la v38 en fait
+        un membre, F2 ; une base retouchée à la main peut en porter encore) doit pouvoir lire
+        le nom du projet où il travaille. Le lui cacher donnerait à l'écran une collection
+        sans projet.
 
         Ce que la clause ne donne pas : le droit de voir QUI est du projet, ni ses autres
         collections. Elle ne dit que le nom."""
@@ -1442,6 +1456,21 @@ def bases_des_projets(conn: sqlite3.Connection, projets) -> tuple:
         ids))
 
 
+def collections_des_projets(conn: sqlite3.Connection, projets) -> frozenset:
+    """Les identifiants de TOUTES les collections de ces projets (F1, COL-3, tranche 3c) —
+    ce que leur responsable LIT, dérivé dans `Portee.__init__`. Le patron de
+    `bases_des_projets` : une requête, et le repli compris pour une collection sans
+    `projet_id` (`sql_projet_de`). Cette fonction n'en décide aucun droit ; l'appelant lui
+    passe les projets GÉRÉS hors bacs à sable (un invité qui crée une collection dans un bac
+    à sable la garde fermée à son propriétaire, comme avant)."""
+    if not projets:
+        return frozenset()
+    ids = sorted(projets)
+    return frozenset(r[0] for r in conn.execute(
+        f"SELECT c.id FROM collection c "
+        f"WHERE {sql_projet_de('c')} IN ({', '.join('?' * len(ids))})", ids))
+
+
 def bacs_du_principal(conn: sqlite3.Connection, login: str, projets,
                       collections) -> tuple[frozenset, frozenset, frozenset]:
     """(bacs à sable dont on est, ceux qu'on a ouverts, collections atteintes qui vivent
@@ -1475,7 +1504,9 @@ def acces_derives(conn: sqlite3.Connection, collection_id: int) -> list[dict]:
     """Les accès que le PROJET tient sur cette collection — ceux que `Portee.__init__` dérive
     de `projet_acces` pour une collection de BASE (D10), dits ligne par ligne pour qui
     regarde QUI ENTRE (COL-3, tranche 3a : « inévitable, mais pas invisible », l'esprit
-    d'AUTH-4). Vide pour toute autre collection.
+    d'AUTH-4). Pour toute autre collection d'un projet ordinaire, depuis la tranche 3c (F1) :
+    une ligne par RESPONSABLE du projet, au niveau `lecture` — sa lecture dérivée. Vide dans
+    un projet isolé (un bac à sable, le jeu : la lecture du responsable n'y vaut pas).
 
     La règle est CELLE de `Portee.__init__`, écrite ici à côté d'elle pour ne pas en vivre
     une seconde ailleurs : un responsable du projet est propriétaire de la base, quelle que
@@ -1487,10 +1518,19 @@ def acces_derives(conn: sqlite3.Connection, collection_id: int) -> list[dict]:
     Une lecture et non une décision : ce que la personne qui frappe peut faire reste à
     `Portee`. Chaque ligne : `genre`, `principal`, `niveau`, `exporter`, `role` (le rôle
     dans le projet), dans l'ordre responsables d'abord."""
-    r = conn.execute(f"SELECT {sql_projet_de('c')} AS projet_id, c.base, c.acces_membres "
+    r = conn.execute(f"SELECT {sql_projet_de('c')} AS projet_id, c.base, c.acces_membres, "
+                     f"{sql_est_isole(sql_projet_de('c'))} AS isole "
                      "FROM collection c WHERE c.id = ?", (collection_id,)).fetchone()
-    if r is None or not r["base"]:
+    if r is None:
         return []
+    if not r["base"]:
+        if r["isole"]:
+            return []
+        return [{"genre": m["genre"], "principal": m["principal"], "niveau": LECTURE,
+                 "exporter": False, "role": RESPONSABLE}
+                for m in conn.execute(
+                    "SELECT genre, principal FROM projet_acces WHERE projet_id = ? "
+                    "AND role = ? ORDER BY genre, principal", (r["projet_id"], RESPONSABLE))]
     niveau_membre = (None if r["acces_membres"] is None
                      else ECRITURE if r["acces_membres"] == ECRITURE else LECTURE)
     lignes = []
@@ -1576,7 +1616,12 @@ def resoudre(conn: sqlite3.Connection, request) -> Portee:
     bacs, a_soi, cols_bac = bacs_du_principal(
         conn, login, projets | projets_geres,
         lecture | ecriture | propriete | {b[1] for b in bases})
+    # F1 (tranche 3c) — ce que lit le responsable : les collections des projets qu'il GÈRE,
+    # hors bacs à sable. Elles ne vivent dans aucun bac à sable : `cols_bac` n'a pas à les
+    # connaître. L'administrateur lit tout (sa portée totale) : sa branche n'en a pas besoin.
+    lues = collections_des_projets(conn, projets_geres - bacs)
     return Portee(lecture=lecture, ecriture=ecriture, propriete=propriete, export=export,
                   projets=projets, projets_geres=projets_geres, bases=bases,
+                  lues_par_le_projet=lues,
                   utilisateur=login, groupes=tuple(noms_groupes),
                   bacs_a_sable=bacs, bacs_a_soi=a_soi, collections_bac=cols_bac)

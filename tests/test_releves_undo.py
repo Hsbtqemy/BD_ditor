@@ -10,6 +10,8 @@ import sqlite3
 
 import pytest
 
+from conftest import ADMIN, du_projet
+
 from grilles_decor import LEA, STAG, grille_active, monter, ok
 
 
@@ -139,6 +141,7 @@ def test_grille_desactivee_l_acte_est_passe(client, decor, db_path):
 def test_hors_de_portee_l_acte_est_passe(client, decor, db_path):
     poser(client, decor, region_id=decor["zones"]["bulle"], entree_cle="cri", mots=[8])
     ok(client.delete(f"/api/collections/{decor['c']}/acces/utilisateur/stag", headers=LEA), 204)
+    du_projet(client, decor['c2'], "utilisateur", "stag", headers=ADMIN)
     ok(client.put(f"/api/collections/{decor['c2']}/acces", headers=LEA,
                   json={"genre": "utilisateur", "principal": "stag", "niveau": "ecriture"}))
     refus = undo(client, attendu=(409,))["detail"]

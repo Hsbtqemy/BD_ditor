@@ -23,6 +23,7 @@ import pytest
 
 import database
 import main
+from conftest import du_projet
 from conftest import ADMIN
 from pipeline import ingest
 from test_fonds import _accorder, _album, _collection, _planche
@@ -66,7 +67,8 @@ def ailleurs(client, prise):  # noqa: F811
         _ok(client.put(f"/api/projets/{repli}/membres", headers=ADMIN,
                        json={"principal": principal, "role": role}))
     _accorder(client, prise["principale"], "proprio2", "proprietaire")
-    _accorder(client, prise["principale"], "resp2", "lecture")
+    # F6 (COL-3, tranche 3c) — E7 ne part que des collections où le responsable ÉCRIT.
+    _accorder(client, prise["principale"], "resp2", "ecriture")
     _travailler(client, prise["albums"]["d1"], IMPORTEUR)
     return {**prise, "repli": repli}
 
@@ -333,19 +335,19 @@ def test_accepter_exige_une_copie_du_projet_qu_on_gere(client, ailleurs):
                 (ligne["demande_id"],))[0]["reponse"] is None
 
 
-def test_le_responsable_source_ne_consent_qu_avec_une_copie_qu_il_lit(client, ailleurs,
-                                                                      db_path):
-    """La relecture croisée de la 3b, constat 2 : gérer un projet n'en ouvre pas les
-    collections (D10). `resp2` gère le repli sans LIRE Principale, où vit la copie
-    travaillée de Le Lotus bleu ; nommé aussi responsable d'Étude P, il en demande le texte
-    pour la base d'Étude P. La demande lui parvient — il peut la refuser —, mais sans copie à
-    nommer ni aperçu : rien ne se compte d'une collection qu'il ne lit pas. Et accepter en
-    nommant la copie de Principale lui répond le même 404 qu'une copie absente : le texte
-    de Principale ne passe pas dans sa base."""
+def test_le_responsable_source_ne_consent_qu_avec_une_copie_ou_il_ecrit(client, ailleurs,
+                                                                       db_path):
+    """F6 (tranche 3c) — RÉÉCRIT sur l'écriture (c'était la lecture : relecture croisée de
+    la 3b, constat 2). `resp2` gère le repli : il LIT Principale, où vit la copie travaillée
+    de Le Lotus bleu (F1), sans y écrire ; nommé aussi responsable d'Étude P, il en demande
+    le texte pour la base d'Étude P. La demande lui parvient — il peut la refuser —, mais
+    sans copie à nommer ni aperçu : une copie qu'il LIT par la voie 1 sans y écrire n'est pas
+    offerte. Accepter en la nommant lui répond le même 404 qu'une copie absente : le texte de
+    Principale ne passe pas dans sa base sur sa seule réponse."""
     s = ailleurs
     o = s["albums"]["d1"]
     _sql(db_path, "DELETE FROM collection_acces WHERE principal = 'resp2'")
-    assert client.get(f"/api/albums/{o}/planches", headers=RESP2).status_code == 404
+    assert client.get(f"/api/albums/{o}/planches", headers=RESP2).status_code == 200
     _ok(client.put(f"/api/projets/{s['projet']}/membres", headers=ADMIN,
                    json={"principal": "resp2", "role": "responsable"}))
     ligne = _demander_ailleurs(client, s, qui=RESP2)
@@ -360,8 +362,8 @@ def test_le_responsable_source_ne_consent_qu_avec_une_copie_qu_il_lit(client, ai
     assert not _sql(db_path, "SELECT 1 FROM regions r JOIN planches p ON p.id = r.planche_id "
                              "JOIN albums a ON a.id = p.album_id WHERE a.document_id = ? "
                              "AND a.id <> ?", (s["docs"]["d1"], o))
-    # Lecture rendue : la copie se nomme, son aperçu se lit, et l'accepter passe.
-    _accorder(client, s["principale"], "resp2", "lecture")
+    # L'écriture rendue : la copie se nomme, son aperçu se lit, et l'accepter passe.
+    _accorder(client, s["principale"], "resp2", "ecriture")
     (d,) = _ok(client.get(f"/api/projets/{s['repli']}/demandes-recues", headers=RESP2))
     assert [c["album_id"] for c in d["copies"]] == [o] and d["copies"][0]["apercu"]
     _ok(_repondre(client, d["id"], "acceptee", RESP2, album_id=o))
@@ -466,14 +468,15 @@ def test_valider_une_correction_recopiee_n_en_fait_pas_l_auteur(client, ailleurs
 
 
 def test_la_lecture_se_relit_a_la_reponse(client, prise):
-    """Contre-relecture de la 3b : `resp2` lit la copie source par un GROUPE, retiré entre la
-    demande et la réponse. La copie quitte ses `copies`, accepter en la nommant répond 404 ;
-    il peut encore refuser."""
+    """Contre-relecture de la 3b : `resp2` ÉCRIT dans la copie source par un GROUPE (F6,
+    tranche 3c : c'était la lecture), retiré entre la demande et la réponse. La copie quitte
+    ses `copies`, accepter en la nommant répond 404 ; il peut encore refuser."""
     repli = _repli(client)
     _ok(client.put(f"/api/projets/{repli}/membres", headers=ADMIN,
                    json={"principal": "resp2", "role": "responsable"}))
+    du_projet(client, prise['principale'], "groupe", "lecteurs", headers=ADMIN)
     _ok(client.put(f"/api/collections/{prise['principale']}/acces", headers=ADMIN,
-                   json={"genre": "groupe", "principal": "lecteurs", "niveau": "lecture"}))
+                   json={"genre": "groupe", "principal": "lecteurs", "niveau": "ecriture"}))
     r2 = {"Remote-User": "resp2", "Remote-Groups": "lecteurs"}
     o = prise["albums"]["d1"]
     _travailler(client, o, IMPORTEUR)
@@ -541,7 +544,7 @@ def trois(client, ailleurs):
     _ok(client.put(f"/api/projets/{p3}/membres", headers=ADMIN,
                    json={"principal": "resp3", "role": "responsable"}))
     z = _collection(client, "Collection Z", projet_id=p3)
-    _accorder(client, z, "resp3", "lecture")
+    _accorder(client, z, "resp3", "ecriture")             # F6 : il y écrit
     r = _prendre(client, z, [_amorcer(ailleurs["docs"]["d1"], "transcription",
                                       ailleurs["albums"]["d1"])], ADMIN)
     copie_z = _ok(r)["documents"][0]["copie_id"]

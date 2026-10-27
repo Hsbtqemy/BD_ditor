@@ -22,6 +22,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], indirect=True)]
@@ -68,6 +69,7 @@ def _decor(base):
         for cid, qui, niveau in ((ids["Étude"], "sam", "ecriture"),
                                  (ids["Lecture"], "sam", "lecture"),
                                  (ids["Lecture"], "lina", "lecture")):
+            du_projet(c, cid, "utilisateur", qui, headers=ECRITURE)
             r = c.put(f"/api/collections/{cid}/acces",
                       json={"genre": "utilisateur", "principal": qui, "niveau": niveau})
             assert r.status_code == 200, r.text

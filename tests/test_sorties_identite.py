@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import ADMIN, du_projet
+
 import inventaire_routes
 import main
 
@@ -117,6 +119,7 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
     # `…/annuaire` rendaient des listes vides et passaient pour muettes alors qu'elles portent
     # des logins : le trou relevé par UX-4 le 2026-09-13, fermé ici pour qu'une colonne
     # d'identité ajoutée plus tard allume un rouge.
+    du_projet(client, col['id'], "utilisateur", SENTINELLES["login"], headers=ADMIN)
     r_acces = client.put(f"/api/collections/{col['id']}/acces", headers=ident,
                          json={"genre": "utilisateur", "principal": SENTINELLES["login"],
                                "niveau": "lecture"})
@@ -410,12 +413,15 @@ SORTIES_DECLAREES = {
         "accepté par écrit. Le nom passe par `Portee.peut_nommer_le_demandeur(consentement=…)`. "
         "Aucun artefact n'en sort (`demande` est une cible retenue)."),
     ("route", "/api/collections/{collection_id}/acces-du-projet"): (
-        {"login"},
+        {"login", "nom"},
         "COL-3, écran de la 3a — les accès que le PROJET tient sur sa collection de base : "
         "le principal de chaque responsable et de chaque membre, un login ou un nom de "
         "groupe, comme `…/acces`. Mêmes bornes que lui, et pour la même raison — une donnée "
         "sur des PERSONNES : à qui ADMINISTRE la collection. Balayée sur la BASE du semis "
-        "(`SUR_LA_BASE`), où elle parle ; aucun artefact n'en sort."),
+        "(`SUR_LA_BASE`), où elle parle ; aucun artefact n'en sort. Tranche 3c (F2, Q3, "
+        "Hugo, 2026-10-26) : `membres`, qui est du projet, et le NOM lisible d'un login (le "
+        "miroir `utilisateur`), sans les rôles — pour que « Qui entre » ne propose que ceux "
+        "qu'un accès peut viser ; décision de Hugo, exposition neuve acceptée."),
     ("route", "/api/projets/{projet_id}/demandes"): (
         {"login", "nom"},
         "COL-3, tranche 3 — les ENTRÉES de documents demandées pour ce projet, lues par son "
@@ -1047,6 +1053,7 @@ def test_une_lectrice_lit_la_demande_sans_le_nom(client, seme):
     sur le même semis, sous une lectrice de la collection, et exige que ni le login, ni le
     nom, ni le courriel de la sentinelle n'en sortent — ET que la demande y soit, sans
     quoi le silence viendrait d'une liste vide et non de la règle."""
+    du_projet(client, seme['collection_id'], "utilisateur", "zzlectrice7", headers=ADMIN)
     r = client.put(f"/api/collections/{seme['collection_id']}/acces", headers=seme["ident"],
                    json={"genre": "utilisateur", "principal": "zzlectrice7",
                          "niveau": "lecture"})

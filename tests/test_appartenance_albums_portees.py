@@ -20,7 +20,7 @@ import sqlite3
 
 import pytest
 
-from conftest import ADMIN
+from conftest import ADMIN, du_projet
 
 CACHEE_NOM = "Zq étude voisine cachée"
 EQUIPE = {"Remote-User": "m1", "Remote-Groups": "equipe"}      # lit A par son groupe
@@ -34,6 +34,8 @@ def _post(client, url, json, qui=ADMIN):
 
 
 def _accorder(client, cid, genre, principal, niveau):
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
+    du_projet(client, cid, genre, principal)
     r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                    json={"genre": genre, "principal": principal, "niveau": niveau})
     assert r.status_code == 200, r.text
@@ -92,20 +94,25 @@ def test_deux_groupes_cumulent_leurs_collections(client, decor):
 
 
 # ── être du projet n'est pas lire ────────────────────────────────────────────────────────
-def test_etre_responsable_du_projet_n_ouvre_pas_le_nom_d_une_collection(client, decor):
-    """Responsable du projet de repli ET lecteur de A : la cachée est du même projet, il ne
-    la lit pas, il ne doit pas la lire ici. Un filtre qui accepterait « du projet » à côté
-    de « lit la collection » la nommerait (mutant de la relecture, survivant sans ce test)."""
+def test_etre_responsable_du_projet_ouvre_le_nom_de_ses_collections(client, decor):
+    """Tranche 3c (F1, Hugo, 2026-10-26) — RENVERSÉ : responsable du projet de repli, `resp`
+    LIT toutes ses collections, la cachée comprise — il la voit donc nommée. (Avant la 3c, un
+    filtre qui acceptait « du projet » à côté de « lit la collection » la nommait à tort :
+    c'est désormais la règle.) Un simple MEMBRE ne la lit pas, ni son nom."""
+    r = client.put(f"/api/projets/{_repli(client)}/membres", headers=ADMIN,
+                   json={"genre": "utilisateur", "principal": "membre", "role": "membre"})
+    assert r.status_code in (200, 201), r.text
+    _accorder(client, decor["a"], "utilisateur", "membre", "lecture")
+    rep, app = _appartenance(client, {"Remote-User": "membre"})
+    assert app == {decor["mixte"]: [(decor["a"], "Étude A")]}
+    assert CACHEE_NOM.encode() not in rep.content
     r = client.put(f"/api/projets/{_repli(client)}/membres", headers=ADMIN,
                    json={"genre": "utilisateur", "principal": "resp", "role": "responsable"})
     assert r.status_code in (200, 201), r.text
-    _accorder(client, decor["a"], "utilisateur", "resp", "lecture")
     rep, app = _appartenance(client, {"Remote-User": "resp"})
-    assert app == {decor["mixte"]: [(decor["a"], "Étude A")]}
-    assert CACHEE_NOM.encode() not in rep.content
+    assert CACHEE_NOM.encode() in rep.content
 
 
-# ── formes de bord ───────────────────────────────────────────────────────────────────────
 def test_une_collection_d_un_autre_projet_se_nomme_si_on_la_lit(client, decor, db_path):
     """Base retouchée : `mixte` rangé AUSSI dans une collection d'un autre projet (la route
     le refuserait). Qui ne lit que celle-là la voit nommée, et seule ; les deux routes

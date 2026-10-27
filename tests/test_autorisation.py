@@ -281,6 +281,13 @@ def _ouvrir(db_path, collection_id, principal, niveau="lecture", genre="utilisat
         conn.execute("INSERT OR REPLACE INTO collection_acces "
                      "(collection_id, genre, principal, niveau) VALUES (?, ?, ?, ?)",
                      (collection_id, genre, principal, niveau))
+        # COL-3, tranche 3c (F2) : un accès de collection suppose d'être du projet — ce
+        # que la v38 fait de tout accès hors projet ; le décor le pose de même.
+        conn.execute("INSERT OR IGNORE INTO projet_acces (projet_id, genre, principal, role) "
+                     "SELECT p.id, ?, ?, 'membre' FROM collection c JOIN projet p "
+                     "ON p.id = COALESCE(c.projet_id, (SELECT id FROM projet WHERE repli = 1)) "
+                     "WHERE c.id = ? AND p.bac_a_sable_de IS NULL AND p.jeu = 0",
+                     (genre, principal, collection_id))
         conn.commit()
     finally:
         conn.close()

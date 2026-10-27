@@ -28,6 +28,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], indirect=True)]
@@ -84,6 +85,7 @@ def decor(live_server):
         archives = _ok(c.post("/api/collections", json={"nom": "Archives"}))["id"]
         for cid, qui, niveau in ((lot_a, "ana", "proprietaire"), (lot_a, "sam", "lecture"),
                                  (lot_b, "sam", "ecriture")):
+            du_projet(c, cid, "utilisateur", qui, headers=ECRITURE)
             _ok(c.put(f"/api/collections/{cid}/acces",
                       json={"genre": "utilisateur", "principal": qui, "niveau": niveau}))
         albums = {t: _album(c, t, lot_a) for t in ("Lotus", "Oreille", "Gardé")}
@@ -256,8 +258,10 @@ def test_la_base_se_regle_avec_une_phrase_avant_d_appliquer(page, decor):
     assert partie.value.post_data_json == {"acces_membres": None}
     expect(fiche.locator("#pj-position-msg")).to_contain_text("protégée")
     zone.locator("label.pj-position", has_text="ouverte").click()
+    # `mia`, et — entrés dans le projet pour leurs accès de collection (COL-3, tranche 3c,
+    # F2) — `ana` et `sam` : trois entrées.
     expect(zone.locator(".pj-position-confirme")).to_contain_text(
-        "Ouvrir donne à 1 entrée du projet le droit d'annoter")
+        "Ouvrir donne à 3 entrées du projet le droit d'annoter")
     zone.locator("[data-pj-position-annuler]").click()
     expect(zone.locator(".pj-position-confirme")).to_have_count(0)
     expect(zone.locator('input[value=""]')).to_be_checked()
@@ -351,11 +355,16 @@ def _qui_entre_admin(page, d):
 
 def test_qui_entre_dans_la_base_en_deux_groupes_dans_l_administration(page, decor):
     d = decor
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet :
+    # `eva`, que l'écran fait entrer plus bas, en est d'abord. Par le projet entrent donc
+    # `rui`, `mia`, `ana` et `sam` (entrés pour leurs accès de collection), et `eva`.
+    with _client(d["base"]) as c:
+        du_projet(c, d["base_id"], "utilisateur", "eva", headers=ADMIN)
     qui = _qui_entre_admin(page, d)
     titres = qui.locator("tr.qe-groupe-ligne th")
-    expect(titres).to_have_text(["Par le projet · 2", "Entrés ici · 0"])
+    expect(titres).to_have_text(["Par le projet · 5", "Entrés ici · 0"])
     derives = qui.locator("tr.qe-derive")
-    expect(derives).to_have_count(2)
+    expect(derives).to_have_count(5)
     expect(derives.locator("input")).to_have_count(0)
     expect(derives.locator(".qe-retirer")).to_have_count(0)
     regler = derives.first.locator("a.qe-regler")
@@ -366,11 +375,11 @@ def test_qui_entre_dans_la_base_en_deux_groupes_dans_l_administration(page, deco
     qui.locator(".qe-nom").fill("eva")
     qui.locator(".qe-genre").select_option("utilisateur")
     qui.locator(".qe-faire-entrer").click()
-    expect(titres).to_have_text(["Par le projet · 2", "Entrés ici · 1"])
+    expect(titres).to_have_text(["Par le projet · 5", "Entrés ici · 1"])
     page.set_viewport_size({"width": 375, "height": 900})
-    expect(qui.locator(".qe-groupe-titre")).to_have_text(["Par le projet · 2",
+    expect(qui.locator(".qe-groupe-titre")).to_have_text(["Par le projet · 5",
                                                           "Entrés ici · 1"])
-    expect(qui.locator(".qe-cartes-projet .qe-carte")).to_have_count(2)
+    expect(qui.locator(".qe-cartes-projet .qe-carte")).to_have_count(5)
     expect(qui.locator(".qe-cartes-projet input")).to_have_count(0)
 
 
@@ -381,7 +390,7 @@ def test_qui_entre_dans_la_base_en_deux_groupes_dans_la_bibliotheque(page, decor
     item = page.locator(f'#col-fiche[data-id="{d["base_id"]}"]')
     item.locator(".qe-choix").wait_for(timeout=5000)
     expect(item.locator("tr.qe-groupe-ligne th")).to_have_text(
-        ["Par le projet · 2", "Entrés ici · 0"])
+        ["Par le projet · 4", "Entrés ici · 0"])     # rui, mia, ana, sam (F2)
     expect(item.locator("tr.qe-derive input")).to_have_count(0)
     # Une collection ordinaire : un seul groupe, sans titre — le rendu d'avant.
     _ouvrir(page, d["base"], _comme("ana"), f"/corpus?collection={d['lot_a']}")

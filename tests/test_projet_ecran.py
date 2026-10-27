@@ -27,6 +27,7 @@ import pytest
 
 import autorisation
 import database
+from conftest import du_projet
 from conftest import ADMIN
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -160,9 +161,16 @@ def test_toute_collection_lue_a_son_projet_parmi_ceux_qu_on_peut_nommer(client, 
                     json={"nom": "Étude", "projet_id": deux_projets})
     assert c.status_code == 201, c.text
     carol = {"Remote-User": "carol"}                      # ni membre, ni rien d'autre
-    r = client.put(f"/api/collections/{c.json()['id']}/acces", headers=ADMIN,
-                   json={"genre": "utilisateur", "principal": "carol", "niveau": "lecture"})
-    assert r.status_code in (200, 201), r.text
+    # Un accès HORS du projet : depuis la tranche 3c (F2), seule une base retouchée en
+    # porte — posé en SQL.
+    import database
+    conn = database.get_connection()
+    try:
+        conn.execute("INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
+                     "VALUES (?, 'utilisateur', 'carol', 'lecture')", (c.json()["id"],))
+        conn.commit()
+    finally:
+        conn.close()
     for entetes in (ADMIN, ALICE, BOB, carol):
         projets = {p["id"] for p in client.get("/api/projets", headers=entetes).json()}
         cols = client.get("/api/collections", headers=entetes).json()

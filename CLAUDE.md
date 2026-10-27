@@ -590,7 +590,7 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   repartir de zéro : le responsable efface un album qu'il ne fait que LIRE. Les six routes
   de l'effacement passent par l'accesseur en LECTURE : qui lit sans pouvoir effacer reçoit
   un 403 nommé, qui ne lit pas un 404. `geste_sur_copie` (v36), que la règle de la dernière
-  copie lisait, n'est plus ni écrite ni lue.
+  copie lisait, est retirée par la v38 (Q11).
   **La
   protection du travail des membres passe de la PERMISSION à la VISIBILITÉ** :
   `GET /api/albums/{id}/travail-des-autres` rend, avant d'effacer, ce que d'autres y ont
@@ -884,9 +884,23 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   collections de son projet — il efface sans demande un album du projet hors de sa dernière
   copie, le retire du projet, et décide si ses membres créent des collections (cf. « Qui
   EFFACE sans demander » et « Créer une collection », plus haut) ; il consent, entre deux
-  projets, à ce qu'on parte de son travail (E7). Ce qui reste vrai : être d'un projet
-  n'ouvre aucune AUTRE collection que sa base, et les clauses qui filtrent les données ne
-  connaissent pas les projets. Une collection appartient à UN projet et
+  projets, à ce qu'on parte de son travail (E7). **Et RENVERSÉ encore le 2026-10-26**
+  (tranche 3c, v38 ; F1, F2, Q1, Q3, Hugo) : le RESPONSABLE LIT toutes les collections de son
+  projet — une lecture DÉRIVÉE dans `Portee.__init__` (`collections_des_projets`, hors bacs à
+  sable), jamais recopiée, qui n'ouvre ni l'écriture, ni l'export, ni « Qui entre » ;
+  `acces_derives` la dit, une ligne `lecture` par responsable sur toute collection qui n'est
+  pas la base ; E7 ne part que des collections où il ÉCRIT (F6). Et l'on n'entre dans une
+  collection que si l'on est du PROJET de la collection, la base et le repli compris
+  (`database.est_du_projet_par_reference`, la référence exacte — un compte qui n'en est que
+  par un groupe n'entre pas par son login, Q2) : `PUT …/acces` et
+  `gerer_collections.py creer --proprietaire` refusent par un 409 nommé ; qui SORT du projet
+  perd ses accès de collection, journalisés (`delien`), 409 nommé s'il est le dernier
+  propriétaire de l'une d'elles ; le propriétaire d'une collection lit les NOMS des membres
+  du projet, sans les rôles (`membres` de `GET …/acces-du-projet`). La v38 fait entrer dans
+  son projet, au rôle `membre`, tout principal qui y tenait un accès de collection hors
+  projet (ni bac à sable ni jeu). Ce qui reste vrai : être MEMBRE d'un projet n'ouvre aucune
+  AUTRE collection que sa base, et les clauses qui filtrent les données ne connaissent pas
+  les projets. Une collection appartient à UN projet et
   n'en change pas — aucune route ne la déplace — ; on EST d'un projet, `membre` ou
   `responsable` (`projet_acces`, le patron de `collection_acces` un étage plus haut :
   toujours une RÉFÉRENCE à un login ou à un nom de groupe, jamais une appartenance ; le
@@ -918,10 +932,11 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   donne tout ce que donne une propriété : décrire la collection, régler sa diffusion, son
   référent, ses accès dans « Qui entre », l'exporter d'office (DROIT-2), la déposer sur
   ShareDocs, lire les groupes de l'annuaire proposés pour elle. Ce qu'il NE fait PAS reste la
-  moitié qui compte : aucune AUTRE collection du projet ne s'ouvre à qui en est (ni
-  `clause_album`, ni `clause_destruction`, ni `clause_terme` ne connaissent les projets —
-  elles lisent les ensembles que la dérivation a remplis) ; un accès de collection se passe
-  d'être du projet ; et `GET /api/moi` n'en dit rien. Lire une
+  moitié qui compte : aucune AUTRE collection du projet ne s'ouvre à qui en est simple
+  membre (ni `clause_album`, ni `clause_terme` ne connaissent les projets — elles lisent les
+  ensembles que la dérivation a remplis ; le responsable les LIT depuis la tranche 3c) ; un
+  accès de collection se passait d'être du projet jusqu'à la tranche 3c (F2 : plus
+  maintenant) ; et `GET /api/moi` n'en dit rien. Lire une
   collection permet seulement de NOMMER son projet (nom, description) — la visibilité
   DÉRIVÉE de `clause_projet`, sans laquelle l'écran montrerait une collection d'aucun
   projet ; ni ses membres, ni ses autres collections. **Deux pouvoirs, et le second ne
@@ -1283,12 +1298,18 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 37). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 38). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - **Chaque migration se vérifie sur une VRAIE base de la version précédente** — règle posée par Hugo le 2026-10-16. Une base « défaite » à la main (une base neuve dont on retire colonnes et tables, puis qu'on ramène en arrière par `user_version`) n'a ni destructions, ni journal, ni dossiers d'images : la v30 passait toute sa suite sur de telles bases, et la relecture croisée l'a prise en défaut deux fois sur une base faite par le code v29 — une planche détruite que seule une activité nommait, un album détruit dont seul le dossier d'images restait, deux identifiants rendus après migration. La vraie base se fabrique par `tools/fabriquer_base_de_version.py <commit> tests/bases/v<N>-<commit>.sql`, qui fait tourner le code du commit lui-même — ses routes, sous trois comptes, avec des destructions en haut de chaque table — et vide la base en SQL ; le test de la migration suivante la charge et migre (`tests/test_identifiants_v30.py` lit `tests/bases/v29-10a3a90.sql`). Le commit est le dernier état de la version précédente — la tête de `main` avant la migration.
 - **Des identifiants qui ne reviennent jamais** (v30, décision de Hugo du 2026-10-15) : `albums`, `planches`, `regions`, `personnages` portent `AUTOINCREMENT`, comme les tables neuves `document` et `demande`. Sans lui SQLite rend au suivant l'identifiant du dernier détruit, et le journal, qui désigne ses cibles par identifiant et leur survit, mêlait deux objets. `projet` le porte depuis la v31 (D8), par la même reconstruction, son compteur amorcé au-dessus de ce que le journal, `demande.projet_id` et `document.projet_origine_id` ont nommé (`database._HORS_JOURNAL`). `collection` le porte depuis la v35 (COL-4) : les bacs à sable en font naître et mourir chaque semaine, et ses identifiants se réattribuaient — son compteur est amorcé au-dessus de ce que le journal et `demande.collection_id` ont nommé ; le NOM gardé à côté de l'identifiant dans une demande (`demande.collection_nom`, `demande_document.titre`) et dans la charge d'un emploi (`journal.journaliser_emploi`) reste, pour une collection supprimée qui ne se lit plus ; `demande.projet_nom` et `document.projet_origine_nom` gardent celui d'un projet supprimé, que son identifiant ne nomme plus. La vraie base de la v30 est `tests/bases/v30-5e7f56b.sql` (`tests/test_migration_v31.py`) ; celle de la v34, `tests/bases/v34-35cc4a3.sql` (`tests/test_migration_v35.py`) ; celle de
 la v35, `tests/bases/v35-f8dfa5c.sql` (`tests/test_migration_v36.py`), qui porte le jeu des
 bacs à sable, deux bacs à sable et une collection créée par un simple membre — la v36 ne
 pose qu'une colonne, `projet.membres_creent_collections`, à 0 pour tout l'existant.
+Celle de la v37, `tests/bases/v37-f6f53ed.sql` (`tests/test_migration_v38.py`), porte des
+accès de collection hors projet (un compte et un groupe, dans un projet ordinaire et dans le
+repli), une collection que la responsable de son projet ne lit pas, des copies touchées par
+deux comptes et des demandes d'effacement en attente — la v38 pose `demande.planche_id` et
+`planche_numero`, fait entrer chaque accès hors projet dans son projet (rôle `membre`, ni
+bac à sable ni jeu) et retire `geste_sur_copie`.
 - **La v30 RECONSTRUIT des tables** (`_reconstruire_avec_autoincrement`) : on ne pose pas `AUTOINCREMENT` par `ALTER`. Table neuve, lignes copiées avec leurs identifiants, ancienne détruite, neuve renommée, index et vues recréés, dans une transaction, **clés étrangères SUSPENDUES** pendant qu'elle tourne — actives, détruire `albums` effacerait par cascade toutes les planches ; la moindre référence orpheline NEUVE défait tout (celles qu'une base portait déjà ne ferment pas l'instance). Le compteur de chaque table repart au-dessus du plus grand identifiant que le journal ait jamais nommé — `evenement` ET `activite` (cible, clés des charges, portée d'une passe automatique sans effet) —, et celui des albums en plus au-dessus du plus grand dossier `album_N` présent dans `corpus/` ou `derivatives/` : le journal d'une base v29 ne nomme aucun album. Un identifiant détruit que rien ne nomme plus peut revenir une fois. Gardée par la version et idempotente (une table qui porte déjà `AUTOINCREMENT` n'est pas touchée) ; une table d'une autre forme arrête tout avant la première reconstruction. Elle valide la transaction en cours avant de commencer (`PRAGMA foreign_keys` ne change pas dans une transaction) : une reconstruction qui échoue laisse la base en v29, prête à rejouer.
 - **La v35 reconstruit aussi `tags`** (`database._tags_par_espace`, COL-4) : SQLite ne retire pas par `ALTER` l'unicité d'une colonne, et `label` cesse d'être unique dans toute l'instance pour l'être PAR ESPACE (`tags.espace`, 0 pour l'instance, l'identifiant du bac à sable sinon ; `idx_tags_espace_label`). La forme de la v30 — clés étrangères suspendues (actives, détruire `tags` viderait `annotation_tags`), index et vues recréés —, par PRÉSENCE de la colonne. Les index qui nomment une colonne posée par migration (`idx_tags_espace_label`, `idx_projet_bac_a_sable_de`, unique partiel) se posent dans `_migrate`, jamais dans `SCHEMA_SQL`, qui tournerait avant la colonne.
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).

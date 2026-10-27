@@ -32,6 +32,7 @@ from playwright.sync_api import expect  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import database  # noqa: E402
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 from tools.mesurer_reflow import ECRASEMENT, SONDE, decrire_ecrasement  # noqa: E402
 
@@ -108,6 +109,9 @@ def _membre(base, projet_id, principal, role="membre", genre="utilisateur"):
 
 
 def _acces(base, collection_id, principal, niveau="lecture", genre="utilisateur"):
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
+    with httpx.Client(base_url=base, trust_env=False, timeout=30) as c:
+        du_projet(c, collection_id, genre, principal, headers=ECRITURE)
     _api(base, "PUT", f"/api/collections/{collection_id}/acces",
          {"genre": genre, "principal": principal, "niveau": niveau})
 
@@ -1548,11 +1552,11 @@ def test_un_responsable_regle_son_projet_et_lui_seul(page, seminaire):
         "Vous réglez qui entre dans ce projet. Le renommer, corriger sa description ou sa "
         "justification, ou le supprimer se demande à un administrateur de l'instance.")
     expect(_fiche(page).locator(".pj-justification")).to_have_text("Comparer deux éditions.")
-    # Il ne lit, de son projet, que sa collection de BASE, qu'il possède par son rôle
-    # (D10) : elle seule est nommée, et la fiche dit pourquoi les autres ne le sont pas.
-    expect(_fiche(page).locator(".pj-collections a")).to_have_text(["Séminaire 2026"])
-    expect(_fiche(page)).to_contain_text("Seules les collections que vous lisez sont nommées ici.")
-    assert "Fermée au responsable" not in page.content()
+    # Il LIT toutes les collections de son projet depuis la tranche 3c de COL-3 (F1) — sa
+    # base, qu'il possède par son rôle (D10), et les autres, en lecture : toutes sont
+    # nommées.
+    expect(_fiche(page).locator(".pj-collections a")).to_have_text(
+        ["Séminaire 2026", "Étude des émotions", "Fermée au responsable"])
 
     # Et il RÈGLE : faire entrer part sous son identité, et le serveur l'accepte.
     partie.locator(".mp-choix").select_option("groupe:etudiants-bd-2026")
@@ -1813,10 +1817,13 @@ def test_ce_que_lit_qui_ne_regle_aucun_projet_suit_ce_qu_il_est(page, seminaire)
         "Les projets se règlent par leur responsable. Vous êtes membre des projets "
         "« Atelier lettrage » et « Séminaire 2026 » : vous n'y réglez rien.")
 
+    # L'arrivant lit une collection : depuis la tranche 3c (F2), il est entré dans son projet
+    # pour la lire — la phrase le dit membre.
     _ouvrir_les_projets(page, d["base"], {"Remote-User": "arrivant"})
     expect(page.locator("#projets-ferme-texte")).to_be_visible()
     expect(page.locator("#projets-ferme-texte")).to_have_text(
-        "Les projets se règlent par leur responsable. Vous n'en réglez aucun.")
+        "Les projets se règlent par leur responsable. Vous êtes membre du projet "
+        "« Séminaire 2026 » : vous n'y réglez rien.")
     expect(page.locator("#projets-bloc")).to_be_hidden()
 
     _ouvrir_les_projets(page, d["base"], {"Remote-User": "nadia"})

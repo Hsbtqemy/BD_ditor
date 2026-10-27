@@ -21,6 +21,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import annuaire  # noqa: E402
 import config  # noqa: E402
 
+from conftest import du_projet
 from conftest import ADMIN  # noqa: E402
 
 
@@ -36,6 +37,8 @@ def _collection(client, nom="Étude"):
 
 
 def _acces(client, cid, genre, principal, niveau="lecture"):
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
+    du_projet(client, cid, genre, principal)
     r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                    json={"genre": genre, "principal": principal, "niveau": niveau})
     assert r.status_code in (200, 201), r.text

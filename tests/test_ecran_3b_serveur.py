@@ -18,6 +18,7 @@ import json
 
 import pytest
 
+from conftest import du_projet
 from conftest import ADMIN
 from test_amorcer import LEA, SAM, source  # noqa: F401
 from test_amorcer_entre_projets import (RESP2, _demander_ailleurs, _repondre, _travailler,
@@ -166,6 +167,7 @@ def test_un_retrait_ne_se_lit_que_par_qui_possedait_la_collection_alors(client, 
     il est membre. Un propriétaire nommé APRÈS ne lit pas les anciens, ni ne les marque
     « Vu » (le 404 d'un retrait absent) ; la portée totale les lit tous."""
     b1, x = efface["b1"], efface["x"]
+    du_projet(client, x, "groupe", "equipe-x", headers=ADMIN)
     r = client.put(f"/api/collections/{x}/acces", headers=ADMIN,
                    json={"genre": "groupe", "principal": "equipe-x", "niveau": "proprietaire"})
     assert r.status_code == 200, r.text

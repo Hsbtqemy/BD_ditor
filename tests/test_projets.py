@@ -26,6 +26,7 @@ import pytest
 import autorisation
 import config
 import database
+from conftest import du_projet
 from conftest import ADMIN
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -84,6 +85,8 @@ def _membre(client, projet_id, principal, role="membre", genre="utilisateur",
 
 
 def _acces(client, collection_id, principal, niveau="lecture", genre="utilisateur"):
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
+    du_projet(client, collection_id, genre, principal)
     r = client.put(f"/api/collections/{collection_id}/acces", headers=ADMIN,
                    json={"genre": genre, "principal": principal, "niveau": niveau})
     assert r.status_code in (200, 201), r.text
@@ -385,20 +388,34 @@ def test_la_portee_lit_les_projets_par_login_et_par_groupe(client, db_path, deco
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("role", ["membre", "responsable"])
 def test_etre_du_projet_n_ouvre_que_sa_collection_de_base(client, decor, db_path, role):
-    """Entrer dans un projet n'ouvre AUCUNE de ses collections, hors sa collection de BASE
-    (COL-3, tranche 3, D10 — elle s'appelait « …n'ouvre aucune de ses collections » avant
-    que Hugo ne tranche, et se lisait vraie de toutes). Membre ou responsable de
-    « Séminaire », sans aucun accès de collection, alice ne liste que la base — ouverte en
-    écriture par défaut, à elle en propriété si elle est responsable — ; ni la collection
+    """Entrer dans un projet comme MEMBRE n'ouvre AUCUNE de ses collections, hors sa
+    collection de BASE (COL-3, tranche 3, D10). Son RESPONSABLE, depuis la tranche 3c (F1,
+    Hugo, 2026-10-26 — RENVERSÉ pour lui), LIT toutes les autres : la collection d'étude et
+    son album, en lecture seule — il n'y écrit pas, et n'en règle pas « Qui entre ».
+    Membre, alice ne liste que la base — ouverte en écriture par défaut — ; ni la collection
     d'étude ni son album, qui lui répondent « introuvable ». Elle voit le NOM du projet, et
-    le compte de ses collections lui dit un — celles qu'elle lit, pas celles qui
-    existent."""
+    le compte de ses collections dit celles qu'elle lit, pas celles qui existent."""
     assert _membre(client, decor["projet"], "alice", role=role).status_code == 200
     base = _sql(db_path, "SELECT id FROM collection WHERE base = 1 AND projet_id = ?",
                 (decor["projet"],))[0]["id"]
-    assert [(c["id"], c["mon_niveau"]) for c in client.get(
-        "/api/collections", headers=ALICE).json()] \
-        == [(base, "proprietaire" if role == "responsable" else "ecriture")]
+    vues = [(c["id"], c["mon_niveau"]) for c in client.get(
+        "/api/collections", headers=ALICE).json()]
+    if role == "responsable":
+        assert sorted(vues) == sorted([(base, "proprietaire"),
+                                       (decor["collection"], "lecture")])
+        assert [a["id"] for a in client.get("/api/albums", headers=ALICE).json()] == [
+            decor["album"]]
+        assert client.get(f"/api/albums/{decor['album']}/planches",
+                          headers=ALICE).status_code == 200
+        assert client.get(f"/api/collections/{decor['collection']}/acces",
+                          headers=ALICE).status_code == 403
+        r = client.post("/api/albums", headers=ALICE,
+                        json={"titre": "Glissé", "collection_id": decor["collection"]})
+        assert r.status_code == 404
+        projets = client.get("/api/projets", headers=ALICE).json()
+        assert [(p["id"], p["nb_collections"]) for p in projets] == [(decor["projet"], 2)]
+        return
+    assert vues == [(base, "ecriture")]
     assert client.get("/api/albums", headers=ALICE).json() == []
     assert client.get(f"/api/albums/{decor['album']}/planches",
                       headers=ALICE).status_code == 404
@@ -413,13 +430,20 @@ def test_etre_du_projet_n_ouvre_que_sa_collection_de_base(client, decor, db_path
     assert [(p["id"], p["nb_collections"]) for p in projets] == [(decor["projet"], 1)]
 
 
-def test_un_acces_de_collection_se_passe_d_etre_du_projet(client, decor):
-    """L'autre sens : bob lit la collection sans être du projet, et rien ne lui est
-    retiré. Il lit le nom du projet PAR sa collection — sans rôle, sans le gérer, sans sa
+def test_un_acces_de_collection_exige_d_etre_du_projet(client, decor, db_path):
+    """Tranche 3c (F2, Hugo, 2026-10-26) — RENVERSÉ : « un accès de collection se passe
+    d'être du projet » n'a plus cours. Hors du projet, bob reçoit un 409 nommé ; on n'entre
+    dans une collection que si l'on est du projet. Une base retouchée à la main (un accès
+    posé en SQL, que la v38 aurait fait entrer dans le projet) garde la lecture dérivée du
+    nom : bob lit le nom du projet PAR sa collection — sans rôle, sans le gérer, sans sa
     justification, sans la liste de ses membres — et aucun autre projet ne lui apparaît."""
     autre = _projet(client, "Projet voisin")
     _collection(client, "Fermée à bob", projet_id=decor["projet"])
-    _acces(client, decor["collection"], "bob")
+    r = client.put(f"/api/collections/{decor['collection']}/acces", headers=ADMIN,
+                   json={"genre": "utilisateur", "principal": "bob", "niveau": "lecture"})
+    assert r.status_code == 409 and "Séminaire" in r.json()["detail"], r.text
+    _sql(db_path, "INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
+                  "VALUES (?, 'utilisateur', 'bob', 'lecture')", (decor["collection"],))
 
     vue = client.get("/api/collections", headers=BOB).json()
     assert [(c["id"], c["projet_id"], c["projet_nom"]) for c in vue] \
@@ -452,11 +476,12 @@ def test_moi_ne_dit_rien_des_projets(client, decor):
     """`GET /api/moi` ne gagne rien : l'écran lit les projets par leur route. Un test y
     compare déjà la réponse entière en mono-poste ; celui-ci le dit d'un responsable. Le
     compte de ses collections dit la base du projet, qu'il possède (D10) : c'est un accès
-    de collection, et la portée vide ne doit pas s'afficher pour lui."""
+    de collection, et la portée vide ne doit pas s'afficher pour lui. Depuis la
+    tranche 3c (F1), il LIT aussi la collection d'étude : deux."""
     assert _membre(client, decor["projet"], "alice", role="responsable").status_code == 200
     moi = client.get("/api/moi", headers=ALICE).json()
     assert "projet" not in json.dumps(moi).lower()
-    assert moi["acces"]["collections"] == 1
+    assert moi["acces"]["collections"] == 2
 
 
 # --------------------------------------------------------------------------- #
@@ -821,9 +846,13 @@ def test_creer_une_collection_dans_un_autre_projet_demande_d_en_etre(client, db_
     (COL-3, tranche 3b), que le projet ouvre la création à ses membres. 404 à qui ne le
     voit pas — et à un projet qui n'existe pas, la même réponse ; 403 nommé à qui en lit le
     nom par une collection sans en être, et à la membre tant que le réglage est fermé. La
-    membre crée, devient propriétaire de SA collection, et celle-ci est du projet."""
+    membre crée, devient propriétaire de SA collection, et celle-ci est du projet.
+
+    Bob lit une collection du projet SANS en être : depuis la tranche 3c (F2), seule une
+    base retouchée à la main porte un tel accès — posé en SQL."""
     pid = decor["projet"]
-    _acces(client, decor["collection"], "bob")
+    _sql(db_path, "INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
+                  "VALUES (?, 'utilisateur', 'bob', 'lecture')", (decor["collection"],))
     assert _membre(client, pid, "alice").status_code == 200
     r = client.post("/api/collections", json={"nom": "Trop tôt", "projet_id": pid},
                     headers=ALICE)

@@ -24,6 +24,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], indirect=True)]
@@ -48,6 +49,7 @@ def _decor(base, noms=("p10.png", "p2.png", "p1.png")):
     with httpx.Client(base_url=base, trust_env=False, timeout=60, headers=ECRITURE) as c:
         cid = c.post("/api/collections", json={"nom": "Étude"}).json()["id"]
         for qui, niveau in (("sam", "ecriture"), ("lina", "lecture")):
+            du_projet(c, cid, "utilisateur", qui, headers=ECRITURE)
             r = c.put(f"/api/collections/{cid}/acces",
                       json={"genre": "utilisateur", "principal": qui, "niveau": niveau})
             assert r.status_code == 200, r.text

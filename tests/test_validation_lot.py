@@ -18,6 +18,7 @@ import pytest
 import journal
 import main
 import pipeline.segmentation as seg
+from conftest import du_projet
 from conftest import ADMIN
 
 LECTRICE = {"Remote-User": "lectrice"}      # lit la collection, n'y écrit pas
@@ -130,6 +131,7 @@ def collection_partagee(client, derriere_proxy, png_bytes):
     assert r.status_code == 201, r.text
     cid = r.json()["id"]
     for login, niveau in (("lectrice", "lecture"), ("ecrivain", "ecriture")):
+        du_projet(client, cid, "utilisateur", login, headers=ADMIN)
         r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                        json={"genre": "utilisateur", "principal": login, "niveau": niveau})
         assert r.status_code == 200, r.text

@@ -41,7 +41,8 @@ from config import STATUTS_DIFFUSION
 from database import (DEMANDE_REJOINDRE, LONGUEUR_MOTIF, NATURES,
                       clore_rejoindre_d_une_copie_au_fonds, noms_lisibles,
                       collection_row, collections,
-                      document_d_album, etat_embargo, nom_reserve, poser_projet_de_copie,
+                      document_d_album, est_du_projet_par_reference, etat_embargo,
+                      nom_reserve, poser_projet_de_copie,
                       projet_d_album, projet_de_collection,
                       collection_de_base, projet_de_jeu, projet_par_defaut, ranger_copie,
                       un_proprietaire_tient_toute_la_copie)
@@ -166,6 +167,20 @@ def _compte_proprietaires(conn, collection_id: int) -> int:
     derives = sum(1 for a in autorisation.acces_derives(conn, collection_id)
                   if a["niveau"] == autorisation.PROPRIETAIRE)
     return explicites + derives
+
+
+def _exiger_du_projet(conn, collection_id: int, genre: str, principal: str) -> None:
+    """409 nommé si ce principal n'est pas du projet de la collection (F2, COL-3, tranche
+    3c). La règle est `database.est_du_projet_par_reference` ; ce helper dit le refus."""
+    projet_id = projet_de_collection(conn, collection_id)
+    if est_du_projet_par_reference(conn, projet_id, genre, principal):
+        return
+    p = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
+    qui = f"Le groupe « {principal} »" if genre == autorisation.GROUPE else f"« {principal} »"
+    raise HTTPException(409, f"{qui} n'est pas du projet « {p['nom'] if p else '?'} » : "
+                             "faites-le entrer dans le projet d'abord — c'est son responsable "
+                             "qui le fait. Un compte qui n'en est que par un groupe y entre "
+                             "par son login, ou l'accès se donne au groupe.")
 
 
 def _refuser_nom_reserve(nom: str) -> None:
@@ -543,15 +558,31 @@ def list_acces_du_projet(collection_id: int, conn: sqlite3.Connection = Depends(
     Rend `base` (la collection est-elle la base de son projet), le projet (`projet_id`,
     `projet_nom`), la position de ses membres (`acces_membres`), `gerable` — l'appelant
     peut-il régler ces accès, c'est-à-dire gérer le projet (`peut_gerer_projet`) — et les
-    `lignes` (`autorisation.acces_derives`). Hors d'une base, `lignes` est vide."""
+    `lignes` (`autorisation.acces_derives`). Hors d'une base, `lignes` dit la lecture des
+    responsables du projet (F1, tranche 3c) ; dans un projet isolé, rien.
+
+    `membres` (COL-3, tranche 3c, F2 et Q3, Hugo, 2026-10-26) : qui est du projet — `genre`,
+    `principal`, et le `nom` lisible d'un login (le miroir `utilisateur`), SANS les rôles —,
+    pour que « Qui entre » ne propose que ceux qu'un accès peut viser : on n'entre dans une
+    collection que si l'on est du projet. Une exposition NEUVE, que la décision emporte :
+    lire une collection ne nommait pas les membres de son projet ; l'administrer les nomme."""
     c = _get_collection(conn, portee, collection_id, administrer=True)
     projet_id = projet_de_collection(conn, collection_id)
     p = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
     base = bool(c["base"])
+    membres = _rows(conn.execute(
+        "SELECT genre, principal FROM projet_acces WHERE projet_id = ? "
+        "ORDER BY genre DESC, principal", (projet_id,)))
+    noms = noms_lisibles(conn, [m["principal"] for m in membres
+                                if m["genre"] == autorisation.UTILISATEUR])
+    for m in membres:
+        m["nom"] = noms.get(m["principal"]) if m["genre"] == autorisation.UTILISATEUR \
+            else None
     return {"base": base, "projet_id": projet_id, "projet_nom": p["nom"] if p else None,
             "acces_membres": c["acces_membres"] if base else None,
             "gerable": portee.peut_gerer_projet(projet_id),
-            "lignes": autorisation.acces_derives(conn, collection_id)}
+            "lignes": autorisation.acces_derives(conn, collection_id),
+            "membres": membres}
 
 
 @router.get("/api/collections/{collection_id}/annuaire")
@@ -628,6 +659,12 @@ def accorder_acces(collection_id: int, payload: AccesIn,
     `exporter` (DROIT-2) se pose dans le même geste, et par le même PROPRIÉTAIRE :
     décider ce qui sort d'une collection l'engage autant que décider qui y entre. Il
     est tracé avec le niveau, dans le même événement du journal.
+
+    COL-3, tranche 3c (F2, Hugo, 2026-10-26) — on n'entre dans une collection que si l'on est
+    du PROJET de la collection, la base comprise : 409 nommé sinon, après la garde
+    d'administration (403 / 404 inchangés) et avant le contrôle du dernier propriétaire. La
+    RÉFÉRENCE exacte (`database.est_du_projet_par_reference`, Q2) : un compte qui n'est du
+    projet que par un groupe y entre par son login, ou l'accès se donne au groupe.
     """
     _get_collection(conn, portee, collection_id, administrer=True)
     _refuser_le_jeu(conn, collection_id=collection_id)    # COL-4 : personne n'y entre
@@ -640,6 +677,7 @@ def accorder_acces(collection_id: int, payload: AccesIn,
     principal = (payload.principal or "").strip()
     if not principal:
         raise HTTPException(422, "Le principal (login ou nom de groupe) est requis.")
+    _exiger_du_projet(conn, collection_id, payload.genre, principal)
     # Rétrograder le DERNIER propriétaire laisserait une collection que plus personne ne
     # peut administrer — sauf un administrateur, mais compter là-dessus est précisément le
     # SQL à la main qu'AUTH-3 supprime.

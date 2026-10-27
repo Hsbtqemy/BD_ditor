@@ -27,6 +27,7 @@ import conflit
 import database
 import main
 import socle
+from conftest import du_projet
 from conftest import ADMIN, make_png
 from test_jeu import DOC_EXEMPLE, DOC_PARCOURS, DOC_STOCK_SERVEUR, ecrire_jeu
 

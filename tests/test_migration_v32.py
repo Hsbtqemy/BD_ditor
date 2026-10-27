@@ -22,6 +22,8 @@ from pathlib import Path
 import pytest
 
 import database
+import migration_v38
+from migration_v38 import COLONNES_V38
 
 BASE_V31 = Path(__file__).resolve().parent / "bases" / "v31-16c6127.sql"
 TABLES_NEUVES = {"region_origine", "jeu_document", "retrait_vu", "geste_sur_copie"}
@@ -64,6 +66,13 @@ def vraie_v31(tmp_path, monkeypatch):
 # La v37 (ANN-7, tranche 1) aussi : seize tables neuves, vides, et `regions.nom`.
 TABLES_NEUVES |= set(database.TABLES_DES_GRILLES)
 COLONNES_NEUVES["regions"] = (*COLONNES_NEUVES.get("regions", ()), "nom")
+
+# La v38 (COL-3, tranche 3c) : `geste_sur_copie` part, `demande` gagne deux colonnes, et des
+# membres de projet naissent des accès hors projet (`migration_v38`, éprouvée par
+# `tests/test_migration_v38.py`).
+TABLES_NEUVES.discard("geste_sur_copie")
+for _t, _c in COLONNES_V38.items():
+    COLONNES_NEUVES[_t] = (*COLONNES_NEUVES.get(_t, ()), *_c)
 
 
 def _etat(db):
@@ -110,7 +119,9 @@ def test_la_base_chargee_est_bien_une_v31_qui_a_vecu(vraie_v31):
 
 def test_une_vraie_base_v31_migre_sans_rien_perdre(vraie_v31):
     avant = _etat(vraie_v31)
+    membres_avant = migration_v38.membres(vraie_v31)
     database.init_db()
+    migration_v38.retirer_les_membres_de_la_v38(vraie_v31, membres_avant)
     apres = _etat(vraie_v31)
     assert _sql(vraie_v31, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     assert {t: n for t, n in apres["comptes"].items() if t not in TABLES_NEUVES} \
@@ -179,12 +190,13 @@ def test_une_region_copiee_part_avec_sa_region_mais_pas_avec_sa_source(vraie_v31
 
 
 def test_le_commentaire_de_la_derniere_colonne_est_sous_elle():
-    """`cran` est la dernière colonne de `demande` : son commentaire au-dessus d'elle
-    ferait tronquer le schéma par un `DROP COLUMN` (v29, mesuré sur SQLite 3.49)."""
+    """`cran` était la dernière colonne de `demande` — c'est `planche_numero` depuis la v38
+    (COL-3, tranche 3c) : son commentaire au-dessus d'elle ferait tronquer le schéma par un
+    `DROP COLUMN` (v29, mesuré sur SQLite 3.49)."""
     bloc = re.search(r"CREATE TABLE IF NOT EXISTS demande \((.*?)\n\);", database.SCHEMA_SQL,
                      re.S).group(1)
     lignes = [x.strip() for x in bloc.splitlines() if x.strip()]
     derniere = [x for x in lignes if not x.startswith("--")][-1]
-    assert derniere.startswith("cran ") and not derniere.endswith(",")
+    assert derniere.startswith("planche_numero ") and not derniere.endswith(",")
     avant = lignes[lignes.index(derniere) - 1]
     assert not avant.startswith("--"), avant

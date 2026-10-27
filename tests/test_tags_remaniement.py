@@ -23,6 +23,7 @@ import sqlite3
 
 import pytest
 
+from conftest import du_projet
 from conftest import ADMIN
 
 PROPRIO = {"Remote-User": "proprio"}
@@ -116,6 +117,7 @@ def decor(client, db_path, png_bytes, derriere_proxy):
             ids[nom] = r.json()["id"]
     for qui, niveau in (("proprio", "proprietaire"), ("ecrivain", "ecriture"),
                         ("lecteur", "lecture")):
+        du_projet(client, ids['c1'], "utilisateur", qui, headers=ADMIN)
         r = client.put(f"/api/collections/{ids['c1']}/acces", headers=ADMIN, json={
             "genre": "utilisateur", "principal": qui, "niveau": niveau})
         assert r.status_code == 200, r.text
@@ -260,6 +262,7 @@ def test_un_tag_local_ne_se_pose_plus_hors_de_sa_collection(client, db_path, dec
     non plus. Sous toute portée : c'est une propriété des données."""
     t = _tag(db_path, "local-a", decor["c1"])
     for coll, niveau in (("c1", "lecture"), ("c2", "ecriture")):
+        du_projet(client, decor[coll], "utilisateur", "passeur", headers=ADMIN)
         r = client.put(f"/api/collections/{decor[coll]}/acces", headers=ADMIN, json={
             "genre": "utilisateur", "principal": "passeur", "niveau": niveau})
         assert r.status_code == 200, r.text
@@ -371,11 +374,13 @@ def test_le_proprietaire_ne_voit_compter_que_ce_qu_il_ecrit(client, db_path, dec
     lui parvient pas non plus — l'écriture borne, pas la lecture."""
     t = _tag(db_path, "lu", decor["c1"])
     _poser(db_path, decor["r2"], t)
+    du_projet(client, decor['c2'], "utilisateur", "proprio", headers=ADMIN)
     r = client.put(f"/api/collections/{decor['c2']}/acces", headers=ADMIN, json={
         "genre": "utilisateur", "principal": "proprio", "niveau": "lecture"})
     assert r.status_code == 200, r.text
     r = client.delete(f"/api/tags/{t}", params={"a_blanc": True}, headers=PROPRIO)
     assert r.status_code == 403 and "regions" not in r.json()
+    du_projet(client, decor['c2'], "utilisateur", "proprio", headers=ADMIN)
     r = client.put(f"/api/collections/{decor['c2']}/acces", headers=ADMIN, json={
         "genre": "utilisateur", "principal": "proprio", "niveau": "ecriture"})
     assert r.status_code == 200, r.text
@@ -583,6 +588,7 @@ AUTRE = {"Remote-User": "autre"}
 
 
 def _autre_sur_c2(client, decor):
+    du_projet(client, decor['c2'], "utilisateur", "autre", headers=ADMIN)
     r = client.put(f"/api/collections/{decor['c2']}/acces", headers=ADMIN, json={
         "genre": "utilisateur", "principal": "autre", "niveau": "ecriture"})
     assert r.status_code == 200, r.text

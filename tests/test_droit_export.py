@@ -14,6 +14,7 @@ import sqlite3
 
 import autorisation
 import database
+from conftest import ADMIN, du_projet
 from test_autorisation import _ouvrir, deux_albums  # noqa: F401  (fixture importée)
 
 
@@ -120,6 +121,7 @@ def test_accorder_la_case_est_un_geste_de_proprietaire_et_se_trace(client, db_pa
     assert next(a for a in rep.json() if a["principal"] == "bob")["exporter"] is True
     assert _exportables(client, bob)[c1] is True
 
+    du_projet(client, c1, "utilisateur", "bob", headers=ADMIN)
     rep = client.put(f"/api/collections/{c1}/acces",
                      json={"principal": "bob", "niveau": "lecture"}, headers=carole)
     assert next(a for a in rep.json() if a["principal"] == "bob")["exporter"] is True
@@ -160,6 +162,7 @@ def test_accorder_l_export_a_qui_ne_fait_que_LIRE_est_une_decision_qui_se_stocke
     carole, bob = {"Remote-User": "carole"}, {"Remote-User": "bob"}
     assert _exportables(client, bob)[c1] is False        # lire seul ne donne rien
 
+    du_projet(client, c1, "utilisateur", "bob", headers=ADMIN)
     rep = client.put(f"/api/collections/{c1}/acces", headers=carole,
                      json={"principal": "bob", "niveau": "lecture", "exporter": True})
     assert rep.status_code == 200, rep.text
@@ -175,6 +178,7 @@ def test_accorder_l_export_a_qui_ne_fait_que_LIRE_est_une_decision_qui_se_stocke
 def test_un_acces_neuf_part_sans_le_droit(client, db_path, deux_albums, derriere_proxy):
     c1 = deux_albums["c1"]
     _ouvrir(db_path, c1, "carole", niveau="proprietaire")
+    du_projet(client, c1, "utilisateur", "dora", headers=ADMIN)
     rep = client.put(f"/api/collections/{c1}/acces",
                      json={"principal": "dora", "niveau": "ecriture"},
                      headers={"Remote-User": "carole"})
@@ -204,6 +208,7 @@ def test_retrograder_un_proprietaire_ne_lui_POSE_pas_l_export(client, db_path, d
               if a["principal"] == "bob")
     assert (lu["exporter"], lu["exporter_pose"]) == (True, False), "d'office, rien de posé"
 
+    du_projet(client, c1, lu["genre"], "bob", headers=ADMIN)
     rep = client.put(f"/api/collections/{c1}/acces", headers=carole,
                      json={"genre": lu["genre"], "principal": "bob", "niveau": "ecriture",
                            "exporter": lu["exporter"]})
@@ -216,6 +221,7 @@ def test_retrograder_un_proprietaire_ne_lui_POSE_pas_l_export(client, db_path, d
     # La porte légitime reste ouverte : accorder l'export à ce membre est maintenant une
     # décision, et elle passe — en deux gestes, ce qu'un seul ne saurait distinguer de
     # l'écho qu'on vient de fermer.
+    du_projet(client, c1, lu["genre"], "bob", headers=ADMIN)
     rep = client.put(f"/api/collections/{c1}/acces", headers=carole,
                      json={"genre": lu["genre"], "principal": "bob", "niveau": "ecriture",
                            "exporter": True})

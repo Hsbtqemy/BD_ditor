@@ -28,6 +28,11 @@ def _vue(client, qui, projet_id):
                  if p["id"] == projet_id), None)
 
 
+def _db(client):
+    import database
+    return database.DB_PATH
+
+
 def _ok(r, *codes):
     assert r.status_code in (codes or (200,)), (r.status_code, r.text)
     return r.json() if r.content else None
@@ -56,9 +61,13 @@ def test_les_responsables_ne_se_nomment_qu_a_lui(client, prise):
     for qui in (RESP, ADMIN):
         assert "responsables" not in _vue(client, qui, p), qui
     # Qui ne voit le projet que par une collection qu'il lit (il n'en est pas) : rien.
-    for qui in (PROPRIO, LECTRICE, ECRIVAIN):
-        v = _vue(client, qui, p)
-        assert v is not None and v["mon_role"] is None and "responsables" not in v, qui
+    # Depuis la tranche 3c (F2), seule une base retouchée porte un tel accès — posé en SQL.
+    from test_projets import _sql
+    _sql(_db(client),
+         "INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
+         "VALUES (?, 'utilisateur', 'hors-projet', 'lecture')", (prise["x"],))
+    v = _vue(client, {"Remote-User": "hors-projet"}, p)
+    assert v is not None and v["mon_role"] is None and "responsables" not in v
     # Qui ne voit pas le projet ne le reçoit pas du tout.
     assert _vue(client, PERSONNE, p) is None
     # Le réglage ouvert, le membre crée : son bouton s'allume, les noms partent.

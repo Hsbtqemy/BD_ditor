@@ -37,6 +37,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], indirect=True)]
@@ -124,6 +125,7 @@ def decor(live_server):
                                  ("Témoins", "noe", "lecture"), ("Exercices", "paule", "proprietaire"),
                                  ("Exercices", "noe", "ecriture"),
                                  ("Inventaire", "marion", "proprietaire")):
+            du_projet(c, cols[nom], "utilisateur", qui, headers=ECRITURE)
             _ok(c.put(f"/api/collections/{cols[nom]}/acces",
                       json={"genre": "utilisateur", "principal": qui, "niveau": niveau}))
     albums, planches = {}, {}
@@ -200,10 +202,11 @@ def test_qui_cree_une_collection(page, decor):
     page.keyboard.press("Enter")    # éteint mais atteignable : au clavier, il dit pourquoi
     expect(page.locator("#col-creer-zone")).to_be_hidden()
     expect(page.locator("#col-creer-msg")).to_contain_text("demandez-le à Paule Prop")
-    # La lectrice n'est pas du projet : le bouton n'est pas là.
+    # La lectrice est entrée dans le projet pour lire sa collection (COL-3, tranche 3c, F2) :
+    # membre, le bouton s'y voit, éteint comme pour Noé.
     _ouvrir(page, d, "lea", projet=d["projet"])
     expect(page.locator("#bi-compte")).to_be_visible(timeout=5000)
-    expect(page.locator("#col-creer")).to_be_hidden()
+    expect(page.locator("#col-creer")).to_have_attribute("aria-disabled", "true")
     # La responsable : la case, décochée par défaut, sous la liste des collections.
     _ouvrir(page, d, "paule", f"/administration?vue=projets&projet={d['projet']}")
     case = page.locator("#pj-membres-creent")
@@ -548,7 +551,8 @@ def test_la_lectrice_ne_voit_aucun_geste_de_la_3b(page, decor):
     for geste in ("repartir", "retirer", "supprimer"):
         expect(fiche.locator(f'[data-act="{geste}"]')).to_have_count(0)
     expect(fiche.locator("[data-repartir-planche]")).to_have_count(0)
-    expect(page.locator("#col-creer")).to_be_hidden()
+    # Membre du projet depuis la tranche 3c (F2), elle n'y crée pas : le bouton est éteint.
+    expect(page.locator("#col-creer")).to_have_attribute("aria-disabled", "true")
     # Le membre qui écrit ne voit pas « Retirer du projet… », le geste du responsable.
     fiche = _fiche_album(page, d, "noe", "Pirates", "Exercices")
     expect(fiche.locator('[data-act="repartir"]')).to_be_visible()

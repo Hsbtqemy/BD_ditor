@@ -7,6 +7,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 from playwright.sync_api import expect  # noqa: E402
+from conftest import ECRITURE, du_projet  # noqa: E402
 
 from test_e2e_bibliotheque_3a import (_choisir_projet, _client, _comme, _ok,  # noqa: E402,F401
                                       _ouvrir, _requetes, decor)
@@ -32,6 +33,7 @@ def test_decocher_quand_on_ne_pourra_pas_recocher_se_confirme(page, decor):
     DEMANDE à Ana (D4 stricte). Le geste est un aller simple pour lui : il doit se confirmer,
     et dire qu'il ne pourra pas le défaire seul."""
     with _client(decor["base"]) as c:
+        du_projet(c, decor['lot_a'], "utilisateur", "sam", headers=ECRITURE)
         _ok(c.put(f"/api/collections/{decor['lot_a']}/acces",
                   json={"genre": "utilisateur", "principal": "sam", "niveau": "ecriture"}))
         _ok(c.put(f"/api/albums/{decor['albums']['Lotus']}/collections/{decor['lot_b']}"), 201)
@@ -79,9 +81,11 @@ def test_un_proprietaire_d_une_seule_collection_ne_voit_aucun_bouton(page, decor
     """Lotus vit dans Lot A (Ana) et Lot B (possédé par Zoé). Sam, qui écrit dans la base,
     demande à le ranger dans la base : Ana ne tient pas toute la copie — `repondable` faux."""
     with _client(decor["base"]) as c:
+        du_projet(c, decor['lot_b'], "utilisateur", "zoe", headers=ECRITURE)
         _ok(c.put(f"/api/collections/{decor['lot_b']}/acces",
                   json={"genre": "utilisateur", "principal": "zoe", "niveau": "proprietaire"}))
         _ok(c.put(f"/api/albums/{decor['albums']['Lotus']}/collections/{decor['lot_b']}"), 201)
+        du_projet(c, decor['base_id'], "utilisateur", "sam", headers=ECRITURE)
         _ok(c.put(f"/api/collections/{decor['base_id']}/acces",
                   json={"genre": "utilisateur", "principal": "sam", "niveau": "ecriture"}))
     with _client(decor["base"], _comme("sam")) as c:
@@ -98,10 +102,12 @@ def test_un_proprietaire_d_une_seule_collection_ne_voit_aucun_bouton(page, decor
     expect(page.locator("#bi-recues-compteur, .col-marque")).to_have_count(0)
 
 
-def test_deja_dans_ce_projet_demande_une_seconde_copie_et_le_pied_dit_le_contraire(page, decor):
-    """Rui (responsable, ne lit pas Lot A) coche Lotus, « déjà dans ce projet ». La requête
-    est un `zero` (une seconde copie), jamais un rejoindre ; le serveur en fait une DEMANDE
-    d'entrée. Le pied du panneau annonçait « ce que le projet a déjà entre tout de suite »."""
+def test_deja_dans_ce_projet_une_seconde_copie_se_fait_tout_de_suite(page, decor):
+    """Rui (responsable) coche Lotus, « déjà dans ce projet ». La requête est un `zero` (une
+    seconde copie), jamais un rejoindre. Avant la tranche 3c de COL-3, Rui ne lisait pas
+    Lot A et le serveur en faisait une DEMANDE d'entrée, que le pied du panneau démentait ;
+    depuis (F1), le responsable LIT toutes les collections de son projet — il lit donc une
+    copie du document, et la seconde copie se fait tout de suite, comme le pied le dit."""
     _choisir_projet(page, decor)
     vues = _requetes(page, "/prendre")
     _ouvrir(page, decor["base"], _comme("rui"))
@@ -118,9 +124,6 @@ def test_deja_dans_ce_projet_demande_une_seconde_copie_et_le_pied_dit_le_contrai
     assert corps["documents"] == [{"document_id": decor["docs"]["Lotus"], "reponse": "zero"}]
     with _client(decor["base"]) as c:
         dem = c.get(f"/api/projets/{decor['projet']}/demandes").json()
-        assert [d["genre"] for d in dem] == ["entree_documents"], dem
+        assert [d["genre"] for d in dem] == [], dem
     texte_ligne = ligne.locator(".reponse").inner_text()
-    assert texte_ligne == "demandé à un administrateur", texte_ligne
-    assert "entre tout de suite" not in pied.inner_text(), (
-        "le pied promet que « ce que le projet a déjà entre tout de suite » ; la ligne "
-        "« déjà dans ce projet » vient d'être DEMANDÉE : " + pied.inner_text())
+    assert "demandé" not in texte_ligne, texte_ligne

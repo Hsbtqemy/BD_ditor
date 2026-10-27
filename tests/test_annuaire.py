@@ -25,6 +25,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import annuaire  # noqa: E402
 import config  # noqa: E402
 
+from conftest import du_projet
 from conftest import ADMIN  # noqa: E402
 
 LLDAP = "http://lldap.test:17170"
@@ -276,6 +277,7 @@ def test_un_annuaire_qui_contredit_le_portail_ne_change_aucune_portee(
     monkeypatch.setattr(config, "ANNUAIRE_ADRESSE", "doublure:")
     cid = client.post("/api/collections", json={"nom": "Ouverte aux annotateurs"},
                       headers=ADMIN).json()["id"]
+    du_projet(client, cid, "groupe", "annotateurs", headers=ADMIN)
     assert client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                       json={"genre": "groupe", "principal": "annotateurs",
                             "niveau": "lecture"}).status_code in (200, 201, 204)

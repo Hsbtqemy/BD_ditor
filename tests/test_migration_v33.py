@@ -23,6 +23,8 @@ from pathlib import Path
 import pytest
 
 import database
+import migration_v38
+from migration_v38 import COLONNES_V38
 
 BASE_V32 = Path(__file__).resolve().parent / "bases" / "v32-0b4f1ef.sql"
 COLONNES_NEUVES = {"albums": ("tome", "lieu_masters"), "planches": ("master_origine",),
@@ -82,6 +84,13 @@ def vraie_v32(tmp_path, monkeypatch):
 TABLES_NEUVES |= set(database.TABLES_DES_GRILLES)
 COLONNES_NEUVES["regions"] = (*COLONNES_NEUVES.get("regions", ()), "nom")
 
+# La v38 (COL-3, tranche 3c) : `geste_sur_copie` part, `demande` gagne deux colonnes, et des
+# membres de projet naissent des accès hors projet (`migration_v38`, éprouvée par
+# `tests/test_migration_v38.py`).
+TABLES_NEUVES.discard("geste_sur_copie")
+for _t, _c in COLONNES_V38.items():
+    COLONNES_NEUVES[_t] = (*COLONNES_NEUVES.get(_t, ()), *_c)
+
 
 def _etat(db):
     tables = [r["name"] for r in _sql(
@@ -139,7 +148,9 @@ def test_la_base_chargee_est_bien_une_v32_qui_a_vecu(vraie_v32):
 
 def test_une_vraie_base_v32_migre_sans_rien_perdre(vraie_v32):
     avant = _etat(vraie_v32)
+    membres_avant = migration_v38.membres(vraie_v32)
     database.init_db()
+    migration_v38.retirer_les_membres_de_la_v38(vraie_v32, membres_avant)
     apres = _etat(vraie_v32)
     assert _sql(vraie_v32, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     # Aucune table de plus ni de moins, aucune ligne de plus ni de moins.

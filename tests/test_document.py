@@ -25,8 +25,10 @@ import pytest
 
 import comptes
 import database
+import migration_v38
 import journal
 import pipeline.sharedocs as sd
+from conftest import du_projet
 from conftest import ADMIN, make_png
 from test_projets import _fouillable, _outil, _repli, _sql
 
@@ -102,6 +104,7 @@ def decor(client, db_path, derriere_proxy):
         for principal, niveau in (("alice", "proprietaire"), ("bob", "ecriture")):
             if nom == "Voisine" and principal == "bob":
                 continue
+            du_projet(client, cols[nom], "utilisateur", principal, headers=ADMIN)
             assert client.put(
                 f"/api/collections/{cols[nom]}/acces", headers=ADMIN,
                 json={"genre": "utilisateur", "principal": principal,
@@ -209,7 +212,11 @@ def test_la_migration_fait_de_chaque_album_la_copie_d_un_document(base_v29):
     de son origine : la date de son import, et le projet où il vit. Rien d'autre ne bouge
     — ni le travail, ni les rangements, ni le journal, où la migration n'écrit rien."""
     avant = _photographie(base_v29)
+    membres_avant = migration_v38.membres(base_v29)
     database.init_db()                                   # upgrade réel v29 → v30
+    # La v38 (COL-3, tranche 3c) fait entrer les accès hors projet dans leur projet :
+    # éprouvée par `tests/test_migration_v38.py`, elle sort de la comparaison.
+    migration_v38.retirer_les_membres_de_la_v38(base_v29, membres_avant)
     assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
 
     albums = _sql(base_v29, "SELECT id, document_id, projet_id FROM albums ORDER BY id")
@@ -439,7 +446,9 @@ def test_les_tables_de_demande_naissent_vides_et_rien_ne_les_ecrit(client, db_pa
         "demande": ["id", "genre", "demandeur", "motif", "certifie_le", "projet_id",
                     "projet_nom",
                     "date_creation", "reponse", "repondu_par", "date_reponse",
-                    "collection_id", "collection_nom", "cran"],
+                    "collection_id", "collection_nom", "cran",
+                    # La v38 (COL-3, tranche 3c, F5) : la planche d'une demande.
+                    "planche_id", "planche_numero"],
         "demande_document": ["demande_id", "document_id", "album_id", "titre", "reponse",
                              "copie_id"]}
 
@@ -871,7 +880,9 @@ def test_importer_ne_compte_ni_comme_du_travail_laisse_ni_comme_un_rang(client, 
     client.get("/api/moi", headers=ALICE)
     vue = client.get("/api/comptes-et-groupes", headers=ADMIN).json()
     fiche = next(c for c in vue["comptes"] if c["login"] == "alice")
-    assert fiche["actes"] == 0 and fiche["verdict"] == "laisse des accès"
+    # Entrée dans le projet pour recevoir ses accès (COL-3, tranche 3c, F2).
+    assert fiche["actes"] == 0 and fiche["verdict"] == (
+        "laisse des accès et des entrées de projet")
 
     # Le contrôle mord : le premier acte d'ANNOTATION, lui, donne un rang et se compte.
     r = client.post(f"/api/planches/{pl['id']}/regions", headers=BOB,

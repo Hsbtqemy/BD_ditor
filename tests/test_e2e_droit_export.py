@@ -18,6 +18,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 from playwright.sync_api import expect  # noqa: E402
 
@@ -49,6 +50,7 @@ def decor(live_server):
         aid = c.post("/api/albums", json={"titre": "Sortie", "auteur": "X"}).json()["id"]
         c.post(f"/api/albums/{aid}/import", files={"file": ("p.png", make_png(), "image/png")})
         cid = c.get(f"/api/albums/{aid}/collections").json()[0]["id"]
+        du_projet(c, cid, "utilisateur", "bob", headers=ECRITURE)
         r = c.put(f"/api/collections/{cid}/acces",
                   json={"principal": "bob", "niveau": "ecriture"})
         assert r.status_code == 200, r.text
@@ -61,6 +63,7 @@ def _deux_collections_exportables(decor):
         c2 = c.post("/api/collections", json={"nom": "Seconde étude"}).json()["id"]
         assert c.put(f"/api/albums/{decor['album']}/collections/{c2}").status_code == 201
         for cid in (decor["collection"], c2):
+            du_projet(c, cid, "utilisateur", "bob", headers=ECRITURE)
             r = c.put(f"/api/collections/{cid}/acces",
                       json={"principal": "bob", "niveau": "lecture", "exporter": True})
             assert r.status_code == 200, r.text

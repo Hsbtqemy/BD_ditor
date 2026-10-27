@@ -1000,12 +1000,11 @@ def _accepter_un_amorcer_entre_projets(conn, portee, d: dict, source, sources: d
     acceptée, D11). Ne commite pas.
 
     La source, pour un responsable : une copie RANGÉE d'un projet qu'il gère, qui tient le
-    travail (`sources`), et qu'il LIT — le même 404 pour toute autre, qu'elle existe ou non :
-    il n'apprend rien d'une copie qu'il ne tient pas. Gérer un projet n'ouvre aucune de ses
-    collections (D10, hors sa base) : sans la lecture, un responsable qui ne lit pas la
-    collection d'une copie en ferait passer le travail dans un autre projet — dont il peut
-    être aussi responsable, et le lire alors par la copie neuve (relecture croisée de la 3b,
-    constat 2 ; la règle de `_source_d_amorce` dans un même projet, E4). Pour la portée totale : toute copie du document hors
+    travail (`sources`), et où il ÉCRIT — le même 404 pour toute autre, qu'elle existe ou
+    non : il n'apprend rien d'une copie qu'il ne tient pas. Il lit toutes les collections de
+    son projet depuis la tranche 3c (F1) ; sans l'écriture (F6 — c'était la lecture, relecture
+    croisée de la 3b, constat 2), il ferait passer dans un autre projet le travail d'une
+    collection qu'il ne fait que lire. Pour la portée totale : toute copie du document hors
     d'un projet isolé et hors du projet d'arrivée — c'est le recours quand aucun projet ne le
     tient. Ses autres refus se nomment (409), et la demande reste en attente : la collection
     supprimée, passée dans un autre projet, un cran illisible."""
@@ -1029,7 +1028,7 @@ def _accepter_un_amorcer_entre_projets(conn, portee, d: dict, source, sources: d
     else:
         tenues = {c["album_id"] for pid, copies in sources.items()
                   if portee.peut_gerer_projet(pid) for c in copies}
-        if source not in tenues or source not in _lues(conn, portee, [source]):
+        if source not in tenues or source not in _ecrites(conn, portee, [source]):
             raise introuvable
     collection_id = d["collection_id"]
     if collection_id is None or collection_row(conn, collection_id) is None:
@@ -1324,6 +1323,18 @@ def _lues(conn, portee, album_ids) -> set:
     if not album_ids:
         return set()
     ou, params = portee.clause_album("a.id")
+    marques = ", ".join("?" * len(album_ids))
+    return {r[0] for r in conn.execute(
+        f"SELECT a.id FROM albums a WHERE a.id IN ({marques}) AND {ou}",
+        (*album_ids, *params))}
+
+
+def _ecrites(conn, portee, album_ids) -> set:
+    """Celles de ces copies où l'appelant ÉCRIT (`clause_album(…, ecriture=True)`) — la
+    borne d'E7 depuis la tranche 3c (F6)."""
+    if not album_ids:
+        return set()
+    ou, params = portee.clause_album("a.id", ecriture=True)
     marques = ", ".join("?" * len(album_ids))
     return {r[0] for r in conn.execute(
         f"SELECT a.id FROM albums a WHERE a.id IN ({marques}) AND {ou}",
@@ -1773,11 +1784,13 @@ def demandes_recues_du_projet(projet_id: int, conn: sqlite3.Connection = Depends
     source. Jamais la collection d'arrivée : le projet suffit à consentir. `repondable` :
     `Portee.peut_repondre_a`.
 
-    `copies` ne porte que les copies qu'il LIT, leur aperçu compris (relecture croisée de la
-    3b, constat 2) : gérer le projet n'ouvre pas ses collections, et l'aperçu compterait le
-    travail d'une collection fermée. Une demande dont il ne lit aucune copie se lit encore,
-    sans copie à nommer : il peut la refuser — un refus la clôt pour tous (Hugo,
-    2026-10-25) —, et l'administrateur, qui lit tout, y répond à sa place."""
+    `copies` ne porte que les copies où il ÉCRIT, leur aperçu compris (F6, COL-3, tranche
+    3c ; c'étaient celles qu'il LIT jusque-là, relecture croisée de la 3b, constat 2) : il
+    lit désormais toutes les collections de son projet (F1), et le travail d'une collection
+    qu'il lit sans y écrire ne part pas dans un autre projet sur sa seule réponse. Une
+    demande dont il n'écrit aucune copie se lit encore, sans copie à nommer : il peut la
+    refuser — un refus la clôt pour tous (Hugo, 2026-10-25) —, et l'administrateur, qui lit
+    tout, y répond à sa place."""
     p = _get_projet(conn, portee, projet_id, gerer=True,
                     motif="Les demandes reçues par un projet se lisent par son responsable.")
     if est_isole(conn, p["id"]):
@@ -1803,10 +1816,10 @@ def demandes_recues_du_projet(projet_id: int, conn: sqlite3.Connection = Depends
         # qu'accepter peut nommer, chacune avec son aperçu en nombres.
         tenues = {c["album_id"] for c in sources[projet_id]}
         rangees = copies_rangees_du_projet(conn, d["document_id"], projet_id)
-        lues = _lues(conn, portee, [c["album_id"] for c in rangees])
+        ecrites = _ecrites(conn, portee, [c["album_id"] for c in rangees])
         d["copies"] = [{**c, "tient": c["album_id"] in tenues,
                         "apercu": _apercu(conn, c["album_id"], d)}
-                       for c in rangees if c["album_id"] in lues]
+                       for c in rangees if c["album_id"] in ecrites]
         d["repondable"] = portee.peut_repondre_a(consentement)
         recues.append(d)
     noms = noms_lisibles(conn, [d["demandeur"] for d in recues if d["demandeur"]])

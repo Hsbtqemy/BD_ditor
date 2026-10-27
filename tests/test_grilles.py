@@ -295,6 +295,12 @@ def test_qui_lit_le_plan_publie(client, decor, db_path):
     gid = importer(client, decor["p"], LEA)["grille_id"]
     ok(client.post(f"/api/grilles/{gid}/versions/1/publication", headers=LEA))
     url = f"/api/grilles/{gid}/versions/1"
+    # (b) vise un accès de collection HORS du projet : depuis la tranche 3c (F2), seule une
+    # base d'avant la v38 retouchée à la main en porte — `ana` n'est plus que lectrice.
+    c = sqlite3.connect(db_path)
+    c.execute("DELETE FROM projet_acces WHERE principal = 'ana'")
+    c.commit()
+    c.close()
     ok(client.get(url, headers=SAM))                           # (a)
     ok(client.get(url, headers=ANA), 404)                      # pas encore active
     ok(client.get(url, headers=ZOE), 404)

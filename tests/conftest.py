@@ -161,6 +161,27 @@ ADMIN = {"Remote-User": "decor", "Remote-Groups": "bd-admins"}
 ECRITURE = {**ADMIN, main.EN_TETE_REQUETE: "1"}
 
 
+def du_projet(http, collection_id, genre, principal, headers=ADMIN, role="membre"):
+    """Fait entrer `principal` dans le PROJET de la collection, s'il n'en est pas déjà —
+    ce qu'exige depuis la tranche 3c de COL-3 tout accès de collection (F2 : « on n'entre
+    dans une collection que si l'on est du projet », un 409 nommé sinon). `http` : le client
+    de test, ou un client qui parle au serveur LIVE (avec `ECRITURE`). Ne touche pas un
+    membre ni un responsable déjà là — le reposer en membre rétrograderait un responsable.
+    Joué par les routes, sous une portée totale : la même porte que l'écran."""
+    cols = http.get("/api/collections", headers=headers).json()
+    pid = next((c["projet_id"] for c in cols if c["id"] == collection_id), None)
+    if pid is None:
+        return None
+    membres = http.get(f"/api/projets/{pid}/membres", headers=headers)
+    if membres.status_code == 200 and any(
+            (m["genre"], m["principal"]) == (genre, principal) for m in membres.json()):
+        return pid
+    r = http.put(f"/api/projets/{pid}/membres", headers=headers,
+                 json={"genre": genre, "principal": principal, "role": role})
+    assert r.status_code in (200, 201), r.text
+    return pid
+
+
 @pytest.fixture
 def album(client):
     return client.post("/api/albums",

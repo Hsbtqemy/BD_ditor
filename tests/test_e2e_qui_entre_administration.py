@@ -36,6 +36,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import du_projet
 from conftest import ECRITURE  # noqa: E402
 
 pytestmark = pytest.mark.e2e
@@ -66,11 +67,14 @@ def _collection(base, nom):
     with _client(base) as c:
         r = c.post("/api/collections", json={"nom": nom})
         assert r.status_code == 201, r.text
+        # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet : les noms que l'écran fait entrer en sont d'abord.
+        du_projet(c, r.json()["id"], "groupe", "annotateurs", headers=ECRITURE)
         return r.json()["id"]
 
 
 def _accorder(base, cid, genre, principal, niveau):
     with _client(base) as c:
+        du_projet(c, cid, genre, principal, headers=ECRITURE)
         r = c.put(f"/api/collections/{cid}/acces",
                   json={"genre": genre, "principal": principal, "niveau": niveau})
         assert r.status_code == 200, r.text

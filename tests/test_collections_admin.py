@@ -12,6 +12,7 @@ import sqlite3
 
 import pytest
 
+from conftest import du_projet
 from conftest import ADMIN
 
 
@@ -25,6 +26,13 @@ def _acces(db_path, collection_id, principal, niveau, genre="utilisateur"):
         conn.execute("INSERT OR REPLACE INTO collection_acces "
                      "(collection_id, genre, principal, niveau) VALUES (?, ?, ?, ?)",
                      (collection_id, genre, principal, niveau))
+        # COL-3, tranche 3c (F2) : un accès de collection suppose d'être du projet — ce
+        # que la v38 fait de tout accès hors projet ; le décor le pose de même.
+        conn.execute("INSERT OR IGNORE INTO projet_acces (projet_id, genre, principal, role) "
+                     "SELECT p.id, ?, ?, 'membre' FROM collection c JOIN projet p "
+                     "ON p.id = COALESCE(c.projet_id, (SELECT id FROM projet WHERE repli = 1)) "
+                     "WHERE c.id = ? AND p.bac_a_sable_de IS NULL AND p.jeu = 0",
+                     (genre, principal, collection_id))
         conn.commit()
     finally:
         conn.close()
@@ -108,6 +116,7 @@ def test_ecrire_ne_donne_pas_le_droit_de_partager(client, db_path, collection_a_
     _acces(db_path, cid, "bob", "ecriture")
     h = {"Remote-User": "bob"}
     assert client.get("/api/collections/%d/acces" % cid, headers=h).status_code == 403
+    du_projet(client, cid, "utilisateur", "carol", headers=ADMIN)
     assert client.put(f"/api/collections/{cid}/acces", headers=h,
                       json={"principal": "carol"}).status_code == 403
     assert client.patch(f"/api/collections/{cid}", headers=h,
@@ -137,6 +146,7 @@ def test_accorder_puis_retirer_un_acces(client, collection_a_alice):
     le même geste."""
     cid = collection_a_alice["id"]
     h = {"Remote-User": "alice"}
+    du_projet(client, cid, "utilisateur", "bob", headers=ADMIN)
     acces = client.put(f"/api/collections/{cid}/acces", headers=h,
                        json={"principal": "bob", "niveau": "lecture"}).json()
     assert ("bob", "lecture") in {(a["principal"], a["niveau"]) for a in acces}
@@ -144,6 +154,7 @@ def test_accorder_puis_retirer_un_acces(client, collection_a_alice):
     hb = {"Remote-User": "bob"}
     assert client.post("/api/albums", json={"titre": "refusé", "collection_id": cid},
                        headers=hb).status_code == 404
+    du_projet(client, cid, "utilisateur", "bob", headers=ADMIN)
     acces = client.put(f"/api/collections/{cid}/acces", headers=h,
                        json={"principal": "bob", "niveau": "ecriture"}).json()
     assert ("bob", "ecriture") in {(a["principal"], a["niveau"]) for a in acces}
@@ -159,6 +170,7 @@ def test_accorder_a_un_groupe(client, collection_a_alice):
     est une RÉFÉRENCE au groupe, jamais une appartenance : celle-ci reste chez Authelia et
     se relit à chaque requête (invariant AUTH-1)."""
     cid = collection_a_alice["id"]
+    du_projet(client, cid, "groupe", "bd-lettrage", headers=ADMIN)
     client.put(f"/api/collections/{cid}/acces", headers={"Remote-User": "alice"},
                json={"genre": "groupe", "principal": "bd-lettrage", "niveau": "ecriture"})
     membre = {"Remote-User": "dora", "Remote-Groups": "bd-lettrage"}
@@ -174,6 +186,7 @@ def test_retirer_un_acces_ne_detruit_aucune_donnee(client, collection_a_alice):
     attribuer."""
     cid = collection_a_alice["id"]
     h = {"Remote-User": "alice"}
+    du_projet(client, cid, "utilisateur", "bob", headers=ADMIN)
     client.put(f"/api/collections/{cid}/acces", headers=h,
                json={"principal": "bob", "niveau": "ecriture"})
     alb = client.post("/api/albums", json={"titre": "Travail de bob", "collection_id": cid},
@@ -192,10 +205,12 @@ def test_le_dernier_proprietaire_ne_peut_pas_se_retirer(client, collection_a_ali
     h = {"Remote-User": "alice"}
     r = client.delete(f"/api/collections/{cid}/acces/utilisateur/alice", headers=h)
     assert r.status_code == 409 and "dernier propriétaire" in r.json()["detail"]
+    du_projet(client, cid, "utilisateur", "alice", headers=ADMIN)
     r = client.put(f"/api/collections/{cid}/acces", headers=h,
                    json={"principal": "alice", "niveau": "lecture"})
     assert r.status_code == 409                  # se rétrograder revient au même
     # Avec un second propriétaire, le départ redevient possible.
+    du_projet(client, cid, "utilisateur", "bob", headers=ADMIN)
     client.put(f"/api/collections/{cid}/acces", headers=h,
                json={"principal": "bob", "niveau": "proprietaire"})
     assert client.delete(f"/api/collections/{cid}/acces/utilisateur/alice",
@@ -208,6 +223,7 @@ def test_admin_passe_outre_la_propriete(client, collection_a_alice):
     serait un UPDATE en SQL — exactement ce que ce chantier supprime."""
     cid = collection_a_alice["id"]
     assert client.get(f"/api/collections/{cid}/acces", headers=ADMIN).status_code == 200
+    du_projet(client, cid, "utilisateur", "carol", headers=ADMIN)
     assert client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                       json={"principal": "carol",
                             "niveau": "proprietaire"}).status_code == 200
@@ -402,6 +418,7 @@ def test_les_changements_d_acces_sont_traces(client, db_path, collection_a_alice
     import undo
     cid = collection_a_alice["id"]
     h = {"Remote-User": "alice"}
+    du_projet(client, cid, "utilisateur", "bob", headers=ADMIN)
     client.put(f"/api/collections/{cid}/acces", headers=h,
                json={"principal": "bob", "niveau": "ecriture"})
     client.delete(f"/api/collections/{cid}/acces/utilisateur/bob", headers=h)
@@ -652,6 +669,7 @@ def test_un_proprietaire_disparu_laisse_une_collection_administrable_par_un_admi
     assert "dernier propriétaire" in r.json()["detail"]
 
     # 4 — le chemin de sortie : un remplaçant D'ABORD, le retrait ENSUITE.
+    du_projet(client, cid, "utilisateur", "bob", headers=ADMIN)
     r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                    json={"genre": "utilisateur", "principal": "bob",
                          "niveau": "proprietaire"})
@@ -889,6 +907,7 @@ def _acces_rendus(client, cid, headers):
 def test_un_login_jamais_vu_est_signale(client, collection_a_alice):
     """L'observation, et elle est exacte : ce nom n'a pas de ligne dans `utilisateur`."""
     cid = collection_a_alice["id"]
+    du_projet(client, cid, "utilisateur", "bobb", headers=ADMIN)
     r = client.put(f"/api/collections/{cid}/acces",
                    json={"genre": "utilisateur", "principal": "bobb", "niveau": "lecture"},
                    headers={"Remote-User": "alice"})
@@ -901,6 +920,7 @@ def test_un_login_deja_venu_n_est_pas_signale(client, collection_a_alice):
     mesure — le mode d'échec d'ARCH-2 appliqué à un booléen."""
     cid = collection_a_alice["id"]
     client.get("/api/moi", headers={"Remote-User": "bob"})
+    du_projet(client, cid, "utilisateur", "bob", headers=ADMIN)
     client.put(f"/api/collections/{cid}/acces",
                json={"genre": "utilisateur", "principal": "bob", "niveau": "lecture"},
                headers={"Remote-User": "alice"})
@@ -917,6 +937,7 @@ def test_un_groupe_n_est_ni_vu_ni_inconnu(client, collection_a_alice):
     VIDE arrivaient identiques.
     """
     cid = collection_a_alice["id"]
+    du_projet(client, cid, "groupe", "bd-etudiants", headers=ADMIN)
     client.put(f"/api/collections/{cid}/acces",
                json={"genre": "groupe", "principal": "bd-etudiants", "niveau": "lecture"},
                headers={"Remote-User": "alice"})

@@ -302,6 +302,17 @@ def cmd_creer(args) -> int:
         # COL-3 — une collection appartient à UN projet. L'outil n'en nomme aucun : elle
         # naît dans le projet de repli, comme par la route quand on ne précise rien.
         maj["projet_id"] = database.projet_par_defaut(conn)
+        # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet :
+        # le propriétaire nommé doit être du projet de repli, par sa RÉFÉRENCE exacte, comme
+        # par la route (`database.est_du_projet_par_reference`). Refusé AVANT toute écriture.
+        proprio = args.proprietaire or args.proprietaire_groupe
+        genre = "groupe" if args.proprietaire_groupe else "utilisateur"
+        if proprio and not database.est_du_projet_par_reference(conn, maj["projet_id"],
+                                                                 genre, proprio):
+            raise SystemExit(
+                f"Refusé : « {proprio} » n'est pas du projet de repli — on n'entre dans une "
+                "collection que si l'on est du projet. Faites-le entrer dans le projet "
+                "d'abord (sa fiche, dans l'Administration).")
         cols = list(maj.keys())
         vals = [maj[k] for k in cols]
         qm = ",".join("?" * len(cols))
@@ -314,12 +325,10 @@ def cmd_creer(args) -> int:
         # AUTH-3 — sans propriétaire, la collection n'est administrable que par un
         # administrateur. C'est un état valable (un shell n'a pas d'identité) mais rarement
         # voulu : le poser ici évite d'ouvrir la base pour rendre la collection utilisable.
-        proprio = args.proprietaire or args.proprietaire_groupe
         if proprio:
             conn.execute(
                 "INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
-                "VALUES (?, ?, ?, 'proprietaire')",
-                (cid, "groupe" if args.proprietaire_groupe else "utilisateur", proprio))
+                "VALUES (?, ?, ?, 'proprietaire')", (cid, genre, proprio))
         journal.journaliser(conn, "creation", "collection", cid,
                             apres={"nom": args.nom, "proprietaire": proprio})
     _checkpoint()

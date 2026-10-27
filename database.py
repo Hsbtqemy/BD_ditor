@@ -19,7 +19,7 @@ from config import DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUA
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 37
+SCHEMA_VERSION = 38
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -660,22 +660,10 @@ CREATE TABLE IF NOT EXISTS copie (
 -- et y écrire un « vu » l'aurait fait compter comme un acte. `evenement_id` SANS clé : il
 -- désigne l'acte `retire_du_projet` (sous `document`), que rien n'efface. Rien n'en sort :
 -- ni route de lecture hors de l'avis lui-même, ni export.
--- GESTE_SUR_COPIE (v36, COL-3, tranche 3b ; Hugo, 2026-10-25) — qui a JAMAIS fait un geste
--- humain sur une copie : une ligne par copie et par agent ('' quand l'acte n'en nomme pas),
--- posée par `journal.journaliser` au moment du geste, quand il porte sur une région (et ce
--- qu'elle porte), une correction grammaticale ou une planche de cette copie. Elle ne
--- s'efface pas quand le geste est défait, ni quand ce qu'il a posé disparaît : c'est son
--- objet. La règle de la DERNIÈRE copie la lit (« personne d'autre n'y a jamais travaillé »,
--- `autorisation.Portee.clause_suppression_directe`), et elle seule — les autres
--- suppressions lisent ce qui vit encore. Le journal ne suffit pas : une région effacée
--- (par une remise à zéro, ou une à une) n'a plus de planche, et l'acte qui la nommait ne
--- dit plus de quelle copie elle était. Rien n'en sort : ni route, ni export.
-CREATE TABLE IF NOT EXISTS geste_sur_copie (
-    album_id   INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
-    agent      TEXT NOT NULL,
-    PRIMARY KEY (album_id, agent)
-);
-
+-- `geste_sur_copie` (v36) — qui avait JAMAIS fait un geste sur une copie, que la règle de la
+-- dernière copie lisait — est RETIRÉE par la v38 (COL-3, tranche 3c, Q11) : la règle
+-- d'effacement ne lit plus le journal ni la trace des gestes (F3). Dormante, elle aurait
+-- cessé d'être écrite, et mentirait sur tout ce qui se serait fait entre-temps.
 CREATE TABLE IF NOT EXISTS retrait_vu (
     evenement_id   INTEGER NOT NULL,
     login          TEXT NOT NULL,
@@ -995,11 +983,20 @@ CREATE TABLE IF NOT EXISTS demande (
     date_reponse   TEXT,
     collection_id  INTEGER,
     collection_nom TEXT,
-    cran           TEXT
     -- `cran` (v32, COL-3, tranche 3b) : le cran demandé d'une copie AMORCÉE (« en partir »)
     -- ou d'une remise à zéro (« repartir »), parmi ceux de `copie.cran` ; NULL pour tout
-    -- autre genre. Commentaire SOUS la colonne : c'est la dernière de la table (cf. celui
-    -- de `collection.projet_id`).
+    -- autre genre.
+    cran           TEXT,
+    planche_id     INTEGER,
+    planche_numero INTEGER
+    -- `planche_id`, `planche_numero` (v38, COL-3, tranche 3c, F5) : la PLANCHE d'une demande
+    -- d'effacement qui ne vise qu'elle — la supprimer (`suppression_planche`) ou la remettre
+    -- à zéro (`repartir`) ; NULL pour une demande sur l'album entier et tout autre genre.
+    -- `planche_id` SANS clé étrangère : la demande survit à la planche (ses identifiants ne
+    -- reviennent plus depuis la v30) ; `planche_numero` est son numéro le jour du dépôt, pour
+    -- qu'une demande close dise encore de quoi elle parlait (le patron de
+    -- `demande_document.titre`). Commentaire SOUS la colonne : c'est la dernière de la table
+    -- (cf. celui de `collection.projet_id`).
 );
 
 -- Les DOCUMENTS d'une demande — plusieurs dès maintenant, pour qu'une entrée de documents
@@ -1818,9 +1815,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "personnages" in _tables and "bac_a_sable_id" not in _cols("personnages"):
         conn.execute("ALTER TABLE personnages ADD COLUMN bac_a_sable_id INTEGER")
     # … et la marque d'une couche RECOPIÉE (relecture croisée de la 3b, constats 3 et 4 ;
-    # décision du pilotage du 2026-10-25) : par PRÉSENCE, à 0. Table `geste_sur_copie`
-    # NOUVELLE (SCHEMA_SQL), vide : ce qui a été fait avant la v36 n'y est pas, et la règle
-    # de la dernière copie lit alors ce qui vit encore, comme les autres.
+    # décision du pilotage du 2026-10-25) : par PRÉSENCE, à 0. (La v36 créait aussi la table
+    # `geste_sur_copie`, que la v38 retire : SCHEMA_SQL ne la porte plus.)
     for table in COUCHES_RECOPIEES:
         if table in _tables and "recopiee" not in _cols(table):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN recopiee "
@@ -1885,6 +1881,30 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # table `passe` née sans elle — à 0 : rien n'a encore été recopié.
     if "passe" in _tables and "recopiee" not in _cols("passe"):
         conn.execute("ALTER TABLE passe ADD COLUMN recopiee INTEGER NOT NULL DEFAULT 0")
+    # v37 → v38 (COL-3, tranche 3c ; F1, F2, F5, Q11, Hugo, 2026-10-26) :
+    # 1. la PLANCHE d'une demande d'effacement (F5), par PRÉSENCE, NULL pour l'existant ;
+    if "demande" in _tables:
+        for colonne in ("planche_id", "planche_numero"):
+            if colonne not in _cols("demande"):
+                conn.execute(f"ALTER TABLE demande ADD COLUMN {colonne} INTEGER")
+    if version < 38:
+        # 2. on n'entre dans une collection que si l'on est du projet (F2) : chaque accès de
+        # collection HORS projet fait entrer son principal dans le projet de la collection,
+        # au rôle `membre` — une photographie, le patron de la v29, sans journal comme elle.
+        # La RÉFÉRENCE exacte (genre, principal) — Q2 ; `INSERT OR IGNORE` laisse intacts un
+        # membre ou un responsable déjà là. Ni bac à sable ni jeu (des projets ISOLÉS, que
+        # les routes tiennent à part : un accès de bac à sable y est déjà tenu par le
+        # projet). Le projet d'une collection sans `projet_id` est le repli
+        # (`sql_projet_de`). Mesuré en production le 2026-10-26 : 0 ligne.
+        if {"collection_acces", "collection", "projet", "projet_acces"} <= _tables:
+            conn.execute(
+                "INSERT OR IGNORE INTO projet_acces (projet_id, genre, principal, role) "
+                f"SELECT DISTINCT {sql_projet_de('c')}, ca.genre, ca.principal, 'membre' "
+                "FROM collection_acces ca JOIN collection c ON c.id = ca.collection_id "
+                f"WHERE {sql_projet_de('c')} IS NOT NULL "
+                f"AND NOT {sql_est_isole(sql_projet_de('c'))}")
+        # 3. `geste_sur_copie` part (Q11) : la règle d'effacement ne la lit plus (F3).
+        conn.execute("DROP TABLE IF EXISTS geste_sur_copie")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -2664,6 +2684,30 @@ def projet_de_collection(conn: sqlite3.Connection, collection_id: int) -> int | 
     r = conn.execute(f"SELECT {sql_projet_de('c')} FROM collection c WHERE c.id = ?",
                      (collection_id,)).fetchone()
     return r[0] if r else None
+
+
+def est_du_projet_par_reference(conn: sqlite3.Connection, projet_id, genre: str,
+                                principal: str) -> bool:
+    """Ce principal EST-il du projet — membre ou responsable —, par sa RÉFÉRENCE exacte
+    (`projet_acces` : ce projet, ce genre, ce nom) ?  COL-3, tranche 3c (F2, Hugo,
+    2026-10-26) : on n'entre dans une collection que si l'on est du projet.
+
+    Une RÉFÉRENCE, comme partout (invariant d'AUTH-1) : l'application ne sait pas de quels
+    groupes un login est membre hors de la requête de ce login lui-même, et l'annuaire ne
+    décide d'aucun accès (AUTH-6). Un compte qui n'est du projet que PAR UN GROUPE n'y entre
+    donc pas par son login (Q2) : on le fait entrer par son login, ou l'on donne l'accès au
+    groupe. Le `genre` compte : un groupe et un login du même nom sont deux principaux.
+
+    Une règle d'ÉCRITURE de `collection_acces` — « par la route comme par l'outil »
+    (`PUT /api/collections/{id}/acces`, `tools/gerer_collections.py`), le patron de
+    `rangement_traverse` —, que `autorisation.py` ne lit pas : elle ne décide d'aucune portée.
+    `projet_id` est celui de la collection, lu par `sql_projet_de` (le repli pour une
+    collection sans projet nommé)."""
+    if projet_id is None:
+        return False
+    return conn.execute(
+        "SELECT 1 FROM projet_acces WHERE projet_id = ? AND genre = ? AND principal = ?",
+        (projet_id, genre, principal)).fetchone() is not None
 
 
 def rangement_traverse(conn: sqlite3.Connection, album_id: int, collection_id: int) -> bool:

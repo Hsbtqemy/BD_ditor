@@ -14,6 +14,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 from playwright.sync_api import expect  # noqa: E402
 
@@ -321,6 +322,7 @@ def test_les_droits_d_un_album_sont_l_union_de_ses_collections(page, live_server
         assert c.put(f"/api/albums/{aid}/collections/{ecrite}").status_code == 201
         c.post(f"/api/albums/{aid}/import", files={"file": ("p.png", make_png(), "image/png")})
         for cid, niveau in ((lue, "lecture"), (ecrite, "ecriture")):
+            du_projet(c, cid, "utilisateur", "zoe", headers=ECRITURE)
             assert c.put(f"/api/collections/{cid}/acces", json={
                 "genre": "utilisateur", "principal": "zoe", "niveau": niveau}).status_code == 200
     page.set_extra_http_headers({"Remote-User": "zoe"})

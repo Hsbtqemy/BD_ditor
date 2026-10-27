@@ -18,6 +18,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import du_projet
 from conftest import ECRITURE  # noqa: E402
 
 pytestmark = pytest.mark.e2e
@@ -63,6 +64,7 @@ def decor(live_server):
         # « lectrice » ne fait que lire C : elle n'écrit nulle part.
         for qui, nom, niveau in (("bob", "Étude A", "ecriture"), ("bob", "Étude C", "lecture"),
                                  ("lectrice", "Étude C", "lecture")):
+            du_projet(c, ids[nom], "utilisateur", qui, headers=ECRITURE)
             r = c.put(f"/api/collections/{ids[nom]}/acces", json={
                 "genre": "utilisateur", "principal": qui, "niveau": niveau})
             assert r.status_code == 200, r.text
@@ -236,6 +238,7 @@ def test_un_rattachement_refuse_ne_laisse_pas_le_selecteur_mentir(page, decor, t
             r = c.post("/api/collections", json={"nom": nom})
             assert r.status_code in (200, 201), r.text
             ids[nom] = r.json()["id"]
+        du_projet(c, ids['Étude D'], "utilisateur", "bob", headers=ECRITURE)
         assert c.put(f"/api/collections/{ids['Étude D']}/acces", json={
             "genre": "utilisateur", "principal": "bob",
             "niveau": "ecriture"}).status_code == 200
@@ -300,6 +303,7 @@ def test_un_rangement_refuse_laisse_le_selecteur_portee_sur_ce_qu_il_montrait(pa
             r = c.post("/api/collections", json={"nom": nom})
             assert r.status_code in (200, 201), r.text
             ids[nom] = r.json()["id"]
+        du_projet(c, ids['Étude D'], "utilisateur", "bob", headers=ECRITURE)
         assert c.put(f"/api/collections/{ids['Étude D']}/acces", json={
             "genre": "utilisateur", "principal": "bob",
             "niveau": "ecriture"}).status_code == 200
@@ -360,6 +364,7 @@ def test_ranger_une_racine_montre_la_portee_de_ce_qu_elle_emporte(page, decor):
         r = c.post("/api/collections", json={"nom": "Étude D"})
         assert r.status_code in (200, 201), r.text
         d_id = r.json()["id"]
+        du_projet(c, d_id, "utilisateur", "bob", headers=ECRITURE)
         assert c.put(f"/api/collections/{d_id}/acces", json={
             "genre": "utilisateur", "principal": "bob",
             "niveau": "ecriture"}).status_code == 200

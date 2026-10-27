@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import du_projet
 from conftest import ADMIN, direct_query
 from socle import _sans_accents
 
@@ -122,6 +123,7 @@ def test_renommer_en_homonyme_a_l_accent_pres_est_refuse(client, db_path):
 def _ecrivain_d_une_autre_collection(client):
     """Un compte qui écrit dans une collection neuve, et ne lit rien d'autre."""
     cid = client.post("/api/collections", json={"nom": "Ailleurs"}, headers=ADMIN).json()["id"]
+    du_projet(client, cid, "utilisateur", "zoe", headers=ADMIN)
     assert client.put(f"/api/collections/{cid}/acces",
                       json={"genre": "utilisateur", "principal": "zoe", "niveau": "ecriture"},
                       headers=ADMIN).status_code == 200

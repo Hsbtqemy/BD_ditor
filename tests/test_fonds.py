@@ -34,6 +34,7 @@ import comptes
 import database
 import main
 import socle
+from conftest import du_projet
 from conftest import ADMIN, make_png
 from test_projets import _fouillable, _outil, _repli, _sql
 
@@ -55,6 +56,8 @@ def _collection(client, nom, projet_id=None):
 
 
 def _accorder(client, cid, principal, niveau):
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
+    du_projet(client, cid, "utilisateur", principal)
     r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                    json={"genre": "utilisateur", "principal": principal, "niveau": niveau})
     assert r.status_code == 200, r.text

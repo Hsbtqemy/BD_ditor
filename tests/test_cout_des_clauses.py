@@ -25,6 +25,7 @@ import pytest
 
 import autorisation
 import database
+from conftest import du_projet
 from conftest import ADMIN, make_png
 from test_bac_a_sable import (HUGO, LEA, RESP, RITA, SAM, TP, _partage, _portee, decor,  # noqa: F401
                               jeu)
@@ -120,6 +121,7 @@ def scene(client, decor):  # noqa: F811
     client.post("/api/bac-a-sable", headers=TP)
     client.put(f"/api/projets/{decor['etude']}/membres", headers=ADMIN,
                json={"genre": "utilisateur", "principal": "groupe-tp", "role": "membre"})
+    du_projet(client, col, "utilisateur", "groupe-tp", headers=ADMIN)
     client.put(f"/api/collections/{col}/acces", headers=RESP,
                json={"genre": "utilisateur", "principal": "groupe-tp", "niveau": "ecriture"})
     du_tp = client.post("/api/albums", headers=TP,

@@ -22,6 +22,9 @@ from grilles_decor import LEA, STAG, grille_active, monter, ok
 
 # Les tables qui portent une région ou une planche, et ne sont PAS de l'annotation.
 HORS_ANNOTATION = {
+    "demande": "Une demande d'effacement qui vise une PLANCHE (`planche_id`, v38, COL-3, "
+               "tranche 3c) : une requête adressée au responsable ou à l'administrateur, pas un "
+               "travail posé sur la planche ; elle survit à la planche (sans clé étrangère).",
     "regions": "La région elle-même (sa planche) : c'est la cible, pas ce qu'on pose dessus.",
     "tokens": "L'analyse automatique du texte, régénérée à chaque réindexation : aucun "
               "travail humain.",

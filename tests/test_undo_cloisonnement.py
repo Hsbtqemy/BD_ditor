@@ -26,6 +26,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
+from conftest import du_projet
 from conftest import ADMIN, make_png  # noqa: E402
 
 IMPORTEUSE = {"Remote-User": "importeuse"}   # écrit dans Principale ET dans l'Incubateur
@@ -61,6 +62,7 @@ def _collection(client, nom):
 
 
 def _accorder(client, cid, qui, niveau):
+    du_projet(client, cid, "utilisateur", qui, headers=ADMIN)
     _ok(client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                    json={"genre": "utilisateur", "principal": qui, "niveau": niveau}), 200)
 

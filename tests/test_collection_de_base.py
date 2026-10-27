@@ -25,6 +25,7 @@ import annuaire
 import autorisation
 import comptes
 import database
+from conftest import du_projet
 from conftest import ADMIN
 from test_projets import _acces, _collection, _membre, _outil, _repli, _sql
 
@@ -153,12 +154,16 @@ def test_les_responsables_en_sont_proprietaires(client, projet, niveau):
 
 
 def test_la_base_n_ouvre_qu_elle_meme(client, projet):
-    """Un membre d'un projet à base ouverte ne lit AUCUNE autre collection du projet — ni
-    le responsable : la seconde collection garde son « Qui entre »."""
-    for qui in (MARC, EVE, RITA):
+    """Un MEMBRE d'un projet à base ouverte ne lit AUCUNE autre collection du projet : la
+    seconde collection garde son « Qui entre ». Le RESPONSABLE la lit depuis la tranche 3c
+    (F1, RENVERSÉ pour lui), en lecture seule : il n'en règle pas l'accès (403)."""
+    for qui in (MARC, EVE):
         assert projet["autre"] not in _vues(client, qui)
         assert client.get(f"/api/collections/{projet['autre']}/acces",
                           headers=qui).status_code == 404
+    assert _vues(client, RITA)[projet["autre"]]["mon_niveau"] == "lecture"
+    assert client.get(f"/api/collections/{projet['autre']}/acces",
+                      headers=RITA).status_code == 403
 
 
 def test_qui_n_est_pas_du_projet_n_y_lit_rien(client, projet):
@@ -188,12 +193,19 @@ def test_un_groupe_qui_sort_du_projet_n_y_fait_plus_entrer(client, projet):
 
 
 def test_un_acces_explicite_s_ajoute_a_la_derivation(client, projet):
-    """« Qui entre » reste ouvert sur la base : un compte d'aucun projet y entre par une
-    ligne d'accès, comme partout ; et la dérivation ne retire rien à un accès posé."""
+    """« Qui entre » reste ouvert sur la base — à qui est du projet (tranche 3c, F2) : un
+    compte d'aucun projet y est refusé (409) ; fait membre, il y entre par la position du
+    projet ; un accès posé s'y ajoute, et la dérivation ne lui retire rien quand la base
+    se protège."""
+    r = client.put(f"/api/collections/{projet['base']}/acces", headers=ADMIN,
+                   json={"genre": "utilisateur", "principal": "zoe", "niveau": "lecture"})
+    assert r.status_code == 409, r.text
+    assert _membre(client, projet["id"], "zoe", "membre").status_code == 200
+    assert _vues(client, ZOE)[projet["base"]]["mon_niveau"] == "ecriture"
     _acces(client, projet["base"], "zoe", "lecture")
-    assert list(_vues(client, ZOE)) == [projet["base"]]
     assert _position(client, projet["id"], None).status_code == 200
     assert list(_vues(client, ZOE)) == [projet["base"]]
+    assert _vues(client, ZOE)[projet["base"]]["mon_niveau"] == "lecture"
 
 
 def test_la_portee_derive_sans_recopier():
@@ -448,14 +460,23 @@ def test_aucune_portee_ne_grandit_a_la_migration(vraie_v30):
     try:
         for login, groupes in QUI:
             p = autorisation.resoudre(conn, _Requete(login, groupes))
-            ajout = p.lecture - frozenset().union(*avant[login])
             attendu = ({base_de[RESPONSABLES[login]]} if login in RESPONSABLES
                        else set())
-            assert ajout == attendu and ajout <= p.propriete, (login, ajout, attendu)
-            # Et ce qui s'ajoute est NEUF : aucune collection d'avant ne s'ouvre, fût-elle
-            # devenue la base d'un projet (mutant : la « Collection par défaut »).
+            # Ce que la v31 ajoute est la PROPRIÉTÉ de la base neuve, et rien d'autre.
+            ajout = p.propriete - frozenset().union(*avant[login])
+            assert ajout == attendu, (login, ajout, attendu)
+            # Et ce qui s'ajoute est NEUF : aucune collection d'avant ne s'ouvre en écriture,
+            # fût-elle devenue la base d'un projet (mutant : la « Collection par défaut »).
             assert not ajout & existantes, (login, ajout & existantes)
             assert p.ecriture - frozenset().union(*avant[login][1:]) <= attendu
+            # La LECTURE d'un responsable gagne en plus, depuis la v38 (COL-3, tranche 3c,
+            # F1), toutes les collections du projet qu'il gère — une lecture dérivée, en
+            # lecture seule ; un simple membre ne gagne rien.
+            lu = p.lecture - frozenset().union(*avant[login])
+            if login not in RESPONSABLES:
+                assert lu == set(), (login, lu)
+            else:
+                assert attendu <= lu and not (lu - attendu) & (p.ecriture | p.export)
     finally:
         conn.close()
 
@@ -484,7 +505,10 @@ def test_la_migration_n_ouvre_pas_la_collection_de_repli_a_ses_responsables(vrai
     finally:
         conn.close()
     assert habitee > 0, "prémisse : la collection de repli porte des albums"
-    assert repli not in p.lecture, (
+    # Depuis la v38 (COL-3, tranche 3c, F1), le responsable du repli LIT la collection de
+    # repli, comme toutes celles de son projet — mais elle n'est pas devenue sa base : il
+    # n'en est ni propriétaire, ni écrivain.
+    assert repli not in p.propriete and repli not in p.ecriture, (
         f"la migration a ouvert la collection de repli ({habitee} album(s)) à un "
         f"responsable du projet de repli : {p!r}")
 

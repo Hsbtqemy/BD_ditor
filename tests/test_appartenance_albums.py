@@ -22,6 +22,7 @@ import pytest
 
 import main
 import socle
+from conftest import du_projet
 from conftest import ADMIN
 
 CACHEE_ID = 97531
@@ -51,6 +52,8 @@ def _ranger(client, album_id, cid):
 
 
 def _accorder(client, cid, principal, niveau):
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
+    du_projet(client, cid, "utilisateur", principal)
     r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
                    json={"genre": "utilisateur", "principal": principal, "niveau": niveau})
     assert r.status_code == 200, r.text

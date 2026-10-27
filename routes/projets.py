@@ -35,6 +35,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 import autorisation
+import conflit
 import journal
 from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET,
                       collection_de_base,
@@ -550,9 +551,15 @@ def retirer_membre(projet_id: int, genre: str, principal: str,
                    conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
     """Fait sortir quelqu'un du projet. Il sort de la collection de base, où il n'entrait
-    que par le projet (D10) ; il ne perd aucun accès de collection posé dans un « Qui
-    entre », et rien n'est détruit : le journal lui attribue toujours son travail. Refus
-    sur le dernier responsable."""
+    que par le projet (D10), et rien n'est détruit : le journal lui attribue toujours son
+    travail. Refus sur le dernier responsable.
+
+    COL-3, tranche 3c (Q1, Hugo, 2026-10-26) — RENVERSÉ : il ne gardait aucun accès de
+    collection posé dans un « Qui entre » ; il les PERD, dans le même geste et sous le même
+    verrou, chacun journalisé (`delien`) — sans quoi la voie 2 (« on n'entre dans une
+    collection que si l'on est du projet », F2) se défaisait au premier départ. 409 nommé
+    s'il est le DERNIER propriétaire de l'une d'elles : on en désigne un autre d'abord. Le
+    bac à sable avait déjà cette règle (`_sortir_du_bac`)."""
     _get_projet(conn, portee, projet_id, gerer=True)
     _refuser_le_jeu(conn, projet_id=projet_id)
     proprietaire = _exiger_le_proprietaire(conn, portee, projet_id)
@@ -576,6 +583,32 @@ def retirer_membre(projet_id: int, genre: str, principal: str,
             and _compte_responsables(conn, projet_id) == 1):
         raise HTTPException(409, "C'est le dernier responsable de ce projet : "
                                  "désignez-en un autre avant de le retirer.")
+    conflit.verrouiller(conn)
+    acces = conn.execute(
+        "SELECT ca.collection_id, c.nom, ca.niveau, ca.exporter FROM collection_acces ca "
+        f"JOIN collection c ON c.id = ca.collection_id WHERE {sql_projet_de('c')} = ? "
+        "AND ca.genre = ? AND ca.principal = ? ORDER BY ca.collection_id",
+        (projet_id, genre, principal)).fetchall()
+    for a in acces:
+        if a["niveau"] != autorisation.PROPRIETAIRE:
+            continue
+        autres = conn.execute(
+            "SELECT COUNT(*) FROM collection_acces WHERE collection_id = ? AND niveau = ? "
+            "AND NOT (genre = ? AND principal = ?)",
+            (a["collection_id"], autorisation.PROPRIETAIRE, genre, principal)).fetchone()[0]
+        autres += sum(1 for d in autorisation.acces_derives(conn, a["collection_id"])
+                      if d["niveau"] == autorisation.PROPRIETAIRE
+                      and (d["genre"], d["principal"]) != (genre, principal))
+        if not autres:
+            raise HTTPException(409, f"C'est le dernier propriétaire de « {a['nom']} » : "
+                                     "désignez un autre propriétaire de cette collection "
+                                     "avant de le faire sortir du projet.")
+    for a in acces:
+        conn.execute("DELETE FROM collection_acces WHERE collection_id = ? AND genre = ? "
+                     "AND principal = ?", (a["collection_id"], genre, principal))
+        journal.journaliser(conn, "delien", "collection_acces", a["collection_id"],
+                            avant={"genre": genre, "principal": principal,
+                                   "niveau": a["niveau"], "exporter": bool(a["exporter"])})
     conn.execute("DELETE FROM projet_acces WHERE projet_id = ? AND genre = ? "
                  "AND principal = ?", (projet_id, genre, principal))
     journal.journaliser(conn, "delien", "projet_acces", projet_id,

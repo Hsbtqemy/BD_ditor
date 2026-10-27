@@ -196,7 +196,9 @@ def test_la_vue_d_un_projet_dit_sa_base_a_qui_le_gere(client, prise):
     vues = {p["id"]: p for p in client.get("/api/projets", headers=RESP).json()}
     p = vues[prise["projet"]]
     assert p["base"] == {"id": prise["base"], "nom": "Étude P", "acces_membres": "ecriture"}
-    assert p["nb_membres"] == 1
+    # `membre`, et — depuis la tranche 3c (F2), entrés dans le projet pour recevoir leurs
+    # accès de collection — `proprio`, `ecrivain` et `lectrice`.
+    assert p["nb_membres"] == 4
     simple = {p["id"]: p for p in client.get("/api/projets", headers=MEMBRE).json()}[
         prise["projet"]]
     assert "base" not in simple and "nb_membres" not in simple
@@ -223,9 +225,11 @@ def test_qui_entre_dans_la_base_par_le_projet(client, prise):
         True, prise["projet"], True, "ecriture")
     assert corps["lignes"] == [
         {"genre": "utilisateur", "principal": "resp", "niveau": "proprietaire",
-         "exporter": True, "role": "responsable"},
-        {"genre": "utilisateur", "principal": "membre", "niveau": "ecriture",
-         "exporter": False, "role": "membre"}]
+         "exporter": True, "role": "responsable"}] + [
+        {"genre": "utilisateur", "principal": m, "niveau": "ecriture",
+         "exporter": False, "role": "membre"}
+        # Tranche 3c (F2) : qui tient un accès de collection est du projet.
+        for m in ("ecrivain", "lectrice", "membre", "proprio")]
     # La liste explicite, elle, ne change pas : la base n'a aucune ligne d'accès.
     assert client.get(f"/api/collections/{prise['base']}/acces", headers=RESP).json() == []
 
@@ -239,17 +243,20 @@ def test_l_acces_du_projet_suit_la_position(client, prise):
 
 
 def test_l_acces_du_projet_se_lit_par_qui_administre_la_collection(client, prise):
-    """Une donnée sur des PERSONNES : les bornes de `…/acces`. Le membre écrit dans la base
-    sans la posséder (403 nommé) ; qui ne la lit pas reçoit un 404."""
-    assert client.get(f"/api/collections/{prise['base']}/acces-du-projet",
-                      headers=MEMBRE).status_code == 403
-    for qui in (PERSONNE, PROPRIO, LECTRICE):
+    """Une donnée sur des PERSONNES : les bornes de `…/acces`. Les membres écrivent dans la
+    base sans la posséder (403 nommé) — `proprio` et `lectrice` en sont depuis la tranche 3c
+    (F2) ; qui ne la lit pas reçoit un 404."""
+    for qui in (MEMBRE, PROPRIO, LECTRICE):
         assert client.get(f"/api/collections/{prise['base']}/acces-du-projet",
-                          headers=qui).status_code == 404, qui
+                          headers=qui).status_code == 403, qui
+    assert client.get(f"/api/collections/{prise['base']}/acces-du-projet",
+                      headers=PERSONNE).status_code == 404
     autre = client.get(f"/api/collections/{prise['x']}/acces-du-projet", headers=PROPRIO)
     assert autre.status_code == 200
+    # Hors de la base : la LECTURE dérivée du responsable (F1, tranche 3c), une ligne.
     assert (autre.json()["base"], autre.json()["lignes"], autre.json()["gerable"]) == (
-        False, [], False)
+        False, [{"genre": "utilisateur", "principal": "resp", "niveau": "lecture",
+                 "exporter": False, "role": "responsable"}], False)
 
 
 def test_le_dernier_proprietaire_explicite_d_une_base_se_retire_si_un_responsable_la_tient(

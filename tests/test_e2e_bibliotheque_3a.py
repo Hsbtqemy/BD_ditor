@@ -32,6 +32,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], indirect=True)]
@@ -89,6 +90,7 @@ def decor(live_server):
         archives = _ok(c.post("/api/collections", json={"nom": "Archives"}))["id"]
         for cid, qui, niveau in ((lot_a, "ana", "proprietaire"), (lot_a, "sam", "lecture"),
                                  (lot_a, "lia", "lecture"), (lot_b, "sam", "ecriture")):
+            du_projet(c, cid, "utilisateur", qui, headers=ECRITURE)
             _ok(c.put(f"/api/collections/{cid}/acces",
                       json={"genre": "utilisateur", "principal": qui, "niveau": niveau}))
         albums = {t: _album(c, t, lot_a) for t in ("Lotus", "Oreille")}
@@ -208,13 +210,18 @@ def test_ni_l_ecrivain_ni_la_lectrice_ne_puisent_au_fonds(page, decor):
     expect(page.locator("#panneau-albums tr.col-album").first).to_be_visible(timeout=5000)
     expect(page.locator("#bi-prendre-fonds, #bi-dans-projet, #bi-recues-bloc")).to_have_count(0)
     expect(page.locator("#bi-rappels")).to_be_hidden()
-    # Dans la fiche d'un album : les cases se lisent, aucune ne s'offre.
+    # Dans la fiche d'un album : les cases se lisent ; aucune ne s'offre, hors la base —
+    # Lia, entrée dans le projet pour lire Lot A (COL-3, tranche 3c, F2), y écrit par sa
+    # position ouverte.
     page.locator('[data-ouvrir-album]', has_text="Lotus").click()
     page.locator("#album-range[data-pret]").wait_for(timeout=5000)
     cases = page.locator("#album-range-cases input[data-ranger]")
     expect(cases.first).to_be_visible()
     for i in range(cases.count()):
-        expect(cases.nth(i)).to_be_disabled()
+        if cases.nth(i).get_attribute("data-nom") == "Séminaire":
+            expect(cases.nth(i)).to_be_enabled()
+        else:
+            expect(cases.nth(i)).to_be_disabled()
 
 
 # =========================================================================== #

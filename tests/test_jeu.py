@@ -15,6 +15,7 @@ import pytest
 import autorisation
 import database
 import main
+from conftest import du_projet
 from conftest import ADMIN, make_png
 from grilles_decor import grille_active
 
@@ -312,6 +313,7 @@ def test_le_jeu_ne_se_regle_pas(client, reference):
                                  "role": "membre"}))
     _refuse_jeu(client.put(f"/api/projets/{pid}/acces-membres", headers=ADMIN,
                            json={"acces_membres": "ecriture"}))
+    du_projet(client, col, "utilisateur", "lea", headers=ADMIN)
     _refuse_jeu(client.put(f"/api/collections/{col}/acces", headers=ADMIN,
                            json={"genre": "utilisateur", "principal": "lea",
                                  "niveau": "lecture"}))

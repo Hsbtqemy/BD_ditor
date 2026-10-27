@@ -15,6 +15,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = pytest.mark.e2e
@@ -52,6 +53,7 @@ def decor(live_server):
             assert r.status_code == 200, r.text
         for label in ("fote", "inutile"):
             assert c.post("/api/tags", json={"label": label}).status_code == 201
+        du_projet(c, coll, "utilisateur", "bob", headers=ECRITURE)
         r = c.put(f"/api/collections/{coll}/acces", json={
             "genre": "utilisateur", "principal": "bob", "niveau": "ecriture"})
         assert r.status_code == 200, r.text

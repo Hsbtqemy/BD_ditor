@@ -62,8 +62,9 @@ def test_le_reglage_ouvre_la_creation_aux_membres_et_a_eux_seuls(client, prise):
     assert _ok.status_code == 200 and _ok.json()["membres_creent_collections"] is True
     assert _vue(client, MEMBRE, p)["collection_creable"] is True
     assert _creer(client, MEMBRE, p, "Par un membre").status_code == 201
-    # Posséder une collection du projet sans en être membre n'y suffit pas.
-    assert _creer(client, PROPRIO, p).status_code == 403
+    # Qui n'est pas du projet n'y crée pas (404 : il ne le voit pas). Depuis la tranche 3c
+    # (F2), posséder une collection du projet suppose d'en être membre : `proprio` l'est.
+    assert _creer(client, PERSONNE, p).status_code == 404
     # Refermé : rien n'est retiré, mais le geste l'est.
     assert _regler(client, p, False, RESP).status_code == 200
     assert _creer(client, MEMBRE, p, "Encore").status_code == 403

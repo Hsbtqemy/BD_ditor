@@ -35,6 +35,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import du_projet
 from conftest import ADMIN, ECRITURE  # noqa: E402
 
 pytestmark = pytest.mark.e2e
@@ -199,6 +200,8 @@ def _creer_collection(base, nom):
 
 def _accorder(base, cid, genre, principal, niveau):
     with httpx.Client(base_url=base, trust_env=False, timeout=30, headers=ECRITURE) as c:
+        # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet.
+        du_projet(c, cid, genre, principal, headers=ECRITURE)
         r = c.put(f"/api/collections/{cid}/acces",
                   json={"genre": genre, "principal": principal, "niveau": niveau})
         assert r.status_code == 200, r.text
@@ -588,6 +591,10 @@ def test_ouvrir_une_collection_a_ce_groupe_le_preselectionne(page, live_server):
     fiche : elle vaut pour ce geste, et « Retour » puis « Suivant » rouvrent la fiche sans
     elle."""
     cid = _creer_collection(live_server, "Collection Test")
+    # COL-3, tranche 3c (F2) — on n'entre dans une collection que si l'on est du projet : le
+    # groupe que l'écran fait entrer en est d'abord.
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE) as c:
+        du_projet(c, cid, "groupe", "annotateurs", headers=ECRITURE)
     _ouvrir(page, live_server, decor(cid=cid, cid2=cid + 1000),
             "/administration?axe=groupes&groupe=annotateurs")
     expect(page.locator("#cg-fiche-titre")).to_have_text("annotateurs")
@@ -689,6 +696,7 @@ def test_sur_la_vraie_route_un_acces_mort_se_signale_et_mene_a_ses_fiches(page, 
         r = c.post("/api/collections", json={"nom": "Étude B"})
         assert r.status_code == 201, r.text
         cid = r.json()["id"]
+        du_projet(c, cid, "groupe", "ancien-cours", headers=ECRITURE)
         r = c.put(f"/api/collections/{cid}/acces",
                   json={"genre": "groupe", "principal": "ancien-cours", "niveau": "lecture"})
         assert r.status_code in (200, 201, 204), r.text
