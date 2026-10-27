@@ -33,7 +33,6 @@ import conflit
 import grille_import
 import grilles
 import journal
-from database import projet_de_collection
 from socle import (_disposition, _get_collection, _get_projet, _refuser_le_jeu, _row, db,
                    portee_courante)
 
@@ -401,42 +400,20 @@ def activer_grille(projet_id: int, grille_id: int, payload: ActivationIn,
     """ACTIVE une grille sur le projet, dans UNE version (R4) — publiée pour une grille
     fermée, vivante pour une ouverte. En tranche 1, un projet n'active que SES grilles (le
     catalogue n'existe pas : 409 nommé). Changer la version d'une activation qui porte des
-    relevés est la MONTÉE DE VERSION, refusée (409 nommé) jusqu'à la tranche qui l'écrit."""
+    relevés est la MONTÉE DE VERSION, refusée (409 nommé) jusqu'à la tranche qui l'écrit.
+    Les règles du modèle vivent dans `grille_import.activer`, que l'outil d'import partage
+    (`--activer`) ; ici, le droit."""
     _get_projet(conn, portee, projet_id, gerer=True, motif=_MOTIF_GERER)
     _refuser_le_jeu(conn, projet_id=projet_id)
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id)
-    if g["projet_id"] != projet_id:
-        raise HTTPException(409, "Un projet n'active que ses grilles : le catalogue, d'où "
-                                 "l'on active la grille d'un autre projet, n'existe pas "
-                                 "encore.")
-    if g["retiree_le"]:
-        raise HTTPException(409, "Cette grille est retirée : elle ne s'active plus.")
-    v = grilles.version(conn, grille_id, payload.version)
-    attendu = grilles.ETAT_VIVANTE if g["ouverte"] else grilles.ETAT_PUBLIEE
-    if v is None or v["etat"] != attendu:
-        raise HTTPException(409, f"Une grille {'ouverte' if g['ouverte'] else 'fermée'} "
-                                 f"s'active dans une version {attendu}.")
-    act = grilles.activation(conn, projet_id, grille_id)
-    if act is not None and act["version_id"] == v["id"]:
-        return _vue_grille(conn, g)
-    # Des relevés posés dans une AUTRE version : y passer est une montée de version — qu'on
-    # l'active par-dessus ou qu'on désactive d'abord pour réactiver ensuite.
-    if conn.execute("SELECT 1 FROM releve WHERE grille_id = ? AND version_id <> ? LIMIT 1",
-                    (grille_id, v["id"])).fetchone():
-        raise HTTPException(409, "Des relevés sont posés avec cette grille : changer de "
-                                 "version est une montée de version, qui n'existe pas "
-                                 "encore. Rien n'est changé.")
-    conn.execute("INSERT INTO projet_grille (projet_id, grille_id, version_id, active_par) "
-                 "VALUES (?, ?, ?, ?) ON CONFLICT(projet_id, grille_id) DO UPDATE SET "
-                 "version_id = excluded.version_id, active_par = excluded.active_par, "
-                 "active_le = datetime('now')",
-                 (projet_id, grille_id, v["id"], portee.utilisateur))
-    journal.journaliser(conn, "lien", "grille", grille_id,
-                        avant={"projet_id": projet_id, "version": act["numero"]}
-                        if act else None,
-                        apres={"projet_id": projet_id, "version": v["numero"]})
-    conn.commit()
+    try:
+        ecrit = grille_import.activer(conn, projet_id=projet_id, grille_id=grille_id,
+                                      numero=payload.version, par=portee.utilisateur)
+    except grille_import.Refus as exc:
+        raise HTTPException(exc.statut, exc.message)
+    if ecrit:
+        conn.commit()
     return _vue_grille(conn, g)
 
 
@@ -464,19 +441,17 @@ def masquer_grille(collection_id: int, grille_id: int, conn: sqlite3.Connection 
                    portee: autorisation.Portee = Depends(portee_courante)):
     """MASQUE, dans cette collection, une grille active de son projet (Q1) — un filtre
     d'écran, pas une garde : aucune route de relevé ne le lit, les relevés déjà posés
-    restent visibles en lecture. À qui administre la collection (G7)."""
-    c = _get_collection(conn, portee, collection_id, administrer=True, motif=_MOTIF_MASQUER)
+    restent visibles en lecture. À qui administre la collection (G7). Le modèle :
+    `grille_import.masquer`, partagé avec l'outil (`--masquer`)."""
+    _get_collection(conn, portee, collection_id, administrer=True, motif=_MOTIF_MASQUER)
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id)
-    if grilles.activation(conn, projet_de_collection(conn, collection_id), grille_id) is None:
-        raise HTTPException(409, "Cette grille n'est pas active dans le projet de la "
-                                 "collection : il n'y a rien à masquer.")
-    if conn.execute("INSERT OR IGNORE INTO collection_grille_masquee (collection_id, "
-                    "grille_id, masque_par) VALUES (?, ?, ?)",
-                    (collection_id, grille_id, portee.utilisateur)).rowcount:
-        journal.journaliser(conn, "lien", "grille", grille_id,
-                            apres={"masquee_dans": collection_id, "collection": c["nom"]})
-        conn.commit()
+    try:
+        if grille_import.masquer(conn, collection_id=collection_id, grille_id=grille_id,
+                                 par=portee.utilisateur):
+            conn.commit()
+    except grille_import.Refus as exc:
+        raise HTTPException(exc.statut, exc.message)
     return {"collection_id": collection_id, "grille_id": g["id"], "masquee": True}
 
 

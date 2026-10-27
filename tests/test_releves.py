@@ -15,8 +15,8 @@ from fastapi.testclient import TestClient
 import grilles
 import main
 from conftest import ADMIN
-from grilles_decor import (ANA, LEA, SAM, STAG, TP, ZOE, csv_de, grille_active, importer,
-                           monter, ok)
+from grilles_decor import (ANA, LEA, MODELE, SAM, STAG, TP, ZOE, csv_de, grille_active,
+                           importer, monter, ok)
 
 
 @pytest.fixture
@@ -318,6 +318,77 @@ def test_retirer_un_releve(client, decor, db_path):
     e = _q(db_path, "SELECT * FROM evenement WHERE cible_table = 'releve' "
                     "AND type = 'suppression'")
     assert len(e) == 1 and '"formes": ["!!!"]' in e[0]["avant"]
+
+
+def _retirer(client, rid, qui, attendu=(204,), **corps):
+    r = client.request("DELETE", f"/api/releves/{rid}", headers=qui,
+                       **({"json": corps} if corps else {}))
+    assert r.status_code in attendu, (r.status_code, r.text[:600])
+    return r.json() if r.content else None
+
+
+@pytest.mark.parametrize("champ,entree,pose,valeur", [
+    ("variante_cle", "onomatopee", {"mots": [8], "variante_cle": "bang"}, "crac"),
+    ("qualificatifs", "origine-du-son", {"mots": [1], "qualificatifs": ["objet"]},
+     ["personnage"]),
+    ("mots", "cri", {"mots": [8]}, [6]),
+])
+def test_retirer_une_valeur_perimee_recoit_le_409_de_conc3(client, decor, db_path, champ,
+                                                           entree, pose, valeur):
+    """Tranche 2 : la page retire ce qu'elle MONTRE — si un autre a changé le relevé depuis,
+    le retrait est refusé et nomme qui ; le relevé reste."""
+    r = poser(client, decor, region_id=bulle(decor), entree_cle=entree, **pose)
+    vu = r[champ] if champ != "mots" else [m["rang"] for m in r["mots"]]
+    _modifier(client, r["id"], LEA, **{champ: valeur})
+    refus = _retirer(client, r["id"], STAG, attendu=(409,), vu={champ: vu})["detail"]
+    assert refus["conflit"]["champ"] == champ
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve")[0]["n"] == 1
+    # Ce que l'écran voit maintenant se retire.
+    _retirer(client, r["id"], STAG, vu={champ: valeur})
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve")[0]["n"] == 0
+
+
+def test_retirer_sans_vu_le_dernier_gagne(client, decor, db_path):
+    r = poser(client, decor, region_id=bulle(decor), entree_cle="onomatopee", mots=[8],
+              variante_cle="bang")
+    _modifier(client, r["id"], LEA, variante_cle="crac")
+    _retirer(client, r["id"], STAG)                    # aucun corps
+    r = poser(client, decor, region_id=bulle(decor), entree_cle="cri", mots=[8])
+    _retirer(client, r["id"], STAG, vu={})             # un `vu` vide ne garde rien
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve")[0]["n"] == 0
+
+
+def test_retirer_lit_les_qualificatifs_comme_un_ensemble(client, decor):
+    r = poser(client, decor, region_id=bulle(decor), entree_cle="origine-du-son", mots=[1],
+              qualificatifs=["personnage", "objet"])
+    _retirer(client, r["id"], STAG, vu={"qualificatifs": ["personnage", "objet", "objet"]})
+
+
+def test_retirer_vu_ne_porte_que_les_valeurs_gardees(client, decor, db_path):
+    r = poser(client, decor, region_id=bulle(decor), entree_cle="cri", mots=[8])
+    _retirer(client, r["id"], STAG, attendu=(422,), vu={"auteur": "stag"})
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve")[0]["n"] == 1
+
+
+def test_la_vue_d_un_releve_dit_le_numero_de_sa_version(client, decor):
+    """Tranche 2 : la route du plan prend le NUMÉRO ; la vue ne disait que `version_id`."""
+    # Une version 2 publiée et active (aucun relevé encore : ce n'est pas une montée), pour
+    # que le numéro ne se confonde ni avec 1 ni avec l'identifiant de la ligne (une autre
+    # grille d'abord, qui prend un identifiant de version).
+    importer(client, decor["p"], LEA, nom="Autre")
+    importer(client, decor["p"], LEA, grille_id=decor["grille_id"],
+             entrees=MODELE.replace("un cri poussé", "un cri lancé"))
+    ok(client.post(f"/api/grilles/{decor['grille_id']}/versions/2/publication", headers=LEA))
+    ok(client.put(f"/api/projets/{decor['p']}/grilles/{decor['grille_id']}/activation",
+                  headers=LEA, json={"version": 2}))
+    decor["numero"] = 2
+    r = poser(client, decor, region_id=bulle(decor), entree_cle="cri", mots=[8])
+    assert r["version"] == 2 and r["version_id"] != 2
+    lus = ok(client.get(f"/api/planches/{decor['planche']}/releves", headers=ANA))
+    assert [x["version"] for x in lus["releves"]] == [2]
+    ok(client.get(f"/api/grilles/{r['grille_id']}/versions/{lus['releves'][0]['version']}",
+                  headers=STAG))
 
 
 def test_une_grille_desactivee_laisse_ses_releves_en_lecture(client, decor):

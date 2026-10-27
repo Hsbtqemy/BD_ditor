@@ -560,3 +560,84 @@ def test_l_outil_importe_a_blanc_puis_pour_de_bon_puis_publie(data_dir, db_path,
     p = subprocess.run([*outil, str(mauvais), "--projet", str(projet), "--grille", str(gid)],
                        env=env, capture_output=True, text=True, encoding="utf-8")
     assert p.returncode == 1 and "orpheline" in p.stderr
+
+
+def _outil(db_path, data_dir, *args):
+    import os
+    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir),
+           "PYTHONIOENCODING": "utf-8"}
+    return subprocess.run([sys.executable, str(RACINE / "tools" / "importer_grille.py"),
+                           *map(str, args)], env=env, capture_output=True, text=True,
+                          encoding="utf-8")
+
+
+def _modele(*args):
+    return [RACINE / "tools" / "grille-modele.csv", "--listes",
+            RACINE / "tools" / "grille-modele-listes-qualificatifs.csv", *args]
+
+
+def test_l_outil_active_et_masque_dans_la_transaction_de_la_publication(client, decor,
+                                                                        db_path, data_dir):
+    """H3 (tranche 2) : tant que la fiche du projet n'a pas son écran des grilles, l'outil
+    active et masque — aux règles des routes, et un refus n'écrit rien."""
+    p = _outil(db_path, data_dir, *_modele("--projet", decor["p"], "--nom", "Par l'outil",
+                                            "--porte-sur", "mots"))
+    assert p.returncode == 0, p.stderr
+    gid = _q(db_path, "SELECT id FROM grille")[0]["id"]
+    # Une collection d'un AUTRE projet refuse tout : ni publiée, ni active, ni masquée.
+    p = _outil(db_path, data_dir, "--publier", gid, "--activer", "--masquer", decor["d"])
+    assert p.returncode == 1 and "rien à masquer" in p.stderr, p.stderr
+    assert _q(db_path, "SELECT etat FROM grille_version")[0]["etat"] == "brouillon"
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM projet_grille")[0]["n"] == 0
+    p = _outil(db_path, data_dir, "--publier", gid, "--activer", "--masquer", decor["c"])
+    assert p.returncode == 0, p.stderr
+    vue = ok(client.get(f"/api/projets/{decor['p']}/grilles", headers=LEA))
+    assert [(g["id"], g["version"]["numero"], g["masquee_dans"]) for g in vue["actives"]] \
+        == [(gid, 1, [decor["c"]])]
+    # Déjà active, déjà masquée : rien ne change, et l'outil le dit.
+    p = _outil(db_path, data_dir, "--grille", gid, "--activer", "--masquer", decor["c"])
+    assert p.returncode == 0 and p.stderr.count("l'était déjà") == 2, p.stderr
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM evenement WHERE cible_table = 'grille' "
+                       "AND type = 'lien'")[0]["n"] == 2
+
+
+def test_l_outil_n_active_pas_un_brouillon_et_n_ecrit_alors_rien(client, decor, db_path,
+                                                                  data_dir):
+    p = _outil(db_path, data_dir, *_modele("--projet", decor["p"], "--nom", "Fermée",
+                                            "--porte-sur", "mots", "--activer"))
+    assert p.returncode == 1 and "--publier" in p.stderr, p.stderr
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille")[0]["n"] == 0
+    p = _outil(db_path, data_dir, *_modele("--projet", decor["p"], "--nom", "Fermée",
+                                            "--porte-sur", "mots"))
+    gid = _q(db_path, "SELECT id FROM grille")[0]["id"]
+    p = _outil(db_path, data_dir, "--grille", gid, "--activer")
+    assert p.returncode == 1 and "aucune version publiée" in p.stderr, p.stderr
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM projet_grille")[0]["n"] == 0
+
+
+def test_l_outil_active_une_grille_ouverte_a_l_import(client, decor, db_path, data_dir):
+    p = _outil(db_path, data_dir, *_modele("--projet", decor["p"], "--nom", "Ouverte",
+                                            "--porte-sur", "mots", "--ouverte", "--activer"))
+    assert p.returncode == 0, p.stderr
+    vue = ok(client.get(f"/api/projets/{decor['p']}/grilles", headers=SAM))
+    assert [(g["nom"], g["version"]["etat"]) for g in vue["actives"]] == [("Ouverte",
+                                                                          "vivante")]
+
+
+def test_l_outil_ne_joue_pas_l_activation_a_blanc(db_path, data_dir):
+    p = _outil(db_path, data_dir, *_modele("--projet", 1, "--nom", "X", "--a-blanc",
+                                            "--activer"))
+    assert p.returncode == 2 and "à blanc" in p.stderr, p.stderr
+
+
+def test_l_outil_n_active_pas_sur_le_jeu(client, decor, db_path, data_dir):
+    p = _outil(db_path, data_dir, *_modele("--projet", decor["p"], "--nom", "Jeu ?",
+                                            "--porte-sur", "mots", "--ouverte"))
+    gid = _q(db_path, "SELECT id FROM grille")[0]["id"]
+    c = sqlite3.connect(db_path)
+    c.execute("UPDATE projet SET jeu = 1 WHERE id = ?", (decor["p"],))
+    c.commit()
+    c.close()
+    p = _outil(db_path, data_dir, "--grille", gid, "--activer")
+    assert p.returncode == 1 and "jeu" in p.stderr, p.stderr
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM projet_grille")[0]["n"] == 0

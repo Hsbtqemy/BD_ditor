@@ -537,7 +537,9 @@ OUTILS_HORS = {
     "importer_grille.py":
         "ENTRE une grille d'annotation (ANN-7), n'en sort pas : son compte rendu ne nomme "
         "que les clés et les libellés du tableur qu'on lui donne, et son `--json` le bilan "
-        "de cet import. `--publier` ne fait que changer l'état d'une version.",
+        "de cet import. `--publier` ne fait que changer l'état d'une version ; `--activer` et "
+        "`--masquer` (tranche 2) ne font qu'écrire une activation ou un masque, et ne disent "
+        "que des identifiants de grille, de projet et de collection.",
     "importer_vocabulaire.py":
         "ENTRE du vocabulaire, n'en sort pas. Son `--collection` désigne la portée où "
         "les termes naissent ; son compte rendu ne nomme que les lignes du tableur "
@@ -615,7 +617,8 @@ OUTILS_HORS = {
 ENTREES_HORS = {
     "_commun.py": set(),
     "importer_grille.py": {"fichier", "--listes", "--projet", "--grille", "--nom", "--ouverte",
-                           "--porte-sur", "--note", "--a-blanc", "--json", "--publier"},
+                           "--porte-sur", "--note", "--a-blanc", "--json", "--publier",
+                           "--activer", "--masquer"},
     "importer_vocabulaire.py": {"fichier", "--collection", "--dry-run"},
     "dictionnaire_xlsx.py": {"--out", "--source"},
     "rapport_accord.py": {"--json", "--csv", "--modele"},

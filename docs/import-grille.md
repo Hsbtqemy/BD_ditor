@@ -118,7 +118,17 @@ route) :
 - `--porte-sur` : « Porte sur » (`mots`, `case`, `bulle | cartouche | texte`…) — exigé pour
   une grille neuve ; pour une version suivante, celui de la version précédente si on ne le dit
   pas ;
-- `--note` : la note de version.
+- `--note` : la note de version ;
+- `--activer` : active la grille sur SON projet — la version vivante d'une grille ouverte, la
+  version qu'on publie (`--publier N --activer`), ou la dernière publiée (`--grille N
+  --activer`, sans fichier). Une grille fermée qu'on importe naît en brouillon : l'importer
+  avec `--activer` est refusé, rien n'est écrit, et l'outil dit de publier d'abord ;
+- `--masquer COLLECTION` (à répéter) : la masque dans ces collections de son projet, où elle
+  doit être active.
+
+Activer et masquer suivent les règles des routes, dans la même transaction que l'import ou
+la publication : un refus n'écrit rien. Ils ne se jouent pas `--a-blanc`. C'est la voie
+d'activation tant que la fiche du projet n'a pas son écran des grilles.
 
 ```
 python tools/importer_grille.py entrees.csv --listes listes.csv --projet 2 \
@@ -126,6 +136,8 @@ python tools/importer_grille.py entrees.csv --listes listes.csv --projet 2 \
 python tools/importer_grille.py entrees.csv --listes listes.csv --projet 2 \
     --nom "Oralité" --porte-sur mots                # le brouillon
 python tools/importer_grille.py --publier 7         # la version 1 publiée
+python tools/importer_grille.py --publier 7 --activer --masquer 12   # publiée, active, masquée
+python tools/importer_grille.py --grille 7 --activer                 # active, sans rien importer
 ```
 
 ## Ce que l'import refuse, et ce qu'il dit

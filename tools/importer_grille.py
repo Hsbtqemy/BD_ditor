@@ -16,6 +16,19 @@ et `tools/grille-modele-listes-qualificatifs.csv`.
     python tools/importer_grille.py entrees.csv --listes listes.csv --projet 2 --grille 7
     # publier le brouillon :
     python tools/importer_grille.py --publier 7
+    # publier ET activer sur le projet de la grille, puis la masquer dans la collection 12 :
+    python tools/importer_grille.py --publier 7 --activer --masquer 12
+    # activer une grille déjà publiée (ou une grille ouverte), sans rien importer :
+    python tools/importer_grille.py --grille 7 --activer
+
+`--activer` (ANN-7, tranche 2, H3 — tant que la fiche du projet n'a pas son écran des
+grilles) : active la grille sur SON projet, dans sa version vivante (grille ouverte) ou dans
+sa dernière version publiée (grille fermée). Avec un import, la version que l'import vient
+d'écrire — celle d'une grille fermée est un brouillon : l'outil refuse alors tout, import
+compris, et dit de publier d'abord (`--publier G --activer`). `--masquer COLLECTION` (à
+répéter) : la masque ensuite dans ces collections de son projet, où elle doit être active.
+Mêmes règles que les routes (`grille_import.activer`, `grille_import.masquer`) ; tout se
+fait dans UNE transaction, et un refus n'écrit rien. Ni l'un ni l'autre à blanc.
 
 `--ouverte` : une grille OUVERTE (une seule version, vivante, qui s'enrichit en posant).
 `--porte-sur` : la cible des entrées qui ne déclarent pas la leur (« mots », « case »,
@@ -26,7 +39,8 @@ L'outil passe une portée TOTALE et aucun agent au journal (« un shell n'a pas 
 le patron de `gerer_collections.py`) : qui le lance tient la base entre ses mains.
 
 Code de retour : 0 si l'import s'est fait (ou n'avait rien à changer) ; 1 si le tableur est
-refusé, ou si le projet, la grille ou un fichier sont introuvables — rien n'est écrit ; 2
+refusé, si le projet, la grille ou un fichier sont introuvables, ou si l'activation ou le
+masque sont refusés — rien n'est écrit ; 2
 pour une erreur d'usage (argparse). `--a-blanc` sort avec le code de l'import qu'il annonce.
 
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
@@ -72,6 +86,61 @@ def _bilan(res) -> None:
         _err(f"  ⚠ {a}")
 
 
+def _activer_et_masquer(conn, args, grille_id: int, numero=None) -> list:
+    """Active la grille sur son projet (`--activer`), puis la masque dans chaque collection
+    de `--masquer` — dans la transaction de l'appelant. `numero` : la version à activer ;
+    sans lui, `grille_import.version_activable`. Lève `grille_import.Refus` ; rend les
+    lignes à dire une fois la transaction validée."""
+    dit = []
+    g = conn.execute("SELECT projet_id FROM grille WHERE id = ?", (grille_id,)).fetchone()
+    if g is None:
+        raise grille_import.Refus(404, f"Grille {grille_id} introuvable.")
+    if args.activer:
+        if numero is None:
+            v = grille_import.version_activable(conn, grille_id)
+            if v is None:
+                raise grille_import.Refus(409, f"La grille {grille_id} n'a aucune version "
+                                               "publiée à activer : publiez-la d'abord "
+                                               f"(--publier {grille_id} --activer).")
+            numero = v["numero"]
+        else:
+            v = grilles.version(conn, grille_id, numero)
+            if v is not None and v["etat"] == grilles.ETAT_BROUILLON:
+                raise grille_import.Refus(409, f"La version {numero} est un brouillon : "
+                                               "elle ne s'active pas, et rien n'est écrit. "
+                                               "Importez sans --activer, puis publiez et activez "
+                                               f"(--publier {grille_id} --activer).")
+        ecrit = grille_import.activer(conn, projet_id=g["projet_id"], grille_id=grille_id,
+                                      numero=numero, par=None)
+        dit.append(f"Grille {grille_id} : active sur le projet {g['projet_id']}, version "
+                   f"{numero}" + ("." if ecrit else " (elle l'était déjà)."))
+    for collection_id in args.masquer or []:
+        ecrit = grille_import.masquer(conn, collection_id=collection_id, grille_id=grille_id,
+                                      par=None)
+        dit.append(f"Grille {grille_id} : masquée dans la collection {collection_id}"
+                   + ("." if ecrit else " (elle l'était déjà)."))
+    return dit
+
+
+def cmd_activer(args) -> int:
+    """`--grille G --activer` / `--masquer C`, sans rien importer ni publier."""
+    conn = database.get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            dit = _activer_et_masquer(conn, args, args.grille)
+        except grille_import.Refus as e:
+            conn.rollback()
+            _err(e.message)
+            return CODE_REFUS
+        conn.commit()
+    finally:
+        conn.close()
+    for ligne in dit:
+        _err(ligne)
+    return 0
+
+
 def cmd_importer(args) -> int:
     for chemin in (args.fichier, args.listes):
         if chemin and not os.path.isfile(chemin):
@@ -95,9 +164,13 @@ def cmd_importer(args) -> int:
             finally:
                 if listes is not None:
                     listes.close()
+        dit = []
         if args.a_blanc:
             conn.rollback()
         else:
+            if args.activer or args.masquer:
+                dit = _activer_et_masquer(conn, args, res["grille_id"],
+                                          (res["version"] or {}).get("numero"))
             conn.commit()
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     except grille_import.FormatInvalide as e:
@@ -122,6 +195,8 @@ def cmd_importer(args) -> int:
         _err(f"Grille {res['grille_id']} : version {v.get('numero')} ({v.get('etat')})"
              + (" — le brouillon est remplacé" if v.get("remplace") else "") + ".")
     _bilan(res)
+    for ligne in dit:
+        _err(ligne)
     if args.json:
         print(json.dumps(res, ensure_ascii=False, indent=1))
     return 0
@@ -142,10 +217,18 @@ def cmd_publier(args) -> int:
         journal.journaliser(conn, "modification", "grille", args.publier,
                             avant={"version": v["numero"], "etat": grilles.ETAT_BROUILLON},
                             apres={"version": v["numero"], "etat": grilles.ETAT_PUBLIEE})
+        try:
+            dit = _activer_et_masquer(conn, args, args.publier, v["numero"])
+        except grille_import.Refus as e:
+            conn.rollback()
+            _err(e.message + " La version n'est pas publiée non plus.")
+            return CODE_REFUS
         conn.commit()
     finally:
         conn.close()
     _err(f"Grille {args.publier} : la version {v['numero']} est publiée.")
+    for ligne in dit:
+        _err(ligne)
     return 0
 
 
@@ -172,12 +255,22 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true", help="le résultat complet en JSON")
     ap.add_argument("--publier", type=int, metavar="GRILLE",
                     help="publie le brouillon de cette grille")
+    ap.add_argument("--activer", action="store_true",
+                    help="active la grille sur son projet (la version importée ou publiée, "
+                         "sinon la dernière publiée, ou la vivante d'une grille ouverte)")
+    ap.add_argument("--masquer", type=int, action="append", metavar="COLLECTION",
+                    help="masque la grille dans cette collection de son projet (à répéter)")
     args = ap.parse_args(argv)
+    if args.a_blanc and (args.activer or args.masquer):
+        ap.error("--activer et --masquer écrivent : ils ne se jouent pas à blanc")
     database.init_db()
     if args.publier is not None:
         return cmd_publier(args)
+    if not args.fichier and args.grille is not None and (args.activer or args.masquer):
+        return cmd_activer(args)
     if not args.fichier or args.projet is None:
-        ap.error("le fichier des entrées et --projet sont requis pour importer")
+        ap.error("le fichier des entrées et --projet sont requis pour importer (ou --grille "
+                 "avec --activer / --masquer)")
     return cmd_importer(args)
 
 

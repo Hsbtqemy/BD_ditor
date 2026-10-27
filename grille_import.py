@@ -603,6 +603,92 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_lis
 
 
 # --------------------------------------------------------------------------- #
+# Activer, masquer — le cœur partagé de la route et de l'outil (ANN-7, tranche 2, H3)
+# --------------------------------------------------------------------------- #
+# Les règles du MODÈLE seulement : qui a le droit (gérer le projet, administrer la
+# collection) est vérifié AVANT par l'appelant — la route par la portée, l'outil parce qu'un
+# shell tient la base entre ses mains. Ni commit, ni verrou : l'appelant tient la transaction.
+_MOTIF_JEU = ("C'est le jeu des bacs à sable : il ne reçoit pas de grille, et ne se change "
+              "que par son outil (`tools/preparer_jeu.py`).")
+
+
+def version_activable(conn: sqlite3.Connection, grille_id: int):
+    """La version qu'on ACTIVERAIT sans en dire le numéro : la vivante d'une grille ouverte,
+    la publiée la plus récente d'une fermée ; None s'il n'y en a pas (un brouillon seul)."""
+    g = conn.execute("SELECT ouverte FROM grille WHERE id = ?", (grille_id,)).fetchone()
+    if g is None:
+        return None
+    return grilles.derniere_version(
+        conn, grille_id, grilles.ETAT_VIVANTE if g["ouverte"] else grilles.ETAT_PUBLIEE)
+
+
+def activer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, numero: int,
+            par=None) -> bool:
+    """ACTIVE la grille sur le projet dans la version `numero` (R4) — publiée pour une
+    grille fermée, vivante pour une ouverte. Un projet n'active que SES grilles (le
+    catalogue n'existe pas) ; une grille retirée ne s'active plus ; changer la version
+    d'une activation qui porte des relevés est la MONTÉE DE VERSION, refusée — qu'on
+    l'active par-dessus ou qu'on désactive d'abord pour réactiver ensuite. Lève `Refus` ;
+    rend True si l'activation s'est écrite, False si elle était déjà celle-là."""
+    import database                              # import paresseux, cf. `importer`
+    import journal
+    if database.est_jeu(conn, projet_id):
+        raise Refus(409, _MOTIF_JEU)
+    g = conn.execute("SELECT * FROM grille WHERE id = ?", (grille_id,)).fetchone()
+    if g is None:
+        raise Refus(404, f"Grille {grille_id} introuvable")
+    if g["projet_id"] != projet_id:
+        raise Refus(409, "Un projet n'active que ses grilles : le catalogue, d'où l'on "
+                         "active la grille d'un autre projet, n'existe pas encore.")
+    if g["retiree_le"]:
+        raise Refus(409, "Cette grille est retirée : elle ne s'active plus.")
+    v = grilles.version(conn, grille_id, numero)
+    attendu = grilles.ETAT_VIVANTE if g["ouverte"] else grilles.ETAT_PUBLIEE
+    if v is None or v["etat"] != attendu:
+        raise Refus(409, f"Une grille {'ouverte' if g['ouverte'] else 'fermée'} s'active "
+                         f"dans une version {attendu}.")
+    act = grilles.activation(conn, projet_id, grille_id)
+    if act is not None and act["version_id"] == v["id"]:
+        return False
+    if conn.execute("SELECT 1 FROM releve WHERE grille_id = ? AND version_id <> ? LIMIT 1",
+                    (grille_id, v["id"])).fetchone():
+        raise Refus(409, "Des relevés sont posés avec cette grille : changer de version est "
+                         "une montée de version, qui n'existe pas encore. Rien n'est changé.")
+    conn.execute("INSERT INTO projet_grille (projet_id, grille_id, version_id, active_par) "
+                 "VALUES (?, ?, ?, ?) ON CONFLICT(projet_id, grille_id) DO UPDATE SET "
+                 "version_id = excluded.version_id, active_par = excluded.active_par, "
+                 "active_le = datetime('now')", (projet_id, grille_id, v["id"], par))
+    journal.journaliser(conn, "lien", "grille", grille_id,
+                        avant={"projet_id": projet_id, "version": act["numero"]}
+                        if act else None,
+                        apres={"projet_id": projet_id, "version": v["numero"]})
+    return True
+
+
+def masquer(conn: sqlite3.Connection, *, collection_id: int, grille_id: int,
+            par=None) -> bool:
+    """MASQUE la grille dans la collection (Q1) — un filtre d'écran, pas une garde. Elle doit
+    être ACTIVE dans le projet de la collection : sinon il n'y a rien à masquer. Lève
+    `Refus` ; rend True si le masque s'est écrit, False s'il y était déjà."""
+    import database
+    import journal
+    c = conn.execute("SELECT nom FROM collection WHERE id = ?", (collection_id,)).fetchone()
+    if c is None:
+        raise Refus(404, f"Collection {collection_id} introuvable")
+    if grilles.activation(conn, database.projet_de_collection(conn, collection_id),
+                          grille_id) is None:
+        raise Refus(409, "Cette grille n'est pas active dans le projet de la collection : il "
+                         "n'y a rien à masquer.")
+    if not conn.execute("INSERT OR IGNORE INTO collection_grille_masquee (collection_id, "
+                        "grille_id, masque_par) VALUES (?, ?, ?)",
+                        (collection_id, grille_id, par)).rowcount:
+        return False
+    journal.journaliser(conn, "lien", "grille", grille_id,
+                        apres={"masquee_dans": collection_id, "collection": c["nom"]})
+    return True
+
+
+# --------------------------------------------------------------------------- #
 # Le réexport — le tableur, identifiants compris
 # --------------------------------------------------------------------------- #
 def _cellule_cibles(valeur) -> str:

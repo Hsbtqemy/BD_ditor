@@ -118,8 +118,10 @@ _CAUSES = ("mot_perdu", "texte_change", "lien_perdu", "type_change", "entree_abs
 
 
 def vue_releve(conn, r, *, modifiable: bool, noms: dict, partages: set,
-               doute=None) -> dict:
-    """Un relevé tel que l'écran le lit (R13) — depuis une ligne de `releves_effectifs`."""
+               doute=None, version: int | None = None) -> dict:
+    """Un relevé tel que l'écran le lit (R13) — depuis une ligne de `releves_effectifs`.
+    `version` : le NUMÉRO de sa version (tranche 2) — la route du plan le prend, et la page
+    lit à la demande le plan d'un relevé posé dans une version qui n'est plus active."""
     passage = conn.execute("SELECT position, rang, forme FROM releve_mot WHERE releve_id = ? "
                            "ORDER BY position", (r["id"],)).fetchall()
     actuel = None
@@ -133,7 +135,7 @@ def vue_releve(conn, r, *, modifiable: bool, noms: dict, partages: set,
                                   else None) for m in passage}
     return {
         "id": r["id"], "region_id": r["region_id"], "planche_id": r["planche_id"],
-        "grille_id": r["grille_id"], "version_id": r["version_id"],
+        "grille_id": r["grille_id"], "version_id": r["version_id"], "version": version,
         "entree_cle": r["entree_cle"], "variante_cle": r["variante_cle"],
         "qualificatifs": qualificatifs_de(conn, r["id"]), "precision": r["precision"],
         "mots": [{"position": m["position"], "rang": m["rang"], "forme": m["forme"],
@@ -186,6 +188,12 @@ def vues(conn, portee, lignes) -> list:
             f"WHERE d.releve_id IN ({', '.join('?' * len(ids))})", ids)]
     noms = noms_lisibles(conn, auteurs)
     partages = collectifs(conn, auteurs)
+    versions = {}
+    if ids:
+        vids = sorted({r["version_id"] for r in lignes})
+        versions = dict(conn.execute(
+            f"SELECT id, numero FROM grille_version WHERE id IN ({', '.join('?' * len(vids))})",
+            vids).fetchall())
     ecrit = {}
     sortie = []
     for r in lignes:
@@ -197,7 +205,8 @@ def vues(conn, portee, lignes) -> list:
         act = grilles.activation(conn, projet_d_album(conn, album), r["grille_id"])
         modifiable = ecrit[album] and act is not None and act["version_id"] == r["version_id"]
         sortie.append(vue_releve(conn, r, modifiable=modifiable, noms=noms, partages=partages,
-                                 doute=doute_ouvert(conn, r["id"], noms, partages)))
+                                 doute=doute_ouvert(conn, r["id"], noms, partages),
+                                 version=versions.get(r["version_id"])))
     return sortie
 
 
@@ -600,12 +609,37 @@ def retirer(conn, r) -> None:
     journaliser_releve(conn, "suppression", r, avant=avant)
 
 
+class RetraitIn(BaseModel):
+    vu: Optional[dict] = None
+
+
+# Ce que vaut un retrait pour la garde de CONC-3 : aucune valeur ne lui est égale — il ne
+# pose rien, il ôte tout ce que le relevé portait.
+_RETIRE = object()
+
+
 @router.delete("/api/releves/{releve_id}", status_code=204)
-def retirer_releve(releve_id: int, conn: sqlite3.Connection = Depends(db),
+def retirer_releve(releve_id: int, payload: Optional[RetraitIn] = None,
+                   conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
-    """RETIRE un relevé — ses mots, ses qualificatifs, ses doutes avec lui."""
+    """RETIRE un relevé — ses mots, ses qualificatifs, ses doutes avec lui. Le corps est
+    FACULTATIF (tranche 2) : `{"vu": {…}}` porte, pour les valeurs uniques que l'écran
+    montrait (`CHAMPS_VUS`), celles qu'il avait vues ; si l'une a changé depuis, le retrait
+    est refusé par le 409 de CONC-3, qui nomme qui l'a changée — on ne retire pas en silence
+    la variante qu'un autre vient de choisir. Sans `vu`, le dernier gagne (Q8)."""
+    vu = (payload.vu if payload is not None else None) or {}
+    inconnus = set(vu) - set(CHAMPS_VUS)
+    if inconnus:
+        raise HTTPException(422, f"« vu » ne porte que {', '.join(CHAMPS_VUS)} : "
+                                 f"{', '.join(sorted(inconnus))} refusé.")
     conflit.verrouiller(conn)
     r, _cible = releve_a_ecrire(conn, portee, releve_id)
+    if vu:
+        actuel = instantane(conn, releve_id)
+        for champ, valeur in vu.items():
+            if champ == "qualificatifs" and isinstance(valeur, list):
+                valeur = sorted(set(valeur))          # UN ensemble, dans l'ordre de l'instantané
+            verifier_valeur(conn, r, champ, valeur, _RETIRE, actuel[champ])
     retirer(conn, r)
     conn.commit()
     return Response(status_code=204)
