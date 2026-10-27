@@ -160,7 +160,9 @@ def test_les_actes_lies_sont_chapeautes_et_l_avertissement_nomme_son_acte(page, 
     est vraie. Rendu seul sous le tableau, il ne disait plus de quoi il parlait.
 
     Tout est DÉRIVÉ de la description servie : le nombre de chapeaux, leur portée, l'acte qui
-    porte l'avertissement. Une autre issue d'AUTH-10 change les chiffres, pas le test.
+    porte l'avertissement. Une autre issue d'AUTH-10 change les chiffres, pas le test — et
+    l'avertissement a changé de ligne à la tranche 3c de COL-3 (Q13 : de `structurer`, en
+    écriture, à `decider`, propriétaire), sans que le test change de propos.
     """
     base, cid = collection["base"], collection["id"]
     droits = _droits(base)
@@ -168,10 +170,9 @@ def test_les_actes_lies_sont_chapeautes_et_l_avertissement_nomme_son_acte(page, 
     for a in droits["actes"]:
         par_niveau.setdefault(a["niveau"], []).append(a)
     lies = {n: actes for n, actes in par_niveau.items() if len(actes) > 1}
-    porteur = next((a for a in droits["actes"]
-                    if a["avertissement"] and a["niveau"] == "ecriture"), None)
-    assert lies and porteur, "prémisse : des actes liés, et un avertissement en écriture"
-    _accorder(base, cid, "groupe", "annotateurs", "ecriture")
+    porteur = next((a for a in droits["actes"] if a["avertissement"]), None)
+    assert lies and porteur, "prémisse : des actes liés, et un avertissement"
+    _accorder(base, cid, "groupe", "annotateurs", porteur["niveau"])
     item = _ouvrir(page, base, cid)
 
     chapeaux = item.locator('.qe-table thead th[scope="colgroup"]')
@@ -191,7 +192,8 @@ def test_les_actes_lies_sont_chapeautes_et_l_avertissement_nomme_son_acte(page, 
                          item.locator("td.qe-lie").first.element_handle())
     assert fond == "none", f"la cellule fusionnée dessine encore quelque chose : {fond}"
 
-    case = item.locator('.qe-case[data-cran="ecriture"][data-principal="annotateurs"]')
+    case = item.locator(f'.qe-case[data-cran="{porteur["niveau"]}"]'
+                        '[data-principal="annotateurs"]')
     cible = case.get_attribute("aria-describedby")
     assert cible, "la case du cran n'est décrite par aucun avertissement"
     texte = item.locator(f"#{cible}").inner_text()

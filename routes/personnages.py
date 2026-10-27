@@ -950,8 +950,8 @@ def _affecter(conn, portee, table, col, oid, valeur_id, cible_attendue):
 
     COL-3, tranche 2 — l'attribut d'une CASE s'écrit au journal (`lien`, cible
     `region_attribut`, `cible_id` = la région, la valeur dans la charge) : c'est du travail
-    sur l'album, et « supprimer définitivement » demande de savoir si quelqu'un d'autre y a
-    travaillé (`autorisation._sql_travail_d_autrui`). `region_attribut` n'a pas d'auteur ;
+    sur l'album, et « qui perd quoi » le compte avant d'effacer
+    (`autorisation.sql_actes_sur_album`). `region_attribut` n'a pas d'auteur ;
     le journal en tient lieu. Un attribut de PERSONNAGE ne s'écrit pas : il ne tient à
     aucun album. Re-poser un attribut déjà là n'écrit rien."""
     v = _get_valeur(conn, portee, valeur_id)

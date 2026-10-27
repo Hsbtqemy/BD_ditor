@@ -3,12 +3,16 @@
 Les décisions de Hugo (2026-10-11) que ces tests tiennent :
 
 - B2 : « Supprimer définitivement » efface sans rien demander quand l'appelant a importé le
-  document et que personne d'autre n'y a travaillé ; la règle d'AUTH-10 (écrire dans toutes
-  ses collections) est gardée en plus. Un travail supprimé depuis ne compte plus ; une
-  reconnaissance automatique lancée par un collègue ne compte pas.
+  document et que personne d'autre n'y a travaillé — RENVERSÉE par la tranche 3c (F3, Hugo,
+  2026-10-26) : qui TIENT l'espace efface (le responsable du projet, le propriétaire de
+  toutes les collections, l'administrateur), les autres demandent, l'importatrice comme
+  tout annotateur. Le travail des autres ne décide plus rien : il se LIT, sous une demande
+  et avant d'effacer (« qui perd quoi ») — un travail supprimé depuis n'y compte plus, une
+  reconnaissance automatique lancée par un collègue non plus.
 - B3 : un album d'avant le fonds, d'importateur inconnu, se demande — seul un
   administrateur le détruit.
-- B4 : une planche se supprime là où l'on pourrait supprimer le document, sans demande.
+- B4 : une planche se supprime là où l'on pourrait supprimer le document, sans demande —
+  RENVERSÉE par la tranche 3c (Q5) : une planche suit la règle de repartir de zéro.
 - B5 : le responsable d'un projet DEMANDE sa suppression ; un projet n'est supprimé que vide.
 - « Importer au fonds », réservé aux administrateurs, puis « Rendre à… ».
 
@@ -37,6 +41,7 @@ IMPORTEUSE = {"Remote-User": "importeuse"}      # écrit dans Principale et Incu
 COLLEGUE = {"Remote-User": "collegue"}          # écrit dans Principale
 LECTRICE = {"Remote-User": "lectrice"}          # lit Principale
 ATELIER = {"Remote-User": "atelier"}            # écrit dans Principale ; compte partagé
+PROPRIO = {"Remote-User": "proprio"}            # possède Principale (tranche 3c)
 
 
 # --------------------------------------------------------------------------- #
@@ -117,23 +122,27 @@ def decor(client, derriere_proxy, data_dir):
 
 
 # =========================================================================== #
-# B2 — qui supprime définitivement, sans rien demander
+# B2 — qui supprime définitivement, sans rien demander (tranche 3c : qui tient l'espace)
 # =========================================================================== #
-def test_qui_a_importe_seul_supprime_tout_de_suite(client, db_path, decor):
-    """L'import par erreur ne doit attendre personne. Et « tout de suite » veut dire tout :
-    la ligne, le document, les images sur le disque, et un acte au journal."""
+def test_l_importatrice_demande_et_l_administrateur_supprime_tout(client, db_path, decor):
+    """Tranche 3c (F3) — RENVERSÉ : « qui a importé seul supprime tout de suite » n'a plus
+    cours. L'importatrice, qui n'a que l'écriture, DEMANDE ; c'est la dernière copie du
+    document, et seul un administrateur la supprime. « Tout de suite » veut toujours dire
+    tout : la ligne, le document, les images sur le disque, et un acte au journal."""
     aid = decor["erreur"]
     doc = _sql(db_path, "SELECT document_id FROM albums WHERE id = ?", (aid,))[0]["document_id"]
-    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is True
+    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is False
+    assert client.delete(f"/api/albums/{aid}", headers=IMPORTEUSE).status_code == 403
+    assert _demander(client, aid, IMPORTEUSE).status_code == 201
     assert _fichiers(decor["data"], aid), "le décor n'a pas posé d'images"
 
-    assert client.delete(f"/api/albums/{aid}", headers=IMPORTEUSE).status_code == 204
+    assert client.delete(f"/api/albums/{aid}", headers=ADMIN).status_code == 204
     assert aid not in _albums(client, ADMIN)
     assert _sql(db_path, "SELECT 1 FROM document WHERE id = ?", (doc,)) == []
     assert _fichiers(decor["data"], aid) == []
     assert _sql(db_path, "SELECT agent FROM evenement WHERE cible_table = 'document' "
                          "AND type = 'suppression' AND cible_id = ?", (doc,)) \
-        == [{"agent": "importeuse"}]
+        == [{"agent": "decor"}]
 
 
 def _personnage(client, qui):
@@ -203,6 +212,20 @@ def _relecture(client, decor):
     assert r.status_code == 200, r.text
 
 
+def _autres(client, decor):
+    """Les auteurs que « qui perd quoi » compte sous une demande de l'importatrice — tous
+    sauf elle (tranche 3c : la mesure, qui ne décide plus rien). Dépose la demande si elle
+    n'attend pas déjà."""
+    aid = decor["erreur"]
+    r = _demander(client, aid, IMPORTEUSE)
+    assert r.status_code in (201, 409), r.text
+    vues = [d for d in client.get("/api/demandes", headers=ADMIN).json()
+            if d["en_attente"] and d["genre"] == "suppression_document"
+            and d["documents"][0]["album_id"] == aid]
+    assert len(vues) == 1, vues
+    return {e["agent"] for e in vues[0]["documents"][0]["travail_des_autres"]}
+
+
 TRAVAUX = {
     "une région posée": lambda c, d: _region(c, d["planche"], COLLEGUE),
     # Relecture croisée de la tranche 2 (sondes S1 à S3) : ces quatre gestes n'étaient
@@ -224,25 +247,25 @@ TRAVAUX = {
 
 
 @pytest.mark.parametrize("travail", sorted(TRAVAUX))
-def test_le_travail_d_un_autre_fait_demander(client, decor, travail):
-    """Personne d'autre que l'importatrice ne doit y avoir travaillé. Chaque source du
-    journal que la règle lit est jouée PAR UN AUTRE, par la route : une moitié qu'on
-    oublierait laisserait détruire le travail d'un collègue sans rien lui demander."""
+def test_le_travail_d_un_autre_se_lit_avant_d_effacer(client, decor, travail):
+    """Tranche 3c — RÉÉCRIT sur « qui perd quoi » : chaque source du journal est jouée PAR UN
+    AUTRE, par la route, et se lit sous `GET /api/albums/{id}/travail-des-autres` par qui
+    peut effacer — le propriétaire de la collection, qui ne tient pas le fonds. Une source
+    qu'on oublierait laisserait effacer le travail d'un collègue sans que l'écran le dise.
+    Elle ne DÉCIDE plus : `proprio` peut repartir de zéro quel que soit ce travail."""
+    _accorder(client, decor["principale"], "proprio", "proprietaire")
     TRAVAUX[travail](client, decor)
     aid = decor["erreur"]
-    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is False
-    r = client.delete(f"/api/albums/{aid}", headers=IMPORTEUSE)
-    assert r.status_code == 403, r.text
-    r = client.delete(f"/api/planches/{decor['planche']}", headers=IMPORTEUSE)
-    assert r.status_code == 403 and "planches" in r.json()["detail"], r.text
-    assert aid in _albums(client, LECTRICE)
-    assert decor["planche"] in [p["id"] for p in client.get(
-        f"/api/albums/{aid}/planches", headers=ADMIN).json()]
+    r = client.get(f"/api/albums/{aid}/travail-des-autres", headers=PROPRIO)
+    assert r.status_code == 200, r.text
+    assert "collegue" in {e["agent"] for e in r.json()["travail_des_autres"]}, r.json()
+    assert _albums(client, PROPRIO)[aid]["effacable"] is True
 
 
-def test_ses_propres_gestes_ne_font_pas_demander(client, decor):
-    """L'envers des travaux d'autrui : les mêmes gestes, faits par l'importatrice, ne lui
-    retirent rien — sans quoi « personne d'autre » se réduirait à « personne »."""
+def test_ses_propres_gestes_ne_sont_pas_le_travail_d_un_autre(client, decor):
+    """L'envers des travaux d'autrui : les mêmes gestes, faits par l'importatrice, ne se
+    comptent pas sous SA demande — sans quoi « les autres » se réduirait à « tout le
+    monde »."""
     _attribut(client, decor, IMPORTEUSE)
     for chemin, charge in ((f"/api/albums/{decor['erreur']}", {"isbn": "978-2"}),):
         assert client.put(chemin, headers=IMPORTEUSE, json=charge).status_code == 200
@@ -250,7 +273,7 @@ def test_ses_propres_gestes_ne_font_pas_demander(client, decor):
                        json={"nom": "Hergé"}).status_code == 201
     assert client.patch(f"/api/planches/{decor['planche']}/relecture", headers=IMPORTEUSE,
                         json={"relecture": "faite"}).status_code == 200
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is True
+    assert _autres(client, decor) == set()
 
 
 def test_un_attribut_dont_on_ne_sait_pas_qui_l_a_pose_fait_demander(client, db_path, decor):
@@ -260,7 +283,7 @@ def test_un_attribut_dont_on_ne_sait_pas_qui_l_a_pose_fait_demander(client, db_p
     vid = _valeur_de_case(client)
     _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
          (decor["region"], vid))
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+    assert None in _autres(client, decor)
 
 
 def test_un_attribut_sans_auteur_le_reste_si_l_importatrice_en_a_retire_un_pareil(
@@ -275,7 +298,7 @@ def test_un_attribut_sans_auteur_le_reste_si_l_importatrice_en_a_retire_un_parei
                          headers=IMPORTEUSE).status_code == 204
     _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
          (decor["region"], vid))
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+    assert None in _autres(client, decor)
 
 
 def test_un_attribut_pose_puis_retire_par_un_autre_compte_encore(client, db_path, decor):
@@ -286,7 +309,7 @@ def test_un_attribut_pose_puis_retire_par_un_autre_compte_encore(client, db_path
     assert client.delete(f"/api/regions/{decor['case']}/attributs/{vid}",
                          headers=COLLEGUE).status_code == 204
     assert _sql(db_path, "SELECT 1 FROM region_attribut") == []
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+    assert "collegue" in _autres(client, decor)
 
 
 def test_un_attribut_de_case_s_ecrit_sans_rang_ni_annulation(client, db_path, decor):
@@ -351,12 +374,12 @@ def test_la_notice_la_paternite_et_la_relecture_s_ecrivent_sous_le_document(
 
 def test_une_correction_grammaticale_d_un_autre_compte(client, db_path, decor):
     """La correction d'un mot est une couche à part : le journal ne la relie à sa région que
-    par l'id de la correction. La règle lit donc son `auteur`."""
+    par l'id de la correction. « Qui perd quoi » lit donc son `auteur`."""
     _sql(db_path, "INSERT INTO token_correction (region_id, ordre, forme, auteur) "
                   "VALUES (?, 0, 'OTAGE', 'collegue')", (decor["region"],))
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+    assert _autres(client, decor) == {"collegue"}
     _sql(db_path, "UPDATE token_correction SET auteur = 'importeuse'")
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is True
+    assert _autres(client, decor) == set()
 
 
 def test_une_passe_automatique_ne_compte_pas_un_acte_sans_agent_si(client, db_path, decor):
@@ -365,44 +388,33 @@ def test_une_passe_automatique_ne_compte_pas_un_acte_sans_agent_si(client, db_pa
     c'est l'importatrice qui l'a posé."""
     _sql(db_path, "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
                   "VALUES ('creation', 'kumiko', 'moteur', 'regions', ?)", (decor["region"],))
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is True
+    assert _autres(client, decor) == set()
     _sql(db_path, "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
                   "VALUES ('modification', NULL, 'humain', 'regions', ?)", (decor["region"],))
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+    assert _autres(client, decor) == {None}
 
 
 def test_un_travail_supprime_depuis_ne_compte_plus(client, decor):
-    """La limite écrite dans la règle, et acceptée par Hugo : on lit ce qui VIT encore. Un
-    collègue pose une région, puis l'importatrice la supprime ; il ne reste rien de lui.
-
-    Hors de la DERNIÈRE copie (Hugo, 2026-10-25) : pour elle, tout ce qui a jamais été fait
-    compte — le geste du collègue l'envoie à un administrateur. Une sœur, prise par
-    l'administrateur, garde ici le document au fonds commun."""
-    doc = _albums(client, ADMIN)[decor["erreur"]]["document_id"]
-    r = client.post(f"/api/collections/{decor['incubateur']}/prendre", headers=ADMIN,
-                    json={"documents": [{"document_id": doc, "reponse": "zero",
-                                         "album_id": decor["erreur"]}]})
-    assert r.status_code == 200 and r.json()["documents"][0]["etat"] == "fait", r.text
+    """On lit ce qui VIT encore. Un collègue pose une région, puis l'importatrice la
+    supprime ; il ne reste rien de lui sous « qui perd quoi »."""
     region = _region(client, decor["planche"], COLLEGUE)
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+    assert _autres(client, decor) == {"collegue"}
     assert client.delete(f"/api/regions/{region}", headers=IMPORTEUSE).status_code == 204
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is True
+    assert _autres(client, decor) == set()
 
 
-def test_ranger_ailleurs_n_est_pas_y_travailler_mais_ecrire_partout_reste_exige(client,
-                                                                                decor):
-    """Les mots de Hugo, et non la règle plus stricte de la maquette : rangée dans deux
-    collections où l'importatrice écrit, la copie se supprime encore tout de suite — même
-    rangée par un autre. Rangée dans une collection où elle n'écrit pas, elle se demande :
-    la moitié AUTH-10 de la règle reste nécessaire."""
+def test_ranger_ailleurs_n_est_pas_y_travailler(client, decor):
+    """Ranger la copie dans deux autres collections, même par un autre, n'est pas y
+    travailler : « qui perd quoi » n'en compte rien. (La moitié « écrire partout » de la
+    règle d'AUTH-10 est tombée avec la tranche 3c : qui n'est pas le propriétaire de toutes
+    les collections demande, quoi qu'il écrive.)"""
     aid = decor["erreur"]
-    lien = f"/api/albums/{aid}/collections/{decor['incubateur']}"
-    assert client.put(lien, headers=ADMIN).status_code == 201
-    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is True
+    assert client.put(f"/api/albums/{aid}/collections/{decor['incubateur']}",
+                      headers=ADMIN).status_code == 201
     autre = _collection(client, "Autre")
     assert client.put(f"/api/albums/{aid}/collections/{autre}",
                       headers=ADMIN).status_code == 201
-    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is False
+    assert _autres(client, decor) == set()
     assert client.delete(f"/api/albums/{aid}", headers=IMPORTEUSE).status_code == 403
 
 
@@ -410,9 +422,9 @@ def test_un_album_d_avant_le_fonds_se_demande(client, db_path, decor):
     """B3 — l'importateur d'un album d'avant la v30 n'a été écrit nulle part. Inconnu veut
     dire « demander » : seul un administrateur le détruit.
 
-    Le décor rend l'album tel que la migration le laisse : depuis la v31, la règle lit QUI
-    A CRÉÉ LA COPIE (`copie.creee_par`), que la migration recopie de l'importateur — NULL
-    des deux côtés pour un album d'avant le fonds."""
+    Tranche 3c (F3) — réduit à « l'écrivain demande » : la règle ne lit plus qui a créé la
+    copie, si bien que tout album se demande ainsi ; le décor reste celui que la migration
+    laisse (`copie.creee_par` et l'importateur NULL)."""
     _sql(db_path, "UPDATE document SET importe_par = NULL")
     _sql(db_path, "UPDATE copie SET creee_par = NULL")
     aid = decor["erreur"]
@@ -423,16 +435,37 @@ def test_un_album_d_avant_le_fonds_se_demande(client, db_path, decor):
     assert client.delete(f"/api/albums/{aid}", headers=ADMIN).status_code == 204
 
 
-def test_un_compte_partage_ne_supprime_jamais_seul(client, decor):
-    """R7 — « celui qui l'a importé » ne désigne personne sous un login partagé. Le même
-    compte, déclaré partagé APRÈS l'import, perd le geste ; le compte ne perd aucun accès."""
+@pytest.mark.parametrize("chemin", ["proprietaire", "responsable"])
+def test_un_compte_partage_n_efface_jamais_hors_de_son_bac(client, db_path, decor, chemin):
+    """R7, puis F7 (tranche 3c) — un compte PARTAGÉ n'efface jamais hors de son bac à sable,
+    quel que soit son rôle : propriétaire de toutes les collections de l'album, ou
+    responsable de son projet. Le même compte, déclaré partagé APRÈS, perd le geste —
+    repartir de zéro comme supprimer — ; il ne perd aucun accès."""
+    from test_projets import _membre, _projet
     client.get("/api/moi", headers=ATELIER)                     # → miroir `utilisateur`
-    aid = _album(client, "Par l'atelier", decor["principale"], ATELIER)
-    assert _albums(client, ATELIER)[aid]["destructible"] is True
+    if chemin == "proprietaire":
+        cid = _collection(client, "Chez l'atelier")
+        _accorder(client, cid, "atelier", "proprietaire")
+        aid = _album(client, "Par l'atelier", cid, ATELIER)
+    else:
+        # Responsable de P : l'album vit dans la base (qu'il lit) ET dans une collection de P
+        # qu'il ne possède pas — seul le chemin du responsable le lui ouvre.
+        pid = _projet(client, "Projet de l'atelier")
+        assert _membre(client, pid, "atelier", "responsable").status_code in (200, 201)
+        base = _sql(db_path, "SELECT id FROM collection WHERE base = 1 "
+                    "AND projet_id = ?", (pid,))[0]["id"]
+        seconde = _collection(client, "Seconde", pid)
+        aid = _album(client, "Par le projet", base, ADMIN)
+        assert client.put(f"/api/albums/{aid}/collections/{seconde}",
+                          headers=ADMIN).status_code == 201
+    _planche(client, aid, ADMIN)
+    assert _albums(client, ATELIER)[aid]["effacable"] is True
     r = client.patch("/api/comptes/atelier/nature", headers=ADMIN, json={"nature": "collectif"})
     assert r.status_code == 200, r.text
     vu = _albums(client, ATELIER)[aid]
-    assert (vu["ecrivable"], vu["destructible"]) == (True, False)
+    assert (vu["effacable"], vu["destructible"]) == (False, False)
+    assert client.post(f"/api/albums/{aid}/repartir", json={"cran": "images"},
+                       headers=ATELIER).status_code == 403
     assert client.delete(f"/api/albums/{aid}", headers=ATELIER).status_code == 403
 
 
@@ -452,14 +485,19 @@ def test_le_refus_ne_dit_pas_laquelle_des_conditions_manque(client, db_path, dec
     assert "collegue" not in pas_importee.text and "Autre" not in pas_importee.text
 
 
-def test_une_planche_suit_la_regle_du_document(client, decor):
-    """B4 — on supprime une planche là où l'on pourrait supprimer le document, et nulle part
-    ailleurs. Une planche n'a pas de demande à elle : le refus dit de s'adresser à un
-    administrateur."""
+def test_une_planche_suit_la_regle_de_repartir(client, decor):
+    """B4, RENVERSÉ par la tranche 3c (Q5, Hugo, 2026-10-26) — une planche n'est pas le
+    document : elle se supprime par qui tient l'espace, même sur la DERNIÈRE copie du
+    document, comme on repart de zéro. L'importatrice, qui n'a que l'écriture, ne la
+    supprime plus seule ; le refus dit qui le peut."""
     seconde = _planche(client, decor["erreur"], IMPORTEUSE)
-    assert client.delete(f"/api/planches/{seconde}", headers=IMPORTEUSE).status_code == 204
+    r = client.delete(f"/api/planches/{seconde}", headers=IMPORTEUSE)
+    assert r.status_code == 403 and "responsable de son projet" in r.json()["detail"]
+    _accorder(client, decor["principale"], "proprio", "proprietaire")
+    assert _albums(client, PROPRIO)[decor["erreur"]]["destructible"] is False   # dernière
+    assert client.delete(f"/api/planches/{seconde}", headers=PROPRIO).status_code == 204
     r = client.delete(f"/api/planches/{decor['planche']}", headers=COLLEGUE)
-    assert r.status_code == 403 and "administrateur" in r.json()["detail"]
+    assert r.status_code == 403 and "une planche" in r.json()["detail"]
     assert client.delete(f"/api/planches/{decor['planche']}", headers=ADMIN).status_code == 204
 
 
@@ -487,39 +525,35 @@ def test_la_liste_dit_ce_que_devient_le_travail(client, decor):
         assert isinstance(a["partage"], bool) and isinstance(a["au_fonds"], bool)
 
 
-def test_qui_ne_lit_pas_l_album_recoit_toujours_un_404(client, decor):
-    """La garde ne passe qu'APRÈS l'accesseur gardé en écriture."""
-    assert client.delete(f"/api/albums/{decor['erreur']}", headers=LECTRICE).status_code == 404
-    assert client.delete(f"/api/planches/{decor['planche']}",
-                         headers=LECTRICE).status_code == 404
+def test_qui_lit_recoit_un_403_qui_ne_lit_pas_un_404(client, decor):
+    """La garde ne passe qu'APRÈS l'accesseur gardé — en LECTURE depuis la tranche 3c (F3 :
+    le responsable efface ce qu'il lit). La lectrice lit l'album : un refus nommé ; qui ne
+    le lit pas : l'absence, comme partout."""
+    for chemin in (f"/api/albums/{decor['erreur']}", f"/api/planches/{decor['planche']}"):
+        r = client.delete(chemin, headers=LECTRICE)
+        assert r.status_code == 403 and "responsable" in r.json()["detail"], r.text
+        assert client.delete(chemin, headers={"Remote-User": "personne"}).status_code == 404
 
 
 def test_la_clause_aux_extremites_et_ses_parametres_lies():
     assert autorisation.TOTALE.clause_suppression_directe("a.id") == ("1", [])
-    # Sans login, personne n'a importé quoi que ce soit.
-    assert autorisation.Portee(ecriture=frozenset({1})).clause_suppression_directe() \
+    # Sans login, personne ne tient rien.
+    assert autorisation.Portee(propriete=frozenset({1})).clause_suppression_directe() \
         == ("0", [])
     assert autorisation.Portee(lecture=frozenset({1}),
                                utilisateur="x").clause_suppression_directe() == ("0", [])
-    sql, params = autorisation.Portee(ecriture=frozenset({3}),
-                                      utilisateur="o'brien").clause_suppression_directe("z.id")
-    # Les RANGS de l'échelle des crans (v32, COL-3, tranche 3b) sont des constantes écrites
-    # dans le SQL, pas des identifiants : retirés avant de chercher une collection en clair.
-    sans_rangs = sql.replace(database.sql_rang_du_cran("_tco.cran"), "") \
-        .replace(database.sql_rang_du_cran("_tco2.cran"), "")
-    assert "o'brien" not in sql and "3" not in sans_rangs.replace("_t", "")
-    # Neuf sources du travail d'autrui, plus le créateur, le geste sur la dernière copie
-    # (v36, `geste_sur_copie`) et le compte partagé. Six depuis la v32 ; les quatre de la v37
-    # (ANN-7, tranche 1, R11) sont le travail RECOPIÉ sur la SURFACE d'une planche — un
-    # relevé (`releve.auteur` et `releve.modifie_par`, `_tsr`) et une passe
-    # (`passe.recopiee`, `_tsp`) arrivés avec une copie amorcée, que la chaîne de
-    # `region_origine`, faite de régions, ne remonte pas, et les actes sur le relevé SOURCE
-    # d'un relevé de surface recopié (la chaîne d'`origine_id`, relecture croisée, constat 3
-    # et contre-relecture). Les
-    # relevés et passes d'une RÉGION passent par la première et la sixième (cible `releve`
-    # dans `_CIBLES_DE_REGION`), ceux d'une surface faits ici par la quatrième (cible
-    # `releve_planche`, avec les validations) : aucun paramètre de plus.
-    assert sql.count("?") == len(params) and params.count("o'brien") == 13
+    # Tranche 3c (F3) — écrire ne suffit plus, à aucune condition : plus de chemin du
+    # créateur.
+    assert autorisation.Portee(ecriture=frozenset({3}),
+                               utilisateur="x").clause_suppression_directe() == ("0", [])
+    for portee in (autorisation.Portee(propriete=frozenset({3}), utilisateur="o'brien"),
+                   autorisation.Portee(projets_geres=frozenset({3}), utilisateur="o'brien")):
+        for clause in (portee.clause_suppression_directe, portee.clause_repartir_directe):
+            sql, params = clause("z.id")
+            assert "o'brien" not in sql and "3" not in sql.replace("_t", "")
+            assert sql.count("?") == len(params) and params.count("o'brien") == 1
+            # La règle ne lit plus le journal (F3).
+            assert "evenement" not in sql and "geste_sur_copie" not in sql
     assert autorisation.TOTALE.peut_tenir_le_fonds() is True
     assert autorisation.Portee(admin=True, utilisateur="x").peut_tenir_le_fonds() is False
 
@@ -706,8 +740,9 @@ def test_une_demande_sans_motif_est_refusee(client, decor, motif):
 
 def test_les_refus_d_une_demande_se_nomment(client, decor):
     aid = decor["erreur"]
-    # Qui peut supprimer seul n'a rien à demander.
-    r = _demander(client, aid, IMPORTEUSE)
+    # Qui peut supprimer seul n'a rien à demander — l'administrateur, sur cette dernière
+    # copie (tranche 3c : l'importatrice n'y a plus de chemin à elle).
+    r = _demander(client, aid, ADMIN)
     assert r.status_code == 409 and "vous-même" in r.json()["detail"]
     assert _demander(client, aid, COLLEGUE).status_code == 201
     # La même suppression, déjà demandée — sans dire par qui (Hugo, 2026-10-15).
@@ -950,11 +985,10 @@ def test_le_detail_dit_quels_comptes_sont_partages(client, decor):
 
 @pytest.mark.parametrize("travail", sorted(TRAVAUX))
 def test_le_detail_lit_ce_que_la_regle_lit(client, decor, travail):
-    """La règle et le détail partagent leurs sources (`autorisation._sources_du_travail`) :
-    chaque travail d'un autre qui fait DEMANDER l'importatrice apparaît sous sa demande,
-    au nom de qui l'a fait ou d'un auteur inconnu."""
+    """Le détail et « qui perd quoi » partagent leurs sources
+    (`autorisation._sources_du_travail`) : chaque travail d'un autre apparaît sous la demande
+    de l'importatrice, au nom de qui l'a fait ou d'un auteur inconnu."""
     TRAVAUX[travail](client, decor)
-    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
     demande = _demander(client, decor["erreur"], IMPORTEUSE)
     assert demande.status_code == 201, demande.text
     agents = {e["agent"] for e in _detail(client, demande.json()["id"])["travail_des_autres"]}
@@ -1006,13 +1040,14 @@ def test_accepter_detruit_le_document_et_ses_images(client, db_path, decor):
                          "AND type = 'suppression'") == [{"agent": "decor"}]
 
 
-def test_l_importatrice_qui_detruit_satisfait_la_demande_d_un_autre(client, db_path, decor):
-    """La demande d'un collègue n'est pas un travail : elle n'ôte pas à l'importatrice le
-    geste direct. Détruire clôt la demande, et dit qui y a répondu."""
+def test_qui_detruit_satisfait_la_demande_d_un_autre(client, db_path, decor):
+    """La demande d'un collègue n'est pas un travail, et détruire par un autre chemin la
+    clôt, en disant qui y a répondu — l'administrateur, seul à supprimer cette dernière
+    copie depuis la tranche 3c."""
     demande = _demander(client, decor["erreur"], COLLEGUE).json()["id"]
-    assert client.delete(f"/api/albums/{decor['erreur']}", headers=IMPORTEUSE).status_code == 204
+    assert client.delete(f"/api/albums/{decor['erreur']}", headers=ADMIN).status_code == 204
     assert _sql(db_path, "SELECT reponse, repondu_par FROM demande WHERE id = ?",
-                (demande,)) == [{"reponse": "acceptee", "repondu_par": "importeuse"}]
+                (demande,)) == [{"reponse": "acceptee", "repondu_par": "decor"}]
 
 
 @pytest.mark.parametrize("geste", ["fonds", "demandes", "reponse"])
@@ -1252,7 +1287,7 @@ def test_un_travail_ne_se_glisse_pas_entre_la_garde_et_la_destruction(client, db
                "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
                "VALUES ('creation', 'collegue', 'humain', 'annotations', ?)",
                (decor["region"],), vu)
-    assert client.delete(f"/api/albums/{decor['erreur']}", headers=IMPORTEUSE).status_code == 204
+    assert client.delete(f"/api/albums/{decor['erreur']}", headers=ADMIN).status_code == 204
     assert vu == ["verrouillée"]
 
 
@@ -1263,7 +1298,7 @@ def test_ni_entre_la_garde_et_la_suppression_d_une_planche(client, db_path, deco
                "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
                "VALUES ('creation', 'collegue', 'humain', 'annotations', ?)",
                (decor["region"],), vu)
-    assert client.delete(f"/api/planches/{decor['planche']}", headers=IMPORTEUSE).status_code == 204
+    assert client.delete(f"/api/planches/{decor['planche']}", headers=ADMIN).status_code == 204
     assert vu == ["verrouillée"]
 
 

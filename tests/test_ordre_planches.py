@@ -314,32 +314,31 @@ def test_un_import_apres_un_reordonnancement_ne_touche_aucun_fichier_d_une_autre
 
 # ── Réordonner n'est pas un travail sur l'album (Hugo, 2026-10-22) ───────────────────────
 
-def test_reordonner_l_album_d_une_autre_ne_lui_interdit_pas_de_le_supprimer_seule(
-        client, db_path, decor):  # noqa: F811
+def test_reordonner_l_album_d_une_autre_n_est_pas_un_travail(client, db_path, decor):  # noqa: F811
     """Un ↓ d'une collègue laissait l'importatrice DEMANDER la suppression d'un album où
     personne d'autre n'avait rien annoté : l'acte, écrit sous le document, comptait comme un
-    travail d'autrui. Il ne compte plus — ni pour la règle, ni dans ce que l'administrateur
-    lit sous une demande —, et une validation, elle, compte toujours."""
+    travail d'autrui. Il ne compte pas dans « qui perd quoi » (depuis la tranche 3c, la
+    seule lecture qui reste de ce travail : la règle de suppression ne le lit plus), et une
+    validation, elle, compte toujours."""
     import autorisation
     aid = decor["erreur"]
     _planche_fonds(client, aid, IMPORTEUSE)
-    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is True
     ids = _ordre(client, aid, COLLEGUE)
     r = _ordonner(client, aid, ids[::-1], ids, headers=COLLEGUE, geste="descendre")
     assert r.status_code == 200, r.text
-    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is True
     n = len(autorisation._sources_du_travail("?"))
-    agents = [r[0] for r in _sql(
-        db_path, f"SELECT agent FROM ({autorisation.sql_actes_sur_album('?')})", [aid] * n)]
-    assert "collegue" not in agents, agents
-    # La règle mord encore : un vrai travail de la collègue compte.
+
+    def agents():
+        return [x[0] for x in _sql(
+            db_path, f"SELECT agent FROM ({autorisation.sql_actes_sur_album('?')})",
+            [aid] * n)]
+    assert "collegue" not in agents(), agents()
+    # La mesure mord encore : un vrai travail de la collègue compte.
     r = client.patch(f"/api/planches/{ids[0]}/validation", headers=COLLEGUE,
                      json={"validee": True})
     assert r.status_code == 200, r.text
-    assert _albums(client, IMPORTEUSE)[aid]["destructible"] is False
+    assert "collegue" in agents()
 
-
-# ── Les refus qui ne sont pas la faute du fichier (relecture croisée) ────────────────────
 
 def test_un_decodeur_absent_du_serveur_ne_se_dit_pas_fichier_abime(client, album,
                                                                    monkeypatch, data_dir):

@@ -12,12 +12,14 @@ calculent que la branche retenue.
 Deux propriétés, et chacune a son test :
 - le SENS ne change pour personne : l'ancien SQL (celui de 1032d4e, recopié ici comme
   RÉFÉRENCE) et le nouveau rendent les mêmes valeurs, album par album, sous neuf identités.
-  Depuis la tranche 3b de COL-3, la référence porte la clause NEUVE (les chemins 2 et 3,
-  la dernière copie, `geste_sur_copie`, repartir) : elle compare la forme CASE à la forme
-  OR d'une même clause, et non plus à 1032d4e ;
+  Depuis la tranche 3b de COL-3, la référence porte la clause NEUVE : elle compare la forme
+  CASE à la forme OR d'une même clause, et non plus à 1032d4e. Depuis la tranche 3c (F3),
+  la règle d'effacement n'a plus de `CASE` à elle — plus aucune branche ne lit le journal —,
+  et la référence se réduit au BORNAGE (`NOT EXISTS … OR …` contre `_bornee_sur_album`) ;
 - le COÛT : ce qui ne compte pas n'est plus évalué. Pas un temps — il bruite —, mais une
   fonction SQL témoin, glissée dans le fragment coûteux, qui note chaque album pour lequel
-  SQLite l'appelle.
+  SQLite l'appelle. Depuis la tranche 3c : aucune clause d'effacement ne lit le journal,
+  sous aucune identité — un témoin posé sur les sources du travail n'est jamais appelé.
 """
 import pytest
 
@@ -26,7 +28,7 @@ import database
 from conftest import ADMIN, make_png
 from test_bac_a_sable import (HUGO, LEA, RESP, RITA, SAM, TP, _partage, _portee, decor,  # noqa: F401
                               jeu)
-from database import NATURE_COLLECTIF, sql_est_bac_a_sable, sql_projet_d_album
+from database import sql_est_bac_a_sable, sql_projet_d_album
 
 ZOE = {"Remote-User": "zoe", "Remote-Groups": "bd-admins"}        # administratrice sans bac
 ZOE2 = {"Remote-User": "zoe2", "Remote-Groups": "bd-admins"}      # administratrice INVITÉE
@@ -34,7 +36,7 @@ ZOE2 = {"Remote-User": "zoe2", "Remote-Groups": "bd-admins"}      # administratr
 # Les clauses d'album : `_clause_album` en lecture et en écriture (l'enveloppe du jeu,
 # autour, est inchangée), puis les clauses de geste — « repartir de zéro » compris
 # (tranche 3b : les chemins de la suppression, sans la règle de la dernière copie).
-CLAUSES = (("_clause_album", False), ("_clause_album", True), ("clause_destruction", None),
+CLAUSES = (("_clause_album", False), ("_clause_album", True),
            ("clause_suppression_directe", None), ("clause_repartir_directe", None),
            ("clause_rejoindre_directe", None))
 EFFACEMENTS = ("clause_suppression_directe", "clause_repartir_directe")
@@ -48,57 +50,13 @@ def _nouvelle(p, clause, ecriture):
 
 def _ancienne(p, clause, ecriture):
     """Le SQL d'AVANT (1032d4e), recopié tel qu'il était : la référence de l'équivalence.
-    Seuls le bornage et la suppression directe ordinaire ont changé ; le reste se lit dans
-    le code d'aujourd'hui, qui est celui d'hier."""
+    Depuis la tranche 3c, seul le bornage a changé de forme ; le reste se lit dans le code
+    d'aujourd'hui."""
     if p.tout and p.bornee and not p.hors_isoles:
         sql, prm = _ancienne(p._ordinaire(), clause, ecriture)
         return (f"(NOT EXISTS (SELECT 1 FROM albums _bba WHERE _bba.id = a.id "
                 f"AND {sql_est_bac_a_sable(sql_projet_d_album('_bba'))}) OR {sql})", prm)
-    if clause not in EFFACEMENTS or p.tout:
-        return _nouvelle(p, clause, ecriture)
-    garde = clause == "clause_suppression_directe"
-    if not p.utilisateur:
-        return "0", []
-    bac, p_bac = "0", []
-    if p.bacs_a_soi:
-        ids = sorted(p.bacs_a_soi)
-        bac = (f"EXISTS (SELECT 1 FROM albums _sbs WHERE _sbs.id = a.id "
-               f"AND {sql_projet_d_album('_sbs')} IN ({', '.join('?' * len(ids))}))")
-        p_bac = [*ids]
-    detruire, p_detruire = p.clause_destruction("a.id")
-    # COL-3, tranche 3b (Hugo, 2026-10-21) — les chemins 2 et 3, le propriétaire de toutes
-    # les collections et le responsable du projet, hors dernière copie : la RÉFÉRENCE les
-    # ajoute en `OR`, sous la forme qui calcule tout. Leur fragment est celui du code
-    # (`_sql_tient_l_album`) — ce test mesure l'assemblage en `CASE`, pas ce fragment, que
-    # `tests/test_qui_efface.py` éprouve par ses comportements.
-    tient, p_tient = p._sql_tient_l_album("a.id", derniere_copie_gardee=garde)
-    if detruire == "0" and tient == "0":
-        return bac, p_bac
-    pas_partage = ("NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
-                   "AND _su.nature = ?)")
-    morceaux, params = [], []
-    if detruire != "0":
-        autrui, p_autrui = autorisation._sql_travail_d_autrui("a.id", p.utilisateur)
-        # La dernière copie (relecture croisée de la 3b et sa contre-relecture) : le
-        # créateur ne la supprime seul que hors projet isolé si c'est la copie d'ORIGINE et
-        # que personne d'autre n'y a JAMAIS fait un geste ; repartir n'a pas cette moitié.
-        derniere, p_derniere = "", []
-        if garde:
-            derniere = (f" AND ({autorisation._sql_une_soeur('a.id')} "
-                        f"OR {autorisation._sql_isolee('a.id')} OR (_sc.cran = 'origine' "
-                        "AND NOT EXISTS (SELECT 1 FROM geste_sur_copie _sg "
-                        "WHERE _sg.album_id = a.id AND _sg.agent IS NOT ?)))")
-            p_derniere = [p.utilisateur]
-        morceaux.append(f"({detruire} "
-                        f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = a.id "
-                        f"AND _sc.creee_par = ?{derniere}) AND {pas_partage} "
-                        f"AND NOT {autrui})")
-        params += [*p_detruire, p.utilisateur, *p_derniere, p.utilisateur, NATURE_COLLECTIF,
-                   *p_autrui]
-    if tient != "0":
-        morceaux.append(f"({tient} AND {pas_partage})")
-        params += [*p_tient, p.utilisateur, NATURE_COLLECTIF]
-    return f"({' OR '.join(morceaux)} OR {bac})", [*params, *p_bac]
+    return _nouvelle(p, clause, ecriture)
 
 
 def _valeurs(conn, frag):
@@ -123,9 +81,9 @@ def _region(client, planche, qui):
 @pytest.fixture
 def scene(client, decor):  # noqa: F811
     """Le décor du bac à sable, plus ce qui fait varier chaque moitié de la règle :
-    - `resp`, compte ordinaire : « Réel » qu'elle a créé et où personne d'autre n'a
-      travaillé (VRAI), « Touché » qu'elle a créé et où l'administrateur a travaillé (FAUX
-      par autrui), « D'un autre » créé par l'administrateur (FAUX par la copie) ; et son bac ;
+    - `resp`, compte ordinaire, responsable de l'Étude : « Réel » qu'elle a créé, « Touché »
+      qu'elle a créé et où l'administrateur a travaillé, « D'un autre » créé par
+      l'administrateur ; et son bac ;
     - `hugo` a son bac à sable (portée BORNÉE), `zoe` n'en a pas, `zoe2` est invitée dans
       celui de lea ;
     - `sam`, l'invité de lea, a travaillé sur une copie du bac de lea : pour lea, seul le
@@ -200,14 +158,20 @@ def test_l_ancien_et_le_nouveau_sql_rendent_les_memes_valeurs(client, scene):
         conn.close()
     sup = {nom: vus[nom, "clause_suppression_directe", None] for nom in portees}
     r = sup["resp (ordinaire)"]
+    # Tranche 3c (F3) — `resp`, responsable de l'Étude, efface « Touché » et sa sœur ; ni
+    # « Réel » ni « D'un autre », dernières copies de leur document, quel qu'en soit le
+    # créateur : plus de chemin du créateur.
     assert (r[scene["reel"]], r[scene["touche"]], r[scene["d_un_autre"]],
-            r[scene["soeur"]]) == (1, 1, 0, 1)
+            r[scene["soeur"]]) == (0, 1, 0, 1)
+    rep = vus["resp (ordinaire)", "clause_repartir_directe", None]
+    assert (rep[scene["reel"]], rep[scene["d_un_autre"]]) == (1, 1)
     assert sup["lea (propriétaire de bac)"][scene["copie_touchee"]] == 1
-    assert sup["sam (invité)"][scene["copie_touchee"]] == 0
+    # Q4 (Hugo, 2026-10-26) : dans un bac à sable, quiconque y écrit efface.
+    assert sup["sam (invité)"][scene["copie_touchee"]] == 1
     assert sup["groupe-tp (compte partagé)"][scene["du_tp"]] == 0
     h = sup["hugo (borné, a son bac)"]
     assert (h[scene["reel"]], h[scene["copie_touchee"]]) == (1, 0)
-    assert sup["zoe2 (administratrice invitée)"][scene["copie_touchee"]] == 0
+    assert sup["zoe2 (administratrice invitée)"][scene["copie_touchee"]] == 1
     assert vus["zoe2 (administratrice invitée)", "_clause_album", False][
         scene["copie_touchee"]] == 1
 
@@ -243,28 +207,34 @@ def test_hors_des_bacs_la_clause_ordinaire_n_est_pas_evaluee(client, scene):
     assert all(v == (0 if a in bacs else 1) for a, v in valeurs.items())
 
 
-def test_le_travail_d_autrui_ne_se_lit_que_si_le_reste_tient(client, scene, monkeypatch):
-    """`clause_suppression_directe`, dans une colonne du `SELECT` : le travail d'autrui (le
-    journal) n'est lu que pour les albums où les trois moitiés bon marché tiennent et où
-    aucun chemin plus court ne répond — pour resp, « Réel », qu'elle a créé et où elle écrit
-    partout ; ni pour « Touché » et sa sœur, que le chemin du responsable (tranche 3b) rend
-    effaçables sans le journal, ni pour « D'un autre », ni
-    pour un album qu'elle n'écrit pas, ni dans son bac à sable, où le chemin du bac répond
-    d'abord. Et pour une portée bornée, sur aucun album : le vrai corpus ne lit pas la clause
-    ordinaire, le bac à sable à soi répond par son chemin."""
-    lire_autrui = autorisation._sql_travail_d_autrui
+def test_aucune_clause_d_effacement_ne_lit_le_journal(client, scene, monkeypatch):
+    """Tranche 3c (F3) — « le journal ne décide plus rien » : aucune clause d'effacement ne
+    lit les sources du travail, sous aucune identité ni au mono-poste. Le témoin est posé sur
+    `autorisation._sources_du_travail`, la seule porte vers le journal de « qui perd
+    quoi » : il n'est jamais appelé, et le SQL rendu ne nomme ni le journal ni la trace des
+    gestes. (Jusqu'à la tranche 3c, ce test vérifiait que le travail d'autrui ne se lisait
+    que si le reste du chemin du créateur tenait.)"""
+    appels = []
+    vraie = autorisation._sources_du_travail
 
-    def temoin(alias, login):
-        sql, prm = lire_autrui(alias, login)
-        return f"(bd_autrui_vu({alias}) OR {sql})", prm
-    monkeypatch.setattr(autorisation, "_sql_travail_d_autrui", temoin)
-    for qui, attendu in ((RESP, {scene["reel"]}), (HUGO, set()),
-                         (LEA, set())):
-        p = _portee(scene["db"], qui)
-        conn = database.get_connection()
-        try:
-            vus = _temoin(conn, "bd_autrui_vu")
-            _valeurs(conn, p.clause_suppression_directe("a.id"))
-        finally:
-            conn.close()
-        assert vus == attendu, qui["Remote-User"]
+    def temoin(alias):
+        appels.append(alias)
+        return vraie(alias)
+    monkeypatch.setattr(autorisation, "_sources_du_travail", temoin)
+    portees = [_portee(scene["db"], qui) for qui in IDENTITES.values()]
+    portees.append(autorisation.TOTALE)
+    conn = database.get_connection()
+    try:
+        for p in portees:
+            for clause in EFFACEMENTS:
+                sql, prm = getattr(p, clause)("a.id")
+                assert "evenement" not in sql and "geste_sur_copie" not in sql, (p, clause)
+                _valeurs(conn, (sql, prm))
+    finally:
+        conn.close()
+    assert appels == []
+    # Le témoin mord : « qui perd quoi » passe bien par lui.
+    autorisation.sql_actes_sur_album("1")
+    assert appels == ["1"]
+
+

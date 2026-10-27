@@ -8,15 +8,19 @@ Les décisions (Hugo, 2026-10-20 ; pour une planche, et la règle, 2026-10-21) :
   vers `images`, toutes les régions, la planche repart `importee` ;
 - `validee` part à tout cran, `verrouillee` (et qui l'a posé) reste ;
 - on repart VERS un cran plus bas que ce que la copie porte, jamais plus haut ni au même ;
-- la règle de l'effacement (`Portee.clause_suppression_directe`) ; sinon une demande
-  `repartir`, motif et certification obligatoires, à laquelle répond un administrateur —
-  une planche n'a pas de demande à elle ;
+- la règle de l'effacement (`Portee.clause_repartir_directe`) : depuis la tranche 3c, qui
+  TIENT l'espace — le propriétaire de toutes les collections, le responsable du projet,
+  l'administrateur (F3) ; sinon une demande `repartir`, motif et certification
+  obligatoires ;
 - UN acte sous le document, non annulable ; Ctrl+Z ne remonte pas au-delà.
 
 Le décor est celui de `test_amorcer` : « Le Lotus bleu », importé et entièrement travaillé
 par `lea` dans Principale — une case et sa bulle, le texte, une note et deux tags, un
 locuteur, une présence, deux attributs de case, une correction grammaticale, la planche
 validée, relue, verrouillée. `sam` écrit dans Principale et n'y a rien fait.
+
+Tranche 3c (F3) — le créateur n'efface plus seul : `lea` est faite PROPRIÉTAIRE de
+Principale (`lea_tient`), ce qui lui laisse ses gestes ; `sam` demande.
 """
 import pytest
 
@@ -27,6 +31,13 @@ from test_projets import _sql
 
 LECTRICE = {"Remote-User": "lectrice"}
 PROPRIO = {"Remote-User": "proprio"}
+
+
+@pytest.fixture(autouse=True)
+def lea_tient(client, source):
+    """Tranche 3c (F3) — qui TIENT l'espace efface : `lea` possède Principale, la seule
+    collection de l'album."""
+    _accorder(client, source["principale"], "lea", "proprietaire")
 
 
 def _ok(r, code=200):
@@ -176,6 +187,7 @@ def test_apres_une_remise_a_zero_qui_n_ecrit_plus_ne_l_apprend_pas(client, sourc
     reg = _ok(client.post(f"/api/planches/{source['pl']}/regions", headers=LEA,
                           json={"type": "case", "x": 5, "y": 5, "w": 9, "h": 9}), 201)["id"]
     _ok(_repartir(client, source["a"], "images", LEA))
+    _accorder(client, source["principale"], "proprio", "proprietaire")   # un autre la tient
     _accorder(client, source["principale"], "lea", "lecture")
     r = client.post("/api/undo", headers=LEA)
     assert r.status_code == 409, r.text
@@ -208,19 +220,23 @@ def test_une_planche_repart_seule_et_le_reste_s_annule_encore(client, source, db
 
 
 def test_la_regle_est_celle_de_l_effacement(client, source, db_path):
-    """`sam` écrit dans Principale sans y avoir rien fait ni la posséder : 403 nommé — la
-    planche aussi, avec ses mots. `lectrice` ne l'écrit pas : 404. `proprio`, propriétaire
-    de Principale : il en repart, même sur la DERNIÈRE copie du document — repartir garde
-    les images, rien ne sort du fonds (le pilotage, 2026-10-25, après la relecture croisée :
-    la règle de la dernière copie ne vaut que pour la suppression) —, et ne la supprime pas
-    seul. L'administrateur, toujours."""
+    """`sam` écrit dans Principale sans la posséder : 403 nommé, qui dit qui le peut — la
+    planche aussi, avec ses mots. `lectrice` la lit : 403 nommé aussi depuis la tranche 3c
+    (l'accesseur en lecture, F3 — l'objet est lisible) ; qui ne la lit pas, 404.
+    `proprio`, propriétaire de Principale : il en repart, même sur la DERNIÈRE copie du
+    document — repartir garde les images, rien ne sort du fonds (le pilotage, 2026-10-25,
+    après la relecture croisée : la règle de la dernière copie ne vaut que pour la
+    suppression) —, et ne la supprime pas seul. L'administrateur, toujours."""
     r = _repartir(client, source["a"], "grammaire", SAM)
-    assert r.status_code == 403 and "se demande à un administrateur" in r.json()["detail"]
+    assert r.status_code == 403 and "responsable de son projet" in r.json()["detail"]
     rp = client.post(f"/api/planches/{source['pl']}/repartir", json={"cran": "images"},
                      headers=SAM)
-    assert rp.status_code == 403 and "planches" in rp.json()["detail"]
+    assert rp.status_code == 403 and "une planche" in rp.json()["detail"]
     _accorder(client, source["principale"], "lectrice", "lecture")
-    assert _repartir(client, source["a"], "grammaire", LECTRICE).status_code == 404
+    r = _repartir(client, source["a"], "grammaire", LECTRICE)
+    assert r.status_code == 403 and "responsable de son projet" in r.json()["detail"]
+    assert _repartir(client, source["a"], "grammaire",
+                     {"Remote-User": "personne"}).status_code == 404
     _accorder(client, source["principale"], "proprio", "proprietaire")
     _ok(_repartir(client, source["a"], "grammaire", PROPRIO))
     assert client.delete(f"/api/albums/{source['a']}", headers=PROPRIO).status_code == 403
@@ -267,7 +283,8 @@ def test_un_refus_ne_touche_a_rien_et_la_destruction_clot_la_demande(client, sou
                     json={"reponse": "refusee"}))
     assert _travail(db_path, source["a"])["annotations"] == 1
     d2 = _ok(_demander(client, source["a"], SAM), 201)
-    assert client.delete(f"/api/albums/{source['a']}", headers=LEA).status_code == 204
+    # La dernière copie du document : seul un administrateur la supprime (tranche 3c, F3).
+    assert client.delete(f"/api/albums/{source['a']}", headers=ADMIN).status_code == 204
     assert _sql(db_path, "SELECT reponse FROM demande WHERE id = ?",
                 (d2["id"],))[0]["reponse"] == "refusee"
 
@@ -275,8 +292,9 @@ def test_un_refus_ne_touche_a_rien_et_la_destruction_clot_la_demande(client, sou
 def test_dans_un_bac_a_sable_son_proprietaire_repart_et_rien_ne_se_demande(client, source,
                                                                           db_path):
     """Le bac à sable de `lea`, où `sam` est invité : `sam` y travaille sur un album de
-    `lea` ; il n'y repart pas de zéro, et ne le DEMANDE pas — rien ne s'y demande à un
-    administrateur. `lea` y repart, quel que soit qui y a travaillé."""
+    `lea`. Depuis la tranche 3c (Q4, Hugo, 2026-10-26, qui renverse la règle commune pour
+    l'invité), quiconque écrit dans un bac à sable y efface : `sam` y repart de zéro, et
+    n'a donc rien à demander (409). `lea` y repart, quel que soit qui y a travaillé."""
     bac = _ok(client.post("/api/bac-a-sable", headers=LEA), 201)
     _ok(client.put(f"/api/projets/{bac['id']}/membres", headers=LEA,
                    json={"genre": "utilisateur", "principal": "sam", "role": "membre"}))
@@ -285,8 +303,11 @@ def test_dans_un_bac_a_sable_son_proprietaire_repart_et_rien_ne_se_demande(clien
     pl = _planche(client, a, LEA)
     _ok(client.post(f"/api/planches/{pl}/regions", headers=SAM,
                     json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)
-    assert _repartir(client, a, "images", SAM).status_code == 403
     r = _demander(client, a, SAM, cran="images")
-    assert r.status_code == 403, r.text
+    assert r.status_code == 409 and "vous-même" in r.json()["detail"], r.text
+    _ok(_repartir(client, a, "images", SAM))
+    assert not _sql(db_path, "SELECT 1 FROM regions WHERE planche_id = ?", (pl,))
+    _ok(client.post(f"/api/planches/{pl}/regions", headers=SAM,
+                    json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)
     _ok(_repartir(client, a, "images", LEA))
     assert not _sql(db_path, "SELECT 1 FROM regions WHERE planche_id = ?", (pl,))

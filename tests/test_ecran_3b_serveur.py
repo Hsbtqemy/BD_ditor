@@ -46,6 +46,8 @@ def _album(client, qui, album_id):
 def test_une_copie_remise_a_zero_le_dit_et_le_nom_est_borne(client, source):
     lectrice = {"Remote-User": "lectrice"}
     _accorder(client, source["principale"], "lectrice", "lecture")
+    # Tranche 3c (F3) : qui tient l'espace repart de zéro — `lea` possède Principale.
+    _accorder(client, source["principale"], "lea", "proprietaire")
     assert _album(client, LEA, source["a"])["repartie"] is None
     # Une planche remise à zéro ne fait pas la puce de l'album.
     _ok(client.post(f"/api/planches/{source['pl']}/repartir", headers=LEA,
@@ -82,6 +84,7 @@ def test_la_derniere_copie_se_dit_a_qui_ecrit(client, source):
 # =========================================================================== #
 @pytest.mark.parametrize("cran", ["grammaire", "transcription", "decoupage", "images"])
 def test_l_apercu_de_repartir_est_ce_que_l_acte_retire(client, source, cran):
+    _accorder(client, source["principale"], "lea", "proprietaire")   # tranche 3c (F3)
     apercu = _ok(client.get(f"/api/albums/{source['a']}/repartir/apercu?cran={cran}",
                             headers=LEA))
     assert (apercu["niveau"], apercu["direct"], apercu["rien_a_retirer"]) == (
@@ -92,13 +95,16 @@ def test_l_apercu_de_repartir_est_ce_que_l_acte_retire(client, source, cran):
 
 
 def test_l_apercu_de_repartir_est_borne(client, source):
+    """Tranche 3c (F3) — l'aperçu est en LECTURE : la lectrice le lit (sans pouvoir le faire
+    elle-même), qui ne lit pas l'album reçoit 404."""
     lectrice = {"Remote-User": "lectrice"}
     _accorder(client, source["principale"], "lectrice", "lecture")
-    r = _ok(client.get(f"/api/albums/{source['a']}/repartir/apercu?cran=grammaire",
-                       headers=SAM))
-    assert r["direct"] is False
+    for qui in (SAM, lectrice):
+        r = _ok(client.get(f"/api/albums/{source['a']}/repartir/apercu?cran=grammaire",
+                           headers=qui))
+        assert r["direct"] is False, qui
     assert client.get(f"/api/albums/{source['a']}/repartir/apercu?cran=grammaire",
-                      headers=lectrice).status_code == 404
+                      headers=PERSONNE).status_code == 404
     assert client.get(f"/api/albums/{source['a']}/repartir/apercu?cran=annotations",
                       headers=LEA).status_code == 422
     autre = _ok(client.post("/api/albums", headers=LEA,

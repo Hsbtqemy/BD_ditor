@@ -1055,9 +1055,8 @@ def annuler_correction(region_id: int, ordre: int,
     cur = conn.execute("DELETE FROM token_correction WHERE region_id = ? AND ordre = ?",
                        (region_id, ordre))
     if cur.rowcount:
-        # La RÉGION dans la charge (COL-3, tranche 3b ; relecture de `geste_sur_copie`) :
-        # journalisé après le `DELETE`, l'acte ne dirait plus de quelle copie était la
-        # correction, et retirer celle d'un autre échapperait à la règle de la dernière copie.
+        # La RÉGION dans la charge (COL-3, tranche 3b) : journalisé après le `DELETE`, l'acte
+        # ne dirait plus de quelle copie était la correction.
         journal.journaliser(conn, "suppression", "token_correction", avant_corr["id"],
                             avant={**{k: avant_corr[k] for k in _corr_cols},
                                    "region_id": region_id})

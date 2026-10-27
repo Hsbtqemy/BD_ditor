@@ -15,8 +15,10 @@ Les décisions qu'on éprouve (`docs/col3-tranche3b-cadrage.md`, Hugo, 2026-10-2
 - E6 — les personnages suivent.
 
 `creer_copie` est jouée en direct, sous une connexion ; la route de la prise viendra avec
-son commit. La règle est lue par `destructible` de `GET /api/albums`, sous l'identité de qui
-a créé la copie.
+son commit. Le travail recopié se lisait par `destructible` de `GET /api/albums`, sous
+l'identité de qui a créé la copie ; depuis la tranche 3c (F3), la règle de suppression ne le
+lit plus, et il se lit où il sert : « qui perd quoi » (`_seul`, les dix sources de
+`autorisation.sql_actes_sur_album`).
 """
 import json
 
@@ -279,21 +281,30 @@ def test_aucun_evenement_ne_nomme_une_region_copiee(client, db_path, source):
     assert (apres.status_code, apres.json()) == (prochain.status_code, prochain.json())
 
 
-def _destructible(client, album_id, qui):
-    return {a["id"]: a for a in client.get("/api/albums", headers=qui).json()}[album_id][
-        "destructible"]
+def _seul(album_id, qui):
+    """Personne d'autre que `qui` n'a-t-il travaillé sur l'album, selon « qui perd quoi » ?
+    La question que la règle de suppression posait au créateur jusqu'à la tranche 3c (F3) ;
+    la mesure ne décide plus, elle montre."""
+    import autorisation
+    conn = database.get_connection()
+    try:
+        return not conn.execute(
+            f"SELECT EXISTS (SELECT 1 FROM ({autorisation.sql_actes_sur_album(str(int(album_id)))}) "
+            "WHERE agent IS NULL OR agent IS NOT ?)", (qui["Remote-User"],)).fetchone()[0]
+    finally:
+        conn.close()
 
 
-def test_le_copieur_ne_supprime_pas_seul_le_travail_d_autrui(client, db_path, source):
+def test_le_travail_d_autrui_recopie_compte_pour_le_copieur(client, db_path, source):
     b = _copier(source, "annotations", par="sam")
-    assert _destructible(client, b, SAM) is False
+    assert _seul(b, SAM) is False
 
 
-def test_qui_copie_son_propre_travail_supprime_seul(client, db_path, source):
+def test_qui_copie_son_propre_travail_y_est_seul(client, db_path, source):
     """La source 2 suit la chaîne : l'attribut de case recopié a son `lien` sous la région
     SOURCE, posé par `lea` ; sans la chaîne, il compterait comme le travail d'un inconnu."""
     b = _copier(source, "annotations")
-    assert _destructible(client, b, LEA) is True
+    assert _seul(b, LEA) is True
 
 
 def test_dans_le_projet_une_correction_recopiee_garde_son_auteur_et_se_tait(client, db_path,
@@ -342,11 +353,11 @@ def test_une_couche_recopiee_effacee_par_une_remise_a_zero_ne_compte_plus(client
     _ok(client.put(f"/api/regions/{source['case']}/annotation", headers=SAM,
                    json={"note": "plan large", "tags": []}))
     b = _copier(source, "annotations")
-    assert _destructible(client, b, LEA) is False
+    assert _seul(b, LEA) is False
     _accorder(client, source["etude"], "proprio", "proprietaire")
     _ok(client.post(f"/api/albums/{b}/repartir", headers={"Remote-User": "proprio"},
                     json={"cran": "transcription"}))
-    assert _destructible(client, b, LEA) is True
+    assert _seul(b, LEA) is True
 
 
 def test_une_validation_grammaticale_recopiee_suit_les_corrections(client, db_path, source):
@@ -359,11 +370,11 @@ def test_une_validation_grammaticale_recopiee_suit_les_corrections(client, db_pa
                   "'{\"grammaire\": \"validee\"}', datetime('now', '-1 hour'))",
          (source["bulle"],))
     b = _copier(source, "grammaire")
-    assert _destructible(client, b, LEA) is False
+    assert _seul(b, LEA) is False
     _accorder(client, source["etude"], "proprio", "proprietaire")
     _ok(client.post(f"/api/albums/{b}/repartir", headers={"Remote-User": "proprio"},
                     json={"cran": "transcription"}))
-    assert _destructible(client, b, LEA) is True
+    assert _seul(b, LEA) is True
 
 
 def test_une_couche_posee_ensuite_ne_ranime_pas_celle_de_la_source(client, db_path, source):
@@ -378,7 +389,7 @@ def test_une_couche_posee_ensuite_ne_ranime_pas_celle_de_la_source(client, db_pa
                 (source["case"],))[0]["region_id"]
     _ok(client.put(f"/api/regions/{case}/annotation", headers=LEA,
                    json={"note": "à moi", "tags": []}))
-    assert _destructible(client, b, LEA) is True
+    assert _seul(b, LEA) is True
 
 
 def test_une_couche_reposee_apres_une_remise_a_zero_ne_ranime_rien(client, db_path, source):
@@ -390,7 +401,7 @@ def test_une_couche_reposee_apres_une_remise_a_zero_ne_ranime_rien(client, db_pa
     _ok(client.put(f"/api/regions/{source['case']}/annotation", headers=SAM,
                    json={"note": "plan large", "tags": []}))
     b = _copier(source, "annotations")
-    assert _destructible(client, b, LEA) is False
+    assert _seul(b, LEA) is False
     _accorder(client, source["etude"], "proprio", "proprietaire")
     _ok(client.post(f"/api/albums/{b}/repartir", headers={"Remote-User": "proprio"},
                     json={"cran": "transcription"}))
@@ -402,7 +413,7 @@ def test_une_couche_reposee_apres_une_remise_a_zero_ne_ranime_rien(client, db_pa
                    json={"note": "à moi", "tags": []}))
     assert _sql(db_path, "SELECT recopiee FROM annotations WHERE region_id = ?",
                 (case,)) == [{"recopiee": 0}]
-    assert _destructible(client, b, LEA) is True
+    assert _seul(b, LEA) is True
 
 
 def test_les_couches_recopiees_portent_leur_marque(db_path, source):
@@ -426,8 +437,8 @@ def test_le_travail_fait_sur_la_source_apres_la_copie_ne_compte_pas(client, db_p
          (b,))
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=SAM,
                    json={"note": "après la copie", "tags": ["dialogue"]}))
-    assert _destructible(client, b, LEA) is True
-    assert _destructible(client, source["a"], LEA) is False
+    assert _seul(b, LEA) is True
+    assert _seul(source["a"], LEA) is False
 
 
 def test_une_note_qui_n_a_pas_suivi_ne_compte_pas(client, db_path, source):
@@ -435,9 +446,9 @@ def test_une_note_qui_n_a_pas_suivi_ne_compte_pas(client, db_path, source):
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=SAM,
                    json={"note": "de sam", "tags": ["dialogue"]}))
     b = _copier(source, "decoupage")
-    assert _destructible(client, b, LEA) is True
+    assert _seul(b, LEA) is True
     c = _copier(source, "annotations")
-    assert _destructible(client, c, LEA) is False
+    assert _seul(c, LEA) is False
 
 
 def test_le_travail_d_une_copie_intermediaire_compte(client, db_path, source):
@@ -450,7 +461,7 @@ def test_le_travail_d_une_copie_intermediaire_compte(client, db_path, source):
     _sql(db_path, "UPDATE evenement SET date = datetime('now', '-1 minute') "
                   "WHERE cible_table = 'regions' AND cible_id = ?", (bulle_b,))
     c = _copier(source, "annotations", depuis=b)
-    assert _destructible(client, c, LEA) is False
+    assert _seul(c, LEA) is False
     # Le même travail fait APRÈS la copie suivante n'y est pas.
     d = _copier(source, "annotations")
     e = _copier(source, "annotations", depuis=d)
@@ -461,7 +472,7 @@ def test_le_travail_d_une_copie_intermediaire_compte(client, db_path, source):
     _sql(db_path, "UPDATE copie SET creee_le = datetime('now', '-1 hour') WHERE album_id = ?",
          (e,))
     _ok(client.put(f"/api/regions/{bulle_d}", headers=SAM, json={"ocr_texte": "PLUS TARD"}))
-    assert _destructible(client, e, LEA) is True
+    assert _seul(e, LEA) is True
 
 
 def test_l_administrateur_lit_le_travail_copie_sous_une_demande(client, db_path, source):
@@ -486,13 +497,13 @@ def test_le_travail_de_la_racine_compte_deux_copies_plus_loin(client, db_path, s
     test passerait sinon par elle sans mesurer la sixième source."""
     _sql(db_path, "DELETE FROM region_attribut")
     temoin = _copier(source, "annotations", depuis=_copier(source, "annotations"))
-    assert _destructible(client, temoin, LEA) is True
+    assert _seul(temoin, LEA) is True
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=SAM,
                    json={"note": "de sam", "tags": ["dialogue"]}))
     _sql(db_path, "UPDATE evenement SET date = datetime('now', '-1 minute')")
     b = _copier(source, "annotations")
     c = _copier(source, "annotations", depuis=b)
-    assert _destructible(client, c, LEA) is False
+    assert _seul(c, LEA) is False
 
 
 # --------------------------------------------------------------------------- #
@@ -589,9 +600,9 @@ def test_le_proprietaire_lit_la_demande_et_l_accepte(client, db_path, source):
     assert (c["creee_par"], c["cran"]) == ("lea", "grammaire")   # au demandeur, pas à olga
     zero = dict.fromkeys(_travail(db_path, source["a"]), 0)
     assert _travail(db_path, b) == {**zero, **ATTENDU["grammaire"]}
-    # La naissance, journalisée sous olga, n'est pas un travail : lea supprime seule ce
-    # qu'elle seule a fait.
-    assert _destructible(client, b, LEA) is True
+    # La naissance, journalisée sous olga, n'est pas un travail : sous « qui perd quoi »,
+    # lea est seule à avoir fait ce qu'elle a fait.
+    assert _seul(b, LEA) is True
     assert _ok(client.get(f"/api/collections/{source['principale']}/demandes",
                           headers=OLGA)) == []
 

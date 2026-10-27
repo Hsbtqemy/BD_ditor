@@ -5,9 +5,10 @@ Tout album est la COPIE DE TRAVAIL d'un document, et le document appartient à l
 plus appelés par aucune collection — une copie qu'on a supprimée de sa dernière collection
 y est GARDÉE avec son travail, et un administrateur peut la rendre.
 
-« Supprimer définitivement » a deux réponses, et ce module porte la seconde. Qui a importé
-un document, seul à y avoir travaillé, l'efface tout de suite (`DELETE /api/albums/{id}`,
-règle `Portee.clause_suppression_directe`). Sinon il DEMANDE : la demande dit qui, quand et
+« Supprimer définitivement » a deux réponses, et ce module porte la seconde. Qui tient
+l'espace — le responsable du projet, le propriétaire de toutes les collections de l'album —
+l'efface tout de suite (`DELETE /api/albums/{id}`, règle
+`Portee.clause_suppression_directe`, tranche 3c). Les autres DEMANDENT : la demande dit qui, quand et
 pourquoi, et un administrateur y répond — détruire, ou garder. Aucune messagerie. Le même
 mécanisme porte la demande de suppression d'un PROJET par son responsable.
 
@@ -544,8 +545,8 @@ def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: se
 
 
 _MOTIF_TRAVAIL = ("Ce que d'autres ont fait sur cet album se lit par qui peut l'effacer sans "
-                  "rien demander : son propriétaire, le responsable de son projet, ou qui "
-                  "l'a créé.")
+                  "rien demander : le responsable de son projet, ou qui tient toutes ses "
+                  "collections.")
 
 
 @router.post("/api/albums/{album_id}/repartir")
@@ -554,16 +555,16 @@ def repartir_album(album_id: int, payload: RepartirIn, conn: sqlite3.Connection 
     """REPARTIR DE ZÉRO sur un album : le ramener au `cran` dit, en gardant ses images (E8,
     COL-3, tranche 3b) — `images`, `decoupage`, `transcription` ou `grammaire`.
 
-    La règle de l'effacement (`Portee.clause_repartir_directe`, Hugo, 2026-10-21) : son
-    créateur s'il est seul à y avoir travaillé, le propriétaire de toutes ses collections,
-    le responsable de son projet — la dernière copie d'un document comprise : repartir garde
-    les images, rien ne sort du fonds commun (le pilotage, 2026-10-25).
-    404 à qui n'y écrit pas ; 403 nommé à qui y écrit sans pouvoir l'effacer — il le
-    DEMANDE (`POST /api/demandes`, genre `repartir`, motif et certification) ; 409 nommé si
+    La règle de l'effacement (`Portee.clause_repartir_directe`, tranche 3c) : le
+    responsable de son projet, le propriétaire de toutes ses collections, l'administrateur
+    — la dernière copie d'un document comprise : repartir garde les images, rien ne sort du
+    fonds commun (le pilotage, 2026-10-25). 404 à qui ne le lit pas (l'accesseur en LECTURE :
+    le responsable n'a pas à y écrire) ; 403 nommé à qui le lit sans pouvoir l'effacer — il
+    le DEMANDE (`POST /api/demandes`, genre `repartir`, motif et certification) ; 409 nommé si
     rien n'est au-dessus du cran. UN acte au journal, non annulable : l'écran doit le dire
     (« ne s'annule pas »), et Ctrl+Z ne remonte pas au-delà."""
     cran = _cran_de_repartir(payload.cran)
-    _get_album(conn, portee, album_id, ecriture=True)
+    _get_album(conn, portee, album_id)
     if rang_du_cran(cran) >= rang_du_cran(CRANS[1]):
         nlp.ensure_loaded()                 # le texte qui reste se réindexe, hors transaction
     rendu = _repartir(conn, portee, album_id, cran)
@@ -576,11 +577,10 @@ def repartir_planche(planche_id: int, payload: RepartirIn,
                      conn: sqlite3.Connection = Depends(db),
                      portee: autorisation.Portee = Depends(portee_courante)):
     """REPARTIR DE ZÉRO sur UNE planche (Hugo, 2026-10-21, demandé par des testeurs) : les
-    mêmes crans et la même règle que l'album — celle de son album. Une planche n'a pas de
-    demande à elle (la décision B4, tenue pour elle aussi) : à qui y écrit sans pouvoir
-    l'effacer, un 403 qui renvoie à un administrateur. Un acte, non annulable."""
+    mêmes crans et la même règle que l'album — celle de son album. À qui la lit sans pouvoir
+    l'effacer, un 403 nommé qui dit qui le peut. Un acte, non annulable."""
     cran = _cran_de_repartir(payload.cran)
-    p = _get_planche(conn, portee, planche_id, ecriture=True)
+    p = _get_planche(conn, portee, planche_id)
     if rang_du_cran(cran) >= rang_du_cran(CRANS[1]):
         nlp.ensure_loaded()
     rendu = _repartir(conn, portee, p["album_id"], cran, planche_id=planche_id,
@@ -598,12 +598,13 @@ def apercu_de_repartir(album_id: int, cran: str, planche: int | None = None,
     « Part », en nombres, validations comprises (`database.compter_repartir`, égal aux
     comptes de l'acte) ; `niveau`, le plus haut travail que la copie porte, pour éteindre
     les crans au-dessus ; `direct`, si l'appelant le fait lui-même ou le demande
-    (`Portee.clause_repartir_directe`). Pour qui ÉCRIT dans l'album : 404 sinon, et sur
-    une planche d'un autre album ; 422 sur un cran hors de la liste."""
+    (`Portee.clause_repartir_directe`). Pour qui LIT l'album (tranche 3c : le responsable
+    du projet l'efface sans y écrire) : 404 sinon, et sur une planche d'un autre album ; 422
+    sur un cran hors de la liste."""
     cran = _cran_de_repartir(cran)
-    _get_album(conn, portee, album_id, ecriture=True)
+    _get_album(conn, portee, album_id)
     if planche is not None:
-        p = _get_planche(conn, portee, planche, ecriture=True)
+        p = _get_planche(conn, portee, planche)
         if p["album_id"] != album_id:
             raise HTTPException(404, f"Planche {planche} introuvable")
     ou, params = portee.clause_repartir_directe("a.id")
@@ -664,13 +665,14 @@ def travail_des_autres_avant_d_effacer(album_id: int, conn: sqlite3.Connection =
     que l'écran montre est ce que la règle a lu.
 
     Bornée à qui PEUT effacer cet album sans rien demander — le supprimer ou en repartir
-    de zéro, la plus large des deux (`Portee.clause_repartir_directe`) : son propriétaire,
-    le responsable de son projet, qui l'a créé, une portée totale. 404 à qui n'y écrit pas
-    (l'accesseur gardé), 403 nommé à qui y écrit sans pouvoir l'effacer. Le travail RECOPIÉ d'une autre copie se compte à
+    de zéro, la plus large des deux (`Portee.clause_repartir_directe`) : le propriétaire de
+    toutes ses collections, le responsable de son projet, une portée totale. 404 à qui ne le
+    lit pas (l'accesseur gardé, en lecture depuis la tranche 3c), 403 nommé à qui le lit sans
+    pouvoir l'effacer. Le travail RECOPIÉ d'une autre copie se compte à
     part, sans nom (`travail_recopie`) : il ne part pas avec celle-ci, et ses auteurs
     peuvent être d'un autre projet. Ce sont des GESTES, défaits compris, pas ce qui reste
     sur les planches."""
-    a = _get_album(conn, portee, album_id, ecriture=True)
+    a = _get_album(conn, portee, album_id)
     ou, params = portee.clause_repartir_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                     (album_id, *params)).fetchone() is None:

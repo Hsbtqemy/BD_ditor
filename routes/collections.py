@@ -476,8 +476,8 @@ def poser_nature(login: str, payload: NatureIn,
     cesserait d'être le seul endroit qui tranche.
 
     Une exception, depuis le fonds (COL-3, tranche 2), et elle porte sur un GESTE, pas sur
-    un accès : un compte partagé ne supprime jamais définitivement seul — « celui qui l'a
-    importé » n'y désigne personne —, il le demande (proposition R7 du cadrage). C'est
+    un accès : un compte partagé n'efface jamais hors de son bac à sable, quel que soit son
+    rôle — il le demande (proposition R7 du cadrage ; F7, tranche 3c). C'est
     `autorisation.Portee.clause_suppression_directe` qui lit la nature pour cela, et pour
     cela seul : aucun accès n'en dépend.
 

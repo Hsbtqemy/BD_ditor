@@ -769,37 +769,30 @@ def _refuser_le_bac_a_sable(conn, motif: str, status: int = 409, **objet) -> Non
 # --------------------------------------------------------------------------- #
 # Comme pour l'export, ce helper ne tranche rien : `Portee.clause_suppression_directe` dit
 # qui peut supprimer quoi DÉFINITIVEMENT, sans rien demander. Il dit comment REFUSER, et le
-# refus est un 403 NOMMÉ — il ne s'appelle qu'APRÈS l'accesseur gardé en écriture, donc sur
-# un album que l'appelant lit et annote : un « introuvable » lui mentirait.
+# refus est un 403 NOMMÉ — il ne s'appelle qu'APRÈS l'accesseur gardé, donc sur un album que
+# l'appelant LIT : un « introuvable » lui mentirait.
 #
-# Le refus ne dit PAS laquelle des conditions manque — une autre collection le porte, ce
-# n'est pas lui qui l'a importé, quelqu'un d'autre y a travaillé : la phrase de la maquette
-# les dit ensemble, et c'est la bonne (cadrage de la tranche 2). Ce qu'elle révèle reste ce
-# qu'AUTH-10 avait accepté par écrit le 2026-10-08 : qu'un AUTRE usage existe, jamais
-# lequel. Elle dit aussi les deux gestes qui restent : supprimer l'album de sa collection —
-# il est gardé au fonds —, ou demander. Une planche n'a ni l'un ni l'autre (décision B4) :
-# sa suppression se dit à un administrateur.
-#
-# COL-3, tranche 3b (Hugo, 2026-10-21) — trois chemins effacent sans demande désormais : le
-# créateur seul à y avoir travaillé, le propriétaire de toutes ses collections, le
-# responsable de son projet ; ces deux derniers jamais sur la DERNIÈRE copie d'un document.
-# La phrase dit les trois raisons d'un refus ensemble, sans dire laquelle — la même forme.
-_MOTIF_DESTRUCTION = ("D'autres s'en servent, ou ce n'est pas vous qui l'avez importé, ou "
-                      "c'est la dernière copie de ce document : supprimer définitivement cet "
-                      "album se demande à un administrateur. Vous pouvez le supprimer de "
-                      "votre collection, où il est gardé au fonds avec son travail.")
-_MOTIF_DESTRUCTION_PLANCHE = ("D'autres se servent de cet album, ou ce n'est pas vous qui "
-                              "l'avez importé, ou c'est la dernière copie de ce document : "
-                              "supprimer l'une de ses planches se demande à un administrateur "
-                              "de l'instance.")
+# COL-3, tranche 3c (F3, Hugo, 2026-10-26) — qui TIENT l'espace efface : le responsable du
+# projet, le propriétaire de toutes les collections de l'album, l'administrateur ; dans un
+# bac à sable, qui y écrit. Les autres demandent. La phrase dit qui peut, sans dire laquelle
+# des conditions manque à l'appelant, et les gestes qui lui restent : demander, ou supprimer
+# l'album de sa collection — il est gardé au fonds. La DERNIÈRE copie d'un document ne se
+# supprime que par un administrateur ; une PLANCHE suit la règle de repartir de zéro (Q5).
+_MOTIF_DESTRUCTION = ("Supprimer définitivement cet album revient au responsable de son projet "
+                      "ou à qui tient toutes ses collections — et, si c'est la dernière copie "
+                      "de ce document, à un administrateur. Vous pouvez le demander, ou le "
+                      "supprimer de votre collection, où il est gardé au fonds avec son "
+                      "travail.")
+_MOTIF_DESTRUCTION_PLANCHE = ("Supprimer une planche de cet album revient au responsable de son "
+                              "projet ou à qui tient toutes ses collections : adressez-vous à "
+                              "lui.")
 
 
 # Dans un bac à sable, le refus ne renvoie ni à un administrateur ni au fonds : ni l'un ni
-# l'autre n'y a cours (COL-4, S3 ; contre-relecture de la 3b). Ce qui reste : son
-# propriétaire, et le lundi qui l'efface.
-_MOTIF_DESTRUCTION_BAC = ("Dans un bac à sable, une copie se supprime par son propriétaire, ou "
-                          "par qui l'a créée si personne d'autre n'y a travaillé : sinon, elle "
-                          "s'efface avec le bac à sable.")
+# l'autre n'y a cours (COL-4, S3). Qui y écrit efface (Q4, Hugo, 2026-10-26) ; ce qui reste
+# à qui n'y écrit pas : le lundi qui l'efface.
+_MOTIF_DESTRUCTION_BAC = ("Dans un bac à sable, une copie s'efface par qui y écrit : sinon, "
+                          "elle s'efface avec le bac à sable.")
 
 
 def _motif_d_effacement(conn, album_id: int, motif: str) -> str:
@@ -811,15 +804,17 @@ def _motif_d_effacement(conn, album_id: int, motif: str) -> str:
 def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int, *,
                         planche: bool = False, reference_du_jeu: bool = False) -> None:
     """403 si l'on ne peut pas supprimer DÉFINITIVEMENT cet album — ou, `planche`, l'une
-    de ses planches : on supprime une planche là où l'on pourrait supprimer le document
-    (décision B4 de Hugo, 2026-10-11).
+    de ses planches. Une planche suit la règle de REPARTIR DE ZÉRO, et non celle du document
+    (Q5, Hugo, 2026-10-26, qui renverse B4 : une planche n'est pas le document, qui reste au
+    fonds) — la dernière copie d'un document comprise.
 
     COL-4 — une copie de RÉFÉRENCE du jeu ne se détruit pas, quelle que soit la portée : 409
     nommé (`_refuser_le_jeu`). `reference_du_jeu` lève ce seul refus, et seul l'outil du jeu
     le passe — quand plus aucun bac à sable ne tient de copie d'un document retiré du jeu."""
     if not reference_du_jeu:
         _refuser_le_jeu(conn, album_id=album_id)
-    ou, params = portee.clause_suppression_directe("a.id")
+    ou, params = (portee.clause_repartir_directe("a.id") if planche
+                  else portee.clause_suppression_directe("a.id"))
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                     (album_id, *params)).fetchone() is None:
         raise HTTPException(403, _motif_d_effacement(
@@ -953,16 +948,16 @@ def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
 # --------------------------------------------------------------------------- #
 # REPARTIR DE ZÉRO (COL-3, tranche 3b, E8) — ramener une copie à un cran
 # --------------------------------------------------------------------------- #
-# La règle est celle de l'effacement (`Portee.clause_repartir_directe`, Hugo, 2026-10-21) :
-# repartir efface le travail des autres comme le supprimer, par les mêmes chemins — SANS la
-# règle de la dernière copie, que le pilotage a réservée à la suppression le 2026-10-25 :
-# repartir garde les images, rien ne sort du fonds commun. Le refus se dit de la même façon,
-# sans dire laquelle des raisons manque.
-_MOTIF_REPARTIR = ("D'autres s'en servent, ou ce n'est pas vous qui l'avez importé : "
-                   "repartir de zéro sur cet album se demande à un administrateur.")
-_MOTIF_REPARTIR_PLANCHE = ("D'autres se servent de cet album, ou ce n'est pas vous qui l'avez "
-                           "importé : repartir de zéro sur l'une de ses planches se demande à "
-                           "un administrateur de l'instance.")
+# La règle est celle de l'effacement (`Portee.clause_repartir_directe`, Hugo, 2026-10-21 ;
+# tranche 3c, F3) : qui tient l'espace — le responsable du projet, le propriétaire de toutes
+# les collections, l'administrateur ; dans un bac à sable, qui y écrit —, SANS la règle de la
+# dernière copie : repartir garde les images, rien ne sort du fonds commun. Le refus dit qui
+# peut, sans dire laquelle des raisons manque.
+_MOTIF_REPARTIR = ("Repartir de zéro sur cet album revient au responsable de son projet ou à "
+                   "qui tient toutes ses collections : vous pouvez le demander.")
+_MOTIF_REPARTIR_PLANCHE = ("Repartir de zéro sur une planche de cet album revient au "
+                           "responsable de son projet ou à qui tient toutes ses collections : "
+                           "adressez-vous à lui.")
 
 
 def _cran_de_repartir(cran) -> str:

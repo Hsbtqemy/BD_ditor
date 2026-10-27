@@ -262,60 +262,35 @@ def test_un_projet_qui_possede_une_grille_ne_se_supprime_pas(client, decor, db_p
 # « Personne d'autre n'y a travaillé », la trace d'un geste, le départ d'un compte
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("cible", ["region", "planche"])
-def test_un_releve_d_un_autre_interdit_la_suppression_directe(client, decor, db_path, cible):
-    """L'importatrice ne supprime pas SEULE un album où un autre a posé un relevé : la règle
-    « travail d'autrui » lit les relevés (R11) — de la région comme de la surface."""
-    # La créatrice SEULE : une portée qui écrit dans la collection de l'album, sans en être
-    # propriétaire ni responsable du projet — le chemin 1 de `clause_suppression_directe`.
-    c = database.get_connection()
-    try:
-        import autorisation
-        p = autorisation.Portee(ecriture=frozenset({decor["c"]}), utilisateur="lea")
-        ou, params = p.clause_suppression_directe("a.id")
-        avant = c.execute(f"SELECT {ou} FROM albums a WHERE a.id = ?",
-                          (*params, decor["album"])).fetchone()[0]
-    finally:
-        c.close()
-    assert avant, "le décor laisse déjà quelqu'un d'autre travailler sur l'album"
+def test_un_releve_d_un_autre_se_lit_avant_d_effacer(client, decor, cible):
+    """Tranche 3c (F3) — RÉÉCRIT sur « qui perd quoi » : le travail d'autrui ne décide plus
+    rien, il se LIT avant d'effacer. Un relevé posé par un autre que l'importatrice — sur la
+    région comme sur la surface (R11) — apparaît sous `GET /api/albums/{id}/travail-des-autres`
+    lu par l'administrateur."""
+    def agents():
+        r = client.get(f"/api/albums/{decor['album']}/travail-des-autres", headers=ADMIN)
+        assert r.status_code == 200, r.text
+        return {e["agent"] for e in r.json()["travail_des_autres"]}
+
+    assert "stag" not in agents(), "le décor laisse déjà la stagiaire travailler sur l'album"
     if cible == "region":
         poser(client, decor, region_id=decor["zones"]["bulle"], entree_cle="cri", mots=[8])
     else:
         poser(client, decor, planche_id=decor["planche"], entree_cle="ambiance")
-    c = database.get_connection()
-    try:
-        apres = c.execute(f"SELECT {ou} FROM albums a WHERE a.id = ?",
-                          (*params, decor["album"])).fetchone()[0]
-        n = c.execute("SELECT COUNT(*) FROM geste_sur_copie WHERE album_id = ? "
-                      "AND agent = 'stag'", (decor["album"],)).fetchone()[0]
-    finally:
-        c.close()
-    assert not apres
-    assert n == 1                                    # la trace du geste, pour la dernière copie
+    assert "stag" in agents()
 
 
 @pytest.mark.parametrize("cible", ["region", "planche"])
-def test_la_regle_du_travail_d_autrui_lit_le_releve_lui_meme(client, decor, cible):
-    """La source de la règle, sans la trace du geste : sur la dernière copie, `geste_sur_copie`
-    suffirait à refuser, et la lecture des relevés par le journal resterait sans témoin. Les
-    actes `releve` (la région) et `releve_planche` (la planche) font la règle à eux seuls —
-    celle que lisent aussi les suppressions d'une copie qui a une sœur."""
-    import autorisation
-    sql, params = autorisation._sql_travail_d_autrui("a.id", "lea")
-
-    def autrui():
-        c = database.get_connection()
-        try:
-            return c.execute(f"SELECT {sql} FROM albums a WHERE a.id = ?",
-                             (*params, decor["album"])).fetchone()[0]
-        finally:
-            c.close()
-
-    assert not autrui(), "le décor laisse déjà quelqu'un d'autre travailler sur l'album"
+def test_qui_perd_quoi_lit_le_releve_lui_meme(client, decor, cible):
+    """La source, lue seule (`autorisation.sql_actes_sur_album`) : les actes `releve` (la
+    région) et `releve_planche` (la planche) suffisent à faire compter le travail d'un autre
+    (tranche 3c : `geste_sur_copie` ne se lit plus, la mesure est la seule lecture)."""
+    assert not _autrui(decor["album"], "lea"),         "le décor laisse déjà quelqu'un d'autre travailler sur l'album"
     if cible == "region":
         poser(client, decor, region_id=decor["zones"]["bulle"], entree_cle="cri", mots=[8])
     else:
         poser(client, decor, planche_id=decor["planche"], entree_cle="ambiance")
-    assert autrui()
+    assert _autrui(decor["album"], "lea")
 
 
 def test_les_releves_d_un_bac_efface_ne_comptent_pas_dans_les_traces(client, decor):
@@ -340,25 +315,15 @@ def test_les_releves_d_un_bac_efface_ne_comptent_pas_dans_les_traces(client, dec
 # Le travail RECOPIÉ sur la surface d'une planche (relecture croisée, constats 2 et 3)
 # --------------------------------------------------------------------------- #
 def _autrui(album, login):
-    import autorisation
-    sql, params = autorisation._sql_travail_d_autrui("a.id", login)
-    c = database.get_connection()
-    try:
-        return bool(c.execute(f"SELECT {sql} FROM albums a WHERE a.id = ?",
-                              (*params, album)).fetchone()[0])
-    finally:
-        c.close()
-
-
-def _directe(album, collection, login):
-    """La créatrice SEULE (le chemin 1 de `clause_suppression_directe`)."""
+    """Un autre que `login` a-t-il travaillé sur `album`, selon les dix sources de « qui
+    perd quoi » (`autorisation.sql_actes_sur_album`) ? La question que posait la règle de
+    suppression jusqu'à la tranche 3c (F3), et qui ne sert plus qu'à MONTRER."""
     import autorisation
     c = database.get_connection()
     try:
-        p = autorisation.Portee(ecriture=frozenset({collection}), utilisateur=login)
-        ou, params = p.clause_suppression_directe("a.id")
-        return bool(c.execute(f"SELECT {ou} FROM albums a WHERE a.id = ?",
-                              (*params, album)).fetchone()[0])
+        return bool(c.execute(
+            f"SELECT EXISTS (SELECT 1 FROM ({autorisation.sql_actes_sur_album(str(int(album)))}) "
+            "WHERE agent IS NULL OR agent IS NOT ?)", (login,)).fetchone()[0])
     finally:
         c.close()
 
@@ -394,10 +359,10 @@ def test_une_passe_de_surface_recopiee_compte_meme_apres_une_autre_passe(client,
                                        (copie,))]
     assert _q(db_path, "SELECT par, recopiee FROM passe WHERE planche_id = ?", (pl_copie,)) \
         == [{"par": "olga", "recopiee": 1}]
-    assert _autrui(copie, "stag") and not _directe(copie, decor["c2"], "stag")
+    assert _autrui(copie, "stag")
     ok(client.put(f"/api/planches/{pl_copie}/passes/{g}", headers=STAG,
                   json={"rubrique_cle": "echanges"}))
-    assert _autrui(copie, "stag") and not _directe(copie, decor["c2"], "stag")
+    assert _autrui(copie, "stag")
     # La marquer de nouveau, telle quelle, n'en fait pas la passe de la stagiaire.
     ok(client.put(f"/api/planches/{pl_copie}/passes/{g}", headers=STAG, json={}))
     assert _q(db_path, "SELECT par, recopiee FROM passe WHERE planche_id = ? "
@@ -465,7 +430,6 @@ def test_un_releve_de_surface_recopie_porte_ce_qu_un_autre_y_a_fait_a_la_source(
                          "WHERE p.album_id = ?", (copie,))
     assert rec["variante_cle"] == "tendu" and rec["origine_id"] == r["id"]
     assert _autrui(copie, "stag") is attendu
-    assert _directe(copie, decor["c2"], "stag") is not attendu
 
 
 def test_un_acte_a_la_source_apres_la_copie_ne_compte_pas(client, decor, db_path):
@@ -566,7 +530,7 @@ def test_un_releve_source_retire_n_arrete_pas_la_chaine(client, decor, db_path):
         {"modifie_par": "stag"}]
     assert _autrui(copie, "stag")
     ok(client.delete(f"/api/releves/{r['id']}", headers=STAG), 204)
-    assert _autrui(copie, "stag") and not _directe(copie, decor["c2"], "stag")
+    assert _autrui(copie, "stag")
 
 
 def test_le_dernier_modificateur_a_la_source_se_lit_sur_la_copie(client, decor, db_path):
@@ -621,7 +585,6 @@ def test_un_doute_a_la_source_ne_compte_pas_sur_la_copie(client, decor, db_path)
     ok(client.post(f"/api/releves/{r['id']}/doutes", headers=OLGA, json={"texte": "?"}), 201)
     copie = _copie_par(a, decor["c2"], "stag")
     assert not _autrui(copie, "stag")
-    assert _directe(copie, decor["c2"], "stag")
 
 
 def test_un_releve_recopie_ne_ranime_pas_la_passe_source(client, decor, db_path):
@@ -707,7 +670,7 @@ def test_copie_de_copie_la_modification_d_olga_sur_une_region_compte(client, dec
                          "ON g.id = r.region_id JOIN planches p ON p.id = g.planche_id "
                          "WHERE p.album_id = ?", (c2,))
     assert rec["variante_cle"] == "crie"
-    assert _autrui(c2, "stag") and not _directe(c2, decor["c"], "stag")
+    assert _autrui(c2, "stag")
 
 
 def test_copie_de_copie_la_modification_d_olga_en_surface_compte(client, decor, db_path):

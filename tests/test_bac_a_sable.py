@@ -240,9 +240,9 @@ def test_un_compte_partage_a_son_bac_a_sable_avec_tous_ses_gestes(client, decor)
 
 
 def test_hors_de_son_bac_un_compte_partage_ne_supprime_toujours_rien_seul(client, decor):
-    """La quatrième moitié de `clause_suppression_directe` est inchangée : hors de son bac à
-    sable, un compte partagé ne supprime jamais définitivement seul, même l'album qu'il
-    vient de créer — alors qu'il en a un, où il détruit tout."""
+    """F7 (tranche 3c) : hors de son bac à sable, un compte partagé ne supprime jamais
+    définitivement seul, même l'album qu'il vient de créer — alors qu'il en a un, où il
+    détruit tout."""
     _partage(client)
     client.post("/api/bac-a-sable", headers=TP)
     client.put(f"/api/projets/{decor['etude']}/membres", headers=ADMIN,
@@ -432,7 +432,7 @@ def test_aucun_acces_ne_se_pose_collection_par_collection(client, decor):
 QUESTIONS_DE_COLLECTION = ("peut_lire", "peut_ecrire", "peut_administrer", "peut_exporter",
                            "peut_ecrire_terme", "peut_remanier_tag")
 QUESTIONS_DE_PROJET = ("est_du_projet", "peut_gerer_projet")
-CLAUSES_D_ALBUM = ("clause_album", "clause_destruction", "clause_suppression_directe",
+CLAUSES_D_ALBUM = ("clause_album", "clause_suppression_directe", "clause_repartir_directe",
                    "clause_rejoindre_directe")
 
 
@@ -614,11 +614,13 @@ def test_invite_ailleurs_l_administrateur_est_un_invite(client, decor):
     assert client.post(f"/api/planches/{planche}/regions", headers=HUGO,
                        json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}
                        ).status_code == 201
-    # Un invité ne règle rien, ne détruit pas la copie d'une autre.
+    # Un invité ne règle rien. Il détruit en revanche, comme tout invité qui y écrit, la
+    # copie d'une autre (tranche 3c, Q4, Hugo, 2026-10-26 : quiconque écrit dans un bac à
+    # sable y efface) — un arrivant comme les autres, ni plus ni moins.
     assert client.put(f"/api/projets/{decor['bac']['id']}/membres", headers=HUGO,
                       json={"genre": "utilisateur", "principal": "rita",
                             "role": "membre"}).status_code == 403
-    assert client.delete(f"/api/albums/{copie['album_id']}", headers=HUGO).status_code == 403
+    assert client.delete(f"/api/albums/{copie['album_id']}", headers=HUGO).status_code == 204
 
 
 # --------------------------------------------------------------------------- #
@@ -1253,10 +1255,11 @@ def test_un_document_ne_dans_un_bac_a_sable_n_a_pas_de_notice(client, decor):
 
 def test_aucune_demande_n_atteint_l_administrateur(client, decor):
     copie = _copie(decor, "grammaire")["album_id"]
+    # L'invité qui y écrit efface lui-même (tranche 3c, Q4) : rien à demander.
     r = client.post("/api/demandes", headers=SAM,
                     json={"genre": "suppression_document", "album_id": copie,
                           "motif": "x", "certifie": True})
-    assert r.status_code == 403 and "propriétaire" in r.json()["detail"], r.text
+    assert r.status_code == 409 and "vous-même" in r.json()["detail"], r.text
     r = client.post("/api/demandes", headers=LEA,
                     json={"genre": "suppression_projet", "projet_id": decor["bac"]["id"],
                           "motif": "x"})
@@ -1367,16 +1370,16 @@ def test_rien_n_entre_dans_un_bac_a_sable_depuis_le_fonds(client, decor):
 # S5 — la règle de destruction dans un bac à sable
 # --------------------------------------------------------------------------- #
 def test_la_proprietaire_detruit_tout_album_de_son_bac_a_sable(client, decor):
-    """La copie au cran grammaire porte une correction sans auteur — « d'autrui » pour la
-    règle commune — et une case posée par l'invité : sa propriétaire la détruit seule."""
+    """La copie au cran grammaire porte une correction sans auteur et une case posée par
+    l'invité : sa propriétaire la détruit seule. L'invité, qui y écrit, le peut aussi depuis
+    la tranche 3c (Q4, Hugo, 2026-10-26 : « le bac à sable n'a pas d'importance »)."""
     copie = _copie(decor, "grammaire")
     client.post(f"/api/planches/{copie['planche_ids'][0]}/regions", headers=SAM,
                 json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9})
     vu = {a["id"]: a for a in client.get("/api/albums", headers=LEA).json()}
     assert vu[copie["album_id"]]["destructible"] is True
     assert {a["id"]: a for a in client.get("/api/albums", headers=SAM).json()
-            }[copie["album_id"]]["destructible"] is False
-    assert client.delete(f"/api/albums/{copie['album_id']}", headers=SAM).status_code == 403
+            }[copie["album_id"]]["destructible"] is True
     assert client.delete(f"/api/albums/{copie['album_id']}", headers=LEA).status_code == 204
     # Les images du jeu restent : la référence les désigne.
     ref = _sql(decor["db"], "SELECT chemin_web FROM planches p JOIN jeu_document jd "
@@ -1384,7 +1387,9 @@ def test_la_proprietaire_detruit_tout_album_de_son_bac_a_sable(client, decor):
     assert ref and (decor["db"].parent / ref[0]["chemin_web"]).is_file()
 
 
-def test_l_invite_garde_la_regle_commune_sur_sa_copie(client, decor):
+def test_l_invite_supprime_l_album_qu_il_a_cree(client, decor):
+    """Tranche 3c (Q4) — l'invité n'a plus « la règle commune » dans un bac à sable :
+    quiconque y écrit efface, son import ou non."""
     a = client.post("/api/albums", headers=SAM,
                     json={"titre": "À sam", "collection_id": decor["base"]}).json()["id"]
     assert client.delete(f"/api/albums/{a}", headers=SAM).status_code == 204
@@ -1395,7 +1400,7 @@ def test_l_invite_supprime_la_copie_vierge_qu_il_a_prise(client, decor):
     document du jeu dans le bac à sable, puis la supprime. Elle est la dernière copie de son
     document hors d'un projet isolé — aucune —, mais la règle de la dernière copie n'a pas
     cours dans un bac à sable : rien n'en sort vers le fonds commun, et rien ne s'y demande à
-    un administrateur."""
+    un administrateur. (Tranche 3c, Q4 : il y écrit, cela suffit.)"""
     src = _copie(decor, "exemple")
     r = client.post(f"/api/collections/{decor['base']}/prendre", headers=SAM,
                     json={"documents": [{"document_id": src["document_id"], "reponse": "zero",
@@ -1410,9 +1415,12 @@ def test_l_invite_supprime_la_copie_vierge_qu_il_a_prise(client, decor):
 
 
 def test_dans_un_bac_le_refus_ne_renvoie_ni_a_un_administrateur_ni_au_fonds(client, decor):
-    """L'invité qui ne peut pas effacer — une copie d'exemple du jeu, qu'il n'a pas créée —
-    lit pourquoi sans qu'on lui propose deux recours qui n'existent pas dans un bac à sable :
-    supprimer l'album, une planche, en repartir de zéro."""
+    """L'invité qui ne peut pas effacer lit pourquoi sans qu'on lui propose deux recours qui
+    n'existent pas dans un bac à sable : supprimer l'album, une planche, en repartir de zéro.
+    Depuis la tranche 3c (Q4), qui y écrit efface : le refus ne vise plus qu'un invité qui
+    n'y fait que LIRE — la base passée en lecture pour ses membres."""
+    _sql(decor["db"], "UPDATE collection SET acces_membres = 'lecture' WHERE id = ?",
+         (decor["base"],))
     copie = _copie(decor, "grammaire")
     pl = copie["planche_ids"][0]
     reponses = [client.delete(f"/api/albums/{copie['album_id']}", headers=SAM),

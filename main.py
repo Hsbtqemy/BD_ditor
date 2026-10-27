@@ -491,8 +491,18 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     # COL-4 — les copies de RÉFÉRENCE du jeu n'apparaissent dans aucune liste, même pour une
     # portée totale, la seule qui les lise : elles ne sont le travail de personne, et une
     # copie qu'on y retoucherait partirait dans chaque bac à sable créé ensuite.
+    #
+    # COL-3, tranche 3c (F3, Hugo, 2026-10-26) — `effacable` : on peut EFFACER l'album sans
+    # rien demander, au moins en repartant de zéro (`clause_repartir_directe`, la plus large
+    # des deux règles). Le responsable du projet efface un album qu'il ne fait que LIRE :
+    # `ecrivable` ne suffit plus à l'écran pour offrir « Supprimer… » et « Repartir de
+    # zéro… ». `soeur` et `derniere_copie` suivent : ils valent pour qui ÉCRIT dans la copie
+    # OU peut l'effacer — ce sont les mots du panneau de qui l'ouvre.
     detruire, p_detruire = portee.clause_suppression_directe("a.id")
+    effacer, p_effacer = portee.clause_repartir_directe("a.id")
     ecrire, p_ecrire = portee.clause_album("a.id", ecriture=True)
+    ouvre = f"(({ecrire}) OR ({effacer}))"
+    p_ouvre = [*p_ecrire, *p_effacer]
     # COL-4 — une portée totale ne voit, des bacs à sable, que le SIEN et ceux où elle est
     # invitée : elle est BORNÉE (`Portee.clause_album` ; Hugo, 2026-10-24). Et dans un bac à
     # sable, `partage` se calcule pour elle comme pour un arrivant (`dans_les_bacs`).
@@ -511,13 +521,14 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
         f"""SELECT a.*,
                   {sql_projet_d_album('a')} AS projet_effectif,
                   ({detruire}) AS destructible,
+                  ({effacer}) AS effacable,
                   ({ecrire}) AS ecrivable,
                   ({ailleurs}) AS partage,
-                  (({ecrire}) AND a.document_id IS NOT NULL
+                  ({ouvre} AND a.document_id IS NOT NULL
                    AND EXISTS (SELECT 1 FROM albums _sa
                                WHERE _sa.document_id = a.document_id
                                  AND _sa.id <> a.id)) AS soeur,
-                  (({ecrire}) AND a.document_id IS NOT NULL
+                  ({ouvre} AND a.document_id IS NOT NULL
                    AND NOT EXISTS (SELECT 1 FROM albums _dc
                                    WHERE _dc.document_id = a.document_id
                                      AND _dc.id <> a.id
@@ -537,7 +548,7 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
            FROM albums a
            WHERE {ou} AND NOT {sql_est_jeu(sql_projet_d_album('a'))}
            ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""",
-        (*p_detruire, *p_ecrire, *p_ailleurs, *p_ecrire, *p_ecrire, *params)
+        (*p_detruire, *p_effacer, *p_ecrire, *p_ailleurs, *p_ouvre, *p_ouvre, *params)
     ))
     # La demande se cherche par COPIE (`demande_document.album_id`), pas par document (COL-3,
     # tranche 3) : la copie sœur d'un autre projet afficherait sinon « suppression
@@ -611,8 +622,8 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
         # la liste au projet courant, et il le compare au `projet_id` des collections, lu
         # de la même façon. NULL : une copie qui n'a jamais eu de projet (importée au fonds).
         a["projet_id"] = a.pop("projet_effectif")
-        for champ in ("destructible", "ecrivable", "partage", "au_fonds", "soeur",
-                      "derniere_copie"):
+        for champ in ("destructible", "effacable", "ecrivable", "partage", "au_fonds",
+                      "soeur", "derniere_copie"):
             a[champ] = bool(a[champ])
         a["rejoindre_demande"] = sorted(set(rejoindre.get(a["id"], [])))
         a["collections"] = [{"id": c["id"], "nom": c["nom"]} for c in rangements[a["id"]]]
@@ -752,11 +763,12 @@ def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
     """Supprime un album DÉFINITIVEMENT — la seconde des deux réponses à « supprimer »
     (COL-3, tranche 2) ; la première, le supprimer de sa collection, est
-    `DELETE /api/albums/{id}/collections/{cid}`. 404 à qui n'écrit pas dans l'album ; 403
-    nommé à qui y écrit sans pouvoir le supprimer seul — il le demande alors
-    (`POST /api/demandes`). La règle, la garde et la destruction sont dans
-    `socle._detruire_album`."""
-    _get_album(conn, portee, album_id, ecriture=True)
+    `DELETE /api/albums/{id}/collections/{cid}`. 404 à qui ne lit pas l'album ; 403 nommé à
+    qui le lit sans pouvoir le supprimer seul — il le demande alors (`POST /api/demandes`).
+    L'accesseur en LECTURE (COL-3, tranche 3c, F3) : le responsable du projet efface un album
+    qu'il lit sans y écrire, et la clause décide du reste. La règle, la garde et la
+    destruction sont dans `socle._detruire_album`."""
+    _get_album(conn, portee, album_id)
     _detruire_album(conn, portee, album_id)
     return Response(status_code=204)
 
@@ -764,12 +776,12 @@ def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db),
 @app.delete("/api/planches/{planche_id}", status_code=204)
 def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
-    p = _get_planche(conn, portee, planche_id, ecriture=True)
+    p = _get_planche(conn, portee, planche_id)
     # AUTH-10 — une planche n'a pas d'appartenance propre et ne peut pas « sortir » : sans
     # cette garde, elle restait le chemin par lequel on vide un album partagé, une à une.
-    # COL-3 — la règle est celle du document (décision B4) : on supprime une planche là où
-    # l'on pourrait supprimer l'album sans rien demander, et ailleurs on s'adresse à un
-    # administrateur — une planche n'a pas de demande à elle. Lue sous le verrou d'écriture,
+    # COL-3, tranche 3c (Q5, Hugo, 2026-10-26, qui renverse B4) — la règle est celle de
+    # REPARTIR DE ZÉRO : qui tient l'espace la supprime, même d'une dernière copie, et
+    # l'accesseur est en LECTURE (le responsable qui lit l'album). Lue sous le verrou d'écriture,
     # comme pour l'album (`socle._detruire_album`) : sinon un travail validé entre la garde
     # et le `DELETE` partirait avec la planche.
     conflit.verrouiller(conn)

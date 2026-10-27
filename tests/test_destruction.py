@@ -16,6 +16,15 @@ personne d'autre y ait travaillé (`Portee.clause_suppression_directe`). Le déc
 importer chaque album par le compte qui le détruira — sans quoi plus rien ici ne mesurerait
 la moitié AUTH-10 de la règle, tout refus venant de l'autre. Les cas propres au fonds sont
 dans `tests/test_fonds.py`.
+
+COL-3, tranche 3c (F3, Hugo, 2026-10-26) : la moitié AUTH-10 tombe avec le chemin du
+créateur. Écrire dans toutes les collections d'un album ne suffit plus à le détruire, ni
+l'une de ses planches : qui TIENT l'espace efface — le propriétaire de toutes ses
+collections, le responsable de son projet, l'administrateur. Le constat du 2026-10-08 reste
+gardé (écrire d'un côté ne détruit rien), et la question « toutes » se pose désormais sur la
+PROPRIÉTÉ. `Portee.clause_destruction` est retirée ; les tests qui la lisaient lisent la
+règle d'effacement (`clause_repartir_directe`, sans la dernière copie : la plupart de ces
+albums sont la seule copie de leur document, que seul un administrateur supprime).
 """
 import ast
 import re
@@ -151,21 +160,33 @@ def test_sortir_reste_permis_et_ne_detruit_rien(client, decor):
 
 
 # ── ce que la règle ne doit PAS fermer ───────────────────────────────────────────────────
-def test_qui_ecrit_dans_toutes_ses_collections_detruit(client, decor):
+def test_ecrire_dans_toutes_ses_collections_ne_suffit_plus(client, decor):
+    """Tranche 3c (F3) — RENVERSÉ : `passeuse` écrit dans les deux collections de l'album
+    partagé ; elle ne le détruit plus, ni l'une de ses planches. Possédant les deux, elle en
+    supprime une planche (la règle de repartir de zéro, Q5) ; l'album, seule copie de son
+    document, ne se supprime que par un administrateur."""
+    assert client.delete(f"/api/planches/{decor['planche_partagee']}",
+                         headers=PASSEUSE).status_code == 403
+    assert client.delete(f"/api/albums/{decor['partage']}", headers=PASSEUSE).status_code == 403
+    _accorder(client, decor["principale"], "passeuse", "proprietaire")
+    _accorder(client, decor["incubateur"], "passeuse", "proprietaire")
     assert client.delete(f"/api/planches/{decor['planche_partagee']}",
                          headers=PASSEUSE).status_code == 204
-    assert client.delete(f"/api/albums/{decor['partage']}", headers=PASSEUSE).status_code == 204
+    assert client.delete(f"/api/albums/{decor['partage']}", headers=PASSEUSE).status_code == 403
+    assert client.delete(f"/api/albums/{decor['partage']}", headers=ADMIN).status_code == 204
     assert decor["partage"] not in _albums(client, ADMIN)
 
 
-def test_un_album_d_une_seule_collection_se_detruit_comme_avant(client, decor):
+def test_un_album_d_une_seule_collection_ne_se_detruit_plus_par_qui_y_ecrit(client, decor):
     """La question du 2026-09-10 — qui écrit dans l'unique collection d'un album le détruit
-    — n'est pas rouverte par AUTH-10. Elle l'est par COL-3 : il faut aussi l'avoir importé.
-    `stagiaire` a importé « Seul » ; `passeuse`, qui y écrit autant qu'elle, ne l'a pas."""
-    assert client.delete(f"/api/albums/{decor['seul']}", headers=PASSEUSE).status_code == 403
-    assert client.delete(f"/api/planches/{decor['planche_seule']}",
-                         headers=STAGIAIRE).status_code == 204
-    assert client.delete(f"/api/albums/{decor['seul']}", headers=STAGIAIRE).status_code == 204
+    — rouverte par COL-3 (il fallait aussi l'avoir importé), puis tranchée par la tranche
+    3c (F3) : ni `stagiaire`, qui a importé « Seul », ni `passeuse`, qui y écrit autant
+    qu'elle, ne le détruisent ; ils demandent."""
+    for qui in (STAGIAIRE, PASSEUSE):
+        assert client.delete(f"/api/albums/{decor['seul']}", headers=qui).status_code == 403
+        assert client.delete(f"/api/planches/{decor['planche_seule']}",
+                             headers=qui).status_code == 403
+    assert client.delete(f"/api/albums/{decor['seul']}", headers=ADMIN).status_code == 204
     assert decor["seul"] not in _albums(client, ADMIN)
 
 
@@ -173,10 +194,11 @@ def test_l_administrateur_detruit_sans_figurer_nulle_part(client, decor):
     assert client.delete(f"/api/albums/{decor['partage']}", headers=ADMIN).status_code == 204
 
 
-def test_qui_n_ecrit_nulle_part_recoit_toujours_un_404(client, decor):
-    """Inchangé : la garde de destruction ne passe qu'APRÈS l'accesseur gardé en écriture.
-    Un 403 ici dirait à qui ne lit pas l'album qu'il existe."""
-    assert client.delete(f"/api/albums/{decor['partage']}", headers=LECTRICE).status_code == 404
+def test_qui_n_ecrit_nulle_part_recoit_un_403_ou_un_404(client, decor):
+    """La garde de destruction ne passe qu'APRÈS l'accesseur gardé — en LECTURE depuis la
+    tranche 3c (F3). La lectrice lit l'album partagé : un refus nommé, l'objet est lisible.
+    Elle ne lit pas « Seul » : 404, un 403 lui dirait qu'il existe."""
+    assert client.delete(f"/api/albums/{decor['partage']}", headers=LECTRICE).status_code == 403
     assert client.delete(f"/api/albums/{decor['seul']}", headers=LECTRICE).status_code == 404
     assert client.delete(f"/api/planches/{decor['planche_seule']}",
                          headers=LECTRICE).status_code == 404
@@ -193,16 +215,19 @@ def test_en_mono_poste_rien_ne_change(client, album, planche):
 # ── les mêmes droits, reçus autrement ────────────────────────────────────────────────────
 def test_un_droit_recu_par_un_groupe_suit_la_meme_regle(client, derriere_proxy):
     """La portée cumule les accès du login et ceux de ses groupes : la règle doit valoir pour
-    les deux. Un groupe qui n'écrit que d'un côté ne détruit pas ; des deux, il détruit."""
+    les deux. Un groupe qui ne possède qu'un côté n'efface pas ; les deux, il efface (une
+    planche : la règle de repartir de zéro, tranche 3c)."""
     membre = {"Remote-User": "membre", "Remote-Groups": "equipe"}
     a, b = _collection(client, "A"), _collection(client, "B")
-    _accorder(client, a, "equipe", "ecriture", genre="groupe")
-    album = _album(client, "Partagé", a, membre)      # importé PAR le login (COL-3)
+    _accorder(client, a, "equipe", "proprietaire", genre="groupe")
+    album = _album(client, "Partagé", a, membre)
+    planche = _planche(client, album, membre)
     _ranger(client, album, b)
-    assert client.delete(f"/api/albums/{album}", headers=membre).status_code == 403
-    _accorder(client, b, "equipe", "ecriture", genre="groupe")
-    assert _albums(client, membre)[album]["destructible"] is True
-    assert client.delete(f"/api/albums/{album}", headers=membre).status_code == 204
+    assert _albums(client, membre)[album]["effacable"] is False
+    assert client.delete(f"/api/planches/{planche}", headers=membre).status_code == 403
+    _accorder(client, b, "equipe", "proprietaire", genre="groupe")
+    assert _albums(client, membre)[album]["effacable"] is True
+    assert client.delete(f"/api/planches/{planche}", headers=membre).status_code == 204
 
 
 def test_posseder_une_collection_ne_detruit_pas_l_album_des_autres(client, derriere_proxy):
@@ -222,27 +247,29 @@ def test_posseder_une_collection_ne_detruit_pas_l_album_des_autres(client, derri
 
 
 def test_toutes_veut_dire_toutes_et_le_refus_ne_compte_pas(client, derriere_proxy):
-    """Trois collections : écrire dans deux ne suffit pas. Et le refus est le MÊME texte que
-    pour un album rangé dans deux — il révèle qu'une autre collection existe (accepté par
-    écrit), pas COMBIEN : un message qui compterait dirait la composition du corpus."""
+    """Trois collections : en posséder deux ne suffit pas. Et le refus est le MÊME texte que
+    pour un album rangé dans deux — il ne dit pas COMBIEN : un message qui compterait dirait
+    la composition du corpus. La question « toutes » porte sur la PROPRIÉTÉ depuis la
+    tranche 3c (F3)."""
     a, b, c = (_collection(client, n) for n in ("A", "B", "C"))
-    _accorder(client, a, "deux", "ecriture")
-    _accorder(client, b, "deux", "ecriture")
+    _accorder(client, a, "deux", "proprietaire")
+    _accorder(client, b, "deux", "proprietaire")
     qui = {"Remote-User": "deux"}
-    a_trois = _album(client, "À trois", a, qui)        # importés par `deux` (COL-3)
+    a_trois = _album(client, "À trois", a, qui)
+    p_trois = _planche(client, a_trois, qui)
     _ranger(client, a_trois, b)
     _ranger(client, a_trois, c)
     a_deux = _album(client, "À deux", a, qui)
+    p_deux = _planche(client, a_deux, qui)
     _ranger(client, a_deux, c)
-    refus_trois = client.delete(f"/api/albums/{a_trois}", headers=qui)
-    refus_deux = client.delete(f"/api/albums/{a_deux}", headers=qui)
+    refus_trois = client.delete(f"/api/planches/{p_trois}", headers=qui)
+    refus_deux = client.delete(f"/api/planches/{p_deux}", headers=qui)
     assert refus_trois.status_code == refus_deux.status_code == 403
     assert refus_trois.json() == refus_deux.json()
-    _accorder(client, c, "deux", "ecriture")
-    assert client.delete(f"/api/albums/{a_trois}", headers=qui).status_code == 204
+    _accorder(client, c, "deux", "proprietaire")
+    assert client.delete(f"/api/planches/{p_trois}", headers=qui).status_code == 204
 
 
-# ── ce que le serveur DIT, pour que l'écran ne propose que ce qui aboutira ───────────────
 def test_la_liste_des_albums_dit_ce_qu_on_peut_y_faire(client, decor):
     """`destructible` et `ecrivable`, album par album et identité par identité, contre une
     table écrite à la main. Les gestes eux-mêmes sont joués par les tests du dessus ; ce
@@ -252,21 +279,28 @@ def test_la_liste_des_albums_dit_ce_qu_on_peut_y_faire(client, decor):
     geste à offrir — sortir — que si l'on écrit dans l'album. Une lectrice reçoit donc
     (False, False), et sa ligne ne porte rien.
 
-    COL-3 — `destructible` dit « supprimable définitivement sans rien demander » : il faut
-    l'avoir importé. `passeuse` et `mixte` écrivent dans « Seul » sans l'avoir importé."""
-    attendu = {  # (ecrivable, destructible)
-        "stagiaire": (STAGIAIRE, {decor["partage"]: (True, False), decor["seul"]: (True, True)}),
-        "passeuse": (PASSEUSE, {decor["partage"]: (True, True), decor["seul"]: (True, False)}),
-        "mixte": (MIXTE, {decor["partage"]: (True, False), decor["seul"]: (True, False)}),
-        "lectrice": (LECTRICE, {decor["partage"]: (False, False)}),
-        "admin": (ADMIN, {decor["partage"]: (True, True), decor["seul"]: (True, True)}),
+    COL-3 — `destructible` dit « supprimable définitivement sans rien demander ». Tranche 3c
+    (F3) : seule la portée totale le reçoit ici, aucun compte ne possédant de collection ;
+    `effacable` (repartir de zéro sans rien demander) suit la même règle sans la dernière
+    copie."""
+    attendu = {  # (ecrivable, destructible, effacable)
+        "stagiaire": (STAGIAIRE, {decor["partage"]: (True, False, False),
+                                  decor["seul"]: (True, False, False)}),
+        "passeuse": (PASSEUSE, {decor["partage"]: (True, False, False),
+                                decor["seul"]: (True, False, False)}),
+        "mixte": (MIXTE, {decor["partage"]: (True, False, False),
+                          decor["seul"]: (True, False, False)}),
+        "lectrice": (LECTRICE, {decor["partage"]: (False, False, False)}),
+        "admin": (ADMIN, {decor["partage"]: (True, True, True),
+                          decor["seul"]: (True, True, True)}),
     }
     for nom, (qui, vus) in attendu.items():
-        lus = {i: (a["ecrivable"], a["destructible"]) for i, a in _albums(client, qui).items()}
+        lus = {i: (a["ecrivable"], a["destructible"], a["effacable"])
+               for i, a in _albums(client, qui).items()}
         assert lus == vus, nom
     # Des BOOLÉENS : `0`/`1` passerait en JSON pour un nombre.
     for a in _albums(client, ADMIN).values():
-        assert isinstance(a["destructible"], bool) and isinstance(a["ecrivable"], bool)
+        assert all(isinstance(a[k], bool) for k in ("destructible", "ecrivable", "effacable"))
 
 
 def test_apres_etre_sorti_on_ne_se_voit_plus_rien_offrir(client, decor):
@@ -279,21 +313,26 @@ def test_apres_etre_sorti_on_ne_se_voit_plus_rien_offrir(client, decor):
 
 
 # ── la clause, lue seule ─────────────────────────────────────────────────────────────────
-def test_clause_destruction_aux_extremites():
-    assert autorisation.TOTALE.clause_destruction("a.id") == ("1", [])
-    assert autorisation.Portee().clause_destruction("a.id") == ("0", [])
-    # Lire n'est pas écrire : une portée qui ne fait que lire ne détruit rien.
-    assert autorisation.Portee(lecture=frozenset({1})).clause_destruction("a.id") == ("0", [])
+def test_la_clause_d_effacement_aux_extremites():
+    """Tranche 3c — `clause_destruction` est retirée ; ce qui la remplace pour ces gestes est
+    la règle d'effacement. Lire n'est pas écrire, et écrire n'est plus effacer."""
+    for clause in ("clause_suppression_directe", "clause_repartir_directe"):
+        assert getattr(autorisation.TOTALE, clause)("a.id") == ("1", [])
+        assert getattr(autorisation.Portee(), clause)("a.id") == ("0", [])
+        for p in (autorisation.Portee(lecture=frozenset({1}), utilisateur="u"),
+                  autorisation.Portee(ecriture=frozenset({1}), utilisateur="u")):
+            assert getattr(p, clause)("a.id") == ("0", []), (clause, p)
+    assert not hasattr(autorisation.Portee, "clause_destruction")
 
 
-def test_clause_destruction_lie_ses_parametres_et_cumule_les_proprietaires():
-    """Les ids sont LIÉS, jamais interpolés ; ils servent deux fois (dans la moitié qui
-    exige, dans celle qui interdit) ; et un propriétaire écrit — l'oubli qu'AUTH-3 nomme."""
-    p = autorisation.Portee(ecriture=frozenset({3}), propriete=frozenset({7}))
-    sql, params = p.clause_destruction("x.album_id")
-    assert params == [3, 7, 3, 7]
-    assert sql.count("?") == 4 and "3" not in sql and "7" not in sql
-    assert sql.count("x.album_id") == 2
+def test_la_clause_d_effacement_lie_ses_parametres_et_ne_lit_que_la_propriete():
+    """Les ids sont LIÉS, jamais interpolés ; seule la PROPRIÉTÉ sert (7), jamais l'écriture
+    (3) ; et le login sert une fois, au compte partagé (F7)."""
+    p = autorisation.Portee(ecriture=frozenset({3}), propriete=frozenset({7}),
+                            utilisateur="u")
+    sql, params = p.clause_repartir_directe("x.album_id")
+    assert params == [7, "u", "collectif"]
+    assert sql.count("?") == 3 and "3" not in sql and "7" not in sql
 
 
 def test_un_album_range_nulle_part_n_est_destructible_par_personne(db_path, client):
@@ -304,11 +343,12 @@ def test_un_album_range_nulle_part_n_est_destructible_par_personne(db_path, clie
     try:
         aid = conn.execute("INSERT INTO albums (titre) VALUES ('Orphelin')").lastrowid
         cid = conn.execute("INSERT INTO collection (nom) VALUES ('Ailleurs')").lastrowid
-        ou, params = autorisation.Portee(ecriture=frozenset({cid})).clause_destruction("a.id")
+        ou, params = autorisation.Portee(propriete=frozenset({cid}),
+                                         utilisateur="u").clause_repartir_directe("a.id")
         assert conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                             (aid, *params)).fetchone() is None
         # Et la portée totale le détruit : c'est le seul recours pour un tel album.
-        ou, params = autorisation.TOTALE.clause_destruction("a.id")
+        ou, params = autorisation.TOTALE.clause_suppression_directe("a.id")
         assert conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                             (aid, *params)).fetchone() is not None
     finally:

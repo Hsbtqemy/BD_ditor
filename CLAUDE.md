@@ -482,8 +482,8 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
 - **Détruire n'est pas écrire** (AUTH-10, 2026-10-08). Annoter un album ne demande
   d'écrire que dans UNE de ses collections — c'est l'union de `clause_album`, et elle est
   voulue : le travail fait dans une étude se voit dans l'autre. Le DÉTRUIRE, lui ou l'une de
-  ses planches, demande d'écrire dans TOUTES (`Portee.clause_destruction`,
-  `socle._exiger_destruction`). Le même accesseur servait aux deux, si bien qu'un compte de
+  ses planches, demandait d'écrire dans TOUTES (`Portee.clause_destruction`, retirée par la
+  tranche 3c, cf. la fin du point ; `socle._exiger_destruction`). Le même accesseur servait aux deux, si bien qu'un compte de
   l'incubateur effaçait du corpus principal un album qu'il ne savait même pas partagé
   (reproduit). Qui n'écrit que d'un côté garde un geste, qui ne détruit rien : SORTIR
   l'album de sa collection — un aller simple pour lui si c'était la seule où il y ÉCRIVAIT
@@ -512,7 +512,12 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   partagé. **Un album d'une seule collection se détruisait toujours par quiconque y
   écrit** : la question d'origine d'AUTH-10 n'était pas rouverte ici. COL-3 l'a rouverte, et
   la phrase est RENVERSÉE le 2026-10-16 : la règle du 2026-10-08 n'est plus que la première
-  des quatre conditions du point suivant — nécessaire, plus suffisante.
+  des quatre conditions du point suivant — nécessaire, plus suffisante. **Puis retirée le
+  2026-10-26** (COL-3, tranche 3c, F3) : écrire dans toutes les collections d'un album ne
+  suffit plus à rien, `clause_destruction` n'existe plus, et qui TIENT l'espace efface (cf.
+  « Qui EFFACE sans demander », plus bas). Le constat d'AUTH-10 reste vrai — écrire d'un
+  côté ne détruit pas l'album de l'autre —, et le refus vient désormais après l'accesseur en
+  LECTURE.
 - **« Supprimer » a deux réponses, et la seconde se DEMANDE** (COL-3, tranche 2 ; décisions
   de Hugo du 2026-10-09 et du 2026-10-11, sur `dev` le 2026-10-16). Supprimer DE LA
   COLLECTION ne détruit rien (`DELETE /api/albums/{id}/collections/{cid}`) : le travail reste
@@ -522,11 +527,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   cette seconde moitié). C'est le geste de quiconque écrit dans la collection, importateur
   ou non ; il ne s'annule pas, et seul un administrateur rend la copie. Supprimer
   DÉFINITIVEMENT (`DELETE /api/albums/{id}`) efface images et travail, et sans rien demander
-  à QUATRE conditions, toutes nécessaires (`Portee.clause_suppression_directe`) : écrire dans
-  toutes les collections de l'album (`clause_destruction`, inchangée) ; avoir CRÉÉ cette
-  copie (`copie.creee_par`, v31 — pour la copie d'origine, l'importateur du document ;
-  jamais vrai pour un album d'avant la v30, ni sans login) ; ne pas être un compte
-  PARTAGÉ ; que PERSONNE D'AUTRE n'y ait travaillé. Hors de là, il se DEMANDE (`POST /api/demandes`, `routes/fonds.py`) : motif obligatoire, et une
+  par qui TIENT l'espace (`Portee.clause_suppression_directe`, cf. le point suivant — elle
+  exigeait jusqu'au 2026-10-26 quatre conditions, dont avoir CRÉÉ la copie et que personne
+  d'autre n'y ait travaillé : RENVERSÉ par la tranche 3c, F3). Hors de là, il se DEMANDE (`POST /api/demandes`, `routes/fonds.py`) : motif obligatoire, et une
   CERTIFICATION exigée par le serveur (`certifie`, 422 nommé sans elle ; sa date est écrite,
   `demande.certifie_le`) — « Pouvez-vous certifier que ces données ne sont pas
   importantes ? » (décision de Hugo du 2026-10-15). La même suppression ne se demande pas
@@ -534,87 +537,72 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   409 nommés). Un administrateur l'accepte — la COPIE demandée est détruite, et elle seule
   (D5) ; le document part avec sa dernière copie, une image avec la dernière planche qui la
   désigne (D6) — ou la
-  refuse : la demande reste, close, et peut être redéposée ; « garder » ne lie pas
-  l'importatrice, la règle ne lisant pas les demandes. Toute destruction faite par un autre
-  chemin clôt les demandes qui la visaient. **Une planche suit la règle du document**, sans
-  demande à elle (décision B4) : le 403 lui dit de s'adresser à un administrateur. Le refus
-  de l'album est un 403 nommé qui ne dit pas LAQUELLE des conditions manque (« D'autres s'en
-  servent, ou ce n'est pas vous qui l'avez importé… »). La portée totale passe outre : c'est
+  refuse : la demande reste, close, et peut être redéposée ; « garder » ne lie pas qui tient
+  l'espace, la règle ne lisant pas les demandes. Toute destruction faite par un autre
+  chemin clôt les demandes qui la visaient. **Une planche suit la règle de REPARTIR DE
+  ZÉRO** depuis la tranche 3c (Q5, Hugo, 2026-10-26, qui renverse B4 : une planche n'est pas
+  le document) — qui tient l'espace la supprime, même d'une dernière copie ; le 403 dit qui
+  le peut. Le refus de l'album est un 403 nommé qui dit qui le peut — le responsable du
+  projet, qui tient toutes ses collections, un administrateur pour la dernière copie — sans
+  dire laquelle des conditions manque à l'appelant. La portée totale passe outre : c'est
   le recours d'une demande. **La garde se lit sous le verrou d'écriture**
   (`conflit.verrouiller`, dans `socle._detruire_album`, seul chemin de la destruction d'un
   album — la route et la réponse « accepter » y passent toutes deux) : lue hors transaction,
   elle laissait partir un travail validé entre elle et le `DELETE`. Deux conséquences qui
   déplacent des doctrines écrites ailleurs. **La nature d'un compte borde désormais un
   GESTE** : elle ne bordait aucun droit, et elle ne borde toujours aucun ACCÈS — mais un
-  compte partagé ne supprime jamais définitivement seul, « celui qui l'a importé » n'y
-  désignant personne ; c'est le seul endroit où `autorisation.py` lit `utilisateur.nature`.
-  **Le journal A3 devient une ENTRÉE d'autorisation** — la première décision d'accès qui
-  dépend du CONTENU du journal (cf. § Journal de provenance). `GET /api/albums` publie
+  compte partagé n'efface jamais hors de son bac à sable, quel que soit son rôle (F7) ;
+  c'est le seul endroit où `autorisation.py` lit `utilisateur.nature`. **Le journal A3
+  devenait une ENTRÉE d'autorisation** — la première décision d'accès qui dépendait du
+  CONTENU du journal ; RENVERSÉ par la tranche 3c (F3) : il ne décide plus rien et ne sert
+  qu'à montrer « qui perd quoi » (cf. § Journal de provenance). `GET /api/albums` publie
   `destructible` sous son nom et dans ce sens neuf, plus `partage` (l'album vit aussi dans
   une collection qu'on ne lit pas — vrai seulement pour qui ÉCRIT dans l'album, la borne
-  d'AUTH-10 ; `soeur`, depuis la tranche 3a, suit la même borne : le document a une autre
+  d'AUTH-10 ; `soeur`, depuis la tranche 3a, suit la même borne — élargie par la tranche 3c
+  à qui peut effacer la copie sans y écrire (`effacable`) : le document a une autre
   copie vivante, sans dire où ni laquelle), `au_fonds` et `demande` (la demande qui attend ; QUI l'a déposée ne s'y lit que
   par une portée totale et par la personne elle-même, `Portee.peut_nommer_le_demandeur`,
   décision de Hugo du 2026-10-15 : une personne qui n'écrit que dans l'Incubateur aurait
   sinon été nommée aux lectrices du corpus principal). Le fonds et les demandes sont à la
   seule portée totale (`peut_tenir_le_fonds`) : leurs routes refusent sur le DROIT, avant de
   chercher l'objet, le même 403 que l'objet existe ou non. Cf. `docs/modele-et-droits.md`.
-- **Qui EFFACE sans demander : trois chemins** (COL-3, tranche 3b ; Hugo, 2026-10-21 —
-  RENVERSEMENT daté des quatre conditions du point précédent, que E8 reprenait). Effacer —
-  supprimer une copie, ou la ramener à un cran — se fait sans demande par (1) le CRÉATEUR
-  d'une copie que personne d'autre n'a touchée (la règle d'avant, ses quatre moitiés) ;
-  (2) le PROPRIÉTAIRE de TOUTES les collections où vit l'album, même si d'autres y ont
-  travaillé ; (3) le RESPONSABLE du projet de l'album, aux mêmes conditions. Jamais un
-  compte PARTAGÉ hors de son bac à sable. La DERNIÈRE copie d'un document — aucune autre
-  copie vivante hors d'un projet isolé — ne se SUPPRIME que sur demande à un administrateur,
-  par (2) ou (3) comme par (1) — sauf, par (1), la copie d'ORIGINE (`copie.cran =
-  'origine'`) : l'import fait par erreur, que personne n'a touché, n'attend personne (Hugo,
-  2026-10-21, sur le cas où les deux règles se croisent). Une copie née d'une PRISE ne
-  profite pas de l'exception (relecture croisée de la 3b, constat 1, tranché par le pilotage
-  le 2026-10-25) : sans quoi prendre une copie vierge, effacer l'originale travaillée (une
-  sœur existe), puis effacer la vierge faisait sortir le document du fonds sans
-  administrateur. Et pour la dernière copie, « personne d'autre n'y a travaillé » se lit
-  sur TOUT ce qui y a jamais été fait (Hugo, 2026-10-25) : le moindre geste d'un autre,
-  même défait, effacé depuis ou emporté par une remise à zéro, l'envoie à un
-  administrateur — ce qui ferme deux détours, la remettre à zéro puis la supprimer, ou en
-  supprimer une à une les régions de l'autre. Le geste est retenu au moment où il est fait,
-  dans `geste_sur_copie` (v36, posé par `journal.journaliser` : une région et ce qu'elle
-  porte, une correction, une planche ; ce qui est journalisé après le `DELETE` se lit sur
-  sa charge — la planche d'une région, la région d'une correction retirée) ; les autres
-  suppressions lisent ce qui vit encore. Décisions du pilotage (2026-10-25) : la curation du
-  vocabulaire (fusionner ou supprimer un personnage, un tag — réservée au propriétaire et à
-  l'administrateur, elle ne porte sur aucune copie) et le recalcul de l'ordre de lecture
-  (`POST /api/planches/{id}/reordonner`, comme l'ordre des planches) n'y comptent pas ;
-  aucun rattrapage depuis le journal à la migration (le corpus de production est de test) :
-  ce qui a été fait avant la v36 retombe sur « ce qui vit encore » ; le marquage par date de
-  `recopiee` à la migration garde deux limites, en sens opposés — une annotation recopiée
-  puis modifiée avant la v36 n'est pas marquée, et tout attribut d'une copie au cran
-  `annotations` l'est.
-  La règle de la dernière copie n'a pas cours dans un projet ISOLÉ — un bac à sable, le
-  jeu (contre-relecture de la 3b : l'invité ne supprimait plus la copie vierge qu'il avait
-  prise) —, et le refus d'effacer, dans un bac à sable, ne renvoie ni à un administrateur
-  ni au fonds (`socle._MOTIF_DESTRUCTION_BAC`). **Repartir de zéro** ne connaît pas la
-  règle de la dernière copie
-  (`Portee.clause_repartir_directe`, les mêmes chemins sans elle) : les images restent,
-  rien ne sort du fonds commun. Les chemins (2) et (3) ne valent pas dans un bac à
-  sable (une collection de bac à sable ne compte pas dans ce qu'on possède) : son
-  propriétaire a son chemin à lui, un invité garde celui du créateur. Ils sont lus AVANT
-  le journal dans le `CASE` de `clause_suppression_directe` (le coût de `e62f6bc` tient,
-  `tests/test_cout_des_clauses.py`), `destructible` les publie, une planche les suit, et le
-  refus de supprimer nomme la dernière copie parmi ses raisons sans dire laquelle manque.
+- **Qui EFFACE sans demander : qui TIENT l'espace** (COL-3, tranche 3c ; F3, Hugo,
+  2026-10-26 — RENVERSEMENT daté des « trois chemins » de la tranche 3b, du 2026-10-21).
+  Effacer — supprimer une copie, la ramener à un cran, ou en supprimer une planche — se
+  fait sans demande par (1) le PROPRIÉTAIRE de TOUTES les collections où vit l'album, même si
+  d'autres y ont travaillé ; (2) le RESPONSABLE du projet de l'album, sur un album RANGÉ de
+  son projet (une copie gardée au fonds reste à l'administrateur, Q12) ; (3)
+  l'administrateur. Les autres DEMANDENT, son créateur comme tout annotateur : le chemin du
+  créateur (« la copie qu'il a créée, que personne d'autre n'a touchée ») est RETIRÉ, avec
+  lui l'exception de la copie d'origine, et la règle ne lit plus le journal. Jamais un
+  compte PARTAGÉ hors de son bac à sable (F7). La DERNIÈRE copie d'un document — aucune
+  autre copie vivante hors d'un projet isolé — ne se SUPPRIME que par un administrateur ;
+  repartir de zéro, et supprimer une PLANCHE (Q5), ne connaissent pas cette règle
+  (`Portee.clause_repartir_directe`) : les images restent, rien ne sort du fonds commun. Dans
+  un BAC À SABLE, son propriétaire efface tout, et QUICONQUE Y ÉCRIT efface (Q4, Hugo,
+  2026-10-26, contre la proposition : « le bac à sable n'a pas d'importance ») ; rien ne s'y
+  demande. Les chemins (1) et (2) ne valent pas dans un bac à sable (une collection de bac à
+  sable ne compte pas dans ce qu'on possède) ; le refus d'effacer, dans un bac à sable, ne
+  renvoie ni à un administrateur ni au fonds (`socle._MOTIF_DESTRUCTION_BAC`). La règle est
+  une disjonction sans `CASE` — aucune branche ne lit le journal, ce que
+  `tests/test_cout_des_clauses.py` vérifie par un témoin —, `destructible` la publie, et
+  `effacable` (dans `GET /api/albums`, `clause_repartir_directe`) dit qu'on peut au moins
+  repartir de zéro : le responsable efface un album qu'il ne fait que LIRE. Les six routes
+  de l'effacement passent par l'accesseur en LECTURE : qui lit sans pouvoir effacer reçoit
+  un 403 nommé, qui ne lit pas un 404. `geste_sur_copie` (v36), que la règle de la dernière
+  copie lisait, n'est plus ni écrite ni lue.
   **La
   protection du travail des membres passe de la PERMISSION à la VISIBILITÉ** :
   `GET /api/albums/{id}/travail-des-autres` rend, avant d'effacer, ce que d'autres y ont
   fait — qui, combien de gestes de chaque sorte, la date du dernier —, par la même source
-  que la règle (`autorisation.sql_actes_sur_album`), bornée à qui peut effacer l'album
-  (404 à qui n'y écrit pas, 403 nommé sinon ; la borne est celle de repartir, la plus
-  large des deux) ; hors portée totale, le travail RECOPIÉ d'une autre copie s'y compte
+  que ce que lit l'administrateur sous une demande (`autorisation.sql_actes_sur_album`),
+  bornée à qui peut effacer l'album (404 à qui ne le lit pas, 403 nommé sinon ; la borne
+  est celle de repartir, la plus large des deux) ; hors portée totale, le travail RECOPIÉ d'une autre copie s'y compte
   sans nom et l'importateur du document n'y est pas — leurs auteurs peuvent être d'un
   autre projet. Recopié : la sixième source, et dans la troisième une correction
   grammaticale reçue telle quelle (relecture croisée de la 3b, constat 3 : elle nommait
   l'importeur d'un autre projet). Le responsable atteint l'album par les accesseurs
-  gardés comme tout le monde : la suppression demande d'y ÉCRIRE quelque part (sa base,
-  le plus souvent). **« Retirer du projet »** (`POST /api/albums/{id}/retirer-du-projet`)
+  gardés comme tout le monde — en LECTURE depuis la tranche 3c. **« Retirer du projet »** (`POST /api/albums/{id}/retirer-du-projet`)
   est le geste du responsable — et de l'administrateur — sur la COMPOSITION : l'album quitte
   toutes les collections de son projet, quels qu'en soient les propriétaires, et part au
   fonds avec son travail, comme sorti de sa dernière collection (son projet écrit sur lui,
@@ -781,7 +769,8 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   (`repartir`), non annulable, que Ctrl+Z lit pour ne pas remonter au-delà (§ Annulation),
   et qui n'est pas un travail sur l'album (§ Journal de provenance).
   **Ce que l'écran de la 3b (tranché par Hugo sur maquette le 2026-10-25) lit du
-  serveur** : dans `GET /api/albums`, deux DONNÉES de plus, à qui écrit dans la copie —
+  serveur** : dans `GET /api/albums`, deux DONNÉES de plus, à qui écrit dans la copie (ou
+  peut l'effacer, depuis la tranche 3c) —
   `derniere_copie` (aucune autre copie vivante hors projet isolé : la règle de
   l'effacement dite album par album) — et pour tous `repartie` (le dernier acte `repartir`
   sur l'album entier : cran, d'où, date ; QUI, à qui écrit et à la portée totale seulement) ;
@@ -991,7 +980,8 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   mono-poste lisent encore dans la Recherche et l'Exploration le texte d'une copie gardée
   au fonds : leur portée totale la lit.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue vingt-trois questions — dix jusqu'au 2026-10-10 (`peut_lire` /
+  serveur distingue vingt-deux questions depuis la tranche 3c, qui retire
+  `clause_destruction` (2026-10-26) — vingt-trois jusque-là, dix jusqu'au 2026-10-10 (`peut_lire` /
   `peut_ecrire` / `peut_administrer` / `peut_exporter`, `clause_album` /
   `clause_destruction` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`
   / `peut_exporter_quelque_part`), quatorze jusqu'au 2026-10-16 avec les quatre du projet
@@ -1028,7 +1018,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   choisir l'une d'elles répondait « introuvable »). Deux album par album, dans `GET /api/albums` (AUTH-10) :
   `destructible` et `ecrivable` — trois depuis le 2026-10-16, avec `partage` (COL-3) ; et
   `destructible` y a changé de sens ce jour-là : il répond `clause_suppression_directe`,
-  « supprimer définitivement sans rien demander », et non plus `clause_destruction`. Le
+  « supprimer définitivement sans rien demander », et non plus `clause_destruction` ; et
+  `effacable` depuis la tranche 3c (`clause_repartir_directe`, repartir de zéro sans rien
+  demander : le responsable efface ce qu'il ne fait que lire). Le
   même jour, une DONNÉE de plus par album, qui n'est pas une question : `collections`, les
   collections où il est rangé (`id`, `nom`), pour que la Bibliothèque en calque filtre le
   corpus sans un appel par album (UX-18). Elle est bornée par `peut_lire` — la règle de
@@ -1359,7 +1351,7 @@ Invariants :
 
 `journal.py` : couche **append-only** qui qualifie *qui a produit quoi* sans inverser la base. `activite` = un **run** (passe ML, ou session) ; `evenement` = un **acte** atomique immuable (avant/après JSON). Les passes ML sont enveloppées par `journal.passe_ml` (diff des régions → `regions.activite_id` = wasGeneratedBy + événements, **sans coupler** le code pipeline) ; les routes humaines journalisent leurs actes (l'**agent** vient de l'auth via le contextvar `agent_courant`, alimenté par une dépendance FastAPI globale — pas de `request` à threader). `evenement.cible_id` **n'est pas une FK** : le journal **survit à la suppression** de sa cible (substrat de l'undo **D1**) ; les actes d'annotation ciblent le `region_id` (stable), pas l'id d'annotation. **Un run qui ÉCHOUE ou qu'on INTERROMPT laisse une trace lui aussi** : `passe_ml` défait la transaction LUI-MÊME puis réinscrit une activité close (`{echec}` / `{interrompu}`) et la valide seule — sinon le `rollback` de l'appelant emportait la ligne qu'on venait d'écrire, et le journal ne gardait que ce qui avait marché (mesuré le 2026-09-08 : zéro activité après une passe ratée, en lot COMME en route directe). Le bilan reste **minimal** par contrainte et non par économie : `comptes` SORT de l'instance, y verser le message de l'exception enverrait des chemins serveur au dépôt. Et la tenue du journal ne doit jamais changer l'erreur que l'appelant voit — un `commit()` qui lève « database is locked » transformerait un 500 moteur en 409 « réessayer ». **`database.reindex_all` a la même maladie et un autre remède** (2026-09-09) : ses lots étant validés au fur et à mesure, une panne tardive laisse une activité déjà persistée, et réinscrire en produirait une SECONDE — elle commite donc sa trace d'ouverture tout de suite, puis la CLÔTURE sur échec. Elle rattrape `BaseException` là où `passe_ml` s'en tient à `Exception`, et l'asymétrie est justifiée : `tools/reindex_nlp.py` est une CLI qui tourne des minutes sur le fil principal, donc Ctrl+C y est l'interruption réaliste — `passe_ml` vit dans un fil de travail, où il n'arrive jamais. Indicateurs dérivés (`indicateurs_provenance`) dans les exports ; sérialisation **PROV-O / TEI** par `tools/provenance_export.py`. Cf. `docs/provenance-audit.md`.
 
-**Depuis la v30 (2026-10-16), le journal est aussi une ENTRÉE d'autorisation** (COL-3, tranche 2). Couche de provenance jusque-là, il décide désormais d'un geste : « supprimer définitivement sans rien demander » exige que PERSONNE D'AUTRE n'ait travaillé sur l'album, et cela se lit dans le journal (`autorisation._sql_travail_d_autrui`), par jointure sur ce qui VIT encore (le travail RECOPIÉ d'une copie amorcée compris, tranche 3b : une couche d'annotation recopiée ne compte que tant qu'elle vit sur la copie, une remise à zéro au-dessous l'efface) — les actes humains sur ses régions (région, annotation, locuteur, présence, attribut de case), les attributs de case dont aucun `lien` humain n'est écrit (auteur inconnu, donc un autre), les corrections grammaticales vivantes (`token_correction.auteur`), les validations de ses planches, les gestes sur son document dont la charge nomme CET album (une copie sœur partage le document : la notice retouchée sur l'une n'est pas un travail sur l'autre). Un travail supprimé depuis ne compte plus ; une passe automatique n'est attribuée qu'à son moteur ; un acte sans agent compte comme celui d'un autre. Ce qui n'était écrit nulle part l'est donc depuis : sous la cible **`document`** (cible_id = le document, jamais l'album) la naissance d'un album, chaque scan ajouté ou retiré, la notice modifiée, une contribution ajoutée ou retirée, la relecture d'une planche forcée, la destruction, et l'ORDRE des planches changé (UX-11) — ce dernier, marqué `acte: ordre_des_planches` dans sa charge, n'est PAS un travail sur l'album (Hugo, 2026-10-22 : `autorisation._SQL_ORDRE_DES_PLANCHES` l'écarte de la règle comme de ce que l'administrateur lit sous une demande), une remise à zéro (`repartir`, COL-3, tranche 3b) et un retrait du projet (`retire_du_projet`) — ces deux-là ne sont PAS non plus un travail sur l'album (relecture croisée de la 3b, constat 5, tranché par le pilotage le 2026-10-25 : `autorisation._SQL_EFFACER_OU_RETIRER`) ; sous **`collection_album`** ses EMPLOIS — rangé (`lien`), retiré (`delien`), par `journal.journaliser_emploi`, routes et outil ; sous **`region_attribut`** un attribut de case posé ou retiré ; sous **`demande`** une demande déposée et sa réponse. Les quatre sont RETENUES de toute sortie (`tools/_commun.CIBLES_RETENUES`), ne donnent aucun rang dans les pseudonymes (`CIBLES_SANS_RANG` : les compter aurait renuméroté tous ceux qui annotent après un import), et ne s'annulent pas. Dans ce qu'un compte laisse en partant (`comptes.traces`), `document`, `collection_album` et `demande` ne comptent pas ; `region_attribut` compte — qualifier une case est du travail. Depuis COL-4 (décision du pilotage), aucun acte sur un objet d'un projet isolé ne compte, création et invitations d'un bac à sable comprises, qu'il vive encore ou soit parti avec un effacement (`database.sql_acte_isole` ; l'effacement écrit dans sa charge les planches et régions qu'il emporte) : ce qui disparaît avec le lundi ne retient personne.
+**De la v30 (2026-10-16) à la tranche 3c, le journal a été une ENTRÉE d'autorisation** (COL-3, tranche 2) — **RENVERSÉ le 2026-10-26** (tranche 3c, F3) : qui tient l'espace efface, et le journal ne décide plus rien ; ce qui suit décrit ce qu'il MONTRE, « qui perd quoi » avant d'effacer et sous une demande (`autorisation.sql_actes_sur_album`), et ce que la règle lisait jusque-là. Couche de provenance jusqu'à la v30, il décidait alors d'un geste : « supprimer définitivement sans rien demander » exige que PERSONNE D'AUTRE n'ait travaillé sur l'album, et cela se lisait dans le journal (`autorisation._sql_travail_d_autrui`, retirée par la tranche 3c), par jointure sur ce qui VIT encore (le travail RECOPIÉ d'une copie amorcée compris, tranche 3b : une couche d'annotation recopiée ne compte que tant qu'elle vit sur la copie, une remise à zéro au-dessous l'efface) — les actes humains sur ses régions (région, annotation, locuteur, présence, attribut de case), les attributs de case dont aucun `lien` humain n'est écrit (auteur inconnu, donc un autre), les corrections grammaticales vivantes (`token_correction.auteur`), les validations de ses planches, les gestes sur son document dont la charge nomme CET album (une copie sœur partage le document : la notice retouchée sur l'une n'est pas un travail sur l'autre). Un travail supprimé depuis ne compte plus ; une passe automatique n'est attribuée qu'à son moteur ; un acte sans agent compte comme celui d'un autre. Ce qui n'était écrit nulle part l'est donc depuis : sous la cible **`document`** (cible_id = le document, jamais l'album) la naissance d'un album, chaque scan ajouté ou retiré, la notice modifiée, une contribution ajoutée ou retirée, la relecture d'une planche forcée, la destruction, et l'ORDRE des planches changé (UX-11) — ce dernier, marqué `acte: ordre_des_planches` dans sa charge, n'est PAS un travail sur l'album (Hugo, 2026-10-22 : `autorisation._SQL_ORDRE_DES_PLANCHES` l'écarte de la règle comme de ce que l'administrateur lit sous une demande), une remise à zéro (`repartir`, COL-3, tranche 3b) et un retrait du projet (`retire_du_projet`) — ces deux-là ne sont PAS non plus un travail sur l'album (relecture croisée de la 3b, constat 5, tranché par le pilotage le 2026-10-25 : `autorisation._SQL_EFFACER_OU_RETIRER`) ; sous **`collection_album`** ses EMPLOIS — rangé (`lien`), retiré (`delien`), par `journal.journaliser_emploi`, routes et outil ; sous **`region_attribut`** un attribut de case posé ou retiré ; sous **`demande`** une demande déposée et sa réponse. Les quatre sont RETENUES de toute sortie (`tools/_commun.CIBLES_RETENUES`), ne donnent aucun rang dans les pseudonymes (`CIBLES_SANS_RANG` : les compter aurait renuméroté tous ceux qui annotent après un import), et ne s'annulent pas. Dans ce qu'un compte laisse en partant (`comptes.traces`), `document`, `collection_album` et `demande` ne comptent pas ; `region_attribut` compte — qualifier une case est du travail. Depuis COL-4 (décision du pilotage), aucun acte sur un objet d'un projet isolé ne compte, création et invitations d'un bac à sable comprises, qu'il vive encore ou soit parti avec un effacement (`database.sql_acte_isole` ; l'effacement écrit dans sa charge les planches et régions qu'il emporte) : ce qui disparaît avec le lundi ne retient personne.
 
 **Depuis la v37 (2026-10-25), trois cibles de plus** (ANN-7, tranche 1) : **`grille`**
 (`cible_id` = la grille) — l'import d'une version, sa publication, une coquille corrigée, une

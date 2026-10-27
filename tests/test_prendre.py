@@ -333,14 +333,18 @@ def test_un_ecrivain_ne_nomme_que_ce_qu_il_lit(client, prise):
     assert r.status_code == 200 and r.json()["documents"][0]["etat"] == "fait", r.text
 
 
-def test_qui_part_de_zero_supprime_seul_sa_copie(client, prise):
-    """La copie prise par `ecrivain` est la sienne (`copie.creee_par`) : seul à y avoir
-    travaillé, il la supprime sans rien demander — sa naissance au journal est son acte."""
+def test_qui_part_de_zero_demande_et_sa_naissance_n_est_le_travail_de_personne(client, prise):
+    """Tranche 3c (F3) — RENVERSÉ : la copie prise par `ecrivain` est la sienne
+    (`copie.creee_par`), mais le créateur n'a plus de chemin à lui — il demande. Sa
+    naissance au journal n'est le travail de personne : « qui perd quoi » n'en compte
+    rien."""
     _copie_dans(client, prise, "d1", prise["x"])
     copie = _prendre(client, prise["y"], [_zero(prise["docs"]["d1"])],
                      ECRIVAIN).json()["documents"][0]["copie_id"]
-    assert _albums(client, ECRIVAIN)[copie]["destructible"] is True
-    assert client.delete(f"/api/albums/{copie}", headers=ECRIVAIN).status_code == 204
+    assert _albums(client, ECRIVAIN)[copie]["destructible"] is False
+    assert client.delete(f"/api/albums/{copie}", headers=ECRIVAIN).status_code == 403
+    vue = client.get(f"/api/albums/{copie}/travail-des-autres", headers=ADMIN)
+    assert vue.status_code == 200 and vue.json()["travail_des_autres"] == [], vue.text
 
 
 def test_une_prise_s_arrete_entiere_sur_un_document_introuvable(client, prise, db_path):

@@ -208,31 +208,40 @@ def test_le_travail_montre_sous_une_demande_est_celui_de_sa_copie(client, soeurs
 # --------------------------------------------------------------------------- #
 # Supprimer définitivement une copie qu'on a CRÉÉE
 # --------------------------------------------------------------------------- #
-def test_qui_a_cree_la_copie_la_supprime_seul(client, soeurs):
-    """« L'avoir importé » se lit sur la copie : `sam` a créé B, seul à y avoir travaillé,
-    il écrit dans toutes ses collections — il la supprime sans rien demander, bien que le
-    document ait été importé par `lea`. Et `lea`, qui écrit aussi dans Étude, ne supprime
-    pas seule une copie qu'elle n'a pas créée."""
+def test_qui_a_cree_la_copie_demande_qui_la_tient_la_supprime(client, soeurs):
+    """Tranche 3c (F3) — RENVERSÉ : « l'avoir importé » ne donne plus de chemin. `sam` a créé
+    B, seul à y avoir travaillé, et écrit dans toutes ses collections : il DEMANDE. Fait
+    propriétaire d'Étude, il la supprime sans rien demander — A, sa sœur, garde le document
+    au fonds. `lea`, qui écrit aussi dans Étude, ne la supprime pas."""
     b = soeurs["b"]
-    assert _albums(client, SAM)[b]["destructible"] is True
+    assert _albums(client, SAM)[b]["destructible"] is False
+    assert client.delete(f"/api/albums/{b}", headers=SAM).status_code == 403
     _accorder(client, soeurs["etude"], "lea", "ecriture")
     assert _albums(client, LEA)[b]["destructible"] is False
     assert client.delete(f"/api/albums/{b}", headers=LEA).status_code == 403
+    _accorder(client, soeurs["etude"], "sam", "proprietaire")
+    assert _albums(client, SAM)[b]["destructible"] is True
     assert client.delete(f"/api/albums/{b}", headers=SAM).status_code == 204
 
 
-def test_le_travail_sur_une_soeur_ne_retient_pas_la_copie(client, soeurs):
+def test_le_travail_sur_une_soeur_n_est_pas_celui_de_la_copie(client, soeurs):
     """La notice de A retouchée par `lea` s'écrit sous le DOCUMENT, l'album A dans la charge.
-    Ce n'est pas un travail sur B : `sam` la supprime encore seul."""
+    Ce n'est pas un travail sur B : « qui perd quoi » de B n'en compte rien. Le même geste
+    sur B, par elle, y compte (tranche 3c : la mesure, qui ne décide plus)."""
     a, b = soeurs["a"], soeurs["b"]
+
+    def autres():
+        r = client.get(f"/api/albums/{b}/travail-des-autres", headers=ADMIN)
+        assert r.status_code == 200, r.text
+        return [e["agent"] for e in r.json()["travail_des_autres"]]
+
     assert client.put(f"/api/albums/{a}", json={"titre": "Notice retouchée"},
                       headers=LEA).status_code == 200
-    assert _albums(client, SAM)[b]["destructible"] is True
-    # Le même geste sur B, par une autre, la retient.
+    assert autres() == []
     _accorder(client, soeurs["etude"], "lea", "ecriture")
     assert client.put(f"/api/albums/{b}", json={"titre": "Retouchée par Léa"},
                       headers=LEA).status_code == 200
-    assert _albums(client, SAM)[b]["destructible"] is False
+    assert autres() == ["lea"]
 
 
 # --------------------------------------------------------------------------- #

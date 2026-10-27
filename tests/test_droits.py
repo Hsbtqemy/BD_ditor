@@ -190,5 +190,8 @@ def test_la_route_sert_la_description_a_tous(client, derriere_proxy):
         assert r.json() == autorisation.description_des_droits()
     corps = client.get("/api/droits").json()
     assert [a["code"] for a in corps["actes"]] == [a["code"] for a in ACTES]
-    structurer = next(a for a in corps["actes"] if a["code"] == "structurer")
-    assert structurer["avertissement"]
+    # COL-3, tranche 3c (Q13) — l'avertissement de la suppression définitive est porté par
+    # `decider` : un écrivain n'efface plus, qui tient l'espace efface (F3).
+    decider = next(a for a in corps["actes"] if a["code"] == "decider")
+    assert decider["avertissement"]
+    assert not next(a for a in corps["actes"] if a["code"] == "structurer")["avertissement"]

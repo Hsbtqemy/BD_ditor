@@ -524,16 +524,15 @@ def test_importer_et_retirer_une_planche_s_ecrivent_sur_le_document(client, db_p
                                                                     png_bytes):
     """Un scan ajouté, un scan retiré : attribués à qui l'a fait — ici bob, qui n'a pas
     importé l'album —, sous l'identifiant du document. L'ajout porte son `apres`, le
-    retrait son `avant`. Le retrait est fait par un administrateur : depuis que bob y a
-    ajouté un scan, alice ne supprime plus de planche de cet album sans le demander
-    (COL-3, tranche 2, décision B4)."""
+    retrait son `avant`. Le retrait est fait par un administrateur : bob, qui n'a que
+    l'écriture, ne supprime pas de planche (COL-3, tranche 3c : qui tient l'espace)."""
     aid = _creer(client, "Le Lotus bleu", decor["emotions"])
     doc = _album_ligne(db_path, aid)["document_id"]
     r = client.post(f"/api/albums/{aid}/import", headers=BOB,
                     files={"file": ("p.png", png_bytes, "image/png")})
     assert r.status_code == 201, r.text
     pl = r.json()
-    assert client.delete(f"/api/planches/{pl['id']}", headers=ALICE).status_code == 403
+    assert client.delete(f"/api/planches/{pl['id']}", headers=BOB).status_code == 403
     assert client.delete(f"/api/planches/{pl['id']}", headers=ADMIN).status_code == 204
 
     charge = {"album_id": aid, "planche": {"id": pl["id"], "numero": pl["numero"]}}
@@ -626,18 +625,22 @@ def test_detruire_un_album_emporte_son_document_et_l_ecrit(client, db_path, deco
     assert _sql(db_path, "SELECT 1 FROM document WHERE id = ?", (doc,)) != []
     assert _actes(db_path, doc, "suppression") == [] and _actes(db_path, doc, "delien") == []
 
-    assert client.delete(f"/api/albums/{aid}", headers=ALICE).status_code == 204
+    # alice possède ses deux collections ; c'est la dernière copie du document : seul un
+    # administrateur la supprime (COL-3, tranche 3c).
+    assert client.delete(f"/api/albums/{aid}", headers=ALICE).status_code == 403
+    assert client.delete(f"/api/albums/{aid}", headers=ADMIN).status_code == 204
     assert _sql(db_path, "SELECT 1 FROM document WHERE id = ?", (doc,)) == []
     # Les deux retraits d'abord, dans l'ordre des collections, puis la destruction — et
     # pas un retrait de plus : l'album n'a jamais été de la collection de repli du décor.
+    qui = ADMIN["Remote-User"]
     assert [a for a in _actes(db_path, doc) if a[1] in ("delien", "suppression")] == [
-        ("collection_album", "delien", "alice", doc,
+        ("collection_album", "delien", qui, doc,
          {"album_id": aid, "collection_id": decor["emotions"], "collection": "Émotions"},
          None),
-        ("collection_album", "delien", "alice", doc,
+        ("collection_album", "delien", qui, doc,
          {"album_id": aid, "collection_id": decor["voisine"], "collection": "Voisine"},
          None),
-        ("document", "suppression", "alice", doc,
+        ("document", "suppression", qui, doc,
          {"album_id": aid, "titre": "Importé par erreur", "planches": 1}, None)]
 
 

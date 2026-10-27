@@ -67,7 +67,7 @@ import sqlite3
 from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
-from database import (CRAN_ANNOTATIONS, CRAN_ORIGINE, DEMANDE_AMORCER_ENTRE_PROJETS,
+from database import (CRAN_ANNOTATIONS, DEMANDE_AMORCER_ENTRE_PROJETS,
                       GENRES_CONSENTIS,
                       NATURE_COLLECTIF, rang_du_cran,
                       sql_album_isole, sql_est_bac_a_sable, sql_est_isole, sql_est_jeu,
@@ -114,19 +114,20 @@ ACTES = (
     {"code": "annoter", "libelle": "annoter", "niveau": ECRITURE, "lies": ECRITURE,
      "avertissement": None},
     {"code": "structurer", "libelle": "organiser les albums", "niveau": ECRITURE,
-     "lies": ECRITURE,
-     # Vrai de la suppression DÉFINITIVE seule depuis le fonds (COL-3, tranche 2) :
-     # supprimer un album de sa collection le garde au fonds, avec son travail. Le mot
-     # « définitivement » est le seul ajout à la phrase validée par Hugo le 2026-09-17
-     # (proposition R10 du cadrage, suivie en route).
-     "avertissement": "Supprimer définitivement un album efface ses images et ne se "
-                      "rattrape pas."},
+     "lies": ECRITURE, "avertissement": None},
     {"code": "vocabulaire", "libelle": "gérer le vocabulaire", "niveau": ECRITURE,
      "lies": ECRITURE, "avertissement": None},
     {"code": "lots", "libelle": "lancer la reconnaissance automatique", "niveau": ECRITURE,
      "lies": ECRITURE, "avertissement": None},
     {"code": "decider", "libelle": "décider qui entre", "niveau": PROPRIETAIRE, "lies": None,
-     "avertissement": None},
+     # Vrai de la suppression DÉFINITIVE seule depuis le fonds (COL-3, tranche 2) :
+     # supprimer un album de sa collection le garde au fonds, avec son travail. Le mot
+     # « définitivement » est le seul ajout à la phrase validée par Hugo le 2026-09-17
+     # (proposition R10 du cadrage, suivie en route). Portée par l'acte `structurer`
+     # jusqu'à la tranche 3c : un écrivain n'efface plus, qui tient l'espace efface (F3) —
+     # la phrase change de ligne, telle quelle (Q13).
+     "avertissement": "Supprimer définitivement un album efface ses images et ne se "
+                      "rattrape pas."},
 )
 # Ce qui ne s'ordonne pas avec l'échelle : une case À CÔTÉ du niveau (DROIT-2).
 HORS_RANG = (
@@ -149,8 +150,8 @@ def description_des_droits() -> dict:
 # seule exception, et elle est voulue (D10, Hugo, 2026-10-17) : la collection de BASE du
 # projet, dont le responsable est propriétaire et où le membre entre au niveau
 # `acces_membres` — dérivée dans `Portee.__init__`, à partir de `bases_des_projets`. Aucune
-# des clauses qui filtrent les données (`clause_album`, `clause_destruction`,
-# `clause_terme`) ne connaît les projets : elles lisent les ensembles que la dérivation a
+# des clauses qui filtrent les données (`clause_album`, `clause_terme`) ne connaît les
+# projets : elles lisent les ensembles que la dérivation a
 # remplis. Toute autre collection garde son « Qui entre ».
 MEMBRE = "membre"
 RESPONSABLE = "responsable"
@@ -607,119 +608,58 @@ class Portee:
                 f"WHERE ca.album_id = {alias} AND ca.collection_id IN ({marques}))",
                 list(ids))
 
-    def clause_destruction(self, alias: str = "a.id") -> tuple[str, list]:
-        """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut
-        DÉTRUIRE — lui, ou l'une de ses planches.  AUTH-10, 2026-10-08.
-
-        Écrire dans UNE collection de l'album suffit pour l'annoter : c'est l'union de
-        `clause_album`, et elle est voulue — le travail fait dans une étude se voit dans
-        l'autre. Détruire est l'autre règle : il faut écrire dans TOUTES les collections où
-        l'album vit. Sans elle, le droit reçu sur une collection s'exerçait hors d'elle, y
-        compris sur une étude que celui qui supprime ne lit pas (reproduit le 2026-10-08).
-        Qui n'écrit que d'un côté garde un geste, qui ne détruit rien : SORTIR l'album de
-        sa collection. Il se défait — par qui écrit des deux côtés, ou par un
-        administrateur ; pas par celui qui n'écrivait dans l'album que par cette
-        collection-là : ranger demande d'y écrire, et il n'y écrit plus, qu'il continue de le
-        lire ou non.
-
-        Les deux moitiés sont nécessaires. `NOT EXISTS` seul serait vrai d'un album rangé
-        nulle part — une base retouchée à la main —, et l'ouvrirait à quiconque.
-        """
-        if self.tout:
-            if self.bornee:
-                return self._bornee_sur_album(alias,
-                                              self._ordinaire().clause_destruction(alias))
-            return "1", []
-        ids = sorted(self.ecriture)
-        if not ids:
-            return "0", []
-        marques = ", ".join("?" * len(ids))
-        return (f"(EXISTS (SELECT 1 FROM collection_album ca "
-                f"WHERE ca.album_id = {alias} AND ca.collection_id IN ({marques})) "
-                f"AND NOT EXISTS (SELECT 1 FROM collection_album ca "
-                f"WHERE ca.album_id = {alias} AND ca.collection_id NOT IN ({marques})))",
-                list(ids) * 2)
-
     def clause_suppression_directe(self, alias: str = "a.id") -> tuple[str, list]:
         """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut SUPPRIMER
-        DÉFINITIVEMENT sans rien demander, lui ou l'une de ses planches. COL-3, tranche 2
-        (Hugo, 2026-10-11), RENVERSÉE en partie le 2026-10-21 (tranche 3b, « qui efface, qui
-        retire, qui crée »). Le RAMENER à un cran (« repartir de zéro », E8) suit les mêmes
-        chemins sans la règle de la dernière copie : `clause_repartir_directe`.
+        DÉFINITIVEMENT sans rien demander. COL-3, tranche 2 (Hugo, 2026-10-11), RENVERSÉE le
+        2026-10-21 (tranche 3b), puis SIMPLIFIÉE le 2026-10-26 (tranche 3c, F3 : « qui tient
+        l'espace efface, les autres demandent »). Le RAMENER à un cran (« repartir de
+        zéro », E8) — et supprimer l'une de ses PLANCHES (Q5) — suit les mêmes chemins sans
+        la règle de la dernière copie : `clause_repartir_directe`.
 
         « Supprimer » a deux réponses. Supprimer DE LA COLLECTION ne détruit rien : la
         copie part au fonds avec son travail, et c'est le geste de qui écrit dans la
         collection. Effacer détruit le travail — et, pour une suppression, les images
         qu'aucune autre planche n'emploie.
 
-        TROIS chemins sans demande depuis le 2026-10-21 — un compte PARTAGÉ n'en prend
-        aucun, hors de son bac à sable :
+        Qui TIENT l'espace efface sans rien demander — un compte PARTAGÉ jamais, hors de son
+        bac à sable (F7) :
 
-        1. le CRÉATEUR d'une copie que personne d'autre n'a touchée. C'est la règle
-           d'avant, ses quatre moitiés toutes nécessaires :
-           - `clause_destruction`, INCHANGÉE (AUTH-10) : on écrit dans toutes les
-             collections où la copie vit ;
-           - CETTE COPIE a été créée PAR CET APPELANT (`copie.creee_par`, v31) : pour la
-             copie d'origine, son importateur ; pour une sœur, qui l'a prise (D5). Jamais
-             vrai sans login, ni sans ligne `copie`, ni pour un document d'avant le fonds
-             (décision B3) ;
-           - l'appelant n'est pas un compte partagé (proposition R7) ;
-           - PERSONNE D'AUTRE n'y a travaillé (`_sql_travail_d_autrui`) ;
-        2. le PROPRIÉTAIRE de TOUTES les collections où vit l'album, même si d'autres y ont
-           travaillé — la protection du travail des membres passe de la PERMISSION à la
-           VISIBILITÉ : l'écran dit qui perd quoi avant d'effacer (`GET
-           /api/albums/{id}/travail-des-autres`), et le journal qui l'a fait ;
-        3. le RESPONSABLE du projet de l'album, aux mêmes conditions que le propriétaire —
-           « plus élevé en droits qu'un propriétaire ». Il atteint l'album par les
-           accesseurs gardés comme tout le monde : la route d'une suppression demande d'y
-           ÉCRIRE quelque part.
+        1. le PROPRIÉTAIRE de TOUTES les collections où vit l'album, même si d'autres y ont
+           travaillé ;
+        2. le RESPONSABLE du projet de l'album, sur tout album RANGÉ de son projet — une
+           copie gardée au fonds reste à l'administrateur (Q12) ;
+        3. l'ADMINISTRATEUR et le mono-poste (la portée totale) : le recours d'une demande ;
+        4. dans un BAC À SABLE, quiconque y écrit — invité compris, son import ou non —, et
+           son propriétaire (Q4, Hugo, 2026-10-26 : « le bac à sable n'a pas d'importance ») ;
+           rien ne s'y demande. Le compte partagé y efface comme les autres (COL-4).
 
-        La DERNIÈRE copie d'un document — aucune autre copie vivante hors d'un projet
-        isolé — se demande à un administrateur, gardien du fonds : la supprimer fait sortir
-        le document du fonds commun, images comprises. Les chemins 2 et 3 ne la prennent
-        jamais. Le chemin 1 ne la prend que pour la copie d'ORIGINE du document
-        (`copie.cran = 'origine'`) : l'import fait par erreur, que personne n'a touché, ne
-        doit attendre personne (Hugo, 2026-10-21, sur le cas où les deux règles se
-        croisent). Une copie née d'une PRISE, devenue dernière, se demande comme aux
-        chemins 2 et 3 (relecture croisée de la 3b, constat 1, tranché par le pilotage le
-        2026-10-25) — sans quoi la dernière copie sortait du fonds sans administrateur :
-        prendre une copie vierge (immédiat pour qui lit une copie dans le projet), effacer
-        l'originale travaillée par d'autres (permis, une sœur existe), puis effacer sa
-        copie vierge (« même dernière »). Et pour la dernière copie, « personne d'autre n'y a
-        travaillé » se lit sur TOUT ce qui y a jamais été fait (Hugo, 2026-10-25,
-        `geste_sur_copie`) : le moindre geste d'un autre, même défait, effacé depuis ou
-        emporté par une remise à zéro, l'envoie à un administrateur. Sans quoi deux détours la
-        faisaient sortir du fonds : la remettre à zéro (chemin 2) puis la supprimer, ou
-        supprimer une à une les régions de l'autre. Les autres suppressions lisent ce qui vit
-        encore. La règle de la dernière copie n'a pas cours dans un projet ISOLÉ (un bac à
-        sable, le jeu) : rien n'en sort vers le fonds commun (contre-relecture de la 3b).
+        La protection du travail des membres passe par la VISIBILITÉ, pas par la
+        permission : l'écran dit qui perd quoi avant d'effacer (`GET
+        /api/albums/{id}/travail-des-autres`), et le journal qui l'a fait. Le CRÉATEUR d'une
+        copie n'a plus de chemin à lui (F3) : il demande, comme tout annotateur, et le
+        journal ne DÉCIDE plus rien — il ne sert qu'à montrer.
 
-        Les chemins 2 et 3 ne valent pas dans un bac à sable, qui a son chemin à lui
-        (ci-dessous) : un invité qui y possède une collection garde la règle commune du
-        créateur.
-
-        Ce que la règle ne lit PAS : une demande REFUSÉE (« garder » répond à une demande,
-        il ne protège pas le document de qui peut l'effacer — relecture croisée, constat 7).
+        La DERNIÈRE copie d'un document — aucune autre copie vivante hors d'un projet isolé
+        — ne se supprime que par un administrateur, gardien du fonds : la supprimer fait
+        sortir le document du fonds commun, images comprises. Ni le propriétaire ni le
+        responsable ne la prennent. La règle n'a pas cours dans un projet ISOLÉ (un bac à
+        sable, le jeu) : rien n'en sort vers le fonds commun.
 
         Ce que la réponse ne dit pas, et c'est voulu : LEQUEL des chemins manque. Le refus
-        est le même dans tous les cas (`socle._MOTIF_DESTRUCTION`).
-
-        La portée totale passe outre, et c'est écrit : l'administrateur et le mono-poste
-        effacent tout, c'est le recours d'une demande."""
+        est le même dans tous les cas (`socle._MOTIF_DESTRUCTION`)."""
         return self._clause_effacement(alias, derniere_copie_gardee=True)
 
     def clause_repartir_directe(self, alias: str = "a.id") -> tuple[str, list]:
         """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut RAMENER à
         un cran sans rien demander — « repartir de zéro », sur l'album ou l'une de ses
-        planches (E8, COL-3, tranche 3b).
+        planches (E8, COL-3, tranche 3b) —, ou dont on peut SUPPRIMER une planche (Q5, Hugo,
+        2026-10-26 : une planche n'est pas le document, qui reste au fonds).
 
-        Les chemins de `clause_suppression_directe`, tels quels — le bac à sable, le
-        créateur seul, le propriétaire de toutes les collections, le responsable du projet,
-        jamais un compte partagé hors de son bac à sable —, SANS la règle de la dernière
-        copie : repartir garde les images, la notice et les planches, rien ne sort du fonds
-        commun (tranché par le pilotage le 2026-10-25, après la relecture croisée de la 3b).
-        La dernière copie d'un document se ramène donc à un cran par son propriétaire ou son
-        responsable, et ne se SUPPRIME que sur demande.
+        Les chemins de `clause_suppression_directe`, tels quels — le propriétaire de toutes
+        les collections, le responsable du projet, la portée totale, quiconque écrit dans un
+        bac à sable, jamais un compte partagé hors de son bac à sable —, SANS la règle de la
+        dernière copie : repartir garde les images, la notice et les planches, rien ne sort
+        du fonds commun (le pilotage, 2026-10-25 ; Q6).
 
         Plus large que la suppression, jamais plus étroite : qui peut supprimer peut
         repartir. C'est aussi la borne de « qui perd quoi » (`GET
@@ -730,7 +670,11 @@ class Portee:
                            derniere_copie_gardee: bool) -> tuple[str, list]:
         """Les chemins de l'effacement sans demande, communs à la suppression et à
         « repartir de zéro » ; `derniere_copie_gardee` dit si la dernière copie d'un
-        document en est exclue (la suppression) ou non (repartir)."""
+        document en est exclue (la suppression) ou non (repartir, une planche).
+
+        Aucune branche ne lit le journal depuis la tranche 3c : une disjonction simple, sans
+        le `CASE` qui gardait le travail d'autrui pour la fin (`tests/test_cout_des_clauses.py`
+        le vérifie par un témoin)."""
         if self.tout:
             if self.bornee:
                 return self._bornee_sur_album(
@@ -739,80 +683,47 @@ class Portee:
             return "1", []
         if not self.utilisateur:
             return "0", []
-        # COL-4 (S5 du cadrage) — un chemin à lui, disjoint des trois : le PROPRIÉTAIRE d'un
-        # bac à sable détruit tout album de son bac à sable, sans rien demander, quel que
-        # soit qui y a travaillé — rien ne s'y demande à un administrateur (S3), et le
-        # travail d'un invité s'y efface de toute façon chaque lundi. Le projet de l'album
-        # (écrit, ou lu dans ses collections) est l'un des bacs à sable qu'il a ouverts —
-        # compte PARTAGÉ compris (Hugo, 2026-10-24). Hors de son bac à sable, un compte
-        # partagé n'efface jamais seul. Un INVITÉ garde la règle commune.
-        bac, p_bac = "0", []
+        morceaux, params = [], []
+        # COL-4 (S5), élargi par Q4 (Hugo, 2026-10-26) — dans un bac à sable, son
+        # PROPRIÉTAIRE efface tout album, et QUICONQUE Y ÉCRIT efface ceux où il écrit :
+        # invité compris, compte PARTAGÉ compris. Rien ne s'y demande, le lundi efface tout.
         if self.bacs_a_soi:
             ids = sorted(self.bacs_a_soi)
-            bac = (f"EXISTS (SELECT 1 FROM albums _sbs WHERE _sbs.id = {alias} "
-                   f"AND {sql_projet_d_album('_sbs')} IN ({', '.join('?' * len(ids))}))")
-            p_bac = [*ids]
+            morceaux.append(
+                f"EXISTS (SELECT 1 FROM albums _sbs WHERE _sbs.id = {alias} "
+                f"AND {sql_projet_d_album('_sbs')} IN ({', '.join('?' * len(ids))}))")
+            params += ids
+        ecrit_bac = sorted(self.ecriture & self.collections_bac)
+        if ecrit_bac:
+            morceaux.append(
+                f"EXISTS (SELECT 1 FROM collection_album _sbe WHERE _sbe.album_id = {alias} "
+                f"AND _sbe.collection_id IN ({', '.join('?' * len(ecrit_bac))}))")
+            params += ecrit_bac
         tient, p_tient = self._sql_tient_l_album(
             alias, derniere_copie_gardee=derniere_copie_gardee)
-        detruire, p_detruire = self.clause_destruction(alias)
-        if detruire == "0" and tient == "0":
-            return bac, p_bac
-        pas_partage = ("NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
-                       "AND _su.nature = ?)")
-        p_pas_partage = [self.utilisateur, NATURE_COLLECTIF]
-        # Le travail d'autrui (le journal) ne se lit que si tout le reste tient : un `AND`
-        # dans une colonne du `SELECT` calcule tous ses opérandes, et `destructible` le
-        # lisait pour chaque album qu'on n'écrit même pas (45 ms sur 50 albums, aucun vrai).
-        # Un `CASE` n'évalue que la branche retenue : le chemin du bac à sable d'abord, puis
-        # les chemins 2 et 3 — bon marché, ils ne lisent pas le journal —, puis les trois
-        # moitiés bon marché du chemin 1, puis seulement la quatrième. Le sens est celui de
-        # `<bac> OR <tient> OR (<bon marché> AND NOT <autrui>)`, jamais `NULL` : des `EXISTS`.
-        cas, params = [], []
-        if bac != "0":
-            cas.append(f"WHEN {bac} THEN 1")
-            params += p_bac
         if tient != "0":
-            cas.append(f"WHEN ({tient} AND {pas_partage}) THEN 1")
-            params += [*p_tient, *p_pas_partage]
-        if detruire != "0":
-            autrui, p_autrui = _sql_travail_d_autrui(alias, self.utilisateur)
-            # Le créateur : de toute copie tant qu'une sœur garde le document au fonds
-            # commun, ou qu'elle vit dans un projet ISOLÉ — un bac à sable, le jeu : rien n'y
-            # sort du fonds commun, rien ne s'y demande à un administrateur (contre-relecture
-            # de la 3b, régression COL-4) ; de la DERNIÈRE copie, seulement si c'est la copie
-            # d'ORIGINE (constat 1 de la relecture) et que PERSONNE D'AUTRE n'y a JAMAIS fait
-            # un geste — défait, effacé depuis, emporté par une remise à zéro (Hugo,
-            # 2026-10-25 : `geste_sur_copie`). Les autres suppressions lisent ce qui vit.
-            derniere, p_derniere = "", []
-            if derniere_copie_gardee:
-                derniere = (f" AND ({_sql_une_soeur(alias)} OR {_sql_isolee(alias)} "
-                            f"OR (_sc.cran = '{CRAN_ORIGINE}' AND NOT EXISTS (SELECT 1 FROM "
-                            f"geste_sur_copie _sg WHERE _sg.album_id = {alias} "
-                            f"AND _sg.agent IS NOT ?)))")
-                p_derniere = [self.utilisateur]
-            bon_marche = (f"({detruire} "
-                          f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = {alias} "
-                          f"AND _sc.creee_par = ?{derniere}) AND {pas_partage})")
-            cas.append(f"WHEN {bon_marche} THEN NOT {autrui}")
-            params += [*p_detruire, self.utilisateur, *p_derniere, *p_pas_partage,
-                       *p_autrui]
-        return f"(CASE {' '.join(cas)} ELSE 0 END)", params
+            morceaux.append(f"({tient} AND NOT EXISTS (SELECT 1 FROM utilisateur _su "
+                            "WHERE _su.login = ? AND _su.nature = ?))")
+            params += [*p_tient, self.utilisateur, NATURE_COLLECTIF]
+        if not morceaux:
+            return "0", []
+        return f"({' OR '.join(morceaux)})", params
 
     def _sql_tient_l_album(self, alias: str, *,
                            derniere_copie_gardee: bool = True) -> tuple[str, list]:
-        """Les chemins 2 et 3 de `clause_suppression_directe` (Hugo, 2026-10-21), hors du
-        compte partagé que l'appelant ajoute : on POSSÈDE chacune des collections où vit
-        l'album, ou l'on est RESPONSABLE de son projet — et, pour une suppression
-        (`derniere_copie_gardee`), l'album n'est pas la DERNIÈRE copie de son document au
-        fonds commun ; repartir de zéro ne lit pas cette moitié. `"0"` quand on ne possède
-        ni ne gère rien.
+        """Qui TIENT l'album hors d'un bac à sable (F3), hors du compte partagé que
+        l'appelant ajoute : on POSSÈDE chacune des collections où vit l'album, ou l'on est
+        RESPONSABLE de son projet et l'album y est RANGÉ (une copie gardée au fonds reste à
+        l'administrateur, Q12) — et, pour une suppression (`derniere_copie_gardee`), l'album
+        n'est pas la DERNIÈRE copie de son document au fonds commun ; repartir de zéro ne lit
+        pas cette moitié. `"0"` quand on ne possède ni ne gère rien.
 
         Hors des bacs à sable, des deux côtés : une collection de bac à sable ne compte pas
-        dans ce qu'on possède, un bac à sable dans ce qu'on gère — son propriétaire a son
-        chemin à lui. La moitié « toutes » est accompagnée d'un `EXISTS` : seule, elle serait
-        vraie d'une copie rangée nulle part. « Dernière copie » : aucune AUTRE copie vivante
-        du même document hors d'un projet isolé — une copie du jeu ou d'un bac à sable, qui
-        part avec lui, ne garde pas un document au fonds commun."""
+        dans ce qu'on possède, un bac à sable dans ce qu'on gère — ils ont leurs chemins à
+        eux. La moitié « toutes » est accompagnée d'un `EXISTS` : seule, elle serait vraie
+        d'une copie rangée nulle part. « Dernière copie » : aucune AUTRE copie vivante du
+        même document hors d'un projet isolé — une copie du jeu ou d'un bac à sable, qui part
+        avec lui, ne garde pas un document au fonds commun."""
         morceaux, params = [], []
         possede = sorted(self.propriete - self.collections_bac)
         if possede:
@@ -826,7 +737,9 @@ class Portee:
         if geres:
             morceaux.append(
                 f"EXISTS (SELECT 1 FROM albums _tg WHERE _tg.id = {alias} "
-                f"AND {sql_projet_d_album('_tg')} IN ({', '.join('?' * len(geres))}))")
+                f"AND {sql_projet_d_album('_tg')} IN ({', '.join('?' * len(geres))}) "
+                f"AND EXISTS (SELECT 1 FROM collection_album _tgc "
+                f"WHERE _tgc.album_id = _tg.id))")
             params += geres
         if not morceaux:
             return "0", []
@@ -885,7 +798,7 @@ class Portee:
         - on LIT la copie (`clause_album`) : rejoindre ne s'offre que sur un travail qu'on
           voit ;
         - on ADMINISTRE CHACUNE des collections où elle vit — la forme de
-          `clause_destruction` (« toutes ses collections »), un palier plus haut. Le
+          `_sql_tient_l_album` (« toutes ses collections »). Le
           propriétaire, y compris par la dérivation de la collection de BASE (un responsable
           du projet en est propriétaire) ; `bd-admins` par `peut_administrer`. Une
           collection SANS propriétaire n'est donc tenue que par la portée totale : personne
@@ -1159,14 +1072,6 @@ class Portee:
 TOTALE = Portee(tout=True, admin=True)
 
 
-def _sql_isolee(alias: str) -> str:
-    """Fragment SQL VRAI si la copie `alias` (un id d'album) vit dans un projet ISOLÉ — un bac
-    à sable, le jeu. La règle de la dernière copie n'y a pas cours : rien n'en sort vers le
-    fonds commun, et rien ne s'y demande à un administrateur."""
-    return (f"EXISTS (SELECT 1 FROM albums _tis WHERE _tis.id = {alias} "
-            f"AND {sql_album_isole('_tis')})")
-
-
 def _sql_une_soeur(alias: str) -> str:
     """Fragment SQL VRAI si le document de la copie `alias` a une AUTRE copie vivante hors
     d'un projet isolé — une copie du jeu ou d'un bac à sable, qui part avec lui, ne garde pas
@@ -1178,102 +1083,27 @@ def _sql_une_soeur(alias: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# « Personne d'autre n'y a travaillé » (COL-3, tranche 2)
+# « Qui perd quoi » : le travail des autres sur un album (COL-3, tranches 2 à 3c)
 # --------------------------------------------------------------------------- #
 # Les cibles du journal qui portent un travail sur une RÉGION et la désignent par son id —
 # la région elle-même, sa note et ses tags, son locuteur, la présence d'un personnage, un
 # attribut de case. Les deux premières sont écrites par `main.py`, les trois suivantes par
 # `routes/personnages.py`, la validation grammaticale (`regions`) par `routes/analyse.py`.
-# `region_attribut` n'est écrit que depuis la relecture croisée de la tranche 2 : un
-# attribut posé par un autre ne comptait pas, et l'importatrice détruisait sans demander.
+# `region_attribut` n'est écrit que depuis la relecture croisée de la tranche 2.
+#
+# COL-3, tranche 3c (F3, Hugo, 2026-10-26) — ces sources ne DÉCIDENT plus rien : la règle
+# de l'effacement ne lit plus le journal (`Portee._clause_effacement`). Elles servent à
+# MONTRER — « qui perd quoi » avant d'effacer, et ce que lit qui répond à une demande
+# (`sql_actes_sur_album`). Ce qu'elles comptent reste ce qu'elles comptaient : un travail
+# supprimé depuis ne compte plus ; un acte SANS agent compte comme celui d'un autre ; une
+# passe automatique n'est attribuée qu'à son moteur ; ranger, demander, changer l'ordre
+# des planches, repartir de zéro ou retirer du projet n'est pas un travail sur l'album.
 _CIBLES_DE_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
                      "region_attribut", "releve")
 # ANN-7 (tranche 1, R10, R11) — `releve` : un relevé posé, modifié, retiré sur une région, un
 # doute et son fil, une passe ; sa cible est la RÉGION, si bien que les sources 1 et 6 le
 # lisent par l'index du journal, sans chercher la région dans une charge. Le même acte sur la
 # SURFACE d'une planche s'écrit sous `releve_planche`, lu avec les validations (source 4).
-
-
-def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
-    """Fragment SQL VRAI si un autre humain que `login` a travaillé sur l'album `alias`.
-
-    C'est la première fois qu'une décision d'accès dépend du CONTENU du journal, et la
-    lecture en a des limites, écrites plutôt que découvertes :
-
-    - le travail se lit par jointure sur ce qui VIT encore : une région supprimée depuis,
-      une correction effacée, n'ont plus de ligne, et le travail qu'un tiers y avait fait
-      ne compte plus (Hugo l'a accepté en tranchant : « un travail supprimé depuis ne
-      compte plus ») ;
-    - un acte SANS agent compte comme celui de quelqu'un d'autre — on ne sait pas qui l'a
-      posé, donc on ne sait pas que c'est l'appelant ;
-    - une passe automatique n'est attribuée qu'à son moteur (`agent_type = 'moteur'`) :
-      celle qu'un collègue a lancée ne compte pas, et c'est voulu par la même décision ;
-    - ranger l'album dans une collection n'est pas y travailler (`collection_album` n'est
-      pas lu) : c'est un emploi, et `clause_destruction` en répond déjà ;
-    - une demande déposée n'est pas un travail non plus (`demande` n'est pas lu) ;
-    - un attribut de case dont on ne sait pas qui l'a posé — aucun `lien` de l'appelant ne
-      l'a écrit au journal : posé avant que le geste s'y écrive, ou recopié par la fusion
-      de deux valeurs — compte comme le travail d'un autre, la prudence de la décision B3
-      (« inconnu veut dire demander ») appliquée à l'auteur au lieu de l'importateur.
-
-    Cinq sources : le journal des régions de l'album, les attributs de ses cases que
-    l'appelant n'a pas posés, les corrections grammaticales vivantes (leur `auteur` — la
-    correction est une couche à part, que le journal ne relie à la région que par l'id de
-    la correction), les validations de ses planches, et les actes sur son DOCUMENT — un
-    scan ajouté ou retiré, la notice ou la paternité modifiée, la relecture d'une planche
-    forcée, par un autre. Ces derniers sont écrits sous le document, qu'une copie SŒUR
-    partage (COL-3, tranche 3) : seuls comptent ceux dont la charge nomme CET album — la
-    notice retouchée sur une autre copie n'est pas un travail sur celle-ci, et interdirait
-    sinon à la créatrice d'une copie de la supprimer seule. Changer l'ORDRE des planches
-    n'en est pas un (UX-11, Hugo, 2026-10-22 ; `_SQL_ORDRE_DES_PLANCHES`) : écrit sous le
-    document lui aussi, il n'y compte pas, et l'administrateur ne le lit pas non plus sous
-    une demande. Ni REPARTIR DE ZÉRO, ni RETIRER DU PROJET (tranche 3b,
-    `_SQL_EFFACER_OU_RETIRER`) : l'un efface, l'autre range. Chaque sous-requête part de
-    l'album et descend par les index
-    (`idx_evenement_cible`) : la liste des albums la pose album par album.
-
-    Une sixième depuis la v32 (COL-3, tranche 3b, E3) : le travail RECOPIÉ. Une copie
-    amorcée jusqu'à un cran reprend les régions de sa source sous des identifiants neufs, et
-    aucun événement n'est recopié — Ctrl+Z les remonterait, et chaque révision compterait
-    deux fois. Ce qui a été fait sur les régions SOURCES compte donc comme le travail de
-    ses auteurs, par la chaîne de `region_origine`, copie de copie comprise, et deux bornes :
-    un acte ne compte que s'il est ANTÉRIEUR à la copie qui l'a emporté (le travail fait
-    ensuite sur la source n'est pas dans la copie), et une couche d'annotation (note,
-    locuteur, présence, attribut) ne compte que si chaque maillon de la chaîne l'a emportée
-    (cran `annotations`) ET si elle VIT encore sur la région de la copie — repartir de zéro
-    au-dessous l'efface, et le travail qu'elle portait ne compte plus (relecture croisée de
-    la 3b, constat 5) ; une validation grammaticale, que si une correction y vit. C'est un
-    écart ÉCRIT avec « on lit ce qui vit encore » : la région source peut être supprimée
-    depuis, et le journal qui la nomme lui survit ; le travail copié, lui, vit, et c'est
-    lui qu'on lit. La cible `regions` ne distingue pas la géométrie du texte : un texte
-    recopié puis effacé par une remise au découpage compte encore, tant que la région vit. La lecture penche vers la demande : tout acte humain sur une
-    région source avant la copie compte — un texte modifié puis copié au seul cran du
-    découpage aussi, la cible `regions` ne distinguant pas la géométrie du texte.
-
-    Quatre de plus depuis la v37 (ANN-7, tranche 1, R11) : le relevé et la passe RECOPIÉS
-    sur la SURFACE d'une planche, que la chaîne de `region_origine` ne remonte pas — lus sur
-    leurs colonnes : l'auteur du relevé, et le dernier qui l'a modifié À LA SOURCE
-    (`modifie_par`, quand la copie ne l'a pas modifié depuis), qui a marqué la passe (sa
-    marque `recopiee`) —, et ce qui a été fait sur le relevé SOURCE d'un relevé de surface
-    recopié (relecture croisée, constat 3 : une modification par un autre, à la source, ne
-    comptait pas). Cette dernière est le patron de la sixième, la chaîne d'`origine_id` au
-    lieu de celle de `region_origine` : tout acte humain `releve_planche` dont la charge
-    porte le relevé source, antérieur à la copie qui l'a emporté, cherché sur les planches de
-    l'album d'où la copie a été tirée (`copie.depuis_album_id`) — la planche est la cible de
-    ces actes, et elle survit au relevé : un relevé source retiré depuis n'arrête pas la
-    chaîne (contre-relecture). Les DOUTES de la source n'y comptent pas, ni dans la sixième :
-    ils ne suivent pas la copie (décision du pilotage, 2026-10-26).
-
-    Les dix sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
-    `sql_actes_sur_album` : ce que l'administrateur voit du travail des autres, sous une
-    demande, est ce que cette règle a lu — deux écritures finiraient par ne plus dire
-    pareil. Un attribut de case dont un `lien` humain a été écrit est compté par son acte
-    (première source) ; la deuxième ne garde que ceux dont AUCUN `lien` humain n'est écrit,
-    et l'auteur y est inconnu."""
-    sources = _sources_du_travail(alias)
-    sql = "(" + " OR ".join(f"EXISTS (SELECT 1 FROM {depuis} AND {agent} IS NOT ?)"
-                            for agent, _sorte, _quand, depuis, _recopie in sources) + ")"
-    return sql, [login] * len(sources)
 
 
 # Les cibles d'une couche d'ANNOTATION — tout ce qui, dans `_CIBLES_DE_REGION`, ne suit
@@ -1318,8 +1148,7 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
     v36 — décision du pilotage du 2026-10-25 : la date confondait une correction faite dans
     la même seconde, et la validation la réécrivait). Un écran qui ne tient pas le fonds ne nomme pas ces lignes
     (relecture croisée de la 3b, constat 3 : la troisième nommait l'importeur d'un autre
-    projet sous « qui perd quoi »). Elle ne change rien à la RÈGLE, qui compte ces lignes
-    comme les autres."""
+    projet sous « qui perd quoi »)."""
     cibles = ", ".join(f"'{c}'" for c in _CIBLES_DE_REGION)
     annotation = ", ".join(f"'{c}'" for c in _CIBLES_D_ANNOTATION)
     regions_de_l_album = ("SELECT _tr0.id FROM regions _tr0 JOIN planches _tp0 "
@@ -1526,11 +1355,12 @@ _SQL_COUCHE_VIT = (
 
 
 def sql_actes_sur_album(alias: str) -> str:
-    """`SELECT agent, sorte, quand, recopie` — chaque geste humain que la règle de
-    suppression lit sur l'album `alias`, un par ligne, l'appelant compris (COL-3 ; Hugo,
-    2026-10-15 : l'administrateur voit, sous une demande, ce que les autres ont fait sur le
-    document). Lu à la source même de la règle, au moment de la lecture. Ce n'est pas une
-    question d'accès : la route qui le rend porte sa propre garde.
+    """`SELECT agent, sorte, quand, recopie` — chaque geste humain des dix sources sur
+    l'album `alias`, un par ligne, l'appelant compris (COL-3 ; Hugo, 2026-10-15 :
+    l'administrateur voit, sous une demande, ce que les autres ont fait sur le document ;
+    tranche 3b : « qui perd quoi » avant d'effacer). Lu au moment de la lecture. Ce n'est
+    pas une question d'accès — depuis la tranche 3c, aucune règle ne le lit : la route qui
+    le rend porte sa propre garde.
 
     `recopie` (tranche 3b) vaut 1 pour un geste RECOPIÉ — fait avant la copie, sur une
     région source (la sixième source) ou une correction grammaticale reçue telle quelle (la

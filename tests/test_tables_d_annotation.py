@@ -2,8 +2,8 @@
 échouent OUVERT couvrent les relevés, et un cliquet les tient », tranché le 2026-10-22).
 
 Une table d'annotation neuve doit être lue par des chemins qui ne la connaissent pas, et la
-plupart échouent OUVERT : la règle « travail d'autrui » (l'importatrice supprimerait seule un
-album annoté par d'autres), « repartir de zéro » (une copie remise à zéro garderait ce
+plupart échouent OUVERT : « qui perd quoi » (l'écran tairait, avant d'effacer, le travail des
+autres — la règle « travail d'autrui » jusqu'à la tranche 3c), « repartir de zéro » (une copie remise à zéro garderait ce
 travail), la re-segmentation (une case qui ne porte que lui serait supprimée). Ce cliquet les
 JOUE, table par table de `database.TABLES_D_ANNOTATION`, par le comportement — une table
 semée par l'API, le chemin joué, l'effet vérifié — et non par la lecture du source. Et
@@ -136,32 +136,33 @@ def _compte(conn, table, album) -> int:
                         (album,)).fetchone()[0]
 
 
-def _supprimable_par_la_creatrice(conn, d) -> bool:
-    """La créatrice SEULE — le chemin 1 de `clause_suppression_directe`, sans propriété ni
-    responsabilité : écrire dans la collection de l'album, et qu'il soit d'elle."""
-    p = autorisation.Portee(ecriture=frozenset({d["c"]}), utilisateur="lea")
-    ou, params = p.clause_suppression_directe("a.id")
-    return bool(conn.execute(f"SELECT {ou} FROM albums a WHERE a.id = ?",
-                             (*params, d["album"])).fetchone()[0])
+def _travail_d_un_autre(conn, d) -> bool:
+    """Un autre que la créatrice (`lea`) a-t-il travaillé sur l'album, selon « qui perd
+    quoi » (`autorisation.sql_actes_sur_album`) ? Jusqu'à la tranche 3c, c'était la
+    quatrième moitié du chemin du créateur ; depuis (F3), la mesure ne décide plus rien et
+    sert à MONTRER, avant d'effacer, qui perd quoi."""
+    return bool(conn.execute(
+        f"SELECT EXISTS (SELECT 1 FROM "
+        f"({autorisation.sql_actes_sur_album(str(int(d['album'])))}) "
+        "WHERE agent IS NULL OR agent IS NOT 'lea')").fetchone()[0])
 
 
 @pytest.mark.parametrize("table", database.TABLES_D_ANNOTATION)
-def test_le_travail_d_un_autre_dans_cette_table_interdit_la_suppression_seule(client, decor,
-                                                                              table):
+def test_le_travail_d_un_autre_dans_cette_table_se_lit_avant_d_effacer(client, decor, table):
+    """Tranche 3c (F3) — RÉÉCRIT : le travail d'un autre dans chaque table d'annotation se
+    lit sous « qui perd quoi » (il retenait la suppression directe de la créatrice)."""
     c = database.get_connection()
     try:
-        # Le décor : la responsable a tout fait — l'album est à elle, elle l'efface seule.
-        # (Son document a une sœur hors de lui ? non : c'est la copie d'ORIGINE, que
-        # personne d'autre n'a touchée.)
-        assert _supprimable_par_la_creatrice(c, decor), "le décor ne laisse pas la créatrice"
+        # Le décor : la responsable a tout fait, personne d'autre.
+        assert not _travail_d_un_autre(c, decor), "le décor laisse déjà travailler un autre"
     finally:
         c.close()
     semer(client, decor, table)
     c = database.get_connection()
     try:
         assert _compte(c, table, decor["album"]) > 0, f"`{table}` n'a pas été semée"
-        assert not _supprimable_par_la_creatrice(c, decor), (
-            f"le travail d'un autre dans `{table}` ne retient pas la suppression directe")
+        assert _travail_d_un_autre(c, decor), (
+            f"le travail d'un autre dans `{table}` ne se lit pas sous « qui perd quoi »")
     finally:
         c.close()
 
