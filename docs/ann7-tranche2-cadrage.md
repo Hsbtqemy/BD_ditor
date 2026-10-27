@@ -539,6 +539,8 @@ jour à part.
    du second hôte, la page se découpe en module — moins cher alors, sa logique étant déjà
    dehors.
 
+**Tranché le 2026-10-27.** Hugo, à chaque question qui lui était posée, la proposition : le jalon 1 d'abord (H1) ; le mode Annotation de l'Atelier gardé avec un renvoi croisé, son sort réglé au basculement, le wizard menant à la page (H2) ; chaque bac à sable naît avec une grille fictive activée (H4) ; « Changer… » modifie en place, et pour une autre entrée « retirez, puis posez l'autre » (H5). Le pilotage prend H3 (`--activer` et `--masquer` dans l'outil d'import, au commit 0), H6 (le décompte dans la Synthèse seule) et H7 (une page, pas encore un module montable) tels que proposés.
+
 Se tranchent en route, sans Hugo sauf avis contraire : le parcours dérivé des cibles (ci-dessus) ;
 le choix de collection partagé avec l'Atelier ; la palette des rubriques ; le dérivé plutôt
 que le recadrage serveur pour l'image de la case.
