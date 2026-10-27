@@ -155,6 +155,15 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 - [ ] **Le brouillon de la grille est relu par la gestionnaire et les linguistes** — attendu : le tableur corrigé, ses six écarts du guide réglés, prêt pour l'outil d'import ; il vit hors du dépôt
 - [ ] **Un gabarit de tableur qui ne perd personne** — attendu : quelqu'un qui n'a jamais vu l'outil construit seul une grille nouvelle dans le tableur, sans se tromper de forme ni casser l'import. Demandé par Hugo le 2026-10-25, pour plus tard : le format d'import de la tranche 1 (deux CSV, `cle`, une ligne de variante qui répète la `cle` de son entrée, des cibles séparées par ` | `) est fait pour une machine ; le gabarit doit l'être pour une personne — des exemples remplis, une colonne par question qu'on se pose, les trois formes expliquées là où on les choisit, les erreurs dites en mots par le bilan d'import. À concevoir avant que d'autres équipes créent leurs grilles (catalogue, Q8). Le brouillon de la grille des linguistes, `C:\temp\grille-linguistes\`, montre ce qui déroute aujourd'hui
 
+### Tranché par Hugo — 2026-10-27, sur le cadrage de la tranche 2 (`docs/ann7-tranche2-cadrage.md`)
+
+- [x] **Le cadrage de la tranche 2 est écrit, lu dans le code** — attendu : une note qui suit la maquette v3 geste par geste jusqu'aux routes de la tranche 1. **Écrite le 2026-10-27** : trois jalons (≈ 9, 3½ et 5½ jours), onze commits, aucune migration ; cinq manques du serveur ; la cible « personnage, partout » non offerte (G3)
+- [x] **H1 à H7** — attendu : tranché. **Hugo, 2026-10-27, la proposition à chaque question** : le jalon 1 d'abord (H1) ; le mode Annotation de l'Atelier gardé avec un renvoi croisé (H2) ; chaque bac à sable naît avec une grille fictive activée (H4) ; « Changer… » en place, sinon « retirez, puis posez l'autre » (H5). Le pilotage prend H3 (`--activer`), H6 (le décompte dans la Synthèse) et H7 (une page, pas un module montable)
+- [ ] **Jalon 1 — une page où l'on annote** — attendu : codé. Les manques du serveur et `--activer` (commit 0) ; la page, sixième surface ; la grille en lecture ; désigner les mots et poser les relevés ; « terminée », le parcours, Ctrl+Z
+- [ ] **Jalon 2 — le travail à plusieurs** — attendu : codé. Le doute et la Synthèse ; « ⟳ Actualiser » (l'empreinte compte relevés, passes, doutes)
+- [ ] **Jalon 3 — la maquette entière** — attendu : codé. Le Contexte modifiable ; tracer une zone (le type `detail`, exclu de toute sortie, relecture croisée) ; écrans étroits et doigt ; le renvoi depuis l'Atelier et les docs
+- [ ] **Un bac à sable naît avec une grille fictive activée** — attendu : codé (H4, ≈ 1 jour), à la fin de la tranche 2 ou en tête du wizard ; effacée avec lui
+
 ### Le modèle — à écrire avant tout code
 
 - [ ] **Les quatre objets sont définis** — attendu : écrit, avec leurs champs. La GRILLE (un
