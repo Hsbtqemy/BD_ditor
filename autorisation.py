@@ -72,7 +72,7 @@ from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
 from database import (CRAN_ANNOTATIONS, DEMANDE_AMORCER_ENTRE_PROJETS,
-                      GENRES_CONSENTIS,
+                      GENRES_CONSENTIS, GENRES_EFFACEMENT,
                       NATURE_COLLECTIF, rang_du_cran,
                       sql_album_isole, sql_est_bac_a_sable, sql_est_isole, sql_est_jeu,
                       sql_projet_d_album, sql_projet_de, sql_rang_du_cran)
@@ -881,9 +881,23 @@ class Portee:
         portée totale en recours, la seule quand aucun projet ne le tient. Être MEMBRE d'un
         projet source, posséder une de ses collections : rien de cela n'y suffit.
 
+        Une demande d'EFFACEMENT (`GENRES_EFFACEMENT` : supprimer un document ou une planche,
+        repartir de zéro ; COL-3, tranche 3c, F4) : le RESPONSABLE du projet de la copie
+        (`projet`, `demande.projet_id`, que l'appelant passe) — à qui elle s'adresse —, et la
+        portée totale en recours. Le propriétaire de toutes les collections, qui efface seul,
+        n'en est pas destinataire (Q8). La question ne dit pas si le GESTE passe : répondre,
+        c'est effacer à la place de qui demande, et la clause d'effacement de qui répond
+        reste la garde — faux pour un responsable devant une dernière copie, ou compte
+        partagé (`repondable` = cette question ET la clause, à la route).
+
         Ce que la question ne dit pas, et c'est à la route : quoi répondre à qui ne peut pas
         répondre — un 403 nommé sur le droit, avant l'objet, à qui n'administre rien ; un
         404 à qui ne lit pas la copie visée."""
+        if demande["genre"] in GENRES_EFFACEMENT:
+            if self.tout:
+                return True
+            projet = demande.get("projet")
+            return projet is not None and self.peut_gerer_projet(projet)
         if demande["genre"] == DEMANDE_AMORCER_ENTRE_PROJETS:
             if self.tout:
                 return True
@@ -921,8 +935,17 @@ class Portee:
         Entre deux projets (E7) : le responsable d'un projet qui TIENT le travail demandé
         (`consentement["projets"]`, comme pour `peut_repondre_a`) lit qui demande, et le nom
         du projet d'arrivée — accepté par écrit au cadrage : on ne laisse pas partir son
-        travail vers quelqu'un qu'on ne connaît pas."""
+        travail vers quelqu'un qu'on ne connaît pas.
+
+        Une demande d'EFFACEMENT (COL-3, tranche 3c, F4) : le responsable du projet de la
+        copie (`consentement["projet"]`) lit qui demande — on n'efface pas le travail de
+        quelqu'un sur la demande d'un inconnu, et il lit désormais toutes les collections de
+        son projet (F1) : il ne découvre personne qu'il ne voie déjà."""
         if self.tout:
+            return True
+        if (consentement is not None and consentement["genre"] in GENRES_EFFACEMENT
+                and consentement.get("projet") is not None
+                and self.peut_gerer_projet(consentement["projet"])):
             return True
         if (consentement is not None
                 and consentement["genre"] == DEMANDE_AMORCER_ENTRE_PROJETS

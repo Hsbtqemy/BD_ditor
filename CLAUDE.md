@@ -566,6 +566,25 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   sinon été nommée aux lectrices du corpus principal). Le fonds et les demandes sont à la
   seule portée totale (`peut_tenir_le_fonds`) : leurs routes refusent sur le DROIT, avant de
   chercher l'objet, le même 403 que l'objet existe ou non. Cf. `docs/modele-et-droits.md`.
+  **Depuis la tranche 3c (F4, F5, 2026-10-26), une demande d'EFFACEMENT** — supprimer un
+  album ou une PLANCHE (`suppression_planche`, `demande.planche_id`, v38), repartir de zéro
+  (`database.GENRES_EFFACEMENT`) — **va au RESPONSABLE du projet de la copie** : le
+  destinataire se DÉRIVE de `demande.projet_id` au moment de répondre, jamais stocké (Q10) —
+  ses responsables non partagés (Q14) ; l'administrateur seul pour la DERNIÈRE copie d'un
+  document (suppression d'album), une copie gardée au fonds (Q12), un projet sans
+  responsable ; l'administrateur répond toujours, en recours, et `GET /api/demandes` lui dit
+  qui la demande attend (`attend`, vide : « à vous »). `Portee.peut_repondre_a` et
+  `peut_nommer_le_demandeur` connaissent ces genres (le responsable du projet `projet`) ;
+  `repondable` = elle s'adresse à lui ET la clause d'effacement de qui répond ; le
+  propriétaire de toutes les collections n'est pas destinataire (Q8). Le responsable les lit
+  par `GET /api/projets/{id}/demandes-d-effacement` (à qui gère le projet ; celles dont il
+  lit la copie : le demandeur, le motif, la certification, la planche, `derniere_copie`,
+  `repondable`, « qui perd quoi ») et y répond par la route commune. Les DÉPOSE qui écrit
+  dans l'album ou gère son projet (Q7). Une planche se demande comme l'album — motif et
+  certification, une par planche et par genre, refusée sous une suppression d'album qui
+  attend —, relue sur SON album à l'acceptation (`socle._supprimer_planche`, le seul chemin
+  de sa suppression) ; sa suppression clôt ses demandes, la destruction de l'album aussi.
+  `GET /api/albums/{id}/planches` dit la demande qui attend sur chaque planche.
 - **Qui EFFACE sans demander : qui TIENT l'espace** (COL-3, tranche 3c ; F3, Hugo,
   2026-10-26 — RENVERSEMENT daté des « trois chemins » de la tranche 3b, du 2026-10-21).
   Effacer — supprimer une copie, la ramener à un cran, ou en supprimer une planche — se
@@ -764,8 +783,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   qu'elle porte (`POST /api/albums/{id}/repartir`, `POST /api/planches/{id}/repartir`) :
   l'inverse de l'échelle, `validee` part, `verrouillee` reste, l'index suit
   (`database.repartir_de_zero`) ; sous la règle de l'effacement (point précédent), sinon
-  une demande `repartir`, motif et certification obligatoires, à laquelle répond un
-  administrateur — une planche n'a pas de demande à elle (B4). UN acte sous le document
+  une demande `repartir`, motif et certification obligatoires — au responsable du projet
+  depuis la tranche 3c (F4), une planche comprise (F5, `planche_id` ; elle n'en avait pas,
+  B4). UN acte sous le document
   (`repartir`), non annulable, que Ctrl+Z lit pour ne pas remonter au-delà (§ Annulation),
   et qui n'est pas un travail sur l'album (§ Journal de provenance).
   **Ce que l'écran de la 3b (tranché par Hugo sur maquette le 2026-10-25) lit du

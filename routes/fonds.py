@@ -8,7 +8,11 @@ y est GARDÉE avec son travail, et un administrateur peut la rendre.
 « Supprimer définitivement » a deux réponses, et ce module porte la seconde. Qui tient
 l'espace — le responsable du projet, le propriétaire de toutes les collections de l'album —
 l'efface tout de suite (`DELETE /api/albums/{id}`, règle
-`Portee.clause_suppression_directe`, tranche 3c). Les autres DEMANDENT : la demande dit qui, quand et
+`Portee.clause_suppression_directe`, tranche 3c). Les autres DEMANDENT — au RESPONSABLE du
+projet de la copie depuis la tranche 3c (F4), qui y répond dans la fiche de son projet
+(`GET /api/projets/{id}/demandes-d-effacement`) ; à l'administrateur pour la dernière copie
+d'un document, une copie gardée au fonds, ou un projet sans responsable ; l'administrateur
+répond en recours à toutes : la demande dit qui, quand et
 pourquoi, et un administrateur y répond — détruire, ou garder. Aucune messagerie. Le même
 mécanisme porte la demande de suppression d'un PROJET par son responsable.
 
@@ -54,8 +58,9 @@ from database import (CRAN_IMAGES, CRANS, DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE
                       compter_repartir, copies_rangees_du_projet,
                       est_isole, projets_qui_tiennent, proprietaires_communs,
                       titre_de_notice,
-                      DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
-                      GENRES_CONSENTIS, GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
+                      DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PLANCHE,
+                      DEMANDE_SUPPRESSION_PROJET,
+                      GENRES_CONSENTIS, GENRES_DEMANDE, GENRES_EFFACEMENT, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
                       REPONSE_REFUSEE, REPONSES_DEMANDE, collection_de_base, collection_row,
                       compter_le_travail, etat_des_reponses, noms_lisibles, projet_d_album, projet_de_collection,
                       SQL_BACS_EFFACES, ranger_copie, rangement_traverse, sql_album_isole,
@@ -68,6 +73,7 @@ from socle import (
     _MOTIF_REPARTIR_PLANCHE, _bac_a_sable_de, _clore_demandes, _cran_de_repartir,
     _deposer, _detruire_album, _en_attente_vers,
     _get_album, _get_collection, _get_planche, _get_projet, _nouvelle_copie, _plan_rejoindre,
+    _supprimer_planche,
     _MOTIF_BAC_SANS_FONDS, _refuser_le_bac_a_sable,
     _repartir,
     _refuser_le_jeu, _retour_en_attente, _rows, _sans_accents, _supprimer_projet, db,
@@ -123,6 +129,19 @@ def _en_attente(conn, *, album_id=None, projet_id=None):
         "ORDER BY id LIMIT 1", (DEMANDE_SUPPRESSION_PROJET, projet_id)).fetchone()
 
 
+def _qui_repondra(conn, demande) -> str:
+    """« le responsable du projet » ou « un administrateur » — à qui une demande
+    d'effacement s'adresse AUJOURD'HUI (`_attend_effacement`), dit dans les mots d'un refus
+    (COL-3, tranche 3c, F4)."""
+    if demande["genre"] not in GENRES_EFFACEMENT:
+        return "un administrateur"
+    ligne = conn.execute("SELECT album_id FROM demande_document WHERE demande_id = ? "
+                         "ORDER BY document_id LIMIT 1", (demande["id"],)).fetchone()
+    if ligne and _attend_effacement(conn, dict(demande), ligne["album_id"]):
+        return "le responsable du projet"
+    return "un administrateur"
+
+
 def _deja_demandee(conn, portee, ligne) -> HTTPException:
     """Le refus du doublon. Il dit QUI a demandé à la seule personne qui le peut lire —
     elle-même (« par vous ») ou une portée totale (`Portee.peut_nommer_le_demandeur`) ;
@@ -136,11 +155,12 @@ def _deja_demandee(conn, portee, ligne) -> HTTPException:
         else:
             qui = (noms_lisibles(conn, [ligne["demandeur"]]).get(ligne["demandeur"])
                    or ligne["demandeur"])
+    repondra = _qui_repondra(conn, ligne)
     if qui:
         return HTTPException(409, f"Cette suppression est déjà demandée, par {qui} le "
-                                  f"{quand} : un administrateur y répondra.")
+                                  f"{quand} : {repondra} y répondra.")
     return HTTPException(409, f"Cette suppression est déjà demandée, depuis le {quand} : "
-                              "un administrateur y répondra.")
+                              f"{repondra} y répondra.")
 
 
 # --------------------------------------------------------------------------- #
@@ -176,6 +196,15 @@ def deposer_demande(payload: DemandeIn, conn: sqlite3.Connection = Depends(db),
                                  "document : `POST /api/collections/{id}/prendre`, ou en le "
                                  "rangeant dans la collection.")
     motif = _motif(payload.motif)
+    if payload.genre == DEMANDE_SUPPRESSION_PLANCHE or (
+            payload.genre == DEMANDE_REPARTIR and payload.planche_id is not None):
+        # F5 (tranche 3c) — une PLANCHE se demande : la certification, exigée ici aussi.
+        if payload.certifie is not True:
+            raise HTTPException(422, _MOTIF_CERTIFIER_REPARTIR
+                                if payload.genre == DEMANDE_REPARTIR
+                                else _MOTIF_CERTIFIER_PLANCHE)
+        return _demander_une_planche(conn, portee, payload.genre, payload.planche_id,
+                                     payload.cran, motif)
     if payload.genre == DEMANDE_REPARTIR:
         # E8 — le patron de la suppression d'un document : la certification, exigée ICI.
         if payload.certifie is not True:
@@ -190,10 +219,35 @@ def deposer_demande(payload: DemandeIn, conn: sqlite3.Connection = Depends(db),
     return _demander_un_projet(conn, portee, payload.projet_id, motif)
 
 
+_MOTIF_CERTIFIER_PLANCHE = ("Cochez la certification : supprimer une planche détruit tout ce "
+                            "qui a été posé sur elle, et la demande ne part pas sans que vous "
+                            "certifiiez que ces données ne sont pas importantes.")
+
+
+def _album_pour_demander(conn, portee, album_id):
+    """L'album d'où l'on DEMANDE un effacement (COL-3, tranche 3c, Q7) : qui y écrit, ou qui
+    GÈRE son projet — le responsable qui ne fait que le lire doit pouvoir demander la
+    dernière copie à l'administrateur. Une lectrice, non : le 404 de l'accesseur en
+    écriture, comme avant (elle ne peut rien demander d'un album où elle n'écrit pas)."""
+    try:
+        return _get_album(conn, portee, album_id, ecriture=True)
+    except HTTPException as refus:
+        if refus.status_code != 404:
+            raise
+        try:
+            a = _get_album(conn, portee, album_id)
+        except HTTPException:
+            raise refus
+        projet = projet_d_album(conn, album_id)
+        if projet is None or not portee.peut_gerer_projet(projet):
+            raise refus
+        return a
+
+
 def _demander_un_document(conn, portee, album_id, motif):
     if album_id is None:
         raise HTTPException(422, "Quel album ? (`album_id`)")
-    a = _get_album(conn, portee, album_id, ecriture=True)
+    a = _album_pour_demander(conn, portee, album_id)
     # Ce qui suit se lit sous le verrou d'écriture : deux demandes simultanées sur le même
     # document passaient sinon toutes deux le refus du doublon.
     conflit.verrouiller(conn)
@@ -250,7 +304,7 @@ def _demander_un_repartir(conn, portee, album_id, cran, motif):
     if album_id is None:
         raise HTTPException(422, "Quel album ? (`album_id`)")
     cran = _cran_de_repartir(cran)
-    a = _get_album(conn, portee, album_id, ecriture=True)
+    a = _album_pour_demander(conn, portee, album_id)
     conflit.verrouiller(conn)
     soi_meme, p_soi_meme = portee.clause_repartir_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {soi_meme}",
@@ -267,11 +321,13 @@ def _demander_un_repartir(conn, portee, album_id, cran, motif):
     if rang_du_cran(cran) >= niveau:
         raise HTTPException(409, f"Rien à retirer au-dessus du cran « {cran} » : cet album "
                                  f"n'y porte que « {CRANS[niveau]} ».")
-    if conn.execute("SELECT 1 FROM demande d JOIN demande_document dd "
-                    "ON dd.demande_id = d.id WHERE d.genre = ? AND dd.album_id = ? "
-                    "AND d.reponse IS NULL", (DEMANDE_REPARTIR, album_id)).fetchone():
-        raise HTTPException(409, "Repartir de zéro sur cet album est déjà demandé : un "
-                                 "administrateur y répondra.")
+    deja = conn.execute("SELECT d.* FROM demande d JOIN demande_document dd "
+                        "ON dd.demande_id = d.id WHERE d.genre = ? AND dd.album_id = ? "
+                        "AND d.planche_id IS NULL AND d.reponse IS NULL",
+                        (DEMANDE_REPARTIR, album_id)).fetchone()
+    if deja:
+        raise HTTPException(409, "Repartir de zéro sur cet album est déjà demandé : "
+                                 f"{_qui_repondra(conn, deja)} y répondra.")
     projet_id = projet_d_album(conn, album_id)
     projet = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
     cur = conn.execute(
@@ -285,6 +341,65 @@ def _demander_un_repartir(conn, portee, album_id, cran, motif):
     journal.journaliser(conn, "creation", "demande", cur.lastrowid,
                         apres={"genre": DEMANDE_REPARTIR, "document_id": a["document_id"],
                                "album_id": album_id, "cran": cran})
+    conn.commit()
+    return _vue_demande(conn, cur.lastrowid)
+
+
+def _demander_une_planche(conn, portee, genre, planche_id, cran, motif):
+    """Demander de SUPPRIMER une planche, ou de la REMETTRE À ZÉRO (COL-3, tranche 3c, F5,
+    qui renverse B4), quand on ne peut pas le faire soi-même. Le patron de l'album : 404 à
+    qui n'écrit pas dans l'album ni ne gère son projet (Q7) ; 409 nommés si l'appelant peut
+    le faire lui-même (la règle de repartir de zéro, Q5), si la même demande attend déjà sur
+    cette planche, si la suppression de l'ALBUM attend déjà (elle l'emporterait), si rien
+    n'est au-dessus du cran ; 403 dans un bac à sable. Elle va à la même personne que
+    l'album : le responsable du projet (`Portee.peut_repondre_a`)."""
+    if planche_id is None:
+        raise HTTPException(422, "Quelle planche ? (`planche_id`)")
+    if genre == DEMANDE_REPARTIR:
+        cran = _cran_de_repartir(cran)
+    p = _get_planche(conn, portee, planche_id)
+    album_id = p["album_id"]
+    a = _album_pour_demander(conn, portee, album_id)
+    conflit.verrouiller(conn)
+    soi_meme, p_soi_meme = portee.clause_repartir_directe("a.id")
+    if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {soi_meme}",
+                    (album_id, *p_soi_meme)).fetchone():
+        raise HTTPException(409, "Vous pouvez le faire vous-même sur cette planche : il n'y a "
+                                 "rien à demander.")
+    bac, _ = _bac_a_sable_de(conn, album_id=album_id)
+    if bac is not None:
+        raise HTTPException(403, _MOTIF_BAC_PROPRIETAIRE)
+    if a["document_id"] is None:
+        raise HTTPException(409, "Cet album n'est la copie d'aucun document : cela ne peut pas "
+                                 "se demander. Signalez-le à un administrateur.")
+    if _en_attente(conn, album_id=album_id) is not None:
+        raise HTTPException(409, "La suppression de cet album est déjà demandée : elle "
+                                 "emporterait la planche.")
+    deja = conn.execute("SELECT * FROM demande WHERE genre = ? AND planche_id = ? "
+                        "AND reponse IS NULL ORDER BY id LIMIT 1",
+                        (genre, planche_id)).fetchone()
+    if deja is not None:
+        raise HTTPException(409, "C'est déjà demandé pour cette planche : "
+                                 f"{_qui_repondra(conn, deja)} y répondra.")
+    if genre == DEMANDE_REPARTIR:
+        niveau = niveau_de_travail(conn, album_id, planche_id)
+        if rang_du_cran(cran) >= niveau:
+            raise HTTPException(409, f"Rien à retirer au-dessus du cran « {cran} » : cette "
+                                     f"planche n'y porte que « {CRANS[niveau]} ».")
+    projet_id = projet_d_album(conn, album_id)
+    projet = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
+    cur = conn.execute(
+        "INSERT INTO demande (genre, demandeur, motif, certifie_le, projet_id, projet_nom, "
+        "cran, planche_id, planche_numero) VALUES (?, ?, ?, datetime('now'), ?, ?, ?, ?, ?)",
+        (genre, portee.utilisateur, motif, projet_id, projet[0] if projet else None,
+         cran if genre == DEMANDE_REPARTIR else None, planche_id, p["numero"]))
+    conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
+                 "VALUES (?, ?, ?, ?)", (cur.lastrowid, a["document_id"], album_id,
+                                         a["titre"]))
+    journal.journaliser(conn, "creation", "demande", cur.lastrowid,
+                        apres={"genre": genre, "document_id": a["document_id"],
+                               "album_id": album_id, "planche_id": planche_id,
+                               **({"cran": cran} if genre == DEMANDE_REPARTIR else {})})
     conn.commit()
     return _vue_demande(conn, cur.lastrowid)
 
@@ -375,8 +490,15 @@ def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
             cles = [(d["genre"], x["document_id"]) for x in d["documents"]]
         d["refus_anterieurs"] = len({i for c in cles for i in refus.get(c, ())
                                      if i < d["id"]})
-        if detail and d["en_attente"] and d["genre"] in (DEMANDE_SUPPRESSION_DOCUMENT,
-                                                         DEMANDE_REPARTIR):
+        if detail and d["en_attente"] and d["genre"] in GENRES_EFFACEMENT:
+            # F4 (tranche 3c) — « attend … » : les responsables qui peuvent y répondre,
+            # NOMMÉS, pour l'administrateur qui peut répondre à leur place ; une liste vide
+            # dit que c'est à lui (dernière copie, copie gardée, pas de responsable).
+            x = d["documents"][0] if d["documents"] else None
+            d["attend"] = [r["nom"] or r["principal"] if r["genre"] == autorisation.UTILISATEUR
+                           else f"groupe {r['principal']}"
+                           for r in _attend_effacement(conn, d, x["copie"] if x else None)]
+        if detail and d["en_attente"] and d["genre"] in GENRES_EFFACEMENT:
             collectifs = _comptes_partages(conn)
             # Derrière un compte partagé, « personne d'autre » et « certifié par » ne
             # désignent pas une personne : le détail le dit, pour que l'écran le dise
@@ -426,6 +548,31 @@ def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
             x = d["documents"][0] if d["documents"] else None
             d["attend"] = _attend(conn, x["copie"]) if x and x["copie"] else []
     return demandes
+
+
+def _attend_effacement(conn, demande: dict, copie) -> list[dict]:
+    """À qui une demande d'EFFACEMENT s'adresse AUJOURD'HUI (COL-3, tranche 3c, F4) : les
+    responsables NON PARTAGÉS du projet de la demande (`demande.projet_id`, lu ici, jamais
+    stocké — Q10), `[{genre, principal, nom}]`. VIDE — l'administrateur seul — quand la
+    copie n'existe plus, qu'elle est gardée au fonds (Q12), que c'est la DERNIÈRE copie de
+    son document pour une suppression d'album, que le projet n'a pas de responsable, ou que
+    ses responsables sont des comptes partagés (Q14). Un groupe responsable compte : on ne
+    sait pas qui est dedans."""
+    if copie is None or demande.get("projet_id") is None:
+        return []
+    if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ?",
+                    (copie,)).fetchone() is None:
+        return []
+    if est_isole(conn, demande["projet_id"]):
+        return []
+    if demande["genre"] == DEMANDE_SUPPRESSION_DOCUMENT and conn.execute(
+            "SELECT 1 FROM albums a JOIN albums b ON b.document_id = a.document_id "
+            f"AND b.id <> a.id WHERE a.id = ? AND NOT {sql_album_isole('b')}",
+            (copie,)).fetchone() is None:
+        return []
+    partages = _comptes_partages(conn)
+    return [r for r in _responsables(conn, demande["projet_id"])
+            if not (r["genre"] == autorisation.UTILISATEUR and r["principal"] in partages)]
 
 
 def _attend(conn, copie: int) -> list[str]:
@@ -769,6 +916,10 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
         raise introuvable
     copie = collections_de_la_copie = None
     sources: dict = {}
+    if d["genre"] in GENRES_EFFACEMENT:
+        ligne = conn.execute("SELECT album_id FROM demande_document WHERE demande_id = ? "
+                             "ORDER BY document_id LIMIT 1", (demande_id,)).fetchone()
+        copie = ligne["album_id"] if ligne else None
     if d["genre"] in GENRES_CONSENTIS:
         ligne = conn.execute("SELECT album_id FROM demande_document WHERE demande_id = ? "
                              "ORDER BY document_id LIMIT 1", (demande_id,)).fetchone()
@@ -790,12 +941,26 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
         if d["genre"] == DEMANDE_AMORCER_ENTRE_PROJETS:
             if not any(portee.peut_gerer_projet(p) for p in sources):
                 raise introuvable
+        elif d["genre"] in GENRES_EFFACEMENT:
+            # F4 (tranche 3c) — une demande d'effacement se connaît du responsable du projet
+            # de la demande, sur une copie qu'il LIT ; le même 404 pour toute autre.
+            if (d["projet_id"] is None or not portee.peut_gerer_projet(d["projet_id"])
+                    or not _lues(conn, portee, [copie] if copie else [])):
+                raise introuvable
         elif (d["genre"] not in GENRES_CONSENTIS
                 or not _lues(conn, portee, [copie] if copie else [])):
             raise introuvable
-    if not portee.peut_repondre_a({"genre": d["genre"],
-                                   "collections": collections_de_la_copie,
-                                   "projets": list(sources)}):
+    if d["genre"] in GENRES_EFFACEMENT and not portee.tout:
+        # `repondable` = qui elle s'adresse ET la clause d'effacement de qui répond, sous le
+        # verrou : répondre, c'est effacer à sa place. Faux pour un responsable devant la
+        # dernière copie d'un document, ou compte partagé (Q14), ou une copie gardée au fonds
+        # (Q12) : l'administrateur y répond.
+        if not _repondable_effacement(conn, portee, dict(d), copie):
+            raise HTTPException(403, _motif_non_repondable(conn, dict(d), copie))
+    elif not portee.peut_repondre_a({"genre": d["genre"],
+                                     "collections": collections_de_la_copie,
+                                     "projets": list(sources),
+                                     "projet": d["projet_id"]}):
         geste = "Rejoindre" if d["genre"] == DEMANDE_REJOINDRE else "En partir de"
         raise HTTPException(403, f"{geste} ce travail se consent par le propriétaire de "
                                  "chacune des collections où il vit : vous ne les tenez pas "
@@ -842,6 +1007,10 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
     if d["genre"] == DEMANDE_REPARTIR:
         _accepter_un_repartir(conn, portee, dict(d))
         conn.commit()
+        return _vue_demande(conn, demande_id)
+
+    if d["genre"] == DEMANDE_SUPPRESSION_PLANCHE:
+        _accepter_une_suppression_de_planche(conn, portee, dict(d), copie)
         return _vue_demande(conn, demande_id)
 
     if d["genre"] == DEMANDE_SUPPRESSION_PROJET:
@@ -1048,6 +1217,54 @@ def _accepter_un_amorcer_entre_projets(conn, portee, d: dict, source, sources: d
     _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
 
 
+def _repondable_effacement(conn, portee, d: dict, copie) -> bool:
+    """Peut-on répondre à cette demande d'EFFACEMENT (COL-3, tranche 3c, F4) — à qui elle
+    s'adresse (`Portee.peut_repondre_a`, le projet de la demande) ET la clause d'effacement
+    de qui répond sur la copie : la suppression pour un album, la règle de repartir de zéro
+    pour une remise à zéro ou une planche (Q5). Une copie partie : faux, sauf à la portée
+    totale (la demande se clôt seule)."""
+    if not portee.peut_repondre_a({"genre": d["genre"], "projet": d["projet_id"]}):
+        return False
+    if portee.tout:
+        return True
+    if copie is None:
+        return False
+    ou, params = (portee.clause_suppression_directe("a.id")
+                  if d["genre"] == DEMANDE_SUPPRESSION_DOCUMENT
+                  else portee.clause_repartir_directe("a.id"))
+    return conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
+                        (copie, *params)).fetchone() is not None
+
+
+def _motif_non_repondable(conn, d: dict, copie) -> str:
+    """Le 403 nommé de qui gère le projet sans pouvoir répondre (F4)."""
+    if d["genre"] == DEMANDE_SUPPRESSION_DOCUMENT and copie is not None and conn.execute(
+            "SELECT 1 FROM albums a JOIN albums b ON b.document_id = a.document_id "
+            f"AND b.id <> a.id WHERE a.id = ? AND NOT {sql_album_isole('b')}",
+            (copie,)).fetchone() is None:
+        return ("C'est la dernière copie de ce document : un administrateur répond à cette "
+                "demande.")
+    return "Vous ne pouvez pas effacer cette copie vous-même : un administrateur y répond."
+
+
+def _accepter_une_suppression_de_planche(conn, portee, d: dict, copie) -> None:
+    """Une demande de supprimer une PLANCHE acceptée (COL-3, tranche 3c, F5) : la planche
+    est supprimée par qui répond, garde comprise (`socle._supprimer_planche`, la règle de
+    repartir de zéro). La planche relue sur SON album : une demande qui nommerait la planche
+    d'un autre album se refuse (409), sans rien supprimer. Partie depuis : la demande est
+    satisfaite. COMMITE (le chemin de la suppression commite, puis efface les images)."""
+    planche = conn.execute("SELECT * FROM planches WHERE id = ?",
+                           (d["planche_id"],)).fetchone()
+    if planche is None:
+        _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
+        conn.commit()
+        return
+    if copie is None or planche["album_id"] != copie:
+        raise HTTPException(409, "Cette planche n'est pas de l'album de la demande : refusez "
+                                 "cette demande.")
+    _supprimer_planche(conn, portee, dict(planche))      # clôt la demande, commite
+
+
 def _accepter_un_repartir(conn, portee, d: dict) -> None:
     """Une demande de REPARTIR DE ZÉRO acceptée (E8) : la copie demandée est ramenée au cran
     demandé, par qui répond — la portée totale, qui efface tout (`_repartir`, sa garde et son
@@ -1063,8 +1280,19 @@ def _accepter_un_repartir(conn, portee, d: dict) -> None:
     if d["cran"] not in CRANS[:-1]:
         raise HTTPException(409, f"Cran illisible sur cette demande ({d['cran']}) : "
                                  "refusez-la.")
-    if rang_du_cran(d["cran"]) < niveau_de_travail(conn, copie):
-        _repartir(conn, portee, copie, d["cran"])
+    planche = d.get("planche_id")
+    if planche is not None:
+        # F5 (tranche 3c) — une PLANCHE : relue sur son album ; partie, la demande est
+        # satisfaite (sa suppression l'a déjà close, acceptée).
+        p = conn.execute("SELECT album_id FROM planches WHERE id = ?", (planche,)).fetchone()
+        if p is None:
+            _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
+            return
+        if p["album_id"] != copie:
+            raise HTTPException(409, "Cette planche n'est pas de l'album de la demande : "
+                                     "refusez cette demande.")
+    if rang_du_cran(d["cran"]) < niveau_de_travail(conn, copie, planche):
+        _repartir(conn, portee, copie, d["cran"], planche_id=planche)
     _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
 
 
@@ -1827,6 +2055,62 @@ def demandes_recues_du_projet(projet_id: int, conn: sqlite3.Connection = Depends
         d["demandeur_nom"] = noms.get(d["demandeur"]) if d["demandeur"] else None
         d.pop("collection_id")              # le projet suffit à consentir
     return recues
+
+
+@router.get("/api/projets/{projet_id}/demandes-d-effacement")
+def demandes_d_effacement_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
+                                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Les demandes d'EFFACEMENT en attente sur les copies de CE projet — supprimer un album
+    ou une planche, repartir de zéro — : ce que son RESPONSABLE lit, et à quoi il répond par
+    la route commune (COL-3, tranche 3c, F4 ; l'endroit à l'écran se tranche sur maquette,
+    Q9). Séparée de `demandes-recues` plutôt que mêlée : l'adressage d'E7 (les projets qui
+    tiennent un travail) et celui-ci (le projet de la copie) ne se lisent pas pareil.
+
+    Réservée à qui GÈRE le projet : 404 à qui ne le voit pas, 403 nommé à qui le voit sans le
+    gérer ; aucune dans un projet isolé. Seulement les demandes dont la demande nomme CE
+    projet (`demande.projet_id`) et dont il LIT la copie — une copie gardée au fonds reste à
+    l'administrateur (Q12). Chacune dit : qui demande (son nom), le motif, `certifie_le`, le
+    document (`titre`, `album_id`), la planche s'il y en a une (`planche_id`,
+    `planche_numero`), le `cran` d'une remise à zéro, `derniere_copie`, `repondable`
+    (`Portee.peut_repondre_a` ET la clause d'effacement de l'appelant, relue ici), et « qui
+    perd quoi » — la mesure que lit l'administrateur, le travail recopié d'une autre copie
+    compté sans nom et l'importateur du document tu, comme dans `travail-des-autres`."""
+    p = _get_projet(conn, portee, projet_id, gerer=True,
+                    motif="Les demandes d'effacement d'un projet se lisent par son "
+                          "responsable.")
+    if est_isole(conn, p["id"]):
+        return []
+    marques = ", ".join("?" * len(GENRES_EFFACEMENT))
+    demandes = _rows(conn.execute(
+        "SELECT d.id, d.genre, d.cran, d.demandeur, d.motif, d.certifie_le, d.date_creation, "
+        "d.projet_id, d.planche_id, d.planche_numero, dd.document_id, dd.album_id, dd.titre "
+        "FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
+        f"WHERE d.genre IN ({marques}) AND d.reponse IS NULL AND d.projet_id = ? "
+        "ORDER BY d.id", (*GENRES_EFFACEMENT, projet_id)))
+    copies = {d["album_id"] for d in demandes if d["album_id"] is not None}
+    lues = _lues(conn, portee, sorted(copies))
+    collectifs = _comptes_partages(conn)
+    rendues = []
+    for d in demandes:
+        if d["album_id"] not in lues:
+            continue
+        a = conn.execute("SELECT document_id FROM albums WHERE id = ?",
+                         (d["album_id"],)).fetchone()
+        d["derniere_copie"] = a is not None and conn.execute(
+            "SELECT 1 FROM albums b WHERE b.document_id = ? AND b.id <> ? "
+            f"AND NOT {sql_album_isole('b')}", (a["document_id"], d["album_id"])
+        ).fetchone() is None
+        d["repondable"] = _repondable_effacement(conn, portee, d, d["album_id"])
+        vue = _travail_des_autres(conn, d["document_id"], d["album_id"], d["demandeur"],
+                                  collectifs, recopie_a_part=not portee.tout)
+        d["travail_des_autres"] = vue["travail_des_autres"]
+        d["travail_recopie"] = vue.get("travail_recopie")
+        d["demandeur_collectif"] = vue["demandeur_collectif"]
+        rendues.append(d)
+    noms = noms_lisibles(conn, [d["demandeur"] for d in rendues if d["demandeur"]])
+    for d in rendues:
+        d["demandeur_nom"] = noms.get(d["demandeur"]) if d["demandeur"] else None
+    return rendues
 
 
 @router.get("/api/projets/{projet_id}/copies-gardees")

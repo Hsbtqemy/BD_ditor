@@ -389,7 +389,7 @@ HORS_GARDE = {
                                        "garde ceux qu'une autre planche désigne encore",
     # Le pendant pour une planche, sorti de `delete_planche` quand le ménage est passé sous
     # le verrou d'écriture repris après le commit (`socle._sous_le_verrou`).
-    "_effacer_les_images_d_une_planche": "n'est appelée que par `delete_planche`, APRÈS sa "
+    "_effacer_les_images_d_une_planche": "n'est appelée que par `_supprimer_planche`, APRÈS sa "
                                          "garde et son commit : elle n'efface que les deux "
                                          "fichiers de la planche qui vient d'être détruite, "
                                          "et garde ceux qu'une autre planche désigne encore",
@@ -412,7 +412,9 @@ def _fonctions_qui_detruisent():
 def test_toute_route_qui_detruit_pose_la_garde_ou_dit_pourquoi_non():
     trouvees = _fonctions_qui_detruisent()
     # Le plancher d'abord : un motif qui ne trouverait plus rien approuverait tout.
-    assert {"_detruire_album", "delete_planche"} <= set(trouvees), trouvees
+    # COL-3, tranche 3c (F5) : la suppression d'une planche vit dans `_supprimer_planche`,
+    # que traversent la route et la réponse à une demande.
+    assert {"_detruire_album", "_supprimer_planche"} <= set(trouvees), trouvees
     sans_garde = {nom for nom, gardee in trouvees.items() if not gardee}
     assert sans_garde == set(HORS_GARDE), (
         f"détruisent sans `_exiger_destruction` et sans raison écrite : "

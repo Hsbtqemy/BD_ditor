@@ -1297,7 +1297,7 @@ def test_un_travail_ne_se_glisse_pas_entre_la_garde_et_la_destruction(client, db
 def test_ni_entre_la_garde_et_la_suppression_d_une_planche(client, db_path, decor,
                                                            monkeypatch):
     vu = []
-    _au_milieu(monkeypatch, main, "unindex_region", db_path,
+    _au_milieu(monkeypatch, socle, "unindex_region", db_path,
                "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
                "VALUES ('creation', 'collegue', 'humain', 'annotations', ?)",
                (decor["region"],), vu)

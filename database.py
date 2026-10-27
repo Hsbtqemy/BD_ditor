@@ -3849,12 +3849,23 @@ DEMANDE_AMORCER_ENTRE_PROJETS = "amorcer_entre_projets"
 # copie à un cran (`demande.cran`), en gardant ses images, quand on ne peut pas l'effacer
 # soi-même (`Portee.clause_suppression_directe`). Le patron de la suppression d'un
 # document : motif et CERTIFICATION obligatoires, une demande par COPIE qui attend, un
-# administrateur répond. Une planche n'a pas de demande à elle (décision B4, tenue pour
-# elle aussi) : son refus renvoie à un administrateur.
+# administrateur répond. Depuis la tranche 3c (F5), la remise à zéro d'une PLANCHE se
+# demande aussi, sous ce même genre : `demande.planche_id` la distingue.
 DEMANDE_REPARTIR = "repartir"
+# COL-3, tranche 3c (F5, Hugo, 2026-10-26, qui renverse B4) — SUPPRIMER UNE PLANCHE se
+# demande, motif et certification à l'appui, à la même personne que l'album
+# (`demande.planche_id`, `demande.planche_numero`, v38).
+DEMANDE_SUPPRESSION_PLANCHE = "suppression_planche"
 GENRES_DEMANDE = (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                   DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
-                  DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE_PROJETS, DEMANDE_REPARTIR)
+                  DEMANDE_AMORCER, DEMANDE_AMORCER_ENTRE_PROJETS, DEMANDE_REPARTIR,
+                  DEMANDE_SUPPRESSION_PLANCHE)
+# COL-3, tranche 3c (F4, Hugo, 2026-10-26) — les genres d'EFFACEMENT : la demande va au
+# RESPONSABLE du projet de la copie (`demande.projet_id`, lu au moment de répondre, jamais
+# stocké : Q10), et l'administrateur en recours ; la dernière copie d'un document, à
+# l'administrateur seul (`Portee.peut_repondre_a`, et la règle de qui répond).
+GENRES_EFFACEMENT = (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PLANCHE,
+                     DEMANDE_REPARTIR)
 # Les genres qui attendent le CONSENTEMENT des propriétaires des collections où vit la
 # copie visée — et non la réponse de qui tient le fonds (`Portee.peut_repondre_a`).
 GENRES_CONSENTIS = (DEMANDE_REJOINDRE, DEMANDE_AMORCER)

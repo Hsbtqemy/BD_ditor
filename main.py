@@ -24,11 +24,12 @@ from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI
                     DATA_DIR, IMG_EXTS, REFERENT_CONTACT, REFERENT_NOM, RELECTURE,
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
 from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, DEMANDE_SUPPRESSION_DOCUMENT,
+                      DEMANDE_SUPPRESSION_PLANCHE,
                       annotation_vide,
                       citations_regions,
                       collection_par_defaut, contributions_album, creer_document,
                       dimensions_cm, document_d_album, init_db,
-                      noms_lisibles, numeros_editoriaux, projet_de_collection,
+                      noms_lisibles, numeros_editoriaux, projet_d_album, projet_de_collection,
                       liens_vus, relecture_planches, reindex_region, retirer_liens_caches,
                       espace_d_album, sql_album_isole, sql_est_jeu, sql_projet_d_album,
                       unindex_region)
@@ -62,7 +63,8 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     OrdrePlanchesIn, ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
-    _MOTIF_DESTRUCTION_BAC, _motif_d_effacement,
+    _MOTIF_DESTRUCTION_BAC, _motif_d_effacement, _supprimer_planche,
+    _effacer_les_images_d_une_planche, _journaliser_scan,
     _MOTIF_JEU, _refuser_le_jeu, _refuser_la_reference,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_ISOLE, _MOTIF_BAC_PROPRIETAIRE,
     _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS, _MOTIF_JEU_SOURCE,
@@ -428,17 +430,6 @@ def _journaliser_sur_le_document(conn, album_id: int, charge: dict, *,
                         avant=avant, apres={"album_id": album_id, **charge})
 
 
-def _journaliser_scan(conn, album_id: int, planche: dict, *, retire: bool = False) -> None:
-    """Un scan AJOUTÉ au document (`apres` seul) ou RETIRÉ (`avant` seul). Un album sans
-    document — posé par `INSERT`, donc hors de tout chemin d'écriture — garde sa trace
-    quand même, sous une cible vide : l'acte a eu lieu."""
-    charge = {"album_id": album_id,
-              "planche": {"id": planche["id"], "numero": planche["numero"]}}
-    journal.journaliser(conn, "modification", "document",
-                        document_d_album(conn, album_id),
-                        **({"avant": charge} if retire else {"apres": charge}))
-
-
 @app.get("/api/albums")
 def list_albums(conn: sqlite3.Connection = Depends(db),
                 portee: autorisation.Portee = Depends(portee_courante)):
@@ -607,8 +598,10 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                 (DEMANDE_REJOINDRE, *ids)):
             if r["collection_id"] is not None and portee.peut_ecrire(r["collection_id"]):
                 rejoindre.setdefault(r["album_id"], []).append(r["collection_id"])
-    noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values()
-                                if portee.peut_nommer_le_demandeur(d["demandeur"])])
+    # COL-3, tranche 3c (F4) — le RESPONSABLE du projet de la copie lit aussi qui demande sa
+    # suppression (`peut_nommer_le_demandeur`, `consentement`) : les noms se lisent tous, et
+    # la borne se pose album par album, plus bas.
+    noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values() if d["demandeur"]])
     # UX-18 — l'appartenance de CHAQUE album, en une lecture, pour que la Bibliothèque
     # filtre le corpus par collection sans un appel par album. Les seules collections LUES
     # (`_collections_lues_d_albums`, la règle de `GET /api/albums/{id}/collections` écrite
@@ -640,7 +633,9 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
             a["demande"] = None
             continue
         a["demande"] = {"id": d["id"], "date_creation": d["date_creation"]}
-        if portee.peut_nommer_le_demandeur(d["demandeur"]):
+        if portee.peut_nommer_le_demandeur(
+                d["demandeur"], consentement={"genre": DEMANDE_SUPPRESSION_DOCUMENT,
+                                              "projet": a["projet_id"]}):
             a["demande"].update(demandeur=d["demandeur"],
                                 demandeur_nom=noms.get(d["demandeur"]))
     return albums
@@ -781,34 +776,12 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
     # cette garde, elle restait le chemin par lequel on vide un album partagé, une à une.
     # COL-3, tranche 3c (Q5, Hugo, 2026-10-26, qui renverse B4) — la règle est celle de
     # REPARTIR DE ZÉRO : qui tient l'espace la supprime, même d'une dernière copie, et
-    # l'accesseur est en LECTURE (le responsable qui lit l'album). Lue sous le verrou d'écriture,
-    # comme pour l'album (`socle._detruire_album`) : sinon un travail validé entre la garde
-    # et le `DELETE` partirait avec la planche.
-    conflit.verrouiller(conn)
-    _exiger_destruction(conn, portee, p["album_id"], planche=True)
-    for r in conn.execute(
-        "SELECT id FROM regions WHERE planche_id = ?", (planche_id,)).fetchall():
-        unindex_region(conn, r["id"])
-    # ANN-7 (R11, Q5) — les relevés et les passes de sa SURFACE d'abord : leur clé sur la
-    # planche est sans action. Ceux de ses régions partent par CASCADE.
-    retirer_la_surface(conn, "SELECT ?", (planche_id,))
-    conn.execute("DELETE FROM planches WHERE id = ?", (planche_id,))   # CASCADE regions
-    _journaliser_scan(conn, p["album_id"], p, retire=True)
-    conn.commit()
-    # Par RÉFÉRENCE (COL-3, tranche 3, D6) : la planche d'une copie sœur peut désigner les
-    # mêmes fichiers, qui restent alors pour elle. Lu et effacé SOUS LE VERROU, repris après
-    # le commit (`socle._sous_le_verrou`) : une sœur née entre la lecture et l'effacement
-    # perdrait sinon ses fichiers.
-    _sous_le_verrou(conn, _effacer_les_images_d_une_planche, conn, p)
+    # l'accesseur est en LECTURE (le responsable qui lit l'album). Les autres la DEMANDENT
+    # (F5, `POST /api/demandes`, genre `suppression_planche`). La garde, la suppression et le
+    # ménage des images vivent dans `socle._supprimer_planche`, que traverse aussi la réponse
+    # « accepter » à une demande.
+    _supprimer_planche(conn, portee, p)
     return Response(status_code=204)
-
-
-def _effacer_les_images_d_une_planche(conn, planche: dict) -> None:
-    """Le master et le dérivé d'une planche détruite, sauf ceux qu'une autre planche
-    désigne encore. N'est appelée que par `delete_planche`, après sa garde et son commit, et
-    sous le verrou d'écriture."""
-    chemins = [planche["chemin_tiff"], planche["chemin_web"]]
-    remove_planche_files(*chemins, garder=_chemins_employes(conn, chemins))
 
 
 @app.get("/api/albums/{album_id}/planches")
@@ -848,6 +821,30 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
         p["dimensions_cm"] = dimensions_cm(p["largeur_px"], p["hauteur_px"],
                                            p["dpi_x"], p["dpi_y"])
         p["relecture_statut"] = rel.get(p["id"])     # {statut, derive, force, tokens, relus}
+    # COL-3, tranche 3c (F5) — la demande d'effacement qui attend sur CETTE planche (la
+    # supprimer, ou la remettre à zéro) : son genre, sa date, son cran ; QUI l'a déposée ne se
+    # lit que sous la borne de `Portee.peut_nommer_le_demandeur` (le demandeur, le
+    # responsable du projet de la copie, la portée totale). L'écran n'offre pas de la
+    # redéposer (409).
+    attente = {}
+    ids = [p["id"] for p in planches]
+    if ids:
+        projet = projet_d_album(conn, album_id)
+        consentement = {"genre": DEMANDE_SUPPRESSION_PLANCHE, "projet": projet}
+        lignes = conn.execute(
+            "SELECT id, genre, planche_id, date_creation, cran, demandeur FROM demande "
+            f"WHERE planche_id IN ({', '.join('?' * len(ids))}) AND reponse IS NULL "
+            "ORDER BY id", ids).fetchall()
+        noms_d = noms_lisibles(conn, [d["demandeur"] for d in lignes if d["demandeur"]])
+        for d in lignes:
+            vue = {"id": d["id"], "genre": d["genre"], "date_creation": d["date_creation"],
+                   "cran": d["cran"]}
+            if d["demandeur"] and portee.peut_nommer_le_demandeur(
+                    d["demandeur"], consentement=consentement):
+                vue.update(demandeur=d["demandeur"], demandeur_nom=noms_d.get(d["demandeur"]))
+            attente.setdefault(d["planche_id"], vue)
+    for p in planches:
+        p["demande"] = attente.get(p["id"])
     return planches
 
 

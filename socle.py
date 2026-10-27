@@ -41,10 +41,12 @@ import journal
 from database import (CRAN_IMAGES, CRANS, CRANS_DE_REPARTIR, DEMANDE_AMORCER,
                       DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_REPARTIR,
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
+                      DEMANDE_SUPPRESSION_PLANCHE,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
                       NOM_BAC_A_SABLE, clause_appartenance, cle_tag, collection_de_base,
                       collection_row, creer_collection_de_base, creer_copie,
-                      demandes_vers_collection, espace_d_album, est_isole, est_jeu,
+                      demandes_vers_collection, document_d_album, espace_d_album,
+                      est_isole, est_jeu,
                       etat_des_reponses,
                       get_connection,
                       nature_du_projet, niveau_de_travail, prochain_effacement,
@@ -784,8 +786,8 @@ _MOTIF_DESTRUCTION = ("Supprimer définitivement cet album revient au responsabl
                       "supprimer de votre collection, où il est gardé au fonds avec son "
                       "travail.")
 _MOTIF_DESTRUCTION_PLANCHE = ("Supprimer une planche de cet album revient au responsable de son "
-                              "projet ou à qui tient toutes ses collections : adressez-vous à "
-                              "lui.")
+                              "projet ou à qui tient toutes ses collections : vous pouvez le "
+                              "demander.")
 
 
 # Dans un bac à sable, le refus ne renvoie ni à un administrateur ni au fonds : ni l'un ni
@@ -893,13 +895,66 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int, *,
     # Les demandes qui visaient CETTE copie ont leur réponse (COL-3, tranche 3) : une
     # demande se dépose sur une copie (`demande_document.album_id`), et celle d'une sœur,
     # dans un autre projet, attend toujours la sienne.
+    # COL-3, tranche 3c (F5) — la suppression d'une de ses PLANCHES aussi : la planche est
+    # partie avec l'album. (Sa remise à zéro se clôt refusée, avec les `repartir` de la
+    # copie, par `_clore_lignes_d_une_copie_detruite`.)
     _clore_demandes(conn, portee, [r[0] for r in conn.execute(
         "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
-        "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL",
-        (DEMANDE_SUPPRESSION_DOCUMENT, album_id))], REPONSE_ACCEPTEE)
+        "WHERE d.genre IN (?, ?) AND dd.album_id = ? AND d.reponse IS NULL",
+        (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PLANCHE, album_id))],
+        REPONSE_ACCEPTEE)
     _clore_lignes_d_une_copie_detruite(conn, portee, album_id)
     conn.commit()
     _sous_le_verrou(conn, _effacer_les_images_d_une_copie, conn, album_id, chemins)
+
+
+def _journaliser_scan(conn, album_id: int, planche: dict, *, retire: bool = False) -> None:
+    """Un scan AJOUTÉ au document (`apres` seul) ou RETIRÉ (`avant` seul). Un album sans
+    document — posé par `INSERT`, donc hors de tout chemin d'écriture — garde sa trace
+    quand même, sous une cible vide : l'acte a eu lieu. (Au socle depuis la tranche 3c de
+    COL-3 : la suppression d'une planche y vit, `_supprimer_planche`.)"""
+    charge = {"album_id": album_id,
+              "planche": {"id": planche["id"], "numero": planche["numero"]}}
+    journal.journaliser(conn, "modification", "document",
+                        document_d_album(conn, album_id),
+                        **({"avant": charge} if retire else {"apres": charge}))
+
+
+def _supprimer_planche(conn, portee: autorisation.Portee, planche: dict) -> None:
+    """SUPPRIME une planche, garde comprise — le seul chemin : `DELETE /api/planches/{id}` et
+    la réponse « accepter » à une demande de suppression d'une planche (COL-3, tranche 3c,
+    F5) y passent. Il COMMITE, puis efface les images qu'aucune autre planche n'emploie.
+
+    La garde (`_exiger_destruction(planche=True)` : la règle de repartir de zéro, Q5) se lit
+    SOUS LE VERROU d'écriture, comme pour l'album : sinon un travail validé entre la garde et
+    le `DELETE` partirait avec la planche. Les relevés et les passes de sa SURFACE partent
+    d'abord (leur clé sur la planche est sans action ; ceux de ses régions partent par
+    CASCADE). Les demandes qui visaient cette planche ont leur réponse : acceptées."""
+    conflit.verrouiller(conn)
+    _exiger_destruction(conn, portee, planche["album_id"], planche=True)
+    for r in conn.execute(
+        "SELECT id FROM regions WHERE planche_id = ?", (planche["id"],)).fetchall():
+        unindex_region(conn, r["id"])
+    retirer_la_surface(conn, "SELECT ?", (planche["id"],))
+    conn.execute("DELETE FROM planches WHERE id = ?", (planche["id"],))   # CASCADE regions
+    _journaliser_scan(conn, planche["album_id"], planche, retire=True)
+    _clore_demandes(conn, portee, [r[0] for r in conn.execute(
+        "SELECT id FROM demande WHERE planche_id = ? AND reponse IS NULL",
+        (planche["id"],))], REPONSE_ACCEPTEE)
+    conn.commit()
+    # Par RÉFÉRENCE (COL-3, tranche 3, D6) : la planche d'une copie sœur peut désigner les
+    # mêmes fichiers, qui restent alors pour elle. Lu et effacé SOUS LE VERROU, repris après
+    # le commit (`_sous_le_verrou`) : une sœur née entre la lecture et l'effacement
+    # perdrait sinon ses fichiers.
+    _sous_le_verrou(conn, _effacer_les_images_d_une_planche, conn, planche)
+
+
+def _effacer_les_images_d_une_planche(conn, planche: dict) -> None:
+    """Le master et le dérivé d'une planche détruite, sauf ceux qu'une autre planche
+    désigne encore. N'est appelée que par `_supprimer_planche`, après sa garde et son
+    commit, et sous le verrou d'écriture."""
+    chemins = [planche["chemin_tiff"], planche["chemin_web"]]
+    remove_planche_files(*chemins, garder=_chemins_employes(conn, chemins))
 
 
 def retirer_la_surface(conn, planches_sql: str, params) -> int:
@@ -957,7 +1012,7 @@ _MOTIF_REPARTIR = ("Repartir de zéro sur cet album revient au responsable de so
                    "qui tient toutes ses collections : vous pouvez le demander.")
 _MOTIF_REPARTIR_PLANCHE = ("Repartir de zéro sur une planche de cet album revient au "
                            "responsable de son projet ou à qui tient toutes ses collections : "
-                           "adressez-vous à lui.")
+                           "vous pouvez le demander.")
 
 
 def _cran_de_repartir(cran) -> str:
@@ -2641,6 +2696,9 @@ class DemandeIn(BaseModel):
     # COL-3, tranche 3b (E8) — le cran VERS lequel une demande de repartir de zéro ramène la
     # copie (`database.CRANS_DE_REPARTIR`).
     cran: Optional[str] = None
+    # COL-3, tranche 3c (F5) — la PLANCHE d'une demande qui ne vise qu'elle : la supprimer
+    # (`suppression_planche`) ou la remettre à zéro (`repartir`).
+    planche_id: Optional[int] = None
 
 
 class RetirerIn(BaseModel):

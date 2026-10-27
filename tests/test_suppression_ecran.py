@@ -53,7 +53,11 @@ def test_les_genres_de_la_prise_et_l_etat_partiel_sont_ceux_du_serveur():
     assert _constante("GENRE_AMORCER_ENTRE_PROJETS") == database.DEMANDE_AMORCER_ENTRE_PROJETS
     assert _constante("GENRE_REPARTIR") == database.DEMANDE_REPARTIR
     assert _constante("PARTIELLE") == database.REPONSE_PARTIELLE
-    assert set(database.GENRES_DEMANDE) == {
+    # COL-3, tranche 3c (F5) — `suppression_planche` est né côté serveur ; l'écran ne
+    # l'apprendra qu'avec sa maquette (commit 4 de la tranche). L'écart est DÉCLARÉ ici, et
+    # le seul : une demande de planche n'atteint pas encore l'écran par un geste.
+    ATTEND_L_ECRAN = {database.DEMANDE_SUPPRESSION_PLANCHE}
+    assert set(database.GENRES_DEMANDE) - ATTEND_L_ECRAN == {
         _constante(n) for n in ("GENRE_DOCUMENT", "GENRE_PROJET", "GENRE_ENTREE",
                                 "GENRE_REJOINDRE", "GENRE_RENDRE", "GENRE_AMORCER",
                                 "GENRE_AMORCER_ENTRE_PROJETS", "GENRE_REPARTIR")}
