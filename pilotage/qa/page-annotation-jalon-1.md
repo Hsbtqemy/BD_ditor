@@ -28,31 +28,31 @@ SUR PLACE et se signale.
 
 ### Ouvrir la page — `stagiaire`
 
-- [ ] La navigation porte « 🖍️ Annotation » entre l'Atelier et la Bibliothèque ; un clic ouvre une page en trois colonnes : la planche à gauche, la case au milieu, la grille à droite
-- [ ] Collection « Collection Test », Album « esther v1 », Planche 1 : la minicarte montre les cases de la planche, et la colonne de droite porte un onglet « Sons et images (fictive) »
-- [ ] Clic, sur la minicarte, dans la bulle « HEY TouCHE-Moi PAS L' CUL SALE PÉDÉ 1 » : la case s'agrandit au milieu, la bulle y est choisie, et son texte s'écrit mot par mot sous « Texte », tel qu'il a été transcrit (« L' CUL » avec son espace)
-- [ ] L'adresse porte `collection=`, `album=`, `planche=` et `region=` ; F5 rouvre la même bulle
+- [x] La navigation porte « 🖍️ Annotation » entre l'Atelier et la Bibliothèque ; un clic ouvre une page en trois colonnes : la planche à gauche, la case au milieu, la grille à droite
+- [x] Collection « Collection Test », Album « esther v1 », Planche 1 : la minicarte montre les cases de la planche, et la colonne de droite porte un onglet « Sons et images (fictive) »
+- [x] Clic, sur la minicarte, dans la case de la bulle « HEY TouCHE-Moi PAS L' CUL SALE PÉDÉ 1 » : la case s'agrandit au milieu ; clic sur la bulle DANS la case agrandie : elle est choisie, et son texte s'écrit mot par mot sous « Texte », tel qu'il a été transcrit (« L' CUL » avec son espace)
+- [x] L'adresse porte `collection=`, `album=`, `planche=` et `region=` ; F5 rouvre la même bulle
 
 ### Lire la grille — `stagiaire`, même bulle
 
-- [ ] Les rubriques se replient et se déplient ; « A. Sons » dépliée montre « Voix » et « Bruits »
-- [ ] « Afficher » choisit toute la grille ou une seule rubrique de tête ; « B. Provenance » seule ne montre plus que « origine du son » et « écho »
-- [ ] Revenir à toute la grille, survoler « onomatopée de choc » : la ligne du guide, en bas de la colonne, dit « un mot qui imite le bruit d'un choc » et ses variantes, sans que la colonne change de hauteur
-- [ ] Touche « / » : le curseur est dans le filtre ; taper « echo » trouve « écho » (sans accent) ; Échap vide le champ
-- [ ] « Guide complet ▸ » ouvre une fenêtre qui reprend toute la grille ; Échap la ferme et rend le focus au bouton
+- [x] Les rubriques se replient et se déplient ; « A. Sons » dépliée montre « Voix » et « Bruits »
+- [x] « Afficher » choisit toute la grille ou une seule rubrique de tête ; « B. Provenance » seule ne montre plus que « origine du son » et « écho »
+- [x] Revenir à toute la grille, survoler « onomatopée de choc » : la ligne du guide, en bas de la colonne, dit « un mot qui imite le bruit d'un choc » et ses variantes, sans que la colonne change de hauteur
+- [x] Touche « / » : le curseur est dans le filtre ; taper « echo » trouve « écho » (sans accent) ; Échap vide le champ
+- [x] « Guide complet ▸ » ouvre une fenêtre qui reprend toute la grille ; Échap la ferme et rend le focus au bouton
 
 ### Désigner des mots et poser — `stagiaire`, même bulle
 
-- [ ] Clic sur « TouCHE-Moi », puis Maj+clic sur « CUL » : les quatre mots sont désignés ; « Porte sur » propose « des mots », « toute la bulle », « la case » et « la planche », sur « des mots »
-- [ ] Cocher « cri » : un trait apparaît sous les quatre mots, et « cri » s'inscrit dans la liste de ce qui est posé, en bas de la colonne ; la rubrique « A. Sons » dit « 1 ici »
-- [ ] Recocher « cri » sur le même passage : le relevé part, le trait et la ligne de la liste aussi
-- [ ] Désigner « HEY » seul, cocher la variante « bang » d'« onomatopée de choc », puis cocher « crac » : il n'y a toujours qu'UN relevé sous « HEY », et la liste dit « crac »
-- [ ] Sur « HEY », cocher le qualificatif « taille » d'« intensité graphique », puis « couleur » : un seul relevé « intensité graphique », dont la ligne dit les deux qualificatifs
-- [ ] Sur « HEY », poser « origine du son » (un qualificatif au choix) : sa ligne dit « à compléter » ; taper un lieu dans sa précision, sortir du champ : « à compléter » disparaît
-- [ ] « Porte sur » : « toute la bulle », cocher « crié » de « ton de voix », puis « chuchoté » : un seul « ton de voix » sur la bulle, qui dit « chuchoté »
-- [ ] Toujours sur toute la bulle, poser « réponse à une autre bulle » : sa ligne dit « à compléter » ; « Désigner sur la planche », puis clic sur la bulle « Pédé ! » dans la minicarte : le lien est posé, « à compléter » disparaît
-- [ ] ✕ sur la ligne « écho » ou « origine du son » de la liste : le relevé part, la ligne aussi
-- [ ] « regard caméra » se pose sur la case et « ambiance sonore de la planche » sur la planche, quel que soit « Porte sur » : la liste les dit sur « la case » et « la planche »
+- [x] Clic sur « TouCHE-Moi », puis Maj+clic sur « CUL » : les quatre mots sont désignés ; « Porte sur » propose « des mots », « toute la bulle », « la case » et « la planche », sur « des mots »
+- [x] Cocher « cri » : un trait apparaît sous les quatre mots, et « cri » s'inscrit dans la liste de ce qui est posé, en bas de la colonne ; la rubrique « A. Sons » dit « 1 ici »
+- [x] Recocher « cri » sur le même passage : le relevé part, le trait et la ligne de la liste aussi
+- [x] Désigner « HEY » seul, cocher la variante « bang » d'« onomatopée de choc », puis cocher « crac » : il n'y a toujours qu'UN relevé sous « HEY », et la liste dit « crac »
+- [x] Sur « HEY », cocher le qualificatif « taille » d'« intensité graphique », puis « couleur » : un seul relevé « intensité graphique », dont la ligne dit les deux qualificatifs
+- [x] Sur « HEY », poser « origine du son » (un qualificatif au choix) : sa ligne dit « à compléter » ; taper un lieu dans sa précision, sortir du champ : « à compléter » disparaît
+- [x] « Porte sur » : « toute la bulle », cocher « crié » de « ton de voix », puis « chuchoté » : un seul « ton de voix » sur la bulle, qui dit « chuchoté »
+- [x] Toujours sur toute la bulle, poser « réponse à une autre bulle » : sa ligne dit « à compléter » ; « Désigner sur la planche », puis clic sur la bulle « Pédé ! » dans la minicarte : le lien est posé, « à compléter » disparaît
+- [x] ✕ sur la ligne « intensité graphique » de la liste (posée plus haut sur « HEY ») : le relevé part, la ligne aussi, et son trait sous « HEY »
+- [x] « regard caméra » se pose sur la case et « ambiance sonore de la planche » sur la planche, quel que soit « Porte sur » : la liste les dit sur « la case » et « la planche »
 
 ### Deux écrans sur le même relevé — `stagiaire` et `proprio`, planche 1, bulle « HEY TouCHE-Moi… »
 

@@ -166,6 +166,13 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 - [ ] **Jalon 3 — la maquette entière** — attendu : codé. Le Contexte modifiable ; tracer une zone (le type `detail`, exclu de toute sortie, relecture croisée) ; écrans étroits et doigt ; le renvoi depuis l'Atelier et les docs
 - [ ] **Un bac à sable naît avec une grille fictive activée** — attendu : codé (H4, ≈ 1 jour), à la fin de la tranche 2 ou en tête du wizard ; effacée avec lui
 
+### Relevé par Hugo en jouant la passe du jalon 1 — 2026-10-28 (`pilotage/qa/page-annotation-jalon-1.md`)
+
+- [ ] Dans la liste de ce qui est posé, la précision d'un relevé et son ✕ tiennent sur UNE ligne : le champ se réduit, ✕ reste à sa droite (sur la recette, à la largeur de Hugo, ✕ passait sous le champ)
+- [ ] Un lien posé dit QUELLE zone il désigne : la ligne du relevé dans la liste de ce qui est posé nomme la bulle liée (son étiquette ou le début de son texte), et non seulement « Changer le lien » — Hugo n'a pas pu vérifier à l'écran que « Pédé ! » était la bulle choisie (elle l'était, lu en base)
+- [ ] « Désigner sur la planche » dit qu'on peut cliquer une bulle sur la minicarte : en dehors de ce mode, la minicarte ne choisit que des cases, et rien n'annonce qu'elle change de rôle (le contour ambre seul ne l'a pas fait voir)
+- [ ] La liste de ce qui est posé a plus de place : la boîte du guide (définition, exemples) se REPLIE et se déplie (`aria-expanded`), repliée la liste prend sa hauteur, et le choix est retenu (stockage local, sous try/catch) — Hugo, 2026-10-28. La boîte du guide porte aussi le formulaire du doute et le bandeau du 409 : ils la déplient d'office quand ils s'ouvrent, sinon un conflit passerait inaperçu ; la sonde du reflow la mesure dépliée (`tools/mesurer_reflow.DEPLIES`)
+
 ### Le modèle — à écrire avant tout code
 
 - [ ] **Les quatre objets sont définis** — attendu : écrit, avec leurs champs. La GRILLE (un
