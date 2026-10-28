@@ -3821,6 +3821,76 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .an-ctx-corps dt { color: var(--text-muted); font-size: .9231rem; }
 .an-ctx-corps dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
 
+/* Les deux vues de la colonne de gauche (commit 5) : la planche, la Synthèse. Le garde
+   `[hidden]` : `display: flex` écraserait l'attribut (cf. `test_e2e_masquage`). */
+.an-gauche-onglets { display: flex; flex-wrap: wrap; gap: .3077rem; flex: 0 0 auto; }
+.an-panneau { display: flex; flex-direction: column; gap: .7692rem; min-width: 0; }
+.an-panneau[hidden] { display: none; }
+.an-n:not(:empty) { font-weight: 400; color: var(--text-muted); }
+.an-syn-vues { display: flex; flex-wrap: wrap; gap: .3077rem; }
+.an-syn-vue[aria-pressed="true"] { border-color: var(--accent-blue); background: var(--bg-input);
+                                   font-weight: 600; }
+.an-syn-corps { display: flex; flex-direction: column; gap: .7692rem; min-width: 0; }
+.an-syn-portee { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem; }
+.an-syn-portee [aria-pressed="true"] { border-color: var(--accent-blue); background: var(--bg-input);
+                                       font-weight: 600; }
+.an-syn-g { display: flex; flex-direction: column; gap: .1538rem; min-width: 0; }
+.an-syn-g-titre { margin: 0; font-size: .9231rem; font-weight: 600; color: var(--text-muted);
+                  display: flex; flex-wrap: wrap; align-items: baseline; gap: .3077rem .6154rem; }
+.an-syn-case { background: none; border: 1px solid transparent; border-radius: 5px;
+               color: var(--text); font: inherit; font-weight: 600; padding: .0769rem .3077rem;
+               cursor: pointer; text-align: left; }
+.an-syn-case:hover { background: var(--hover); border-color: var(--border); }
+.an-syn-case.courante { border-color: var(--accent-blue); }
+.an-syn-liste, .an-fil { list-style: none; margin: 0; padding: 0; display: flex;
+                         flex-direction: column; gap: .1538rem; min-width: 0; }
+.an-syn-r { width: 100%; display: flex; flex-wrap: wrap; align-items: center;
+            gap: .1538rem .4615rem; text-align: left; background: none; color: var(--text);
+            border: 1px solid transparent; border-radius: 5px; padding: .1538rem .3077rem;
+            cursor: pointer; font: inherit; min-width: 0; }
+.an-syn-r:hover { background: var(--hover); border-color: var(--border); }
+.an-syn-zone { font-family: monospace; font-size: .8462rem; color: var(--text-muted); }
+.an-rv { display: flex; flex-direction: column; gap: .3077rem; padding: .3846rem 0 .4615rem;
+         border-top: 1px solid var(--border); min-width: 0; }
+.an-rv:first-child { border-top: none; }
+.an-rv-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem .6154rem;
+               padding-left: .3077rem; font-size: .9231rem; min-width: 0; overflow-wrap: anywhere; }
+.an-causes { color: var(--ink-red); }
+.an-fil { padding-left: .3077rem; }
+.an-fil li { font-size: .9231rem; overflow-wrap: anywhere; }
+.an-fil-qui { font-weight: 600; }
+.an-fil-quand { color: var(--text-muted); font-size: .8462rem; }
+.an-fil-texte { margin: .0769rem 0 0; white-space: pre-line; }
+.an-rv-repondre { display: flex; flex-wrap: wrap; gap: .3077rem; align-items: flex-end;
+                  padding-left: .3077rem; }
+.an-rv-repondre textarea, .an-dt-texte {
+  flex: 1 1 10rem; min-width: 0; resize: vertical; font: inherit; padding: .2308rem .4615rem;
+  background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; }
+.an-rv-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem;
+                padding-left: .3077rem; }
+.an-rv-changer { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem;
+                 padding-left: 1.2rem; }
+.an-rv-changer [aria-pressed="true"] { border-color: var(--accent-green); font-weight: 600; }
+.an-dc { display: flex; flex-direction: column; gap: .1538rem; }
+.an-dc-titre { margin: 0; font-size: .9231rem; font-weight: 600; display: flex; flex-wrap: wrap;
+               gap: .3077rem .6154rem; align-items: baseline; }
+.an-dc-l { display: flex; gap: .4615rem; font-size: .9231rem; min-width: 0; }
+.an-dc-l .an-dc-lib { min-width: 0; overflow-wrap: anywhere; }
+.an-dc-rubrique .an-dc-lib { font-weight: 600; }
+.an-dc-variante .an-dc-lib, .an-dc-qualificatif .an-dc-lib { color: var(--text-muted); }
+.an-dc-niv-1 { padding-left: .7692rem; }
+.an-dc-niv-2 { padding-left: 1.5385rem; }
+.an-dc-niv-3, .an-dc-niv-4, .an-dc-niv-5 { padding-left: 2.3077rem; }
+/* Douter et retirer, sur la liste de ce qui est posé (ANN-6, 2026-10-22) : colorés, sans
+   fond — l'ambre du doute, le rouge du retrait —, pour ne pas passer pour obligatoires. */
+.an-douter { color: var(--accent-amber); font-weight: 700; }
+.an-retirer { color: var(--ink-red); }
+.an-etat-doute { color: var(--accent-amber); border-color: var(--accent-amber); }
+/* Le formulaire du doute prend la place de la ligne du guide, à la même hauteur. */
+.an-guide-contenu.an-doute-form { border-left: 3px solid var(--accent-amber); padding-left: .6154rem; }
+.an-dt-texte { flex: 0 0 auto; min-height: 3.2rem; resize: none; }
+
 /* Le pied (commit 4) : deux lignes de hauteur fixe, au bas de la colonne de la case. */
 .an-pied { flex: 0 0 auto; margin-top: auto; display: flex; flex-direction: column;
            gap: .3077rem; border-top: 1px solid var(--border); padding-top: .4615rem; }

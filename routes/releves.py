@@ -118,10 +118,12 @@ _CAUSES = ("mot_perdu", "texte_change", "lien_perdu", "type_change", "entree_abs
 
 
 def vue_releve(conn, r, *, modifiable: bool, noms: dict, partages: set,
-               doute=None, version: int | None = None) -> dict:
+               doute=None, doutes_leves=(), version: int | None = None) -> dict:
     """Un relevé tel que l'écran le lit (R13) — depuis une ligne de `releves_effectifs`.
     `version` : le NUMÉRO de sa version (tranche 2) — la route du plan le prend, et la page
-    lit à la demande le plan d'un relevé posé dans une version qui n'est plus active."""
+    lit à la demande le plan d'un relevé posé dans une version qui n'est plus active.
+    `doutes_leves` : ses doutes LEVÉS, du plus ancien au plus récent, chacun avec son fil,
+    qui l'a levé et comment (tranche 2, jalon 2 : la Synthèse › À revoir les relit)."""
     passage = conn.execute("SELECT position, rang, forme FROM releve_mot WHERE releve_id = ? "
                            "ORDER BY position", (r["id"],)).fetchall()
     actuel = None
@@ -148,7 +150,8 @@ def vue_releve(conn, r, *, modifiable: bool, noms: dict, partages: set,
         "auteur": r["auteur"], "auteur_nom": noms.get(r["auteur"]) if r["auteur"] else None,
         "collectif": r["auteur"] in partages, "cree_le": r["cree_le"],
         "modifie_par": r["modifie_par"], "modifie_le": r["modifie_le"],
-        "recopie": r["origine_id"] is not None, "modifiable": modifiable, "doute": doute}
+        "recopie": r["origine_id"] is not None, "modifiable": modifiable, "doute": doute,
+        "doutes_leves": list(doutes_leves)}
 
 
 def album_du_releve(conn, r) -> int:
@@ -160,20 +163,37 @@ def album_du_releve(conn, r) -> int:
                         (r["planche_id"],)).fetchone()[0]
 
 
-def doute_ouvert(conn, releve_id: int, noms: dict, partages: set):
-    """Le doute OUVERT d'un relevé et son fil, ou None (R7) — chaque message signé, daté, et
-    `collectif` quand il vient d'un compte partagé."""
-    d = conn.execute("SELECT * FROM doute WHERE releve_id = ? AND leve_le IS NULL",
-                     (releve_id,)).fetchone()
-    if d is None:
-        return None
-    return {"id": d["id"], "ouvert_par": d["ouvert_par"], "ouvert_le": d["ouvert_le"],
+def vue_doute(d, messages, noms: dict, partages: set) -> dict:
+    """Un doute tel que l'écran le lit — ouvert ou levé : qui l'a ouvert, qui l'a levé et
+    comment (`issue` : garde · change · retire), et son fil, chaque message signé, daté, et
+    `collectif` quand il vient d'un compte partagé. Les noms lisibles et les comptes partagés
+    sont lus par l'appelant, en une fois pour tous les doutes qu'il rend."""
+    return {"id": d["id"], "releve_id": d["releve_id"], "ouvert_par": d["ouvert_par"],
+            "ouvert_par_nom": noms.get(d["ouvert_par"]) if d["ouvert_par"] else None,
+            "ouvert_le": d["ouvert_le"], "leve_par": d["leve_par"],
+            "leve_par_nom": noms.get(d["leve_par"]) if d["leve_par"] else None,
+            "leve_par_collectif": d["leve_par"] in partages if d["leve_par"] else False,
+            "leve_le": d["leve_le"], "issue": d["issue"],
             "messages": [{"id": m["id"], "auteur": m["auteur"],
                           "auteur_nom": noms.get(m["auteur"]) if m["auteur"] else None,
                           "collectif": m["auteur"] in partages, "date": m["date"],
-                          "texte": m["texte"]}
-                         for m in conn.execute("SELECT * FROM doute_message WHERE doute_id = ? "
-                                               "ORDER BY id", (d["id"],))]}
+                          "texte": m["texte"]} for m in messages]}
+
+
+def doutes_du_releve(conn, releve_id: int, noms: dict, partages: set):
+    """Le doute OUVERT d'un relevé (ou None, R7) et ses doutes LEVÉS, du plus ancien au plus
+    récent — un seul ouvert à la fois, autant de levés qu'on en a ouvert puis levé."""
+    ouvert, leves = None, []
+    for d in conn.execute("SELECT * FROM doute WHERE releve_id = ? ORDER BY id",
+                          (releve_id,)).fetchall():
+        messages = conn.execute("SELECT * FROM doute_message WHERE doute_id = ? ORDER BY id",
+                                (d["id"],)).fetchall()
+        vue = vue_doute(d, messages, noms, partages)
+        if d["leve_le"] is None:
+            ouvert = vue
+        else:
+            leves.append(vue)
+    return ouvert, leves
 
 
 def vues(conn, portee, lignes) -> list:
@@ -183,9 +203,13 @@ def vues(conn, portee, lignes) -> list:
     ids = [r["id"] for r in lignes]
     auteurs = [r["auteur"] for r in lignes] + [r["modifie_par"] for r in lignes]
     if ids:
+        marques = ', '.join('?' * len(ids))
         auteurs += [m[0] for m in conn.execute(
             f"SELECT m.auteur FROM doute_message m JOIN doute d ON d.id = m.doute_id "
-            f"WHERE d.releve_id IN ({', '.join('?' * len(ids))})", ids)]
+            f"WHERE d.releve_id IN ({marques})", ids)]
+        for d in conn.execute(f"SELECT ouvert_par, leve_par FROM doute "
+                              f"WHERE releve_id IN ({marques})", ids):
+            auteurs += [d[0], d[1]]
     noms = noms_lisibles(conn, auteurs)
     partages = collectifs(conn, auteurs)
     versions = {}
@@ -204,8 +228,9 @@ def vues(conn, portee, lignes) -> list:
                                         (album, *params)).fetchone() is not None
         act = grilles.activation(conn, projet_d_album(conn, album), r["grille_id"])
         modifiable = ecrit[album] and act is not None and act["version_id"] == r["version_id"]
+        ouvert, leves = doutes_du_releve(conn, r["id"], noms, partages)
         sortie.append(vue_releve(conn, r, modifiable=modifiable, noms=noms, partages=partages,
-                                 doute=doute_ouvert(conn, r["id"], noms, partages),
+                                 doute=ouvert, doutes_leves=leves,
                                  version=versions.get(r["version_id"])))
     return sortie
 
@@ -655,8 +680,9 @@ def releves_de_la_planche(planche_id: int, conn: sqlite3.Connection = Depends(db
     leur passage, leurs qualificatifs, leur lien (et le texte d'une région liée perdue),
     leur état DÉRIVÉ et ses causes, leur auteur et son nom lisible, `collectif` (un compte
     partagé), `modifiable` (la grille active dans leur version, l'album écrit), leur doute
-    ouvert et son fil ; et les PASSES de la planche, chacune signée (R13). À qui LIT la
-    planche (404 sinon) : lire un relevé, c'est lire l'album."""
+    ouvert et son fil, leurs doutes LEVÉS (qui, quand, comment, et leur fil : la Synthèse ›
+    À revoir de la page Annotation les relit) ; et les PASSES de la planche, chacune signée
+    (R13). À qui LIT la planche (404 sinon) : lire un relevé, c'est lire l'album."""
     _get_planche(conn, portee, planche_id)
     lignes = conn.execute(
         "SELECT * FROM releves_effectifs WHERE planche_id = ? OR region_id IN "
@@ -702,14 +728,7 @@ def _vue_doute(conn, doute_id: int) -> dict:
     messages = conn.execute("SELECT * FROM doute_message WHERE doute_id = ? ORDER BY id",
                             (doute_id,)).fetchall()
     logins = [d["ouvert_par"], d["leve_par"], *(m["auteur"] for m in messages)]
-    noms, partages = noms_lisibles(conn, logins), collectifs(conn, logins)
-    return {"id": d["id"], "releve_id": d["releve_id"], "ouvert_par": d["ouvert_par"],
-            "ouvert_le": d["ouvert_le"], "leve_par": d["leve_par"], "leve_le": d["leve_le"],
-            "issue": d["issue"],
-            "messages": [{"id": m["id"], "auteur": m["auteur"],
-                          "auteur_nom": noms.get(m["auteur"]) if m["auteur"] else None,
-                          "collectif": m["auteur"] in partages, "date": m["date"],
-                          "texte": m["texte"]} for m in messages]}
+    return vue_doute(d, messages, noms_lisibles(conn, logins), collectifs(conn, logins))
 
 
 def _doute_a_ecrire(conn, portee, doute_id: int):

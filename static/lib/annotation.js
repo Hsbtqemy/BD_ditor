@@ -20,8 +20,9 @@
    commit 3 la désignation des mots et la pose (passage, couloirs, « Porte sur », la cible
    d'un geste et ce qu'il fait selon ce qui est déjà posé, la liste, « Relevés : ▾ », la
    cardinalité) ; le commit 4 « terminée » et le parcours (ses étapes DÉRIVÉES des cibles de
-   la grille, « Suivante » et « à faire seulement », les marques de la minicarte). Le
-   décompte s'y ajoutera, au même endroit.
+   la grille, « Suivante » et « à faire seulement », les marques de la minicarte) ; le
+   commit 5 le doute et la Synthèse (les causes en mots, « À revoir », les relevés de la
+   planche par case, le décompte).
 
    CE N'EST PAS UNE GARDE. Tout ce qui suit lit ce que le serveur a déjà décidé : les
    régions d'une planche qu'on lit, leurs citations, le statut de relecture. */
@@ -1049,6 +1050,187 @@
     return out;
   }
 
+  /* ── Commit 5 : le doute et la Synthèse ── */
+
+  /* Les CAUSES de l'état d'un relevé, en mots courts — celles que la vue `releves_effectifs`
+     dérive et que la route rend (`causes`), dans l'ordre où elle les rend. Une cause
+     inconnue se dit telle quelle : l'écran ne la tait pas. */
+  const CAUSES = {
+    mot_perdu: "un mot désigné n'est plus dans le texte",
+    texte_change: "le texte a changé depuis la pose",
+    lien_perdu: "la zone liée a disparu",
+    type_change: "la zone a changé de sorte",
+    entree_absente: "l'entrée n'est plus dans la grille",
+    precision_manquante: "précision attendue",
+    lien_manquant: "lien attendu vers une autre zone",
+  };
+
+  function causesEnMots(r) {
+    return ((r && r.causes) || []).map((c) => CAUSES[c] || String(c));
+  }
+
+  /* Ce que le relevé DÉSIGNAIT à sa pose : le passage tel qu'il a été ancré — les formes
+     gardées sur chaque mot, ses trous dits « … » —, même quand le texte a changé depuis. */
+  function passageAncre(r) {
+    const m = motsDuReleve(r);
+    return m.length ? texteDuPassage((r && r.mots) || [], m) : "";
+  }
+
+  /* Comment un doute a été levé, en un mot. */
+  const ISSUES = { garde: "gardé", change: "changé", retire: "retiré" };
+  function issueEnMots(issue) { return ISSUES[issue] || String(issue || ""); }
+
+  /* « Changer… » sur un doute (H5, Hugo, 2026-10-27) se fait EN PLACE pour une entrée à
+     variantes — une autre variante, puis la levée « change » ; pour toute autre entrée,
+     l'écran dit « retirez, puis posez l'autre ». Une entrée à une seule variante n'a rien
+     à changer en place. */
+  function changerEnPlace(entree) {
+    return !!entree && entree.forme === "variantes" && (entree.variantes || []).length > 1;
+  }
+
+  /* Une date de SQLite (`datetime('now')`, en UTC sans le dire : « 2026-10-28 12:30:00 »)
+     en ISO lisible par `Date` comme de l'UTC. Une date qui porte déjà son décalage le
+     garde ; une chaîne illisible rend `null`. */
+  function isoDeSqlite(s) {
+    const t = String(s === null || s === undefined ? "" : s).trim();
+    const m = t.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:?\d{2})?$/);
+    if (!m) return null;
+    return `${m[1]}T${m[2]}${m[3] || "Z"}`;
+  }
+
+  /* L'ORDRE DE LECTURE d'un relevé sur la planche : sa case dans le rangement, la place de
+     sa zone dans la case (la case elle-même d'abord), son premier mot, son identifiant. Un
+     relevé de la SURFACE va après toutes les cases ; un relevé dont la région n'est plus
+     sur la planche, après eux. */
+  function cleDeLecture(rangement, r) {
+    const l = Array.isArray(rangement) ? rangement : [];
+    const m = motsDuReleve(r);
+    const mot = m.length ? m[0] : -1;
+    if (r.region_id === null || r.region_id === undefined) return [l.length, 0, mot, r.id];
+    for (let i = 0; i < l.length; i++) {
+      if (l[i].case.id === r.region_id) return [i, -1, mot, r.id];
+      const j = (l[i].zones || []).findIndex((z) => z.id === r.region_id);
+      if (j >= 0) return [i, j, mot, r.id];
+    }
+    return [l.length + 1, 0, mot, r.id];
+  }
+
+  function parLecture(rangement) {
+    return (a, b) => {
+      const x = cleDeLecture(rangement, a), y = cleDeLecture(rangement, b);
+      for (let k = 0; k < x.length; k++) if (x[k] !== y[k]) return x[k] - y[k];
+      return 0;
+    };
+  }
+
+  /* SYNTHÈSE › À REVOIR (ANN-6 ; note §8) : les relevés de la planche qui demandent qu'on y
+     revienne, en quatre groupes rangés dans l'ordre de lecture — les DOUTES ouverts ; les
+     relevés À REVOIR (le ré-ancrage, un lien perdu, une sorte ou une entrée qui ne
+     conviennent plus) ; ceux À COMPLÉTER (une précision, un lien attendus) ; les doutes
+     LEVÉS, un par doute, du plus récent au plus ancien dans chaque relevé. Un relevé en
+     doute ET à revoir est dans les deux groupes : ce sont deux raisons d'y revenir. `total` :
+     combien de relevés distincts attendent (un doute levé n'attend plus rien). */
+  function aRevoir(releves, rangement) {
+    const l = (Array.isArray(releves) ? releves : []).slice().sort(parLecture(rangement));
+    const doutes = l.filter((r) => r.doute);
+    const revoir = l.filter((r) => r.etat === "a_revoir");
+    const completer = l.filter((r) => r.etat === "a_completer");
+    const leves = l.flatMap((r) => (r.doutes_leves || []).slice().reverse()
+      .map((d) => ({ releve: r, doute: d })));
+    const attendent = new Set([...doutes, ...revoir, ...completer].map((r) => r.id));
+    return { doutes, revoir, completer, leves, total: attendent.size };
+  }
+
+  /* SYNTHÈSE › RELEVÉS : toute la planche, rangée par CASE dans l'ordre de lecture (« Case c3
+     · 9 »), puis la planche (la surface) — tranché par Hugo sur la v3, « à l'échelle de la
+     planche, c'est excellent ». Rend `[{ cle, caseIx, surface, releves }]` sans groupe
+     vide ; `caseIx` est le rang de la case dans le rangement (`null` pour la surface, et
+     pour ce qui n'est plus sur la planche : `cle: "ailleurs"`). */
+  function relevesParCase(rangement, releves) {
+    const l = Array.isArray(rangement) ? rangement : [];
+    const tries = (Array.isArray(releves) ? releves : []).slice().sort(parLecture(rangement));
+    const groupes = new Map();
+    for (const r of tries) {
+      const i = cleDeLecture(rangement, r)[0];
+      const cle = i < l.length ? `case-${i}` : i === l.length ? "planche" : "ailleurs";
+      if (!groupes.has(cle)) {
+        groupes.set(cle, { cle, caseIx: i < l.length ? i : null, surface: cle === "planche",
+                           releves: [] });
+      }
+      groupes.get(cle).releves.push(r);
+    }
+    return [...groupes.values()];
+  }
+
+  /* SYNTHÈSE › DÉCOMPTE d'une grille (H6, 2026-10-27 : dans la Synthèse seulement), sur des
+     relevés déjà choisis (la zone et son contexte, ou toute la planche) : le total, puis des
+     LIGNES à plat dans l'ordre du plan — chaque rubrique qui compte, ses entrées, leurs
+     variantes et leurs qualificatifs, puis ses sous-rubriques. Un relevé à qualificatifs
+     compte UNE fois son phénomène, et une fois chacun de ses qualificatifs (la maquette v3).
+     Ce qui ne compte pas n'a pas de ligne. Une entrée absente du plan (retirée, ou plan
+     illisible) va en dernier, sous sa clé. Rend `{ total, lignes: [{ sorte, cle, libelle,
+     niveau, n }] }` — `sorte` : rubrique · entree · variante · qualificatif. */
+  function decompte(releves, grilleId, plan) {
+    const siens = (Array.isArray(releves) ? releves : []).filter((r) => r.grille_id === grilleId);
+    const parEntree = new Map();
+    for (const r of siens) {
+      if (!parEntree.has(r.entree_cle)) parEntree.set(r.entree_cle, { n: 0, v: new Map(), q: new Map() });
+      const x = parEntree.get(r.entree_cle);
+      x.n += 1;
+      if (r.variante_cle) x.v.set(r.variante_cle, (x.v.get(r.variante_cle) || 0) + 1);
+      for (const q of new Set(r.qualificatifs || [])) x.q.set(q, (x.q.get(q) || 0) + 1);
+    }
+    const listes = new Map(((plan && plan.listes) || []).map((l) => [l.cle, l]));
+    const lignes = [];
+    const vues = new Set();
+    const lignesEntree = (e, niveau) => {
+      const x = parEntree.get(e.cle);
+      if (!x) return;
+      vues.add(e.cle);
+      lignes.push({ sorte: "entree", cle: e.cle, libelle: e.libelle, niveau, n: x.n });
+      for (const v of e.variantes || []) {
+        const k = x.v.get(v.cle);
+        if (k) lignes.push({ sorte: "variante", cle: v.cle, libelle: v.libelle, niveau: niveau + 1, n: k });
+      }
+      const liste = listes.get(e.liste_cle);
+      for (const q of (liste && liste.qualificatifs) || []) {
+        const k = x.q.get(q.cle);
+        if (k) lignes.push({ sorte: "qualificatif", cle: q.cle, libelle: q.libelle, niveau: niveau + 1, n: k });
+      }
+    };
+    const n = compter(siens, grilleId, plan);
+    const visiter = (noeud, niveau) => {
+      const total = n.parRubrique.get(noeud.cle) || 0;
+      if (!total) return;
+      lignes.push({ sorte: "rubrique", cle: noeud.cle, libelle: noeud.libelle, niveau, n: total });
+      for (const e of noeud.entrees) lignesEntree(e, niveau + 1);
+      for (const x of noeud.enfants) visiter(x, niveau + 1);
+    };
+    if (plan) arbre(plan).forEach((x) => visiter(x, 0));
+    for (const [cle, x] of parEntree) {
+      if (vues.has(cle)) continue;
+      lignes.push({ sorte: "entree", cle, libelle: cle, niveau: 0, n: x.n });
+    }
+    return { total: siens.length, lignes };
+  }
+
+  /* « ZONES TERMINÉES n / N » d'une grille sur la planche : les étapes de son parcours (ses
+     cibles, `parcours`) et celles que la passe de TOUTE la grille (ou de toutes ses
+     rubriques de tête) dit terminées. `garder(etape)` restreint les étapes comptées (la zone
+     et son contexte) ; sans lui, toute la planche. Le rangement doit porter la case pseudo
+     si la grille vise la planche (`assurerPlanche`). */
+  function zonesTerminees(rangement, plan, passes, grilleId, plancheId, garder) {
+    const l = Array.isArray(rangement) ? rangement : [];
+    const et = parcours(l, plan).filter((e) => !garder || garder(e));
+    let faites = 0;
+    for (const e of et) {
+      const c = l[e.caseIx];
+      const zone = e.zoneId === null ? c.case : (c.zones || []).find((z) => z.id === e.zoneId);
+      if (zone && terminee(passes, cibleDePasse(zone, plancheId), grilleId, "", plan).terminee) faites += 1;
+    }
+    return { n: faites, total: et.length };
+  }
+
   return { TYPES_TEXTE, CLES_ADRESSE, CLE_RELEVES, estTexte, nomType, deLa, casesDeLaPlanche,
            etiquette, etiquettesDeLaCase, situer, libellePlanche, preparation, adresse,
            lireAdresse, lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
@@ -1061,6 +1243,8 @@
            remplacementCardinalite, creerDansLeFiltre, vuDuReleve, entreeNeuve,
            ciblesVisees, visePlanche, assurerPlanche, parcours, rangDansParcours,
            suivanteDuParcours, cibleDePasse, passesSurLaCible, rubriquesDeTete, terminee,
-           signataires, aRouvrir, caseTerminee, casesEnDoute };
+           signataires, aRouvrir, caseTerminee, casesEnDoute, CAUSES, causesEnMots,
+           passageAncre, issueEnMots, changerEnPlace, isoDeSqlite, cleDeLecture, aRevoir,
+           relevesParCase, decompte, zonesTerminees };
 
 });

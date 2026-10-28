@@ -39,14 +39,40 @@
        La planche et son Contexte · la case agrandie · la grille. Rien n'y change de hauteur
        quand on passe d'une case ou d'une zone à l'autre (Hugo, 2026-10-14). -->
   <main id="annot" class="annot">
-    <aside id="an-gauche" class="an-col an-gauche" aria-labelledby="an-mini-titre">
-      <h2 class="an-titre" id="an-mini-titre">Planche</h2>
-      <div id="an-mini" class="an-mini" title="Choisir une case"></div>
-      <section class="an-ctx" aria-labelledby="an-ctx-titre">
-        <h2 class="an-titre" id="an-ctx-titre"
-            title="Ce qui n'est pas du vocabulaire : il se lit ici, et s'écrit dans l'Atelier">Contexte</h2>
-        <dl id="an-ctx-corps" class="an-ctx-corps"></dl>
-      </section>
+    <!-- Deux vues de la colonne de gauche (ANN-6, 2026-10-14 : « Vue planche et vue synthèse
+         du travail effectué ») : la planche et son Contexte ; la Synthèse (commit 5) — les
+         relevés de la planche par case, ce qui est à revoir, le décompte. -->
+    <aside id="an-gauche" class="an-col an-gauche" aria-label="Planche et synthèse">
+      <div class="an-gauche-onglets" role="tablist" aria-label="Planche ou synthèse">
+        <button type="button" role="tab" id="an-ong-planche" class="ghost an-onglet"
+                aria-selected="true" aria-controls="an-p-planche">Planche</button>
+        <button type="button" role="tab" id="an-ong-synthese" class="ghost an-onglet"
+                aria-selected="false" aria-controls="an-p-synthese" tabindex="-1"
+                title="Les relevés de la planche, ce qui est à revoir, le décompte">Synthèse<span
+                id="an-n-revoir" class="an-n"></span></button>
+      </div>
+      <div id="an-p-planche" class="an-panneau" role="tabpanel" aria-labelledby="an-ong-planche">
+        <h2 class="an-titre" id="an-mini-titre">Planche</h2>
+        <div id="an-mini" class="an-mini" title="Choisir une case"></div>
+        <section class="an-ctx" aria-labelledby="an-ctx-titre">
+          <h2 class="an-titre" id="an-ctx-titre"
+              title="Ce qui n'est pas du vocabulaire : il se lit ici, et s'écrit dans l'Atelier">Contexte</h2>
+          <dl id="an-ctx-corps" class="an-ctx-corps"></dl>
+        </section>
+      </div>
+      <div id="an-p-synthese" class="an-panneau" role="tabpanel" aria-labelledby="an-ong-synthese" hidden>
+        <h2 class="sr-only" id="an-syn-titre">Synthèse de la planche</h2>
+        <div id="an-syn-vues" class="an-syn-vues" role="group" aria-labelledby="an-syn-titre">
+          <button type="button" class="ghost small an-syn-vue" data-syn="releves" aria-pressed="true"
+                  title="Tous les relevés de la planche, case par case, dans l'ordre de lecture">Relevés</button>
+          <button type="button" class="ghost small an-syn-vue" data-syn="revoir" aria-pressed="false"
+                  title="Les doutes, les relevés à revoir et à compléter, les doutes levés">À revoir<span
+                  id="an-syn-n" class="an-n"></span></button>
+          <button type="button" class="ghost small an-syn-vue" data-syn="decompte" aria-pressed="false"
+                  title="Combien de relevés, par grille, rubrique, entrée, variante et qualificatif">Décompte</button>
+        </div>
+        <div id="an-syn-corps" class="an-syn-corps"></div>
+      </div>
     </aside>
 
     <section id="an-zone" class="an-col an-zone" aria-labelledby="an-tete-case">

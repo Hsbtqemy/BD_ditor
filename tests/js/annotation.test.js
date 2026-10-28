@@ -689,3 +689,148 @@ test("les marques de la minicarte : case terminée, doute ouvert", () => {
   assert.deepEqual([...doutes].sort(), [1, 2]);
   assert.deepEqual([...A.casesEnDoute(RANGEMENT, [{ region_id: 2, doute: {} }])], [1]);
 });
+
+/* ── Commit 5 : le doute et la Synthèse ── */
+const rel5 = (id, extra = {}) => ({ id, grille_id: 1, region_id: 11, planche_id: null,
+                                   entree_cle: "cri", variante_cle: null, qualificatifs: [],
+                                   mots: [], etat: "normal", causes: [], doute: null,
+                                   doutes_leves: [], ...extra });
+const desMots = (...rangs) => rangs.map((r, i) => ({ position: i, rang: r, forme: `m${r}` }));
+
+test("les causes de l'état, en mots, dans l'ordre du serveur ; une inconnue se dit", () => {
+  assert.deepEqual(A.causesEnMots(rel5(1, { causes: ["texte_change", "mot_perdu"] })),
+                   ["le texte a changé depuis la pose", "un mot désigné n'est plus dans le texte"]);
+  assert.deepEqual(A.causesEnMots(rel5(1, { causes: ["precision_manquante", "lien_manquant"] })),
+                   ["précision attendue", "lien attendu vers une autre zone"]);
+  assert.deepEqual(A.causesEnMots(rel5(1, { causes: ["lien_perdu", "type_change", "entree_absente"] })),
+                   ["la zone liée a disparu", "la zone a changé de sorte",
+                    "l'entrée n'est plus dans la grille"]);
+  assert.deepEqual(A.causesEnMots(rel5(1, { causes: ["nouvelle"] })), ["nouvelle"]);
+  assert.deepEqual(A.causesEnMots(null), []);
+});
+
+test("ce que le relevé désignait : le passage ancré, ses trous compris", () => {
+  assert.equal(A.passageAncre(rel5(1, { mots: desMots(2, 3, 5) })), "m2 m3 … m5");
+  assert.equal(A.passageAncre(rel5(1, { mots: [] })), "");
+});
+
+test("comment un doute a été levé ; « Changer… » en place pour une entrée à variantes", () => {
+  assert.equal(A.issueEnMots("garde"), "gardé");
+  assert.equal(A.issueEnMots("change"), "changé");
+  assert.equal(A.issueEnMots("retire"), "retiré");
+  assert.equal(A.issueEnMots("autre"), "autre");
+  const [cri, ton, origine] = PLAN.entrees;
+  assert.equal(A.changerEnPlace(ton), true);
+  assert.equal(A.changerEnPlace(cri), false);
+  assert.equal(A.changerEnPlace(origine), false);
+  assert.equal(A.changerEnPlace({ ...ton, variantes: [ton.variantes[0]] }), false);
+  assert.equal(A.changerEnPlace(null), false);
+});
+
+test("une date de SQLite se lit comme de l'UTC", () => {
+  assert.equal(A.isoDeSqlite("2026-10-28 12:30:00"), "2026-10-28T12:30:00Z");
+  assert.equal(A.isoDeSqlite("2026-10-28T12:30"), "2026-10-28T12:30Z");
+  assert.equal(A.isoDeSqlite("2026-10-28 12:30:00+02:00"), "2026-10-28T12:30:00+02:00");
+  assert.equal(A.isoDeSqlite("2026-10-28"), null);
+  assert.equal(A.isoDeSqlite(null), null);
+  assert.equal(new Date(A.isoDeSqlite("2026-10-28 12:30:00")).getTime(),
+               Date.UTC(2026, 9, 28, 12, 30, 0));
+});
+
+test("Relevés par case : la case, la zone dans la case, le premier mot, puis la surface", () => {
+  const l = [
+    rel5(1, { region_id: 22 }),                                   // case 1, zone 1
+    rel5(2, { region_id: null, planche_id: 9 }),                  // la surface
+    rel5(3, { region_id: 11, mots: desMots(4) }),                 // case 0, zone 0, mot 4
+    rel5(4, { region_id: 11, mots: desMots(1, 2) }),              // case 0, zone 0, mot 1
+    rel5(5, { region_id: 1 }),                                    // la case 0 elle-même
+    rel5(6, { region_id: 999 }),                                  // plus sur la planche
+    rel5(7, { region_id: 13 }),                                   // case 0, zone 2
+  ];
+  const g = A.relevesParCase(RANGEMENT, l);
+  assert.deepEqual(g.map((x) => [x.cle, x.caseIx, x.surface, x.releves.map((r) => r.id)]), [
+    ["case-0", 0, false, [5, 4, 3, 7]], ["case-1", 1, false, [1]],
+    ["planche", null, true, [2]], ["ailleurs", null, false, [6]]]);
+  assert.deepEqual(A.relevesParCase(RANGEMENT, []), []);
+  // Sans mots, le relevé de la zone entière passe avant ceux de ses mots ; à égalité, l'id.
+  assert.deepEqual(A.relevesParCase(RANGEMENT, [rel5(8, { mots: desMots(0) }), rel5(9), rel5(7)])[0]
+    .releves.map((r) => r.id), [7, 9, 8]);
+});
+
+test("À revoir : doutes, à revoir, à compléter, doutes levés — et combien attendent", () => {
+  const leve = (id) => ({ id, issue: "garde" });
+  const l = [
+    rel5(1, { region_id: 22, doute: { id: 10 }, etat: "a_revoir", causes: ["mot_perdu"] }),
+    rel5(2, { region_id: 11, etat: "a_completer", causes: ["precision_manquante"] }),
+    rel5(3, { region_id: 11, doute: { id: 11 }, doutes_leves: [leve(5), leve(6)] }),
+    rel5(4, { region_id: 13, etat: "a_revoir" }),
+    rel5(5, { region_id: 11, doutes_leves: [leve(7)] }),
+    rel5(6, { region_id: 11 }),
+  ];
+  const v = A.aRevoir(l, RANGEMENT);
+  assert.deepEqual(v.doutes.map((r) => r.id), [3, 1]);                 // ordre de lecture
+  assert.deepEqual(v.revoir.map((r) => r.id), [4, 1]);
+  assert.deepEqual(v.completer.map((r) => r.id), [2]);
+  assert.deepEqual(v.leves.map((x) => [x.releve.id, x.doute.id]), [[3, 6], [3, 5], [5, 7]]);
+  assert.equal(v.total, 4);                                            // 1, 2, 3, 4 : une fois chacun
+  const vide = A.aRevoir([rel5(9)], RANGEMENT);
+  assert.equal(vide.total, 0);
+  assert.deepEqual([vide.doutes, vide.revoir, vide.completer, vide.leves], [[], [], [], []]);
+});
+
+test("le décompte : rubriques, entrées, variantes, qualificatifs, et ce qui n'est pas au plan", () => {
+  const l = [
+    rel5(1, { entree_cle: "cri" }), rel5(2, { entree_cle: "cri" }),
+    rel5(3, { entree_cle: "ton", variante_cle: "crie" }),
+    rel5(4, { entree_cle: "ton", variante_cle: "crie" }),
+    rel5(5, { entree_cle: "origine", qualificatifs: ["objet", "hors-champ"] }),
+    rel5(6, { entree_cle: "origine", qualificatifs: ["objet"] }),
+    rel5(7, { entree_cle: "disparue" }),
+    rel5(8, { entree_cle: "cri", grille_id: 2 }),                       // une autre grille
+  ];
+  const d = A.decompte(l, 1, PLAN);
+  assert.equal(d.total, 7);
+  assert.deepEqual(d.lignes.map((x) => [x.sorte, x.cle, x.niveau, x.n]), [
+    ["rubrique", "sons", 0, 4],
+    ["rubrique", "sons > voix", 1, 4],
+    ["entree", "cri", 2, 2],
+    ["entree", "ton", 2, 2],
+    ["variante", "crie", 3, 2],
+    ["rubrique", "provenance", 0, 2],
+    ["entree", "origine", 1, 2],
+    ["qualificatif", "objet", 2, 2],
+    ["qualificatif", "hors-champ", 2, 1],
+    ["entree", "disparue", 0, 1],
+  ]);
+  assert.equal(d.lignes.find((x) => x.cle === "crie").libelle, "crié");
+  assert.equal(d.lignes.find((x) => x.cle === "hors-champ").libelle, "hors champ");
+  assert.equal(d.lignes.find((x) => x.cle === "sons > voix").libelle, "Voix");
+  // Un qualificatif répété sur un même relevé ne compte qu'une fois.
+  assert.equal(A.decompte([rel5(1, { entree_cle: "origine", qualificatifs: ["objet", "objet"] })], 1, PLAN)
+    .lignes.find((x) => x.cle === "objet").n, 1);
+  // Sans plan, les entrées sous leur clé.
+  assert.deepEqual(A.decompte(l, 2, null), { total: 1, lignes: [
+    { sorte: "entree", cle: "cri", libelle: "cri", niveau: 0, n: 1 }] });
+  assert.deepEqual(A.decompte([], 1, PLAN), { total: 0, lignes: [] });
+});
+
+test("zones terminées n / N : les étapes du parcours que la passe de toute la grille dit faites", () => {
+  const plan = { porte_sur: [], rubriques: [{ cle: "a", parent_cle: null }],
+                 entrees: [{ cle: "e", cibles: ["mots"], retiree: false }] };
+  const pa = (region, rk) => ({ grille_id: 1, region_id: region, planche_id: null, rubrique_cle: rk });
+  // Le parcours : 11, 13, 22.
+  assert.deepEqual(A.zonesTerminees(RANGEMENT, plan, [], 1, 9), { n: 0, total: 3 });
+  assert.deepEqual(A.zonesTerminees(RANGEMENT, plan, [pa(11, ""), pa(22, "a")], 1, 9),
+                   { n: 2, total: 3 });                                // la rubrique de tête unique suffit
+  assert.deepEqual(A.zonesTerminees(RANGEMENT, plan, [pa(11, ""), { ...pa(13, ""), grille_id: 2 }], 1, 9),
+                   { n: 1, total: 3 });
+  assert.deepEqual(A.zonesTerminees(RANGEMENT, plan, [pa(11, ""), pa(22, "")], 1, 9,
+                                    (e) => e.caseIx === 0), { n: 1, total: 2 });
+  // La planche : sa passe se lit sur la surface.
+  const planche = { porte_sur: ["planche"], rubriques: [], entrees: [] };
+  const avec = A.assurerPlanche(RANGEMENT, 10, 10);
+  assert.deepEqual(A.zonesTerminees(avec, planche,
+                                    [{ grille_id: 1, region_id: null, planche_id: 9, rubrique_cle: "" }], 1, 9),
+                   { n: 1, total: 1 });
+  assert.deepEqual(A.zonesTerminees(avec, planche, [], 1, 9), { n: 0, total: 1 });
+});

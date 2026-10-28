@@ -9,7 +9,7 @@ import sqlite3
 
 import pytest
 
-from grilles_decor import ANA, LEA, STAG, TP, ZOE, grille_active, monter, ok
+from grilles_decor import ANA, LEA, OLGA, STAG, TP, ZOE, grille_active, monter, ok
 
 
 @pytest.fixture
@@ -124,6 +124,45 @@ def test_la_planche_rend_le_doute_ouvert_et_son_fil(client, decor):
     _lever(client, d["id"], STAG, "garde")
     lus = ok(client.get(f"/api/planches/{decor['planche']}/releves", headers=ANA))
     assert lus["releves"][0]["doute"] is None
+
+
+def test_la_planche_rend_les_doutes_leves_avec_qui_quand_et_comment(client, decor):
+    """Tranche 2, jalon 2 — la Synthèse › À revoir relit les doutes LEVÉS : qui l'a levé (un
+    login, son nom lisible, un compte partagé dit comme tel), quand, comment, et son fil.
+    Un lecteur les lit aussi (Hugo, 2026-10-26 : les lecteurs voient les auteurs et les fils)."""
+    # Olga lève sans avoir rien écrit dans le fil : son nom se lit par la levée seule.
+    olga = {**OLGA, "Remote-Name": "Olga Proprio"}
+    client.get("/api/moi", headers=olga)
+    d1 = _douter(client, decor, STAG, "Un cri ?")
+    _lever(client, d1["id"], olga, "garde", vu={"doute": "ouvert"})
+    d2 = _douter(client, decor, STAG, "Encore ?")
+    ok(client.post(f"/api/doutes/{d2['id']}/messages", headers=TP, json={"texte": "Oui."}), 201)
+    _lever(client, d2["id"], TP, "change")
+    d3 = _douter(client, decor, LEA, "Et maintenant ?")
+    lus = ok(client.get(f"/api/planches/{decor['planche']}/releves", headers=ANA))
+    (x,) = lus["releves"]
+    assert x["doute"]["id"] == d3["id"] and x["doute"]["leve_par"] is None
+    assert x["doute"]["ouvert_par"] == "lea" and x["doute"]["ouvert_par_nom"] == "Lea Responsable"
+    assert [(v["id"], v["issue"], v["leve_par"]) for v in x["doutes_leves"]] == [
+        (d1["id"], "garde", "olga"), (d2["id"], "change", "groupe-tp")]
+    premier, second = x["doutes_leves"]
+    assert premier["leve_par_nom"] == "Olga Proprio" and premier["leve_par_collectif"] is False
+    assert premier["leve_le"] and premier["ouvert_par_nom"] == "Stagiaire Une"
+    assert [m["texte"] for m in premier["messages"]] == ["Un cri ?"]
+    assert second["leve_par_collectif"] is True
+    assert [(m["texte"], m["collectif"]) for m in second["messages"]] == [
+        ("Encore ?", False), ("Oui.", True)]
+    # La réponse d'une levée porte les mêmes clés que la planche.
+    leve = _lever(client, d3["id"], STAG, "garde")
+    assert leve["leve_par_nom"] == "Stagiaire Une" and leve["ouvert_par_nom"] == "Lea Responsable"
+    lus = ok(client.get(f"/api/planches/{decor['planche']}/releves", headers=ANA))
+    assert lus["releves"][0]["doute"] is None
+    assert [v["id"] for v in lus["releves"][0]["doutes_leves"]] == [d1["id"], d2["id"], d3["id"]]
+
+
+def test_un_releve_sans_doute_rend_une_liste_vide(client, decor):
+    lus = ok(client.get(f"/api/planches/{decor['planche']}/releves", headers=STAG))
+    assert lus["releves"][0]["doute"] is None and lus["releves"][0]["doutes_leves"] == []
 
 
 # --------------------------------------------------------------------------- #

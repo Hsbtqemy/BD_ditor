@@ -25,7 +25,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 from playwright.sync_api import expect  # noqa: E402
 
-from conftest import ECRITURE, make_png  # noqa: E402
+from conftest import ECRITURE, du_projet, make_png  # noqa: E402
 from grilles_decor import grille_active_vivante  # noqa: E402
 
 pytestmark = pytest.mark.e2e
@@ -619,3 +619,327 @@ def test_ctrl_z_annule_une_pose(page, decor):
     page.locator("#an-filtre").press("Control+z")
     page.wait_for_timeout(300)
     assert envois == []
+
+
+# --------------------------------------------------------------------------- #
+# Le doute et la Synthèse (commit 5)
+# --------------------------------------------------------------------------- #
+def _poser(d, **corps):
+    with _http(d) as c:
+        r = c.post("/api/releves", json={"grille_id": d["grille"], "version": 1, **corps})
+        assert r.status_code == 201, r.text
+        return r.json()
+
+
+def _douter_api(d, releve_id, texte):
+    with _http(d) as c:
+        r = c.post(f"/api/releves/{releve_id}/doutes", json={"texte": texte})
+        assert r.status_code == 201, r.text
+        return r.json()
+
+
+def _cri(d):
+    return next(r for r in _releves(d) if r["entree_cle"] == "cri")
+
+
+def _synthese(page, vue):
+    page.locator("#an-ong-synthese").click()
+    expect(page.locator("#an-p-synthese")).to_be_visible()
+    page.locator(f'#an-syn-vues [data-syn="{vue}"]').click()
+    expect(page.locator(f'#an-syn-vues [data-syn="{vue}"]')).to_have_attribute("aria-pressed", "true")
+
+
+def test_douter_dans_la_boite_du_guide_puis_ajouter_au_fil(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    hauteur = lambda: page.evaluate(  # noqa: E731
+        "() => Math.round(document.querySelector('#an-guide').getBoundingClientRect().height)")
+    avant = hauteur()
+    rid = _cri(decor)["id"]
+    douter = page.locator(f'#an-poses-liste [data-douter="{rid}"]')
+    expect(douter).to_be_visible()
+    douter.click()
+    champ = page.locator("#an-dt-texte")
+    expect(champ).to_be_focused()
+    expect(page.locator("#an-dt-titre")).to_have_text("? Douter de « cri »")
+    assert hauteur() == avant
+    # Sans commentaire, rien ne part.
+    envois = []
+    page.on("request", lambda r: envois.append(r.url) if "/doutes" in r.url else None)
+    page.locator("#an-dt-envoyer").click()
+    expect(champ).to_have_attribute("aria-invalid", "true")
+    assert envois == []
+    # Le survol d'une entrée ne reprend pas la boîte tant que le formulaire est ouvert : la
+    # saisie garde son champ ET son focus.
+    champ.type("Un juron")
+    page.locator("#an-plan .an-ent-btn", has_text="origine du son").hover()
+    page.locator("#an-plan .an-ent-btn", has_text="cri").first.hover()
+    expect(champ).to_be_focused()
+    expect(champ).to_have_value("Un juron")
+    champ.fill("Un juron, plutôt ?")
+    with page.expect_response(lambda r: r.request.method == "POST"
+                              and r.url.endswith(f"/api/releves/{rid}/doutes")) as rep:
+        champ.press("Control+Enter")
+    assert rep.value.status == 201
+    assert rep.value.request.post_data_json == {"texte": "Un juron, plutôt ?"}
+    expect(page.locator("#an-dt-texte")).to_have_count(0)
+    expect(page.locator("#an-poses-liste .an-etat-doute")).to_have_count(1)
+    expect(page.locator('#an-mini .an-mz[data-case="0"]')).to_have_class(re.compile(r"\bdoute\b"))
+    expect(page.locator("#an-n-revoir")).to_have_text(" · 1")
+    # Un second « ? » ajoute au fil du doute ouvert.
+    douter.click()
+    expect(page.locator("#an-dt-titre")).to_have_text("? Ajouter au doute sur « cri »")
+    page.locator("#an-dt-texte").fill("Je penche pour le cri.")
+    page.locator("#an-dt-envoyer").click()
+    expect(page.locator("#an-dt-texte")).to_have_count(0)
+    assert [m["texte"] for m in _cri(decor)["doute"]["messages"]] == [
+        "Un juron, plutôt ?", "Je penche pour le cri."]
+    # Échap referme un formulaire vide, et rend le focus au « ? ».
+    douter.click()
+    page.keyboard.press("Escape")
+    expect(page.locator("#an-dt-texte")).to_have_count(0)
+    expect(douter).to_be_focused()
+
+
+def test_un_doute_a_moitie_ecrit_garde_la_planche(page, decor):
+    with _http(decor) as c:                       # une seconde planche dans l'album
+        p2 = c.post(f"/api/albums/{decor['album']}/import",
+                    files={"file": ("p2.png", make_png(), "image/png")}).json()["id"]
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f'#an-poses-liste [data-douter="{_cri(decor)["id"]}"]').click()
+    page.locator("#an-dt-texte").fill("à moitié")
+    page.locator("#an-planche-choix").select_option(str(p2))
+    expect(page.locator("#toasts")).to_contain_text("en cours d'écriture")
+    expect(page.locator("#an-planche-choix")).to_have_value(str(decor["planche"]))
+    expect(page.locator("#an-dt-texte")).to_have_value("à moitié")
+
+
+def test_a_revoir_repondre_puis_lever_en_gardant(page, decor):
+    rid = _cri(decor)["id"]
+    d = _douter_api(decor, rid, "Un juron ?")
+    _ouvrir(page, decor, decor["bulle"])
+    _synthese(page, "revoir")
+    expect(page.locator("#an-syn-n")).to_have_text(" (1)")
+    corps = page.locator("#an-syn-corps")
+    expect(corps.locator(".an-syn-g-titre", has_text="Doutes ouverts · 1")).to_be_visible()
+    expect(corps.locator(".an-fil-texte")).to_have_text(["Un juron ?"])
+    reponse = page.locator(f"#an-rep-{d['id']}")
+    reponse.fill("Non, un cri.")
+    with page.expect_response(lambda r: r.request.method == "POST"
+                              and r.url.endswith(f"/api/doutes/{d['id']}/messages")) as rep:
+        page.locator(f'[data-repondre="{d["id"]}"]').click()
+    assert rep.value.status == 201
+    expect(corps.locator(".an-fil-texte")).to_have_text(["Un juron ?", "Non, un cri."])
+    expect(page.locator(f"#an-rep-{d['id']}")).to_have_value("")
+    with page.expect_response(lambda r: r.url.endswith(f"/api/doutes/{d['id']}/levee")) as rep:
+        corps.locator('[data-lever="garde"]').click()
+    assert rep.value.status == 200
+    assert rep.value.request.post_data_json == {"issue": "garde", "vu": {"doute": "ouvert"}}
+    expect(corps.locator(".an-syn-g-titre", has_text="Doutes ouverts")).to_have_count(0)
+    leves = corps.locator(".an-syn-g", has=page.locator(".an-syn-g-titre", has_text="Doutes levés · 1"))
+    expect(leves).to_be_visible()
+    expect(leves.locator(".an-rv-ligne")).to_contain_text("— gardé")
+    expect(leves.locator(".an-fil-texte")).to_have_text(["Un juron ?", "Non, un cri."])
+    expect(page.locator("#an-n-revoir")).to_have_text("")
+    r = _cri(decor)
+    assert r["doute"] is None and [x["issue"] for x in r["doutes_leves"]] == ["garde"]
+
+
+def test_changer_en_place_pour_une_variante_sinon_retirer(page, decor):
+    ton = _poser(decor, region_id=decor["bulle"], entree_cle="ton-de-voix", variante_cle="crie")
+    _douter_api(decor, ton["id"], "Plutôt chuchoté ?")
+    _douter_api(decor, _cri(decor)["id"], "Vraiment un cri ?")
+    _ouvrir(page, decor, decor["bulle"])
+    _synthese(page, "revoir")
+    corps = page.locator("#an-syn-corps")
+    item_ton = corps.locator(".an-rv", has=page.locator(f'[data-syn-releve="{ton["id"]}"]'))
+    item_ton.locator("[data-changer]").click()
+    choix = item_ton.locator(".an-rv-changer")
+    expect(choix.locator('[data-changer-v="crie"]')).to_have_attribute("aria-pressed", "true")
+    with page.expect_response(lambda r: r.url.endswith("/levee")) as rep:
+        choix.locator('[data-changer-v="chuchote"]').click()
+    assert rep.value.request.post_data_json["issue"] == "change"
+    apres = next(r for r in _releves(decor) if r["id"] == ton["id"])
+    assert apres["variante_cle"] == "chuchote" and apres["doute"] is None
+    assert [x["issue"] for x in apres["doutes_leves"]] == ["change"]
+    expect(corps.locator(".an-syn-g-titre", has_text="Doutes levés · 1")).to_be_visible()
+    # Une autre entrée ne se change pas en place : « retirez, puis posez l'autre ».
+    rid = _cri(decor)["id"]
+    item_cri = corps.locator(".an-rv", has=page.locator(f'[data-syn-releve="{rid}"]')).first
+    changer = item_cri.locator("[data-changer]")
+    expect(changer).to_have_attribute("aria-disabled", "true")
+    changer.focus()                               # éteint, il reste focalisable et le dit
+    page.keyboard.press("Enter")
+    expect(page.locator("#an-annonce")).to_have_text(re.compile("retirez ce relevé, puis posez l'autre"))
+    item_cri.locator('[data-lever="retire"]').click()
+    expect(corps.locator(f'[data-syn-releve="{rid}"]')).to_have_count(0)
+    assert not [r for r in _releves(decor) if r["entree_cle"] == "cri"]
+
+
+def test_a_revoir_rattacher_aux_mots_designes(page, decor):
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=180,
+                      headers=ECRITURE) as c:     # MILLE disparaît du texte : le cri le perd
+        assert c.put(f"/api/regions/{decor['bulle']}",
+                     json={"ocr_texte": "CENT SABORDS !"}).status_code == 200
+    r = _cri(decor)            # le rang 0 a changé de mot : le texte a changé depuis la pose
+    assert r["etat"] == "a_revoir" and "texte_change" in r["causes"]
+    _ouvrir(page, decor, decor["bulle"])
+    _synthese(page, "revoir")
+    item = page.locator("#an-syn-corps .an-rv", has=page.locator(f'[data-syn-releve="{r["id"]}"]'))
+    expect(item.locator(".an-causes")).to_contain_text("le texte a changé depuis la pose")
+    expect(item).to_contain_text("désignait « MILLE »")
+    _mot(page, 0).click()
+    with page.expect_response(lambda x: x.request.method == "PUT"
+                              and x.url.endswith(f"/api/releves/{r['id']}")) as rep:
+        item.locator("[data-rattacher]").click()
+    assert rep.value.status == 200
+    assert rep.value.request.post_data_json == {"mots": [0], "vu": {"mots": [0]}}
+    r = _cri(decor)
+    assert r["etat"] == "normal" and [m["forme"] for m in r["mots"]] == ["CENT"]
+    expect(page.locator("#an-syn-corps")).to_contain_text("Rien à revoir sur cette planche.")
+
+
+def test_a_completer_la_precision_s_ecrit_dans_a_revoir(page, decor):
+    o = _poser(decor, region_id=decor["bulle"], entree_cle="origine-du-son", mots=[1],
+               qualificatifs=["objet"])
+    _ouvrir(page, decor, decor["bulle"])
+    _synthese(page, "revoir")
+    corps = page.locator("#an-syn-corps")
+    expect(corps.locator(".an-syn-g-titre", has_text="À compléter · 1")).to_be_visible()
+    expect(corps.locator(".an-causes")).to_have_text("précision attendue")
+    champ = page.locator(f"#an-rv-prec-{o['id']}")
+    champ.fill("le salon")
+    champ.press("Enter")
+    expect(corps).to_contain_text("Rien à revoir sur cette planche.")
+    apres = next(r for r in _releves(decor) if r["id"] == o["id"])
+    assert apres["precision"] == "le salon" and apres["etat"] == "normal"
+
+
+def test_synthese_releves_par_case_puis_decompte(page, decor):
+    regard = _poser(decor, region_id=decor["c2"], entree_cle="regard-camera")
+    _poser(decor, planche_id=decor["planche"], entree_cle="ambiance")
+    _poser(decor, region_id=decor["bulle"], entree_cle="ton-de-voix", variante_cle="crie")
+    _ouvrir(page, decor, decor["bulle"])
+    avant = _boites(page)
+    _synthese(page, "releves")
+    corps = page.locator("#an-syn-corps")
+    expect(corps.locator(".an-syn-g-titre")).to_have_text(
+        ["Case c1 · 2", "Case c2 · 1", "La planche · 1"])
+    expect(corps.locator('[data-syn-case="0"]')).to_have_attribute("aria-current", "true")
+    # Un clic ouvre le relevé : sa case, sa zone ; la case en cours suit.
+    corps.locator(f'[data-syn-releve="{regard["id"]}"]').click()
+    expect(page.locator("#an-tete-case")).to_have_text("Case c2")
+    expect(page.locator("#an-tete-zone")).to_have_text("")
+    expect(corps.locator('[data-syn-case="1"]')).to_have_attribute("aria-current", "true")
+    expect(page.locator("#an-guide-contenu .an-g-lib")).to_have_text("regard caméra")
+    assert _boites(page) == avant
+    # Le mot du cri, ouvert depuis la Synthèse, est désigné.
+    corps.locator(f'[data-syn-releve="{_cri(decor)["id"]}"]').click()
+    expect(page.locator("#an-tete-zone")).to_have_text("bulle b1")
+    expect(_mot(page, 0)).to_have_attribute("aria-selected", "true")
+    # Le Décompte : toute la planche, par rubrique, entrée, variante ; zones terminées.
+    page.locator('#an-syn-vues [data-syn="decompte"]').click()
+    expect(corps.locator(".an-dc-titre")).to_contain_text("Signaux · 4")
+    expect(corps.locator(".an-dc-titre")).to_contain_text("zones terminées 0 / 5")
+    lignes = corps.locator(".an-dc-l")
+    expect(lignes.filter(has_text="crié")).to_contain_text("1")
+    expect(lignes.filter(has_text="A. Sons")).to_contain_text("2")
+    # Cette zone : la bulle, sa case et la planche — le regard de c2 n'y est pas.
+    corps.locator('[data-portee="zone"]').click()
+    expect(corps.locator(".an-dc-titre")).to_contain_text("Signaux · 3")
+    expect(corps.locator(".an-dc-titre")).to_contain_text("zones terminées 0 / 3")
+    expect(lignes.filter(has_text="regard caméra")).to_have_count(0)
+    # Le retour à la planche : la minicarte est là, la Synthèse cachée.
+    page.locator("#an-ong-planche").click()
+    expect(page.locator("#an-mini")).to_be_visible()
+    expect(page.locator("#an-p-synthese")).to_be_hidden()
+
+
+def test_les_onglets_de_gauche_au_clavier(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-ong-planche").focus()
+    page.keyboard.press("ArrowRight")
+    expect(page.locator("#an-ong-synthese")).to_be_focused()
+    expect(page.locator("#an-ong-synthese")).to_have_attribute("aria-selected", "true")
+    expect(page.locator("#an-p-synthese")).to_be_visible()
+    page.keyboard.press("Home")
+    expect(page.locator("#an-ong-planche")).to_be_focused()
+    expect(page.locator("#an-p-planche")).to_be_visible()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
+    """Hugo, 2026-10-26 : les lecteurs voient les auteurs et le fil des doutes, gestes en
+    moins — ni « ? », ni « ✕ », ni réponse, ni levée."""
+    admin = {"Remote-User": "decor", "Remote-Name": "Decor Admin", "Remote-Groups": "bd-admins"}
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=180,
+                      headers={**ECRITURE, **admin}) as c:
+        c.get("/api/moi")                         # le nom lisible s'enregistre là
+        cid = c.post("/api/collections", json={"nom": "Étude lue"}).json()["id"]
+        du_projet(c, cid, "utilisateur", "lectrice", headers={**ECRITURE, **admin})
+        assert c.put(f"/api/collections/{cid}/acces", json={
+            "genre": "utilisateur", "principal": "lectrice", "niveau": "lecture"}).status_code == 200
+        aid = c.post("/api/albums", json={"titre": "Lu", "collection_id": cid}).json()["id"]
+        pid = c.post(f"/api/albums/{aid}/import",
+                     files={"file": ("p.png", make_png(800, 1000), "image/png")}).json()["id"]
+        case = c.post(f"/api/planches/{pid}/regions",
+                      json={"type": "case", "x": 20, "y": 20, "w": 700, "h": 900}).json()["id"]
+        bulle = c.post(f"/api/planches/{pid}/regions",
+                       json={"type": "bulle", "x": 60, "y": 60, "w": 200, "h": 120,
+                             "parent_id": case}).json()["id"]
+        c.put(f"/api/regions/{bulle}", json={"ocr_texte": "MILLE SABORDS !"})
+        g = grille_active_vivante(c)
+        r = c.post("/api/releves", json={"region_id": bulle, "grille_id": g["grille_id"],
+                                         "version": 1, "entree_cle": "cri", "mots": [0]})
+        assert r.status_code == 201, r.text
+        assert c.post(f"/api/releves/{r.json()['id']}/doutes",
+                      json={"texte": "Un juron ?"}).status_code == 201
+    page.set_extra_http_headers({"Remote-User": "lectrice"})
+    page.goto(f"{live_server}/annotation?album={aid}&planche={pid}&region={bulle}",
+              wait_until="networkidle")
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_be_visible(timeout=15000)
+    expect(page.locator("#an-poses-liste .an-etat-doute")).to_be_visible()
+    expect(page.locator("#an-poses-liste [data-douter]")).to_have_count(0)
+    expect(page.locator("#an-poses-liste [data-retirer]")).to_have_count(0)
+    _synthese(page, "revoir")
+    corps = page.locator("#an-syn-corps")
+    expect(corps.locator(".an-fil-texte")).to_have_text(["Un juron ?"])
+    expect(corps.locator(".an-fil-qui")).to_have_text(["Decor Admin"])
+    expect(corps.locator("textarea, [data-lever], [data-changer], [data-repondre]")).to_have_count(0)
+
+
+def test_la_synthese_tient_a_320_px(page, decor):
+    """La sonde du reflow mesure la page au repos, Synthèse cachée : ce test l'ouvre, sur
+    « À revoir » qui porte le plus de gestes, et exige qu'aucun élément ne déborde de côté."""
+    _douter_api(decor, _cri(decor)["id"], "Un juron, ou un cri qu'on n'entend pas ?")
+    page.set_viewport_size({"width": 320, "height": 900})
+    _ouvrir(page, decor, decor["bulle"])
+    _synthese(page, "revoir")
+    expect(page.locator("#an-syn-corps [data-lever=garde]")).to_be_visible()
+    dehors = page.evaluate("""() => [...document.querySelectorAll('#an-gauche *')]
+      .filter((x) => { const r = x.getBoundingClientRect();
+                       return r.width && (r.right > innerWidth + 1 || r.left < -1); })
+      .map((x) => x.id || x.className)""")
+    assert not dehors, dehors
+    assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_le_decompte_compte_toutes_les_grilles(page, decor):
+    """« Relevés : ▾ » vaut pour la Synthèse, pas pour le Décompte (ANN-6, 2026-10-22) : un
+    relevé d'une autre grille, absent des Relevés par case, est compté."""
+    with _http(decor) as c:
+        g = grille_active_vivante(c, nom="Lieux", ouverte=True, projet_id=decor["projet"])
+        r = c.post("/api/releves", json={"grille_id": g["grille_id"], "version": 1,
+                                         "region_id": decor["bulle"], "mots": [1],
+                                         "nouvelle_entree": {"libelle": "Moulinsart"}})
+        assert r.status_code == 201, r.text
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f"#an-onglet-{decor['grille']}").click()          # Signaux, pas Lieux
+    expect(page.locator(f"#an-onglet-{decor['grille']}")).to_have_attribute("aria-selected", "true")
+    _synthese(page, "releves")
+    corps = page.locator("#an-syn-corps")
+    expect(corps.locator(".an-syn-g-titre")).to_have_text(["Case c1 · 1"])
+    expect(corps.locator(".an-pose-lib", has_text="Moulinsart")).to_have_count(0)
+    page.locator('#an-syn-vues [data-syn="decompte"]').click()
+    expect(corps.locator(".an-dc-titre", has_text="Lieux · 1")).to_be_visible()
+    expect(corps.locator(".an-dc-titre", has_text="Signaux · 1")).to_be_visible()
+    expect(corps.locator(".an-dc-l", has_text="Moulinsart")).to_have_count(1)

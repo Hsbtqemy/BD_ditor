@@ -163,6 +163,11 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
     assert r_releve.status_code == 201, r_releve.text
     # Un DOUTE ouvert par la sentinelle, et une PASSE marquée par elle : leurs auteurs passent
     # par la même route (le fil d'un doute, qui a marqué une passe).
+    # Un doute LEVÉ par elle d'abord (tranche 2 : la planche rend aussi les doutes levés, et
+    # qui les a levés), puis un second, laissé ouvert.
+    d_leve = client.post(f"/api/releves/{r_releve.json()['id']}/doutes", headers=ident,
+                         json={"texte": "semis levé"}).json()
+    client.post(f"/api/doutes/{d_leve['id']}/levee", headers=ident, json={"issue": "garde"})
     client.post(f"/api/releves/{r_releve.json()['id']}/doutes", headers=ident,
                 json={"texte": "semis"})
     client.put(f"/api/regions/{r['id']}/passes/{grille_id}", headers=ident, json={})
@@ -339,7 +344,8 @@ SORTIES_DECLAREES = {
     ("route", "/api/planches/{planche_id}/releves"): (
         {"login", "nom"},
         "ANN-7, tranche 1 (R13) — les relevés d'une planche, avec leur AUTEUR, son nom lisible, "
-        "qui les a modifiés, et l'auteur de chaque message d'un doute ouvert : la page "
+        "qui les a modifiés, l'auteur de chaque message d'un doute ouvert ou levé, qui a "
+        "ouvert et qui a levé chaque doute (tranche 2, la Synthèse › À revoir) : la page "
         "Annotation dit qui a posé quoi (« les champs d'un relevé », Hugo, 2026-10-22), et un "
         "doute est une conversation signée. Rendue à qui LIT l'album, comme le relevé. Elle "
         "ne sort de l'instance par aucun artefact : rien du relevé ne sort avant la tranche 4."),

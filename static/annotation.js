@@ -10,7 +10,11 @@
    il s'écrit dans l'Atelier, où mène « Ouvrir dans l'Atelier ↗ ». À droite, les grilles
    actives du projet que la collection ne masque pas : leur plan, le filtre, la ligne du
    guide, le guide complet (commit 2). On y désigne des mots, on y pose, change et retire
-   des relevés, et ce qui est posé se lit en bas de la colonne (commit 3).
+   des relevés, et ce qui est posé se lit en bas de la colonne (commit 3) ; « terminée »,
+   le parcours et Ctrl+Z (commit 4). LE JALON 2, commit 5 : le DOUTE (« ? », son formulaire
+   dans la boîte du guide) et la SYNTHÈSE, second onglet de la colonne de gauche — les
+   relevés de la planche par case, « À revoir » (répondre, lever en gardant, en changeant,
+   en retirant ; rattacher ; compléter), le décompte.
 
    LA DISPOSITION NE BOUGE PAS PENDANT LE TRAVAIL (Hugo, 2026-10-14) : trois colonnes, une
    boîte de case de hauteur constante, des blocs de hauteur fixe ; l'aide est en infobulle,
@@ -64,6 +68,13 @@ const S = {
   // « Terminée », le parcours (commit 4)
   passes: [],                  // celles de la planche (`…/releves`)
   aFaire: false,               // « Parcours : à faire seulement »
+  // Le doute et la Synthèse (commit 5)
+  gauche: "planche",           // la vue de gauche : « planche » ou « synthese »
+  synVue: "releves",           // Synthèse › Relevés · À revoir · Décompte
+  decPortee: "planche",        // le Décompte : « zone » (et son contexte) ou « planche »
+  formDoute: null,             // { releveId, texte } : le formulaire dans la boîte du guide
+  reponses: new Map(),         // doute → réponse en cours d'écriture (« À revoir »)
+  changer: null,               // le relevé dont « Changer… » montre les variantes
 };
 let tourContexte = 0;          // la lecture du Contexte la plus récente gagne
 let tourPlanche = 0;           // idem pour une planche
@@ -176,6 +187,8 @@ async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
   S.releves = [];
   S.passes = [];
   S.personnages = new Map();
+  S.changer = null;
+  S.reponses = new Map();
   if (S.planche) {
     $("#an-planche-choix").value = String(S.planche.id);
     const [regions, lus] = await Promise.all([
@@ -199,6 +212,9 @@ async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
   }
   S.caseIx = ou ? ou.caseIx : 0;
   S.zoneId = ou ? ou.zoneId : null;
+  // Un formulaire de doute ne survit qu'avec son relevé (un brouillon non vide garde la
+  // planche : `brouillonEnCours`).
+  if (S.formDoute && !S.releves.some((r) => r.id === S.formDoute.releveId)) S.formDoute = null;
   $("#an-preparee").textContent = S.planche
     ? A.preparation(S.regions, S.planche.relecture_statut) : "";
   rendreMini();
@@ -226,10 +242,11 @@ function choisir(caseIx, zoneId) {
   rendreMots();
   rendreContexte();
   rendreGrille();
+  rendreSynthese();
   lirePersonnagesDeLaCase();
   syncAdresse();
   const z = zoneCourante();
-  chargerMots().then(() => {
+  return chargerMots().then(() => {
     if (zoneCourante() === z) { rendreMots(); rendreCorps(); rendreListe(); }
   });
 }
@@ -725,7 +742,9 @@ function rendreResultats(plan, filtre) {
 function rendreGuide() {
   const boite = $("#an-guide-contenu");
   boite.classList.toggle("an-conflit", !!S.conflit);
+  boite.classList.toggle("an-doute-form", !S.conflit && !!S.formDoute);
   if (S.conflit) { boite.replaceChildren(...bandeau()); return; }
+  if (S.formDoute) { boite.replaceChildren(...formulaireDoute()); return; }
   const plan = planDe(grilleOuverte());
   const l = plan && S.guide ? A.ligneDuGuide(plan, S.guide.e, S.guide.v) : null;
   if (!l) { boite.replaceChildren(); return; }
@@ -748,7 +767,7 @@ function rendreGuide() {
 function montrerGuide(e, v) {
   if (S.guide && S.guide.e === e && (S.guide.v || null) === (v || null)) return;
   S.guide = { e, v: v || null };
-  if (S.conflit) return;                 // le bandeau garde la place
+  if (S.conflit || S.formDoute) return;  // le bandeau, ou le doute, garde la place
   rendreGuide();
   for (const b of document.querySelectorAll("#an-plan [data-guide-e]")) {
     b.classList.toggle("guide", b.dataset.guideE === e
@@ -986,14 +1005,20 @@ function rendrePorte() {
 }
 
 /* ── Les mots ── */
-async function chargerMots() {
+let motsEnVol = null;            // { id, tour, promesse } : une lecture par zone à la fois
+function chargerMots() {
   const z = zoneCourante();
-  if (!z || z.pseudo || !A.estTexte(z.type)) { S.mots = null; return; }
-  if (S.mots && S.mots.region_id === z.id) return;
+  if (!z || z.pseudo || !A.estTexte(z.type)) { S.mots = null; return Promise.resolve(); }
+  if (S.mots && S.mots.region_id === z.id) return Promise.resolve();
   const tour = tourPlanche;
-  const d = await apiGet(`/api/regions/${z.id}/mots`).catch(() => null);
-  if (tour !== tourPlanche || !zoneCourante() || zoneCourante().id !== z.id) return;
-  S.mots = d;
+  if (motsEnVol && motsEnVol.id === z.id && motsEnVol.tour === tour) return motsEnVol.promesse;
+  const promesse = apiGet(`/api/regions/${z.id}/mots`).catch(() => null).then((d) => {
+    if (motsEnVol && motsEnVol.promesse === promesse) motsEnVol = null;
+    if (tour !== tourPlanche || !zoneCourante() || zoneCourante().id !== z.id) return;
+    S.mots = d;
+  });
+  motsEnVol = { id: z.id, tour, promesse };
+  return promesse;
 }
 
 /* Les traits sous un mot (ou sous l'espace qui suit un mot) : un `<i>` par couloir, coloré
@@ -1213,6 +1238,7 @@ function apresEcriture() {
   rendreCorps();
   rendreListe();
   marquerMini();
+  rendreSynthese();
 }
 
 function conflitOuvert() {
@@ -1249,8 +1275,11 @@ async function ecrire(g, e, cible, gst, nouvelle) {
     }
   } catch (err) {
     refus(err, { g, e, cible, gst, nouvelle });
+    apresEcriture();
+    return false;
   }
   apresEcriture();
+  return true;
 }
 
 /* Les refus que l'écran sait dire sans rien deviner. */
@@ -1441,6 +1470,8 @@ function itemReleve(r) {
        el("span", { classe: "an-pose-lib", texte: libelle }),
        el("span", { classe: "an-pose-pass", texte: passage }),
        etat ? el("span", { classe: `an-etat an-etat-${r.etat}`, texte: etat }) : null,
+       r.doute ? el("span", { classe: "an-etat an-etat-doute", texte: "doute",
+                              title: "Un doute est ouvert : Synthèse › À revoir" }) : null,
        g && g.id !== S.grilleId ? el("span", { classe: "an-pose-gr", texte: g.nom }) : null));
   if (gestes && e && e.precision) {
     li.append(el("span", { classe: "an-pose-prec" },
@@ -1456,6 +1487,11 @@ function itemReleve(r) {
                              texte: r.lien && r.lien.existe ? "Changer le lien" : "Désigner sur la planche" }));
   }
   if (gestes) {
+    li.append(el("button", { type: "button", classe: "ghost small an-douter", "data-douter": r.id,
+                             "aria-label": `${r.doute ? "Ajouter au doute sur" : "Douter de"} ${libelle}`,
+                             title: r.doute ? "Ajouter un message au doute ouvert"
+                               : "Douter : un commentaire, que l'équipe relit dans Synthèse › À revoir",
+                             texte: "?" }));
     li.append(el("button", { type: "button", classe: "ghost small an-retirer", "data-retirer": r.id,
                              "aria-label": `Retirer ${libelle}`, title: "Retirer ce relevé",
                              texte: "✕" }));
@@ -1484,6 +1520,8 @@ function changerReglage(ids) {
   A.retenirReglage(stockageLocal(), S.login, S.projet, S.reglage);
   rendreMots();
   rendreListe();
+  marquerMini();
+  rendreSynthese();
 }
 
 function stockageLocal() { try { return window.localStorage || null; } catch (e) { return null; } }
@@ -1514,26 +1552,11 @@ function brancherPose() {
   const liste = $("#an-poses-liste");
   liste.addEventListener("click", (e) => {
     const ret = e.target.closest("[data-retirer]");
-    if (ret) {
-      if (conflitOuvert()) return;
-      const r = S.releves.find((x) => x.id === Number(ret.dataset.retirer));
-      if (!r) return;
-      const g = grilleDe(r.grille_id);
-      const plan = planDe(g);
-      const ent = plan && plan.entrees.find((x) => x.cle === r.entree_cle);
-      ecrire(g, ent, null, { action: "retirer", releve: r, vu: A.vuDuReleve(r) });
-      return;
-    }
+    if (ret) { retirerReleve(Number(ret.dataset.retirer)); return; }
+    const dt = e.target.closest("[data-douter]");
+    if (dt) { ouvrirFormDoute(Number(dt.dataset.douter)); return; }
     const lien = e.target.closest("[data-lien]");
-    if (lien) {
-      if (conflitOuvert()) return;
-      const id = Number(lien.dataset.lien);
-      S.designer = S.designer === id ? null : id;
-      document.body.classList.toggle("an-designer", S.designer !== null);
-      if (S.designer !== null) annoncer("Désignez l'autre zone de texte, sur la planche ou dans la case. Échap annule.");
-      rendreListe();
-      return;
-    }
+    if (lien) { basculerDesignation(Number(lien.dataset.lien)); return; }
     const item = e.target.closest("[data-releve].an-pose-btn");
     if (!item) return;
     const r = S.releves.find((x) => x.id === Number(item.dataset.releve));
@@ -1547,22 +1570,10 @@ function brancherPose() {
     }
     montrerGuide(r.entree_cle, r.variante_cle);
   });
-  // La précision attendue : Entrée ou la sortie du champ l'enregistrent, avec `vu`.
-  const precision = (champ) => {
-    const r = S.releves.find((x) => x.id === Number(champ.dataset.releve));
-    if (!r || (champ.value.trim() || null) === (r.precision || null)) return;
-    if (conflitOuvert()) return;
-    const g = grilleDe(r.grille_id);
-    const plan = planDe(g);
-    const ent = plan && plan.entrees.find((x) => x.cle === r.entree_cle);
-    ecrire(g, ent, null, { action: "modifier", releve: r,
-                           corps: { precision: champ.value.trim() || null },
-                           vu: { precision: r.precision || null } });
-  };
   liste.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && e.target.matches(".an-prec")) { e.preventDefault(); precision(e.target); }
+    if (e.key === "Enter" && e.target.matches(".an-prec")) { e.preventDefault(); enregistrerPrecision(e.target); }
   });
-  liste.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) precision(e.target); });
+  liste.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) enregistrerPrecision(e.target); });
   const bouton = $("#an-releves-btn");
   const pop = $("#an-releves-pop");
   bouton.addEventListener("click", () => {
@@ -1582,9 +1593,24 @@ function brancherPose() {
     if (e.target.closest("[data-voir-tout]")) changerReglage(S.grilles.map((g) => g.id));
     else if (e.target.closest("[data-voir-seule]")) changerReglage([]);
   });
-  $("#an-guide-contenu").addEventListener("click", (e) => {
+  const guide = $("#an-guide-contenu");
+  guide.addEventListener("click", (e) => {
     if (e.target.closest("#an-cf-mienne")) resoudreConflit(true);
     else if (e.target.closest("#an-cf-autre")) resoudreConflit(false);
+    else if (e.target.closest("#an-dt-envoyer")) envoyerDoute();
+    else if (e.target.closest("#an-dt-annuler")) fermerFormDoute();
+  });
+  guide.addEventListener("input", (e) => {
+    if (e.target.id === "an-dt-texte" && S.formDoute) {
+      S.formDoute.texte = e.target.value;
+      e.target.removeAttribute("aria-invalid");
+    }
+  });
+  guide.addEventListener("keydown", (e) => {
+    if (e.target.id !== "an-dt-texte") return;
+    // Ctrl+Entrée envoie ; Échap referme un formulaire vide (jamais un brouillon).
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); envoyerDoute(); }
+    else if (e.key === "Escape" && !e.target.value.trim()) { e.preventDefault(); fermerFormDoute(); }
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && S.designer !== null) {
@@ -1593,6 +1619,630 @@ function brancherPose() {
       rendreListe();
     }
   });
+}
+
+/* ── Les gestes d'une ligne, partagés par la liste et par la Synthèse ── */
+function entreeDe(r) {
+  const plan = planDe(grilleDe(r.grille_id));
+  return plan ? plan.entrees.find((x) => x.cle === r.entree_cle) || null : null;
+}
+
+/* Les gestes d'écriture sur ce relevé : sa grille active dans sa version (`modifiable`),
+   non masquée par la collection choisie, dans un album où l'on écrit. */
+function gestesSur(r) {
+  const g = grilleDe(r.grille_id);
+  return !!(r.modifiable && ecrivable() && !(g && A.masquee(g, S.collection)));
+}
+
+function retirerReleve(id) {
+  if (conflitOuvert()) return;
+  const r = S.releves.find((x) => x.id === id);
+  if (!r) return;
+  ecrire(grilleDe(r.grille_id), entreeDe(r), null, { action: "retirer", releve: r, vu: A.vuDuReleve(r) });
+}
+
+function basculerDesignation(id) {
+  if (conflitOuvert()) return;
+  S.designer = S.designer === id ? null : id;
+  document.body.classList.toggle("an-designer", S.designer !== null);
+  if (S.designer !== null) annoncer("Désignez l'autre zone de texte, sur la planche ou dans la case. Échap annule.");
+  rendreListe();
+  rendreSynthese();
+}
+
+/* La précision attendue : Entrée ou la sortie du champ l'enregistrent, avec `vu` — dans la
+   liste de ce qui est posé comme dans Synthèse › À revoir. */
+function enregistrerPrecision(champ) {
+  const r = S.releves.find((x) => x.id === Number(champ.dataset.releve));
+  if (!r || (champ.value.trim() || null) === (r.precision || null)) return;
+  if (conflitOuvert()) return;
+  ecrire(grilleDe(r.grille_id), entreeDe(r), null, {
+    action: "modifier", releve: r, corps: { precision: champ.value.trim() || null },
+    vu: { precision: r.precision || null } });
+}
+
+/* ───────────── Le doute (commit 5) ─────────────
+   « ? », sur une ligne de ce qui est posé, ouvre son formulaire DANS la boîte du guide, à la
+   même hauteur (ANN-6, 2026-10-22) : un commentaire, obligatoire ; sur un relevé qui a déjà
+   un doute ouvert, il s'ajoute au fil (le serveur le fait : un seul doute ouvert à la fois).
+   Répondre et lever se font dans Synthèse › À revoir. Un doute ne s'annule pas par Ctrl+Z :
+   il se répond, ou se lève. */
+function ouvrirFormDoute(id) {
+  if (conflitOuvert()) return;
+  const r = S.releves.find((x) => x.id === id);
+  if (!r || !gestesSur(r)) return;
+  if (S.formDoute && S.formDoute.releveId !== id && S.formDoute.texte.trim()) {
+    toast("Un doute est en cours d'écriture : envoyez-le ou annulez-le.", "error");
+    focaliser("#an-dt-texte");
+    return;
+  }
+  if (!S.formDoute || S.formDoute.releveId !== id) S.formDoute = { releveId: id, texte: "" };
+  rendreGuide();
+  focaliser("#an-dt-texte");
+}
+
+function fermerFormDoute() {
+  const id = S.formDoute ? S.formDoute.releveId : null;
+  S.formDoute = null;
+  rendreGuide();
+  const b = id === null ? null : document.querySelector(`#an-poses-liste [data-douter="${id}"]`);
+  if (b) b.focus();
+}
+
+function focaliser(selecteur) {
+  const x = $(selecteur);
+  if (x) x.focus();
+}
+
+function formulaireDoute() {
+  const f = S.formDoute;
+  const r = S.releves.find((x) => x.id === f.releveId);
+  const libelle = r ? A.libelleReleve(r, planDe(grilleDe(r.grille_id))) : "";
+  const ajout = !!(r && r.doute);
+  const champ = el("textarea", { id: "an-dt-texte", classe: "an-dt-texte", rows: "2",
+                                 maxlength: "2000", "aria-labelledby": "an-dt-titre",
+                                 placeholder: ajout ? "Votre message…" : "Pourquoi ce doute ?",
+                                 title: "Ctrl+Entrée envoie ; Échap referme un formulaire vide" });
+  champ.value = f.texte;
+  return [
+    el("p", { classe: "an-bandeau-titre", id: "an-dt-titre" },
+       el("span", { "aria-hidden": "true", texte: "? " }),
+       `${ajout ? "Ajouter au doute sur" : "Douter de"} « ${libelle} »`),
+    champ,
+    el("div", { classe: "an-bandeau-gestes", role: "group", "aria-labelledby": "an-dt-titre" },
+       el("button", { type: "button", classe: "ghost small", id: "an-dt-envoyer",
+                      texte: ajout ? "Ajouter" : "Douter" }),
+       el("button", { type: "button", classe: "ghost small", id: "an-dt-annuler", texte: "Annuler" })),
+  ];
+}
+
+/* Le doute rendu par la route remplace celui du relevé ; levé, il rejoint les levés. */
+function patcherDoute(r, vue) {
+  if (vue.leve_le) {
+    r.doute = null;
+    r.doutes_leves = [...(r.doutes_leves || []).filter((d) => d.id !== vue.id), vue];
+  } else {
+    r.doute = vue;
+  }
+}
+
+async function envoyerDoute() {
+  if (conflitOuvert()) return;
+  const f = S.formDoute;
+  if (!f) return;
+  const champ = $("#an-dt-texte");
+  const texte = (champ ? champ.value : f.texte).trim();
+  if (!texte) {
+    if (champ) { champ.setAttribute("aria-invalid", "true"); champ.focus(); }
+    annoncer("Un doute s'écrit avec un commentaire.");
+    return;
+  }
+  const r = S.releves.find((x) => x.id === f.releveId);
+  if (!r) { fermerFormDoute(); return; }
+  const ajout = !!r.doute;
+  try {
+    const vue = await apiSend("POST", `/api/releves/${r.id}/doutes`, { texte });
+    patcherDoute(r, vue);
+    S.formDoute = null;
+    annoncer(`${ajout ? "Ajouté au doute" : "Doute ouvert"} : ${A.libelleReleve(r, planDe(grilleDe(r.grille_id)))}`);
+  } catch (err) {
+    await refusDoute(err, r);
+    return;
+  }
+  rendreGuide();
+  apresEcriture();
+  const b = document.querySelector(`#an-poses-liste [data-douter="${r.id}"]`);
+  if (b) b.focus();
+}
+
+/* Un refus sur un doute : le relevé retiré ailleurs (404) quitte la page ; un doute levé
+   ailleurs (409) se relit ; le reste se dit tel quel. La saisie reste dans son champ. */
+async function refusDoute(err, r) {
+  if (err.statut === 404 && r) {
+    oterReleve(r.id);
+    if (S.formDoute && S.formDoute.releveId === r.id) S.formDoute = null;
+    toast("Ce relevé a été retiré depuis, par un autre écran.", "error");
+    annoncer("Ce relevé a été retiré depuis, par un autre écran.");
+    rendreGuide();
+    apresEcriture();
+    return;
+  }
+  const d = err && err.detail;
+  const message = err.statut === 409 && d && d.conflit
+    ? `Doute levé ${BDConflit.parQui(d.conflit.auteur)} : rien n'est changé ici.`
+    : err.message || "Refusé.";
+  toast(message, "error", 8000);
+  annoncer(message);
+  if (err.statut === 409) await relireReleves();
+}
+
+/* Un brouillon de doute ou de réponse : changer de planche le perdrait. */
+function brouillonEnCours() {
+  if (S.formDoute && S.formDoute.texte.trim()) return true;
+  return [...S.reponses.values()].some((t) => t.trim());
+}
+
+function gardeDeSortie() {
+  if (!brouillonEnCours()) return true;
+  toast("Un doute ou une réponse est en cours d'écriture : envoyez-le ou effacez-le d'abord.", "error");
+  return false;
+}
+
+/* RÉPONDRE à un doute ouvert (« À revoir »). */
+async function repondre(douteId) {
+  if (conflitOuvert()) return;
+  const r = S.releves.find((x) => x.doute && x.doute.id === douteId);
+  const texte = (S.reponses.get(douteId) || "").trim();
+  if (!r) return;
+  if (!texte) {
+    const champ = $(`#an-rep-${douteId}`);
+    if (champ) { champ.setAttribute("aria-invalid", "true"); champ.focus(); }
+    annoncer("Une réponse s'écrit avec un message.");
+    return;
+  }
+  try {
+    patcherDoute(r, await apiSend("POST", `/api/doutes/${douteId}/messages`, { texte }));
+    S.reponses.delete(douteId);
+    annoncer("Réponse ajoutée.");
+  } catch (err) {
+    await refusDoute(err, r);
+    return;
+  }
+  apresEcriture();
+  focaliser(`#an-rep-${douteId}`);
+}
+
+/* LEVER un doute : en gardant le relevé, en le changeant (sa modification est faite avant,
+   cf. `changerPuisLever`), ou en le RETIRANT — que Ctrl+Z rend. `vu` : le doute ouvert. */
+async function lever(r, issue) {
+  if (conflitOuvert() || !r.doute) return false;
+  const libelle = A.libelleReleve(r, planDe(grilleDe(r.grille_id)));
+  try {
+    const vue = await apiSend("POST", `/api/doutes/${r.doute.id}/levee`,
+                              { issue, vu: { doute: "ouvert" } });
+    if (vue.releve_retire) oterReleve(r.id); else patcherDoute(r, vue);
+    S.changer = null;
+    annoncer(`Doute levé, relevé ${A.issueEnMots(issue)} : ${libelle}`);
+  } catch (err) {
+    await refusDoute(err, r);
+    return false;
+  }
+  apresEcriture();
+  return true;
+}
+
+/* « Changer… » EN PLACE pour une entrée à variantes (H5) : la variante choisie s'écrit avec
+   `vu`, puis le doute se lève « change ». Un refus de CONC-3 ouvre le bandeau, et le doute
+   reste ouvert. */
+async function changerPuisLever(r, variante) {
+  if (conflitOuvert()) return;
+  if (variante === r.variante_cle) return;
+  const fait = await ecrire(grilleDe(r.grille_id), entreeDe(r), null, {
+    action: "modifier", releve: r, corps: { variante_cle: variante },
+    vu: { variante_cle: r.variante_cle || null } });
+  if (!fait) return;
+  const neuf = S.releves.find((x) => x.id === r.id);
+  if (neuf) await lever(neuf, "change");
+}
+
+/* « Rattacher aux mots désignés » : un relevé à revoir (un mot perdu, un texte changé)
+   reprend les mots désignés dans SA zone, avec `vu` — le passage qu'il portait. */
+async function rattacher(r) {
+  if (conflitOuvert()) return;
+  const z = zoneCourante();
+  if (!z || z.id !== r.region_id) {
+    await ouvrirReleve(r, { sansMots: true });
+    annoncer("Désignez les mots dans la zone, puis « Rattacher aux mots désignés ».");
+    return;
+  }
+  if (!S.sel.length) {
+    annoncer("Désignez d'abord les mots dans la zone.");
+    toast("Désignez d'abord les mots dans la zone.");
+    $("#an-mots").focus();
+    return;
+  }
+  await ecrire(grilleDe(r.grille_id), entreeDe(r), null, {
+    action: "modifier", releve: r, corps: { mots: S.sel },
+    vu: { mots: A.motsDuReleve(r) } });
+}
+
+/* ───────────── La Synthèse (commit 5) ─────────────
+   Un onglet de la colonne de gauche (ANN-6, 2026-10-14) : les RELEVÉS de toute la planche
+   par case, ce qui est À REVOIR, le DÉCOMPTE. Elle suit « Relevés : ▾ » — sauf le Décompte,
+   qui compte toutes les grilles (ANN-6, 2026-10-22). Elle ne se dessine que montrée ; le
+   nombre de ce qui attend se tient à jour sur son onglet. */
+function relevePar(id) { return S.releves.find((x) => x.id === id) || null; }
+
+/* Le rangement de la Synthèse : celui de la planche, avec la case pseudo pour la surface. */
+function rangementSynthese() {
+  return S.planche ? A.assurerPlanche(S.rangement, S.planche.largeur_px, S.planche.hauteur_px)
+    : S.rangement;
+}
+
+/* L'étiquette d'une zone dans une ligne : « c3 », « b1 », « planche ». */
+function etiquetteDe(r) {
+  if (r.region_id === null || r.region_id === undefined) return "planche";
+  const ou = A.situer(S.rangement, r.region_id);
+  if (!ou) return "?";
+  const c = S.rangement[ou.caseIx];
+  return ou.zoneId === null ? A.etiquette(c.case) : A.etiquettesDeLaCase(c).get(ou.zoneId) || "?";
+}
+
+function ligneSynthese(r) {
+  const g = grilleDe(r.grille_id);
+  const plan = planDe(g);
+  const t = g && g.id === S.grilleId ? A.teinte(plan, r.entree_cle, PALETTE) : null;
+  const passage = A.passageAncre(r);
+  const etat = A.motEtat(r);
+  return el("button", { type: "button", classe: "an-syn-r", "data-syn-releve": r.id,
+                        title: "Ouvrir ce relevé" },
+    el("i", { classe: `an-pastille ${t === null ? "an-trait-autre" : `an-teinte-${t}`}`,
+              "aria-hidden": "true" }),
+    el("span", { classe: "an-pose-lib", texte: A.libelleReleve(r, plan) }),
+    el("span", { classe: "an-syn-zone", texte: etiquetteDe(r) }),
+    passage ? el("span", { classe: "an-pose-pass", texte: `« ${passage} »` }) : null,
+    etat ? el("span", { classe: `an-etat an-etat-${r.etat}`, texte: etat }) : null,
+    r.doute ? el("span", { classe: "an-etat an-etat-doute", texte: "doute" }) : null,
+    g && g.id !== S.grilleId ? el("span", { classe: "an-pose-gr", texte: g.nom }) : null);
+}
+
+function rendreSynthese() {
+  const montres = relevesMontres();
+  const attente = A.aRevoir(montres, rangementSynthese()).total;
+  $("#an-n-revoir").textContent = attente ? ` · ${attente}` : "";
+  $("#an-syn-n").textContent = attente ? ` (${attente})` : "";
+  $("#an-ong-synthese").title = "Les relevés de la planche, ce qui est à revoir, le décompte"
+    + (attente ? ` — ${attente} à revoir` : "");
+  for (const b of document.querySelectorAll("#an-syn-vues [data-syn]")) {
+    b.setAttribute("aria-pressed", String(b.dataset.syn === S.synVue));
+  }
+  if (S.gauche !== "synthese") return;
+  const corps = $("#an-syn-corps");
+  // Redessiner ne fait pas perdre la saisie en cours ni sa place (une réponse, une précision).
+  const actif = document.activeElement && corps.contains(document.activeElement)
+    ? document.activeElement : null;
+  const garde = actif && actif.id ? { id: actif.id, debut: actif.selectionStart,
+                                      fin: actif.selectionEnd } : null;
+  if (!S.planche) corps.replaceChildren(el("p", { classe: "muted", texte: "—" }));
+  else if (S.synVue === "revoir") corps.replaceChildren(...vueARevoir(montres));
+  else if (S.synVue === "decompte") corps.replaceChildren(...vueDecompte());
+  else corps.replaceChildren(...vueRelevesParCase(montres));
+  if (garde) {
+    const x = document.getElementById(garde.id);
+    if (x) {
+      x.focus();
+      if (typeof garde.debut === "number" && x.setSelectionRange) {
+        try { x.setSelectionRange(garde.debut, garde.fin); } catch (e) { /* champ sans sélection */ }
+      }
+    }
+  }
+}
+
+/* Synthèse › Relevés : toute la planche par case, dans l'ordre de lecture, puis la planche ;
+   la case en cours marquée. */
+function vueRelevesParCase(montres) {
+  const groupes = A.relevesParCase(rangementSynthese(), montres);
+  if (!groupes.length) return [el("p", { classe: "muted", texte: "Aucun relevé sur cette planche." })];
+  const rangement = rangementSynthese();
+  const pseudo = rangement.findIndex((x) => x.case.pseudo);
+  return groupes.map((gr) => {
+    // La surface s'ouvre sur la case pseudo, la planche entière ; « ailleurs » ne s'ouvre pas.
+    const ix = gr.surface ? (pseudo < 0 ? null : pseudo) : gr.caseIx;
+    const c = ix === null ? null : rangement[ix];
+    const nom = gr.surface ? "La planche" : !c ? "Ailleurs"
+      : c.case.pseudo ? "Hors des cases" : `Case ${A.etiquette(c.case)}`;
+    // Sur la case pseudo, la planche (sans zone) et « hors des cases » (une zone) se partagent
+    // le même rang : la zone choisie dit lequel est en cours.
+    const surPseudo = !!c && c.case.pseudo;
+    const courante = ix !== null && ix === S.caseIx
+      && (!surPseudo || (gr.surface ? S.zoneId === null : S.zoneId !== null));
+    const titre = ix === null
+      ? el("span", { texte: `${nom} · ${gr.releves.length}` })
+      : el("button", { type: "button", classe: `an-syn-case${courante ? " courante" : ""}`,
+                       "data-syn-case": ix, "aria-current": courante ? "true" : null,
+                       title: courante ? "La case en cours" : "Ouvrir cette case",
+                       texte: `${nom} · ${gr.releves.length}` });
+    return el("section", { classe: "an-syn-g" },
+              el("h3", { classe: "an-syn-g-titre" }, titre),
+              el("ul", { classe: "an-syn-liste" },
+                 ...gr.releves.map((r) => el("li", {}, ligneSynthese(r)))));
+  });
+}
+
+/* Le fil d'un doute : chaque message signé, daté, et « compte partagé » quand il l'est. */
+function fil(doute) {
+  return el("ol", { classe: "an-fil", "aria-label": "Fil du doute" },
+    ...(doute.messages || []).map((m) => {
+      const iso = A.isoDeSqlite(m.date);
+      return el("li", {},
+        el("span", { classe: "an-fil-qui", texte: m.auteur_nom || m.auteur || "inconnu" }),
+        m.collectif ? el("span", { classe: "an-fil-quand", texte: " · compte partagé",
+                                   title: "Plusieurs personnes écrivent sous ce compte" }) : null,
+        iso ? el("span", { classe: "an-fil-quand", texte: ` · ${BDConflit.quand(iso)}` }) : null,
+        el("p", { classe: "an-fil-texte", texte: m.texte }));
+    }));
+}
+
+function groupeRevoir(titre, items) {
+  if (!items.length) return null;
+  return el("section", { classe: "an-syn-g" },
+            el("h3", { classe: "an-syn-g-titre", texte: `${titre} · ${items.length}` }),
+            el("ul", { classe: "an-syn-liste" }, ...items));
+}
+
+function itemDoute(r) {
+  const li = el("li", { classe: "an-rv" }, ligneSynthese(r), fil(r.doute));
+  if (!gestesSur(r)) return li;
+  const id = r.doute.id;
+  const champ = el("textarea", { id: `an-rep-${id}`, rows: "1", maxlength: "2000",
+                                 "data-reponse": id, "aria-label": "Répondre à ce doute",
+                                 placeholder: "Répondre…" });
+  champ.value = S.reponses.get(id) || "";
+  li.append(el("div", { classe: "an-rv-repondre" }, champ,
+                el("button", { type: "button", classe: "ghost small", "data-repondre": id,
+                               texte: "Répondre" })));
+  const e = entreeDe(r);
+  const enPlace = A.changerEnPlace(e);
+  li.append(el("div", { classe: "an-rv-gestes", role: "group", "aria-label": "Lever le doute" },
+    el("span", { classe: "muted small", texte: "Lever :" }),
+    el("button", { type: "button", classe: "ghost small", "data-lever": "garde", "data-pour": r.id,
+                   title: "Le relevé reste tel quel", texte: "Garder" }),
+    el("button", { type: "button", classe: "ghost small", "data-changer": r.id,
+                   "aria-pressed": enPlace ? String(S.changer === r.id) : null,
+                   "aria-disabled": enPlace ? null : "true",
+                   title: enPlace ? "Choisir une autre variante, puis lever le doute"
+                     : "Une autre entrée : retirez, puis posez l'autre", texte: "Changer…" }),
+    el("button", { type: "button", classe: "ghost small an-retirer", "data-lever": "retire",
+                   "data-pour": r.id, title: "Retire le relevé (Ctrl+Z le rend)", texte: "Retirer" })));
+  if (enPlace && S.changer === r.id) {
+    li.append(el("div", { classe: "an-rv-changer", role: "group",
+                          "aria-label": `Changer la variante de ${e.libelle}` },
+      ...e.variantes.map((v) => el("button", {
+        type: "button", classe: "ghost small an-var", "data-changer-v": v.cle, "data-pour": r.id,
+        "aria-pressed": String(v.cle === r.variante_cle), texte: v.libelle }))));
+  }
+  return li;
+}
+
+function itemARevoir(r) {
+  const li = el("li", { classe: "an-rv" }, ligneSynthese(r),
+    el("div", { classe: "an-rv-ligne" },
+       el("span", { classe: "an-causes", texte: A.causesEnMots(r).join(" · ") }),
+       A.passageAncre(r) ? el("span", { classe: "muted", texte: `désignait « ${A.passageAncre(r)} »` }) : null,
+       r.lien && !r.lien.existe && r.lien.texte
+         ? el("span", { classe: "muted", texte: `lien : « ${r.lien.texte} »` }) : null));
+  if (!gestesSur(r)) return li;
+  const reancrable = A.motsDuReleve(r).length
+    && (r.causes || []).some((c) => c === "mot_perdu" || c === "texte_change");
+  li.append(el("div", { classe: "an-rv-gestes" },
+    reancrable ? el("button", { type: "button", classe: "ghost small", "data-rattacher": r.id,
+                                title: "Le relevé reprend les mots désignés dans sa zone",
+                                texte: "Rattacher aux mots désignés" }) : null,
+    el("button", { type: "button", classe: "ghost small an-retirer", "data-retirer": r.id,
+                   "aria-label": `Retirer ${A.libelleReleve(r, planDe(grilleDe(r.grille_id)))}`,
+                   texte: "✕ Retirer" })));
+  return li;
+}
+
+function itemACompleter(r) {
+  const e = entreeDe(r);
+  const libelle = A.libelleReleve(r, planDe(grilleDe(r.grille_id)));
+  const li = el("li", { classe: "an-rv" }, ligneSynthese(r),
+    el("div", { classe: "an-rv-ligne" },
+       el("span", { classe: "an-causes", texte: A.causesEnMots(r).join(" · ") })));
+  if (!gestesSur(r) || !e) return li;
+  const gestes = el("div", { classe: "an-rv-gestes" });
+  if ((r.causes || []).includes("precision_manquante") && e.precision) {
+    gestes.append(el("input", { type: "text", classe: "an-prec", id: `an-rv-prec-${r.id}`,
+                                "data-releve": r.id, "aria-label": `${e.precision} — ${libelle}`,
+                                placeholder: e.precision, value: r.precision || "",
+                                maxlength: 500 }));
+  }
+  if ((r.causes || []).includes("lien_manquant") && e.lien) {
+    gestes.append(el("button", { type: "button", classe: "ghost small an-lien-btn",
+                                 "data-lien": r.id, "aria-pressed": String(S.designer === r.id),
+                                 title: S.designer === r.id ? "Cliquez l'autre bulle · Échap annule" : null,
+                                 texte: "Désigner sur la planche" }));
+  }
+  if (gestes.childNodes.length) li.append(gestes);
+  return li;
+}
+
+function itemLeve(x) {
+  const d = x.doute;
+  const iso = A.isoDeSqlite(d.leve_le);
+  return el("li", { classe: "an-rv" }, ligneSynthese(x.releve),
+    el("div", { classe: "an-rv-ligne muted" },
+       `Levé par ${d.leve_par_nom || d.leve_par || "inconnu"}`
+         + (d.leve_par_collectif ? " (compte partagé)" : "")
+         + (iso ? `, ${BDConflit.quand(iso)}` : "") + ` — ${A.issueEnMots(d.issue)}`),
+    fil(d));
+}
+
+/* Synthèse › À revoir : doutes ouverts, à revoir, à compléter, doutes levés. */
+function vueARevoir(montres) {
+  const v = A.aRevoir(montres, rangementSynthese());
+  const blocs = [
+    groupeRevoir("Doutes ouverts", v.doutes.map(itemDoute)),
+    groupeRevoir("À revoir", v.revoir.map(itemARevoir)),
+    groupeRevoir("À compléter", v.completer.map(itemACompleter)),
+    groupeRevoir("Doutes levés", v.leves.map(itemLeve)),
+  ].filter(Boolean);
+  return blocs.length ? blocs : [el("p", { classe: "muted", texte: "Rien à revoir sur cette planche." })];
+}
+
+/* Synthèse › Décompte (H6) : la zone et son contexte, ou toute la planche ; par grille, ses
+   rubriques, entrées, variantes et qualificatifs, et « zones terminées n / N ». Toutes les
+   grilles : le réglage « Relevés : ▾ » ne vaut pas ici (ANN-6, 2026-10-22). */
+function vueDecompte() {
+  const portee = el("div", { classe: "an-syn-portee", role: "group", "aria-label": "Compter sur" },
+    el("span", { classe: "an-gr-lbl", texte: "Compter sur" }),
+    el("button", { type: "button", classe: "ghost small", "data-portee": "zone",
+                   "aria-pressed": String(S.decPortee === "zone"), texte: "cette zone",
+                   title: "La zone choisie, sa case et la planche" }),
+    el("button", { type: "button", classe: "ghost small", "data-portee": "planche",
+                   "aria-pressed": String(S.decPortee === "planche"), texte: "la planche" }));
+  const c = caseCourante();
+  const z = zoneCourante();
+  const releves = S.decPortee === "zone" ? relevesIci() : S.releves;
+  const rangement = rangementSynthese();
+  // Les étapes de « cette zone » : la zone, sa case, la planche.
+  const garder = S.decPortee === "zone" ? (e) => e.planche
+    || (e.caseIx === S.caseIx && (e.zoneId === null || (z && e.zoneId === z.id))) : null;
+  const ids = [...new Set([...S.grilles.map((g) => g.id), ...releves.map((r) => r.grille_id)])];
+  const blocs = ids.map((id) => {
+    const g = grilleDe(id);
+    const plan = planDe(g);
+    const d = A.decompte(releves, id, plan);
+    const zt = g && plan && S.planche
+      ? A.zonesTerminees(rangement, plan, S.passes, id, S.planche.id, garder) : null;
+    if (!d.total && (!zt || !zt.total)) return null;
+    return el("section", { classe: "an-dc" },
+      el("h3", { classe: "an-dc-titre" },
+         el("span", { texte: `${g ? g.nom : `Grille ${id}`} · ${d.total}` }),
+         g && A.masquee(g, S.collection) ? el("span", { classe: "muted small", texte: "masquée ici" }) : null,
+         zt && zt.total ? el("span", { classe: "muted small", texte: `zones terminées ${zt.n} / ${zt.total}` })
+           : null),
+      el("ul", { classe: "an-syn-liste" }, ...d.lignes.map((l) => el("li", {
+        classe: `an-dc-l an-dc-${l.sorte} an-dc-niv-${Math.min(l.niveau, 5)}` },
+        el("span", { classe: "an-dc-lib", texte: l.libelle }),
+        el("span", { classe: "an-cnt", texte: String(l.n) })))));
+  }).filter(Boolean);
+  if (!c) return [portee, el("p", { classe: "muted", texte: "—" })];
+  return [portee, ...(blocs.length ? blocs : [el("p", { classe: "muted", texte: "Aucun relevé à compter." })])];
+}
+
+/* Ouvrir un relevé depuis la Synthèse : sa case et sa zone, sa grille (si la collection ne
+   la masque pas), ses mots désignés, sa ligne du guide. */
+async function ouvrirReleve(r, opts) {
+  const sansMots = opts && opts.sansMots;
+  let ou;
+  if (r.region_id === null || r.region_id === undefined) {
+    S.rangement = rangementSynthese();
+    const i = S.rangement.findIndex((x) => x.case.pseudo);
+    ou = i < 0 ? null : { caseIx: i, zoneId: null };
+  } else {
+    ou = A.situer(S.rangement, r.region_id);
+  }
+  if (!ou) { toast("Ce relevé n'est plus sur une zone de la planche.", "error"); return; }
+  const g = grilleDe(r.grille_id);
+  if (r.grille_id !== S.grilleId && g && !A.masquee(g, S.collection)) {
+    S.grilleId = r.grille_id;
+    S.vue = "*";
+    S.guide = null;
+  }
+  await choisir(ou.caseIx, ou.zoneId);
+  if (!sansMots && A.motsDuReleve(r).length && S.mots && S.mots.region_id === r.region_id) {
+    const n = S.mots.mots.length;
+    S.sel = A.motsDuReleve(r).filter((x) => x < n);
+    S.ancre = S.sel.length ? S.sel[0] : null;
+    apresSelection();
+  }
+  montrerGuide(r.entree_cle, r.variante_cle);
+}
+
+function montrerGauche(vue) {
+  S.gauche = vue;
+  const synthese = vue === "synthese";
+  $("#an-p-planche").hidden = synthese;
+  $("#an-p-synthese").hidden = !synthese;
+  for (const [id, oui] of [["#an-ong-planche", !synthese], ["#an-ong-synthese", synthese]]) {
+    const b = $(id);
+    b.setAttribute("aria-selected", String(oui));
+    b.tabIndex = oui ? 0 : -1;
+  }
+  if (synthese) rendreSynthese();
+}
+
+function brancherSynthese() {
+  const onglets = document.querySelector(".an-gauche-onglets");
+  onglets.addEventListener("click", (e) => {
+    const b = e.target.closest("[role=tab]");
+    if (b) montrerGauche(b.id === "an-ong-synthese" ? "synthese" : "planche");
+  });
+  onglets.addEventListener("keydown", (e) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const vers = e.key === "Home" ? "planche" : e.key === "End" ? "synthese"
+      : S.gauche === "planche" ? "synthese" : "planche";
+    montrerGauche(vers);
+    $(vers === "synthese" ? "#an-ong-synthese" : "#an-ong-planche").focus();
+  });
+  $("#an-syn-vues").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-syn]");
+    if (!b) return;
+    S.synVue = b.dataset.syn;
+    rendreSynthese();
+  });
+  const corps = $("#an-syn-corps");
+  corps.addEventListener("click", (e) => {
+    const t = e.target;
+    const pour = (x) => relevePar(Number(x.dataset.pour));
+    const portee = t.closest("[data-portee]");
+    if (portee) { S.decPortee = portee.dataset.portee; rendreSynthese(); return; }
+    const kase = t.closest("[data-syn-case]");
+    if (kase) { choisir(Number(kase.dataset.synCase), null); return; }
+    const rep = t.closest("[data-repondre]");
+    if (rep) { repondre(Number(rep.dataset.repondre)); return; }
+    const lv = t.closest("[data-lever]");
+    if (lv) { const r = pour(lv); if (r) lever(r, lv.dataset.lever); return; }
+    const chv = t.closest("[data-changer-v]");
+    if (chv) { const r = pour(chv); if (r) changerPuisLever(r, chv.dataset.changerV); return; }
+    const ch = t.closest("[data-changer]");
+    if (ch) {
+      if (ch.getAttribute("aria-disabled") === "true") {
+        annoncer("Une autre entrée : retirez ce relevé, puis posez l'autre.");
+        toast("Une autre entrée : retirez ce relevé, puis posez l'autre.");
+        return;
+      }
+      const id = Number(ch.dataset.changer);
+      S.changer = S.changer === id ? null : id;
+      rendreSynthese();
+      return;
+    }
+    const rat = t.closest("[data-rattacher]");
+    if (rat) { const r = relevePar(Number(rat.dataset.rattacher)); if (r) rattacher(r); return; }
+    const ret = t.closest("[data-retirer]");
+    if (ret) { retirerReleve(Number(ret.dataset.retirer)); return; }
+    const lien = t.closest("[data-lien]");
+    if (lien) { basculerDesignation(Number(lien.dataset.lien)); return; }
+    const item = t.closest("[data-syn-releve]");
+    if (item) { const r = relevePar(Number(item.dataset.synReleve)); if (r) ouvrirReleve(r); }
+  });
+  corps.addEventListener("input", (e) => {
+    const id = e.target.dataset && e.target.dataset.reponse;
+    if (id) { S.reponses.set(Number(id), e.target.value); e.target.removeAttribute("aria-invalid"); }
+  });
+  corps.addEventListener("keydown", (e) => {
+    if (e.target.dataset && e.target.dataset.reponse && e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      repondre(Number(e.target.dataset.reponse));
+    } else if (e.key === "Enter" && e.target.matches(".an-prec")) {
+      e.preventDefault();
+      enregistrerPrecision(e.target);
+    }
+  });
+  corps.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) enregistrerPrecision(e.target); });
 }
 
 /* ───────────── L'adresse ───────────── */
@@ -1654,13 +2304,18 @@ async function changerCollection(valeur) {
 }
 
 function brancher() {
-  $("#an-collection").addEventListener("change", (e) =>
-    changerCollection(e.target.value).catch((err) => toast(err.message, "error")));
+  // Changer de collection, d'album ou de planche ne perd pas un doute à moitié écrit.
+  $("#an-collection").addEventListener("change", (e) => {
+    if (!gardeDeSortie()) { e.target.value = String(S.collection); return; }
+    changerCollection(e.target.value).catch((err) => toast(err.message, "error"));
+  });
   $("#an-album").addEventListener("change", (e) => {
+    if (!gardeDeSortie()) { e.target.value = String(S.albumId); return; }
     const id = Number(e.target.value);
     if (id) ouvrirAlbum(id, null).catch((err) => toast(err.message, "error"));
   });
   $("#an-planche-choix").addEventListener("change", (e) => {
+    if (!gardeDeSortie()) { e.target.value = String(S.planche ? S.planche.id : ""); return; }
     const id = Number(e.target.value);
     if (id) ouvrirPlanche(id).catch((err) => toast(err.message, "error"));
   });
@@ -1800,6 +2455,7 @@ function apresPasse() {
   rendreTete();
   rendreOnglets();
   marquerMini();
+  rendreSynthese();
 }
 
 /* « Suivante » (d = 1), « Précédente » (d = -1). */
@@ -1916,6 +2572,7 @@ async function demarrer() {
   brancherGrille();
   brancherPose();
   brancherParcours();
+  brancherSynthese();
   try {
     await chargerAlbums();
   } catch (e) {
