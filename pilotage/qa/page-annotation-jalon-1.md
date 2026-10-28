@@ -30,53 +30,53 @@ SUR PLACE et se signale.
 
 - [x] La navigation porte « 🖍️ Annotation » entre l'Atelier et la Bibliothèque ; un clic ouvre une page en trois colonnes : la planche à gauche, la case au milieu, la grille à droite
 - [x] Collection « Collection Test », Album « esther v1 », Planche 1 : la minicarte montre les cases de la planche, et la colonne de droite porte un onglet « Sons et images (fictive) »
-- [x] Clic, sur la minicarte, dans la case de la bulle « HEY TouCHE-Moi PAS L' CUL SALE PÉDÉ 1 » : la case s'agrandit au milieu ; clic sur la bulle DANS la case agrandie : elle est choisie, et son texte s'écrit mot par mot sous « Texte », tel qu'il a été transcrit (« L' CUL » avec son espace)
+- [x] Clic, sur la minicarte, dans la case de la bulle « HEY TouCHE-Moi PAS L' CUL SALE PÉDÉ 1 » (en haut à droite) : la case s'agrandit au milieu, l'en-tête dit « Case c1 » ; clic sur la bulle DANS la case agrandie : l'en-tête dit « bulle b2 », et sous « Mots de la bulle b2 » son texte s'écrit tel qu'il a été transcrit (« L' CUL » avec son espace)
 - [x] L'adresse porte `collection=`, `album=`, `planche=` et `region=` ; F5 rouvre la même bulle
 
 ### Lire la grille — `stagiaire`, même bulle
 
 - [x] Les rubriques se replient et se déplient ; « A. Sons » dépliée montre « Voix » et « Bruits »
 - [x] « Afficher » choisit toute la grille ou une seule rubrique de tête ; « B. Provenance » seule ne montre plus que « origine du son » et « écho »
-- [x] Revenir à toute la grille, survoler « onomatopée de choc » : la ligne du guide, en bas de la colonne, dit « un mot qui imite le bruit d'un choc » et ses variantes, sans que la colonne change de hauteur
-- [x] Touche « / » : le curseur est dans le filtre ; taper « echo » trouve « écho » (sans accent) ; Échap vide le champ
+- [x] Revenir à toute la grille, survoler « onomatopée de choc » : la ligne du guide, en bas de la colonne, dit « un mot qui imite le bruit d'un choc » puis « Exemples : bang : BANG ! · bang : PAN ! · crac : CRAC · splash : PLOUF · splash : SPLASH », sans que la colonne change de hauteur
+- [x] Clic sur un fond neutre (hors d'un champ ou d'une liste : « Afficher » garde sinon le curseur), puis la TOUCHE « / » du clavier (Maj + « : » sur un clavier français) : le curseur est dans « Chercher dans la grille… » ; taper « echo » ne laisse que « écho » (B. Provenance) ; Échap vide le champ
 - [x] « Guide complet ▸ » ouvre une fenêtre qui reprend toute la grille ; Échap la ferme et rend le focus au bouton
 
 ### Désigner des mots et poser — `stagiaire`, même bulle
 
-- [x] Clic sur « TouCHE-Moi », puis Maj+clic sur « CUL » : les quatre mots sont désignés ; « Porte sur » propose « des mots », « toute la bulle », « la case » et « la planche », sur « des mots »
+- [x] Clic sur « TouCHE-Moi », puis Maj+clic sur « CUL » : « TouCHE-Moi PAS L' CUL » est surligné, et la liste en bas s'intitule « Sur « TouCHE-Moi PAS L ' CUL » » ; « Porte sur » propose « des mots », « toute la bulle », « la case » et « la planche », enfoncé sur « des mots »
 - [x] Cocher « cri » : un trait apparaît sous les quatre mots, et « cri » s'inscrit dans la liste de ce qui est posé, en bas de la colonne ; la rubrique « A. Sons » dit « 1 ici »
 - [x] Recocher « cri » sur le même passage : le relevé part, le trait et la ligne de la liste aussi
 - [x] Désigner « HEY » seul, cocher la variante « bang » d'« onomatopée de choc », puis cocher « crac » : il n'y a toujours qu'UN relevé sous « HEY », et la liste dit « crac »
 - [x] Sur « HEY », cocher le qualificatif « taille » d'« intensité graphique », puis « couleur » : un seul relevé « intensité graphique », dont la ligne dit les deux qualificatifs
 - [x] Sur « HEY », poser « origine du son » (un qualificatif au choix) : sa ligne dit « à compléter » ; taper un lieu dans sa précision, sortir du champ : « à compléter » disparaît
-- [x] « Porte sur » : « toute la bulle », cocher « crié » de « ton de voix », puis « chuchoté » : un seul « ton de voix » sur la bulle, qui dit « chuchoté »
-- [x] Toujours sur toute la bulle, poser « réponse à une autre bulle » : sa ligne dit « à compléter » ; « Désigner sur la planche », puis clic sur la bulle « Pédé ! » dans la minicarte : le lien est posé, « à compléter » disparaît
+- [x] « Porte sur » : « toute la bulle », cocher « crié » de « ton de voix », puis « chuchoté » : dans la grille, seul « chuchoté » reste enfoncé et « ton de voix » compte 1 ; clic sur « b2 · bulle » (rangée des zones, ce qui ne désigne plus aucun mot) : la liste, « Dans la bulle b2 », dit « ton de voix · chuchoté » et « toute la zone »
+- [x] Toujours sur la bulle b2, aucun mot désigné, poser « réponse à une autre bulle » : sa ligne dit « à compléter » et offre « Désigner sur la planche » ; ce bouton, clic sur la case de « Pédé ! » dans la minicarte (case c2), puis sur la bulle « Pédé ! » dans la case agrandie ; revenu sur la bulle b2 de la case c1 : la ligne n'a plus « à compléter » et offre « Changer le lien »
 - [x] ✕ sur la ligne « intensité graphique » de la liste (posée plus haut sur « HEY ») : le relevé part, la ligne aussi, et son trait sous « HEY »
-- [x] « regard caméra » se pose sur la case et « ambiance sonore de la planche » sur la planche, quel que soit « Porte sur » : la liste les dit sur « la case » et « la planche »
+- [x] Sur la bulle b2, cocher « regard caméra » puis « ambiance sonore de la planche », quel que soit « Porte sur » : la liste dit « regard caméra · la case » ; « ‹ Précédente » depuis « La case c1 » (zone 1 / 41) mène à « La planche » (zone 41 / 41), dont la liste dit « ambiance sonore de la planche · la planche » ; revenir ensuite sur la bulle b2
 
 ### Deux écrans sur le même relevé — `stagiaire` et `proprio`, planche 1, bulle « HEY TouCHE-Moi… »
 
 - [ ] `proprio` ouvre la même bulle : il voit les relevés posés par `stagiaire`, avec leurs traits
 - [ ] `proprio` change la précision d'« origine du son » (s'il a été retiré, `stagiaire` le repose avant) et sort du champ ; puis `stagiaire`, SANS recharger, change la même précision et sort du champ : un bandeau prend la place de la ligne du guide, nomme `proprio`, et offre « Remplacer par la mienne » et « Garder l'autre »
-- [ ] Tant que le bandeau est ouvert, cocher une autre entrée ne pose rien ; « Garder l'autre » ferme le bandeau et la précision dit celle de `proprio`
+- [ ] Tant que le bandeau est ouvert, cliquer une entrée de la grille ne change rien : un message dit « Réglez d'abord le conflit, en bas de la grille. » ; « Garder l'autre » ferme le bandeau et la précision dit celle de proprio
 
 ### Terminer et parcourir — `stagiaire`
 
 - [ ] Sur une bulle de la planche 1, le pied de la colonne du milieu dit « Sons et images (fictive) : à faire », et l'en-tête dit « zone i / n de « Sons et images (fictive) » »
 - [ ] « Terminée, suivante › » passe à la zone suivante ; « ‹ Précédente » y revient : le pied dit « ✓ Sons et images (fictive) : terminée », et l'onglet de la grille porte ✓
 - [ ] « Rouvrir » : le pied redit « … : à faire », le ✓ de l'onglet part
-- [ ] Marquer deux zones terminées, choisir « à faire seulement », revenir à la première zone du parcours : « Suivante › » saute les deux zones terminées
-- [ ] Ctrl+Entrée passe à la zone suivante, Ctrl+Maj+Entrée revient à la précédente, sans rien marquer
-- [ ] « Afficher » sur « A. Sons », marquer la zone terminée : le pied nomme la rubrique, et revenir à toute la grille la dit encore « à faire »
+- [ ] Clic sur « b1 · bulle » de la case c1 (zone 2 / 41), « Terminée, suivante › » deux fois (b1 puis b2 terminées), « Parcours » : « à faire seulement », clic sur la case c1 dans la minicarte (zone 1 / 41), puis « Suivante › » : l'en-tête dit « zone 4 / 41 » (Case c2), b1 et b2 sautées
+- [ ] « Parcours » toujours sur « à faire seulement », sur la case c2 (zone 4 / 41) : Ctrl+Entrée mène à la zone 5 / 41, dont le pied dit encore « … : à faire » ; Ctrl+Maj+Entrée revient à la zone 4, puis à la zone 1 (b1 et b2 sautées)
+- [ ] Clic sur la case c1 dans la minicarte, « Afficher » sur « A. Sons » : le pied dit « Sons et images (fictive) › A. Sons : à faire » ; « Terminée, suivante › », puis de nouveau clic sur la case c1 dans la minicarte : le pied dit « ✓ Sons et images (fictive) › A. Sons : terminée · stagiaire » ; « Afficher » sur « Toute la grille » : le pied redit « Sons et images (fictive) : à faire »
 
 ### Annuler — `stagiaire`
 
 - [ ] Poser « cri » sur un mot, puis Ctrl+Z (focus hors d'un champ de saisie) : un message « Annulé : … » s'affiche, le trait et la ligne de la liste disparaissent
-- [ ] Ctrl+Z dans l'Atelier, sur une région qu'on vient de déplacer, s'annule toujours comme avant
+- [ ] Atelier (/), même planche, mode « Édition » : déplacer la bulle « HEY… » à la souris, puis Ctrl+Z : un message « Annulé : modification d'une région » s'affiche, et X / Y de « Coordonnées » reviennent à leurs valeurs d'avant
 
 ### Lire sans écrire — `stagiaire`, « Carnet d'arrivant »
 
-- [ ] Collection « Carnet d'arrivant », Album « esther v1 », Planche 1, une bulle : la grille est là, ses entrées éteintes ; cliquer une entrée ne pose rien
+- [ ] Collection « Carnet d'arrivant », Album « esther v1 », Planche 1, bulle b2 de la case c1, « HEY » désigné : la grille est là, ses entrées se VOIENT éteintes ; cliquer « cri » ou « crac » ne pose rien (la liste « Sur « HEY » » dit « — ») et un message dit qu'on lit cet album
 - [ ] « Terminée, suivante › » est éteint, et son infobulle dit qu'on lit cet album
 
 ### Le lien avec l'Atelier — `stagiaire`
