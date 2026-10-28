@@ -411,3 +411,177 @@ test("l'adresse porte la grille", () => {
   assert.equal(A.adresse({ album: 2, grille: 5 }), "?album=2&grille=5");
   assert.equal(A.lireAdresse("?grille=5").grille, 5);
 });
+
+/* ───────────── Désigner et poser (commit 3) ───────────── */
+const MOTS = [{ rang: 0, forme: "IL" }, { rang: 1, forme: "NE" }, { rang: 2, forme: "VIENT" },
+              { rang: 3, forme: "PAS" }];
+const rel = (id, extra) => ({ id, region_id: 10, planche_id: null, grille_id: 1,
+                              entree_cle: "cri", variante_cle: null, qualificatifs: [],
+                              mots: [], ...extra });
+const motsDe = (...r) => r.map((x, i) => ({ position: i, rang: x, forme: "?" }));
+
+test("désigner : plage, bascule (passage à trou), texte d'un passage", () => {
+  assert.deepEqual(A.plage(3, 1), [1, 2, 3]);
+  assert.deepEqual(A.basculer([1, 2], 2), [1]);
+  assert.deepEqual(A.basculer([1], 3), [1, 3]);
+  assert.equal(A.texteDuPassage(MOTS, [3, 1]), "NE … PAS");
+  assert.equal(A.texteDuPassage(MOTS, [0, 1, 2]), "IL NE VIENT");
+  assert.equal(A.memesMots([2, 1], [1, 2]), true);
+  assert.equal(A.memesMots([1], [1, 2]), false);
+  assert.deepEqual(A.rangs(new Set([3, 1, 1, -1])), [1, 3]);
+});
+
+test("les couloirs : deux passages qui se chevauchent ne partagent pas un couloir", () => {
+  const c = A.couloirs([rel(1, { mots: motsDe(0, 1) }), rel(2, { mots: motsDe(1, 3) }),
+                        rel(3, { mots: motsDe(3) }), rel(4, { mots: motsDe(0, 3) }),
+                        rel(5, {})]);
+  // Le plus long d'abord à début égal : 4 (0–3) au couloir 0, 1 (0–1) au 1 ; 2 (1–3) au 2 ;
+  // 3 (3) reprend le couloir 1, libre depuis 1.
+  assert.deepEqual([c.get(4), c.get(1), c.get(2), c.get(3)], [0, 1, 2, 1]);
+  assert.equal(c.has(5), false);
+});
+
+test("la teinte suit la rubrique de tête", () => {
+  assert.equal(A.teinte(PLAN, "cri", 7), 0);
+  assert.equal(A.teinte(PLAN, "origine", 7), 1);
+  assert.equal(A.teinte(PLAN, "regard", 2), 0);      // rang 2, palette de 2
+  assert.equal(A.teinte(PLAN, "orpheline", 7), null);
+});
+
+test("« Porte sur » : ce que la grille vise depuis la zone", () => {
+  const bulle = { id: 10, type: "bulle" }, laCase = { id: 5, type: "case" };
+  assert.deepEqual(A.optionsPorteSur(PLAN, bulle, laCase).map((o) => o.cle),
+                   ["mots", "zone", "case"]);
+  assert.equal(A.optionsPorteSur(PLAN, bulle, laCase)[1].libelle, "toute la bulle");
+  assert.deepEqual(A.optionsPorteSur(PLAN, laCase, laCase).map((o) => o.cle), ["case"]);
+  const planche = { entrees: [{ cle: "a", pose: "planche", cibles: ["planche"] }] };
+  assert.deepEqual(A.optionsPorteSur(planche, bulle, laCase).map((o) => o.cle), ["planche"]);
+});
+
+test("la cible d'un geste : mots, zone, case, planche, et ce qui manque", () => {
+  const [cri, ton, , regard] = PLAN.entrees;
+  const bulle = { id: 10, type: "bulle" }, laCase = { id: 5, type: "case" };
+  const ctx = { porte: "mots", zone: bulle, caseRegion: laCase, plancheId: 9, mots: [2, 1] };
+  assert.deepEqual(A.cibleDePose(cri, ctx), { region_id: 10, mots: [1, 2] });
+  assert.match(A.cibleDePose(cri, { ...ctx, mots: [] }).erreur, /désignez/);
+  assert.match(A.cibleDePose(cri, { ...ctx, zone: laCase }).erreur, /bulle/);
+  assert.deepEqual(A.cibleDePose(ton, ctx), { region_id: 10 });          // toute la zone
+  assert.deepEqual(A.cibleDePose(regard, ctx), { region_id: 5 });        // la case
+  assert.match(A.cibleDePose(ton, { ...ctx, zone: laCase }).erreur, /bulle/);
+  assert.deepEqual(A.cibleDePose({ pose: "planche", libelle: "p" }, ctx), { planche_id: 9 });
+  assert.match(A.cibleDePose({ pose: "entite", libelle: "p" }, ctx).erreur, /partout/);
+  // Une entrée qui vise la case OU la bulle suit « Porte sur ».
+  const deux = { pose: "zone", cibles: ["bulle", "case"], libelle: "x" };
+  assert.deepEqual(A.cibleDePose(deux, ctx), { region_id: 10 });
+  assert.deepEqual(A.cibleDePose(deux, { ...ctx, porte: "case" }), { region_id: 5 });
+  // La case PSEUDO (la planche entière) n'est pas une région : rien ne s'y pose « sur la case ».
+  const pseudo = { id: null, type: "case", pseudo: true };
+  assert.match(A.cibleDePose(regard, { ...ctx, zone: pseudo, caseRegion: pseudo }).erreur, /case/);
+});
+
+test("les relevés d'une entrée sur CETTE cible", () => {
+  const l = [rel(1, { mots: motsDe(1, 2) }), rel(2, { mots: motsDe(1) }),
+             rel(3, { entree_cle: "ton" }), rel(4, { region_id: null, planche_id: 9,
+                                                    entree_cle: "ambiance" })];
+  assert.deepEqual(A.relevesSurLaCible(l, 1, "cri", { region_id: 10, mots: [2, 1] })
+    .map((r) => r.id), [1]);
+  assert.deepEqual(A.relevesSurLaCible(l, 1, "ton", { region_id: 10 }).map((r) => r.id), [3]);
+  assert.deepEqual(A.relevesSurLaCible(l, 1, "ambiance", { planche_id: 9 }).map((r) => r.id), [4]);
+  assert.deepEqual(A.relevesSurLaCible(l, 2, "cri", { region_id: 10, mots: [1, 2] }), []);
+  assert.deepEqual(A.relevesSurLaCible(l, 1, "cri", { erreur: "x" }), []);
+});
+
+test("le geste : poser, retirer, remplacer une variante, ajouter un qualificatif", () => {
+  const [cri, ton, origine, regard] = PLAN.entrees;
+  assert.deepEqual(A.geste(cri, [], {}), { action: "poser", corps: {} });
+  const r = rel(7, { mots: motsDe(1) });
+  assert.deepEqual(A.geste(cri, [r], {}),
+                   { action: "retirer", releve: r,
+                     vu: { variante_cle: null, qualificatifs: [], mots: [1] } });
+  // Une entrée « plusieurs » sur une cible entière ajoute à chaque clic.
+  assert.equal(A.geste(regard, [rel(8, {})], {}).action, "poser");
+  assert.deepEqual(A.geste(ton, [], { variante: "crie" }),
+                   { action: "poser", corps: { variante_cle: "crie" } });
+  const t = rel(9, { entree_cle: "ton", variante_cle: "crie" });
+  assert.equal(A.geste(ton, [t], { variante: "crie" }).action, "retirer");
+  assert.deepEqual(A.geste(ton, [t], { variante: "chuchote" }),
+                   { action: "modifier", releve: t, corps: { variante_cle: "chuchote" },
+                     vu: { variante_cle: "crie" } });
+  assert.deepEqual(A.geste(origine, [], {}), { action: "poser", corps: { qualificatifs: [] } });
+  assert.deepEqual(A.geste(origine, [], { qualificatif: "objet" }),
+                   { action: "poser", corps: { qualificatifs: ["objet"] } });
+  const o = rel(10, { entree_cle: "origine", qualificatifs: ["objet"] });
+  assert.deepEqual(A.geste(origine, [o], { qualificatif: "hors-champ" }),
+                   { action: "modifier", releve: o, corps: { qualificatifs: ["hors-champ", "objet"] },
+                     vu: { qualificatifs: ["objet"] } });
+  assert.deepEqual(A.geste(origine, [o], { qualificatif: "objet" }).corps, { qualificatifs: [] });
+  assert.equal(A.geste(origine, [o], {}).action, "retirer");
+});
+
+test("le libellé d'un relevé et le mot de son état", () => {
+  assert.equal(A.libelleReleve(rel(1, { entree_cle: "ton", variante_cle: "crie" }), PLAN),
+               "ton de voix · crié");
+  assert.equal(A.libelleReleve(rel(1, { entree_cle: "origine",
+                                        qualificatifs: ["objet", "hors-champ"],
+                                        precision: "le salon" }), PLAN),
+               "origine du son · objet, hors champ — « le salon »");
+  assert.equal(A.libelleReleve(rel(1, { entree_cle: "inconnue" }), PLAN), "inconnue");
+  assert.equal(A.motEtat({ etat: "a_completer" }), "à compléter");
+  assert.equal(A.motEtat({ etat: "normal" }), "");
+});
+
+test("la liste de ce qui est posé : sur les mots désignés, sinon la zone et sa case", () => {
+  const l = [rel(1, { mots: motsDe(2, 3) }), rel(2, { mots: motsDe(0) }),
+             rel(3, { entree_cle: "ton" }), rel(4, { region_id: 5 }),
+             rel(5, { region_id: 99 }), rel(6, { region_id: null, planche_id: 9 })];
+  const bulle = { id: 10, type: "bulle" }, laCase = { id: 5, type: "case" };
+  assert.deepEqual(A.listeSurLaZone(l, bulle, laCase, 9, [3]).map((r) => r.id), [1]);
+  assert.deepEqual(A.listeSurLaZone(l, bulle, laCase, 9, []).map((r) => r.id), [2, 1, 3, 4]);
+  assert.deepEqual(A.listeSurLaZone(l, laCase, laCase, 9, []).map((r) => r.id), [4]);
+  assert.deepEqual(A.listeSurLaZone(l, { pseudo: true }, null, 9, []).map((r) => r.id), [6]);
+});
+
+test("« Relevés : ▾ » se retient par personne et par projet, sous try/catch", () => {
+  const memoire = {};
+  const s = { getItem: (k) => memoire[k] ?? null, setItem: (k, v) => { memoire[k] = v; } };
+  assert.equal(A.lireReglage(s, "ana", 2), null);
+  assert.equal(A.retenirReglage(s, "ana", 2, [3, 1]), true);
+  assert.deepEqual(A.lireReglage(s, "ana", 2), [1, 3]);
+  assert.equal(A.lireReglage(s, "bob", 2), null);
+  assert.equal(A.lireReglage(s, "ana", 4), null);
+  const casse = { getItem: () => { throw new Error("bloqué"); },
+                  setItem: () => { throw new Error("bloqué"); } };
+  assert.equal(A.lireReglage(casse, "ana", 2), null);
+  assert.equal(A.retenirReglage(casse, "ana", 2, [1]), false);
+  assert.equal(A.retenirReglage(null, "ana", 2, [1]), false);
+  const m = A.grillesMontrees([3, 9], [{ id: 1 }, { id: 3 }], 1);
+  assert.deepEqual([...m].sort(), [1, 3]);
+  assert.deepEqual([...A.grillesMontrees(null, [{ id: 1 }], 1)], [1]);
+});
+
+test("la cardinalité : « Remplacer par la mienne » modifie le relevé existant", () => {
+  const det = { releve_existant: { id: 4, variante_cle: "crie", qualificatifs: [],
+                                   auteur: "lea", auteur_nom: "Léa" } };
+  assert.deepEqual(A.remplacementCardinalite(det, { variante_cle: "chuchote" }),
+                   { releve_id: 4, corps: { variante_cle: "chuchote",
+                                            vu: { variante_cle: "crie" } }, auteur: "Léa" });
+  assert.equal(A.remplacementCardinalite({ message: "x" }, {}), null);
+});
+
+test("« Créer « … » » dans une grille ouverte seulement, sans doublon", () => {
+  assert.equal(A.creerDansLeFiltre({ ouverte: true }, " Paris ", []), "Paris");
+  assert.equal(A.creerDansLeFiltre({ ouverte: true }, "paris", [{ libelle: "Paris" }]), null);
+  assert.equal(A.creerDansLeFiltre({ ouverte: false }, "Paris", []), null);
+  assert.equal(A.creerDansLeFiltre({ ouverte: true }, "  ", []), null);
+});
+
+test("l'entrée qui naît en la posant suit la cible de la version", () => {
+  assert.deepEqual(A.entreeNeuve({ porte_sur: ["mots"] }, "Paris").pose, "mots");
+  assert.deepEqual(A.entreeNeuve({ porte_sur: ["case"] }, "Paris").pose, "zone");
+  assert.deepEqual(A.entreeNeuve({ porte_sur: ["case"] }, "Paris").cibles, ["case"]);
+  assert.deepEqual(A.entreeNeuve({ porte_sur: ["planche"] }, "Paris").pose, "planche");
+  assert.deepEqual(A.vuDuReleve(rel(1, {})), { variante_cle: null, qualificatifs: [] });
+  // Les qualificatifs vus forment un ENSEMBLE : ils partent triés, dans un ordre stable.
+  assert.deepEqual(A.vuDuReleve(rel(1, { qualificatifs: ["objet", "hors-champ"] })).qualificatifs,
+                   ["hors-champ", "objet"]);
+});

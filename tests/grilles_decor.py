@@ -171,11 +171,13 @@ def flux(texte: str) -> io.StringIO:
     return io.StringIO(texte, newline="")
 
 
-def grille_active_vivante(http, *, nom="Signaux", porte_sur="mots", projet_id=None) -> dict:
+def grille_active_vivante(http, *, nom="Signaux", porte_sur="mots", projet_id=None,
+                          ouverte=False) -> dict:
     """Le modèle FICTIF importé, publié et activé sur un serveur LIVE, pour la page
     Annotation (ANN-7, tranche 2). `http` : un client httpx qui écrit (`ECRITURE`), en
     mono-poste ; sans `projet_id`, le projet de repli — celui des albums créés sans
-    collection. Rend `{grille_id, projet_id, numero}`."""
+    collection ; `ouverte` : une grille OUVERTE (sa version vivante, sans publication).
+    Rend `{grille_id, projet_id, numero}`."""
     if projet_id is None:
         projets = http.get("/api/projets").json()
         projet_id = next((p for p in projets if p.get("repli")), projets[0])["id"]
@@ -183,12 +185,13 @@ def grille_active_vivante(http, *, nom="Signaux", porte_sur="mots", projet_id=No
              "listes": ("grille-listes-qualificatifs.csv", MODELE_LISTES.encode("utf-8-sig"),
                         "text/csv")}
     r = http.post(f"/api/projets/{projet_id}/grilles/import", files=files,
-                  data={"nom": nom, "porte_sur": porte_sur, "ouverte": "false",
+                  data={"nom": nom, "porte_sur": porte_sur, "ouverte": str(ouverte).lower(),
                         "a_blanc": "false", "note": "modèle fictif"})
     assert r.status_code == 200, r.text[:500]
     gid = r.json()["grille_id"]
-    r = http.post(f"/api/grilles/{gid}/versions/1/publication")
-    assert r.status_code == 200, r.text[:500]
+    if not ouverte:
+        r = http.post(f"/api/grilles/{gid}/versions/1/publication")
+        assert r.status_code == 200, r.text[:500]
     r = http.put(f"/api/projets/{projet_id}/grilles/{gid}/activation", json={"version": 1})
     assert r.status_code == 200, r.text[:500]
     return {"grille_id": gid, "projet_id": projet_id, "numero": 1}

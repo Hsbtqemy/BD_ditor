@@ -3859,11 +3859,50 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
             height: 4.6rem; overflow-y: auto; }
 .an-zone-btn[aria-pressed="true"] { border-color: var(--accent-blue); background: var(--bg-input); }
 
-/* Le texte de la zone, en lecture : hauteur fixe, il défile s'il est long. */
+/* « Porte sur » (commit 3) : une rangée de hauteur fixe, qu'elle offre un choix ou trois. */
+.an-porte { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem;
+            min-height: 2rem; }
+.an-porte-btn[aria-pressed="true"] { border-color: var(--accent-blue); background: var(--bg-input);
+                                     font-weight: 600; }
+
+/* Les MOTS de la zone (commit 3) : hauteur fixe, ils défilent s'ils sont longs. Sous chaque
+   mot, un `<i>` par COULOIR — un relevé garde sa hauteur d'un bout à l'autre de son passage —,
+   coloré par la rubrique de tête de son entrée (la palette des accents, des marques
+   graphiques : la couleur n'y porte jamais seule l'information, la liste et l'infobulle la
+   disent en mots). Les espaces entre deux mots d'un même passage portent le trait ; un
+   passage à trou n'en a pas sous les mots sautés. */
 .an-texte-bloc { flex: 0 0 auto; }
-.an-texte { margin: 0; height: 5.2rem; overflow-y: auto; padding: .4615rem .6154rem;
-            border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel);
-            white-space: pre-line; overflow-wrap: anywhere; }
+.an-mots-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3077rem .7692rem; }
+.an-legende { display: inline-flex; flex-wrap: wrap; gap: .3077rem .7692rem;
+              font-size: .8462rem; color: var(--text-muted); }
+.an-leg { display: inline-flex; align-items: center; gap: .3077rem; }
+.an-leg .an-trait { width: .9231rem; height: 4px; display: inline-block; }
+.an-mots { height: 7.3846rem; overflow-y: auto; padding: .4615rem .6154rem;
+           border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel);
+           font-size: 1.1538rem; line-height: 1.25; user-select: none; overflow-wrap: anywhere; }
+.an-mot, .an-esp { display: inline-flex; flex-direction: column; vertical-align: top;
+                   margin-bottom: .3077rem; max-width: 100%; }
+.an-mot { cursor: text; }
+.an-mot-t { padding: .0769rem .0385rem; border-radius: 3px; }
+.an-esp .an-mot-t { white-space: pre; }
+.an-mot:hover .an-mot-t { background: var(--hover); }
+.an-mot.sel .an-mot-t, .an-esp.sel .an-mot-t {
+  background: color-mix(in srgb, var(--accent-blue) 30%, transparent); }
+.an-mot.curseur .an-mot-t { outline: 1.5px dashed var(--focus); outline-offset: 1px; }
+.an-traits { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
+.an-traits i { display: block; height: 4px; }
+.an-teinte-0 { background: var(--accent-blue); }
+.an-teinte-1 { background: var(--accent-amber); }
+.an-teinte-2 { background: var(--accent-violet); }
+.an-teinte-3 { background: var(--accent-cyan); }
+.an-teinte-4 { background: var(--accent-pink); }
+.an-teinte-5 { background: var(--accent-green); }
+.an-teinte-6 { background: var(--accent-red); }
+.an-trait-autre { background: var(--text-muted); }
+/* Désigner le lien d'un relevé : les zones de texte de la minicarte se cliquent. */
+body.an-designer .an-mz-enfant.t-bulle, body.an-designer .an-mz-enfant.t-cartouche,
+body.an-designer .an-mz-enfant.t-texte {
+  pointer-events: auto; cursor: crosshair; stroke: var(--accent-amber); opacity: 1; }
 
 /* La GRILLE (commit 2) : l'en-tête (onglets, « Afficher », filtre), le corps qui défile,
    et la ligne du guide à HAUTEUR FIXE en bas — elle ne change pas la hauteur de la colonne,
@@ -3925,6 +3964,54 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .an-res-ex { font-size: .8462rem; font-style: italic; color: var(--text-muted); }
 .an-res-vide { padding: .3846rem .6154rem; }
 .an-ailleurs { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem; }
+/* Ce qui est posé (commit 3), à hauteur fixe au-dessus de la ligne du guide. */
+.an-poses { flex: 0 0 auto; height: 10.7692rem; display: flex; flex-direction: column;
+            border-top: 1px solid var(--border); padding: .4615rem .9231rem; gap: .3077rem;
+            position: relative; }
+.an-poses-tete { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem .6154rem; }
+.an-poses-tete .an-sous-titre { margin: 0; flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
+.an-releves-btn { max-width: 100%; overflow-wrap: anywhere; }
+.an-releves-pop { position: absolute; z-index: 5; right: .9231rem; top: 2.3rem;
+                  max-width: calc(100% - 1.8462rem); display: flex; flex-direction: column;
+                  gap: .3077rem; padding: .6154rem; background: var(--bg-panel);
+                  border: 1px solid var(--border); border-radius: 6px;
+                  box-shadow: 0 6px 18px var(--shadow); }
+.an-releves-pop[hidden] { display: none; }
+.an-pop-l { display: flex; align-items: center; gap: .3077rem; overflow-wrap: anywhere; }
+.an-pop-gestes { display: flex; flex-wrap: wrap; gap: .3077rem; }
+.an-poses-liste { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto;
+                  min-height: 0; display: flex; flex-direction: column; gap: .1538rem; }
+.an-pose { display: flex; flex-wrap: wrap; align-items: center; gap: .1538rem .3077rem; }
+.an-pose-btn { flex: 1 1 10rem; min-width: 0; display: flex; flex-wrap: wrap; align-items: center;
+               gap: .1538rem .4615rem; text-align: left; background: none; color: var(--text);
+               border: 1px solid transparent; border-radius: 5px; padding: .1538rem .3077rem;
+               cursor: pointer; font: inherit; }
+.an-pose-btn:hover { background: var(--hover); border-color: var(--border); }
+.an-pastille { width: .7692rem; height: .7692rem; border-radius: 2px; flex: 0 0 auto; }
+.an-pose-lib { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.an-pose-pass, .an-pose-gr { font-size: .8462rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.an-pose-masquee .an-pose-lib { font-weight: 400; color: var(--text-muted); }
+.an-etat { font-size: .8462rem; padding: 0 .4615rem; border-radius: 9px; border: 1px solid var(--border); }
+.an-etat-a_revoir { color: var(--ink-red); }
+.an-pose-prec { flex: 1 1 100%; display: flex; padding-left: 1.2rem; }
+.an-prec { flex: 1 1 auto; min-width: 0; padding: .1538rem .4615rem; font: inherit;
+           background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
+           border-radius: 4px; }
+.an-lien-btn[aria-pressed="true"] { border-color: var(--accent-amber); }
+.an-res-creer .an-res-lib { color: var(--text); text-decoration: underline; }
+.an-quals { margin-left: 1.9231rem; }
+.an-var[aria-pressed="true"] { border-color: var(--accent-green); font-weight: 600;
+  background: color-mix(in srgb, var(--accent-green) 14%, transparent); }
+.an-ent-btn[aria-checked="true"] .an-box { background: var(--accent-green);
+  border-color: var(--accent-green); color: var(--bg-deep); }
+.an-ent-btn[aria-checked="true"] .an-ent-lib { font-weight: 600; }
+.an-box { display: inline-flex; align-items: center; justify-content: center;
+          font-size: .7692rem; line-height: 1; }
+/* Le bandeau d'un conflit prend la place de la ligne du guide, à la même hauteur. */
+.an-guide-contenu.an-conflit { border-left: 3px solid var(--accent-amber); padding-left: .6154rem; }
+.an-bandeau-titre { font-weight: 700; }
+.an-bandeau-gestes { display: flex; flex-wrap: wrap; gap: .4615rem; }
+
 .an-guide { flex: 0 0 auto; height: 12.3077rem; border-top: 1px solid var(--border);
             background: var(--bg-deep); display: flex; flex-direction: column;
             padding: .6154rem .9231rem; gap: .3077rem; font-size: .9231rem; }
@@ -3966,6 +4053,7 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
            overflow-y: auto; }
   .an-col { overflow: visible; min-height: auto; }
   .an-grille-corps { overflow: visible; }
+  .an-poses { height: auto; min-height: 10.7692rem; }
   .an-gauche { border-right: none; border-top: 1px solid var(--border); }
 }
 /* Une colonne : la case, la planche, puis la grille. */

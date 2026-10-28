@@ -250,6 +250,11 @@ DEPLIES = {
     "#an-plan .an-rub-btn": {
         "nom": "rubrique de la grille", "panneau": "#an-plan .an-rub",
         "surfaces": ["/annotation"]},
+    # Et « Relevés : ▾ », en bas de la colonne de la grille (commit 3) : les grilles dont
+    # les relevés s'affichent. Replié, son panneau n'a pas de rectangle.
+    "#an-releves-btn": {
+        "nom": "grilles des relevés", "panneau": "#an-releves-pop",
+        "surfaces": ["/annotation"]},
     # Le menu du compte (UX-14) : « Déconnexion » y a quitté la bande. `theme.js` ne le
     # construit que s'il a au moins une entrée, donc derrière le proxy.
     ".user-chip button.user-who": {

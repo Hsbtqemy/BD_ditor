@@ -16,8 +16,10 @@
      · la taille, en pixels master, d'une étiquette qu'on veut lire à taille d'écran
        constante quelle que soit la case ;
      · ce que dit « Préparée » et ce que montre le Contexte, en lecture.
-   Les règles de la grille, de la pose, du parcours et du décompte s'y ajouteront aux
-   commits suivants, au même endroit.
+   Le commit 2 y ajoute la grille en lecture (masque, arbre, comptes, filtre, guide) ; le
+   commit 3 la désignation des mots et la pose (passage, couloirs, « Porte sur », la cible
+   d'un geste et ce qu'il fait selon ce qui est déjà posé, la liste, « Relevés : ▾ », la
+   cardinalité). Le parcours et le décompte s'y ajouteront, au même endroit.
 
    CE N'EST PAS UNE GARDE. Tout ce qui suit lit ce que le serveur a déjà décidé : les
    régions d'une planche qu'on lit, leurs citations, le statut de relecture. */
@@ -581,10 +583,319 @@
     };
   }
 
-  return { TYPES_TEXTE, CLES_ADRESSE, estTexte, nomType, deLa, casesDeLaPlanche, etiquette,
-           etiquettesDeLaCase, situer, libellePlanche, preparation, adresse, lireAdresse,
-           lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
+  /* ───────────── DÉSIGNER ET POSER (commit 3) ─────────────
+     Les mots se désignent dans le découpage du SERVEUR (`GET /api/regions/{id}/mots` :
+     `rang`, `forme`, `debut`, `fin`) — l'outil n'a pas de jumeau navigateur (G11). Une
+     sélection est un ensemble de rangs. */
+
+  function rangs(sel) {
+    return [...new Set(Array.isArray(sel) ? sel : [...(sel || [])])]
+      .filter((x) => Number.isInteger(x) && x >= 0).sort((a, b) => a - b);
+  }
+
+  /* Le passage CONTINU de `a` à `b` (clic-glissé, Maj+clic, Maj+flèches). */
+  function plage(a, b) {
+    const [d, f] = a <= b ? [a, b] : [b, a];
+    const out = [];
+    for (let i = d; i <= f; i++) out.push(i);
+    return out;
+  }
+
+  /* Ctrl+clic : un mot ajouté au passage, ou retiré — « ne … pas ». */
+  function basculer(sel, rang) {
+    const s = new Set(rangs(sel));
+    if (s.has(rang)) s.delete(rang); else s.add(rang);
+    return rangs(s);
+  }
+
+  /* Le texte d'un passage, ses trous dits « … » : « ne … pas ». `mots` : le découpage. */
+  function texteDuPassage(mots, sel) {
+    const r = rangs(sel);
+    const parRang = new Map((mots || []).map((m) => [m.rang, m.forme]));
+    const out = [];
+    r.forEach((x, i) => {
+      if (i && x !== r[i - 1] + 1) out.push("…");
+      out.push(parRang.has(x) ? parRang.get(x) : "?");
+    });
+    return out.join(" ");
+  }
+
+  /* Deux passages identiques ? (même ensemble de rangs, dans n'importe quel ordre) */
+  function memesMots(a, b) {
+    const x = rangs(a), y = rangs(b);
+    return x.length === y.length && x.every((v, i) => v === y[i]);
+  }
+
+  /* Les rangs d'un relevé posé sur des mots (ceux de son ancrage). */
+  function motsDuReleve(r) {
+    return rangs(((r && r.mots) || []).map((m) => m.rang));
+  }
+
+  /* LES COULOIRS des traits sous les mots : un relevé garde la même hauteur d'un bout à
+     l'autre de son passage, et deux passages qui se chevauchent (même par un trou) ne
+     partagent pas un couloir. Rend `Map(id → n°)`, 0 le plus haut. Les plus longs d'abord
+     à début égal, comme la maquette. */
+  function couloirs(releves) {
+    const l = (Array.isArray(releves) ? releves : [])
+      .map((r) => ({ r, m: motsDuReleve(r) })).filter((x) => x.m.length)
+      .map((x) => ({ id: x.r.id, a: x.m[0], b: x.m[x.m.length - 1] }))
+      .sort((x, y) => x.a - y.a || (y.b - y.a) - (x.b - x.a) || x.id - y.id);
+    const fins = [];
+    const out = new Map();
+    for (const x of l) {
+      let n = fins.findIndex((f) => f < x.a);
+      if (n < 0) { n = fins.length; fins.push(x.b); } else fins[n] = x.b;
+      out.set(x.id, n);
+    }
+    return out;
+  }
+
+  /* LA TEINTE d'un relevé : le rang de la rubrique de TÊTE de son entrée parmi celles du
+     plan, dans une palette de `n` jetons (les accents du thème). `null` pour une entrée
+     sans rubrique ou absente : un trait gris. */
+  function teinte(plan, entreeCle, n) {
+    const e = ((plan && plan.entrees) || []).find((x) => x.cle === entreeCle);
+    if (!e || !(e.rubriques || []).length) return null;
+    const tete = ((plan && plan.rubriques) || []).filter((r) => r.parent_cle === null
+      || r.parent_cle === undefined).map((r) => r.cle);
+    const i = tete.indexOf(e.rubriques[0]);
+    return i < 0 ? null : i % (n || 7);
+  }
+
+  /* « PORTE SUR » : ce que la grille ouverte vise depuis la zone choisie — des mots d'une
+     zone de texte, la zone entière, la case, la planche. Rend `[{ cle, libelle }]`, dans cet
+     ordre. L'entité (« X, partout ») n'est pas offerte : le serveur la refuse jusqu'à
+     l'étage de projet des personnages (G3). */
+  function optionsPorteSur(plan, zone, caseRegion) {
+    const entrees = ((plan && plan.entrees) || []).filter((e) => !e.retiree);
+    const out = [];
+    const texte = !!zone && !zone.pseudo && estTexte(zone.type);
+    const sur = (type) => entrees.some((e) => e.pose === "zone" && (e.cibles || []).includes(type));
+    if (texte && entrees.some((e) => e.pose === "mots")) out.push({ cle: "mots", libelle: "des mots" });
+    if (zone && !zone.pseudo && zone.type !== "case" && sur(zone.type)) {
+      out.push({ cle: "zone", libelle: `toute ${zone.type === "personnage" ? "la boîte"
+        : MASCULINS.has(zone.type) ? "le " + nomType(zone.type) : "la " + nomType(zone.type)}` });
+    }
+    if (caseRegion && !caseRegion.pseudo && sur("case")) out.push({ cle: "case", libelle: "la case" });
+    if (entrees.some((e) => e.pose === "planche")) out.push({ cle: "planche", libelle: "la planche" });
+    return out;
+  }
+
+  /* LA CIBLE qu'un geste pose pour une entrée : `{ region_id }` (avec `mots` pour des mots)
+     ou `{ planche_id }`, ou `{ erreur }` en mots. `ctx` : `{ porte, zone, caseRegion,
+     plancheId, mots }` — `mots` la sélection. Une entrée qui déclare SA cible s'y pose
+     d'elle-même (« toute la zone », « la case »), quel que soit « Porte sur » ; une entrée
+     de la zone suit « Porte sur » entre la zone et sa case. */
+  function cibleDePose(entree, ctx) {
+    const c = ctx || {};
+    const zone = c.zone, laCase = c.caseRegion;
+    if (!entree) return { erreur: "Entrée inconnue." };
+    if (entree.pose === "planche") return { planche_id: c.plancheId };
+    if (entree.pose === "entite") {
+      return { erreur: "Cette entrée vise le personnage partout : elle ne se pose pas encore." };
+    }
+    if (entree.pose === "mots") {
+      if (!zone || zone.pseudo || !estTexte(zone.type)) {
+        return { erreur: `« ${entree.libelle} » se pose sur des mots : choisissez une bulle, un cartouche ou un texte.` };
+      }
+      const m = rangs(c.mots);
+      if (!m.length) return { erreur: `« ${entree.libelle} » se pose sur des mots : désignez-en au moins un.` };
+      return { region_id: zone.id, mots: m };
+    }
+    if (entree.pose !== "zone") return { erreur: "Cette entrée ne dit pas sur quoi elle se pose." };
+    const cibles = entree.cibles || [];
+    const candidats = [];
+    if (c.porte === "case") candidats.push(laCase, zone);
+    else candidats.push(zone, laCase);
+    const r = candidats.find((x) => x && !x.pseudo && cibles.includes(x.type));
+    if (!r) {
+      return { erreur: `« ${entree.libelle} » se pose sur : ${cibles.map(nomType).join(", ")} — choisissez-en une dans la case.` };
+    }
+    return { region_id: r.id };
+  }
+
+  /* Les relevés d'une entrée sur CETTE cible (la même région ou la planche ; pour des mots,
+     le même passage). */
+  function relevesSurLaCible(releves, grilleId, entreeCle, cible) {
+    if (!cible || cible.erreur) return [];
+    return (Array.isArray(releves) ? releves : []).filter((r) => r.grille_id === grilleId
+      && r.entree_cle === entreeCle
+      && (cible.planche_id !== undefined
+        ? r.planche_id === cible.planche_id && r.region_id === null
+        : r.region_id === cible.region_id
+          && (cible.mots ? memesMots(motsDuReleve(r), cible.mots) : !motsDuReleve(r).length)));
+  }
+
+  /* Ce que l'écran MONTRE d'un relevé qu'on retire : si un autre l'a changé depuis, le
+     retrait reçoit le 409 de CONC-3 (`DELETE /api/releves/{id}` avec `vu`). */
+  function vuDuReleve(x) {
+    return { variante_cle: x.variante_cle || null,
+             qualificatifs: [...(x.qualificatifs || [])].sort(),
+             ...(motsDuReleve(x).length ? { mots: motsDuReleve(x) } : {}) };
+  }
+
+  /* L'entrée qui NAÎT en la posant dans une grille ouverte (G14) : simple, sans rubrique,
+     sur la cible de la version — pour savoir où la poser avant qu'elle existe. */
+  function entreeNeuve(plan, libelle) {
+    const cibles = (plan && plan.porte_sur) || [];
+    const pose = cibles.includes("mots") ? "mots" : cibles.includes("planche") ? "planche"
+      : cibles.includes("entite") ? "entite" : "zone";
+    return { cle: null, libelle, forme: "simple", cibles, pose, cardinalite: "plusieurs",
+             cible_declaree: [], rubriques: [], variantes: [] };
+  }
+
+  /* LE GESTE d'un clic dans la grille, sur une entrée (`choix` vide), une variante
+     (`{ variante }`) ou un qualificatif (`{ qualificatif }`), selon ce qui est déjà posé sur
+     la cible. Cocher pose, recocher sur le même passage retire ; une autre variante
+     REMPLACE (en place, avec `vu`) ; un qualificatif s'ajoute ou s'ôte (UN ensemble). Une
+     entrée « plusieurs » sur une cible entière ajoute un relevé à chaque clic (on en retire
+     un dans la liste). Rend `{ action: "poser", corps }`, `{ action: "retirer", releve, vu }`
+     ou `{ action: "modifier", releve, corps, vu }`. */
+  function geste(entree, existants, choix) {
+    const ch = choix || {};
+    const r = (existants || [])[0] || null;
+    const vu = vuDuReleve;
+    if (entree.forme === "variantes") {
+      if (!ch.variante) return r ? { action: "retirer", releve: r, vu: vu(r) } : null;
+      if (!r) return { action: "poser", corps: { variante_cle: ch.variante } };
+      if (r.variante_cle === ch.variante) return { action: "retirer", releve: r, vu: vu(r) };
+      return { action: "modifier", releve: r, corps: { variante_cle: ch.variante },
+               vu: { variante_cle: r.variante_cle || null } };
+    }
+    if (entree.forme === "qualificatifs" && ch.qualificatif) {
+      if (!r) return { action: "poser", corps: { qualificatifs: [ch.qualificatif] } };
+      const q = [...(r.qualificatifs || [])].sort();
+      const neuf = q.includes(ch.qualificatif) ? q.filter((x) => x !== ch.qualificatif)
+        : [...q, ch.qualificatif].sort();
+      return { action: "modifier", releve: r, corps: { qualificatifs: neuf },
+               vu: { qualificatifs: q } };
+    }
+    if (r && !marquePlusieurs(entree)) return { action: "retirer", releve: r, vu: vu(r) };
+    return { action: "poser", corps: entree.forme === "qualificatifs" ? { qualificatifs: [] } : {} };
+  }
+
+  /* Le LIBELLÉ d'un relevé : l'entrée, sa variante ou ses qualificatifs, sa précision —
+     « onomatopée de choc · bang », « origine du son · objet, hors champ — « le salon » ». */
+  function libelleReleve(r, plan) {
+    const e = ((plan && plan.entrees) || []).find((x) => x.cle === r.entree_cle);
+    if (!e) return r.entree_cle;
+    let t = e.libelle;
+    if (r.variante_cle) {
+      const v = (e.variantes || []).find((x) => x.cle === r.variante_cle);
+      t += ` · ${v ? v.libelle : r.variante_cle}`;
+    }
+    if ((r.qualificatifs || []).length) {
+      const l = ((plan && plan.listes) || []).find((x) => x.cle === e.liste_cle);
+      const nom = (q) => { const x = l && l.qualificatifs.find((y) => y.cle === q); return x ? x.libelle : q; };
+      t += ` · ${r.qualificatifs.map(nom).join(", ")}`;
+    }
+    if (r.precision) t += ` — « ${r.precision} »`;
+    return t;
+  }
+
+  /* Ce que dit l'état d'un relevé, en mots courts (un badge). */
+  function motEtat(r) {
+    return r && r.etat === "a_revoir" ? "à revoir" : r && r.etat === "a_completer" ? "à compléter" : "";
+  }
+
+  /* LA LISTE de ce qui est posé, en bas de la colonne : sur les mots désignés (ceux qui
+     les touchent), sinon sur toute la zone (ses mots, la zone entière) et sa case ; pour
+     une zone qui n'a pas de mots, sur elle ; pour la case pseudo, la planche. Rangée par
+     début de passage, puis par identifiant. */
+  function listeSurLaZone(releves, zone, caseRegion, plancheId, sel) {
+    const l = Array.isArray(releves) ? releves : [];
+    if (!zone) return [];
+    if (zone.pseudo) return l.filter((r) => r.planche_id === plancheId && r.region_id === null);
+    const s = rangs(sel);
+    let out;
+    if (s.length && estTexte(zone.type)) {
+      out = l.filter((r) => r.region_id === zone.id && motsDuReleve(r).some((x) => s.includes(x)));
+    } else {
+      const laCase = caseRegion && !caseRegion.pseudo && caseRegion.id !== zone.id ? caseRegion.id : null;
+      out = l.filter((r) => r.region_id === zone.id || (laCase !== null && r.region_id === laCase));
+    }
+    const debut = (r) => { const m = motsDuReleve(r); return m.length ? m[0] : Infinity; };
+    return out.slice().sort((a, b) => debut(a) - debut(b) || a.id - b.id);
+  }
+
+  /* « RELEVÉS : ▾ » — quelles grilles montrent leurs relevés dans la liste et sous les
+     mots. Par défaut la grille ouverte seule ; retenu par PERSONNE et par PROJET, dans le
+     stockage local (clé `bd-annotation-releves`, un objet `{ "login|projet": [ids] }`, le
+     patron de `bd-bacs-a-sable`), sous try/catch : sans stockage, le choix vaut pour la
+     page. La grille ouverte est toujours montrée. */
+  const CLE_RELEVES = "bd-annotation-releves";
+
+  function cleReglage(login, projetId) {
+    return `${login || "-"}|${projetId === null || projetId === undefined ? "-" : projetId}`;
+  }
+
+  function lireReglage(stockage, login, projetId) {
+    try {
+      const brut = stockage ? stockage.getItem(CLE_RELEVES) : null;
+      const tout = brut ? JSON.parse(brut) : {};
+      const v = tout && typeof tout === "object" ? tout[cleReglage(login, projetId)] : null;
+      return Array.isArray(v) ? v.filter((x) => Number.isInteger(x)) : null;
+    } catch (e) { return null; }
+  }
+
+  function retenirReglage(stockage, login, projetId, ids) {
+    try {
+      if (!stockage) return false;
+      const brut = stockage.getItem(CLE_RELEVES);
+      const tout = brut ? JSON.parse(brut) : {};
+      const objet = tout && typeof tout === "object" && !Array.isArray(tout) ? tout : {};
+      objet[cleReglage(login, projetId)] = rangs(ids);
+      stockage.setItem(CLE_RELEVES, JSON.stringify(objet));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* Les grilles dont on montre les relevés : le réglage retenu, parmi les actives, plus la
+     grille ouverte. */
+  function grillesMontrees(reglage, actives, ouverte) {
+    const ids = new Set((Array.isArray(actives) ? actives : []).map((g) => g.id));
+    const out = new Set((reglage || []).filter((x) => ids.has(x)));
+    if (ouverte !== null && ouverte !== undefined) out.add(ouverte);
+    return out;
+  }
+
+  /* LE BANDEAU de la cardinalité (un second relevé d'une entrée « une ») : le relevé déjà
+     là, et ce que « Remplacer par la mienne » enverrait — un `PUT` de CE relevé avec `vu`
+     égal à ce qu'il porte. `null` si le refus n'est pas celui-là. */
+  function remplacementCardinalite(detail, corps) {
+    const ex = detail && detail.releve_existant;
+    if (!ex) return null;
+    const changer = {};
+    const vu = {};
+    if (corps && corps.variante_cle !== undefined) {
+      changer.variante_cle = corps.variante_cle;
+      vu.variante_cle = ex.variante_cle || null;
+    }
+    if (corps && corps.qualificatifs !== undefined) {
+      changer.qualificatifs = corps.qualificatifs;
+      vu.qualificatifs = [...(ex.qualificatifs || [])].sort();
+    }
+    return { releve_id: ex.id, corps: { ...changer, vu }, auteur: ex.auteur_nom || ex.auteur || null };
+  }
+
+  /* « Créer « … » » dans une grille OUVERTE (G14) : le libellé à créer, si la requête ne
+     nomme exactement aucun résultat ; `null` sinon, et toujours pour une grille fermée. */
+  function creerDansLeFiltre(grille, requete, resultats) {
+    const t = String(requete || "").trim();
+    if (!grille || !grille.ouverte || !t) return null;
+    const n = normaliser(t);
+    return (resultats || []).some((r) => normaliser(r.libelle) === n) ? null : t;
+  }
+
+  return { TYPES_TEXTE, CLES_ADRESSE, CLE_RELEVES, estTexte, nomType, deLa, casesDeLaPlanche,
+           etiquette, etiquettesDeLaCase, situer, libellePlanche, preparation, adresse,
+           lireAdresse, lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
            normaliser, masquee, grillesVisibles, grilleAOuvrir, infobulleGrille, arbre,
            entreesSous, chemin, vuesAfficher, relevesDeLaZone, compter, marquePlusieurs,
-           marqueCible, chercher, ligneDuGuide, guideComplet };
+           marqueCible, chercher, ligneDuGuide, guideComplet,
+           rangs, plage, basculer, texteDuPassage, memesMots, motsDuReleve, couloirs, teinte,
+           optionsPorteSur, cibleDePose, relevesSurLaCible, geste, libelleReleve, motEtat,
+           listeSurLaZone, lireReglage, retenirReglage, grillesMontrees,
+           remplacementCardinalite, creerDansLeFiltre, vuDuReleve, entreeNeuve };
+
 });

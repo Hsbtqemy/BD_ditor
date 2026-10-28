@@ -17,6 +17,8 @@ Les audits transverses (axe dans les deux thèmes, contraste élevé, reflow à 
 police, zoom, masquage, CSP, bande du projet, bac à sable) déclarent la page dans leurs
 propres modules.
 """
+import re
+
 import httpx
 import pytest
 
@@ -87,7 +89,7 @@ def _ouvrir(page, d, region=None):
 
 def _boites(page):
     """Les boîtes dont la hauteur ne doit pas bouger pendant le travail."""
-    return page.evaluate("""() => ['#an-vue-case', '#an-zones', '#an-texte', '.an-tete']
+    return page.evaluate("""() => ['#an-vue-case', '#an-zones', '#an-porte', '#an-mots', '.an-tete']
       .map((s) => Math.round(document.querySelector(s).getBoundingClientRect().height))""")
 
 
@@ -97,7 +99,7 @@ def test_l_adresse_ouvre_la_zone_et_le_contexte_se_lit(page, decor):
     expect(page.locator("#an-planche-choix")).to_have_value(str(decor["planche"]))
     expect(page.locator("#an-tete-case")).to_have_text("Case c1")
     expect(page.locator("#an-tete-zone")).to_have_text("bulle b1")
-    expect(page.locator("#an-texte")).to_have_text("MILLE SABORDS !")
+    expect(page.locator("#an-mots")).to_have_text("MILLE SABORDS !")
     expect(page.locator('#an-ctx-corps dd[data-ctx="locuteur"]')).to_have_text("Haddock")
     expect(page.locator('#an-ctx-corps dd[data-ctx="note"]')).to_have_text("il jure")
     # Aucun champ dans le Contexte : il se lit ici, il s'écrit dans l'Atelier.
@@ -118,13 +120,13 @@ def test_choisir_une_case_puis_une_zone_ne_change_la_taille_de_rien(page, decor)
     # Le cartouche, dans la case agrandie.
     page.locator(f'#an-vue-case rect[data-zone="{decor["cartouche"]}"]').click()
     expect(page.locator("#an-tete-zone")).to_have_text("cartouche b1")
-    expect(page.locator("#an-texte")).to_have_text("PENDANT CE TEMPS…")
+    expect(page.locator("#an-mots")).to_have_text("PENDANT CE TEMPS…")
     assert _boites(page) == avant
     assert f"region={decor['cartouche']}" in page.url
     # Le fond de la case : la case elle-même, et l'adresse nomme la case.
     page.locator("#an-vue-case rect.an-fond").click(position={"x": 5, "y": 300})
     expect(page.locator("#an-tete-zone")).to_have_text("")
-    expect(page.locator("#an-texte")).to_have_text("—")
+    expect(page.locator("#an-mots")).to_have_text("—")
     assert f"region={decor['c2']}" in page.url
     assert _boites(page) == avant
 
@@ -212,10 +214,10 @@ def test_la_grille_se_lit_avec_ses_onglets_ses_rubriques_et_n_ici(page, decor):
     regard = page.locator("#an-plan .an-ent-btn", has_text="regard caméra")
     expect(regard).to_contain_text("la case")
     expect(regard).not_to_contain_text("plusieurs")          # une case, une fois
-    expect(page.locator("#an-plan .an-ent-btn", has_text="réponse à une autre bulle"))         .to_contain_text("plusieurs")
-    # Rien ne se pose encore : aucune case à cocher, aucun champ dans la grille.
-    expect(page.locator("#an-grille [role=checkbox], #an-grille input[type=checkbox]")) \
-        .to_have_count(0)
+    expect(page.locator("#an-plan .an-ent-btn", has_text="réponse à une autre bulle")) \
+        .to_contain_text("plusieurs")
+    # Aucun mot désigné : rien n'est coché, même le « cri » posé sur « MILLE » (commit 3).
+    expect(page.locator('#an-plan [role=checkbox][aria-checked="true"]')).to_have_count(0)
 
 
 def test_la_ligne_du_guide_garde_sa_hauteur(page, decor):
@@ -229,6 +231,9 @@ def test_la_ligne_du_guide_garde_sa_hauteur(page, decor):
     expect(contenu).to_contain_text("AAAH !")
     expect(contenu.locator(".an-g-piege")).to_contain_text("pas une onomatopée")
     assert hauteur() == vide
+    # La souris quitte le plan : le défilement qu'amène le focus ferait passer une autre
+    # entrée sous le pointeur, et le survol l'emporterait.
+    page.mouse.move(0, 0)
     page.locator("#an-plan .an-var", has_text="splash").focus()
     expect(contenu).to_contain_text("[liquide] + [chute]")
     expect(contenu.locator(".an-g-chemin")).to_contain_text("onomatopée de choc")
@@ -304,3 +309,194 @@ def test_la_collection_qui_masque_cache_l_onglet(page, decor):
                  "Leurs relevés restent visibles, en lecture.")
     page.locator("#an-collection").select_option("toutes")
     expect(page.locator(f"#an-onglet-{decor['grille']}")).to_have_count(1)
+
+
+# --------------------------------------------------------------------------- #
+# Désigner et poser (commit 3)
+# --------------------------------------------------------------------------- #
+# La bulle du décor, « MILLE SABORDS ! », se découpe en MILLE (0) · SABORDS (1) · ! (2) ; le
+# décor y a posé « cri » sur MILLE.
+def _http(d):
+    return httpx.Client(base_url=d["base"], trust_env=False, timeout=30, headers=ECRITURE)
+
+
+def _releves(d):
+    with _http(d) as c:
+        return c.get(f"/api/planches/{d['planche']}/releves").json()["releves"]
+
+
+def _mot(page, rang):
+    return page.locator(f"#an-mot-{rang}")
+
+
+def test_designer_des_mots_et_poser_puis_retirer(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    expect(_mot(page, 2)).to_be_visible()
+    # Un glissé de SABORDS à « ! » : le passage continu, sans rien poser.
+    _mot(page, 1).hover()
+    page.mouse.down()
+    _mot(page, 2).hover()
+    page.mouse.up()
+    expect(_mot(page, 1)).to_have_attribute("aria-selected", "true")
+    expect(_mot(page, 2)).to_have_attribute("aria-selected", "true")
+    expect(page.locator("#an-poses-titre")).to_have_text("Sur « SABORDS ! »")
+    expect(page.locator('#an-porte [data-porte="mots"]')).to_have_attribute("aria-pressed", "true")
+    cri = page.locator("#an-plan [role=checkbox]", has_text="cri").first
+    expect(cri).to_have_attribute("aria-checked", "false")
+    cri.click()
+    expect(cri).to_have_attribute("aria-checked", "true")
+    poses = [r for r in _releves(decor) if r["entree_cle"] == "cri"]
+    assert sorted(tuple(m["rang"] for m in r["mots"]) for r in poses) == [(0,), (1, 2)]
+    # Les traits : deux relevés se chevauchent sur MILLE … SABORDS ? Non — deux couloirs
+    # tout de même, puisqu'ils se touchent bord à bord ; chaque mot porte un trait coloré.
+    expect(_mot(page, 1).locator(".an-trait.an-teinte-0")).to_have_count(1)
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_have_count(1)
+    expect(page.locator("#an-annonce")).to_have_text("Posé : cri")
+    # Recocher sur le même passage retire.
+    cri.click()
+    expect(cri).to_have_attribute("aria-checked", "false")
+    poses = [r for r in _releves(decor) if r["entree_cle"] == "cri"]
+    assert [tuple(m["rang"] for m in r["mots"]) for r in poses] == [(0,)]
+
+
+def test_maj_ctrl_et_clavier_designent_un_passage(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, 0).click()
+    _mot(page, 2).click(modifiers=["Control"])
+    expect(page.locator("#an-poses-titre")).to_have_text("Sur « MILLE … ! »")
+    _mot(page, 0).click()
+    _mot(page, 2).click(modifiers=["Shift"])
+    expect(page.locator("#an-poses-titre")).to_have_text("Sur « MILLE SABORDS ! »")
+    # Au clavier : la liste des mots, les flèches, Maj+flèche, Entrée vers le filtre, et
+    # Entrée sur le résultat POSE.
+    mots = page.locator("#an-mots")
+    mots.focus()
+    page.keyboard.press("Escape")
+    expect(page.locator("#an-poses-titre")).to_have_text("Dans la bulle b1")
+    page.keyboard.press("Home")
+    page.keyboard.press("ArrowRight")
+    expect(mots).to_have_attribute("aria-activedescendant", "an-mot-1")
+    page.keyboard.press("Shift+ArrowRight")
+    expect(page.locator("#an-poses-titre")).to_have_text("Sur « SABORDS ! »")
+    page.keyboard.press("Enter")
+    expect(page.locator("#an-filtre")).to_be_focused()
+    page.keyboard.type("cri")
+    page.keyboard.press("Enter")
+    expect(page.locator("#an-annonce")).to_have_text("Posé : cri")
+    assert any([m["rang"] for m in r["mots"]] == [1, 2]
+               for r in _releves(decor) if r["entree_cle"] == "cri")
+
+
+def test_une_variante_se_pose_sur_la_zone_et_se_remplace_en_place(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-plan .an-var", has_text="crié").click()
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "true")
+    ton = [r for r in _releves(decor) if r["entree_cle"] == "ton-de-voix"]
+    assert len(ton) == 1 and ton[0]["variante_cle"] == "crie" and ton[0]["mots"] == []
+    page.locator("#an-plan .an-var", has_text="chuchoté").click()
+    expect(page.locator("#an-plan .an-var", has_text="chuchoté")).to_have_attribute("aria-pressed", "true")
+    ton2 = [r for r in _releves(decor) if r["entree_cle"] == "ton-de-voix"]
+    assert [(r["id"], r["variante_cle"]) for r in ton2] == [(ton[0]["id"], "chuchote")]
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="ton de voix · chuchoté")) \
+        .to_have_count(1)
+
+
+def test_des_qualificatifs_et_une_precision(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, 1).click()
+    origine = page.locator("#an-plan .an-ent", has=page.locator("text=origine du son"))
+    origine.locator(".an-var", has_text="objet").click()
+    expect(origine.locator(".an-var", has_text="objet")).to_have_attribute("aria-pressed", "true")
+    origine.locator(".an-var", has_text="hors champ").click()
+    expect(origine.locator(".an-var", has_text="hors champ")).to_have_attribute("aria-pressed", "true")
+    r = [x for x in _releves(decor) if x["entree_cle"] == "origine-du-son"]
+    assert len(r) == 1 and sorted(r[0]["qualificatifs"]) == ["hors-champ", "objet"]
+    assert r[0]["etat"] == "a_completer"
+    # La précision attendue (« lieu ») se tape dans la liste.
+    champ = page.locator("#an-poses-liste .an-prec")
+    champ.fill("le salon")
+    champ.press("Enter")
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="« le salon »")).to_have_count(1)
+    r = [x for x in _releves(decor) if x["entree_cle"] == "origine-du-son"]
+    assert r[0]["precision"] == "le salon" and r[0]["etat"] == "normal"
+
+
+def test_le_lien_se_designe_sur_la_planche(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-plan [role=checkbox]", has_text="réponse à une autre bulle").click()
+    expect(page.locator("#an-poses-liste .an-etat", has_text="à compléter")).to_have_count(1)
+    page.locator("#an-poses-liste .an-lien-btn").click()
+    # L'autre zone vit dans la seconde case : on y va, puis on la touche.
+    page.locator('#an-mini .an-mz[data-case="1"]').click()
+    page.locator(f'#an-vue-case rect[data-zone="{decor["cartouche"]}"]').click()
+    r = [x for x in _releves(decor) if x["entree_cle"] == "reponse-a"]
+    assert r[0]["lien"]["region_id"] == decor["cartouche"] and r[0]["etat"] == "normal"
+
+
+def test_un_retrait_sur_une_valeur_perimee_ouvre_le_bandeau(page, decor):
+    with _http(decor) as c:
+        r = c.post("/api/releves", json={"region_id": decor["bulle"], "grille_id": decor["grille"],
+                                         "version": 1, "entree_cle": "ton-de-voix",
+                                         "variante_cle": "crie"}).json()
+    _ouvrir(page, decor, decor["bulle"])
+    hauteur = lambda: page.evaluate(  # noqa: E731
+        "() => Math.round(document.querySelector('#an-grille').getBoundingClientRect().height)")
+    avant = hauteur()
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "true")
+    with _http(decor) as c:                        # un autre écran change la variante
+        assert c.put(f"/api/releves/{r['id']}", json={"variante_cle": "chuchote"}).status_code == 200
+    page.locator("#an-plan .an-var", has_text="crié").click()     # l'écran croit retirer
+    expect(page.locator("#an-cf-titre")).to_contain_text("Variante modifiée")
+    expect(page.locator("#an-guide-contenu")).to_contain_text("Votre retrait n'est pas enregistré.")
+    expect(page.locator("#an-guide-contenu")).to_contain_text("chuchoté")
+    assert hauteur() == avant
+    assert [x["variante_cle"] for x in _releves(decor) if x["id"] == r["id"]] == ["chuchote"]
+    # Tant qu'il est ouvert, un autre geste ne part pas (une entrée qui se poserait sur la
+    # bulle entière, sans rien désigner).
+    page.locator("#an-plan [role=checkbox]", has_text="réponse à une autre bulle").click()
+    expect(page.locator("#an-cf-mienne")).to_be_focused()
+    assert not [x for x in _releves(decor) if x["entree_cle"] == "reponse-a"]
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator("#an-plan .an-var", has_text="chuchoté")).to_have_attribute("aria-pressed", "true")
+
+
+def test_la_cardinalite_propose_de_remplacer_le_releve_existant(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "false")
+    with _http(decor) as c:                        # posé ailleurs, après l'ouverture
+        r = c.post("/api/releves", json={"region_id": decor["bulle"], "grille_id": decor["grille"],
+                                         "version": 1, "entree_cle": "ton-de-voix",
+                                         "variante_cle": "crie"}).json()
+    page.locator("#an-plan .an-var", has_text="chuchoté").click()
+    expect(page.locator("#an-cf-titre")).to_contain_text("est déjà posé ici")
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    ton = [x for x in _releves(decor) if x["entree_cle"] == "ton-de-voix"]
+    assert [(x["id"], x["variante_cle"]) for x in ton] == [(r["id"], "chuchote")]
+
+
+def test_creer_une_entree_dans_une_grille_ouverte_et_releves(page, decor):
+    with _http(decor) as c:
+        g = grille_active_vivante(c, nom="Lieux", ouverte=True, projet_id=decor["projet"])
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f"#an-onglet-{g['grille_id']}").click()
+    _mot(page, 1).click()
+    page.locator("#an-filtre").fill("Moulinsart")
+    expect(page.locator("#an-resultats .an-res-creer")).to_have_text(
+        re.compile("Créer « Moulinsart »"))
+    page.locator("#an-filtre").press("Enter")
+    expect(page.locator("#an-annonce")).to_have_text("Posé : Moulinsart")
+    expect(page.locator("#an-plan .an-ent-btn", has_text="Moulinsart")).to_have_attribute(
+        "aria-checked", "true")
+    # « Relevés : ▾ » : la grille ouverte seule, puis aussi « Signaux » — retenu au rechargement.
+    page.keyboard.press("Escape")
+    page.locator("#an-mots").focus()
+    page.keyboard.press("Escape")
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_have_count(0)
+    page.locator("#an-releves-btn").click()
+    page.locator(f'#an-releves-pop [data-voir="{decor["grille"]}"]').check()
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_have_count(1)
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_have_count(1,
+                                                                                    timeout=15000)

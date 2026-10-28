@@ -59,9 +59,17 @@
       <div id="an-vue-case" class="an-vue-case"
            title="Cliquez une zone pour la choisir, ou le fond pour la case"></div>
       <div id="an-zones" class="an-zones" role="group" aria-label="Zones de la case"></div>
+      <!-- « Porte sur » (commit 3) : ce que la grille ouverte vise depuis la zone choisie. -->
+      <div id="an-porte" class="an-porte" role="group" aria-label="Le relevé porte sur"></div>
+      <!-- Les MOTS de la zone, à désigner : clic, glissé, Maj+clic, Ctrl+clic, clavier.
+           Sous chacun, les traits des relevés, un couloir par relevé. -->
       <section class="an-texte-bloc" aria-labelledby="an-texte-titre">
-        <h3 class="an-sous-titre" id="an-texte-titre">Texte</h3>
-        <p id="an-texte" class="an-texte muted">—</p>
+        <div class="an-mots-tete">
+          <h3 class="an-sous-titre" id="an-texte-titre">Texte</h3>
+          <span id="an-legende" class="an-legende" aria-hidden="true"></span>
+        </div>
+        <div id="an-mots" class="an-mots muted"
+             title="Clic, glisser ou Maj+clic : un passage. Ctrl+clic : ajouter ou retirer un mot (« ne … pas »). Au clavier : flèches, Maj+flèches, Espace, Entrée pour chercher dans la grille, Échap pour ne rien désigner.">—</div>
       </section>
     </section>
 
@@ -90,6 +98,19 @@
         <ul id="an-resultats" class="an-resultats" role="listbox" aria-label="Résultats" hidden></ul>
         <div id="an-ailleurs" class="an-ailleurs"></div>
       </div>
+      <!-- Ce qui est posé (commit 3) : sur les mots désignés, sinon sur la zone ; « Relevés : ▾ »
+           règle de quelles grilles. -->
+      <section id="an-poses" class="an-poses" aria-labelledby="an-poses-titre">
+        <div class="an-poses-tete">
+          <h3 class="an-sous-titre" id="an-poses-titre">—</h3>
+          <button id="an-releves-btn" class="ghost small an-releves-btn" type="button"
+                  aria-expanded="false" aria-controls="an-releves-pop"
+                  title="Les grilles dont les relevés s'affichent ici et sous les mots">Relevés ▾</button>
+        </div>
+        <div id="an-releves-pop" class="an-releves-pop" role="group"
+             aria-label="Grilles dont les relevés s'affichent" hidden></div>
+        <ul id="an-poses-liste" class="an-poses-liste"></ul>
+      </section>
       <div id="an-guide" class="an-guide" aria-live="polite">
         <div id="an-guide-contenu" class="an-guide-contenu"></div>
         <div class="an-guide-pied">
@@ -98,6 +119,8 @@
       </div>
     </aside>
   </main>
+  <!-- Ce qu'on pose, retire ou refuse, dit au lecteur d'écran. -->
+  <p id="an-annonce" class="sr-only" role="status" aria-live="polite"></p>
 
   <!-- Le guide complet, PRODUIT depuis la grille (modale `BDDialog`). -->
   <div id="an-guide-modal" hidden>
@@ -116,6 +139,7 @@
 <script src="/static/lib/projet.js"></script>
 <script src="/static/lib/bibliotheque.js"></script><!-- l'ordre des collections, celui de l'Atelier -->
 <script src="/static/lib/atelier.js"></script><!-- le filtre de collection, partagé avec l'Atelier -->
+<script src="/static/lib/conflit.js"></script><!-- les mots du bandeau de CONC-3 -->
 <script src="/static/lib/annotation.js"></script>
 <script src="/static/lib/dialog.js"></script>
 <script src="/static/lib/membres-projet.js"></script>

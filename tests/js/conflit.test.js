@@ -117,3 +117,16 @@ test("CONC-4 — ce qui n'est pas enregistré : le choix, nommé, ou le retrait"
   assert.equal(C.texteLienNonEnregistre({ id: 2 }), "Votre choix n'est pas enregistré.");
   assert.equal(C.texteLienNonEnregistre(null), "Votre retrait n'est pas enregistré.");
 });
+
+test("les valeurs d'un relevé se nomment avec leur accord (ANN-7, page Annotation)", () => {
+  const a = { login: "lea", nom: "Léa", meme_compte: false, le: "2026-10-28T09:05:00Z" };
+  const midi = new Date("2026-10-28T12:00:00Z");
+  assert.match(C.titreConflit({ champ: "variante_cle", auteur: a }, midi), /^Variante modifiée par Léa/);
+  assert.match(C.titreConflit({ champ: "qualificatifs", auteur: a }, midi),
+               /^Qualificatifs modifiés par Léa/);
+  assert.match(C.titreConflit({ champ: "mots", auteur: null }), /^Passage modifié ailleurs$/);
+  assert.match(C.messageNonEnregistre({ champ: "qualificatifs", auteur: null }),
+               /: les vôtres n'ont pas été enregistrés\.$/);
+  assert.match(C.messageNonEnregistre({ champ: "precision", auteur: null }),
+               /: la vôtre n'a pas été enregistrée\.$/);
+});

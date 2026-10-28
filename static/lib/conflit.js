@@ -37,6 +37,14 @@
     locuteur: ["Locuteur", "m", "le locuteur"],
     presence: ["Personnage montré", "m", "le personnage montré"],
     situation: ["Situation", "f", "la situation"],
+    // ANN-7, tranche 2 — les valeurs uniques d'un relevé, sur la page Annotation. « mp » :
+    // un masculin pluriel (« Qualificatifs modifiés »).
+    variante_cle: ["Variante", "f", "la variante"],
+    qualificatifs: ["Qualificatifs", "mp", "les qualificatifs"],
+    precision: ["Précision", "f", "la précision"],
+    lien_region_id: ["Lien", "m", "le lien"],
+    mots: ["Passage", "m", "le passage"],
+    releve: ["Relevé", "m", "le relevé"],
   };
   const INCONNU = ["Valeur", "f", "la valeur"];
 
@@ -49,7 +57,7 @@
     personnage: ["Cette boîte personnage", "f"],
   };
 
-  const accord = (genre) => (genre === "m" ? "" : "e");
+  const accord = (genre) => (genre === "m" ? "" : genre === "mp" ? "s" : "e");
   const deux = (n) => String(n).padStart(2, "0");
 
   /* « 14 h 32 », « 8 h 05 » : l'heure sans zéro de tête, les minutes sur deux chiffres. */
@@ -99,8 +107,9 @@
      pas été enregistrée. » */
   function messageNonEnregistre(conflit, maintenant) {
     const [, genre] = CHAMPS[conflit && conflit.champ] || INCONNU;
-    return `${titreConflit(conflit, maintenant)} : ${genre === "m" ? "le" : "la"} vôtre ` +
-      `n'a pas été enregistré${accord(genre)}.`;
+    const article = genre === "m" ? "le" : genre === "mp" ? "les" : "la";
+    return `${titreConflit(conflit, maintenant)} : ${article} ${genre === "mp" ? "vôtres" : "vôtre"} ` +
+      `${genre === "mp" ? "n'ont" : "n'a"} pas été enregistré${accord(genre)}.`;
   }
 
   /* Le toast d'une région supprimée par un autre : « Cette case a été supprimée par Alice
