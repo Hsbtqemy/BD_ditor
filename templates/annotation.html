@@ -71,6 +71,29 @@
         <div id="an-mots" class="an-mots muted"
              title="Clic, glisser ou Maj+clic : un passage. Ctrl+clic : ajouter ou retirer un mot (« ne … pas »). Au clavier : flèches, Maj+flèches, Espace, Entrée pour chercher dans la grille, Échap pour ne rien désigner.">—</div>
       </section>
+      <!-- Le PIED à deux lignes fixes (commit 4) : « terminée » pour la grille ouverte (ou la
+           rubrique qu'« Afficher » montre), et le parcours de ses zones. -->
+      <div id="an-pied" class="an-pied" role="group" aria-label="Terminée et parcours">
+        <div class="an-pied-ligne">
+          <span id="an-passe-etat" class="an-passe-etat"></span>
+          <button id="an-rouvrir" class="ghost small" type="button" hidden
+                  title="La zone n'est plus terminée, pour toute l'équipe">Rouvrir</button>
+          <span class="nav-spacer"></span>
+          <label for="an-parcours-sel" class="muted small">Parcours</label>
+          <select id="an-parcours-sel" title="Ce que « Suivante » parcourt">
+            <option value="tout">toutes les zones</option>
+            <option value="afaire">à faire seulement</option>
+          </select>
+        </div>
+        <div class="an-pied-ligne">
+          <button id="an-prec" class="ghost" type="button"
+                  title="Zone précédente (Ctrl+Maj+Entrée)">‹ Précédente</button>
+          <button id="an-suiv" class="ghost" type="button"
+                  title="Zone suivante, sans rien marquer (Ctrl+Entrée)">Suivante ›</button>
+          <span class="nav-spacer"></span>
+          <button id="an-terminee-suiv" class="primary" type="button">Terminée, suivante ›</button>
+        </div>
+      </div>
     </section>
 
     <!-- La GRILLE (commit 2), en lecture : les onglets des grilles actives que la collection
@@ -140,6 +163,7 @@
 <script src="/static/lib/bibliotheque.js"></script><!-- l'ordre des collections, celui de l'Atelier -->
 <script src="/static/lib/atelier.js"></script><!-- le filtre de collection, partagé avec l'Atelier -->
 <script src="/static/lib/conflit.js"></script><!-- les mots du bandeau de CONC-3 -->
+<script src="/static/lib/annulation.js"></script><!-- Ctrl+Z, commun avec l'Atelier -->
 <script src="/static/lib/annotation.js"></script>
 <script src="/static/lib/dialog.js"></script>
 <script src="/static/lib/membres-projet.js"></script>

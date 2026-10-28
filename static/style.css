@@ -3755,7 +3755,7 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
   color: var(--text); border: 1px solid var(--border); border-radius: 5px;
 }
 .an-preparee { white-space: nowrap; }
-.an-header .nav-spacer, .an-tete .nav-spacer { flex: 1; }
+.an-header .nav-spacer, .an-tete .nav-spacer, .an-pied .nav-spacer { flex: 1; }
 .an-atelier { white-space: nowrap; text-decoration: none; }
 
 .annot {
@@ -3803,6 +3803,12 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
   stroke: var(--accent-blue); stroke-width: 3px;
   fill: color-mix(in srgb, var(--accent-blue) 16%, transparent);
 }
+/* Les marques (commit 4) : une case terminée se teinte, un doute ouvert pointille son
+   cadre ; le nom de la case le dit aussi (`aria-label`, infobulle). La case en cours garde
+   sa teinte. */
+.an-mz.faite { fill: color-mix(in srgb, var(--accent-green) 18%, transparent); }
+.an-mz.doute { stroke: var(--accent-amber); stroke-dasharray: 6 4; }
+.an-mz.courante.doute { stroke: var(--accent-blue); }
 .an-mz:focus-visible { outline: none; stroke: var(--focus); stroke-width: 4px; }
 .an-mz-enfant { fill: none; stroke: var(--text-muted); stroke-width: 1px; opacity: .6;
                 vector-effect: non-scaling-stroke; pointer-events: none; }
@@ -3814,6 +3820,14 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
                 gap: .3077rem .7692rem; }
 .an-ctx-corps dt { color: var(--text-muted); font-size: .9231rem; }
 .an-ctx-corps dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+
+/* Le pied (commit 4) : deux lignes de hauteur fixe, au bas de la colonne de la case. */
+.an-pied { flex: 0 0 auto; margin-top: auto; display: flex; flex-direction: column;
+           gap: .3077rem; border-top: 1px solid var(--border); padding-top: .4615rem; }
+.an-pied-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem .6154rem;
+                 min-height: 2.1538rem; }
+.an-passe-etat { overflow-wrap: anywhere; min-width: 0; }
+.an-onglet .an-fini { font-weight: 700; }
 
 /* La case agrandie : une boîte de HAUTEUR CONSTANTE, quelle que soit la case. */
 .an-tete { display: flex; flex-wrap: wrap; align-items: center; gap: .4615rem .9231rem;

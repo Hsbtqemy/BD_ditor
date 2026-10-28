@@ -19,7 +19,9 @@
    Le commit 2 y ajoute la grille en lecture (masque, arbre, comptes, filtre, guide) ; le
    commit 3 la désignation des mots et la pose (passage, couloirs, « Porte sur », la cible
    d'un geste et ce qu'il fait selon ce qui est déjà posé, la liste, « Relevés : ▾ », la
-   cardinalité). Le parcours et le décompte s'y ajouteront, au même endroit.
+   cardinalité) ; le commit 4 « terminée » et le parcours (ses étapes DÉRIVÉES des cibles de
+   la grille, « Suivante » et « à faire seulement », les marques de la minicarte). Le
+   décompte s'y ajoutera, au même endroit.
 
    CE N'EST PAS UNE GARDE. Tout ce qui suit lit ce que le serveur a déjà décidé : les
    régions d'une planche qu'on lit, leurs citations, le statut de relecture. */
@@ -887,6 +889,166 @@
     return (resultats || []).some((r) => normaliser(r.libelle) === n) ? null : t;
   }
 
+  /* ── Commit 4 : « terminée », le parcours ── */
+
+  /* Ce qu'une grille VISE, réuni : les cibles de ses entrées vivantes et celles de sa
+     version (une grille ouverte peut naître sans entrée). */
+  function ciblesVisees(plan) {
+    const out = new Set((plan && plan.porte_sur) || []);
+    for (const e of (plan && plan.entrees) || []) {
+      if (e.retiree) continue;
+      for (const c of e.cibles || []) out.add(c);
+    }
+    return out;
+  }
+
+  /* La grille vise-t-elle la planche entière (la surface) ? */
+  function visePlanche(plan) { return ciblesVisees(plan).has("planche"); }
+
+  /* LA PLANCHE dans le rangement : la case pseudo, ajoutée en dernier si la planche n'en a
+     pas (toutes ses régions sont dans des cases) — pour que l'étape « la planche » d'un
+     parcours ait où aller. Rend le même tableau s'il l'a déjà. */
+  function assurerPlanche(rangement, W, H) {
+    const l = Array.isArray(rangement) ? rangement : [];
+    if (l.some((x) => x.case && x.case.pseudo)) return l;
+    return [...l, { case: { id: null, type: "case", pseudo: true, x: 0, y: 0, w: W || 0,
+                            h: H || 0, citation: null }, zones: [] }];
+  }
+
+  /* LE PARCOURS d'une grille sur une planche : les zones qu'elle fait enchaîner, DÉRIVÉES de
+     ses cibles (jamais écrit grille par grille) — des mots ou une zone de texte → les zones
+     de texte de ces types ; la case → les cases ; la boîte personnage ; le détail ; la
+     planche → une seule étape, en dernier ; l'entité → rien. Dans l'ordre de lecture :
+     chaque case, puis ses zones dans leur ordre ; une grille qui vise la case ET des mots
+     enchaîne la case, puis ses textes. Rend `[{ caseIx, zoneId }]` (`zoneId` null : la case
+     elle-même ; `planche: true` pour la surface, sur la case pseudo, qui doit exister —
+     `assurerPlanche`). */
+  function parcours(rangement, plan) {
+    const c = ciblesVisees(plan);
+    const types = new Set();
+    if (c.has("mots")) TYPES_TEXTE.forEach((t) => types.add(t));
+    for (const t of ["bulle", "cartouche", "texte", "personnage", "detail"]) {
+      if (c.has(t)) types.add(t);
+    }
+    const out = [];
+    (Array.isArray(rangement) ? rangement : []).forEach((x, i) => {
+      if (!x.case.pseudo && c.has("case")) out.push({ caseIx: i, zoneId: null });
+      for (const z of x.zones || []) if (types.has(z.type)) out.push({ caseIx: i, zoneId: z.id });
+    });
+    if (c.has("planche")) {
+      const i = (rangement || []).findIndex((x) => x.case && x.case.pseudo);
+      if (i >= 0) out.push({ caseIx: i, zoneId: null, planche: true });
+    }
+    return out;
+  }
+
+  /* Le rang d'une zone dans le parcours, -1 si elle n'y est pas. La case pseudo choisie
+     comme case est l'étape « la planche ». */
+  function rangDansParcours(etapes, caseIx, zoneId) {
+    return (etapes || []).findIndex((e) => e.caseIx === caseIx
+      && (e.zoneId === null ? zoneId === null || zoneId === undefined : e.zoneId === zoneId));
+  }
+
+  /* « SUIVANTE » / « PRÉCÉDENTE » (`d` = 1 ou -1) depuis le rang `i` (-1 : hors du
+     parcours, on part du bout). `faite(etape)` dit si une étape est terminée ; « à faire
+     seulement » saute celles qui le sont. Rend le rang atteint, ou -1 s'il n'y a rien où
+     aller (aucune étape, ou plus rien à faire) — l'étape d'où l'on part compte en dernier :
+     la seule zone à faire est celle où l'on est, on y reste. */
+  function suivanteDuParcours(etapes, i, d, faite, aFaireSeulement) {
+    const n = (etapes || []).length;
+    if (!n) return -1;
+    const pas = d < 0 ? -1 : 1;
+    const ok = (j) => !aFaireSeulement || !(faite && faite(etapes[j]));
+    if (i < 0) {
+      for (let k = 0; k < n; k++) {
+        const j = pas > 0 ? k : n - 1 - k;
+        if (ok(j)) return j;
+      }
+      return -1;
+    }
+    for (let k = 1; k <= n; k++) {
+      const j = ((i + pas * k) % n + n) % n;
+      if (ok(j)) return j;
+    }
+    return -1;
+  }
+
+  /* La CIBLE d'une passe : la région choisie, ou la planche pour la case pseudo. */
+  function cibleDePasse(zone, plancheId) {
+    if (!zone) return null;
+    return zone.pseudo ? { planche_id: plancheId } : { region_id: zone.id };
+  }
+
+  /* Les passes d'une grille sur CETTE cible. Une passe porte sa région OU sa planche, jamais
+     les deux (`passe` : la zone d'une passe est l'une ou l'autre). */
+  function passesSurLaCible(passes, cible, grilleId) {
+    if (!cible) return [];
+    return (Array.isArray(passes) ? passes : []).filter((p) => p.grille_id === grilleId
+      && (cible.planche_id !== undefined ? p.planche_id === cible.planche_id
+        : p.region_id === cible.region_id));
+  }
+
+  /* Les rubriques de TÊTE d'un plan (celles qu'« Afficher » propose). */
+  function rubriquesDeTete(plan) {
+    return ((plan && plan.rubriques) || [])
+      .filter((r) => r.parent_cle === null || r.parent_cle === undefined).map((r) => r.cle);
+  }
+
+  /* « TERMINÉE » : pour une rubrique, sa passe — ou celle de toute la grille ; pour toute la
+     grille (`rubrique` vide), la passe `''` OU celles de toutes ses rubriques de tête. Rend
+     `{ terminee, passes }` — `passes` : celles qui le disent, pour signer « terminée · Nom ». */
+  function terminee(passes, cible, grilleId, rubrique, plan) {
+    const ici = passesSurLaCible(passes, cible, grilleId);
+    const de = (k) => ici.find((p) => (p.rubrique_cle || "") === k) || null;
+    const toute = de("");
+    if (toute) return { terminee: true, passes: [toute] };
+    if (rubrique) {
+      const p = de(rubrique);
+      return { terminee: !!p, passes: p ? [p] : [] };
+    }
+    const tete = rubriquesDeTete(plan);
+    const l = tete.map(de);
+    return tete.length && l.every(Boolean) ? { terminee: true, passes: l } : { terminee: false, passes: [] };
+  }
+
+  /* Qui a dit « terminée » : les noms (ou logins) des passes, sans doublon. */
+  function signataires(passes) {
+    return [...new Set((passes || []).map((p) => p.par_nom || p.par).filter(Boolean))];
+  }
+
+  /* « ROUVRIR » : les passes à retirer pour que la zone ne soit plus terminée — pour une
+     rubrique, la sienne et celle de toute la grille ; pour toute la grille, celle-ci et
+     celles de ses rubriques. Rend les `rubrique_cle` qui existent. */
+  function aRouvrir(passes, cible, grilleId, rubrique) {
+    const ici = passesSurLaCible(passes, cible, grilleId).map((p) => p.rubrique_cle || "");
+    const voulues = rubrique ? [rubrique, ""] : ici;
+    return [...new Set(voulues)].filter((k) => ici.includes(k));
+  }
+
+  /* Une CASE terminée pour la grille (et la rubrique) affichées : toutes les étapes du
+     parcours qui sont dans elle le sont — et il y en a. */
+  function caseTerminee(etapes, caseIx, faite) {
+    const l = (etapes || []).filter((e) => e.caseIx === caseIx);
+    return l.length > 0 && l.every((e) => faite(e));
+  }
+
+  /* Les cases (rangs) où vit un relevé MONTRÉ qui porte un doute ouvert. */
+  function casesEnDoute(rangement, releves) {
+    const out = new Set();
+    const ou = new Map();
+    (rangement || []).forEach((x, i) => {
+      if (x.case.id !== null) ou.set(x.case.id, i);
+      for (const z of x.zones || []) ou.set(z.id, i);
+    });
+    const pseudo = (rangement || []).findIndex((x) => x.case.pseudo);
+    for (const r of releves || []) {
+      if (!r.doute) continue;
+      const i = r.region_id === null || r.region_id === undefined ? pseudo : ou.get(r.region_id);
+      if (i !== undefined && i >= 0) out.add(i);
+    }
+    return out;
+  }
+
   return { TYPES_TEXTE, CLES_ADRESSE, CLE_RELEVES, estTexte, nomType, deLa, casesDeLaPlanche,
            etiquette, etiquettesDeLaCase, situer, libellePlanche, preparation, adresse,
            lireAdresse, lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
@@ -896,6 +1058,9 @@
            rangs, plage, basculer, texteDuPassage, memesMots, motsDuReleve, couloirs, teinte,
            optionsPorteSur, cibleDePose, relevesSurLaCible, geste, libelleReleve, motEtat,
            listeSurLaZone, lireReglage, retenirReglage, grillesMontrees,
-           remplacementCardinalite, creerDansLeFiltre, vuDuReleve, entreeNeuve };
+           remplacementCardinalite, creerDansLeFiltre, vuDuReleve, entreeNeuve,
+           ciblesVisees, visePlanche, assurerPlanche, parcours, rangDansParcours,
+           suivanteDuParcours, cibleDePasse, passesSurLaCible, rubriquesDeTete, terminee,
+           signataires, aRouvrir, caseTerminee, casesEnDoute };
 
 });

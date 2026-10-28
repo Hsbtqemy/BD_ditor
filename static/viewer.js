@@ -3950,46 +3950,15 @@ function setupControls() {
 
 /* Annulation (undo, D1) — Ctrl+Z rejoue côté serveur l'INVERSE de la dernière action
    d'annotation (depuis le journal A3), puis rafraîchit la vue touchée. Le serveur porte la
-   pile (Ctrl+Z répété remonte l'historique) ; ici on ne fait qu'appeler et rafraîchir. */
-const ANNULATION_LENTE = "Annulation en cours — le premier appel charge le moteur de langue.";
-const ANNULATION_LENTE_MS = 1500;
-
+   pile (Ctrl+Z répété remonte l'historique) ; l'appel, ses messages et « Passer ce geste »
+   sont communs avec la page Annotation (`static/lib/annulation.js`) ; ici, on rafraîchit. */
 async function undoLast() {
   if (conflitBloque()) return;
   // Ne pas laisser une sauvegarde différée re-appliquer un buffer périmé APRÈS l'annulation.
   clearTimeout(state.saveTimer);
   state.saveTimer = null;
-  let res;
-  // ANN-8 — le premier Ctrl+Z après un redémarrage peut attendre le moteur de langue (9 à
-  // 17 s mesurés) sans rien afficher. Passé un instant, l'écran le dit ; l'attente ordinaire
-  // (quelques centièmes) ne montre rien.
-  const lent = setTimeout(() => toast(ANNULATION_LENTE), ANNULATION_LENTE_MS);
-  try {
-    res = await apiSend("POST", "/api/undo");
-  } catch (e) {
-    if (e.statut === 409 && e.detail && e.detail.conflit) {
-      // CONC-3 : annuler écraserait ce qu'un autre a changé depuis. ANN-8 — l'acte reste en
-      // tête de la pile ; le message offre de le PASSER, pour que Ctrl+Z remonte au geste
-      // d'avant (décision de Hugo du 2026-10-22).
-      const message = BDConflit.messageAnnulationRefusee(e.detail.conflit);
-      if (e.detail.passable) offrirDePasser(message, e.detail.passable.evenement_id);
-      else toast(message, "error", 8000);
-      return;
-    }
-    toast(e.message, /rien à annuler/i.test(e.message) ? "" : "error");
-    return;
-  } finally { clearTimeout(lent); }
-  // ANN-8 — une suppression rend ses liens (locuteur, personnage montré, situation), sauf
-  // ceux dont l'objet n'est plus là ou plus visible : le dire, sans rien nommer.
-  // Un tag supprimé depuis l'acte, ou que la clé ne retrouve que hors de portée, ne revient
-  // pas non plus : Ctrl+Z ne recrée jamais un tag (`tags_non_rendus`, compté à part).
-  const manque = res.liens_non_rendus || 0;
-  const tags = res.tags_non_rendus || 0;
-  toast("Annulé : " + res.description + (manque
-    ? ` — ${manque} lien${manque > 1 ? "s" : ""} non rendu${manque > 1 ? "s" : ""} (personnage ou valeur disparus, ou type qui ne les montre pas)`
-    : "") + (tags
-    ? ` — ${tags} tag${tags > 1 ? "s" : ""} non rendu${tags > 1 ? "s" : ""} (supprimé${tags > 1 ? "s" : ""} depuis, ou hors de portée)`
-    : ""), "", manque || tags ? 8000 : 4000);
+  const res = await BDAnnulation.annuler({ apiSend, toast });
+  if (!res) return;
   if (res.planche_id && state.planche && res.planche_id === state.planche.id) {
     await loadRegions(state.planche.id);
     if (res.region_id != null && state.regionsById.has(res.region_id)) {
@@ -4003,48 +3972,12 @@ async function undoLast() {
   }
 }
 
-/* ANN-8 — « Passer ce geste » : Ctrl+Z refusé par un conflit laisse l'acte en tête de la
-   pile, et chaque Ctrl+Z redonnait le même refus. Le message offre de le passer : le
-   serveur pose la trace qui le sort de la pile (`POST /api/undo/passer`), le travail de
-   l'autre reste, et le Ctrl+Z suivant remonte au geste d'avant. Le serveur revérifie que
-   l'acte est encore le prochain et que le conflit tient. */
-const PASSER_DUREE_MS = 15000;
-
-function offrirDePasser(message, evenementId) {
-  const box = document.getElementById("toasts");
-  if (!box) { toast(message, "error", 8000); return; }
-  const el = document.createElement("div");
-  el.className = "toast error toast-action";
-  const texte = document.createElement("span");
-  texte.textContent = message + " ";
-  const bouton = document.createElement("button");
-  bouton.type = "button";
-  bouton.textContent = "Passer ce geste";
-  bouton.title = "Ctrl+Z remontera au geste d'avant ; le travail de l'autre reste.";
-  const fermer = () => el.remove();
-  const minuterie = setTimeout(fermer, PASSER_DUREE_MS);
-  bouton.onclick = async () => {
-    clearTimeout(minuterie);
-    bouton.disabled = true;
-    try {
-      const res = await apiSend("POST", "/api/undo/passer", { evenement_id: evenementId });
-      fermer();
-      toast(`Geste passé : ${res.description}. Ctrl+Z remonte au geste d'avant.`, "", 6000);
-    } catch (err) {
-      fermer();
-      toast(err.message, "error", 8000);
-    }
-  };
-  el.append(texte, bouton);
-  box.appendChild(el);
-}
-
 function setupKeyboard() {
   window.addEventListener("keydown", (e) => {
     const tag = (e.target.tagName || "").toLowerCase();
     const typing = tag === "input" || tag === "textarea" || tag === "select";
     // Ctrl/⌘+Z hors champ de saisie = annuler la dernière action (dans un champ : undo natif).
-    if (!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+    if (BDAnnulation.estRaccourci(e)) {
       e.preventDefault();
       undoLast();
       return;

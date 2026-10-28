@@ -439,6 +439,21 @@ def test_dialog_js_servi_et_charge_avant_le_script_de_page(client):
         assert html.index("/static/lib/dialog.js") < html.index(page_script), route
 
 
+def test_annulation_js_servi_et_charge_avant_le_script_de_page(client):
+    """Même garde-fou pour Ctrl+Z (static/lib/annulation.js, ANN-7) : servi, et chargé
+    AVANT le script des deux surfaces qui annulent (l'Atelier, la page Annotation) — et
+    après `conflit.js`, dont il emprunte les mots du refus. Sans lui, `BDAnnulation` est
+    indéfini au premier Ctrl+Z, et le raccourci lève au lieu d'annuler."""
+    js = client.get("/static/lib/annulation.js")
+    assert js.status_code == 200 and "annuler" in js.text
+    for route, page_script in (("/", "/static/viewer.js"),
+                               ("/annotation", "/static/annotation.js")):
+        html = client.get(route).text
+        assert "/static/lib/annulation.js" in html, route
+        assert (html.index("/static/lib/conflit.js") < html.index("/static/lib/annulation.js")
+                < html.index(page_script)), route
+
+
 def test_casse_js_servi_et_charge_avant_le_script_de_page(client):
     """Même garde-fou pour la normalisation de casse (static/lib/casse.js, NLP-3) : servi,
     et chargé AVANT viewer.js, seule surface qui l'utilise.

@@ -585,3 +585,107 @@ test("l'entrée qui naît en la posant suit la cible de la version", () => {
   assert.deepEqual(A.vuDuReleve(rel(1, { qualificatifs: ["objet", "hors-champ"] })).qualificatifs,
                    ["hors-champ", "objet"]);
 });
+
+/* ── Commit 4 : « terminée », le parcours ── */
+const RANGEMENT = [
+  { case: { id: 1, type: "case" },
+    zones: [{ id: 11, type: "bulle" }, { id: 12, type: "personnage" }, { id: 13, type: "cartouche" }] },
+  { case: { id: 2, type: "case" }, zones: [{ id: 21, type: "detail" }, { id: 22, type: "texte" }] },
+];
+const planDe = (cibles, porte) => ({ porte_sur: porte || [], rubriques: [],
+  entrees: cibles.map((c, i) => ({ cle: `e${i}`, cibles: c, retiree: false })) });
+
+test("le parcours se DÉRIVE des cibles, dans l'ordre de lecture", () => {
+  const p = (plan) => A.parcours(RANGEMENT, plan).map((e) => e.zoneId === null ? `c${e.caseIx}` : e.zoneId);
+  assert.deepEqual(p(planDe([["mots"]])), [11, 13, 22]);
+  assert.deepEqual(p(planDe([["bulle"]])), [11]);
+  assert.deepEqual(p(planDe([["case"], ["mots"]])), ["c0", 11, 13, "c1", 22]);
+  assert.deepEqual(p(planDe([["personnage"], ["detail"]])), [12, 21]);
+  assert.deepEqual(p(planDe([["entite"]])), []);
+  // Une entrée retirée ne compte plus ; la version compte (une grille ouverte sans entrée).
+  assert.deepEqual(p({ porte_sur: ["case"], entrees: [{ cibles: ["mots"], retiree: true }] }), ["c0", "c1"]);
+  // La planche : une seule étape, en dernier, sur la case pseudo qu'on assure.
+  const avec = A.assurerPlanche(RANGEMENT, 100, 200);
+  assert.equal(avec.length, 3);
+  assert.equal(A.assurerPlanche(avec, 1, 1), avec);
+  assert.deepEqual(A.parcours(avec, planDe([["planche"], ["bulle"]])),
+                   [{ caseIx: 0, zoneId: 11 }, { caseIx: 2, zoneId: null, planche: true }]);
+  assert.deepEqual(A.parcours(RANGEMENT, planDe([["planche"]])), []);
+  assert.ok(A.visePlanche(planDe([["planche"]])) && !A.visePlanche(planDe([["mots"]])));
+  // Les zones hors cadre (case pseudo) suivent leur type, mais la case pseudo n'est pas une case.
+  const hors = [...RANGEMENT, { case: { id: null, pseudo: true }, zones: [{ id: 31, type: "bulle" }] }];
+  assert.deepEqual(A.parcours(hors, planDe([["case"], ["bulle"]])).map((e) => e.zoneId),
+                   [null, 11, null, 31]);
+});
+
+test("le rang dans le parcours, et Suivante / Précédente", () => {
+  const et = A.parcours(RANGEMENT, planDe([["case"], ["mots"]]));
+  assert.equal(A.rangDansParcours(et, 0, null), 0);
+  assert.equal(A.rangDansParcours(et, 0, 13), 2);
+  assert.equal(A.rangDansParcours(et, 0, 12), -1);
+  const fait = new Set([1, 2]);
+  const faite = (e) => fait.has(et.indexOf(e));
+  assert.equal(A.suivanteDuParcours(et, 0, 1, faite, false), 1);
+  assert.equal(A.suivanteDuParcours(et, 0, 1, faite, true), 3);          // saute les terminées
+  assert.equal(A.suivanteDuParcours(et, 4, 1, faite, false), 0);         // fait le tour
+  assert.equal(A.suivanteDuParcours(et, 0, -1, faite, false), 4);
+  assert.equal(A.suivanteDuParcours(et, 3, -1, faite, true), 0);
+  assert.equal(A.suivanteDuParcours(et, -1, 1, faite, true), 0);         // hors parcours : du début
+  assert.equal(A.suivanteDuParcours(et, -1, -1, faite, false), 4);       // … ou de la fin
+  assert.equal(A.suivanteDuParcours(et, -1, 1, () => true, true), -1);   // plus rien à faire
+  assert.equal(A.suivanteDuParcours(et, 2, 1, (e) => e !== et[2], true), 2);  // la seule : on reste
+  assert.equal(A.suivanteDuParcours(et, 2, 1, () => true, true), -1);
+  assert.equal(A.suivanteDuParcours([], 0, 1, faite, false), -1);
+});
+
+test("« terminée » : la zone, la rubrique, toute la grille par ses rubriques de tête", () => {
+  const plan = { rubriques: [{ cle: "a", parent_cle: null }, { cle: "a > x", parent_cle: "a" },
+                             { cle: "b", parent_cle: null }] };
+  const pa = (rk, extra) => ({ grille_id: 1, region_id: 11, planche_id: null, rubrique_cle: rk,
+                               par: "alice", par_nom: "Alice", ...extra });
+  const z = { region_id: 11 };
+  assert.deepEqual(A.terminee([], z, 1, "", plan), { terminee: false, passes: [] });
+  assert.equal(A.terminee([pa("")], z, 1, "", plan).terminee, true);
+  assert.equal(A.terminee([pa("")], z, 1, "a", plan).terminee, true);      // la grille entière vaut pour la rubrique
+  assert.equal(A.terminee([pa("a")], z, 1, "a", plan).terminee, true);
+  assert.equal(A.terminee([pa("a")], z, 1, "b", plan).terminee, false);
+  assert.equal(A.terminee([pa("a")], z, 1, "", plan).terminee, false);
+  const deux = [pa("a"), pa("b", { par: "bob", par_nom: "Bob" })];
+  assert.equal(A.terminee(deux, z, 1, "", plan).terminee, true);           // toutes les rubriques de tête
+  assert.deepEqual(A.signataires(A.terminee(deux, z, 1, "", plan).passes), ["Alice", "Bob"]);
+  assert.deepEqual(A.signataires([pa(""), pa("a"), pa("b", { par_nom: null, par: "carl" })]),
+                   ["Alice", "carl"]);
+  // Une autre grille, une autre zone ne comptent pas ; la planche se lit sur la surface.
+  assert.equal(A.terminee([pa("", { grille_id: 2 })], z, 1, "", plan).terminee, false);
+  assert.equal(A.terminee([pa("", { region_id: 12 })], z, 1, "", plan).terminee, false);
+  const surface = { grille_id: 1, region_id: null, planche_id: 9, rubrique_cle: "" };
+  assert.equal(A.terminee([surface], { planche_id: 9 }, 1, "", plan).terminee, true);
+  assert.equal(A.terminee([surface], { planche_id: 8 }, 1, "", plan).terminee, false);
+  assert.equal(A.terminee([surface], { region_id: 11 }, 1, "", plan).terminee, false);
+  // Sans rubrique de tête, seule la passe de toute la grille termine.
+  assert.equal(A.terminee([pa("a")], z, 1, "", { rubriques: [] }).terminee, false);
+  assert.deepEqual(A.cibleDePasse({ id: 11 }, 9), { region_id: 11 });
+  assert.deepEqual(A.cibleDePasse({ id: null, pseudo: true }, 9), { planche_id: 9 });
+  assert.deepEqual(A.rubriquesDeTete(plan), ["a", "b"]);
+});
+
+test("« Rouvrir » retire ce qui la dit terminée", () => {
+  const pa = (rk) => ({ grille_id: 1, region_id: 11, planche_id: null, rubrique_cle: rk });
+  const z = { region_id: 11 };
+  assert.deepEqual(A.aRouvrir([pa(""), pa("a"), pa("b")], z, 1, ""), ["", "a", "b"]);
+  assert.deepEqual(A.aRouvrir([pa(""), pa("a"), pa("b")], z, 1, "a"), ["a", ""]);
+  assert.deepEqual(A.aRouvrir([pa("b")], z, 1, "a"), []);
+  assert.deepEqual(A.aRouvrir([{ ...pa(""), grille_id: 2 }], z, 1, ""), []);
+});
+
+test("les marques de la minicarte : case terminée, doute ouvert", () => {
+  const et = A.parcours(RANGEMENT, planDe([["mots"]]));
+  assert.equal(A.caseTerminee(et, 0, (e) => e.zoneId === 11 || e.zoneId === 13), true);
+  assert.equal(A.caseTerminee(et, 0, (e) => e.zoneId === 11), false);
+  assert.equal(A.caseTerminee(et, 5, () => true), false);                 // aucune étape : pas « terminée »
+  const avec = A.assurerPlanche(RANGEMENT, 1, 1);
+  const doutes = A.casesEnDoute(avec, [{ region_id: 22, doute: { id: 1 } }, { region_id: 11, doute: null },
+                                       { region_id: null, planche_id: 9, doute: { id: 2 } }]);
+  assert.deepEqual([...doutes].sort(), [1, 2]);
+  assert.deepEqual([...A.casesEnDoute(RANGEMENT, [{ region_id: 2, doute: {} }])], [1]);
+});

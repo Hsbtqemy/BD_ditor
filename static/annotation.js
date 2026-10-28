@@ -61,6 +61,9 @@ const S = {
   designer: null,              // le relevé dont on désigne le lien sur la planche
   login: null, reglage: null,  // « Relevés : ▾ », retenu par personne et par projet
   etats: new Map(),            // entrée → relevés posés sur la cible courante
+  // « Terminée », le parcours (commit 4)
+  passes: [],                  // celles de la planche (`…/releves`)
+  aFaire: false,               // « Parcours : à faire seulement »
 };
 let tourContexte = 0;          // la lecture du Contexte la plus récente gagne
 let tourPlanche = 0;           // idem pour une planche
@@ -166,26 +169,34 @@ function rendrePlanches() {
 }
 
 /* ───────────── La planche ───────────── */
-async function ouvrirPlanche(id, regionVoulue = null) {
+async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
   const tour = ++tourPlanche;
   S.planche = id === null ? null : S.planches.find((p) => p.id === id) || null;
   S.regions = [];
   S.releves = [];
+  S.passes = [];
   S.personnages = new Map();
   if (S.planche) {
     $("#an-planche-choix").value = String(S.planche.id);
-    const [regions, releves] = await Promise.all([
+    const [regions, lus] = await Promise.all([
       apiGet(`/api/planches/${S.planche.id}/regions`),
-      apiGet(`/api/planches/${S.planche.id}/releves`).then((d) => d.releves).catch(() => []),
+      apiGet(`/api/planches/${S.planche.id}/releves`).catch(() => null),
     ]);
     if (tour !== tourPlanche) return;
     S.regions = regions;
-    S.releves = releves;
+    S.releves = lus ? lus.releves : [];
+    S.passes = lus ? lus.passes || [] : [];
   }
   S.rangement = S.planche
     ? A.casesDeLaPlanche(S.regions, S.planche.largeur_px, S.planche.hauteur_px) : [];
-  const ou = regionVoulue === null ? null : A.situer(S.rangement, regionVoulue);
-  if (regionVoulue !== null && !ou) toast("Région du lien introuvable sur cette planche.", "error");
+  let ou = regionVoulue === null ? null : A.situer(S.rangement, regionVoulue);
+  // Un REPLI (Ctrl+Z : la zone où l'on était) quand la région voulue n'est plus là.
+  if (!ou && repli) {
+    ou = repli.zoneId === null ? null : A.situer(S.rangement, repli.zoneId);
+    if (!ou) ou = { caseIx: Math.max(0, Math.min(repli.caseIx, S.rangement.length - 1)), zoneId: null };
+  } else if (regionVoulue !== null && !ou) {
+    toast("Région du lien introuvable sur cette planche.", "error");
+  }
   S.caseIx = ou ? ou.caseIx : 0;
   S.zoneId = ou ? ou.zoneId : null;
   $("#an-preparee").textContent = S.planche
@@ -260,7 +271,7 @@ function rendreMini() {
     const nom = "Case " + A.etiquette(entree.case);
     const r = svg("rect", { class: "an-mz", x: entree.case.x, y: entree.case.y,
                             width: entree.case.w, height: entree.case.h, tabindex: 0,
-                            role: "button", "aria-label": nom, "data-case": i });
+                            role: "button", "aria-label": nom, "data-case": i, "data-nom": nom });
     const t = svg("title", {});
     t.textContent = nom;
     r.appendChild(t);
@@ -269,11 +280,25 @@ function rendreMini() {
   boite.replaceChildren(racine);
 }
 
+/* Les marques de la minicarte : la case en cours ; une case TERMINÉE pour la grille (et la
+   rubrique) affichées — toutes ses étapes du parcours le sont ; un DOUTE ouvert sur un
+   relevé montré. La couleur ne les dit jamais seule : le nom de la case aussi. */
 function marquerMini() {
+  const et = etapes();
+  const doutes = A.casesEnDoute(S.rangement, relevesMontres());
   for (const r of document.querySelectorAll("#an-mini .an-mz")) {
-    const courante = Number(r.dataset.case) === S.caseIx;
+    const i = Number(r.dataset.case);
+    const courante = i === S.caseIx;
+    const faite = A.caseTerminee(et, i, etapeFaite);
+    const doute = doutes.has(i);
     r.classList.toggle("courante", courante);
+    r.classList.toggle("faite", faite);
+    r.classList.toggle("doute", doute);
     r.setAttribute("aria-pressed", String(courante));
+    const nom = (r.dataset.nom || "") + (faite ? " · terminée" : "") + (doute ? " · doute ouvert" : "");
+    r.setAttribute("aria-label", nom);
+    const t = r.querySelector("title");
+    if (t) t.textContent = nom;
   }
 }
 
@@ -283,11 +308,21 @@ function rendreTete() {
   const z = zoneCourante();
   const nCases = S.rangement.filter((e) => !e.case.pseudo).length;
   $("#an-tete-case").textContent = c
-    ? (c.case.pseudo ? "Hors des cases" : "Case " + A.etiquette(c.case)) : "—";
+    ? (c.case.pseudo ? (c.zones.length ? "Hors des cases" : "La planche")
+      : "Case " + A.etiquette(c.case)) : "—";
   $("#an-tete-zone").textContent = z && z !== c.case
     ? `${A.nomType(z.type)} ${A.etiquettesDeLaCase(c).get(z.id)}` : "";
-  $("#an-tete-rang").textContent = c && !c.case.pseudo && nCases
-    ? `${S.caseIx + 1} / ${nCases}` : "";
+  const g = grilleOuverte();
+  const et = etapes();
+  const rang = A.rangDansParcours(et, S.caseIx, S.zoneId);
+  const rangTete = $("#an-tete-rang");
+  if (g && rang >= 0) {
+    rangTete.textContent = `zone ${rang + 1} / ${et.length} de « ${g.nom} »`;
+    rangTete.title = "Rang de la zone dans le parcours de la grille ouverte";
+  } else {
+    rangTete.textContent = c && !c.case.pseudo && nCases ? `${S.caseIx + 1} / ${nCases}` : "";
+    rangTete.title = "Rang de la case dans l'ordre de lecture";
+  }
 }
 
 /* Dessine la case courante dans sa boîte : le dérivé de la planche entière, cadré par la
@@ -488,27 +523,35 @@ function marquerCollection() {
 
 function rendreGrille() {
   marquerCollection();
-  rendreOnglets();
   rendreAfficher();
+  rendreOnglets();
   rendrePorte();
   rendreCorps();
   rendreListe();
   rendreGuide();
+  rendrePied();
+  rendreTete();
+  marquerMini();
 }
 
 function rendreOnglets() {
   const liste = $("#an-onglets");
   const ici = relevesIci();
   const visibles = A.grillesVisibles(S.grilles, S.collection);
+  const z = zoneCourante();
+  const cible = S.planche && z ? A.cibleDePasse(z, S.planche.id) : null;
   liste.replaceChildren(...visibles.map((g) => {
     const n = A.compter(ici, g.id, null).total;
     const choisi = g.id === S.grilleId;
+    const fini = A.terminee(S.passes, cible, g.id, "", planDe(g)).terminee;
     return el("button", { type: "button", classe: "ghost an-onglet", role: "tab",
                           id: `an-onglet-${g.id}`, "data-grille": g.id,
                           "aria-selected": String(choisi), "aria-controls": "an-grille-corps",
                           tabindex: choisi ? "0" : "-1",
                           title: A.infobulleGrille(g, planDe(g)) },
-              g.nom, n ? el("span", { classe: "an-n", texte: ` (${n})` }) : null);
+              fini ? el("span", { classe: "an-fini", "aria-hidden": "true", texte: "✓ " }) : null,
+              g.nom, n ? el("span", { classe: "an-n", texte: ` (${n})` }) : null,
+              fini ? el("span", { classe: "sr-only", texte: " — terminée ici" }) : null);
   }));
   const corps = $("#an-grille-corps");
   if (S.grilleId !== null) corps.setAttribute("aria-labelledby", `an-onglet-${S.grilleId}`);
@@ -792,6 +835,8 @@ function brancherGrille() {
   $("#an-afficher").addEventListener("change", (e) => {
     S.vue = e.target.value || "*";
     rendreCorps();
+    rendrePied();
+    marquerMini();
   });
   const plan = $("#an-plan");
   plan.addEventListener("click", (e) => {
@@ -812,12 +857,25 @@ function brancherGrille() {
       poser(b.dataset.guideE, { variante: b.dataset.guideV, qualificatif: b.dataset.qualif });
     }
   });
-  for (const type of ["mouseover", "focusin"]) {
-    plan.addEventListener(type, (e) => {
-      const b = e.target.closest("[data-guide-e]");
-      if (b) montrerGuide(b.dataset.guideE, b.dataset.guideV);
-    });
-  }
+  // Un survol ne compte que si le pointeur a BOUGÉ : le focus qui fait défiler le plan, ou
+  // un redessin, amène une autre entrée sous un pointeur immobile, et le navigateur émet un
+  // `mouseover` qui reprenait la ligne du guide au clavier (mesuré : défilement 0 → 148 px,
+  // puis `mouseover` sur l'entrée arrivée sous le pointeur).
+  // `mousemove` et non `pointermove` : les coordonnées d'un PointerEvent sont fractionnaires,
+  // celles d'un `mouseover` entières, et les deux ne se compareraient jamais.
+  let pointeur = null;
+  document.addEventListener("mousemove", (e) => { pointeur = [e.clientX, e.clientY]; }, true);
+  plan.addEventListener("mouseover", (e) => {
+    const immobile = pointeur && pointeur[0] === e.clientX && pointeur[1] === e.clientY;
+    pointeur = [e.clientX, e.clientY];
+    if (immobile) return;
+    const b = e.target.closest("[data-guide-e]");
+    if (b) montrerGuide(b.dataset.guideE, b.dataset.guideV);
+  });
+  plan.addEventListener("focusin", (e) => {
+    const b = e.target.closest("[data-guide-e]");
+    if (b) montrerGuide(b.dataset.guideE, b.dataset.guideV);
+  });
   const champ = $("#an-filtre");
   champ.addEventListener("input", () => {
     S.filtre = champ.value;
@@ -838,7 +896,7 @@ function brancherGrille() {
       rendreCorps();
       const actif = $(`#an-res-${S.actif}`);
       if (actif) actif.scrollIntoView({ block: "nearest" });
-    } else if (e.key === "Enter" && S.filtre.trim() && n) {
+    } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && S.filtre.trim() && n) {
       // Entrée POSE le résultat désigné (ou le retire s'il est déjà posé là).
       e.preventDefault();
       poserResultat(S.resultats[S.actif]);
@@ -1122,7 +1180,7 @@ function brancherMots() {
       S.sel = A.basculer(S.sel, S.curseur);
       S.ancre = S.curseur;
       apresSelection();
-    } else if (e.key === "Enter") {
+    } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       $("#an-filtre").focus();
     } else if (e.key === "Escape" && S.sel.length) {
@@ -1154,6 +1212,7 @@ function apresEcriture() {
   rendreOnglets();
   rendreCorps();
   rendreListe();
+  marquerMini();
 }
 
 function conflitOuvert() {
@@ -1327,7 +1386,7 @@ async function resoudreConflit(garderMienne) {
 async function relireReleves() {
   if (!S.planche) return;
   const d = await apiGet(`/api/planches/${S.planche.id}/releves`).catch(() => null);
-  if (d) S.releves = d.releves;
+  if (d) { S.releves = d.releves; S.passes = d.passes || []; }
   apresEcriture();
 }
 
@@ -1649,11 +1708,214 @@ function brancher() {
   });
 }
 
+/* ───────────── « Terminée », le parcours, Ctrl+Z (commit 4) ─────────────
+   Une PASSE dit qu'une zone est terminée pour une grille — ou l'une de ses rubriques de
+   tête, celle qu'« Afficher » montre : commune et signée, elle vaut pour toute l'équipe (un
+   zéro compte comme un zéro). Le PARCOURS d'une grille se dérive de ses cibles
+   (`BDAnnotation.parcours`) ; « Suivante » le suit, « à faire seulement » saute ce qui est
+   terminé. Ctrl+Z est celui de l'agent (`BDAnnulation`, commun avec l'Atelier) : la page ne
+   fait que rafraîchir ce qu'elle montre. */
+function rubriqueVue() { return S.vue === "*" ? "" : S.vue; }
+
+/* Les étapes du parcours de la grille ouverte. Une grille qui vise la planche y fait une
+   étape de plus, sur la case pseudo — ajoutée au rangement si la planche n'en a pas. */
+function etapes() {
+  const plan = planDe(grilleOuverte());
+  if (!plan || !S.planche) return [];
+  if (A.visePlanche(plan)) {
+    S.rangement = A.assurerPlanche(S.rangement, S.planche.largeur_px, S.planche.hauteur_px);
+  }
+  return A.parcours(S.rangement, plan);
+}
+
+function zoneDeLEtape(e) {
+  const c = S.rangement[e.caseIx];
+  if (!c) return null;
+  return e.zoneId === null ? c.case : c.zones.find((z) => z.id === e.zoneId) || null;
+}
+
+function etatDe(zone, rubrique) {
+  const g = grilleOuverte();
+  if (!g || !zone || !S.planche) return { terminee: false, passes: [] };
+  return A.terminee(S.passes, A.cibleDePasse(zone, S.planche.id), g.id, rubrique,
+                    planDe(g));
+}
+
+function etapeFaite(e) { return etatDe(zoneDeLEtape(e), rubriqueVue()).terminee; }
+
+/* Le nom de ce qu'on termine : la grille, ou « Grille › Rubrique ». */
+function nomDeLaPasse() {
+  const g = grilleOuverte();
+  if (!g) return "";
+  const r = rubriqueVue();
+  const rub = r && (planDe(g) || { rubriques: [] }).rubriques.find((x) => x.cle === r);
+  return g.nom + (rub ? ` › ${rub.libelle}` : "");
+}
+
+function rendrePied() {
+  const g = grilleOuverte();
+  const etat = $("#an-passe-etat");
+  const rouvrir = $("#an-rouvrir");
+  const fin = $("#an-terminee-suiv");
+  const et = etapes();
+  const z = zoneCourante();
+  const rang = A.rangDansParcours(et, S.caseIx, S.zoneId);
+  $("#an-prec").disabled = !et.length;
+  $("#an-suiv").disabled = !et.length;
+  rouvrir.hidden = true;
+  fin.disabled = true;
+  if (!g || !z) {
+    etat.textContent = g ? "" : "Aucune grille";
+    etat.title = "";
+    fin.title = "Marquer la zone terminée, puis passer à la suivante";
+    return;
+  }
+  const nom = nomDeLaPasse();
+  if (rang < 0) {
+    etat.textContent = `${nom} : hors parcours`;
+    etat.title = `« ${g.nom} » ne parcourt pas ce type de zone.`;
+    fin.title = etat.title;
+    return;
+  }
+  const t = etatDe(z, rubriqueVue());
+  if (t.terminee) {
+    const qui = A.signataires(t.passes);
+    etat.textContent = `✓ ${nom} : terminée${qui.length ? " · " + qui.join(", ") : ""}`;
+    etat.title = "Rien d'autre à relever ici avec cette grille : un zéro compte comme un zéro. "
+      + "Vaut pour toute l'équipe.";
+    rouvrir.hidden = !ecrivable();
+    fin.title = "Déjà terminée";
+    return;
+  }
+  etat.textContent = `${nom} : à faire`;
+  etat.title = "Rien n'est marqué : avec cette grille, la zone compte comme « pas encore regardée ».";
+  fin.disabled = !ecrivable();
+  fin.title = ecrivable() ? `Marquer la zone terminée avec ${nom}, puis passer à la suivante`
+    : "Vous lisez cet album : rien ne s'y marque.";
+}
+
+/* Ce qui dépend des passes : le pied, le rang, les onglets (✓), la minicarte. */
+function apresPasse() {
+  rendrePied();
+  rendreTete();
+  rendreOnglets();
+  marquerMini();
+}
+
+/* « Suivante » (d = 1), « Précédente » (d = -1). */
+function aller(d) {
+  const et = etapes();
+  if (!et.length) return;
+  const i = A.rangDansParcours(et, S.caseIx, S.zoneId);
+  const j = A.suivanteDuParcours(et, i, d, etapeFaite, S.aFaire);
+  if (j < 0) { annoncer("Plus rien à faire dans ce parcours."); toast("Plus rien à faire dans ce parcours."); return; }
+  if (j === i) { annoncer("C'est la seule zone à faire."); return; }
+  choisir(et[j].caseIx, et[j].zoneId);
+  annoncer(`Zone ${j + 1} sur ${et.length}`);
+}
+
+function baseDePasse(zone) {
+  return zone.pseudo ? `/api/planches/${S.planche.id}` : `/api/regions/${zone.id}`;
+}
+
+/* « Terminée, suivante » : la passe de la grille (ou de la rubrique affichée), puis la zone
+   suivante. Déjà marquée par un autre, elle reste, signée de lui. */
+async function marquerTerminee() {
+  if (conflitOuvert()) return;
+  const g = grilleOuverte();
+  const z = zoneCourante();
+  if (!g || !z || !S.planche) return;
+  if (!ecrivable()) { annoncer("Vous lisez cet album : rien ne s'y marque."); return; }
+  try {
+    const p = await apiSend("PUT", `${baseDePasse(z)}/passes/${g.id}`,
+                            { rubrique_cle: rubriqueVue(), vu: { passe: false } });
+    S.passes = [...S.passes.filter((x) => x.id !== p.id), p];
+    annoncer(`Zone terminée avec ${nomDeLaPasse()}`);
+  } catch (err) {
+    await refusPasse(err);
+    return;
+  }
+  apresPasse();
+  aller(1);
+}
+
+/* « Rouvrir » : la zone n'est plus terminée — la passe de la rubrique et celle de toute la
+   grille, ou toutes, selon ce qu'« Afficher » montre. */
+async function rouvrirPasse() {
+  if (conflitOuvert()) return;
+  const g = grilleOuverte();
+  const z = zoneCourante();
+  if (!g || !z || !S.planche) return;
+  const cible = A.cibleDePasse(z, S.planche.id);
+  try {
+    for (const k of A.aRouvrir(S.passes, cible, g.id, rubriqueVue())) {
+      await apiSend("DELETE", `${baseDePasse(z)}/passes/${g.id}?rubrique_cle=`
+                    + `${encodeURIComponent(k)}&vu_marquee=true`);
+      const ote = A.passesSurLaCible(S.passes, cible, g.id)
+        .find((p) => (p.rubrique_cle || "") === k);
+      if (ote) S.passes = S.passes.filter((p) => p !== ote);
+    }
+    annoncer("Zone rouverte");
+  } catch (err) {
+    await refusPasse(err);
+    return;
+  }
+  apresPasse();
+  $("#an-terminee-suiv").focus();
+}
+
+/* Un refus sur une passe : le message du serveur, puis l'état relu. */
+async function refusPasse(err) {
+  toast(err.message, "error", 8000);
+  await relireReleves();
+}
+
+/* CTRL+Z : le dernier geste de l'agent, où qu'il ait été fait. La planche ouverte se relit si
+   l'acte la touche — la zone touchée choisie, sinon celle où l'on était ; une autre planche
+   de l'album s'ouvre ; ailleurs, le message suffit. */
+async function annulerPage() {
+  if (conflitOuvert()) return;
+  const res = await BDAnnulation.annuler({ apiSend, toast });
+  if (!res || !res.planche_id) return;
+  if (S.planche && res.planche_id === S.planche.id) {
+    await ouvrirPlanche(S.planche.id, res.region_id === undefined ? null : res.region_id,
+                        { caseIx: S.caseIx, zoneId: S.zoneId });
+  } else if (S.planches.some((p) => p.id === res.planche_id)) {
+    await ouvrirPlanche(res.planche_id, res.region_id === undefined ? null : res.region_id,
+                        { caseIx: 0, zoneId: null });
+  }
+}
+
+function brancherParcours() {
+  $("#an-suiv").addEventListener("click", () => aller(1));
+  $("#an-prec").addEventListener("click", () => aller(-1));
+  $("#an-terminee-suiv").addEventListener("click", marquerTerminee);
+  $("#an-rouvrir").addEventListener("click", rouvrirPasse);
+  $("#an-parcours-sel").addEventListener("change", (e) => {
+    S.aFaire = e.target.value === "afaire";
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!$("#an-guide-modal").hidden) return;
+    if (BDAnnulation.estRaccourci(e)) {
+      e.preventDefault();
+      annulerPage();
+      return;
+    }
+    // Ctrl+Entrée : la zone suivante, sans rien marquer ; Ctrl+Maj+Entrée : la précédente.
+    if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const t = e.target;
+    if (t && t.closest && t.closest("textarea, [contenteditable]")) return;
+    e.preventDefault();
+    aller(e.shiftKey ? -1 : 1);
+  });
+}
+
 async function demarrer() {
   preparerRetour();
   brancher();
   brancherGrille();
   brancherPose();
+  brancherParcours();
   try {
     await chargerAlbums();
   } catch (e) {

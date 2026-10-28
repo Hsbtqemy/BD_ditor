@@ -89,7 +89,7 @@ def _ouvrir(page, d, region=None):
 
 def _boites(page):
     """Les boîtes dont la hauteur ne doit pas bouger pendant le travail."""
-    return page.evaluate("""() => ['#an-vue-case', '#an-zones', '#an-porte', '#an-mots', '.an-tete']
+    return page.evaluate("""() => ['#an-vue-case', '#an-zones', '#an-porte', '#an-mots', '.an-tete', '#an-pied']
       .map((s) => Math.round(document.querySelector(s).getBoundingClientRect().height))""")
 
 
@@ -231,9 +231,8 @@ def test_la_ligne_du_guide_garde_sa_hauteur(page, decor):
     expect(contenu).to_contain_text("AAAH !")
     expect(contenu.locator(".an-g-piege")).to_contain_text("pas une onomatopée")
     assert hauteur() == vide
-    # La souris quitte le plan : le défilement qu'amène le focus ferait passer une autre
-    # entrée sous le pointeur, et le survol l'emporterait.
-    page.mouse.move(0, 0)
+    # Le pointeur reste où il est : le focus fait défiler le plan et amène une autre entrée
+    # sous lui, et le navigateur émet un mouseover — qui ne reprend pas la ligne du guide.
     page.locator("#an-plan .an-var", has_text="splash").focus()
     expect(contenu).to_contain_text("[liquide] + [chute]")
     expect(contenu.locator(".an-g-chemin")).to_contain_text("onomatopée de choc")
@@ -500,3 +499,123 @@ def test_creer_une_entree_dans_une_grille_ouverte_et_releves(page, decor):
     page.reload(wait_until="networkidle")
     expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_have_count(1,
                                                                                     timeout=15000)
+
+
+# --------------------------------------------------------------------------- #
+# « Terminée », le parcours, Ctrl+Z (commit 4)
+# --------------------------------------------------------------------------- #
+# La grille fictive vise des mots, des zones de texte, la case et la planche : son parcours
+# du décor est c1, sa bulle, c2, son cartouche, puis la planche (la boîte n'y est pas).
+def _passes(d):
+    with _http(d) as c:
+        return c.get(f"/api/planches/{d['planche']}/releves").json()["passes"]
+
+
+def test_terminee_suivante_le_parcours_et_rouvrir(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    etat = page.locator("#an-passe-etat")
+    rang = page.locator("#an-tete-rang")
+    expect(rang).to_have_text("zone 2 / 5 de « Signaux »")
+    expect(etat).to_have_text("Signaux : à faire")
+    avant = _boites(page)
+    with page.expect_response(lambda r: r.request.method == "PUT"
+                              and f"/api/regions/{decor['bulle']}/passes/" in r.url) as rep:
+        page.locator("#an-terminee-suiv").click()
+    assert rep.value.status == 200
+    assert rep.value.request.post_data_json == {"rubrique_cle": "", "vu": {"passe": False}}
+    assert [(p["region_id"], p["rubrique_cle"]) for p in _passes(decor)] == [(decor["bulle"], "")]
+    expect(page.locator("#an-tete-case")).to_have_text("Case c2")
+    expect(rang).to_have_text("zone 3 / 5 de « Signaux »")
+    assert _boites(page) == avant
+    page.locator("#an-prec").click()
+    expect(page.locator("#an-tete-zone")).to_have_text("bulle b1")
+    expect(etat).to_contain_text("✓ Signaux : terminée")
+    expect(page.locator(f"#an-onglet-{decor['grille']} .an-fini")).to_have_count(1)
+    # « À faire seulement » saute la bulle terminée.
+    page.locator("#an-prec").click()
+    expect(rang).to_have_text("zone 1 / 5 de « Signaux »")
+    page.locator("#an-parcours-sel").select_option("afaire")
+    page.locator("#an-suiv").click()
+    expect(rang).to_have_text("zone 3 / 5 de « Signaux »")
+    # Les raccourcis : Ctrl+Entrée la suivante, Ctrl+Maj+Entrée la précédente.
+    page.locator("#an-mots").focus()
+    page.keyboard.press("Control+Enter")
+    expect(rang).to_have_text("zone 4 / 5 de « Signaux »")
+    page.keyboard.press("Control+Shift+Enter")
+    expect(rang).to_have_text("zone 3 / 5 de « Signaux »")
+    page.keyboard.press("Control+Shift+Enter")
+    expect(rang).to_have_text("zone 1 / 5 de « Signaux »")
+    # La planche : la dernière étape, sur une case pseudo que le parcours ajoute.
+    page.locator("#an-parcours-sel").select_option("tout")
+    page.locator("#an-prec").click()
+    expect(page.locator("#an-tete-case")).to_have_text("La planche")
+    expect(rang).to_have_text("zone 5 / 5 de « Signaux »")
+    # Rouvrir.
+    page.locator("#an-suiv").click()
+    page.locator("#an-suiv").click()
+    expect(page.locator("#an-tete-zone")).to_have_text("bulle b1")
+    with page.expect_response(lambda r: r.request.method == "DELETE" and "/passes/" in r.url) as rep:
+        page.locator("#an-rouvrir").click()
+    assert rep.value.status == 204 and "vu_marquee=true" in rep.value.url
+    expect(etat).to_have_text("Signaux : à faire")
+    expect(page.locator("#an-rouvrir")).to_be_hidden()
+    assert _passes(decor) == []
+    expect(page.locator(f"#an-onglet-{decor['grille']} .an-fini")).to_have_count(0)
+
+
+def test_terminee_par_rubrique_et_les_marques_de_la_minicarte(page, decor):
+    _ouvrir(page, decor, decor["c2"])
+    expect(page.locator("#an-tete-case")).to_have_text("Case c2")
+    page.locator("#an-afficher").select_option("image")
+    page.locator("#an-terminee-suiv").click()
+    expect(page.locator("#an-tete-zone")).to_have_text("cartouche b1")
+    assert [(p["region_id"], p["rubrique_cle"]) for p in _passes(decor)] == [(decor["c2"], "image")]
+    page.locator("#an-prec").click()
+    expect(page.locator("#an-passe-etat")).to_contain_text("✓ Signaux › E. Image : terminée")
+    # Pour toute la grille, une rubrique ne suffit pas.
+    page.locator("#an-afficher").select_option("*")
+    expect(page.locator("#an-passe-etat")).to_have_text("Signaux : à faire")
+    case2 = page.locator('#an-mini .an-mz[data-case="1"]')
+    expect(case2).not_to_have_class(re.compile(r"\bfaite\b"))
+    # Les deux étapes de c2 terminées : la case l'est, et son nom le dit.
+    page.locator("#an-terminee-suiv").click()
+    expect(page.locator("#an-tete-zone")).to_have_text("cartouche b1")
+    page.locator("#an-terminee-suiv").click()
+    expect(case2).to_have_class(re.compile(r"\bfaite\b"))
+    expect(case2).to_have_attribute("aria-label", "Case c2 · terminée")
+    # Un doute ouvert sur un relevé de la première case la marque.
+    rid = next(r["id"] for r in _releves(decor) if r["entree_cle"] == "cri")
+    with _http(decor) as c:
+        assert c.post(f"/api/releves/{rid}/doutes", json={"texte": "un juron ?"}).status_code == 201
+    page.reload(wait_until="networkidle")
+    case1 = page.locator('#an-mini .an-mz[data-case="0"]')
+    expect(case1).to_have_class(re.compile(r"\bdoute\b"))
+    expect(case1).to_have_attribute("aria-label", re.compile("doute ouvert"))
+
+
+def test_ctrl_z_annule_une_pose(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, 1).click()
+    cri = page.locator("#an-plan [role=checkbox]", has_text="cri").first
+    cri.click()
+    expect(cri).to_have_attribute("aria-checked", "true")
+    assert len([r for r in _releves(decor) if r["entree_cle"] == "cri"]) == 2
+    page.locator("#an-mots").focus()
+    with page.expect_response(lambda r: r.url.endswith("/api/undo")) as rep:
+        page.keyboard.press("Control+z")
+    assert rep.value.status == 200
+    expect(page.locator("#toasts")).to_contain_text("Annulé :")
+    assert [[m["rang"] for m in r["mots"]] for r in _releves(decor)
+            if r["entree_cle"] == "cri"] == [[0]]
+    expect(page.locator("#an-tete-zone")).to_have_text("bulle b1")
+    # La planche est RELUE : le trait de SABORDS est parti, celui de MILLE reste.
+    expect(_mot(page, 1).locator(".an-trait.an-teinte-0")).to_have_count(0)
+    expect(_mot(page, 0).locator(".an-trait.an-teinte-0")).to_have_count(1)
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_have_count(1)
+    # Dans un champ de saisie, Ctrl+Z reste l'annulation native : rien ne part.
+    page.locator("#an-filtre").fill("cri")
+    envois = []
+    page.on("request", lambda r: envois.append(r.url) if r.url.endswith("/api/undo") else None)
+    page.locator("#an-filtre").press("Control+z")
+    page.wait_for_timeout(300)
+    assert envois == []
