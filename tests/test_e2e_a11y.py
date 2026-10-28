@@ -39,6 +39,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 # AUTH-2 : `ADMIN` monte le décor avec les droits qu'il faut (sans effet hors proxy).
 from conftest import du_projet
+from grilles_decor import grille_active_vivante  # noqa: E402
 from conftest import (ADMIN, ECRITURE, SANTE_PROFOND, SANTE_RAPIDE,  # noqa: E402
                       make_png, requires_kumiko)
 from playwright.sync_api import expect  # noqa: E402
@@ -180,6 +181,12 @@ def seeded(live_server):
         # surtout le délai avant de voir un vrai échec.
         c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"}, timeout=180)
         c.put(f"/api/regions/{rid}/annotation", json={"note": "colère", "tags": ["emotion"]})
+        # ANN-7, tranche 2 — la grille fictive active et un relevé : sans eux, la colonne de
+        # la grille de la page Annotation serait auditée VIDE.
+        g = grille_active_vivante(c)
+        c.post("/api/releves", json={"region_id": rid, "grille_id": g["grille_id"],
+                                     "version": 1, "entree_cle": "cri", "mots": [0]}
+               ).raise_for_status()
     finally:
         c.close()
     return {"base": live_server, "album": aid, "planche": pid, "region": rid}

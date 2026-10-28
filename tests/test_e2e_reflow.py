@@ -40,6 +40,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from conftest import du_projet
 from conftest import ECRITURE, make_png         # noqa: E402
+from grilles_decor import grille_active_vivante  # noqa: E402
 from tools.mesurer_reflow import (DEPLIES, ECRASEMENT, INVENTAIRE, SONDE,  # noqa: E402
                                   decrire_ecrasement, deplier)
 
@@ -134,6 +135,8 @@ def decor(live_server):
         # déclenche la réindexation, donc le chargement à froid de spaCy (~10 s).
         c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"}, timeout=180)
         c.put(f"/api/regions/{rid}/annotation", json={"note": "colère", "tags": ["emotion"]})
+        # ANN-7, tranche 2 — une grille active, que la page Annotation montre dépliée.
+        grille_active_vivante(c)
     finally:
         c.close()
     return {"base": live_server, "album": aid, "planche": pid, "region": rid}

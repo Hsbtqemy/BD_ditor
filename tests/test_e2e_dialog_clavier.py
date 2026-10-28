@@ -30,16 +30,15 @@ from playwright.sync_api import expect  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from conftest import ECRITURE, make_png         # noqa: E402
+from grilles_decor import grille_active_vivante  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source. Les trois surfaces auditées
-# sont celles qui chargent `dialog.js` ; les huit modales s'y répartissent (cf. `MODALES`).
-SURFACES_AUDITEES = ("/", "/corpus", "/exploration")
+# sont celles qui chargent `dialog.js` ; les neuf modales s'y répartissent (cf. `MODALES`) —
+# la neuvième, le guide complet de la page Annotation (ANN-7, tranche 2).
+SURFACES_AUDITEES = ("/", "/annotation", "/corpus", "/exploration")
 SURFACES_HORS_PERIMETRE = {
-    "/annotation": (
-        "la page Annotation n'ouvre encore aucune modale : le guide complet de "
-        "la grille viendra au commit 2, avec son audit"),
     "/recherche": "aucune modale : la page ne charge pas `dialog.js`, ses deux panneaux "
                   "repliables sont des `<details>` de la page elle-même",
     "/administration": "aucune modale : la page ne charge pas `dialog.js`, ses blocs sont "
@@ -51,7 +50,7 @@ DOMAINES = ("alpha", "beta", "gamma")
 
 @pytest.fixture
 def decor(live_server):
-    """De quoi peupler les huit modales : un album et sa bulle annotée, trois domaines au
+    """De quoi peupler les neuf modales : un album et sa bulle annotée, trois domaines au
     lexique, et une SECONDE collection portant l'album — sans elle, l'export part sans
     rien demander et sa modale ne s'ouvre jamais."""
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
@@ -67,12 +66,15 @@ def decor(live_server):
             c.post("/api/domaines", json={"nom": nom}).raise_for_status()
         cid = c.post("/api/collections", json={"nom": "Seconde étude"}).json()["id"]
         c.put(f"/api/albums/{aid}/collections/{cid}").raise_for_status()
+        # La grille fictive, active : le guide complet de la page Annotation a de quoi
+        # se peupler (ANN-7, tranche 2).
+        grille_active_vivante(c)
     finally:
         c.close()
     return {"base": live_server, "album": aid, "planche": pid, "region": rid}
 
 
-# ── Les huit modales, chacune dans un état peuplé ───────────────────────────────────────
+# ── Les neuf modales, chacune dans un état peuplé ───────────────────────────────────────
 #
 # Clé : l'élément que `BDDialog.register` reçoit. `boite` est ce que le piège enferme,
 # `ouvrir` le geste qui y mène — celui de l'écran, pas un `hidden = false` posé à la main,
@@ -143,6 +145,15 @@ def _export(page, d):
     page.wait_for_selector("#export-modal:not([hidden]) input[type=radio]", timeout=5000)
 
 
+def _guide_grille(page, d):
+    """ANN-7, tranche 2 — le guide complet de la grille, sur la page Annotation."""
+    page.goto(d["base"] + f"/annotation?album={d['album']}&planche={d['planche']}",
+              wait_until="networkidle")
+    page.locator("#an-onglets [role=tab]").first.wait_for(timeout=5000)
+    page.click("#an-guide-complet")
+    page.wait_for_selector("#an-guide-modal:not([hidden]) table", timeout=5000)
+
+
 MODALES = {
     "#lexique-modal":      {"boite": "#lexique-modal .modal-box", "ouvrir": _lexique},
     "#accord-modal":       {"boite": "#accord-modal .modal-box", "ouvrir": _accord},
@@ -152,6 +163,7 @@ MODALES = {
     "#sharedocs":          {"boite": "#sharedocs .sd-dialog", "ouvrir": _sharedocs},
     "#figure-modal":       {"boite": "#figure-modal .modal-box", "ouvrir": _figure},
     "#export-modal":       {"boite": "#export-modal .modal-box", "ouvrir": _export},
+    "#an-guide-modal":     {"boite": "#an-guide-modal .modal-box", "ouvrir": _guide_grille},
 }
 
 # Les arrêts de tabulation de la boîte, demandés au navigateur et rangés dans l'ordre du
@@ -242,7 +254,7 @@ def _exiger_le_tour(page, quoi, boite, minimum=2):
 
 @pytest.mark.parametrize("modale", list(MODALES))
 def test_tab_dessert_tous_les_arrets_de_la_modale(page, decor, modale):
-    """Les huit modales, telles que l'écran les ouvre : aucune n'a d'arrêt que Tab ne
+    """Les neuf modales, telles que l'écran les ouvre : aucune n'a d'arrêt que Tab ne
     dessert pas. Celle du lexique est la seule à avoir échoué — elle est la seule à
     porter des `<summary>` —, et les six autres sont là pour le jour où une autre en
     gagnera un."""
@@ -313,7 +325,7 @@ def test_un_focalisable_inconnu_n_est_pas_un_cul_de_sac(page, decor):
 
 # ── Un groupe de boutons radio n'est qu'UN arrêt (AUTH-11) ──────────────────────────────
 #
-# Le tour des huit modales ci-dessus ouvre celle de l'export telle qu'elle naît : la
+# Le tour des neuf modales ci-dessus ouvre celle de l'export telle qu'elle naît : la
 # PREMIÈRE collection cochée. Dans cet état-là, le premier bouton radio de la liste du
 # piège est aussi le premier arrêt du navigateur, et le tour est juste par coïncidence.
 # Il suffit de choisir la seconde collection — le seul geste que la boîte propose — pour
@@ -428,6 +440,7 @@ RETOUR = {
     "#sharedocs": "#btn-donnees",
     "#figure-modal": "#btn-fig-open",
     "#export-modal": "#btn-donnees",
+    "#an-guide-modal": "#an-guide-complet",
 }
 
 # Ce qui, dans chaque boîte, ne prend pas le focus : son titre (le nom de la boîte), et sa
@@ -437,6 +450,7 @@ _TITRE = {
     "#accord-inter-modal": "#accord-inter-title", "#album-modal": "#modal-title",
     "#suppr-modal": "#sp-titre", "#sharedocs": "#sd-title",
     "#figure-modal": "#figure-title", "#export-modal": "#export-title",
+    "#an-guide-modal": "#an-guide-titre",
 }
 
 _FOCUS = """(sel) => {

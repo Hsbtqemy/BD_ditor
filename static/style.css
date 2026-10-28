@@ -3785,7 +3785,7 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 }
 .an-grille {
   grid-area: grille; background: var(--bg-panel); border-left: 1px solid var(--border);
-  padding: .9231rem;
+  display: flex; flex-direction: column; overflow: hidden;
 }
 .an-titre { margin: 0; font-size: 1rem; font-weight: 600; }
 .an-sous-titre { margin: 0 0 .3077rem; font-size: .9231rem; font-weight: 600; color: var(--text-muted); }
@@ -3865,6 +3865,95 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
             border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel);
             white-space: pre-line; overflow-wrap: anywhere; }
 
+/* La GRILLE (commit 2) : l'en-tête (onglets, « Afficher », filtre), le corps qui défile,
+   et la ligne du guide à HAUTEUR FIXE en bas — elle ne change pas la hauteur de la colonne,
+   quoi qu'elle porte (ANN-6, 2026-10-22). */
+.an-gr-tete { flex: 0 0 auto; padding: .9231rem .9231rem .4615rem; display: flex;
+              flex-direction: column; gap: .4615rem; }
+.an-onglets { display: flex; flex-wrap: wrap; gap: .3077rem; }
+.an-onglet { font-size: .9231rem; padding: .2308rem .6154rem; max-width: 100%;
+             overflow-wrap: anywhere; }
+.an-onglet[aria-selected="true"] { border-color: var(--accent-green); font-weight: 600;
+                                   background: var(--hover); }
+.an-onglet .an-n { font-weight: 400; color: var(--text-muted); }
+.an-gr-ligne { display: flex; align-items: center; gap: .4615rem; min-width: 0; }
+.an-gr-lbl { color: var(--text-muted); font-size: .9231rem; }
+.an-gr-ligne select { min-width: 0; max-width: 100%; flex: 1 1 auto; padding: .2308rem .4615rem;
+                      background: var(--bg-input); color: var(--text);
+                      border: 1px solid var(--border); border-radius: 5px; }
+.an-filtre-wrap { display: flex; align-items: center; gap: .3077rem; min-width: 0; }
+.an-filtre-wrap input { flex: 1 1 auto; min-width: 0; padding: .3846rem .6154rem;
+                        background: var(--bg-input); color: var(--text);
+                        border: 1px solid var(--border); border-radius: 5px; font: inherit; }
+.an-grille-corps { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 .9231rem .6154rem; }
+.an-rub { margin-top: .4615rem; }
+.an-rub-titre { margin: 0; font-size: 1rem; }
+.an-rub-btn { width: 100%; display: flex; align-items: center; gap: .4615rem; background: none;
+              border: none; color: var(--text); padding: .3077rem .1538rem; cursor: pointer;
+              font: inherit; font-weight: 600; text-align: left; border-radius: 4px; }
+.an-rub-btn:hover { background: var(--hover); }
+.an-caret { font-size: .7rem; width: .8rem; display: inline-block; }
+.an-rub-btn[aria-expanded="false"] .an-caret { transform: rotate(-90deg); }
+.an-rub-lib { min-width: 0; overflow-wrap: anywhere; }
+.an-cnt { margin-left: auto; font-weight: 400; font-size: .8462rem; color: var(--text-muted);
+          font-variant-numeric: tabular-nums; white-space: nowrap; }
+.an-niv-1, .an-niv-2, .an-niv-3 { margin-left: .7692rem; }
+.an-ent { margin: .1538rem 0; }
+.an-ent-btn { display: flex; align-items: center; gap: .4615rem; flex-wrap: wrap; width: 100%;
+              text-align: left; background: none; border: 1px solid transparent;
+              color: var(--text); padding: .2308rem .4615rem; border-radius: 5px;
+              cursor: pointer; font: inherit; }
+.an-ent-btn:hover, .an-ent-btn.guide { background: var(--hover); border-color: var(--border); }
+.an-ent-lib { min-width: 0; overflow-wrap: anywhere; }
+.an-box { width: 1rem; height: 1rem; border: 1.5px solid var(--text-muted); border-radius: 3px;
+          flex: 0 0 auto; }
+.an-marque { font-size: .8462rem; padding: 0 .4615rem; border-radius: 9px;
+             border: 1px solid var(--border); color: var(--text-muted); }
+.an-vars { display: flex; flex-wrap: wrap; gap: .3077rem; margin: .1538rem 0 .3077rem 1.4615rem; }
+.an-var { font-size: .9231rem; padding: .1538rem .5385rem; border-radius: 12px; }
+.an-var.guide { border-color: var(--text-muted); background: var(--hover); }
+.an-resultats { list-style: none; margin: .3077rem 0; padding: 0; display: flex;
+                flex-direction: column; gap: .1538rem; }
+.an-resultats[hidden] { display: none; }
+.an-res { display: flex; flex-direction: column; gap: .0769rem; padding: .3846rem .6154rem;
+          border: 1px solid transparent; border-radius: 5px; cursor: pointer; }
+.an-res:hover { background: var(--hover); }
+.an-res.actif { border-color: var(--accent-blue);
+                background: color-mix(in srgb, var(--accent-blue) 14%, transparent); }
+.an-res-chemin { font-size: .8462rem; color: var(--text-muted); }
+.an-res-lib { font-weight: 600; overflow-wrap: anywhere; }
+.an-res-ex { font-size: .8462rem; font-style: italic; color: var(--text-muted); }
+.an-res-vide { padding: .3846rem .6154rem; }
+.an-ailleurs { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem; }
+.an-guide { flex: 0 0 auto; height: 12.3077rem; border-top: 1px solid var(--border);
+            background: var(--bg-deep); display: flex; flex-direction: column;
+            padding: .6154rem .9231rem; gap: .3077rem; font-size: .9231rem; }
+.an-guide-contenu { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex;
+                    flex-direction: column; gap: .3077rem; }
+.an-guide-contenu p { margin: 0; overflow-wrap: anywhere; }
+.an-g-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6154rem; }
+.an-g-lib { font-weight: 700; font-size: 1rem; }
+.an-g-chemin { color: var(--text-muted); font-size: .8462rem; }
+.an-g-ex { font-style: italic; }
+.an-g-piege { border-left: 3px solid var(--accent-amber); padding-left: .6154rem; }
+.an-guide-pied { flex: 0 0 auto; display: flex; justify-content: flex-end; }
+#an-guide-modal { position: fixed; inset: 0; z-index: 100; background: var(--scrim);
+                  display: flex; align-items: center; justify-content: center; }
+#an-guide-modal[hidden] { display: none; }
+/* Le corps défile, la boîte garde son titre et « Fermer » : il est focalisable, pour se
+   parcourir au clavier (une région qui défile doit l'être). */
+.an-guide-box { width: min(55.3846rem, 94%); overflow: hidden; }
+.an-guide-corps { display: flex; flex-direction: column; gap: .6154rem; flex: 1 1 auto;
+                  min-height: 0; overflow-y: auto; }
+.an-guide-corps p, .an-guide-corps ul { margin: 0; }
+.an-gc-titre { margin: .4615rem 0 0; }
+/* Pas de défilement de côté : un cadre qui défile devient un arrêt de tabulation, et les
+   cellules passent à la ligne. */
+.an-gc-table table { border-collapse: collapse; width: 100%; font-size: .9231rem;
+                     table-layout: fixed; }
+.an-gc-table th, .an-gc-table td { border: 1px solid var(--border); padding: .3077rem .4615rem;
+                                   text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+
 /* Deux colonnes : la case et la grille ; la planche passe sous la case. La page défile
    alors en entier, dans `main`. Des rangées `max-content` et des colonnes à `min-height:
    auto` : en `auto`, une grille de hauteur DÉFINIE répartit sa hauteur entre ses rangées,
@@ -3876,6 +3965,7 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
            grid-template-areas: "bandeau bandeau" "zone grille" "gauche grille";
            overflow-y: auto; }
   .an-col { overflow: visible; min-height: auto; }
+  .an-grille-corps { overflow: visible; }
   .an-gauche { border-right: none; border-top: 1px solid var(--border); }
 }
 /* Une colonne : la case, la planche, puis la grille. */

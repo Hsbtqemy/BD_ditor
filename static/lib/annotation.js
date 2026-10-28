@@ -181,9 +181,9 @@
     return statut ? `${zones} · relecture ${RELECTURES[statut] || statut}` : zones;
   }
 
-  /* L'ADRESSE de la page : `?collection=&album=&planche=&region=`, la forme de l'Atelier
-     plus la collection (la grille s'y ajoutera). Ce qui est nul n'y est pas. */
-  const CLES_ADRESSE = ["collection", "album", "planche", "region"];
+  /* L'ADRESSE de la page : `?collection=&album=&planche=&region=&grille=`, la forme de
+     l'Atelier plus la collection et la grille ouverte. Ce qui est nul n'y est pas. */
+  const CLES_ADRESSE = ["collection", "album", "planche", "region", "grille"];
 
   function adresse(etat) {
     const p = new URLSearchParams();
@@ -276,7 +276,315 @@
     return lignes;
   }
 
+  /* ───────────── LA GRILLE, EN LECTURE (commit 2) ─────────────
+     Ce qui suit lit ce que servent `GET /api/projets/{id}/grilles` (les grilles ACTIVES du
+     projet, leur version, les collections qui les masquent) et `GET /api/grilles/{id}/
+     versions/{n}` (le plan). L'outil ne connaît AUCUNE grille : rien ici ne nomme une
+     rubrique, une entrée ou une forme d'une grille particulière — tout se lit dans le plan. */
+
+  /* Une chaîne telle qu'on la compare : sans accents, en minuscules, les apostrophes
+     typographiques ramenées à la droite, les espaces réduits — « l’écho » et « L'ECHO » se
+     valent (maquette v3). */
+  function normaliser(s) {
+    return String(s === null || s === undefined ? "" : s).normalize("NFD")
+      .replace(/\p{M}/gu, "").toLowerCase().replace(/[’‘`ʼ´]/g, "'")
+      .replace(/\s+/g, " ").trim();
+  }
+
+  /* La collection choisie masque-t-elle cette grille ? « Toutes les collections du
+     projet » ne masque rien : le masque est le filtre d'UNE collection (Q1). */
+  function masquee(grille, collection) {
+    return !!grille && (grille.masquee_dans || []).includes(collection);
+  }
+
+  /* Les ONGLETS : les grilles actives que la collection choisie ne masque pas, dans l'ordre
+     où le serveur les rend (par nom). */
+  function grillesVisibles(actives, collection) {
+    return (Array.isArray(actives) ? actives : []).filter((g) => !masquee(g, collection));
+  }
+
+  /* La grille à ouvrir : celle qu'on voulait si elle est visible, sinon la première. */
+  function grilleAOuvrir(visibles, voulue) {
+    const l = Array.isArray(visibles) ? visibles : [];
+    const v = entier(voulue);
+    if (v !== null && l.some((g) => g.id === v)) return v;
+    return l.length ? l[0].id : null;
+  }
+
+  const ETATS_VERSION = { publiee: "publiée", vivante: "vivante", brouillon: "brouillon" };
+
+  /* L'infobulle d'un onglet : la version et sa note (maquette v3 : « version et note en
+     infobulle »), et si la grille est ouverte. */
+  function infobulleGrille(grille, plan) {
+    if (!grille) return "";
+    const v = grille.version || {};
+    const parts = [grille.nom];
+    if (grille.ouverte) parts.push("ouverte : elle s'enrichit en posant");
+    else if (v.numero) parts.push(`version ${v.numero} (${ETATS_VERSION[v.etat] || v.etat})`);
+    const note = plan && plan.note;
+    return parts.join(" · ") + (note ? ` — ${note}` : "");
+  }
+
+  /* Le PLAN en arbre : les rubriques de tête dans leur ordre, chacune avec ses entrées puis
+     ses sous-rubriques, à toute profondeur. Les entrées RETIRÉES n'y sont pas ; une entrée
+     sans rubrique (ou d'une rubrique absente) va dans un groupe à part, en dernier
+     (`cle: ""`). Rend `[{ cle, libelle, profondeur, entrees, enfants }]`. */
+  function arbre(plan) {
+    const rubriques = (plan && plan.rubriques) || [];
+    const parCle = new Map(rubriques.map((r) => [r.cle, { cle: r.cle, libelle: r.libelle,
+                                                          parent: r.parent_cle, entrees: [],
+                                                          enfants: [] }]));
+    const tete = [];
+    for (const r of rubriques) {
+      const n = parCle.get(r.cle);
+      if (r.parent_cle !== null && r.parent_cle !== undefined && parCle.has(r.parent_cle)
+          && r.parent_cle !== r.cle) parCle.get(r.parent_cle).enfants.push(n);
+      else tete.push(n);
+    }
+    const seul = { cle: "", libelle: "Sans rubrique", parent: null, entrees: [], enfants: [] };
+    for (const e of (plan && plan.entrees) || []) {
+      if (e.retiree) continue;
+      (parCle.get(e.rubrique_cle) || seul).entrees.push(e);
+    }
+    const profondeur = (n, k, vus) => {
+      if (vus.has(n.cle)) return;
+      vus.add(n.cle);
+      n.profondeur = k;
+      n.enfants.forEach((x) => profondeur(x, k + 1, vus));
+    };
+    const vus = new Set();
+    tete.forEach((n) => profondeur(n, 0, vus));
+    if (seul.entrees.length) { seul.profondeur = 0; tete.push(seul); }
+    return tete;
+  }
+
+  /* Toutes les entrées (non retirées) d'un nœud de l'arbre et de ses descendants. */
+  function entreesSous(noeud) {
+    if (!noeud) return [];
+    return [...noeud.entrees, ...noeud.enfants.flatMap(entreesSous)];
+  }
+
+  /* Le chemin d'une entrée, en mots : « A. Sons › Voix ». */
+  function chemin(plan, entree) {
+    const parCle = new Map(((plan && plan.rubriques) || []).map((r) => [r.cle, r.libelle]));
+    return (entree && entree.rubriques ? entree.rubriques : [])
+      .map((c) => parCle.get(c)).filter(Boolean).join(" › ");
+  }
+
+  /* Ce que « Afficher » propose : toute la grille, ou une rubrique de tête — et rien quand
+     la grille n'en a qu'une (le choix n'aurait pas de sens). */
+  function vuesAfficher(plan) {
+    const tete = arbre(plan).filter((n) => n.cle !== "");
+    return tete.length > 1 ? tete.map((n) => ({ cle: n.cle, libelle: n.libelle })) : [];
+  }
+
+  /* Les relevés de la ZONE choisie et de son CONTEXTE (maquette v3 : « dans cette zone et
+     son contexte ») : sur la zone elle-même ; sur sa case, quand la zone est dans une case ;
+     sur la planche (la surface). La case pseudo n'est pas une région : ses relevés « ici »
+     sont ceux de la surface. Rend `{ ici, contexte }`. */
+  function relevesDeLaZone(releves, zone, caseRegion, plancheId) {
+    const l = Array.isArray(releves) ? releves : [];
+    const surface = (r) => r.planche_id !== null && r.planche_id !== undefined
+      && r.planche_id === plancheId;
+    if (!zone) return { ici: [], contexte: [] };
+    if (zone.pseudo) return { ici: l.filter(surface), contexte: [] };
+    const ici = l.filter((r) => r.region_id === zone.id);
+    const laCase = caseRegion && !caseRegion.pseudo && caseRegion.id !== zone.id
+      ? caseRegion.id : null;
+    const contexte = l.filter((r) => (laCase !== null && r.region_id === laCase) || surface(r));
+    return { ici, contexte };
+  }
+
+  /* LES COMPTES « n ici » d'une grille, sur des relevés déjà choisis (`relevesDeLaZone`) :
+     le total de la grille, par rubrique (descendants compris) et par entrée. Un relevé
+     compte UNE fois, quelle que soit sa forme. */
+  function compter(releves, grilleId, plan) {
+    const siens = (Array.isArray(releves) ? releves : []).filter((r) => r.grille_id === grilleId);
+    const parEntree = new Map();
+    for (const r of siens) parEntree.set(r.entree_cle, (parEntree.get(r.entree_cle) || 0) + 1);
+    const parRubrique = new Map();
+    const visiter = (n) => {
+      const total = n.entrees.reduce((a, e) => a + (parEntree.get(e.cle) || 0), 0)
+        + n.enfants.reduce((a, x) => a + visiter(x), 0);
+      parRubrique.set(n.cle, total);
+      return total;
+    };
+    if (plan) arbre(plan).forEach(visiter);
+    return { total: siens.length, parEntree, parRubrique };
+  }
+
+  /* La pastille « plusieurs » : la cardinalité ne se montre que là où elle surprend —
+     « plusieurs » sur une cible ENTIÈRE (une zone, la planche), jamais sur des mots
+     (tranché sur la v3, Q6). */
+  function marquePlusieurs(entree) {
+    return !!entree && entree.cardinalite === "plusieurs"
+      && (entree.pose === "zone" || entree.pose === "planche");
+  }
+
+  /* La marque d'une cible PROPRE : une entrée qui déclare sa cible (`cible_declaree`) se
+     pose d'elle-même sur elle, quel que soit « Porte sur ». Rend le mot court à écrire,
+     ou `null` pour une entrée qui suit la cible de la version, ou qui vise des mots. */
+  function marqueCible(entree) {
+    if (!entree || !(entree.cible_declaree || []).length) return null;
+    const c = entree.cibles || entree.cible_declaree;
+    if (entree.pose === "planche") return "la planche";
+    if (entree.pose === "entite") return "partout";
+    if (entree.pose !== "zone") return null;
+    if (c.every((x) => TYPES_TEXTE.includes(x))) return "toute la zone";
+    if (c.length === 1 && c[0] === "case") return "la case";
+    if (c.length === 1 && c[0] === "personnage") return "la boîte";
+    if (c.length === 1 && c[0] === "detail") return "le détail";
+    return "la zone";
+  }
+
+  /* LE FILTRE : les résultats de `requete` dans le plan, les meilleurs d'abord.
+     Chaque mot de la requête doit se trouver (accents et apostrophes ignorés) dans le
+     libellé, la définition, la structure ou les exemples. Une entrée à VARIANTES rend ses
+     variantes ; une entrée à QUALIFICATIFS se rend seule, et « X par Y » (ou une requête
+     qui ne se lit qu'avec un qualificatif) rend le phénomène AVEC un qualificatif de sa
+     liste. Score : 0 le libellé commence par la requête, 1 il la contient, 2 elle ne se lit
+     qu'avec un qualificatif, 3 ailleurs (définition, exemples). Rend `[{ entree_cle,
+     variante_cle, qualificatif_cle, libelle, chemin, exemple, score }]`. */
+  function chercher(plan, requete) {
+    const nq = normaliser(requete);
+    if (!nq || !plan) return [];
+    const mots = nq.split(" ");
+    const tout = (hay) => mots.every((m) => hay.includes(m));
+    const score = (lib, base) => {
+      const n = normaliser(lib);
+      return n.startsWith(nq) ? 0 : n.includes(nq) ? 1 : base;
+    };
+    const par = nq.match(/^(.*\S)\s+par\s+(.+)$/);
+    const listes = new Map(((plan.listes) || []).map((l) => [l.cle, l]));
+    const sortie = [];
+    let rang = 0;
+    for (const e of plan.entrees || []) {
+      if (e.retiree) continue;
+      const ch = chemin(plan, e);
+      const hayE = normaliser([e.libelle, e.definition, e.structure,
+                               ...(e.exemples || [])].join(" "));
+      const ajouter = (r) => sortie.push({ variante_cle: null, qualificatif_cle: null,
+                                           exemple: null, chemin: ch, rang: rang++, ...r });
+      if (e.forme === "variantes") {
+        for (const v of e.variantes || []) {
+          const hay = normaliser([v.libelle, v.definition, v.structure, ...(v.exemples || []),
+                                  e.libelle].join(" "));
+          if (tout(hay)) {
+            ajouter({ entree_cle: e.cle, variante_cle: v.cle, libelle: v.libelle,
+                      chemin: ch ? `${ch} › ${e.libelle}` : e.libelle,
+                      exemple: (v.exemples || [])[0] || null, score: score(v.libelle, 3) });
+          }
+        }
+        continue;
+      }
+      if (e.forme === "qualificatifs") {
+        const liste = listes.get(e.liste_cle);
+        const qualifs = liste ? liste.qualificatifs : [];
+        if (par) {
+          const [, gauche, droite] = par;
+          if (normaliser(e.libelle).includes(gauche)) {
+            for (const q of qualifs) {
+              if (normaliser(q.libelle).includes(droite)) {
+                ajouter({ entree_cle: e.cle, qualificatif_cle: q.cle,
+                          libelle: `${e.libelle} par ${q.libelle}`, score: 0 });
+              }
+            }
+          }
+          continue;
+        }
+        if (tout(hayE)) {
+          ajouter({ entree_cle: e.cle, libelle: e.libelle,
+                    exemple: (e.exemples || [])[0] || null, score: score(e.libelle, 3) });
+        } else {
+          for (const q of qualifs) {
+            if (tout(normaliser(`${e.libelle} ${q.libelle} ${q.definition || ""}`))) {
+              ajouter({ entree_cle: e.cle, qualificatif_cle: q.cle,
+                        libelle: `${e.libelle} · ${q.libelle}`, score: 2 });
+            }
+          }
+        }
+        continue;
+      }
+      if (tout(hayE)) {
+        ajouter({ entree_cle: e.cle, libelle: e.libelle,
+                  exemple: (e.exemples || [])[0] || null, score: score(e.libelle, 3) });
+      }
+    }
+    sortie.sort((a, b) => a.score - b.score || a.rang - b.rang);
+    return sortie.map(({ rang: _r, ...r }) => r);
+  }
+
+  /* LA LIGNE DU GUIDE d'une entrée (ou de l'une de ses variantes) : ce qu'on relève, sa
+     structure, ses exemples, sa liste de qualificatifs, et son piège. `null` si l'entrée
+     n'est pas dans le plan. */
+  function ligneDuGuide(plan, entreeCle, varianteCle) {
+    const e = ((plan && plan.entrees) || []).find((x) => x.cle === entreeCle);
+    if (!e) return null;
+    const v = varianteCle ? (e.variantes || []).find((x) => x.cle === varianteCle) : null;
+    const ch = chemin(plan, e);
+    const liste = e.liste_cle ? (plan.listes || []).find((l) => l.cle === e.liste_cle) : null;
+    const exemples = v ? (v.exemples || [])
+      : e.forme === "variantes"
+        ? (e.variantes || []).flatMap((x) => (x.exemples || []).map((t) => `${x.libelle} : ${t}`))
+        : (e.exemples || []);
+    return {
+      libelle: v ? v.libelle : e.libelle,
+      chemin: v ? (ch ? `${ch} › ${e.libelle}` : e.libelle) : ch,
+      definition: (v && v.definition) || e.definition || null,
+      structure: (v && v.structure) || (v ? null : e.structure) || null,
+      exemples,
+      qualificatifs: liste ? { libelle: liste.libelle || liste.cle,
+                               termes: liste.qualificatifs.map((q) => q.libelle) } : null,
+      piege: (v && v.piege) || e.piege || null,
+    };
+  }
+
+  /* LE GUIDE COMPLET, produit depuis la grille (« il ne se tient plus à côté de l'outil ») :
+     une section par rubrique, à toute profondeur, chacune avec ses lignes — le phénomène,
+     sa définition, ce qu'on pose (l'entrée, ses variantes et leur structure, ou sa liste de
+     qualificatifs), ses exemples — ; puis les listes de qualificatifs ; puis les pièges.
+     Rend `{ sections: [{ titre, niveau, lignes }], listes, pieges }`. */
+  function guideComplet(plan) {
+    const listes = new Map(((plan && plan.listes) || []).map((l) => [l.cle, l]));
+    const ligne = (e) => ({
+      cle: e.cle, phenomene: e.libelle, definition: e.definition || null,
+      aPoser: e.forme === "variantes"
+        ? (e.variantes || []).map((v) => ({ libelle: v.libelle, structure: v.structure || null }))
+        : e.forme === "qualificatifs"
+          ? [{ libelle: e.libelle,
+               structure: listes.get(e.liste_cle)
+                 ? `+ ${listes.get(e.liste_cle).libelle || e.liste_cle}` : null }]
+          : [{ libelle: e.libelle, structure: e.structure || null }],
+      exemples: e.forme === "variantes"
+        ? (e.variantes || []).flatMap((v) => v.exemples || []) : (e.exemples || []),
+    });
+    const sections = [];
+    const visiter = (n) => {
+      sections.push({ titre: n.libelle, niveau: n.profondeur || 0, lignes: n.entrees.map(ligne) });
+      n.enfants.forEach(visiter);
+    };
+    arbre(plan).forEach(visiter);
+    const pieges = [];
+    for (const e of (plan && plan.entrees) || []) {
+      if (e.retiree) continue;
+      if (e.piege) pieges.push({ entree: e.libelle, piege: e.piege });
+      for (const v of e.variantes || []) {
+        if (v.piege) pieges.push({ entree: `${e.libelle} › ${v.libelle}`, piege: v.piege });
+      }
+    }
+    return {
+      sections,
+      listes: ((plan && plan.listes) || []).map((l) => ({
+        libelle: l.libelle || l.cle,
+        termes: l.qualificatifs.map((q) => ({ libelle: q.libelle, definition: q.definition || null })) })),
+      pieges,
+    };
+  }
+
   return { TYPES_TEXTE, CLES_ADRESSE, estTexte, nomType, deLa, casesDeLaPlanche, etiquette,
            etiquettesDeLaCase, situer, libellePlanche, preparation, adresse, lireAdresse,
-           lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte };
+           lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
+           normaliser, masquee, grillesVisibles, grilleAOuvrir, infobulleGrille, arbre,
+           entreesSous, chemin, vuesAfficher, relevesDeLaZone, compter, marquePlusieurs,
+           marqueCible, chercher, ligneDuGuide, guideComplet };
 });

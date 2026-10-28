@@ -3,11 +3,13 @@
    décide — le rangement d'une planche en cases, les étiquettes, l'adresse, le Contexte —
    vit dans `static/lib/annotation.js` (`BDAnnotation`), testé sous Node.
 
-   CE PREMIER TEMPS (commit 1 du jalon 1) : la page, sans grille ni pose. On y choisit une
+   LE JALON 1, commits 1 et 2 : la page et la grille EN LECTURE, sans pose. On y choisit une
    collection, un album et une planche du PROJET COURANT ; sur la minicarte, une CASE ; dans
    la case agrandie, une zone — une bulle, un cartouche, un texte, une boîte personnage —, ou
    le fond (la case elle-même). Le Contexte se lit (locuteur, personnage, note), sans geste :
-   il s'écrit dans l'Atelier, où mène « Ouvrir dans l'Atelier ↗ ».
+   il s'écrit dans l'Atelier, où mène « Ouvrir dans l'Atelier ↗ ». À droite, les grilles
+   actives du projet que la collection ne masque pas : leur plan, le filtre, la ligne du
+   guide, le guide complet (commit 2).
 
    LA DISPOSITION NE BOUGE PAS PENDANT LE TRAVAIL (Hugo, 2026-10-14) : trois colonnes, une
    boîte de case de hauteur constante, des blocs de hauteur fixe ; l'aide est en infobulle,
@@ -42,6 +44,14 @@ const S = {
   caseIx: 0, zoneId: null,
   personnages: new Map(),      // région (boîte) → nom du personnage montré, ou null
   lienLu: false,
+  // La grille (commit 2)
+  grilles: [],                 // les grilles ACTIVES du projet courant
+  plans: new Map(),            // « grille:numéro » → plan, lu une fois par version
+  grilleId: null, vue: "*",    // la grille ouverte, et « Afficher »
+  replis: new Set(),           // « grille:rubrique » repliées
+  filtre: "", actif: 0, resultats: [],
+  guide: null,                 // { e, v } : l'entrée (et la variante) de la ligne du guide
+  releves: [],                 // ceux de la planche, pour « n ici »
 };
 let tourContexte = 0;          // la lecture du Contexte la plus récente gagne
 let tourPlanche = 0;           // idem pour une planche
@@ -84,6 +94,7 @@ async function chargerAlbums() {
   S.collectionProjet = S.projet;
   if (raison === "adresse" || raison === "album") BDAtelier.retenir(S.projet, choix);
   rendreCollections();
+  await chargerGrilles(premier ? adr.grille : undefined);
   await afficherAlbums(voulu, premier ? adr : null);
 }
 
@@ -150,12 +161,17 @@ async function ouvrirPlanche(id, regionVoulue = null) {
   const tour = ++tourPlanche;
   S.planche = id === null ? null : S.planches.find((p) => p.id === id) || null;
   S.regions = [];
+  S.releves = [];
   S.personnages = new Map();
   if (S.planche) {
     $("#an-planche-choix").value = String(S.planche.id);
-    const regions = await apiGet(`/api/planches/${S.planche.id}/regions`);
+    const [regions, releves] = await Promise.all([
+      apiGet(`/api/planches/${S.planche.id}/regions`),
+      apiGet(`/api/planches/${S.planche.id}/releves`).then((d) => d.releves).catch(() => []),
+    ]);
     if (tour !== tourPlanche) return;
     S.regions = regions;
+    S.releves = releves;
   }
   S.rangement = S.planche
     ? A.casesDeLaPlanche(S.regions, S.planche.largeur_px, S.planche.hauteur_px) : [];
@@ -186,6 +202,7 @@ function choisir(caseIx, zoneId) {
   rendreZones();
   rendreTexte();
   rendreContexte();
+  rendreGrille();
   lirePersonnagesDeLaCase();
   syncAdresse();
 }
@@ -399,6 +416,424 @@ async function rendreContexte() {
   dessiner({ locuteur, personnage, note });
 }
 
+/* ───────────── La grille, en lecture (commit 2) ─────────────
+   Les onglets des grilles ACTIVES du projet que la collection choisie ne masque pas, le
+   plan de la grille ouverte (ses rubriques repliables, « n ici », ses trois formes), le
+   filtre, la ligne du guide à hauteur fixe et le guide complet. Rien ne se pose encore
+   (commit 3) : une entrée qu'on survole, qu'on parcourt ou qu'on touche dit sa ligne du
+   guide. La règle — l'arbre, les comptes, le filtre, le guide — est dans `BDAnnotation`. */
+function el(tag, attrs, ...enfants) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "texte") e.textContent = v;
+    else if (k === "classe") e.className = v;
+    else e.setAttribute(k, v === true ? "" : String(v));
+  }
+  for (const x of enfants) if (x !== null && x !== undefined) e.append(x);
+  return e;
+}
+
+function planDe(grille) {
+  return grille && grille.version
+    ? S.plans.get(`${grille.id}:${grille.version.numero}`) || null : null;
+}
+
+function grilleOuverte() {
+  return S.grilles.find((g) => g.id === S.grilleId) || null;
+}
+
+/* Les grilles actives du projet courant, et le plan de chacune (lu une fois par version,
+   gardé pour la page). Une liste illisible n'empêche rien : la colonne reste vide. */
+async function chargerGrilles(voulue) {
+  S.grilles = [];
+  if (S.projet !== null) {
+    const d = await apiGet(`/api/projets/${S.projet}/grilles`).catch(() => null);
+    S.grilles = d && Array.isArray(d.actives) ? d.actives : [];
+  }
+  await Promise.all(S.grilles.map(async (g) => {
+    const cle = `${g.id}:${g.version.numero}`;
+    if (S.plans.has(cle)) return;
+    const plan = await apiGet(`/api/grilles/${g.id}/versions/${g.version.numero}`)
+      .catch(() => null);
+    if (plan) S.plans.set(cle, plan);
+  }));
+  const visibles = A.grillesVisibles(S.grilles, S.collection);
+  const avant = S.grilleId;
+  S.grilleId = A.grilleAOuvrir(visibles, voulue !== undefined && voulue !== null ? voulue : avant);
+  if (S.grilleId !== avant) { S.vue = "*"; S.guide = null; }
+}
+
+/* Les relevés de la zone choisie et de son contexte, pour « n ici ». */
+function relevesIci() {
+  const c = caseCourante();
+  const z = zoneCourante();
+  const { ici, contexte } = A.relevesDeLaZone(S.releves, z, c ? c.case : null,
+                                              S.planche ? S.planche.id : null);
+  return [...ici, ...contexte];
+}
+
+/* L'infobulle de la liste *Collection* dit combien de grilles du projet elle masque. */
+function marquerCollection() {
+  const n = S.grilles.filter((g) => A.masquee(g, S.collection)).length;
+  const sel = $("#an-collection");
+  if (n) {
+    sel.title = `Cette collection masque ${n} grille${n > 1 ? "s" : ""} du projet. ` +
+      "Leurs relevés restent visibles, en lecture.";
+  } else sel.removeAttribute("title");
+}
+
+function rendreGrille() {
+  marquerCollection();
+  rendreOnglets();
+  rendreAfficher();
+  rendreCorps();
+  rendreGuide();
+}
+
+function rendreOnglets() {
+  const liste = $("#an-onglets");
+  const ici = relevesIci();
+  const visibles = A.grillesVisibles(S.grilles, S.collection);
+  liste.replaceChildren(...visibles.map((g) => {
+    const n = A.compter(ici, g.id, null).total;
+    const choisi = g.id === S.grilleId;
+    return el("button", { type: "button", classe: "ghost an-onglet", role: "tab",
+                          id: `an-onglet-${g.id}`, "data-grille": g.id,
+                          "aria-selected": String(choisi), "aria-controls": "an-grille-corps",
+                          tabindex: choisi ? "0" : "-1",
+                          title: A.infobulleGrille(g, planDe(g)) },
+              g.nom, n ? el("span", { classe: "an-n", texte: ` (${n})` }) : null);
+  }));
+  const corps = $("#an-grille-corps");
+  if (S.grilleId !== null) corps.setAttribute("aria-labelledby", `an-onglet-${S.grilleId}`);
+  else corps.setAttribute("aria-labelledby", "an-grille-titre");
+}
+
+function rendreAfficher() {
+  const sel = $("#an-afficher");
+  const vues = A.vuesAfficher(planDe(grilleOuverte()));
+  if (S.vue !== "*" && !vues.some((v) => v.cle === S.vue)) S.vue = "*";
+  sel.replaceChildren(option("*", "Toute la grille"),
+                      ...vues.map((v) => option(v.cle, v.libelle)));
+  sel.value = S.vue;
+  sel.disabled = !vues.length;
+}
+
+function rendreCorps() {
+  const g = grilleOuverte();
+  const plan = planDe(g);
+  const filtre = S.filtre.trim();
+  const res = $("#an-resultats");
+  const ailleurs = $("#an-ailleurs");
+  const arbre = $("#an-plan");
+  const champ = $("#an-filtre");
+  champ.placeholder = g && g.ouverte ? "Chercher dans la grille ouverte…"
+    : "Chercher dans la grille…";
+  if (!plan) {
+    arbre.replaceChildren(el("p", { classe: "muted", texte: "—" }));
+    res.hidden = true;
+    arbre.hidden = false;
+    ailleurs.replaceChildren();
+    champ.removeAttribute("aria-activedescendant");
+    return;
+  }
+  if (filtre) {
+    rendreResultats(plan, filtre);
+    res.hidden = false;
+    arbre.hidden = true;
+    return;
+  }
+  res.hidden = true;
+  res.replaceChildren();
+  ailleurs.replaceChildren();
+  champ.removeAttribute("aria-activedescendant");
+  arbre.hidden = false;
+  const n = A.compter(relevesIci(), g.id, plan);
+  const tete = A.arbre(plan).filter((r) => S.vue === "*" || r.cle === S.vue);
+  arbre.replaceChildren(...tete.map((r) => rubrique(g, plan, r, n, 3)));
+}
+
+function rubrique(g, plan, noeud, n, niveau) {
+  const cle = `${g.id}:${noeud.cle}`;
+  const ouvert = !S.replis.has(cle);
+  const compte = n.parRubrique.get(noeud.cle) || 0;
+  const titre = el(`h${Math.min(niveau, 6)}`, { classe: "an-rub-titre" },
+    el("button", { type: "button", classe: "an-rub-btn", "data-rub": noeud.cle,
+                   "aria-expanded": String(ouvert) },
+       el("span", { classe: "an-caret", "aria-hidden": "true", texte: "▾" }),
+       el("span", { classe: "an-rub-lib", texte: noeud.libelle }),
+       el("span", { classe: "an-cnt", texte: compte ? `${compte} ici` : "" })));
+  const sec = el("section", { classe: `an-rub an-niv-${Math.min(noeud.profondeur || 0, 3)}` },
+                 titre);
+  if (!ouvert) return sec;
+  for (const e of noeud.entrees) sec.append(entree(e, plan, n));
+  for (const x of noeud.enfants) sec.append(rubrique(g, plan, x, n, niveau + 1));
+  return sec;
+}
+
+function marques(e, n) {
+  const cible = A.marqueCible(e);
+  const compte = n.parEntree.get(e.cle) || 0;
+  return [
+    cible ? el("span", { classe: "an-marque", texte: cible,
+                         title: "Se pose sur elle d'elle-même, quel que soit « Porte sur »" })
+      : null,
+    A.marquePlusieurs(e) ? el("span", { classe: "an-marque",
+                                        texte: "plusieurs",
+                                        title: "Plusieurs fois sur la même cible" }) : null,
+    el("span", { classe: "an-cnt", texte: compte ? String(compte) : "" }),
+  ];
+}
+
+function entree(e, plan, n) {
+  const guide = S.guide && S.guide.e === e.cle && !S.guide.v;
+  if (e.forme === "variantes") {
+    const tete = el("button", { type: "button", classe: `an-ent-btn an-ent-tete${guide ? " guide" : ""}`,
+                                "data-guide-e": e.cle, id: `an-ent-${e.cle}` },
+                    el("span", { classe: "an-ent-lib", texte: e.libelle }),
+                    el("span", { classe: "muted small", texte: "une parmi" }), ...marques(e, n));
+    const vars = el("div", { classe: "an-vars" }, ...(e.variantes || []).map((v) =>
+      el("button", { type: "button",
+                     classe: `ghost an-var${S.guide && S.guide.e === e.cle && S.guide.v === v.cle ? " guide" : ""}`,
+                     "data-guide-e": e.cle, "data-guide-v": v.cle, texte: v.libelle })));
+    return el("div", { classe: "an-ent", role: "group", "aria-labelledby": `an-ent-${e.cle}` },
+              tete, vars);
+  }
+  const liste = e.forme === "qualificatifs"
+    ? (plan.listes || []).find((l) => l.cle === e.liste_cle) : null;
+  return el("div", { classe: "an-ent" },
+    el("button", { type: "button", classe: `an-ent-btn${guide ? " guide" : ""}`,
+                   "data-guide-e": e.cle },
+       el("span", { classe: "an-box", "aria-hidden": "true" }),
+       el("span", { classe: "an-ent-lib", texte: e.libelle }),
+       liste ? el("span", { classe: "muted small",
+                            texte: `+ ${liste.libelle || liste.cle}` }) : null,
+       ...marques(e, n)));
+}
+
+/* Les résultats du filtre : une liste d'options que le champ désigne
+   (`aria-activedescendant`) ; « Aussi dans » les autres grilles visibles. */
+function rendreResultats(plan, filtre) {
+  const res = $("#an-resultats");
+  const champ = $("#an-filtre");
+  const trouves = A.chercher(plan, filtre);
+  S.resultats = trouves;
+  if (S.actif >= trouves.length) S.actif = 0;
+  if (!trouves.length) {
+    res.replaceChildren(el("li", { role: "option", "aria-disabled": "true",
+                                   "aria-selected": "false", id: "an-res-vide",
+                                   classe: "an-res-vide muted",
+                                   texte: `Rien pour « ${filtre} »` }));
+    champ.removeAttribute("aria-activedescendant");
+  } else {
+    res.replaceChildren(...trouves.map((r, i) => el("li", {
+      role: "option", id: `an-res-${i}`, "data-res": i, "aria-selected": String(i === S.actif),
+      classe: `an-res${i === S.actif ? " actif" : ""}` },
+      el("span", { classe: "an-res-chemin", texte: r.chemin }),
+      el("span", { classe: "an-res-lib", texte: r.libelle }),
+      r.exemple ? el("span", { classe: "an-res-ex", texte: r.exemple }) : null)));
+    champ.setAttribute("aria-activedescendant", `an-res-${S.actif}`);
+  }
+  const autres = A.grillesVisibles(S.grilles, S.collection)
+    .filter((x) => x.id !== S.grilleId)
+    .map((x) => ({ x, n: A.chercher(planDe(x), filtre).length })).filter((o) => o.n);
+  const ailleurs = $("#an-ailleurs");
+  ailleurs.replaceChildren(...(autres.length ? [
+    el("span", { classe: "muted small", texte: "Aussi dans : " }),
+    ...autres.map((o) => el("button", { type: "button", classe: "ghost small an-ailleurs-btn",
+                                        "data-grille": o.x.id, texte: `${o.x.nom} (${o.n})` })),
+  ] : []));
+}
+
+/* LA LIGNE DU GUIDE, à hauteur fixe : ce qu'on relève, la structure, les exemples, la
+   liste de qualificatifs, le piège — de l'entrée qu'on survole, parcourt ou touche. */
+function rendreGuide() {
+  const boite = $("#an-guide-contenu");
+  const plan = planDe(grilleOuverte());
+  const l = plan && S.guide ? A.ligneDuGuide(plan, S.guide.e, S.guide.v) : null;
+  if (!l) { boite.replaceChildren(); return; }
+  // `replaceChildren` écrirait « null » pour une partie absente : on ne passe que les autres.
+  boite.replaceChildren(...[
+    el("div", { classe: "an-g-tete" },
+       el("span", { classe: "an-g-lib", texte: l.libelle }),
+       l.chemin ? el("span", { classe: "an-g-chemin", texte: l.chemin }) : null),
+    l.definition ? el("p", { texte: l.definition }) : null,
+    l.structure ? el("p", { texte: `Structure : ${l.structure}` }) : null,
+    l.exemples.length ? el("p", {}, "Exemples : ",
+                           el("span", { classe: "an-g-ex", texte: l.exemples.join(" · ") }))
+      : null,
+    l.qualificatifs ? el("p", { classe: "muted small",
+                                texte: `${l.qualificatifs.libelle} : ${l.qualificatifs.termes.join(", ")}` })
+      : null,
+    l.piege ? el("p", { classe: "an-g-piege", texte: l.piege }) : null].filter(Boolean));
+}
+
+function montrerGuide(e, v) {
+  if (S.guide && S.guide.e === e && (S.guide.v || null) === (v || null)) return;
+  S.guide = { e, v: v || null };
+  rendreGuide();
+  for (const b of document.querySelectorAll("#an-plan [data-guide-e]")) {
+    b.classList.toggle("guide", b.dataset.guideE === e
+      && (b.dataset.guideV || null) === (v || null));
+  }
+}
+
+/* LE GUIDE COMPLET, produit depuis la grille, dans une modale (`BDDialog`). */
+function ouvrirGuideComplet() {
+  const g = grilleOuverte();
+  const plan = planDe(g);
+  if (!plan) return;
+  const v = g.version || {};
+  $("#an-guide-titre").textContent = `Guide — ${g.nom}`
+    + (v.numero && !g.ouverte ? ` (version ${v.numero})` : "");
+  const gc = A.guideComplet(plan);
+  const corps = $("#an-guide-corps");
+  const blocs = [];
+  if (plan.note) blocs.push(el("p", { classe: "muted small", texte: plan.note }));
+  for (const s of gc.sections) {
+    blocs.push(el(`h${Math.min(4 + s.niveau, 6)}`, { classe: "an-gc-titre", texte: s.titre }));
+    if (!s.lignes.length) continue;
+    const tbody = el("tbody", {}, ...s.lignes.map((l) => el("tr", {},
+      el("td", {}, el("b", { texte: l.phenomene }), l.definition ? ` — ${l.definition}` : ""),
+      el("td", {}, ...l.aPoser.flatMap((x, i) => [i ? el("br") : null, el("code", { texte: x.libelle }),
+                                                   x.structure ? ` ${x.structure}` : null])),
+      el("td", {}, el("i", { texte: l.exemples.join(" / ") })))));
+    blocs.push(el("div", { classe: "an-gc-table" },
+      el("table", {}, el("thead", {}, el("tr", {}, el("th", { scope: "col", texte: "Phénomène" }),
+                                         el("th", { scope: "col", texte: "À poser" }),
+                                         el("th", { scope: "col", texte: "Exemples" }))), tbody)));
+  }
+  for (const liste of gc.listes) {
+    blocs.push(el("h4", { classe: "an-gc-titre", texte: liste.libelle }));
+    blocs.push(el("ul", {}, ...liste.termes.map((t) => el("li", {}, el("code", { texte: t.libelle }),
+                                                          t.definition ? ` — ${t.definition}` : ""))));
+  }
+  if (gc.pieges.length) {
+    blocs.push(el("h4", { classe: "an-gc-titre", texte: "Pièges" }));
+    blocs.push(el("ul", {}, ...gc.pieges.map((p) => el("li", {}, el("b", { texte: p.entree }),
+                                                       ` — ${p.piege}`))));
+  }
+  corps.replaceChildren(...blocs);
+  $("#an-guide-modal").hidden = false;
+}
+
+function fermerGuideComplet() { $("#an-guide-modal").hidden = true; }
+
+function choisirGrille(id) {
+  if (id === S.grilleId) return;
+  S.grilleId = id;
+  S.vue = "*";
+  S.guide = null;
+  S.actif = 0;
+  rendreGrille();
+  syncAdresse();
+}
+
+function brancherGrille() {
+  const onglets = $("#an-onglets");
+  onglets.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-grille]");
+    if (b) choisirGrille(Number(b.dataset.grille));
+  });
+  onglets.addEventListener("keydown", (e) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    const tous = [...onglets.querySelectorAll("[role=tab]")];
+    const i = tous.indexOf(document.activeElement);
+    if (i < 0 || !tous.length) return;
+    e.preventDefault();
+    const j = e.key === "Home" ? 0 : e.key === "End" ? tous.length - 1
+      : (i + (e.key === "ArrowRight" ? 1 : -1) + tous.length) % tous.length;
+    choisirGrille(Number(tous[j].dataset.grille));
+    const cible = $(`#an-onglet-${tous[j].dataset.grille}`);
+    if (cible) cible.focus();
+  });
+  $("#an-afficher").addEventListener("change", (e) => {
+    S.vue = e.target.value || "*";
+    rendreCorps();
+  });
+  const plan = $("#an-plan");
+  plan.addEventListener("click", (e) => {
+    const rub = e.target.closest("[data-rub]");
+    if (rub) {
+      const cle = `${S.grilleId}:${rub.dataset.rub}`;
+      if (S.replis.has(cle)) S.replis.delete(cle); else S.replis.add(cle);
+      rendreCorps();
+      const remis = [...document.querySelectorAll("#an-plan [data-rub]")]
+        .find((b) => b.dataset.rub === rub.dataset.rub);
+      if (remis) remis.focus();
+      return;
+    }
+    const b = e.target.closest("[data-guide-e]");
+    if (b) montrerGuide(b.dataset.guideE, b.dataset.guideV);
+  });
+  for (const type of ["mouseover", "focusin"]) {
+    plan.addEventListener(type, (e) => {
+      const b = e.target.closest("[data-guide-e]");
+      if (b) montrerGuide(b.dataset.guideE, b.dataset.guideV);
+    });
+  }
+  const champ = $("#an-filtre");
+  champ.addEventListener("input", () => {
+    S.filtre = champ.value;
+    S.actif = 0;
+    rendreCorps();
+  });
+  champ.addEventListener("keydown", (e) => {
+    const n = (S.resultats || []).length;
+    if (e.key === "Escape") {
+      if (!champ.value) return;
+      e.preventDefault();
+      champ.value = "";
+      S.filtre = "";
+      rendreCorps();
+    } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && S.filtre.trim() && n) {
+      e.preventDefault();
+      S.actif = (S.actif + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+      rendreCorps();
+      const actif = $(`#an-res-${S.actif}`);
+      if (actif) actif.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" && S.filtre.trim() && n) {
+      // La pose viendra au commit 3 ; d'ici là, Entrée dit la ligne du guide du résultat.
+      e.preventDefault();
+      const r = S.resultats[S.actif];
+      montrerGuide(r.entree_cle, r.variante_cle);
+    }
+  });
+  $("#an-resultats").addEventListener("click", (e) => {
+    const li = e.target.closest("[data-res]");
+    if (!li) return;
+    S.actif = Number(li.dataset.res);
+    const r = S.resultats[S.actif];
+    rendreCorps();
+    montrerGuide(r.entree_cle, r.variante_cle);
+  });
+  $("#an-ailleurs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-grille]");
+    if (b) choisirGrille(Number(b.dataset.grille));
+  });
+  // « / » cherche dans la grille, hors d'un champ de saisie.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.closest("input, textarea, select, [contenteditable]") || t.isContentEditable)) return;
+    if (!$("#an-guide-modal").hidden) return;
+    e.preventDefault();
+    champ.focus();
+    champ.select();
+  });
+  $("#an-guide-complet").addEventListener("click", ouvrirGuideComplet);
+  $("#an-guide-fermer").addEventListener("click", fermerGuideComplet);
+  const modale = $("#an-guide-modal");
+  modale.addEventListener("mousedown", (e) => {
+    if (e.target.id === "an-guide-modal") fermerGuideComplet();
+  });
+  if (window.BDDialog) {
+    BDDialog.register(modale, { box: ".modal-box", labelledby: "an-guide-titre",
+                                onClose: fermerGuideComplet });
+  }
+}
+
 /* ───────────── L'adresse ───────────── */
 function etatAdresse() {
   const z = zoneCourante();
@@ -406,6 +841,7 @@ function etatAdresse() {
     collection: S.collection, album: S.albumId,
     planche: S.planche ? S.planche.id : null,
     region: z && !z.pseudo ? z.id : null,
+    grille: S.grilleId,
   };
 }
 
@@ -451,6 +887,8 @@ async function changerCollection(valeur) {
   S.collection = choix;
   S.collectionProjet = S.projet;
   BDAtelier.retenir(S.projet, choix);
+  // Le masque d'une grille est celui de la collection choisie : les onglets suivent.
+  await chargerGrilles();
   await afficherAlbums(S.albumId, null);
 }
 
@@ -505,6 +943,7 @@ function brancher() {
 async function demarrer() {
   preparerRetour();
   brancher();
+  brancherGrille();
   try {
     await chargerAlbums();
   } catch (e) {

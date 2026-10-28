@@ -245,6 +245,11 @@ DEPLIES = {
     # mesure. Replié, le panneau des notices n'existe pas.
     "#bi-prendre-fonds": {
         "nom": "prendre du fonds", "panneau": "#bi-prise", "surfaces": ["/corpus"]},
+    # ANN-7, tranche 2 — les rubriques de la grille, sur la page Annotation : dépliées à
+    # l'ouverture, chacune montre ses entrées (le décor du reflow active une grille).
+    "#an-plan .an-rub-btn": {
+        "nom": "rubrique de la grille", "panneau": "#an-plan .an-rub",
+        "surfaces": ["/annotation"]},
     # Le menu du compte (UX-14) : « Déconnexion » y a quitté la bande. `theme.js` ne le
     # construit que s'il a au moins une entrée, donc derrière le proxy.
     ".user-chip button.user-who": {

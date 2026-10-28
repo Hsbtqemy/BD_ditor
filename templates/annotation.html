@@ -65,11 +65,51 @@
       </section>
     </section>
 
+    <!-- La GRILLE (commit 2), en lecture : les onglets des grilles actives que la collection
+         ne masque pas, « Afficher », le filtre (« / »), le plan, la ligne du guide à hauteur
+         fixe et le guide complet. -->
     <aside id="an-grille" class="an-col an-grille" aria-labelledby="an-grille-titre">
-      <h2 class="an-titre" id="an-grille-titre">Grille</h2>
-      <div id="an-grille-corps" class="an-grille-corps"></div>
+      <div class="an-gr-tete">
+        <h2 class="an-titre" id="an-grille-titre">Grille</h2>
+        <div id="an-onglets" class="an-onglets" role="tablist" aria-labelledby="an-grille-titre"></div>
+        <div class="an-gr-ligne">
+          <label for="an-afficher" class="an-gr-lbl">Afficher</label>
+          <select id="an-afficher" title="Toute la grille, ou une seule rubrique"></select>
+        </div>
+        <div class="an-filtre-wrap">
+          <input type="text" id="an-filtre"
+                 aria-controls="an-resultats" aria-autocomplete="list" autocomplete="off"
+                 spellcheck="false" placeholder="Chercher dans la grille…"
+                 aria-label="Chercher dans la grille"
+                 title="Accents, apostrophes et exemples compris ; « X par Y » pour un qualificatif. ↓ ↑ pour choisir, Échap pour vider.">
+          <kbd aria-hidden="true">/</kbd>
+        </div>
+      </div>
+      <div id="an-grille-corps" class="an-grille-corps" role="tabpanel" aria-labelledby="an-grille-titre">
+        <div id="an-plan" class="an-plan"></div>
+        <ul id="an-resultats" class="an-resultats" role="listbox" aria-label="Résultats" hidden></ul>
+        <div id="an-ailleurs" class="an-ailleurs"></div>
+      </div>
+      <div id="an-guide" class="an-guide" aria-live="polite">
+        <div id="an-guide-contenu" class="an-guide-contenu"></div>
+        <div class="an-guide-pied">
+          <button id="an-guide-complet" class="ghost small" type="button">Guide complet ▸</button>
+        </div>
+      </div>
     </aside>
   </main>
+
+  <!-- Le guide complet, PRODUIT depuis la grille (modale `BDDialog`). -->
+  <div id="an-guide-modal" hidden>
+    <div class="modal-box an-guide-box">
+      <h3 id="an-guide-titre">Guide</h3>
+      <div id="an-guide-corps" class="an-guide-corps" tabindex="0" role="region"
+           aria-labelledby="an-guide-titre"></div>
+      <div class="modal-actions">
+        <button id="an-guide-fermer" class="ghost small" type="button">Fermer</button>
+      </div>
+    </div>
+  </div>
 </div>
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>

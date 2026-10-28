@@ -24,6 +24,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 from playwright.sync_api import expect  # noqa: E402
 
 from conftest import ECRITURE, make_png  # noqa: E402
+from grilles_decor import grille_active_vivante  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -65,8 +66,15 @@ def decor(live_server):
         assert c.put(f"/api/regions/{boite}/personnage",
                      json={"personnage_id": perso}).status_code == 200
         c.put(f"/api/regions/{bulle}/annotation", json={"note": "il jure"})
+        # La grille FICTIVE du dépôt, active sur le projet de l'album, et un relevé sur le
+        # premier mot de la bulle — de quoi lire « n ici » (commit 2).
+        g = grille_active_vivante(c)
+        r = c.post("/api/releves", json={"region_id": bulle, "grille_id": g["grille_id"],
+                                         "version": 1, "entree_cle": "cri", "mots": [0]})
+        assert r.status_code == 201, r.text
     return {"base": live_server, "album": aid, "planche": pid, "c1": c1, "c2": c2,
-            "bulle": bulle, "boite": boite, "cartouche": cartouche}
+            "bulle": bulle, "boite": boite, "cartouche": cartouche,
+            "grille": g["grille_id"], "projet": g["projet_id"]}
 
 
 def _ouvrir(page, d, region=None):
@@ -180,3 +188,119 @@ def test_sans_planche_la_page_s_ouvre_vide_sans_erreur(page, live_server):
     expect(page.locator("#an-album option")).to_have_count(1)
     expect(page.locator("#an-tete-case")).to_have_text("—")
     assert not erreurs, erreurs
+
+
+# --------------------------------------------------------------------------- #
+# La grille, en lecture (commit 2)
+# --------------------------------------------------------------------------- #
+def test_la_grille_se_lit_avec_ses_onglets_ses_rubriques_et_n_ici(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    onglet = page.locator(f"#an-onglet-{decor['grille']}")
+    expect(onglet).to_have_attribute("aria-selected", "true")
+    expect(onglet).to_contain_text("Signaux")
+    expect(onglet).to_contain_text("(1)")
+    expect(onglet).to_have_attribute("title", "Signaux · version 1 (publiée) — modèle fictif")
+    assert f"grille={decor['grille']}" in page.url
+    rub = page.locator("#an-plan .an-rub-btn", has_text="A. Sons").first
+    expect(rub).to_contain_text("1 ici")
+    # Les trois formes, et les marques d'une cible propre et de « plusieurs ».
+    expect(page.locator("#an-plan .an-var", has_text="crac")).to_have_count(1)
+    expect(page.locator("#an-plan .an-ent-btn", has_text="origine du son")) \
+        .to_contain_text("+ source du son")
+    expect(page.locator("#an-plan .an-ent-btn", has_text="ton de voix")) \
+        .to_contain_text("toute la zone")
+    regard = page.locator("#an-plan .an-ent-btn", has_text="regard caméra")
+    expect(regard).to_contain_text("la case")
+    expect(regard).not_to_contain_text("plusieurs")          # une case, une fois
+    expect(page.locator("#an-plan .an-ent-btn", has_text="réponse à une autre bulle"))         .to_contain_text("plusieurs")
+    # Rien ne se pose encore : aucune case à cocher, aucun champ dans la grille.
+    expect(page.locator("#an-grille [role=checkbox], #an-grille input[type=checkbox]")) \
+        .to_have_count(0)
+
+
+def test_la_ligne_du_guide_garde_sa_hauteur(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    hauteur = lambda: page.evaluate(  # noqa: E731
+        "() => Math.round(document.querySelector('#an-guide').getBoundingClientRect().height)")
+    vide = hauteur()
+    page.locator("#an-plan .an-ent-btn", has_text="cri").first.hover()
+    contenu = page.locator("#an-guide-contenu")
+    expect(contenu).to_contain_text("un cri poussé par un personnage")
+    expect(contenu).to_contain_text("AAAH !")
+    expect(contenu.locator(".an-g-piege")).to_contain_text("pas une onomatopée")
+    assert hauteur() == vide
+    page.locator("#an-plan .an-var", has_text="splash").focus()
+    expect(contenu).to_contain_text("[liquide] + [chute]")
+    expect(contenu.locator(".an-g-chemin")).to_contain_text("onomatopée de choc")
+    assert hauteur() == vide
+
+
+def test_le_filtre_accents_par_et_clavier(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    champ = page.locator("#an-filtre")
+    page.keyboard.press("/")
+    expect(champ).to_be_focused()
+    champ.fill("CHUCHOTÉ")
+    expect(page.locator("#an-resultats")).to_be_visible()
+    expect(page.locator("#an-resultats [role=option]")).to_have_count(1)
+    expect(page.locator("#an-resultats .an-res-lib")).to_have_text("chuchoté")
+    page.keyboard.press("Enter")
+    expect(page.locator("#an-guide-contenu .an-g-lib")).to_have_text("chuchoté")
+    champ.fill("origine par hors")
+    expect(page.locator("#an-resultats .an-res-lib")).to_have_text(
+        ["origine du son par hors champ"])
+    champ.fill("cri")
+    expect(page.locator("#an-resultats .an-res.actif .an-res-lib")).to_have_text("cri")
+    page.keyboard.press("ArrowDown")
+    expect(page.locator("#an-resultats .an-res.actif .an-res-lib")).to_have_text("crié")
+    expect(champ).to_have_attribute("aria-activedescendant", "an-res-1")
+    page.keyboard.press("Escape")
+    expect(champ).to_have_value("")
+    expect(page.locator("#an-resultats")).to_be_hidden()
+    expect(page.locator("#an-plan")).to_be_visible()
+
+
+def test_rubriques_repliables_et_afficher(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    rub = page.locator("#an-plan .an-rub-btn", has_text="B. Provenance")
+    rub.click()
+    rub = page.locator("#an-plan .an-rub-btn", has_text="B. Provenance")
+    expect(rub).to_have_attribute("aria-expanded", "false")
+    expect(page.locator("#an-plan .an-ent-btn", has_text="origine du son")).to_have_count(0)
+    expect(rub).to_be_focused()
+    page.locator("#an-afficher").select_option(label="E. Image")
+    expect(page.locator("#an-plan .an-rub-btn")).to_have_count(1)
+    expect(page.locator("#an-plan .an-rub-btn")).to_contain_text("E. Image")
+
+
+def test_le_guide_complet_se_produit_depuis_la_grille(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    bouton = page.locator("#an-guide-complet")
+    bouton.click()
+    modale = page.locator("#an-guide-modal")
+    expect(modale).to_be_visible()
+    expect(page.locator("#an-guide-titre")).to_have_text("Guide — Signaux (version 1)")
+    expect(modale.locator("table tbody tr")).to_have_count(10)
+    expect(modale).to_contain_text("source du son")
+    expect(modale).to_contain_text("Pièges")
+    page.keyboard.press("Escape")
+    expect(modale).to_be_hidden()
+    expect(bouton).to_be_focused()
+
+
+def test_la_collection_qui_masque_cache_l_onglet(page, decor):
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30,
+                      headers=ECRITURE) as c:
+        col = c.post("/api/collections", json={"nom": "Étude masquée",
+                                               "projet_id": decor["projet"]}).json()["id"]
+        assert c.put(f"/api/albums/{decor['album']}/collections/{col}").status_code in (200, 201)
+        assert c.put(f"/api/collections/{col}/grilles-masquees/{decor['grille']}") \
+            .status_code == 200
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-collection").select_option(str(col))
+    expect(page.locator(f"#an-onglet-{decor['grille']}")).to_have_count(0)
+    expect(page.locator("#an-collection")).to_have_attribute(
+        "title", "Cette collection masque 1 grille du projet. "
+                 "Leurs relevés restent visibles, en lecture.")
+    page.locator("#an-collection").select_option("toutes")
+    expect(page.locator(f"#an-onglet-{decor['grille']}")).to_have_count(1)
