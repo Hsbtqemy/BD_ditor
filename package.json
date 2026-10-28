@@ -3,7 +3,7 @@
   "private": true,
   "description": "Outillage Node du dépôt : journal de bord (pilote) et tests unitaires JS. Le projet lui-même est Python/FastAPI + JS vanilla, sans étape de build.",
   "devDependencies": {
-    "pilote": "github:Hsbtqemy/pilote#008200031879fd2a53279fcc474e333296467dc4"
+    "pilote": "github:Hsbtqemy/pilote#5a7d465e8ab9b0d92a0416e754a3c62909ae7bd8"
   },
   "scripts": {
     "journal": "pilote --days 90 --port 4124",

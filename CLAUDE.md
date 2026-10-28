@@ -47,6 +47,8 @@ sections. Une case ailleurs est invisible (le contrôleur la signale en ERREUR).
 - QA visuelle : écrire une passe dans `pilotage/qa/`, jamais dans le fil de conversation.
   **Ne jamais cocher soi-même une case d'une passe de QA** — la rédiger, la rendre, et
   laisser cocher.
+- Ne pas écrire `derniere:` dans une passe — le bouton *réinitialiser* le pose —, et
+  commiter une partie avant de la réinitialiser.
 - Ne pas créer de fiche pour un finding traité en un seul commit.
 - Avant de clore une session : `npm run verifier` (code de retour non nul = l'outil lira
   mal le dossier). `-- --strict` rend les AVERTISSEMENTS bloquants : ici il sort en 1, et

@@ -108,7 +108,6 @@ Un fichier par passe, dans `pilotage/qa/`.
 passe: Paragraphes manuels
 chantier: R6
 duree: 8 min
-derniere: 2026-08-17
 ---
 
 # QA — geste ¶ par-segment
@@ -130,7 +129,7 @@ Contexte de la passe, ce qu'elle couvre, ce qu'elle ne couvre pas. Prose libre.
 | `passe:` | Nom affiché | Le nom de fichier sert de nom |
 | `chantier:` | Un code, ou `—` pour une passe transversale | Traitée comme transversale |
 | `duree:` | Indicatif, affiché tel quel | Non affiché |
-| `derniere:` | Date de la dernière réinitialisation ; l'outil en tire l'âge de la passe | Non affiché |
+| `derniere:` | Posé par le bouton *réinitialiser*, jamais à la main. Une passe est « déjà jouée » si l'une de ses cases est cochée, ou l'a été dans l'historique git — jamais parce que ce champ existe —, et la date ne s'affiche que pour une passe jouée | Rangée selon ses cases ; « non datée » si elle a été jouée |
 | `### Zone` | Regroupe les cases qui suivent | Cases regroupées sous « Général » |
 
 **Les H3 sont le seul niveau de regroupement.** Une zone, un écran, un thème — un seul
@@ -146,7 +145,9 @@ portée vide » ne dit pas ce qui doit se passer ; on coche ce qu'on voit.
 
 1. Cocher au fur et à mesure ; la page réécrit le markdown.
 2. Commiter le résultat — **la passe est archivée**, le commit porte la date et le score.
-3. Passe suivante : le bouton *réinitialiser* décoche tout et met à jour `derniere:`.
+3. Passe suivante : le bouton *réinitialiser* décoche tout et pose `derniere:` — la ligne
+   est ajoutée au frontmatter si elle manque. Réinitialiser une partie qui n'a jamais été
+   commitée l'efface sans trace : la passe redevient « jamais jouée ».
 
 L'historique des passes est donc `git log -- pilotage/qa/<nom>.md`. Rien à archiver à la
 main, et le gabarit n'est jamais détruit puisqu'il se régénère à chaque réinitialisation.
