@@ -27,6 +27,9 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "« ⟳ Actualiser » ne vient sur la page Annotation qu'au jalon 2 (commit "
+        "6), avec son audit"),
     "/recherche": "aucune planche n'y est ouverte : le signal ne vit que dans l'Atelier",
     "/corpus": "aucune planche n'y est ouverte : le signal ne vit que dans l'Atelier",
     "/exploration": "aucune planche n'y est ouverte : le signal ne vit que dans l'Atelier",

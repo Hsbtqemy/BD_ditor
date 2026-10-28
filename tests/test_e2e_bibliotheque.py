@@ -22,6 +22,7 @@ pytestmark = pytest.mark.e2e
 
 SURFACES_AUDITEES = ("/corpus",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "la Bibliothèque seule : la fiche d'une collection et d'un album",
     "/administration": "la refonte d'UX-18 ne touche que la Bibliothèque ; l'Administration "
                        "a ses propres tests de liste et de fiche",
     "/": "l'Atelier travaille une planche ; rien de la Bibliothèque n'y vit",

@@ -26,6 +26,9 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : le verrou "
+        "d'une planche et l'annulation vit dans l'Atelier, que ce module audite"),
     "/corpus": "le verrou y est un geste de liste (la planche dans la fiche d'un album), "
                "hors du panneau d'annotation que ce fichier lit",
     "/recherche": "ni verrou ni Ctrl+Z : la Recherche lit le corpus",

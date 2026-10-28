@@ -1,5 +1,5 @@
 /* Le PROJET COURANT (COL-3, tranche 1) — sa logique pure, sans DOM.
-   Chargé en <script> sur les CINQ surfaces → expose `window.BDProjet` ; aussi require()-able
+   Chargé en <script> sur les SIX surfaces → expose `window.BDProjet` ; aussi require()-able
    par `tests/js/projet.test.js`, qui la vérifie par tables de cas. Rien n'est lu au
    chargement : ni le document, ni le stockage, ni l'adresse.
 

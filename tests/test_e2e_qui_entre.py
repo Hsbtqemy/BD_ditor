@@ -29,6 +29,7 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/corpus", "/administration")
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "« Qui entre » est monté dans la Bibliothèque et l'Administration",
     "/": "l'Atelier annote une planche ; aucun accès ne s'y règle",
     "/recherche": "la Recherche interroge le corpus ; aucun accès ne s'y règle",
     "/exploration": "l'Exploration mesure la langue du corpus ; aucun accès ne s'y règle",

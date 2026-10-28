@@ -37,6 +37,7 @@ pytestmark = pytest.mark.e2e
 # sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
 SURFACES_AUDITEES = {
     "/":            lambda d: f"/?album={d['album']}&planche={d['planche']}&region={d['region']}",
+    "/annotation":  lambda d: f"/annotation?album={d['album']}&planche={d['planche']}&region={d['region']}",
     "/recherche":   lambda d: "/recherche?q=pouvoir",
     "/corpus":      lambda d: "/corpus",
     "/exploration": lambda d: "/exploration?champ=lemme",

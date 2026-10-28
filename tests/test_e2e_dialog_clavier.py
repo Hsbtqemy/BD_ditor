@@ -37,6 +37,9 @@ pytestmark = pytest.mark.e2e
 # sont celles qui chargent `dialog.js` ; les huit modales s'y répartissent (cf. `MODALES`).
 SURFACES_AUDITEES = ("/", "/corpus", "/exploration")
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation n'ouvre encore aucune modale : le guide complet de "
+        "la grille viendra au commit 2, avec son audit"),
     "/recherche": "aucune modale : la page ne charge pas `dialog.js`, ses deux panneaux "
                   "repliables sont des `<details>` de la page elle-même",
     "/administration": "aucune modale : la page ne charge pas `dialog.js`, ses blocs sont "

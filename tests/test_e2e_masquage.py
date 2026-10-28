@@ -54,7 +54,8 @@ RACINE = Path(__file__).resolve().parent.parent
 # la confronte aux surfaces réellement servies. C'est la MÊME structure que le test
 # parcourt, pas une copie posée à côté — une déclaration jumelle dériverait de sa liste
 # sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
-SURFACES_AUDITEES = {"/": "viewer.js", "/recherche": "recherche.js",
+SURFACES_AUDITEES = {"/": "viewer.js", "/annotation": "annotation.js",
+                     "/recherche": "recherche.js",
                      "/corpus": "corpus.js", "/exploration": "exploration.js",
                      "/administration": "administration.js"}
 SURFACES_HORS_PERIMETRE = {}

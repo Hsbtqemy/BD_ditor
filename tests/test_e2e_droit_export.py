@@ -29,6 +29,7 @@ pytestmark = [pytest.mark.e2e,
 # export, ou « Qui entre » qui l'accorde ; l'Administration a perdu ce panneau.
 SURFACES_AUDITEES = ("/corpus", "/", "/recherche", "/exploration")
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "la page Annotation ne propose aucun export : rien à y garder",
     "/administration": "la case « exporter » d'un accès se coche dans « Qui entre », dans la "
                        "Bibliothèque, depuis l'étape 3 d'AUTH-12 ; l'Administration ne fait "
                        "que la lire",

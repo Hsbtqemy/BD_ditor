@@ -42,6 +42,9 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : le mode "
+        "Transcription vit dans l'Atelier, que ce module audite"),
     "/recherche": "aucune barre d'état de canevas : la page n'a ni zoom ni coordonnées master",
     "/corpus": "aucune barre d'état de canevas : la page liste des albums, sans plan de travail",
     "/exploration": "aucune barre d'état de canevas : les panneaux d'analyse n'ont pas de canevas",

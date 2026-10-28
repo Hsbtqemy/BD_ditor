@@ -191,6 +191,7 @@ def seeded(live_server):
 # sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
 SURFACES_AUDITEES = {
     "/":            lambda s: f"/?album={s['album']}&planche={s['planche']}&region={s['region']}",
+    "/annotation":  lambda s: f"/annotation?album={s['album']}&planche={s['planche']}&region={s['region']}",
     "/recherche":   lambda s: "/recherche?q=pouvoir",
     "/corpus":      lambda s: "/corpus",
     "/exploration": lambda s: "/exploration?champ=lemme",

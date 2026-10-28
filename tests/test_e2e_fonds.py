@@ -35,6 +35,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], in
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/administration", "/", "/recherche", "/exploration")
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "le fonds et ses demandes se lisent dans l'Administration seule",
     "/corpus": "la Bibliothèque a ses deux réponses à « supprimer », jouées dans "
                "test_e2e_collections.py ; le fonds ne s'y montre pas",
 }

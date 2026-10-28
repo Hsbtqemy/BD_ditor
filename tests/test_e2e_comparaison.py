@@ -22,6 +22,7 @@ pytestmark = pytest.mark.e2e
 
 SURFACES_AUDITEES = ("/exploration",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "la comparaison A/B est une vue de l'Exploration seule",
     "/": "l'Atelier n'a pas de comparaison de sous-corpus : elle ne vit que dans l'Exploration",
     "/recherche": "la Recherche ne compare pas deux sous-corpus",
     "/corpus": "la Bibliothèque ne compare pas deux sous-corpus",

@@ -36,6 +36,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], in
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/administration", "/corpus")
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "l'écran de la tranche 3a vit dans l'Administration et la Bibliothèque",
     "/": "l'Atelier ne montre ni demande, ni projet, ni accès à régler",
     "/recherche": "la Recherche interroge le corpus ; rien de la 3a ne s'y montre",
     "/exploration": "l'Exploration mesure la langue du corpus ; rien de la 3a ne s'y montre",

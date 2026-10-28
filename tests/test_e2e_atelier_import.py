@@ -25,6 +25,9 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : l'import à "
+        "l'unité vit dans l'Atelier, que ce module audite"),
     "/corpus": "l'import en lot de la Bibliothèque est mesuré par test_e2e_import_lot.py",
     "/recherche": "aucun import : la Recherche lit le corpus",
     "/exploration": "aucun import de planche : l'Exploration compte le corpus",

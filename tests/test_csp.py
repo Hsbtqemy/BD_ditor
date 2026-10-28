@@ -23,7 +23,7 @@ ADMIN = {"Remote-User": "csp", "Remote-Groups": "bd-admins"}
 # SEC-2 — le client parle au serveur live, hors fixture : il pose l'en-tête lui-même.
 ECRITURE = {**ADMIN, main.EN_TETE_REQUETE: "1"}
 
-SURFACES_HTML = ("/", "/corpus", "/recherche", "/exploration", "/administration")
+SURFACES_HTML = ("/", "/annotation", "/corpus", "/recherche", "/exploration", "/administration")
 
 
 def test_les_surfaces_html_suivent_l_application(client):
@@ -183,6 +183,7 @@ BLOCAGES_ADMIS = {
 # coûté le plus cher ailleurs aujourd'hui (AUTH-5, `0ff38c7`).
 SURFACES_BALAYEES = [
     "/?album={album}&planche={planche}&region={region}",
+    "/annotation?album={album}&planche={planche}&region={region}",
     "/recherche?q=pouvoir",
     "/corpus",
     "/exploration?champ=lemme",

@@ -32,6 +32,9 @@ pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], in
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : le formulaire "
+        "d'import ShareDocs vit dans l'Atelier, que ce module audite"),
     "/corpus": "la Bibliothèque crée les albums, avec leur collection : c'est le geste que "
                "l'Atelier lui laisse, mesuré par test_e2e_collections.py",
     "/recherche": "aucun import ni création d'album : la Recherche lit le corpus",

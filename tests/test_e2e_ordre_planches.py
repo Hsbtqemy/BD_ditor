@@ -32,6 +32,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], in
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/corpus",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "l'ordre des planches se change dans la Bibliothèque seule",
     "/": "l'Atelier ne change pas l'ordre des planches : ses listes suivent le numéro que "
          "la Bibliothèque pose",
     "/recherche": "aucun geste sur les planches : la Recherche lit le corpus",

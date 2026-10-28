@@ -30,6 +30,7 @@ pytestmark = pytest.mark.e2e
 # `tests/test_surfaces.py`. Les cinq, comme l'audit d'origine.
 SURFACES_AUDITEES = {
     "/":            lambda s: f"/?album={s['album']}&planche={s['planche']}&region={s['region']}",
+    "/annotation":  lambda s: f"/annotation?album={s['album']}&planche={s['planche']}&region={s['region']}",
     "/recherche":   lambda s: "/recherche?q=pouvoir",
     "/corpus":      lambda s: "/corpus",
     "/exploration": lambda s: "/exploration?champ=lemme",

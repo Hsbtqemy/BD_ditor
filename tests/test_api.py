@@ -484,8 +484,8 @@ def test_index_sert_le_shell_html(client):
         assert marqueur in r.text, f"shell HTML sans {marqueur}"
 
 
-@pytest.mark.parametrize("surface", ["/", "/corpus", "/recherche", "/exploration",
-                                     "/administration"])
+@pytest.mark.parametrize("surface", ["/", "/annotation", "/corpus", "/recherche",
+                                     "/exploration", "/administration"])
 def test_la_borne_du_zoom_est_chargee_avant_theme(client, surface):
     """`theme.js` applique le zoom d'interface dans le <head>, avant le rendu, et lit sa
     borne dans `static/lib/zoom.js` (UX-7). Chargé après lui, ou oublié sur une surface,

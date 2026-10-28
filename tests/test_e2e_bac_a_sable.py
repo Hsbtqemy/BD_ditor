@@ -50,6 +50,7 @@ pytestmark = pytest.mark.e2e
 # ligne du bac à sable vit sur les CINQ, et c'est ce qu'on mesure.
 SURFACES_AUDITEES = {
     "/": "Atelier",
+    "/annotation": "Annotation",
     "/recherche": "Recherche",
     "/corpus": "Bibliothèque",
     "/exploration": "Exploration",

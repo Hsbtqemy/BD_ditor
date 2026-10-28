@@ -25,6 +25,10 @@ pytestmark = pytest.mark.e2e
 # que dans le panneau de l'Atelier.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : le "
+        "rattachement d'une région à sa case vit dans l'Atelier, que ce module "
+        "audite"),
     "/recherche": "aucune région à rattacher : la Recherche lit le corpus",
     "/corpus": "aucune région à rattacher : la Bibliothèque range des albums et des planches",
     "/exploration": "aucune région à rattacher : l'Exploration compte le corpus",

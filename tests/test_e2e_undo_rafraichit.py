@@ -30,6 +30,9 @@ pytestmark = pytest.mark.e2e
 # normaliser puis annuler, et ce geste ne vit que dans l'Atelier.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "Ctrl+Z vient sur la page Annotation au commit 4, avec son audit ; ce "
+        "module mesure celui de l'Atelier"),
     "/recherche": "ni mode Transcription ni Ctrl+Z : l'annulation n'y est pas branchée",
     "/corpus": "ni mode Transcription ni Ctrl+Z : l'annulation n'y est pas branchée",
     "/exploration": "ni mode Transcription ni Ctrl+Z : l'annulation n'y est pas branchée",

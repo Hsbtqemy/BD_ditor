@@ -43,6 +43,7 @@ pytestmark = pytest.mark.e2e
 # c'est justement ce qu'on vérifie : chaque boucle ci-dessous en dérive.
 SURFACES_AUDITEES = {
     "/": "Atelier",
+    "/annotation": "Annotation",
     "/recherche": "Recherche",
     "/corpus": "Bibliothèque",
     "/exploration": "Exploration",

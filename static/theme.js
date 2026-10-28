@@ -287,6 +287,9 @@
     // (`recherche.js`, `recherche.html`) : sans lui, le glyphe tombe en monochrome et
     // devient illisible depuis que la barre le laisse porter seul le sens sous 400 px.
     { href: "/",            label: "Atelier",      icon: "✏️", group: "atelier" },
+    // ANN-7, tranche 2 — la page Annotation, entre l'Atelier et la Bibliothèque (Hugo,
+    // 2026-10-14), dans le groupe de l'Atelier ; l'icône est celle de la maquette v3.
+    { href: "/annotation",  label: "Annotation",   icon: "🖍️", group: "atelier" },
     { href: "/corpus",      label: "Bibliothèque", icon: "📚", group: "analyse" },
     { href: "/recherche",   label: "Recherche",    icon: "🔍", group: "analyse" },
     { href: "/exploration", label: "Exploration",  icon: "📊", group: "analyse" },
@@ -678,7 +681,7 @@
   }
 
   /* ---- Le projet courant, dans la bande du haut (COL-3, source unique) ----
-     Dans quel projet on travaille se lit sur les CINQ surfaces, au même endroit. Le nom seul
+     Dans quel projet on travaille se lit sur les SIX surfaces, au même endroit. Le nom seul
      quand on n'en voit qu'un ; un `<select>` NATIF dès deux — et pas un menu bâti sur
      `menuDeroulant` : un contrôle à `aria-expanded` entre dans l'inventaire des repliables
      que la mesure de reflow exige ouverts, alors qu'il n'existerait qu'à deux projets.
@@ -775,7 +778,7 @@
   }
 
   /* ---- « ← Retour » réduit à son icône (UX-14, source unique) ----
-     Les cinq gabarits écrivent « ← Retour » dans `#back-link`, et chaque surface ne fait
+     Les six gabarits écrivent « ← Retour » dans `#back-link`, et chaque surface ne fait
      que le montrer et lui donner sa cible. C'est donc ICI, une fois, qu'il devient une
      icône — comme la barre de navigation, injectée d'ici plutôt que recopiée cinq fois.
      Le texte des gabarits reste, remplacé au chargement : le lien naît `hidden`, et aucune

@@ -43,6 +43,9 @@ pytestmark = pytest.mark.e2e
 # n'existe que dans l'Atelier ; les quatre autres surfaces n'ont pas de `#transcription`.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : le mode "
+        "Transcription vit dans l'Atelier, que ce module audite"),
     "/recherche": "aucun mode Transcription : la page n'a ni crop, ni zone de saisie de bulle",
     "/corpus": "aucun mode Transcription : la page liste des albums, elle n'édite pas de bulle",
     "/exploration": "aucun mode Transcription : les panneaux d'analyse ne montrent aucun crop",

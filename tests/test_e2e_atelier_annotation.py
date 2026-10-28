@@ -59,6 +59,9 @@ pytestmark = pytest.mark.e2e
 # vit que dans l'Atelier : aucune autre surface n'attribue un locuteur ni ne décrit une case.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : le panneau "
+        "d'annotation vit dans l'Atelier, que ce module audite"),
     "/recherche": "aucun panneau d'annotation : la Recherche filtre par locuteur, elle n'en attribue pas",
     "/corpus": "aucun panneau d'annotation : la Bibliothèque range des albums et des planches",
     "/exploration": "aucun panneau d'annotation : l'Exploration compte par locuteur, elle n'en attribue pas",

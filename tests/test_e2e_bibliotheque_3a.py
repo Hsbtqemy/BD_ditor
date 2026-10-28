@@ -39,6 +39,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], in
 
 SURFACES_AUDITEES = ("/corpus",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "les gestes de la tranche 3a vivent dans la Bibliothèque seule",
     "/administration": "l'écran de la 3a dans l'Administration est mesuré par "
                        "test_e2e_ecran_3a.py ; ici, les seuls gestes de la Bibliothèque",
     "/": "l'Atelier ne prend rien au fonds et ne montre aucune demande",

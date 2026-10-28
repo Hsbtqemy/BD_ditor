@@ -45,7 +45,7 @@ des coordonnées lues dans la page.
 """
 # UX-10 — le menu « Aa » est injecté par `theme.js` sur les cinq surfaces : toutes sont
 # auditées. Les tiroirs n'existent que dans l'Atelier, et leurs tests n'y vont que là.
-SURFACES_AUDITEES = ("/", "/corpus", "/recherche", "/exploration", "/administration")
+SURFACES_AUDITEES = ("/", "/annotation", "/corpus", "/recherche", "/exploration", "/administration")
 SURFACES_HORS_PERIMETRE = {}
 
 import httpx
@@ -306,7 +306,7 @@ def test_la_page_s_atteint_jusqu_en_bas_sous_le_zoom(live_server, page, album, s
     _ouvrir(page, live_server + surface, zoom, LARGEUR_DU_ZOOM[zoom], 900)
     page.wait_for_timeout(300)
     m = page.evaluate("""() => {
-      const coque = document.querySelector('#corpus-app, #admin-app, #search-app, #explo-app');
+      const coque = document.querySelector('#corpus-app, #admin-app, #search-app, #explo-app, #annot-app');
       const docDefile = getComputedStyle(document.documentElement).overflowY === 'visible';
       const defile = docDefile ? document.scrollingElement : coque;
       defile.scrollTop = defile.scrollHeight;

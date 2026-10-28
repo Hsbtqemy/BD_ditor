@@ -43,6 +43,7 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/administration",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "« Comptes et groupes » est une vue de l'Administration seule",
     "/": "l'Atelier annote une planche ; aucun compte ni groupe ne s'y consulte",
     "/recherche": "la Recherche interroge le corpus, pas les comptes de l'instance",
     "/corpus": "la Bibliothèque n'y est atteinte que par les liens du bloc ; « Qui entre » "

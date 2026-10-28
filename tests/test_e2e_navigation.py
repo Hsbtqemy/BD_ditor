@@ -377,6 +377,7 @@ def test_menus_au_dessus_du_panneau_transcription(page, seeded_ocr):
 # `theme.js`, donc cette structure porte aussi le contrat du nom affiché.
 SURFACES_AUDITEES = {
     "/": "Atelier",
+    "/annotation": "Annotation",
     "/corpus": "Bibliothèque",
     "/recherche": "Recherche",
     "/exploration": "Exploration",

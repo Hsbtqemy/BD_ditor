@@ -25,6 +25,10 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : la note et les "
+        "tags d'une bulle, qu'elle ne fait que lire, vit dans l'Atelier, que ce "
+        "module audite"),
     "/recherche": "on n'y annote pas : la note et les tags s'écrivent dans l'Atelier seul",
     "/corpus": "on n'y annote pas : la note et les tags s'écrivent dans l'Atelier seul",
     "/exploration": "on n'y annote pas : la note et les tags s'écrivent dans l'Atelier seul",

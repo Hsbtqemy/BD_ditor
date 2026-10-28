@@ -27,6 +27,7 @@ pytestmark = pytest.mark.e2e
 # regarde ne permet pas de voir qu'une surface neuve lui échappe.
 SURFACES_AUDITEES = ("/exploration",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "la concordance est une vue de l'Exploration seule",
     "/": "l'Atelier n'affiche aucune ligne de concordance : le KWIC ne vit que dans l'Exploration",
     "/recherche": "la Recherche n'a pas de concordance ; ses puces de résultat sont les "
                   "`.r-tag`, que test_e2e_a11y audite déjà sur un résultat tagué",

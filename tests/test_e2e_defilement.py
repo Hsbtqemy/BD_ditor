@@ -39,6 +39,11 @@ SURFACES_AUDITEES = {"/recherche": "#search-body",
                      "/exploration": "#explo-body",
                      "/administration": "#admin-body"}
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "comme l'Atelier, une coque à colonnes de hauteur stable et non un corps "
+        "qui défile : chaque colonne porte son propre cadre, et ce qui reste "
+        "atteignable à 320 px est ce que mesurent `test_e2e_reflow` et "
+        "`test_e2e_police`, qui l'auditent"),
     "/": "la Visionneuse est un canevas de pan/zoom : son cadre ne DOIT pas défiler, et "
          "l'y soumettre inventerait un défaut. Même exemption que `test_e2e_reflow`, et "
          "elle vient du 1.4.10 lui-même.",

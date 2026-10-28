@@ -35,6 +35,7 @@ pytestmark = pytest.mark.e2e
 # d'AUTH-12 : l'Administration n'a plus de geste de collection à éprouver ici.
 SURFACES_AUDITEES = ("/corpus",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "les gestes d'une collection vivent dans la Bibliothèque seule",
     "/administration": "les accès d'une collection se règlent dans la Bibliothèque depuis "
                        "l'étape 3 d'AUTH-12 ; l'Administration ne les montre qu'en lecture",
     "/": "l'Atelier travaille une planche ; aucun geste de collection n'y vit",

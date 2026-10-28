@@ -26,6 +26,7 @@ pytestmark = pytest.mark.e2e
 # la région est posée par `theme.js`, que les cinq gabarits chargent.
 SURFACES_AUDITEES = {
     "/": lambda d: f"/?album={d['album']}&planche={d['planche']}",
+    "/annotation": lambda d: f"/annotation?album={d['album']}&planche={d['planche']}",
     "/recherche": lambda d: "/recherche",
     "/corpus": lambda d: "/corpus",
     "/exploration": lambda d: "/exploration",

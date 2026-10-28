@@ -1,4 +1,4 @@
-/* « Mon bac à sable » (COL-4) — ce que l'écran en DESSINE, sur les cinq surfaces.
+/* « Mon bac à sable » (COL-4) — ce que l'écran en DESSINE, sur les six surfaces.
 
    Tranché par Hugo sur maquette le 2026-10-24 (`pilotage/COL-4.md`, zone « L'écran »). Les
    RÈGLES — qui se voit offrir quoi, la date en heure de Paris, le plafond, ce qui part et ce

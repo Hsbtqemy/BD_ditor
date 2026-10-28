@@ -1,6 +1,6 @@
 /* « Mon bac à sable » (COL-4) — ce que l'écran en DÉCIDE, sans DOM.
 
-   Chargé en <script> sur les CINQ surfaces → expose `window.BDBac` ; aussi require()-able par
+   Chargé en <script> sur les SIX surfaces → expose `window.BDBac` ; aussi require()-able par
    `tests/js/bac-a-sable.test.js`, qui le vérifie par tables de cas. Rien n'est lu au
    chargement : ni le document, ni le stockage, ni l'heure.
 

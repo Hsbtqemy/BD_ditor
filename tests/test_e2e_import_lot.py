@@ -30,6 +30,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], in
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/corpus",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "l'import en lot vit dans la fiche d'un album, dans la Bibliothèque",
     "/": "l'Atelier garde son import à l'unité, inchangé par ce chantier ; ses entrées sont "
          "mesurées par test_e2e_atelier_album.py",
     "/recherche": "aucun import : la Recherche lit le corpus",

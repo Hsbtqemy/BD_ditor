@@ -28,11 +28,11 @@ MODULE = STATIC / "lib" / "membres-projet.js"
 
 # Les hôtes : les scripts de surface qui montent le module, avec les gabarits qui les servent.
 # COL-4 — `bac-a-sable.js` le monte dans le dialogue « Inviter… » de la ligne du bac à sable,
-# sur les CINQ surfaces, réduit à ce qu'un bac à sable permet (`bacASable`).
+# sur les SIX surfaces, réduit à ce qu'un bac à sable permet (`bacASable`).
 HOTES = {
     "administration.js": ("administration.html",),
-    "bac-a-sable.js": ("index.html", "recherche.html", "corpus.html", "exploration.html",
-                       "administration.html"),
+    "bac-a-sable.js": ("index.html", "annotation.html", "recherche.html", "corpus.html",
+                       "exploration.html", "administration.html"),
 }
 # Les hôtes qui passent le mode RÉDUIT d'un bac à sable : un hôte déclaré ici et nulle part
 # ailleurs. Le mode retire l'annuaire, les groupes et le choix du rôle — passé par erreur

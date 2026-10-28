@@ -24,6 +24,9 @@ JS. Il le fait en demandant au DOM si la bascule est affichée.
 # n'a de tiroir, donc aucune autre n'a de piège à éprouver.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "les tiroirs sont ceux de l'Atelier ; ceux de la page Annotation "
+        "viendront avec les écrans étroits (jalon 3)"),
     "/corpus": "pas de tiroir escamotable : rien à piéger",
     "/recherche": "pas de tiroir escamotable : rien à piéger",
     "/exploration": "pas de tiroir escamotable : rien à piéger",

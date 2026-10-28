@@ -16,6 +16,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], in
 
 SURFACES_AUDITEES = ("/corpus",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "une relecture croisée de la Bibliothèque, sous une identité donnée",
     "/administration": "relecture : les seuls gestes de la Bibliothèque",
     "/": "relecture : les seuls gestes de la Bibliothèque",
     "/recherche": "relecture : les seuls gestes de la Bibliothèque",

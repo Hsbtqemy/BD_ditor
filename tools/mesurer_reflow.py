@@ -53,7 +53,7 @@ import sys
 # confronte. Le nom de la première suit la barre de navigation (« Atelier » depuis
 # `1cc3a41`) et non le vocabulaire du code, parce que ce nom-là s'imprime dans un rapport
 # qu'on lit à côté de l'écran.
-SURFACES = [("Atelier", "/"), ("Recherche", "/recherche"),
+SURFACES = [("Atelier", "/"), ("Annotation", "/annotation"), ("Recherche", "/recherche"),
             ("Bibliothèque", "/corpus"), ("Exploration", "/exploration"),
             ("Administration", "/administration")]
 # Deux largeurs ne suffisent pas : elles ne disent rien de la BANDE entre les deux, et

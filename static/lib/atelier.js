@@ -11,10 +11,12 @@
    projet » rend la liste d'avant.
 
    UN FILTRE DE L'ATELIER, PAS UNE COLLECTION COURANTE. Le projet courant est partagé par
-   les cinq surfaces (`lib/projet.js`) ; la collection choisie ici ne l'est avec personne
-   (première réponse de Hugo). Elle est retenue par l'Atelier seul, PROJET PAR PROJET, dans
-   le stockage local (clé `bd-atelier-collection`, un objet `{ projet: choix }`) ; la
-   Bibliothèque ne la lit pas et ne l'écrit pas. Venir d'une collection de la Bibliothèque
+   les six surfaces (`lib/projet.js`) ; la collection choisie ici ne l'est qu'avec la page
+   Annotation (ANN-7, tranche 2), qui réemploie ce module tel quel : on passe de l'une à
+   l'autre sur la même planche (première réponse de Hugo pour l'Atelier ; le pilotage pour
+   la page, 2026-10-27). Elle est retenue PROJET PAR PROJET, dans le stockage local (clé
+   `bd-atelier-collection`, un objet `{ projet: choix }`) ; la Bibliothèque ne la lit pas et
+   ne l'écrit pas. Venir d'une collection de la Bibliothèque
    la pose par l'ADRESSE (`/?collection=<id>…`).
 
    RIEN DE CHOISI : LA BASE (deuxième réponse de Hugo) — la collection où les membres du

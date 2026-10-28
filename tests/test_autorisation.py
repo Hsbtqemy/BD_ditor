@@ -40,6 +40,7 @@ import main
 # d'ailleurs « session par personne : cf. SHARE-1 » : la liste portait sa propre échéance.
 HORS_PERIMETRE = {
     ("GET", "/"): "coquille HTML, aucune donnée — le contenu vient des routes /api",
+    ("GET", "/annotation"): "idem (ANN-7, tranche 2) : chaque donnée vient d'une route /api gardée",
     ("GET", "/recherche"): "idem",
     ("GET", "/corpus"): "idem",
     ("GET", "/exploration"): "idem",

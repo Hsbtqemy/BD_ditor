@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BéDéditeur — Annotation</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/lib/zoom.js"></script><!-- la borne du zoom, lue par theme.js -->
+  <script src="/static/theme.js"></script><!-- thème appliqué avant rendu (no-FOUC) -->
+</head>
+<body>
+<div id="annot-app">
+
+  <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
+  <div id="site-nav">
+    <span class="brand"><span class="brand-long">BéDéditeur</span><span class="brand-court" aria-hidden="true">BDé</span></span>
+    <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
+    <span class="nav-spacer"></span>
+    <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
+    <button class="ghost btn-theme" title="Changer de thème">🌙</button>
+  </div>
+
+  <!-- ───────────── Bande 2 — Collection · Album · Planche (ANN-7, tranche 2) ─────────────
+       Les listes du PROJET COURANT ; la collection est le filtre de l'Atelier, partagé avec
+       lui. « Préparée » dit ce que la planche porte ; « Ouvrir dans l'Atelier ↗ » y mène sur
+       la même zone. -->
+  <header id="header" class="an-header">
+    <h1 class="sr-only">Annotation</h1>
+    <span class="an-champ"><label for="an-collection">Collection</label><select id="an-collection"></select></span>
+    <span class="an-champ"><label for="an-album">Album</label><select id="an-album"></select></span>
+    <span class="an-champ"><label for="an-planche-choix">Planche</label><select id="an-planche-choix"></select></span>
+    <span id="an-preparee" class="muted small an-preparee" title="Zones de texte de la planche, et sa relecture"></span>
+    <span class="nav-spacer"></span>
+    <a id="an-atelier" class="ghost an-atelier" href="/" title="Ouvrir cette zone dans l'Atelier">Ouvrir dans l'Atelier ↗</a>
+  </header>
+
+  <!-- ───────────── Corps — trois colonnes, de taille STABLE pendant le travail ─────────────
+       La planche et son Contexte · la case agrandie · la grille. Rien n'y change de hauteur
+       quand on passe d'une case ou d'une zone à l'autre (Hugo, 2026-10-14). -->
+  <main id="annot" class="annot">
+    <aside id="an-gauche" class="an-col an-gauche" aria-labelledby="an-mini-titre">
+      <h2 class="an-titre" id="an-mini-titre">Planche</h2>
+      <div id="an-mini" class="an-mini" title="Choisir une case"></div>
+      <section class="an-ctx" aria-labelledby="an-ctx-titre">
+        <h2 class="an-titre" id="an-ctx-titre"
+            title="Ce qui n'est pas du vocabulaire : il se lit ici, et s'écrit dans l'Atelier">Contexte</h2>
+        <dl id="an-ctx-corps" class="an-ctx-corps"></dl>
+      </section>
+    </aside>
+
+    <section id="an-zone" class="an-col an-zone" aria-labelledby="an-tete-case">
+      <div class="an-tete">
+        <h2 class="an-titre" id="an-tete-case">—</h2>
+        <span id="an-tete-zone" class="an-badge"></span>
+        <span class="nav-spacer"></span>
+        <span id="an-tete-rang" class="muted small" title="Rang de la case dans l'ordre de lecture"></span>
+      </div>
+      <div id="an-vue-case" class="an-vue-case"
+           title="Cliquez une zone pour la choisir, ou le fond pour la case"></div>
+      <div id="an-zones" class="an-zones" role="group" aria-label="Zones de la case"></div>
+      <section class="an-texte-bloc" aria-labelledby="an-texte-titre">
+        <h3 class="an-sous-titre" id="an-texte-titre">Texte</h3>
+        <p id="an-texte" class="an-texte muted">—</p>
+      </section>
+    </section>
+
+    <aside id="an-grille" class="an-col an-grille" aria-labelledby="an-grille-titre">
+      <h2 class="an-titre" id="an-grille-titre">Grille</h2>
+      <div id="an-grille-corps" class="an-grille-corps"></div>
+    </aside>
+  </main>
+</div>
+<script src="/static/lib/common.js"></script>
+<script src="/static/lib/nav.js"></script>
+<script src="/static/lib/projet.js"></script>
+<script src="/static/lib/bibliotheque.js"></script><!-- l'ordre des collections, celui de l'Atelier -->
+<script src="/static/lib/atelier.js"></script><!-- le filtre de collection, partagé avec l'Atelier -->
+<script src="/static/lib/annotation.js"></script>
+<script src="/static/lib/dialog.js"></script>
+<script src="/static/lib/membres-projet.js"></script>
+<script src="/static/lib/bac-a-sable.js"></script>
+<script src="/static/bac-a-sable.js"></script><!-- COL-4 : « Mon bac à sable » et sa ligne, sur les six surfaces -->
+<script src="/static/annotation.js"></script>
+</body>
+</html>

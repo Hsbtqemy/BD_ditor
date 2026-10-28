@@ -16,6 +16,9 @@ Marqués `e2e` → hors du run par défaut (`pytest -m e2e`).
 # sélection. Il va donc là où ces deux comportements vivent, et nulle part ailleurs.
 SURFACES_AUDITEES = ("/recherche", "/corpus", "/exploration")
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "les deux correctifs d'AUDIT-2 portent sur la Recherche, la Bibliothèque "
+        "et l'Exploration ; la page Annotation n'existait pas"),
     "/": "la Visionneuse ne porte pas de nuage de tags ; l'onglet qui reçoit l'événement "
          "`storage` du correctif F1 est ouvert sur la Recherche et la Bibliothèque.",
     "/administration": "ni nuage de tags, ni second onglet dans le scénario du thème : les "

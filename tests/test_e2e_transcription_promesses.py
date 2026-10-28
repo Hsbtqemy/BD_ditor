@@ -63,6 +63,9 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : le mode "
+        "Transcription vit dans l'Atelier, que ce module audite"),
     "/recherche": "aucun raccourci annoncé : la page n'a ni badge de mode ni barre d'aide clavier",
     "/corpus": "aucun raccourci annoncé : la page n'expose aucune touche dans ses libellés",
     "/exploration": "aucun raccourci annoncé : les panneaux d'analyse ne promettent aucune touche",

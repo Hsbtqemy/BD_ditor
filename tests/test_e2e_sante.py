@@ -34,6 +34,7 @@ pytestmark = pytest.mark.e2e
 # le jour même (UX-10), et la garde a bien forcé à le voir.
 SURFACES_AUDITEES = ("/administration",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "le panneau des moteurs vit dans l'Administration seule",
     "/": "le panneau des moteurs n'y est pas rendu",
     "/corpus": "le panneau en est PARTI le 2026-09-07 ; la Bibliothèque ne doit même plus "
                "interroger `/api/sante`, ce que `test_la_bibliotheque_ne_sonde_plus_rien` "

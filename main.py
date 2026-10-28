@@ -3137,6 +3137,16 @@ def recherche_page():
     return FileResponse(str(TEMPLATES_DIR / "recherche.html"))
 
 
+@app.get("/annotation", response_class=HTMLResponse)
+def annotation_page():
+    """La page ANNOTATION, sixième surface (ANN-7, tranche 2 ; ANN-6, l'écran du relevé).
+
+    Une coquille, comme les cinq autres : chaque donnée vient des routes `/api`, qui posent
+    chacune sa question d'autorisation — les listes du projet courant sont filtrées par la
+    portée, une planche qu'on ne lit pas est introuvable."""
+    return FileResponse(str(TEMPLATES_DIR / "annotation.html"))
+
+
 @app.get("/corpus", response_class=HTMLResponse)
 def corpus_page():
     return FileResponse(str(TEMPLATES_DIR / "corpus.html"))

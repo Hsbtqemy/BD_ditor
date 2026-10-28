@@ -28,6 +28,10 @@ pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], in
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "le filtre de collection est le MÊME module (`lib/atelier.js`), partagé "
+        "et testé sous Node ; la page Annotation le réemploie sans en changer la "
+        "règle, et le mesure dans son propre audit (`test_e2e_annotation_page`)"),
     "/corpus": "la Bibliothèque n'a pas de liste *Album* à filtrer ; on n'y joue que le lien "
                "de la fiche d'un album vers l'Atelier, et ce qu'elle ne retient pas",
     "/recherche": "aucune liste d'albums à filtrer par collection : la Recherche traverse",

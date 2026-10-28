@@ -39,6 +39,9 @@ pytestmark = pytest.mark.e2e
 # dans le panneau d'annotation de l'Atelier.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : les champs à "
+        "propositions vit dans l'Atelier, que ce module audite"),
     "/recherche": "aucun champ à propositions qui écrive : la Recherche filtre, elle n'attribue rien",
     "/corpus": "aucun champ « dimension : valeur » ni de personnage : la Bibliothèque range des albums",
     "/exploration": "le vocabulaire s'y édite dans le Lexique, par des formulaires sans liste de propositions",

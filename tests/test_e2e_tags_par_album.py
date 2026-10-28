@@ -21,6 +21,9 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": (
+        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : la pose d'un "
+        "tag vit dans l'Atelier, que ce module audite"),
     "/recherche": "la Recherche filtre par tag sans en poser : sa liste reste celle de la portée",
     "/corpus": "la Bibliothèque range des albums ; elle ne pose aucun tag",
     "/exploration": "le Lexique documente et remanie les tags, il ne les pose sur aucune région",

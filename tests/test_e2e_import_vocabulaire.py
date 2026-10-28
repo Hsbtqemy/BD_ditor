@@ -26,6 +26,7 @@ pytestmark = pytest.mark.e2e
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source.
 SURFACES_AUDITEES = ("/exploration",)
 SURFACES_HORS_PERIMETRE = {
+    "/annotation": "l'import de vocabulaire vit dans le 📖 Lexique de l'Exploration",
     "/": "l'Atelier annote une planche ; l'import de vocabulaire n'y vit pas",
     "/corpus": "la Bibliothèque gère albums et collections ; aucun import de vocabulaire",
     "/recherche": "la Recherche interroge le corpus ; aucun import de vocabulaire",
