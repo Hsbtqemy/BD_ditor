@@ -1070,9 +1070,12 @@ def planche_empreinte(planche_id: int, conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
     """CONC-4 — la version LÉGÈRE de la route ci-dessus : une empreinte par région, que
     l'Atelier compare de temps en temps pour proposer « Actualiser » quand la planche ouverte
-    a changé ailleurs (cf. `empreinte.py`). Bornée comme elle, par le même accesseur gardé."""
+    a changé ailleurs (cf. `empreinte.py`). Bornée comme elle, par le même accesseur gardé.
+    `releves` (ANN-7, tranche 2) : l'empreinte des relevés, des passes et des doutes, zone par
+    zone, À PART — la page Annotation la lit, l'Atelier, qui n'en montre rien, l'ignore."""
     _get_planche(conn, portee, planche_id)
-    return {"regions": empreinte.empreintes(conn, planche_id, portee)}
+    return {"regions": empreinte.empreintes(conn, planche_id, portee),
+            "releves": empreinte.empreintes_releves(conn, planche_id)}
 
 
 @app.post("/api/planches/{planche_id}/regions", status_code=201)

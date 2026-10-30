@@ -14,7 +14,9 @@
    le parcours et Ctrl+Z (commit 4). LE JALON 2, commit 5 : le DOUTE (« ? », son formulaire
    dans la boîte du guide) et la SYNTHÈSE, second onglet de la colonne de gauche — les
    relevés de la planche par case, « À revoir » (répondre, lever en gardant, en changeant,
-   en retirant ; rattacher ; compléter), le décompte.
+   en retirant ; rattacher ; compléter), le décompte. Commit 6 : DEUX ÉCRANS — « ⟳ Actualiser »
+   quand la planche a changé ailleurs (régions, relevés, passes, doutes), et les gardes d'un
+   départ de la planche.
 
    LA DISPOSITION NE BOUGE PAS PENDANT LE TRAVAIL (Hugo, 2026-10-14) : trois colonnes, une
    boîte de case de hauteur constante, des blocs de hauteur fixe ; l'aide est en infobulle,
@@ -182,13 +184,16 @@ function rendrePlanches() {
 /* ───────────── La planche ───────────── */
 async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
   const tour = ++tourPlanche;
+  // La MÊME planche relue (« Actualiser », Ctrl+Z) garde ses brouillons ; une autre non —
+  // les gardes ont déjà refusé d'y aller avec un brouillon (`gardesDeSortie`).
+  const meme = !!S.planche && id !== null && S.planche.id === id;
   S.planche = id === null ? null : S.planches.find((p) => p.id === id) || null;
   S.regions = [];
   S.releves = [];
   S.passes = [];
   S.personnages = new Map();
   S.changer = null;
-  S.reponses = new Map();
+  if (!meme) S.reponses = new Map();
   if (S.planche) {
     $("#an-planche-choix").value = String(S.planche.id);
     const [regions, lus] = await Promise.all([
@@ -212,13 +217,28 @@ async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
   }
   S.caseIx = ou ? ou.caseIx : 0;
   S.zoneId = ou ? ou.zoneId : null;
-  // Un formulaire de doute ne survit qu'avec son relevé (un brouillon non vide garde la
-  // planche : `brouillonEnCours`).
-  if (S.formDoute && !S.releves.some((r) => r.id === S.formDoute.releveId)) S.formDoute = null;
+  // Un formulaire de doute ne survit qu'avec son relevé, une réponse qu'avec son doute
+  // ouvert : retirés ou levés ailleurs, ce qui était écrit se dit, plutôt que de se perdre.
+  if (S.formDoute && !S.releves.some((r) => r.id === S.formDoute.releveId)) {
+    if (S.formDoute.texte.trim()) {
+      toast(`Le relevé de votre doute a été retiré ailleurs ; votre texte n'est pas envoyé : « ${S.formDoute.texte.trim()} »`, "error", 12000);
+    }
+    S.formDoute = null;
+  }
+  for (const [d, t] of [...S.reponses]) {
+    if (S.releves.some((r) => r.doute && r.doute.id === d)) continue;
+    if (t.trim()) {
+      toast(`Ce doute a été levé ailleurs ; votre réponse n'est pas envoyée : « ${t.trim()} »`, "error", 12000);
+    }
+    S.reponses.delete(d);
+  }
   $("#an-preparee").textContent = S.planche
     ? A.preparation(S.regions, S.planche.relecture_statut) : "";
   rendreMini();
-  choisir(S.caseIx, S.zoneId);
+  rendreGuide();
+  const fini = choisir(S.caseIx, S.zoneId);
+  rebaserSignal();
+  return fini;
 }
 
 function caseCourante() { return S.rangement[S.caseIx] || null; }
@@ -1415,7 +1435,7 @@ async function resoudreConflit(garderMienne) {
 async function relireReleves() {
   if (!S.planche) return;
   const d = await apiGet(`/api/planches/${S.planche.id}/releves`).catch(() => null);
-  if (d) { S.releves = d.releves; S.passes = d.passes || []; }
+  if (d) { S.releves = d.releves; S.passes = d.passes || []; SIG.rebaseReleves = true; }
   apresEcriture();
 }
 
@@ -1652,13 +1672,17 @@ function basculerDesignation(id) {
 
 /* La précision attendue : Entrée ou la sortie du champ l'enregistrent, avec `vu` — dans la
    liste de ce qui est posé comme dans Synthèse › À revoir. */
+let precisionEnVol = null;     // l'enregistrement d'une précision, que les gardes attendent
 function enregistrerPrecision(champ) {
   const r = S.releves.find((x) => x.id === Number(champ.dataset.releve));
-  if (!r || (champ.value.trim() || null) === (r.precision || null)) return;
-  if (conflitOuvert()) return;
-  ecrire(grilleDe(r.grille_id), entreeDe(r), null, {
+  if (!r || (champ.value.trim() || null) === (r.precision || null)) return null;
+  if (conflitOuvert()) return null;
+  const envoi = ecrire(grilleDe(r.grille_id), entreeDe(r), null, {
     action: "modifier", releve: r, corps: { precision: champ.value.trim() || null },
     vu: { precision: r.precision || null } });
+  precisionEnVol = envoi;
+  envoi.finally(() => { if (precisionEnVol === envoi) precisionEnVol = null; });
+  return envoi;
 }
 
 /* ───────────── Le doute (commit 5) ─────────────
@@ -1760,9 +1784,18 @@ async function envoyerDoute() {
 async function refusDoute(err, r) {
   if (err.statut === 404 && r) {
     oterReleve(r.id);
-    if (S.formDoute && S.formDoute.releveId === r.id) S.formDoute = null;
-    toast("Ce relevé a été retiré depuis, par un autre écran.", "error");
-    annoncer("Ce relevé a été retiré depuis, par un autre écran.");
+    let perdu = "";
+    if (S.formDoute && S.formDoute.releveId === r.id) {
+      perdu = S.formDoute.texte.trim();
+      S.formDoute = null;
+    }
+    if (r.doute && S.reponses.get(r.doute.id)) {
+      perdu = perdu || S.reponses.get(r.doute.id).trim();
+      S.reponses.delete(r.doute.id);
+    }
+    const dit = "Ce relevé a été retiré depuis, par un autre écran.";
+    toast(perdu ? `${dit} Votre texte n'est pas envoyé : « ${perdu} »` : dit, "error", perdu ? 12000 : undefined);
+    annoncer(dit);
     rendreGuide();
     apresEcriture();
     return;
@@ -1780,12 +1813,6 @@ async function refusDoute(err, r) {
 function brouillonEnCours() {
   if (S.formDoute && S.formDoute.texte.trim()) return true;
   return [...S.reponses.values()].some((t) => t.trim());
-}
-
-function gardeDeSortie() {
-  if (!brouillonEnCours()) return true;
-  toast("Un doute ou une réponse est en cours d'écriture : envoyez-le ou effacez-le d'abord.", "error");
-  return false;
 }
 
 /* RÉPONDRE à un doute ouvert (« À revoir »). */
@@ -2245,6 +2272,141 @@ function brancherSynthese() {
   corps.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) enregistrerPrecision(e.target); });
 }
 
+/* ───────────── Deux écrans sur la même planche (commit 6) ─────────────
+   CONC-4 : ni temps réel ni rien — un SIGNAL. Comme l'Atelier, la page compare toutes les
+   `BDSignal.INTERVALLE_MS` (rien quand l'onglet est caché) et au retour sur l'onglet
+   l'empreinte de la planche ouverte — ses régions ET ses relevés, passes et doutes, zone par
+   zone (`GET /api/planches/{id}/empreinte`, `BDSignal.cles`) — à celle qu'elle avait, et
+   montre « ⟳ Actualiser » si quelque chose a changé AILLEURS ; rien ne se recharge d'office.
+   Ses propres écritures passent toutes par `apiSend`, où l'on note la zone qu'elles touchent
+   (`BDSignal.regionsTouchees`, avec la zone d'un relevé ou d'un doute qu'elle a lu). La
+   règle — et sa limite — est dans `lib/signal-planche.js`. */
+const SIG = { plancheId: null, base: null, touchees: null, gen: 0, jeton: 0, enVol: 0,
+              ecritures: 0, rebaseReleves: false };
+const toucheesVides = () => ({ tout: false, ids: new Set(), planche: false });
+
+/* La zone d'un relevé, ou du relevé d'un doute, d'après ce que la page a lu. */
+function zoneLue(sorte, id) {
+  const r = sorte === "releve" ? S.releves.find((x) => x.id === id)
+    : S.releves.find((x) => (x.doute && x.doute.id === id)
+                      || (x.doutes_leves || []).some((d) => d.id === id));
+  return r ? { region_id: r.region_id, planche_id: r.planche_id } : null;
+}
+
+function noterTouchees(t) {
+  if (!t) return;
+  if (!SIG.touchees) SIG.touchees = toucheesVides();
+  if (t.tout) { SIG.touchees.tout = true; return; }
+  for (const id of t.ids || []) SIG.touchees.ids.add(id);
+  if (t.planche) SIG.touchees.planche = true;
+}
+
+(function noterLesEcritures() {
+  const envoyer = window.apiSend;
+  window.apiSend = async function (methode, chemin, corps, opts) {
+    const planche = S.planche ? S.planche.id : null;
+    // La zone se lit AVANT : un relevé retiré n'est plus dans la liste après.
+    const avant = BDSignal.regionsTouchees(methode, chemin, null, planche, zoneLue);
+    if (avant) SIG.enVol++;
+    try {
+      const reponse = await envoyer(methode, chemin, corps, opts);
+      noterTouchees(BDSignal.regionsTouchees(methode, chemin, reponse, planche, zoneLue) || avant);
+      return reponse;
+    } catch (e) {
+      noterTouchees(avant);              // dans le doute, l'écriture a pu passer
+      throw e;
+    } finally {
+      if (avant) { SIG.enVol--; SIG.ecritures++; }
+      if (!SIG.enVol && SIG.base === null) verifierPlanche();
+    }
+  };
+})();
+
+/* La page vient de (re)lire la planche : la prochaine empreinte devient la base. */
+function rebaserSignal() {
+  SIG.gen++;
+  SIG.plancheId = S.planche ? S.planche.id : null;
+  SIG.base = null;
+  SIG.rebaseReleves = false;
+  SIG.touchees = toucheesVides();
+  afficherSignal(null);
+  verifierPlanche();
+}
+
+async function verifierPlanche() {
+  const p = S.planche;
+  if (!p || document.hidden || SIG.enVol || SIG.plancheId !== p.id) return;
+  const jeton = ++SIG.jeton, gen = SIG.gen, ecritures = SIG.ecritures;
+  let rep = null;
+  try { rep = await apiGet(`/api/planches/${p.id}/empreinte`); } catch (_) { return; }
+  if (jeton !== SIG.jeton || gen !== SIG.gen) return;
+  if (!S.planche || S.planche.id !== p.id) return;
+  if (SIG.enVol || SIG.ecritures !== ecritures) return;
+  const neuve = BDSignal.cles(rep);
+  if (SIG.base === null) {
+    SIG.base = neuve;
+    SIG.touchees = toucheesVides();
+    return;
+  }
+  if (SIG.rebaseReleves) {
+    // Les relevés viennent d'être RELUS (sans les régions) : leur part de la base devient
+    // celle qu'on montre ; les régions se comparent comme d'habitude.
+    for (const k of Object.keys(SIG.base)) if (k.startsWith(BDSignal.PREFIXE)) delete SIG.base[k];
+    for (const [k, v] of Object.entries(neuve)) if (k.startsWith(BDSignal.PREFIXE)) SIG.base[k] = v;
+    SIG.rebaseReleves = false;
+  }
+  const r = BDSignal.comparer(SIG.base, neuve, SIG.touchees);
+  SIG.base = r.base;
+  SIG.touchees = toucheesVides();
+  afficherSignal(r.autres);
+}
+
+function afficherSignal(autres) {
+  const b = $("#an-actualiser");
+  const n = autres ? BDSignal.nombre(autres) : 0;
+  const montre = !b.hidden;
+  b.hidden = !n;
+  b.title = n ? BDSignal.titre(autres) : "";
+  if (n && !montre) annoncer("La planche a changé ailleurs : « Actualiser » la recharge.");
+}
+
+/* LES GARDES d'un départ de la planche ouverte — changer de collection, d'album, de planche
+   (`quitter`) — et d'« Actualiser ». Un conflit ouvert attend son choix ; une précision en
+   cours d'enregistrement part d'abord. Un doute ou une réponse à moitié écrits retiennent la
+   planche qu'on QUITTE ; « Actualiser » les garde, eux, tant que leur relevé est là. */
+async function gardesDeSortie(quitter) {
+  if (precisionEnVol) { try { await precisionEnVol; } catch (_) { /* dit par `ecrire` */ } }
+  // Un conflit ouvert — celui que la précision vient peut-être d'ouvrir — attend son choix.
+  if (conflitOuvert()) return false;
+  if (quitter && brouillonEnCours()) {
+    toast("Un doute ou une réponse est en cours d'écriture : envoyez-le ou effacez-le d'abord.", "error");
+    return false;
+  }
+  return true;
+}
+
+/* « ⟳ Actualiser » : relire la planche — ses régions, ses relevés, ses passes — SANS RIEN
+   PERDRE : la case, la zone et les mots désignés restent, le formulaire d'un doute et les
+   réponses en cours aussi (si leur relevé, ou leur doute, est encore là). */
+async function actualiserPlanche() {
+  if (!S.planche) return;
+  if (!(await gardesDeSortie(false))) return;
+  const sel = S.sel.slice();
+  const zone = S.zoneId;
+  const ou = { caseIx: S.caseIx, zoneId: S.zoneId };
+  const region = zone !== null ? zone : (caseCourante() && caseCourante().case.id);
+  S.mots = null;                                    // le texte a pu changer ailleurs
+  await ouvrirPlanche(S.planche.id, region === undefined ? null : region, ou);
+  if (sel.length && S.zoneId === zone) {
+    await chargerMots();
+    const n = S.mots && S.mots.region_id === zone ? S.mots.mots.length : 0;
+    S.sel = sel.filter((x) => x < n);
+    S.ancre = S.sel.length ? S.sel[0] : null;
+    if (S.sel.length) apresSelection();
+  }
+  annoncer("Planche actualisée.");
+}
+
 /* ───────────── L'adresse ───────────── */
 function etatAdresse() {
   const z = zoneCourante();
@@ -2304,21 +2466,34 @@ async function changerCollection(valeur) {
 }
 
 function brancher() {
-  // Changer de collection, d'album ou de planche ne perd pas un doute à moitié écrit.
-  $("#an-collection").addEventListener("change", (e) => {
-    if (!gardeDeSortie()) { e.target.value = String(S.collection); return; }
-    changerCollection(e.target.value).catch((err) => toast(err.message, "error"));
+  // Changer de collection, d'album ou de planche passe par les gardes d'un départ : un
+  // conflit ouvert, une précision en vol, un doute ou une réponse à moitié écrits.
+  $("#an-collection").addEventListener("change", async (e) => {
+    const voulu = e.target.value;
+    e.target.value = String(S.collection);
+    if (!(await gardesDeSortie(true))) return;
+    e.target.value = voulu;
+    changerCollection(voulu).catch((err) => toast(err.message, "error"));
   });
-  $("#an-album").addEventListener("change", (e) => {
-    if (!gardeDeSortie()) { e.target.value = String(S.albumId); return; }
+  $("#an-album").addEventListener("change", async (e) => {
     const id = Number(e.target.value);
+    e.target.value = String(S.albumId);
+    if (!(await gardesDeSortie(true))) return;
+    e.target.value = String(id);
     if (id) ouvrirAlbum(id, null).catch((err) => toast(err.message, "error"));
   });
-  $("#an-planche-choix").addEventListener("change", (e) => {
-    if (!gardeDeSortie()) { e.target.value = String(S.planche ? S.planche.id : ""); return; }
+  $("#an-planche-choix").addEventListener("change", async (e) => {
     const id = Number(e.target.value);
+    e.target.value = String(S.planche ? S.planche.id : "");
+    if (!(await gardesDeSortie(true))) return;
+    e.target.value = String(id);
     if (id) ouvrirPlanche(id).catch((err) => toast(err.message, "error"));
   });
+  $("#an-actualiser").addEventListener("click", () =>
+    actualiserPlanche().catch((err) => toast(err.message, "error")));
+  // Le signal : de temps en temps, et au retour sur l'onglet.
+  setInterval(verifierPlanche, BDSignal.INTERVALLE_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) verifierPlanche(); });
   const mini = $("#an-mini");
   mini.addEventListener("click", (e) => {
     const d = e.target.closest("[data-region]");

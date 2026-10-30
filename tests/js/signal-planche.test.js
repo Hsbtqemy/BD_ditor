@@ -115,3 +115,72 @@ test("le module se charge sans document ni fenêtre", () => {
   assert.equal(typeof document, "undefined");
   assert.equal(typeof window, "undefined");
 });
+
+/* ── La page Annotation (ANN-7, tranche 2) : les relevés, les doutes, les passes ── */
+const OU = (sorte, id) => ({
+  releve: { 5: { region_id: 4, planche_id: null }, 6: { region_id: null, planche_id: 7 } },
+  doute: { 9: { region_id: 4, planche_id: null } },
+}[sorte] || {})[id] || null;
+
+test("une écriture sur un relevé touche sa zone ; la surface, la planche ; inconnue, tout", () => {
+  const zone = { ids: [4], sousArbre: false };
+  const surface = { ids: [], sousArbre: false, planche: true };
+  assert.deepEqual(S.regionsTouchees("POST", "/api/releves", { id: 5, region_id: 4, planche_id: null }, 7, OU), zone);
+  assert.deepEqual(S.regionsTouchees("POST", "/api/releves", { id: 6, region_id: null, planche_id: 7 }, 7, OU), surface);
+  assert.deepEqual(S.regionsTouchees("POST", "/api/releves", null, 7, OU), { tout: true });
+  assert.deepEqual(S.regionsTouchees("PUT", "/api/releves/5", { id: 5, region_id: 4 }, 7, OU), zone);
+  assert.deepEqual(S.regionsTouchees("DELETE", "/api/releves/5", null, 7, OU), zone);
+  assert.deepEqual(S.regionsTouchees("DELETE", "/api/releves/6", null, 7, OU), surface);
+  assert.deepEqual(S.regionsTouchees("DELETE", "/api/releves/99", null, 7, OU), { tout: true });
+  assert.deepEqual(S.regionsTouchees("POST", "/api/releves/5/doutes", { id: 9, releve_id: 5 }, 7, OU), zone);
+  // Une réponse de doute ne porte pas la zone : elle se lit par le relevé, ou par le doute.
+  assert.deepEqual(S.regionsTouchees("POST", "/api/doutes/9/messages", { id: 9, releve_id: 6 }, 7, OU), surface);
+  assert.deepEqual(S.regionsTouchees("POST", "/api/doutes/9/levee", null, 7, OU), zone);
+  assert.deepEqual(S.regionsTouchees("POST", "/api/doutes/8/levee", null, 7, OU), { tout: true });
+  // Sans `ou` (l'Atelier), ce qu'on ne sait pas placer a tout touché.
+  assert.deepEqual(S.regionsTouchees("DELETE", "/api/releves/5", null, 7), { tout: true });
+  // Une passe de la planche ouverte touche sa surface ; d'une autre planche, rien.
+  assert.deepEqual(S.regionsTouchees("PUT", "/api/planches/7/passes/3", {}, 7, OU), surface);
+  assert.deepEqual(S.regionsTouchees("DELETE", "/api/planches/7/passes/3?rubrique_cle=", null, 7, OU), surface);
+  assert.equal(S.regionsTouchees("PUT", "/api/planches/8/passes/3", {}, 7, OU), null);
+  // Une passe sur une région touche la région (donc ses relevés).
+  assert.deepEqual(S.regionsTouchees("PUT", "/api/regions/4/passes/3", {}, 7, OU), zone);
+  // Les autres routes d'une planche ne changent pas de sens.
+  assert.deepEqual(S.regionsTouchees("PATCH", "/api/planches/7/relecture", {}, 7, OU), null);
+});
+
+test("les clés de la page : les régions, et les relevés de chaque zone à part", () => {
+  assert.deepEqual(S.cles({ regions: { 4: "a", 5: "b" }, releves: { 4: "x", planche: "y" } }),
+                   { 4: "a", 5: "b", "releves:4": "x", "releves:planche": "y" });
+  assert.deepEqual(S.cles({ regions: { 4: "a" } }), { 4: "a" });     // l'Atelier : rien de plus
+  assert.deepEqual(S.cles(null), {});
+});
+
+test("un relevé changé ailleurs se signale ; touché ici, il est adopté avec sa zone", () => {
+  const base = { 4: "a", "releves:4": "x", "releves:planche": "y" };
+  const ailleurs = S.comparer(base, { 4: "a", "releves:4": "x2", "releves:planche": "y" }, vide());
+  assert.deepEqual(ailleurs.autres, { creees: [], modifiees: ["releves:4"], supprimees: [] });
+  assert.equal(ailleurs.base["releves:4"], "x");                       // l'écart reste
+  // La zone 4 touchée ici : sa région ET ses relevés sont adoptés.
+  const ici = S.comparer(base, { 4: "a2", "releves:4": "x2", "releves:planche": "y" }, touche(4));
+  assert.deepEqual(ici.autres, { creees: [], modifiees: [], supprimees: [] });
+  assert.deepEqual(ici.base, { 4: "a2", "releves:4": "x2", "releves:planche": "y" });
+  // La surface : touchée par `planche`, pas par un identifiant.
+  const surf = { tout: false, ids: new Set([4]), planche: true };
+  assert.deepEqual(S.comparer(base, { ...base, "releves:planche": "z" }, surf).autres.modifiees, []);
+  assert.deepEqual(S.comparer(base, { ...base, "releves:planche": "z" }, touche(4)).autres.modifiees,
+                   ["releves:planche"]);
+  // Créée, supprimée ; les régions d'abord, triées.
+  const r = S.comparer(base, { 4: "a2", "releves:planche": "y", "releves:9": "n", 2: "c" }, vide());
+  assert.deepEqual(r.autres, { creees: [2, "releves:9"], modifiees: [4], supprimees: ["releves:4"] });
+});
+
+test("l'infobulle compte les zones dont les relevés ont changé, à part des régions", () => {
+  assert.equal(S.titre({ creees: [], modifiees: ["releves:4"], supprimees: [] }),
+               "La planche a changé ailleurs : des relevés sur 1 zone. "
+               + "Actualiser la recharge, sans perdre votre saisie.");
+  assert.equal(S.titre({ creees: ["releves:9"], modifiees: [4, "releves:4"], supprimees: ["releves:planche"] }),
+               "La planche a changé ailleurs : 1 région modifiée, des relevés sur 3 zones. "
+               + "Actualiser la recharge, sans perdre votre saisie.");
+  assert.equal(S.nombre({ creees: ["releves:9"], modifiees: [4], supprimees: [] }), 2);
+});

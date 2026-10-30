@@ -188,3 +188,89 @@ def test_une_situation_qu_on_ne_lit_pas_ne_change_pas_l_empreinte(client, album,
             conn.close()
         assert _empreinte(client, pid, lectrice) == avant_l, valeur
         _seule_change(avant_a, _empreinte(client, pid, ADMIN), rid)
+
+
+# --------------------------------------------------------------------------- #
+# ANN-7, tranche 2 (jalon 2, commit 6) — les relevés, les passes et les doutes
+# --------------------------------------------------------------------------- #
+# La page Annotation montre ce que l'Atelier ne montre pas. Leur empreinte est À PART
+# (`releves`) : l'Atelier, qui ne lit que `regions`, ne voit pas « changé » une planche dont
+# rien de ce qu'il montre n'a bougé.
+def _tout(client, planche_id, headers):
+    rep = client.get(f"/api/planches/{planche_id}/empreinte", headers=headers)
+    assert rep.status_code == 200, rep.text
+    return rep.json()
+
+
+def _seule_cle(avant, apres, cle):
+    changees = {k for k in set(avant) | set(apres) if avant.get(k) != apres.get(k)}
+    assert changees == {cle}, changees
+
+
+def test_un_releve_un_doute_une_passe_changent_leur_zone_et_jamais_les_regions(
+        client, db_path, derriere_proxy):
+    from grilles_decor import LEA, STAG, grille_active, monter
+    d = monter(client, db_path)
+    g = grille_active(client, d["p"])
+    pl, bulle, case = d["planche"], d["zones"]["bulle"], d["zones"]["case"]
+    e0 = _tout(client, pl, STAG)
+    assert e0["releves"] == {}                       # rien de posé : aucune clé
+
+    def pose(qui, **corps):
+        r = client.post("/api/releves", headers=qui,
+                        json={"grille_id": g["grille_id"], "version": 1, **corps})
+        assert r.status_code == 201, r.text
+        return r.json()
+
+    cri = pose(STAG, region_id=bulle, entree_cle="cri", mots=[0])
+    e1 = _tout(client, pl, STAG)
+    assert set(e1["releves"]) == {str(bulle)} and e1["regions"] == e0["regions"]
+    ton = pose(STAG, region_id=bulle, entree_cle="ton-de-voix", variante_cle="crie")
+    gestes = [
+        (str(bulle), lambda: client.put(f"/api/releves/{ton['id']}", headers=LEA,
+                                        json={"variante_cle": "chuchote"})),
+        (str(bulle), lambda: client.put(f"/api/releves/{cri['id']}", headers=LEA,
+                                        json={"mots": [1]})),
+        (str(bulle), lambda: client.post(f"/api/releves/{cri['id']}/doutes", headers=LEA,
+                                         json={"texte": "Un cri ?"})),
+        (str(case), lambda: client.post("/api/releves", headers=STAG, json={
+            "grille_id": g["grille_id"], "version": 1, "region_id": case,
+            "entree_cle": "regard-camera"})),
+        ("planche", lambda: client.post("/api/releves", headers=STAG, json={
+            "grille_id": g["grille_id"], "version": 1, "planche_id": pl,
+            "entree_cle": "ambiance"})),
+        (str(bulle), lambda: client.put(f"/api/regions/{bulle}/passes/{g['grille_id']}",
+                                        headers=STAG, json={})),
+        ("planche", lambda: client.put(f"/api/planches/{pl}/passes/{g['grille_id']}",
+                                       headers=STAG, json={})),
+    ]
+    for cle, geste in gestes:
+        avant = _tout(client, pl, STAG)
+        assert geste().status_code in (200, 201), cle
+        apres = _tout(client, pl, STAG)
+        _seule_cle(avant["releves"], apres["releves"], cle)
+        assert apres["regions"] == avant["regions"], cle
+    # Le fil d'un doute qui s'allonge, sa levée, le retrait d'un relevé : la zone bouge.
+    doute = next(r for r in client.get(f"/api/planches/{pl}/releves", headers=STAG)
+                 .json()["releves"] if r["id"] == cri["id"])["doute"]
+    for geste in (lambda: client.post(f"/api/doutes/{doute['id']}/messages", headers=STAG,
+                                      json={"texte": "Oui."}),
+                  lambda: client.post(f"/api/doutes/{doute['id']}/levee", headers=STAG,
+                                      json={"issue": "garde"}),
+                  lambda: client.delete(f"/api/releves/{ton['id']}", headers=STAG)):
+        avant = _tout(client, pl, STAG)
+        assert geste().status_code in (200, 201, 204)
+        _seule_cle(avant["releves"], _tout(client, pl, STAG)["releves"], str(bulle))
+    # Marquer une passe déjà marquée par un autre ne change rien : elle reste la sienne.
+    avant = _tout(client, pl, STAG)
+    assert client.put(f"/api/regions/{bulle}/passes/{g['grille_id']}", headers=LEA,
+                      json={}).status_code == 200
+    assert _tout(client, pl, STAG) == avant
+    # La dernière chose d'une zone retirée, sa clé part.
+    assert client.delete(f"/api/planches/{pl}/passes/{g['grille_id']}", headers=STAG,
+                         params={"vu_marquee": "true"}).status_code == 204
+    rel = [r for r in client.get(f"/api/planches/{pl}/releves", headers=STAG).json()["releves"]
+           if r["planche_id"] == pl]
+    for r in rel:
+        assert client.delete(f"/api/releves/{r['id']}", headers=STAG).status_code == 204
+    assert "planche" not in _tout(client, pl, STAG)["releves"]

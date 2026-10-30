@@ -31,6 +31,8 @@
     <span class="an-champ"><label for="an-album">Album</label><select id="an-album"></select></span>
     <span class="an-champ"><label for="an-planche-choix">Planche</label><select id="an-planche-choix"></select></span>
     <span id="an-preparee" class="muted small an-preparee" title="Zones de texte de la planche, et sa relecture"></span>
+    <!-- CONC-4 (commit 6) : la planche a changé ailleurs — régions, relevés, passes, doutes. -->
+    <button id="an-actualiser" class="ghost small" type="button" hidden>⟳ Actualiser</button>
     <span class="nav-spacer"></span>
     <a id="an-atelier" class="ghost an-atelier" href="/" title="Ouvrir cette zone dans l'Atelier">Ouvrir dans l'Atelier ↗</a>
   </header>
@@ -190,6 +192,7 @@
 <script src="/static/lib/atelier.js"></script><!-- le filtre de collection, partagé avec l'Atelier -->
 <script src="/static/lib/conflit.js"></script><!-- les mots du bandeau de CONC-3 -->
 <script src="/static/lib/annulation.js"></script><!-- Ctrl+Z, commun avec l'Atelier -->
+<script src="/static/lib/signal-planche.js"></script><!-- « ⟳ Actualiser », commun avec l'Atelier -->
 <script src="/static/lib/annotation.js"></script>
 <script src="/static/lib/dialog.js"></script>
 <script src="/static/lib/membres-projet.js"></script>

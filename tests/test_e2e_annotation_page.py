@@ -943,3 +943,117 @@ def test_le_decompte_compte_toutes_les_grilles(page, decor):
     expect(corps.locator(".an-dc-titre", has_text="Lieux · 1")).to_be_visible()
     expect(corps.locator(".an-dc-titre", has_text="Signaux · 1")).to_be_visible()
     expect(corps.locator(".an-dc-l", has_text="Moulinsart")).to_have_count(1)
+
+
+# --------------------------------------------------------------------------- #
+# Deux écrans (commit 6)
+# --------------------------------------------------------------------------- #
+# « L'autre écran » est un client HTTP : ce que la page n'a pas écrit elle-même lui vient
+# d'ailleurs. Le signal se demande au retour sur l'onglet (`visibilitychange`), comme dans
+# l'Atelier (`tests/test_e2e_planche_changee.py`).
+def _retour_sur_l_onglet(page):
+    with page.expect_response(lambda r: r.url.endswith("/empreinte")):
+        page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+    page.wait_for_load_state("networkidle")
+
+
+def test_un_releve_pose_ailleurs_propose_actualiser_qui_garde_la_saisie(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    bouton = page.locator("#an-actualiser")
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_hidden()
+    # Ce que la page écrit elle-même ne se signale pas : un doute, une passe.
+    page.locator(f'#an-poses-liste [data-douter="{_cri(decor)["id"]}"]').click()
+    page.locator("#an-dt-texte").fill("Un juron ?")
+    page.locator("#an-dt-envoyer").click()
+    expect(page.locator("#an-dt-texte")).to_have_count(0)
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_hidden()
+    # Un brouillon de doute, des mots désignés, puis un relevé posé AILLEURS sur la bulle.
+    _mot(page, 0).click()                          # le mot du cri : sa ligne reste
+    page.locator(f'#an-poses-liste [data-douter="{_cri(decor)["id"]}"]').click()
+    page.locator("#an-dt-texte").fill("Et ce second mot ?")
+    _poser(decor, region_id=decor["bulle"], entree_cle="ton-de-voix", variante_cle="crie")
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_visible()
+    expect(bouton).to_have_attribute(
+        "title", "La planche a changé ailleurs : des relevés sur 1 zone. "
+                 "Actualiser la recharge, sans perdre votre saisie.")
+    # Rien ne se recharge d'office.
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "false")
+    with page.expect_response(lambda r: r.url.endswith(f"/api/planches/{decor['planche']}/releves")):
+        bouton.click()
+    expect(bouton).to_be_hidden()
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "true")
+    # La saisie est restée : la zone, le mot désigné, le doute à moitié écrit.
+    expect(page.locator("#an-tete-zone")).to_have_text("bulle b1")
+    expect(_mot(page, 0)).to_have_attribute("aria-selected", "true")
+    expect(page.locator("#an-dt-texte")).to_have_value("Et ce second mot ?")
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_hidden()
+
+
+def test_une_passe_ou_un_doute_d_ailleurs_se_signalent_aussi(page, decor):
+    _ouvrir(page, decor, decor["c2"])
+    bouton = page.locator("#an-actualiser")
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_hidden()
+    with _http(decor) as c:
+        assert c.put(f"/api/planches/{decor['planche']}/passes/{decor['grille']}",
+                     json={}).status_code == 200
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_visible()
+    bouton.click()
+    expect(bouton).to_be_hidden()
+    _douter_api(decor, _cri(decor)["id"], "Vu d'ailleurs ?")
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_visible()
+
+
+def test_un_releve_retire_ailleurs_quitte_la_page_sans_rien_relancer(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    rid = _cri(decor)["id"]
+    expect(page.locator(f'#an-poses-liste [data-retirer="{rid}"]')).to_be_visible()
+    with _http(decor) as c:
+        assert c.request("DELETE", f"/api/releves/{rid}").status_code == 204
+    envois = []
+    page.on("request", lambda r: envois.append((r.method, r.url))
+            if "/api/releves" in r.url and r.method != "GET" else None)
+    page.locator(f'#an-poses-liste [data-retirer="{rid}"]').click()
+    expect(page.locator("#toasts")).to_contain_text("retiré depuis, par un autre écran")
+    expect(page.locator(f'#an-poses-liste [data-retirer="{rid}"]')).to_have_count(0)
+    assert envois == [("DELETE", f"{decor['base']}/api/releves/{rid}")]
+
+
+def test_un_doute_dont_le_releve_est_retire_ailleurs_rend_son_texte(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    rid = _cri(decor)["id"]
+    page.locator(f'#an-poses-liste [data-douter="{rid}"]').click()
+    page.locator("#an-dt-texte").fill("Mon doute écrit pour rien")
+    with _http(decor) as c:
+        assert c.request("DELETE", f"/api/releves/{rid}").status_code == 204
+    page.locator("#an-dt-envoyer").click()
+    expect(page.locator("#toasts")).to_contain_text("« Mon doute écrit pour rien »")
+    expect(page.locator("#an-dt-texte")).to_have_count(0)
+
+
+def test_actualiser_attend_un_conflit_ouvert(page, decor):
+    with _http(decor) as c:
+        r = c.post("/api/releves", json={"region_id": decor["bulle"], "grille_id": decor["grille"],
+                                         "version": 1, "entree_cle": "ton-de-voix",
+                                         "variante_cle": "crie"}).json()
+    _ouvrir(page, decor, decor["bulle"])
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{r['id']}", json={"variante_cle": "chuchote"}).status_code == 200
+    page.locator("#an-plan .an-var", has_text="crié").click()        # ouvre le bandeau
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    # Un autre changement, sur une autre zone (la bulle, touchée par le retrait refusé, a
+    # adopté sa nouvelle empreinte : c'est la limite écrite de `lib/signal-planche.js`).
+    _poser(decor, region_id=decor["c2"], entree_cle="regard-camera")
+    _retour_sur_l_onglet(page)
+    bouton = page.locator("#an-actualiser")
+    expect(bouton).to_be_visible()
+    bouton.click()
+    expect(page.locator("#an-cf-mienne")).to_be_focused()            # le conflit attend son choix
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(bouton).to_be_visible()

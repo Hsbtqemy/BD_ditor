@@ -21,7 +21,15 @@
    s'y fond. Sur le même champ, c'est le 409 de CONC-3 qui le dit à l'enregistrement ; sur un
    autre champ de la même région, rien jusqu'au prochain changement d'ailleurs. Et une
    écriture que ce module ne sait pas placer est réputée avoir tout touché (`tout`) :
-   l'erreur va du côté du signal manqué, jamais du côté d'un signal faux. */
+   l'erreur va du côté du signal manqué, jamais du côté d'un signal faux.
+
+   LA PAGE ANNOTATION (ANN-7, tranche 2) s'en sert aussi, avec l'empreinte des RELEVÉS que la
+   route rend à part (`releves` : une clé par zone qui porte un relevé ou une passe, et
+   « planche » pour la surface). `cles` les réunit aux régions sous des clés `releves:<id>`
+   et `releves:planche` ; une écriture sur un relevé, un doute ou une passe touche la zone
+   du relevé, que la page connaît (`ou`). Toucher une région touche aussi ses relevés, et
+   l'inverse : la limite écrite plus haut vaut pour les deux. L'Atelier ne lit que les
+   régions : un relevé posé ailleurs ne lui signale rien, puisqu'il n'en montre rien. */
 (function (root, factory) {
   const api = factory();
   if (typeof module !== "undefined" && module.exports) module.exports = api;  // Node (tests)
@@ -56,10 +64,12 @@
      `{ ids: [...], sousArbre }` — `sousArbre` : la suppression d'une région emporte ses
      enfants, que l'appelant connaît (le module, lui, n'a pas l'arbre). `reponse` : le corps
      rendu, d'où vient l'identifiant d'une région CRÉÉE. */
-  function regionsTouchees(methode, chemin, reponse, plancheId) {
+  function regionsTouchees(methode, chemin, reponse, plancheId, ou) {
     const m = String(methode || "GET").toUpperCase();
     if (m === "GET" || m === "HEAD") return null;
     const p = String(chemin || "").replace(/^https?:\/\/[^/]+/, "");
+    const releve = releveTouche(m, p, reponse, plancheId, ou);
+    if (releve !== undefined) return releve;
     // Supprimer un personnage emporte ses locuteurs et ses présences par cascade.
     if (m === "DELETE" && /^\/api\/personnages\/\d+(\?|$)/.test(p)) return { tout: true };
     if (SANS_EFFET.some((re) => re.test(p))) return null;
@@ -78,25 +88,75 @@
     return { tout: true };
   }
 
+  /* Une écriture sur un relevé, un doute ou une passe de PLANCHE (la page Annotation) : la
+     zone qu'elle touche, `{ ids: [région] }` ou `{ ids: [], planche: true }` pour la
+     surface ; `{ tout: true }` quand on ne sait pas la placer ; `undefined` pour une
+     écriture qui n'est pas de cette sorte. `ou(sorte, id)` — `sorte` : « releve » ou
+     « doute » — rend `{ region_id, planche_id }` d'après ce que l'écran a lu, ou `null`. */
+  function zoneDe(x) {
+    if (!x) return null;
+    if (x.region_id !== null && x.region_id !== undefined) return { ids: [Number(x.region_id)], sousArbre: false };
+    if (x.planche_id !== null && x.planche_id !== undefined) return { ids: [], sousArbre: false, planche: true };
+    return null;
+  }
+
+  function releveTouche(m, p, reponse, plancheId, ou) {
+    const lire = (sorte, id) => (typeof ou === "function" ? ou(sorte, id) : null);
+    const tout = { tout: true };
+    if (/^\/api\/releves(\?|$)/.test(p)) return m === "POST" ? zoneDe(reponse) || tout : tout;
+    const r = p.match(/^\/api\/releves\/(\d+)(\/doutes)?(\?|$)/);
+    if (r) return zoneDe(reponse && !r[2] ? reponse : null) || zoneDe(lire("releve", Number(r[1]))) || tout;
+    const d = p.match(/^\/api\/doutes\/(\d+)\/(messages|levee)(\?|$)/);
+    if (d) {
+      return zoneDe(reponse && reponse.releve_id != null ? lire("releve", Number(reponse.releve_id)) : null)
+        || zoneDe(lire("doute", Number(d[1]))) || tout;
+    }
+    const pl = p.match(/^\/api\/planches\/(\d+)\/passes\//);
+    if (pl) return Number(pl[1]) === plancheId ? { ids: [], sousArbre: false, planche: true } : null;
+    return undefined;
+  }
+
+  /* Les clés d'une empreinte pour la page Annotation : les régions, et les relevés de chaque
+     zone sous `releves:<id>` (`releves:planche` pour la surface). */
+  const PREFIXE = "releves:";
+  function cles(reponse) {
+    const out = { ...((reponse && reponse.regions) || {}) };
+    for (const [k, v] of Object.entries((reponse && reponse.releves) || {})) out[PREFIXE + k] = v;
+    return out;
+  }
+
+  /* Une clé est-elle touchée ? Une région l'est par son identifiant ; les relevés d'une zone,
+     par l'identifiant de la zone, ou par `planche` pour la surface. */
+  function touchee(cle, touchees) {
+    const ids = touchees && touchees.ids ? touchees.ids : new Set();
+    if (!String(cle).startsWith(PREFIXE)) return ids.has(Number(cle));
+    const reste = String(cle).slice(PREFIXE.length);
+    return reste === "planche" ? !!(touchees && touchees.planche) : ids.has(Number(reste));
+  }
+
+  /* Une région se nomme par son identifiant (un nombre) ; les relevés d'une zone, par leur clé. */
+  const nom = (cle) => (String(cle).startsWith(PREFIXE) ? String(cle) : Number(cle));
+  const ordre = (a, b) => (typeof a === typeof b ? (typeof a === "number" ? a - b : a < b ? -1 : a > b ? 1 : 0)
+    : typeof a === "number" ? -1 : 1);
+
   /* `base`, `nouvelle` : { "<id de région>": empreinte }. `touchees` : { tout, ids:Set }.
      Rend { autres: { creees, modifiees, supprimees } (identifiants triés), base }. */
   function comparer(base, nouvelle, touchees) {
     const autres = { creees: [], modifiees: [], supprimees: [] };
     if (touchees && touchees.tout) return { autres, base: { ...nouvelle } };
-    const ids = touchees && touchees.ids ? touchees.ids : new Set();
     const suite = {};
     for (const id of new Set([...Object.keys(base), ...Object.keys(nouvelle)])) {
       const avant = base[id], apres = nouvelle[id];
-      if (avant === apres || ids.has(Number(id))) {
+      if (avant === apres || touchee(id, touchees)) {
         if (apres !== undefined) suite[id] = apres;   // inchangée, ou touchée ici : adoptée
         continue;
       }
-      if (avant === undefined) autres.creees.push(Number(id));
-      else if (apres === undefined) autres.supprimees.push(Number(id));
-      else autres.modifiees.push(Number(id));
+      if (avant === undefined) autres.creees.push(nom(id));
+      else if (apres === undefined) autres.supprimees.push(nom(id));
+      else autres.modifiees.push(nom(id));
       if (avant !== undefined) suite[id] = avant;     // l'écart reste jusqu'à « Actualiser »
     }
-    for (const k of Object.keys(autres)) autres[k].sort((a, b) => a - b);
+    for (const k of Object.keys(autres)) autres[k].sort(ordre);
     return { autres, base: suite };
   }
 
@@ -108,17 +168,24 @@
      Actualiser la recharge, sans perdre votre saisie. » Vide s'il n'y a rien. */
   function titre(autres) {
     const morceaux = [];
+    const regions = (l) => l.filter((x) => typeof x === "number");
     for (const [cle, mot] of [["modifiees", "modifiée"], ["creees", "créée"],
                               ["supprimees", "supprimée"]]) {
-      const n = autres[cle].length;
+      const n = regions(autres[cle]).length;
       if (!n) continue;
       const s = n > 1 ? "s" : "";
       morceaux.push(morceaux.length ? `${n} ${mot}${s}` : `${n} région${s} ${mot}${s}`);
+    }
+    // Les relevés (la page Annotation) : sur combien de zones ils ont changé.
+    const zones = new Set(["creees", "modifiees", "supprimees"]
+      .flatMap((k) => autres[k].filter((x) => typeof x !== "number")));
+    if (zones.size) {
+      morceaux.push(`des relevés sur ${zones.size} zone${zones.size > 1 ? "s" : ""}`);
     }
     if (!morceaux.length) return "";
     return `La planche a changé ailleurs : ${morceaux.join(", ")}. `
       + "Actualiser la recharge, sans perdre votre saisie.";
   }
 
-  return { INTERVALLE_MS, regionsTouchees, comparer, nombre, titre };
+  return { INTERVALLE_MS, regionsTouchees, comparer, nombre, titre, cles, PREFIXE };
 });

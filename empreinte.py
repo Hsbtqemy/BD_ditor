@@ -28,6 +28,9 @@ l'écran (`clause_terme` — le terme ET sa dimension, `socle._attributs_de`) : 
 compterait un tag local à une collection qu'on ne lit pas signalerait « changé » sans rien à
 montrer, et dirait qu'un travail invisible bouge sur cette région.
 
+**Les relevés à part** (ANN-7, tranche 2) : `empreintes_releves`, que la route rend sous
+`releves` pour la page Annotation, et que l'Atelier ne lit pas.
+
 Un condensé court (12 caractères hexadécimaux) : il ne sert qu'à comparer deux états de la
 même région, et rien n'en sort qui ne soit déjà lisible par la route des régions.
 """
@@ -81,4 +84,64 @@ def empreintes(conn: sqlite3.Connection, planche_id: int, portee) -> dict[str, s
                  sorted(situations.get(rid, []))]
         brut = json.dumps(canon, ensure_ascii=False, separators=(",", ":"))
         resultat[str(rid)] = hashlib.sha1(brut.encode("utf-8")).hexdigest()[:12]
+    return resultat
+
+
+def empreintes_releves(conn: sqlite3.Connection, planche_id: int) -> dict[str, str]:
+    """ANN-7, tranche 2 (jalon 2, commit 6) — l'empreinte des RELEVÉS de la planche, pour la
+    page Annotation : `{identifiant de région (texte) → condensé}` et `"planche"` pour la
+    surface. Une clé par zone qui porte quelque chose — un relevé, une passe —, et rien pour
+    une zone qui ne porte rien : sa première pose la fait apparaître, son dernier retrait la
+    fait partir.
+
+    **À PART des régions, et c'est voulu.** L'Atelier ne montre ni relevé, ni passe, ni
+    doute : mêlés à l'empreinte d'une région, ils lui feraient proposer « Actualiser » pour
+    une planche dont rien de ce qu'il montre n'a changé. Il ne lit que `regions` ; la page
+    Annotation lit les deux (`static/lib/signal-planche.js`, `BDSignal.cles`).
+
+    Ce qui compte : chaque relevé — son entrée et sa version, sa variante, ses qualificatifs,
+    sa précision, son lien, son passage (les rangs) —, son doute ouvert et la longueur de son
+    fil, ses doutes levés et leur issue ; chaque passe — sa grille, sa rubrique, qui l'a
+    marquée. Tout cela, qui lit la planche le lit déjà par `GET /api/planches/{id}/releves` :
+    aucune borne de plus n'est à poser. Ni l'état dérivé (il suit le texte et les liens, qui
+    ont leur empreinte), ni les dates."""
+    zones = defaultdict(list)
+
+    def cle(region_id) -> str:
+        return "planche" if region_id is None else str(region_id)
+
+    releves = conn.execute(
+        "SELECT * FROM releve WHERE planche_id = ? OR region_id IN "
+        "(SELECT id FROM regions WHERE planche_id = ?) ORDER BY id",
+        (planche_id, planche_id)).fetchall()
+    ids = [r["id"] for r in releves]
+    qualifs, passages, ouverts, leves = (defaultdict(list) for _ in range(4))
+    if ids:
+        marques = ", ".join("?" * len(ids))
+        for rid, q in conn.execute(f"SELECT releve_id, qualificatif_cle FROM releve_qualificatif "
+                                   f"WHERE releve_id IN ({marques})", ids):
+            qualifs[rid].append(q)
+        for rid, rang in conn.execute(f"SELECT releve_id, rang FROM releve_mot WHERE releve_id "
+                                      f"IN ({marques}) ORDER BY releve_id, position", ids):
+            passages[rid].append(rang)
+        for rid, did, issue, levee, n in conn.execute(
+                f"SELECT d.releve_id, d.id, d.issue, d.leve_le IS NOT NULL, "
+                f"(SELECT COUNT(*) FROM doute_message m WHERE m.doute_id = d.id) "
+                f"FROM doute d WHERE d.releve_id IN ({marques}) ORDER BY d.id", ids):
+            (leves if levee else ouverts)[rid].append([did, issue, n])
+    for r in releves:
+        zones[cle(r["region_id"])].append(
+            ["r", r["id"], r["grille_id"], r["version_id"], r["entree_cle"], r["variante_cle"],
+             sorted(qualifs[r["id"]]), r["precision"], r["lien_region_id"], passages[r["id"]],
+             ouverts[r["id"]], leves[r["id"]]])
+    for p in conn.execute(
+            "SELECT region_id, grille_id, rubrique_cle, par FROM passe WHERE planche_id = ? OR "
+            "region_id IN (SELECT id FROM regions WHERE planche_id = ?) "
+            "ORDER BY grille_id, rubrique_cle, region_id",
+            (planche_id, planche_id)):
+        zones[cle(p[0])].append(["p", p[1], p[2], p[3]])
+    resultat = {}
+    for k, canon in zones.items():
+        brut = json.dumps(canon, ensure_ascii=False, separators=(",", ":"))
+        resultat[k] = hashlib.sha1(brut.encode("utf-8")).hexdigest()[:12]
     return resultat
