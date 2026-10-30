@@ -611,9 +611,26 @@
     return rangs(s);
   }
 
-  /* Le texte d'un passage, ses trous dits « … » : « ne … pas ». `mots` : le découpage. */
-  function texteDuPassage(mots, sel) {
+  /* Le texte d'un passage, ses trous dits « … » : « ne … pas ». `mots` : le découpage.
+     Avec `texte` (le texte transcrit, que le découpage indexe par `debut` et `fin`), chaque
+     morceau continu se lit TEL QU'IL EST TRANSCRIT — « L' CUL », et non les formes mises
+     bout à bout (« L ' CUL ») ; sans lui, les formes, séparées d'une espace. */
+  function texteDuPassage(mots, sel, texte) {
     const r = rangs(sel);
+    const parRangMot = new Map((mots || []).map((m) => [m.rang, m]));
+    if (typeof texte === "string" && r.length
+        && r.every((x) => parRangMot.has(x) && Number.isInteger(parRangMot.get(x).debut)
+                          && Number.isInteger(parRangMot.get(x).fin))) {
+      const morceaux = [];
+      let debut = r[0];
+      r.forEach((x, i) => {
+        if (i === r.length - 1 || r[i + 1] !== x + 1) {
+          morceaux.push(texte.slice(parRangMot.get(debut).debut, parRangMot.get(x).fin));
+          debut = r[i + 1];
+        }
+      });
+      return morceaux.join(" … ");
+    }
     const parRang = new Map((mots || []).map((m) => [m.rang, m.forme]));
     const out = [];
     r.forEach((x, i) => {
@@ -1231,6 +1248,69 @@
     return { n: faites, total: et.length };
   }
 
+  /* ── Commit 7 : les correctifs de la passe du jalon 1 ── */
+
+  /* La zone qu'un LIEN désigne, en mots, sur la ligne du relevé (Hugo, passe du jalon 1 :
+     « Changer le lien » ne disait pas laquelle) : son étiquette et le début de son texte —
+     « b2 « PÉDÉ ! » » —, ou, la zone disparue, ce qu'elle disait. `null` sans lien. */
+  const COURT = 24;
+  function nomDuLien(rangement, regions, lien) {
+    if (!lien) return null;
+    const court = (t) => {
+      const x = String(t || "").replace(/\s+/g, " ").trim();
+      return x.length > COURT ? x.slice(0, COURT - 1).trimEnd() + "…" : x;
+    };
+    if (lien.existe === false) {
+      return lien.texte ? `zone disparue « ${court(lien.texte)} »` : "zone disparue";
+    }
+    const r = (Array.isArray(regions) ? regions : []).find((x) => x.id === lien.region_id);
+    const ou = situer(rangement, lien.region_id);
+    let etiq = null;
+    if (ou) {
+      const c = rangement[ou.caseIx];
+      etiq = ou.zoneId === null ? etiquette(c.case) : etiquettesDeLaCase(c).get(ou.zoneId);
+    }
+    const texte = r && r.ocr_texte ? court(r.ocr_texte) : "";
+    if (!etiq && !texte) return "une autre zone";
+    return [etiq, texte ? `« ${texte} »` : null].filter(Boolean).join(" ");
+  }
+
+  /* Les relevés de la SURFACE (la planche entière) : la liste de toute zone les porte, en
+     bas et à part (Hugo, 2026-10-30 : « le montrer partout »). */
+  function relevesDeSurface(releves, plancheId) {
+    return (Array.isArray(releves) ? releves : []).filter((r) => r.planche_id === plancheId
+      && (r.region_id === null || r.region_id === undefined));
+  }
+
+  /* Sur quoi un relevé est posé, en un mot, sur sa ligne : un seul libellé par cible — un
+     relevé de case se dit « la case » où qu'on le lise (la passe du jalon 1 le disait « la
+     case » sur une bulle et « toute la zone » sur la case). `typeDe(id)` : le type d'une
+     région de la planche. Un passage de mots se dit par son texte, ailleurs. */
+  function ciblePosee(r, zone, typeDe) {
+    if (!r) return "";
+    if (r.region_id === null || r.region_id === undefined) return "la planche";
+    const type = typeof typeDe === "function" ? typeDe(r.region_id) : null;
+    if (type === "case") return "la case";
+    if (type === "personnage") return "la boîte";
+    if (zone && !zone.pseudo && r.region_id === zone.id) return "toute la zone";
+    return type ? `${MASCULINS.has(type) ? "le" : "la"} ${nomType(type)}` : "la zone";
+  }
+
+  /* La boîte du guide REPLIÉE ou dépliée (Hugo, passe du jalon 1 : la liste de ce qui est
+     posé veut plus de place) : retenue sur le poste, clé `bd-annotation-guide`, sous
+     try/catch — sans stockage, elle est dépliée. */
+  const CLE_GUIDE = "bd-annotation-guide";
+  function lireGuideReplie(stockage) {
+    try { return !!stockage && stockage.getItem(CLE_GUIDE) === "replie"; } catch (e) { return false; }
+  }
+  function retenirGuideReplie(stockage, replie) {
+    try {
+      if (!stockage) return false;
+      stockage.setItem(CLE_GUIDE, replie ? "replie" : "ouvert");
+      return true;
+    } catch (e) { return false; }
+  }
+
   return { TYPES_TEXTE, CLES_ADRESSE, CLE_RELEVES, estTexte, nomType, deLa, casesDeLaPlanche,
            etiquette, etiquettesDeLaCase, situer, libellePlanche, preparation, adresse,
            lireAdresse, lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
@@ -1245,6 +1325,7 @@
            suivanteDuParcours, cibleDePasse, passesSurLaCible, rubriquesDeTete, terminee,
            signataires, aRouvrir, caseTerminee, casesEnDoute, CAUSES, causesEnMots,
            passageAncre, issueEnMots, changerEnPlace, isoDeSqlite, cleDeLecture, aRevoir,
-           relevesParCase, decompte, zonesTerminees };
+           relevesParCase, decompte, zonesTerminees, nomDuLien, relevesDeSurface, ciblePosee,
+           CLE_GUIDE, lireGuideReplie, retenirGuideReplie };
 
 });

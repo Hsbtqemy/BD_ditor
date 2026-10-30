@@ -75,5 +75,42 @@
     try { stockage.setItem(CLE_ETAT + page, sansContexte(qs)); } catch (e) { /* sans mémoire */ }
   }
 
-  return { safeRetour, CLE_ETAT, stockageDeSession, adresseExplicite, etatDeDepart, memoriser };
+  /* ── Le LIEU partagé : l'Atelier et la page Annotation (ANN-7, tranche 2, commit 7) ──
+     Hugo, 2026-10-30 : passer de l'un à l'autre PAR LA NAVIGATION garde le même album, la
+     même planche et la même zone. Chacune écrit le lieu où elle est (`retenirLieu`, dans le
+     stockage de SESSION, clé `bd-lieu`) ; arrivée sur une adresse NUE, chacune part de sa
+     propre mémoire — ce qui lui est propre, la grille de la page Annotation — et y pose le
+     lieu (`etatAvecLieu`). L'ADRESSE L'EMPORTE TOUJOURS, comme pour `etatDeDepart`. La zone
+     ne suit que si elle a un sens des deux côtés : la page Annotation ne l'écrit pas pour la
+     planche entière (la case pseudo n'est pas une région), et un lieu sans zone en retire
+     une qu'une mémoire aurait gardée d'une autre planche. */
+  const CLE_LIEU = "bd-lieu";
+  const CLES_LIEU = ["album", "planche", "region"];
+
+  function retenirLieu(stockage, qs) {
+    if (!stockage) return;
+    const p = new URLSearchParams(qs || "");
+    const lieu = new URLSearchParams();
+    for (const k of CLES_LIEU) if (p.get(k)) lieu.set(k, p.get(k));
+    try {
+      if (lieu.get("album")) stockage.setItem(CLE_LIEU, lieu.toString());
+    } catch (e) { /* sans mémoire */ }
+  }
+
+  function etatAvecLieu(qs, stockage, page) {
+    const depart = etatDeDepart(qs, stockage, page);
+    if (depart.source === "adresse") return depart;
+    let brut = null;
+    try { brut = stockage ? stockage.getItem(CLE_LIEU) : null; } catch (e) { brut = null; }
+    const lieu = new URLSearchParams(typeof brut === "string" ? brut : "");
+    if (!lieu.get("album")) return depart;
+    const m = new URLSearchParams(depart.qs || "");
+    for (const k of CLES_LIEU) {
+      if (lieu.get(k)) m.set(k, lieu.get(k)); else m.delete(k);
+    }
+    return { qs: "?" + m.toString(), source: "lieu" };
+  }
+
+  return { safeRetour, CLE_ETAT, stockageDeSession, adresseExplicite, etatDeDepart, memoriser,
+           CLE_LIEU, retenirLieu, etatAvecLieu };
 });

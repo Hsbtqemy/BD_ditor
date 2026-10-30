@@ -255,6 +255,11 @@ DEPLIES = {
     "#an-releves-btn": {
         "nom": "grilles des relevés", "panneau": "#an-releves-pop",
         "surfaces": ["/annotation"]},
+    # La boîte du guide (commit 7) se replie et se déplie ; dépliée par défaut, et mesurée
+    # dépliée : c'est là qu'elle a le plus à porter.
+    "#an-guide-replier": {
+        "nom": "boîte du guide", "panneau": "#an-guide-contenu",
+        "surfaces": ["/annotation"]},
     # Le menu du compte (UX-14) : « Déconnexion » y a quitté la bande. `theme.js` ne le
     # construit que s'il a au moins une entrée, donc derrière le proxy.
     ".user-chip button.user-who": {

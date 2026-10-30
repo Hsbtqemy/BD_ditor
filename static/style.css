@@ -3983,10 +3983,26 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .an-teinte-5 { background: var(--accent-green); }
 .an-teinte-6 { background: var(--accent-red); }
 .an-trait-autre { background: var(--text-muted); }
-/* Désigner le lien d'un relevé : les zones de texte de la minicarte se cliquent. */
+/* Désigner le lien d'un relevé : les zones de texte de la minicarte, dessinées par-dessus les
+   cadres des cases, prennent le clic ; ailleurs, la case se choisit encore (passe du jalon 1 :
+   le cadre de la case, dessiné au-dessus d'elles, prenait le clic). */
+/* `all` et non `auto` : une zone de la minicarte n'a pas de remplissage, et en SVG `auto`
+   ne prend le clic que sur ce qui est peint — son trait d'un pixel. */
 body.an-designer .an-mz-enfant.t-bulle, body.an-designer .an-mz-enfant.t-cartouche,
 body.an-designer .an-mz-enfant.t-texte {
-  pointer-events: auto; cursor: crosshair; stroke: var(--accent-amber); opacity: 1; }
+  pointer-events: all; cursor: crosshair; stroke: var(--accent-amber); opacity: 1; }
+.an-mini-boite { position: relative; }
+.an-mini-mode { position: absolute; top: .3077rem; left: 50%; transform: translateX(-50%);
+                margin: 0; max-width: calc(100% - .6154rem); padding: .1538rem .6154rem;
+                border-radius: 10px; background: var(--bg-panel); color: var(--text);
+                border: 1px solid var(--accent-amber); font-size: .8462rem; text-align: center;
+                pointer-events: none; }
+.an-mini-mode[hidden] { display: none; }
+/* Une grille qu'on ne fait que LIRE se voit éteinte : ni curseur main, ni survol (passe du
+   jalon 1). Le texte reste en encre lisible : éteint n'est pas illisible. */
+#an-plan [aria-disabled="true"] { cursor: default; color: var(--text-muted); }
+#an-plan .an-ent-btn[aria-disabled="true"]:hover { background: none; border-color: transparent; }
+#an-plan .an-var[aria-disabled="true"] { border-style: dashed; }
 
 /* La GRILLE (commit 2) : l'en-tête (onglets, « Afficher », filtre), le corps qui défile,
    et la ligne du guide à HAUTEUR FIXE en bas — elle ne change pas la hauteur de la colonne,
@@ -4049,6 +4065,11 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-res-vide { padding: .3846rem .6154rem; }
 .an-ailleurs { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem; }
 /* Ce qui est posé (commit 3), à hauteur fixe au-dessus de la ligne du guide. */
+/* Commit 7 : ce qui est posé et la boîte du guide partagent une hauteur FIXE (celle qu'ils
+   avaient ensemble) ; repliée, la boîte ne garde que son pied, et la liste prend le reste. */
+.an-bas { flex: 0 0 auto; height: 23.0769rem; display: flex; flex-direction: column; min-height: 0; }
+.an-bas .an-poses { flex: 1 1 auto; height: auto; min-height: 0; }
+.an-grille.guide-replie .an-guide { height: auto; }
 .an-poses { flex: 0 0 auto; height: 10.7692rem; display: flex; flex-direction: column;
             border-top: 1px solid var(--border); padding: .4615rem .9231rem; gap: .3077rem;
             position: relative; }
@@ -4077,8 +4098,16 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-pose-masquee .an-pose-lib { font-weight: 400; color: var(--text-muted); }
 .an-etat { font-size: .8462rem; padding: 0 .4615rem; border-radius: 9px; border: 1px solid var(--border); }
 .an-etat-a_revoir { color: var(--ink-red); }
-.an-pose-prec { flex: 1 1 100%; display: flex; padding-left: 1.2rem; }
-.an-prec { flex: 1 1 auto; min-width: 0; padding: .1538rem .4615rem; font: inherit;
+/* Les gestes d'une ligne tiennent ensemble ; avec une précision, ils prennent une ligne
+   entière où le champ se réduit et ✕ reste à sa droite (commit 7). */
+.an-pose-actes { display: flex; align-items: center; gap: .1538rem .3077rem; flex: 0 0 auto;
+                 min-width: 0; max-width: 100%; }
+.an-pose-actes.avec-prec { flex: 1 1 100%; padding-left: 1.2rem; }
+.an-pose-actes > button { flex: 0 0 auto; }
+.an-pose-lien { font-size: .8462rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.an-pose-groupe { margin-top: .4615rem; padding-top: .3077rem; border-top: 1px dashed var(--border);
+                  font-size: .8462rem; font-weight: 600; color: var(--text-muted); }
+.an-prec { flex: 1 1 4rem; width: 4rem; min-width: 0; padding: .1538rem .4615rem; font: inherit;
            background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
            border-radius: 4px; }
 .an-lien-btn[aria-pressed="true"] { border-color: var(--accent-amber); }
@@ -4101,13 +4130,14 @@ body.an-designer .an-mz-enfant.t-texte {
             padding: .6154rem .9231rem; gap: .3077rem; font-size: .9231rem; }
 .an-guide-contenu { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex;
                     flex-direction: column; gap: .3077rem; }
+.an-guide-contenu[hidden] { display: none; }
 .an-guide-contenu p { margin: 0; overflow-wrap: anywhere; }
 .an-g-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6154rem; }
 .an-g-lib { font-weight: 700; font-size: 1rem; }
 .an-g-chemin { color: var(--text-muted); font-size: .8462rem; }
 .an-g-ex { font-style: italic; }
 .an-g-piege { border-left: 3px solid var(--accent-amber); padding-left: .6154rem; }
-.an-guide-pied { flex: 0 0 auto; display: flex; justify-content: flex-end; }
+.an-guide-pied { flex: 0 0 auto; display: flex; align-items: center; gap: .3077rem; }
 #an-guide-modal { position: fixed; inset: 0; z-index: 100; background: var(--scrim);
                   display: flex; align-items: center; justify-content: center; }
 #an-guide-modal[hidden] { display: none; }
@@ -4138,6 +4168,8 @@ body.an-designer .an-mz-enfant.t-texte {
   .an-col { overflow: visible; min-height: auto; }
   .an-grille-corps { overflow: visible; }
   .an-poses { height: auto; min-height: 10.7692rem; }
+  .an-bas { height: auto; }
+  .an-bas .an-poses { min-height: 10.7692rem; }
   .an-gauche { border-right: none; border-top: 1px solid var(--border); }
 }
 /* Une colonne : la case, la planche, puis la grille. */

@@ -55,7 +55,11 @@
       </div>
       <div id="an-p-planche" class="an-panneau" role="tabpanel" aria-labelledby="an-ong-planche">
         <h2 class="an-titre" id="an-mini-titre">Planche</h2>
-        <div id="an-mini" class="an-mini" title="Choisir une case"></div>
+        <div class="an-mini-boite">
+          <div id="an-mini" class="an-mini" title="Choisir une case"></div>
+          <!-- Désigner un lien (commit 7) : la minicarte change de rôle, et le dit sur elle. -->
+          <p id="an-mini-mode" class="an-mini-mode" hidden>Cliquez la zone liée · Échap annule</p>
+        </div>
         <section class="an-ctx" aria-labelledby="an-ctx-titre">
           <h2 class="an-titre" id="an-ctx-titre"
               title="Ce qui n'est pas du vocabulaire : il se lit ici, et s'écrit dans l'Atelier">Contexte</h2>
@@ -151,6 +155,9 @@
       </div>
       <!-- Ce qui est posé (commit 3) : sur les mots désignés, sinon sur la zone ; « Relevés : ▾ »
            règle de quelles grilles. -->
+      <!-- Ce qui est posé et la boîte du guide partagent une hauteur fixe : repliée, la boîte
+           laisse sa place à la liste (commit 7). -->
+      <div class="an-bas">
       <section id="an-poses" class="an-poses" aria-labelledby="an-poses-titre">
         <div class="an-poses-tete">
           <h3 class="an-sous-titre" id="an-poses-titre">—</h3>
@@ -165,8 +172,12 @@
       <div id="an-guide" class="an-guide" aria-live="polite">
         <div id="an-guide-contenu" class="an-guide-contenu"></div>
         <div class="an-guide-pied">
+          <button id="an-guide-replier" class="ghost small" type="button" aria-expanded="true"
+                  aria-controls="an-guide-contenu">Guide ▾</button>
+          <span class="nav-spacer"></span>
           <button id="an-guide-complet" class="ghost small" type="button">Guide complet ▸</button>
         </div>
+      </div>
       </div>
     </aside>
   </main>

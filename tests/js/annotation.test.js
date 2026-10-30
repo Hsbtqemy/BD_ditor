@@ -834,3 +834,72 @@ test("zones terminées n / N : les étapes du parcours que la passe de toute la 
                    { n: 1, total: 1 });
   assert.deepEqual(A.zonesTerminees(avec, planche, [], 1, 9), { n: 0, total: 1 });
 });
+
+/* ── Commit 7 : les correctifs de la passe du jalon 1 ── */
+test("le texte d'un passage se lit tel qu'il est transcrit, ses trous dits « … »", () => {
+  const texte = "L' CUL, NE VIENT PAS";
+  const decoupe = [{ rang: 0, forme: "L", debut: 0, fin: 1 }, { rang: 1, forme: "'", debut: 1, fin: 2 },
+                   { rang: 2, forme: "CUL", debut: 3, fin: 6 }, { rang: 3, forme: ",", debut: 6, fin: 7 },
+                   { rang: 4, forme: "NE", debut: 8, fin: 10 }, { rang: 5, forme: "VIENT", debut: 11, fin: 16 },
+                   { rang: 6, forme: "PAS", debut: 17, fin: 20 }];
+  assert.equal(A.texteDuPassage(decoupe, [0, 1, 2], texte), "L' CUL");
+  assert.equal(A.texteDuPassage(decoupe, [0, 1, 2]), "L ' CUL");            // sans texte : les formes
+  assert.equal(A.texteDuPassage(decoupe, [4, 6], texte), "NE … PAS");
+  assert.equal(A.texteDuPassage(decoupe, [2, 3, 5], texte), "CUL, … VIENT");
+  // Un mot sans position (un relevé ancré ailleurs) : les formes.
+  assert.equal(A.texteDuPassage([{ rang: 0, forme: "A" }, { rang: 1, forme: "B" }], [0, 1], "A B"), "A B");
+  assert.equal(A.texteDuPassage(decoupe, [9], texte), "?");
+});
+
+test("un lien dit la zone qu'il désigne : son étiquette, le début de son texte", () => {
+  const regions = [{ id: 11, type: "bulle", ocr_texte: "PÉDÉ !" },
+                   { id: 13, type: "cartouche", ocr_texte: "UN TRÈS LONG CARTOUCHE QUI NE TIENT PAS" },
+                   { id: 2, type: "case" }, { id: 12, type: "personnage" }];
+  const rang = [{ case: { id: 1, type: "case", citation: { case: 1 } },
+                  zones: [{ id: 11, type: "bulle", citation: { bulle: 2 } }, { id: 12, type: "personnage" },
+                          { id: 13, type: "cartouche" }] },
+                { case: { id: 2, type: "case", citation: { case: 2 } }, zones: [] }];
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 11, existe: true }), "b2 « PÉDÉ ! »");
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 13, existe: true }), "ca1 « UN TRÈS LONG CARTOUCHE… »");
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 2, existe: true }), "c2");
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 12, existe: true }), "p1");
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 99, existe: true }), "une autre zone");
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 99, existe: false, texte: "ADIEU" }),
+               "zone disparue « ADIEU »");
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 99, existe: false }), "zone disparue");
+  assert.equal(A.nomDuLien(rang, regions, null), null);
+});
+
+test("les relevés de la surface ; sur quoi un relevé est posé, un seul libellé par cible", () => {
+  const l = [{ id: 1, region_id: null, planche_id: 9 }, { id: 2, region_id: 4, planche_id: null },
+             { id: 3, region_id: null, planche_id: 8 }];
+  assert.deepEqual(A.relevesDeSurface(l, 9).map((r) => r.id), [1]);
+  const types = { 4: "case", 5: "bulle", 6: "personnage", 7: "cartouche" };
+  const typeDe = (id) => types[id] || null;
+  const bulle = { id: 5, type: "bulle" }, kase = { id: 4, type: "case" };
+  // « regard caméra » sur la case se dit « la case », qu'on lise la bulle ou la case.
+  assert.equal(A.ciblePosee({ region_id: 4 }, bulle, typeDe), "la case");
+  assert.equal(A.ciblePosee({ region_id: 4 }, kase, typeDe), "la case");
+  assert.equal(A.ciblePosee({ region_id: 5 }, bulle, typeDe), "toute la zone");
+  assert.equal(A.ciblePosee({ region_id: 6 }, bulle, typeDe), "la boîte");
+  assert.equal(A.ciblePosee({ region_id: 7 }, bulle, typeDe), "le cartouche");
+  assert.equal(A.ciblePosee({ region_id: null, planche_id: 9 }, bulle, typeDe), "la planche");
+  assert.equal(A.ciblePosee({ region_id: 99 }, bulle, typeDe), "la zone");
+  assert.equal(A.ciblePosee(null, bulle, typeDe), "");
+});
+
+test("la boîte du guide repliée se retient sur le poste ; sans stockage, dépliée", () => {
+  const m = new Map();
+  const s = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v) };
+  assert.equal(A.lireGuideReplie(s), false);
+  assert.equal(A.retenirGuideReplie(s, true), true);
+  assert.equal(m.get("bd-annotation-guide"), "replie");
+  assert.equal(A.lireGuideReplie(s), true);
+  A.retenirGuideReplie(s, false);
+  assert.equal(A.lireGuideReplie(s), false);
+  const leve = { getItem() { throw new Error("x"); }, setItem() { throw new Error("x"); } };
+  assert.equal(A.lireGuideReplie(leve), false);
+  assert.equal(A.retenirGuideReplie(leve, true), false);
+  assert.equal(A.lireGuideReplie(null), false);
+  assert.equal(A.retenirGuideReplie(null, true), false);
+});

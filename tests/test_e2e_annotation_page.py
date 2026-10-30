@@ -905,6 +905,18 @@ def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
     expect(corps.locator(".an-fil-texte")).to_have_text(["Un juron ?"])
     expect(corps.locator(".an-fil-qui")).to_have_text(["Decor Admin"])
     expect(corps.locator("textarea, [data-lever], [data-changer], [data-repondre]")).to_have_count(0)
+    # La grille se voit ÉTEINTE et le dit au clic, à l'écran et au lecteur d'écran (commit 7 :
+    # le clic sautait l'annonce). Playwright ne clique pas un élément éteint : on
+    # envoie le clic comme le navigateur le ferait.
+    cri = page.locator("#an-plan [role=checkbox]", has_text="cri").first
+    expect(cri).to_have_attribute("aria-disabled", "true")
+    assert cri.evaluate("(b) => getComputedStyle(b).cursor") != "pointer"
+    cri.dispatch_event("click")
+    expect(page.locator("#toasts")).to_contain_text("Vous lisez cet album")
+    expect(page.locator("#an-annonce")).to_have_text("Vous lisez cet album : rien ne s'y pose.")
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                      headers={**ECRITURE, **admin}) as c:
+        assert len(c.get(f"/api/planches/{pid}/releves").json()["releves"]) == 1
 
 
 def test_la_synthese_tient_a_320_px(page, decor):
@@ -1057,3 +1069,131 @@ def test_actualiser_attend_un_conflit_ouvert(page, decor):
     expect(page.locator("#an-cf-mienne")).to_be_focused()            # le conflit attend son choix
     expect(page.locator("#an-cf-titre")).to_be_visible()
     expect(bouton).to_be_visible()
+
+
+# --------------------------------------------------------------------------- #
+# Les correctifs de la passe du jalon 1 (commit 7)
+# --------------------------------------------------------------------------- #
+def test_la_precision_et_le_retrait_tiennent_sur_une_ligne(page, decor):
+    """À la largeur de Hugo (~1 400 px), ✕ passait sous le champ de la précision."""
+    page.set_viewport_size({"width": 1400, "height": 900})
+    o = _poser(decor, region_id=decor["bulle"], entree_cle="origine-du-son", mots=[1],
+               qualificatifs=["objet"])
+    _ouvrir(page, decor, decor["bulle"])
+    champ = page.locator("#an-poses-liste .an-prec")
+    retrait = page.locator(f'#an-poses-liste [data-retirer="{o["id"]}"]')
+    expect(champ).to_be_visible()
+    c, x = champ.bounding_box(), retrait.bounding_box()
+    assert abs((c["y"] + c["height"] / 2) - (x["y"] + x["height"] / 2)) < 6, (c, x)
+    assert x["x"] >= c["x"] + c["width"] - 1, (c, x)
+
+
+def test_le_lien_se_designe_sur_la_minicarte_et_dit_sa_zone(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-plan [role=checkbox]", has_text="réponse à une autre bulle").click()
+    page.locator("#an-poses-liste .an-lien-btn").click()
+    mode = page.locator("#an-mini-mode")
+    expect(mode).to_be_visible()                     # la minicarte a changé de rôle, et le dit
+    expect(page.locator("#an-mini")).to_have_attribute("title", re.compile("zone liée"))
+    # Le cartouche de la seconde case, sur la MINICARTE : le cadre de la case ne prend plus
+    # le clic (Playwright refuserait de cliquer un élément recouvert).
+    page.locator(f'#an-mini rect[data-region="{decor["cartouche"]}"]').click()
+    expect(mode).to_be_hidden()
+    expect(page.locator("#an-tete-case")).to_have_text("Case c1")      # la case n'a pas changé
+    r = [x for x in _releves(decor) if x["entree_cle"] == "reponse-a"]
+    assert r[0]["lien"]["region_id"] == decor["cartouche"]
+    expect(page.locator("#an-poses-liste .an-pose-lien")).to_have_text("↔ b1 « PENDANT CE TEMPS… »")
+    # Après la désignation, la minicarte rechoisit des cases.
+    page.locator('#an-mini .an-mz[data-case="1"]').click()
+    expect(page.locator("#an-tete-case")).to_have_text("Case c2")
+
+
+def test_la_boite_du_guide_se_replie_et_la_liste_prend_sa_place(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    bouton = page.locator("#an-guide-replier")
+    expect(bouton).to_have_attribute("aria-expanded", "true")
+    hauteur = lambda s: page.evaluate(  # noqa: E731
+        "(s) => Math.round(document.querySelector(s).getBoundingClientRect().height)", s)
+    colonne, poses = hauteur("#an-grille"), hauteur("#an-poses")
+    bouton.click()
+    expect(bouton).to_have_attribute("aria-expanded", "false")
+    expect(page.locator("#an-guide-contenu")).to_be_hidden()
+    assert hauteur("#an-poses") > poses + 80
+    assert hauteur("#an-grille") == colonne
+    # Retenu au rechargement.
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#an-guide-replier")).to_have_attribute("aria-expanded", "false", timeout=15000)
+    # Le formulaire d'un doute la déplie d'office ; refermé, elle se replie de nouveau.
+    page.locator(f'#an-poses-liste [data-douter="{_cri(decor)["id"]}"]').click()
+    expect(page.locator("#an-dt-texte")).to_be_visible()
+    expect(page.locator("#an-guide-replier")).to_have_attribute("aria-expanded", "true")
+    page.locator("#an-dt-annuler").click()
+    expect(page.locator("#an-guide-replier")).to_have_attribute("aria-expanded", "false")
+    expect(page.locator("#an-guide-contenu")).to_be_hidden()
+
+
+def test_le_releve_de_la_planche_se_lit_partout_et_la_case_se_dit_la_case(page, decor):
+    _poser(decor, planche_id=decor["planche"], entree_cle="ambiance")
+    _poser(decor, region_id=decor["c1"], entree_cle="regard-camera")
+    _ouvrir(page, decor, decor["bulle"])
+    liste = page.locator("#an-poses-liste")
+    expect(liste.locator("#an-poses-planche")).to_have_text("Sur la planche")
+    # En bas, à part : après le groupe, le relevé de la surface.
+    textes = liste.locator("li").all_inner_texts()
+    i = textes.index("Sur la planche")
+    assert any("ambiance" in t for t in textes[i + 1:]) and not any("ambiance" in t for t in textes[:i])
+    regard = liste.locator(".an-pose", has_text="regard caméra")
+    expect(regard.locator(".an-pose-pass")).to_have_text("la case")
+    page.locator("#an-vue-case rect.an-fond").click(position={"x": 5, "y": 300})
+    expect(page.locator("#an-tete-zone")).to_have_text("")
+    expect(liste.locator(".an-pose", has_text="regard caméra").locator(".an-pose-pass")).to_have_text("la case")
+
+
+def test_porte_sur_repart_de_la_zone_et_la_liste_le_suit(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, 1).click()                                  # SABORDS : le cri sur MILLE sort
+    expect(page.locator("#an-poses-titre")).to_have_text("Sur « SABORDS »")
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_have_count(0)
+    # « toute la bulle » : la liste suit « Porte sur », le mot restant désigné.
+    page.locator('#an-porte [data-porte="zone"]').click()
+    expect(page.locator("#an-poses-titre")).to_have_text("Dans la bulle b1")
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_have_count(1)
+    # Un choix d'une autre zone ne suit pas : « la planche », puis le cartouche.
+    page.locator('#an-porte [data-porte="planche"]').click()
+    page.locator('#an-mini .an-mz[data-case="1"]').click()
+    page.locator(f'#an-vue-case rect[data-zone="{decor["cartouche"]}"]').click()
+    expect(page.locator('#an-porte [aria-pressed="true"]')).to_have_attribute("data-porte", "mots")
+
+
+def test_le_titre_d_un_passage_suit_le_texte_transcrit(page, decor):
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=180,
+                      headers=ECRITURE) as c:
+        assert c.put(f"/api/regions/{decor['bulle']}",
+                     json={"ocr_texte": "L' CUL !"}).status_code == 200
+        decoupe = c.get(f"/api/regions/{decor['bulle']}/mots").json()["mots"]
+    rangs = [m["rang"] for m in decoupe if m["forme"] != "!"]
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, rangs[0]).click()
+    _mot(page, rangs[-1]).click(modifiers=["Shift"])
+    expect(page.locator("#an-poses-titre")).to_have_text("Sur « L' CUL »")
+
+
+def test_l_atelier_et_la_page_annotation_partagent_le_lieu(page, decor):
+    """Hugo, 2026-10-30 : par la navigation, l'une et l'autre gardent l'album, la planche
+    et la zone ; une adresse explicite l'emporte toujours."""
+    _ouvrir(page, decor, decor["cartouche"])
+    page.locator('#site-nav a[href="/"]').click()
+    page.wait_for_url(re.compile(rf"region={decor['cartouche']}"), timeout=15000)
+    assert f"planche={decor['planche']}" in page.url and f"album={decor['album']}" in page.url
+    # L'Atelier, sur une autre zone par son adresse : la page Annotation la reprend, par-dessus
+    # sa propre mémoire (qui disait le cartouche).
+    page.goto(f"{decor['base']}/?album={decor['album']}&planche={decor['planche']}"
+              f"&region={decor['bulle']}", wait_until="networkidle")
+    expect(page.locator("#region-type")).to_be_visible(timeout=15000)
+    page.locator('#site-nav a[href="/annotation"]').click()
+    page.wait_for_url("**/annotation?*", timeout=15000)
+    expect(page.locator("#an-tete-zone")).to_have_text("bulle b1", timeout=15000)
+    # Une adresse explicite l'emporte.
+    page.goto(f"{decor['base']}/annotation?album={decor['album']}&planche={decor['planche']}"
+              f"&region={decor['c2']}", wait_until="networkidle")
+    expect(page.locator("#an-tete-case")).to_have_text("Case c2", timeout=15000)

@@ -14,7 +14,10 @@
    le parcours et Ctrl+Z (commit 4). LE JALON 2, commit 5 : le DOUTE (« ? », son formulaire
    dans la boîte du guide) et la SYNTHÈSE, second onglet de la colonne de gauche — les
    relevés de la planche par case, « À revoir » (répondre, lever en gardant, en changeant,
-   en retirant ; rattacher ; compléter), le décompte. Commit 6 : DEUX ÉCRANS — « ⟳ Actualiser »
+   en retirant ; rattacher ; compléter), le décompte. Commit 7 : les correctifs de la passe
+   du jalon 1 — la boîte du guide se replie, une grille qu'on lit se voit éteinte, le lien
+   se désigne sur la minicarte et dit sa zone, le relevé de la planche se lit partout, le
+   lieu se partage avec l'Atelier. Commit 6 : DEUX ÉCRANS — « ⟳ Actualiser »
    quand la planche a changé ailleurs (régions, relevés, passes, doutes), et les gardes d'un
    départ de la planche.
 
@@ -38,7 +41,9 @@ const SVGNS = "http://www.w3.org/2000/svg";
 // d'écran quelle que soit la case »).
 const ETIQUETTE_PX = 12;
 
-const DEPART = Nav.etatDeDepart(location.search, Nav.stockageDeSession(window), PAGE);
+// Le LIEU (album, planche, zone) est partagé avec l'Atelier : y arriver par la navigation
+// reprend celui qu'on quittait (Hugo, 2026-10-30 ; `Nav.etatAvecLieu`). L'adresse l'emporte.
+const DEPART = Nav.etatAvecLieu(location.search, Nav.stockageDeSession(window), PAGE);
 // D'où l'on vient (`?retour=`, borné aux chemins internes) : « ← Retour » y ramène, et
 // l'adresse le garde à chaque choix, pour qu'il survive au rechargement.
 const RETOUR = Nav.safeRetour(new URLSearchParams(DEPART.qs).get("retour"));
@@ -75,6 +80,7 @@ const S = {
   synVue: "releves",           // Synthèse › Relevés · À revoir · Décompte
   decPortee: "planche",        // le Décompte : « zone » (et son contexte) ou « planche »
   formDoute: null,             // { releveId, texte } : le formulaire dans la boîte du guide
+  guideReplie: false,          // la boîte du guide repliée (commit 7), retenue sur le poste
   reponses: new Map(),         // doute → réponse en cours d'écriture (« À revoir »)
   changer: null,               // le relevé dont « Changer… » montre les variantes
 };
@@ -250,6 +256,9 @@ function zoneCourante() {
 
 /* Choisir une case et, dedans, une zone (null : la case). Redessine ce qui en dépend. */
 function choisir(caseIx, zoneId) {
+  // « Porte sur » ne garde pas un choix fait dans une autre zone (passe du jalon 1 : une
+  // bulle s'ouvrait sur « la planche ») : la zone repart de sa première option.
+  if (caseIx !== S.caseIx || zoneId !== S.zoneId) S.porte = null;
   S.caseIx = caseIx;
   S.zoneId = zoneId;
   S.sel = [];
@@ -298,11 +307,16 @@ function rendreMini() {
                               preserveAspectRatio: "xMidYMid meet", class: "an-mini-svg",
                               role: "group", "aria-label": "Cases de la planche" });
   racine.appendChild(imagePlanche());
+  // Les zones se dessinent APRÈS les cadres des cases, donc par-dessus : d'ordinaire elles
+  // laissent passer le clic à leur case (`pointer-events: none`) ; quand on désigne un lien,
+  // celles de texte le prennent (passe du jalon 1 : le cadre de la case, dessiné au-dessus,
+  // prenait le clic, choisissait la case, et le mode restait armé).
+  const enfants = [];
   S.rangement.forEach((entree, i) => {
     for (const z of entree.zones) {
-      racine.appendChild(svg("rect", { class: `an-mz-enfant t-${z.type}`, x: z.x, y: z.y,
-                                        width: z.w, height: z.h, "aria-hidden": "true",
-                                        "data-region": z.id }));
+      enfants.push(svg("rect", { class: `an-mz-enfant t-${z.type}`, x: z.x, y: z.y,
+                                 width: z.w, height: z.h, "aria-hidden": "true",
+                                 "data-region": z.id }));
     }
     if (entree.case.pseudo) return;
     const nom = "Case " + A.etiquette(entree.case);
@@ -314,6 +328,7 @@ function rendreMini() {
     r.appendChild(t);
     racine.appendChild(r);
   });
+  for (const e of enfants) racine.appendChild(e);
   boite.replaceChildren(racine);
 }
 
@@ -759,7 +774,37 @@ function rendreResultats(plan, filtre) {
 
 /* LA LIGNE DU GUIDE, à hauteur fixe : ce qu'on relève, la structure, les exemples, la
    liste de qualificatifs, le piège — de l'entrée qu'on survole, parcourt ou touche. */
+/* LA BOÎTE DU GUIDE se REPLIE (passe du jalon 1 : la liste de ce qui est posé prend alors sa
+   hauteur) ; le choix est retenu sur le poste. Le formulaire du doute et le bandeau d'un
+   conflit la déplient d'office, sans changer le choix retenu : un conflit ne passe pas
+   inaperçu, et la boîte se replie de nouveau quand il est réglé. */
+function marquerGuide() {
+  const force = !!(S.conflit || S.formDoute);
+  const replie = S.guideReplie && !force;
+  $("#an-guide-contenu").hidden = replie;
+  $("#an-grille").classList.toggle("guide-replie", replie);
+  const b = $("#an-guide-replier");
+  b.setAttribute("aria-expanded", String(!replie));
+  b.textContent = replie ? "Guide ▸" : "Guide ▾";
+  if (force) {
+    b.setAttribute("aria-disabled", "true");
+    b.title = "Ouverte tant que le conflit ou le doute n'est pas réglé";
+  } else {
+    b.removeAttribute("aria-disabled");
+    b.title = replie ? "Déplier le guide : définition, exemples, piège"
+      : "Replier le guide : la liste de ce qui est posé prend sa place";
+  }
+}
+
+function basculerGuide() {
+  if (S.conflit || S.formDoute) return;
+  S.guideReplie = !S.guideReplie;
+  A.retenirGuideReplie(stockageLocal(), S.guideReplie);
+  marquerGuide();
+}
+
 function rendreGuide() {
+  marquerGuide();
   const boite = $("#an-guide-contenu");
   boite.classList.toggle("an-conflit", !!S.conflit);
   boite.classList.toggle("an-doute-form", !S.conflit && !!S.formDoute);
@@ -892,9 +937,11 @@ function brancherGrille() {
     const b = e.target.closest("[data-guide-e]");
     if (!b) return;
     montrerGuide(b.dataset.guideE, b.dataset.guideV);
-    if (b.dataset.pose && b.getAttribute("aria-disabled") !== "true") {
-      poser(b.dataset.guideE, { variante: b.dataset.guideV, qualificatif: b.dataset.qualif });
-    }
+    if (!b.dataset.pose) return;
+    // Éteinte, l'entrée le DIT au clic, à l'écran et au lecteur d'écran (passe du jalon 1 :
+    // le clic sautait `poser()`, et l'annonce n'était jamais atteinte).
+    if (b.getAttribute("aria-disabled") === "true") { direLecture(); return; }
+    poser(b.dataset.guideE, { variante: b.dataset.guideV, qualificatif: b.dataset.qualif });
   });
   // Un survol ne compte que si le pointeur a BOUGÉ : le focus qui fait défiler le plan, ou
   // un redessin, amène une autre entrée sous un pointeur immobile, et le navigateur émet un
@@ -963,6 +1010,9 @@ function brancherGrille() {
     champ.select();
   });
   $("#an-guide-complet").addEventListener("click", ouvrirGuideComplet);
+  $("#an-guide-replier").addEventListener("click", basculerGuide);
+  S.guideReplie = A.lireGuideReplie(stockageLocal());
+  marquerGuide();
   $("#an-guide-fermer").addEventListener("click", fermerGuideComplet);
   const modale = $("#an-guide-modal");
   modale.addEventListener("mousedown", (e) => {
@@ -992,6 +1042,13 @@ function annoncer(texte) {
 }
 
 function albumOuvert() { return S.albums.find((a) => a.id === S.albumId) || null; }
+
+/* Ce que dit un geste de pose dans un album qu'on ne fait que lire. */
+const LECTURE = "Vous lisez cet album : rien ne s'y pose.";
+function direLecture() {
+  toast(LECTURE);
+  annoncer(LECTURE);
+}
 function ecrivable() { const a = albumOuvert(); return !!(a && a.ecrivable); }
 
 function contexteDePose() {
@@ -1339,7 +1396,7 @@ async function poser(entreeCle, choix) {
   const plan = planDe(g);
   const e = plan && plan.entrees.find((x) => x.cle === entreeCle);
   if (!e) return;
-  if (!ecrivable()) { annoncer("Vous lisez cet album : rien ne s'y pose."); return; }
+  if (!ecrivable()) { direLecture(); return; }
   const cible = A.cibleDePose(e, contexteDePose());
   if (cible.erreur) { toast(cible.erreur, "error"); annoncer(cible.erreur); return; }
   const gst = A.geste(e, A.relevesSurLaCible(S.releves, g.id, e.cle, cible), choix);
@@ -1384,7 +1441,7 @@ function bandeau() {
     } else if (c.champ === "qualificatifs") {
       version = A.libelleReleve({ entree_cle: cf.e.cle, qualificatifs: actuelle || [] }, plan);
     } else if (c.champ === "mots") {
-      version = S.mots ? `« ${A.texteDuPassage(S.mots.mots, actuelle || [])} »` : "un autre passage";
+      version = S.mots ? `« ${A.texteDuPassage(S.mots.mots, actuelle || [], S.mots.texte)} »` : "un autre passage";
     } else {
       version = actuelle === null || actuelle === undefined || actuelle === "" ? "—" : String(actuelle);
     }
@@ -1451,13 +1508,22 @@ function rendreListe() {
   const autres = [...m].filter((id) => id !== S.grilleId).length;
   bouton.textContent = `Relevés : ${g ? g.nom : "—"}${autres ? ` + ${autres}` : ""} ▾`;
   if (!z) { titre.textContent = "—"; liste.replaceChildren(); return; }
-  const passage = S.sel.length && S.mots ? A.texteDuPassage(S.mots.mots, S.sel) : null;
+  // La liste suit « Porte sur » : des mots désignés ne la restreignent que si l'on pose
+  // sur des mots (passe du jalon 1 : « toute la bulle » ne changeait rien tant qu'un mot
+  // restait désigné).
+  const sel = S.porte === "mots" ? S.sel : [];
+  const passage = sel.length && S.mots ? A.texteDuPassage(S.mots.mots, sel, S.mots.texte) : null;
   titre.textContent = passage ? `Sur « ${passage} »`
     : z.pseudo ? "Sur la planche" : `Dans ${laZone(z)}`;
-  const montres = A.listeSurLaZone(relevesMontres(), z, c ? c.case : null,
-                                   S.planche ? S.planche.id : null, S.sel);
+  const plancheId = S.planche ? S.planche.id : null;
+  const montres = A.listeSurLaZone(relevesMontres(), z, c ? c.case : null, plancheId, sel);
+  // Le relevé de la PLANCHE se lit partout, en bas et à part (Hugo, 2026-10-30).
+  const surface = z.pseudo ? [] : A.relevesDeSurface(relevesMontres(), plancheId);
   liste.replaceChildren(...(montres.length ? montres.map(itemReleve)
-    : [el("li", { classe: "an-pose-vide muted", texte: "—" })]));
+    : [el("li", { classe: "an-pose-vide muted", texte: "—" })]),
+    ...(surface.length ? [el("li", { classe: "an-pose-groupe", id: "an-poses-planche",
+                                     texte: "Sur la planche" }),
+                          ...surface.map(itemReleve)] : []));
   rendrePopover();
 }
 
@@ -1478,8 +1544,10 @@ function itemReleve(r) {
   const gestes = r.modifiable && !masquee && ecrivable();
   const t = g && g.id === S.grilleId ? A.teinte(plan, r.entree_cle, PALETTE) : null;
   const passage = A.motsDuReleve(r).length && S.mots && S.mots.region_id === r.region_id
-    ? `« ${A.texteDuPassage(S.mots.mots, A.motsDuReleve(r))} »`
-    : r.planche_id ? "la planche" : r.region_id === (zoneCourante() || {}).id ? "toute la zone" : "la case";
+    ? `« ${A.texteDuPassage(S.mots.mots, A.motsDuReleve(r), S.mots.texte)} »`
+    : A.ciblePosee(r, zoneCourante(), typeDeRegion);
+  // Un lien posé dit QUELLE zone il désigne (passe du jalon 1).
+  const lien = r.lien ? A.nomDuLien(rangementSynthese(), S.regions, r.lien) : null;
   const etat = A.motEtat(r);
   const libelle = A.libelleReleve(r, plan);
   const li = el("li", { classe: `an-pose${masquee ? " an-pose-masquee" : ""}` },
@@ -1489,34 +1557,45 @@ function itemReleve(r) {
                  "aria-hidden": "true" }),
        el("span", { classe: "an-pose-lib", texte: libelle }),
        el("span", { classe: "an-pose-pass", texte: passage }),
+       lien ? el("span", { classe: "an-pose-lien", texte: `↔ ${lien}`,
+                           title: "La zone que ce relevé désigne" }) : null,
        etat ? el("span", { classe: `an-etat an-etat-${r.etat}`, texte: etat }) : null,
        r.doute ? el("span", { classe: "an-etat an-etat-doute", texte: "doute",
                               title: "Un doute est ouvert : Synthèse › À revoir" }) : null,
        g && g.id !== S.grilleId ? el("span", { classe: "an-pose-gr", texte: g.nom }) : null));
+  // Les gestes d'une ligne tiennent ensemble : la précision se réduit, ✕ reste à sa droite
+  // (passe du jalon 1 : à 1 400 px, ✕ passait sous le champ).
+  const actes = el("span", { classe: `an-pose-actes${gestes && e && e.precision ? " avec-prec" : ""}` });
   if (gestes && e && e.precision) {
-    li.append(el("span", { classe: "an-pose-prec" },
-      el("input", { type: "text", classe: "an-prec", "data-releve": r.id,
-                    "aria-label": `${e.precision} — ${libelle}`, placeholder: e.precision,
-                    value: r.precision || "", maxlength: 500 })));
+    actes.append(el("input", { type: "text", classe: "an-prec", "data-releve": r.id,
+                               "aria-label": `${e.precision} — ${libelle}`, placeholder: e.precision,
+                               value: r.precision || "", maxlength: 500 }));
   }
   if (gestes && e && e.lien) {
     const designe = S.designer === r.id;
-    li.append(el("button", { type: "button", classe: "ghost small an-lien-btn",
-                             "data-lien": r.id, "aria-pressed": String(designe),
-                             title: designe ? "Cliquez l'autre bulle · Échap annule" : null,
-                             texte: r.lien && r.lien.existe ? "Changer le lien" : "Désigner sur la planche" }));
+    actes.append(el("button", { type: "button", classe: "ghost small an-lien-btn",
+                                "data-lien": r.id, "aria-pressed": String(designe),
+                                title: designe ? "Cliquez l'autre zone, sur la minicarte ou dans la case · Échap annule" : null,
+                                texte: r.lien && r.lien.existe ? "Changer le lien" : "Désigner sur la planche" }));
   }
   if (gestes) {
-    li.append(el("button", { type: "button", classe: "ghost small an-douter", "data-douter": r.id,
+    actes.append(el("button", { type: "button", classe: "ghost small an-douter", "data-douter": r.id,
                              "aria-label": `${r.doute ? "Ajouter au doute sur" : "Douter de"} ${libelle}`,
                              title: r.doute ? "Ajouter un message au doute ouvert"
                                : "Douter : un commentaire, que l'équipe relit dans Synthèse › À revoir",
                              texte: "?" }));
-    li.append(el("button", { type: "button", classe: "ghost small an-retirer", "data-retirer": r.id,
-                             "aria-label": `Retirer ${libelle}`, title: "Retirer ce relevé",
-                             texte: "✕" }));
+    actes.append(el("button", { type: "button", classe: "ghost small an-retirer", "data-retirer": r.id,
+                                "aria-label": `Retirer ${libelle}`, title: "Retirer ce relevé",
+                                texte: "✕" }));
   }
+  if (actes.childNodes.length) li.append(actes);
   return li;
+}
+
+/* Le type d'une région de la planche, ou `null`. */
+function typeDeRegion(id) {
+  const r = S.regions.find((x) => x.id === id);
+  return r ? r.type : null;
 }
 
 /* « Relevés : ▾ » : les cases des grilles actives, la grille ouverte toujours cochée. */
@@ -1551,7 +1630,7 @@ function stockageLocal() { try { return window.localStorage || null; } catch (e)
 async function designerLien(regionId) {
   const r = S.releves.find((x) => x.id === S.designer);
   S.designer = null;
-  document.body.classList.remove("an-designer");
+  marquerDesignation();
   if (!r) return;
   const g = grilleDe(r.grille_id);
   const plan = planDe(g);
@@ -1568,6 +1647,7 @@ function brancherPose() {
     S.porte = b.dataset.porte;
     rendrePorte();
     rendreCorps();
+    rendreListe();                   // la liste suit « Porte sur » (passe du jalon 1)
   });
   const liste = $("#an-poses-liste");
   liste.addEventListener("click", (e) => {
@@ -1635,8 +1715,9 @@ function brancherPose() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && S.designer !== null) {
       S.designer = null;
-      document.body.classList.remove("an-designer");
+      marquerDesignation();
       rendreListe();
+      rendreSynthese();
     }
   });
 }
@@ -1664,10 +1745,19 @@ function retirerReleve(id) {
 function basculerDesignation(id) {
   if (conflitOuvert()) return;
   S.designer = S.designer === id ? null : id;
-  document.body.classList.toggle("an-designer", S.designer !== null);
+  marquerDesignation();
   if (S.designer !== null) annoncer("Désignez l'autre zone de texte, sur la planche ou dans la case. Échap annule.");
   rendreListe();
   rendreSynthese();
+}
+
+/* Désigner un lien change le rôle de la minicarte — elle désigne une ZONE au lieu de choisir
+   une case — et l'écran le dit, sur elle (passe du jalon 1). */
+function marquerDesignation() {
+  const actif = S.designer !== null;
+  document.body.classList.toggle("an-designer", actif);
+  $("#an-mini-mode").hidden = !actif;
+  $("#an-mini").title = actif ? "Cliquez la zone liée · Échap annule" : "Choisir une case";
 }
 
 /* La précision attendue : Entrée ou la sortie du champ l'enregistrent, avec `vu` — dans la
@@ -2425,6 +2515,7 @@ function syncAdresse() {
     ? (qs ? qs + "&" : "?") + "retour=" + encodeURIComponent(RETOUR) : qs;
   history.replaceState(null, "", location.pathname + avecRetour);
   Nav.memoriser(Nav.stockageDeSession(window), PAGE, avecRetour);
+  Nav.retenirLieu(Nav.stockageDeSession(window), qs);
   const lien = $("#an-atelier");
   lien.href = A.lienAtelier(etat, location.pathname + qs);
 }

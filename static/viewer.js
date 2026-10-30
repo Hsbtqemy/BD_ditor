@@ -22,8 +22,11 @@ const ATTENTE_MAX_MS = 5000;
 const SVGNS = "http://www.w3.org/2000/svg";
 
 // URL de départ captée AVANT tout chargement (le chargement met l'URL à jour via
-// syncUrl → on ne pourrait plus relire le deep-link d'origine ensuite).
-const INITIAL_QS = location.search;
+// syncUrl → on ne pourrait plus relire le deep-link d'origine ensuite). Une adresse NUE
+// reprend le LIEU (album, planche, zone) que la page Annotation ou l'Atelier a quitté dans
+// cet onglet (ANN-7, tranche 2 ; Hugo, 2026-10-30 ; `Nav.etatAvecLieu`) ; une adresse qui
+// porte un état l'emporte toujours.
+const INITIAL_QS = Nav.etatAvecLieu(location.search, Nav.stockageDeSession(window), "atelier").qs;
 // D'où l'on vient (drill Recherche/Exploration), validé (page interne seulement,
 // cf. static/lib/nav.js) : conservé toute la session pour le bouton « ← Retour ».
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));
@@ -707,6 +710,7 @@ function syncUrl() {
   if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit au reload
   const qs = p.toString();
   history.replaceState(null, "", qs ? "?" + qs : location.pathname);
+  Nav.retenirLieu(Nav.stockageDeSession(window), qs);   // partagé avec la page Annotation
 }
 
 /* Bouton « ← Retour » : ramène à la surface d'analyse d'origine (Recherche /

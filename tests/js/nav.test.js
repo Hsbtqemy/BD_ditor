@@ -87,3 +87,49 @@ test("une mémoire qui ne porterait que `retour` ne vaut rien", () => {
   const s = stockage({ "bd-etat:recherche": "retour=%2Fcorpus" });
   assert.deepEqual(Nav.etatDeDepart("", s, "recherche"), { qs: "", source: "vide" });
 });
+
+/* ── Le LIEU partagé entre l'Atelier et la page Annotation (ANN-7, tranche 2, commit 7) ── */
+
+test("le lieu se retient : album, planche, zone ; rien sans album", () => {
+  const s = stockage();
+  Nav.retenirLieu(s, "album=3&planche=7&region=12&grille=2&retour=%2Fcorpus");
+  assert.equal(s._m.get("bd-lieu"), "album=3&planche=7&region=12");
+  Nav.retenirLieu(s, "?album=3&planche=8");
+  assert.equal(s._m.get("bd-lieu"), "album=3&planche=8");
+  Nav.retenirLieu(s, "grille=2");                         // sans album : le lieu reste
+  assert.equal(s._m.get("bd-lieu"), "album=3&planche=8");
+  Nav.retenirLieu(qui_leve, "album=1");                   // rien ne lève
+  Nav.retenirLieu(null, "album=1");
+});
+
+test("une adresse nue reprend le lieu, par-dessus la mémoire de SA page", () => {
+  const s = stockage({ "bd-etat:annotation": "collection=4&album=1&planche=2&region=9&grille=5",
+                       "bd-lieu": "album=3&planche=7&region=12" });
+  assert.deepEqual(Nav.etatAvecLieu("", s, "annotation"),
+                   { qs: "?collection=4&album=3&planche=7&region=12&grille=5", source: "lieu" });
+  // L'Atelier n'a pas de mémoire à lui : le lieu seul.
+  assert.deepEqual(Nav.etatAvecLieu("", s, "atelier"),
+                   { qs: "?album=3&planche=7&region=12", source: "lieu" });
+});
+
+test("un lieu sans zone retire la zone qu'une mémoire gardait d'une autre planche", () => {
+  const s = stockage({ "bd-etat:annotation": "album=1&planche=2&region=9",
+                       "bd-lieu": "album=1&planche=5" });
+  assert.deepEqual(Nav.etatAvecLieu("", s, "annotation"), { qs: "?album=1&planche=5", source: "lieu" });
+});
+
+test("l'adresse l'emporte toujours ; `retour` seul ne l'emporte pas, et se garde", () => {
+  const s = stockage({ "bd-lieu": "album=3&planche=7" });
+  assert.deepEqual(Nav.etatAvecLieu("?album=1", s, "atelier"), { qs: "?album=1", source: "adresse" });
+  assert.deepEqual(Nav.etatAvecLieu("?retour=%2Fcorpus", s, "atelier"),
+                   { qs: "?retour=%2Fcorpus&album=3&planche=7", source: "lieu" });
+});
+
+test("sans lieu, ou un stockage qui lève, l'état de départ ordinaire", () => {
+  assert.deepEqual(Nav.etatAvecLieu("", stockage({ "bd-etat:annotation": "grille=5" }), "annotation"),
+                   { qs: "?grille=5", source: "memoire" });
+  assert.deepEqual(Nav.etatAvecLieu("", stockage({ "bd-lieu": "planche=7" }), "atelier"),
+                   { qs: "", source: "vide" });
+  assert.deepEqual(Nav.etatAvecLieu("", qui_leve, "atelier"), { qs: "", source: "vide" });
+  assert.deepEqual(Nav.etatAvecLieu("", null, "atelier"), { qs: "", source: "vide" });
+});
