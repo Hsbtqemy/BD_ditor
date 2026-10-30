@@ -76,7 +76,7 @@ SUR PLACE et se signale.
 
 ### Lire sans écrire — `stagiaire`, « Carnet d'arrivant »
 
-- [ ] Collection « Carnet d'arrivant », Album « esther v1 », Planche 1, bulle b2 de la case c1, « HEY » désigné : la grille est là, ses entrées se VOIENT éteintes ; cliquer « cri » ou « crac » ne pose rien (la liste « Sur « HEY » » dit « — ») et un message dit qu'on lit cet album
+- [x] Collection « Carnet d'arrivant », Album « esther v1 », Planche 1, bulle b2 de la case c1, « HEY » désigné : la grille est là, ses entrées se VOIENT éteintes ; cliquer « cri » ou « crac » ne pose rien (la liste « Sur « HEY » » dit « — ») et un message dit qu'on lit cet album
 - [x] « Terminée, suivante › » est éteint, et son infobulle dit qu'on lit cet album
 
 ### Le lien avec l'Atelier — `stagiaire`
