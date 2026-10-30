@@ -121,6 +121,10 @@ wizard (`UX-6`, lot 4). Fiche ouverte le 2026-10-21 sur une demande de Hugo (Con
 - [x] **La Bibliothèque d'un bac à sable compte ses albums** — attendu : dans son bac à sable tout neuf, la bande des chiffres et « Tout ce que vous lisez » disent 4 albums · 5 planches pour le jeu local de 4 documents. Livré : « 0 albums · 0 planches » — les chiffres suivent le corpus (`pour_le_corpus`, S8), qui écarte les bacs à sable **Fait par `1e5b75e`** (`GET /api/corpus?bac_a_sable=<id>`, 404 sur le bac d'un autre ; sans le paramètre, toujours aveugle aux bacs) et `c3b8f75`
 - [x] **« + Prendre du fonds… » n'est pas offert dans un bac à sable** — attendu : absent de la fiche du projet quand le projet courant est un bac à sable. Livré : offert, et le serveur refuse la prise (rien n'entre, S3) **Fait par `c3b8f75`** (en tête de la fiche du projet et dans l'onglet Albums)
 
+### Relevé par la relecture croisée d'ANN-7 — 2026-10-30
+
+- [ ] Le résumé de provenance de la description et des métadonnées du dépôt (`journal.indicateurs_provenance`) ne compte pas les actes d'un projet isolé, que le journal publié tait (`sql_evenement_isole`) — attendu : les deux nombres d'actes concordent. Relevé par la relecture croisée du commit 9 d'ANN-7 (`32a8e02`), lu dans le code, non joué ; depuis `3536bb2`, le paramètre `actes_tus` le ferme en une ligne chez les deux appelants
+
 ## Contexte
 
 **La demande** (Hugo, 2026-10-21) : un projet « Pour tester », ouvert à tout le monde, remis à
