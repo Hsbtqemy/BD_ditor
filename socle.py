@@ -1811,6 +1811,20 @@ def _valider_detail(conn: sqlite3.Connection, type_region: str, *, nom=None,
     return nom
 
 
+def _garder_case_d_un_detail(conn: sqlite3.Connection, region: dict,
+                             nouveau_type: Optional[str]) -> None:
+    """Une CASE qui porte un détail ne change pas de type (ANN-7, tranche 2, commit 10 ;
+    relecture croisée du commit 9, constat 3) : un détail se range dans une case ou nulle
+    part (`_valider_detail`), et le changement de type de son parent le laissait sous une
+    bulle. 422 nommé ; rien à dire si le type ne change pas."""
+    if nouveau_type is None or nouveau_type == region["type"] or region["type"] != "case":
+        return
+    if conn.execute("SELECT 1 FROM regions WHERE parent_id = ? AND type = ? LIMIT 1",
+                    (region["id"], TYPE_DETAIL)).fetchone():
+        raise HTTPException(422, "Cette case porte un détail, qui se range dans une case : "
+                                 "sortez-le de la case ou supprimez-le d'abord.")
+
+
 def _validate_parent(conn: sqlite3.Connection, planche_id: int,
                      parent_id: Optional[int], region_id: Optional[int] = None) -> None:
     """Valide un parent_id : il doit exister, être sur LA MÊME planche, et ne pas

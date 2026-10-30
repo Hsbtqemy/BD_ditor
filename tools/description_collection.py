@@ -46,7 +46,7 @@ from _commun import (version_outil, environnement, portee_albums,  # noqa: E402 
                                                                    # + liste blanche AUTH-1
                      HorsDuCorpus, albums_du_corpus, clause_personnages,   # COL-4 : ni bac
                      clause_vocabulaire, exiger_hors_isoles,               # à sable ni jeu
-                     sql_collection_isolee)
+                     sql_collection_isolee, sql_evenement_detail)
 
 
 # --------------------------------------------------------------------------- #
@@ -336,7 +336,8 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                 # A3 : indicateurs dérivés du journal de provenance/audit (part machine vs
                 # humaine, dérive = pré-remplissage retouché, comptes de runs & d'actes).
                 "audit": journal.indicateurs_provenance(
-                    conn, album_ids, cibles=CIBLES_CORPUS),   # AUTH-1 : cf. metadonnees
+                    conn, album_ids, cibles=CIBLES_CORPUS,   # AUTH-1 : cf. metadonnees
+                    actes_tus=sql_evenement_detail("evenement")),   # G17 : ni détail
                 "environnement": environnement(),  # python + versions installées (à l'export)
             },
             # Paradonnée QUALITÉ (fiabilité du corpus, tout dérivé) : part relue, accord du

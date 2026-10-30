@@ -17,14 +17,19 @@ est du VOCABULAIRE, que les sorties disent par appartenance (le catalogue des te
 collection, AUTH-11), qu'il soit posé ou non. Ce qui ne sort pas, c'est son EMPLOI sur le
 détail — la ligne d'annotation du détail, que sa note désigne.
 """
+import csv
 import io
+import json
 import os
 import re
 import sqlite3
 import subprocess
 import sys
 import zipfile
+from collections import Counter
 from pathlib import Path
+
+import pytest
 
 from conftest import REPO_ROOT
 from grilles_decor import csv_de, importer
@@ -87,6 +92,13 @@ def semer(client, png_bytes):
     assert client.put(f"/api/regions/{parti['id']}/annotation",
                       json={"note": NOTE + "PARTI"}).status_code == 200
     assert client.delete(f"/api/regions/{parti['id']}").status_code == 204
+    # Un troisième, nommé puis supprimé sans rien d'autre : seuls ses actes `regions` disent
+    # son type (commit 10 : la clé `journal.CLE_REGION_RETENUE` n'y est pas, l'instantané
+    # le dit déjà).
+    nu = client.post(f"/api/planches/{pl['id']}/regions",
+                     json={"type": "detail", "x": 32, "y": 32, "w": 3, "h": 3,
+                           "parent_id": case["id"], "nom": NOM + "NU"}).json()
+    assert client.delete(f"/api/regions/{nu['id']}").status_code == 204
     entete = ["cle", "forme", "libelle", "cible"]
     tableur = csv_de([entete, ["objet", "simple", "objet montré", "detail"]])
     gid = importer(client, projet, {}, entrees=tableur, listes=None, nom="Objets",
@@ -97,7 +109,8 @@ def semer(client, png_bytes):
                                             "region_id": detail["id"], "entree_cle": "objet"})
     assert rel.status_code == 201, rel.text
     return {"collection": cid, "album": aid, "planche": pl["id"], "detail": detail["id"],
-            "parti": parti["id"], "bulle": bulle["id"], "releve": rel.json()["id"]}
+            "parti": parti["id"], "nu": nu["id"], "bulle": bulle["id"],
+            "releve": rel.json()["id"]}
 
 
 def _sorties(client, db_path, tmp_path, s):
@@ -155,7 +168,7 @@ def test_un_detail_ne_sort_d_aucun_artefact(client, db_path, tmp_path, png_bytes
     assert ann["note"] == NOTE and [t["label"] for t in ann["tags"]] == [TAG]
     assert any(r["region_id"] == s["detail"]
                for r in client.get(f"/api/planches/{s['planche']}/releves").json()["releves"])
-    d, x = s["detail"], s["parti"]
+    d, x, nu = s["detail"], s["parti"], s["nu"]
     # Un troisième détail, né SANS acte de création — comme une région recopiée par une
     # copie amorcée (aucun événement n'est recopié, E3) —, puis annoté par la route : le
     # journal ne le dit d'aucun type, et seule la région vivante le désigne.
@@ -170,6 +183,24 @@ def test_un_detail_ne_sort_d_aucun_artefact(client, db_path, tmp_path, png_bytes
         conn.close()
     assert client.put(f"/api/regions/{sans}/annotation",
                       json={"note": NOTE + "SANS"}).status_code == 200
+    # Commit 10 — une note changée puis défaite par Ctrl+Z : l'annulation désigne l'acte sur
+    # le détail, et ne sort pas plus que lui.
+    assert client.put(f"/api/regions/{sans}/annotation",
+                      json={"note": NOTE + "SANS2"}).status_code == 200
+    assert client.post("/api/undo").status_code == 200
+    # Et un quatrième, né sans acte, dont le seul acte a été écrit AVANT le commit 10, sans
+    # la clé `journal.CLE_REGION_RETENUE` : c'est la région vivante qui le dit retenu.
+    conn = sqlite3.connect(db_path)
+    try:
+        vieux = conn.execute(
+            "INSERT INTO regions (planche_id, parent_id, type, x, y, w, h, ordre, source) "
+            "VALUES (?, NULL, 'detail', 3, 3, 2, 2, 10, 'manuel')", (s["planche"],)).lastrowid
+        conn.execute("INSERT INTO evenement (type, agent_type, cible_table, cible_id, avant, "
+                     "apres) VALUES ('modification', 'humain', 'annotations', ?, ?, ?)",
+                     (vieux, '{"note": "x", "tags": []}', '{"note": "y", "tags": []}'))
+        conn.commit()
+    finally:
+        conn.close()
     # Le journal garde les actes des détails — le supprimé compris (création, note,
     # suppression) : c'est ce que le journal PUBLIÉ doit taire.
     conn = sqlite3.connect(db_path)
@@ -178,14 +209,21 @@ def test_un_detail_ne_sort_d_aucun_artefact(client, db_path, tmp_path, png_bytes
             "SELECT cible_id, COUNT(*) FROM evenement WHERE cible_table IN "
             "('regions', 'annotations') AND cible_id IN (?, ?, ?) GROUP BY cible_id",
             (d, x, sans))}
+        sur_un_detail = [str(i) for (i,) in conn.execute(
+            "SELECT id FROM evenement WHERE cible_table IN ('regions', 'annotations') "
+            "AND cible_id IN (?, ?, ?, ?, ?)", (d, x, sans, nu, vieux))]
+        assert conn.execute("SELECT COUNT(*) FROM evenement WHERE type = 'annulation' AND "
+                            f"cible_id IN ({','.join(sur_un_detail)})").fetchone()[0] == 1
     finally:
         conn.close()
     assert actes.get(d, 0) >= 3 and actes.get(x, 0) >= 3 and actes.get(sans, 0) >= 1, actes
     sorties = _sorties(client, db_path, tmp_path, s)
     # Ce qui désignerait le détail sans le nommer : son type, ses ancres dans le TEI, l'IIIF
     # et le journal de provenance — le vivant comme le supprimé.
-    designations = re.compile(rf"\bdetail\b|zone_({d}|{x}|{sans})\b|region-({d}|{x}|{sans})\b"
-                              rf"|(regions|annotations)/({d}|{x}|{sans})\b")
+    ids = f"{d}|{x}|{sans}|{nu}|{vieux}"
+    actes_ids = "|".join(sur_un_detail)
+    designations = re.compile(rf"\bdetail\b|zone_({ids})\b|region-({ids})\b"
+                              rf"|(regions|annotations)/({ids})\b|evenement/({actes_ids})\b")
     for surface, texte in sorties.items():
         assert len(texte) > 40, f"{surface} : sortie vide, le contrôle ne mesure rien"
         for interdit in MARQUES:
@@ -207,3 +245,129 @@ def test_un_detail_ne_se_cite_pas(client, png_bytes):
     # La bulle du même album se cite : le refus porte sur le détail, pas sur l'album.
     assert client.post("/api/figures", json={"regions": [s["bulle"]],
                                              "collection_id": s["collection"]}).status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée du commit 9 (ANN-7, tranche 2, commit 10)
+# --------------------------------------------------------------------------- #
+def _publies(db_path):
+    """Les actes que le journal PUBLIÉ porte (`_commun.evenements_publiables`)."""
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import _commun
+    c = sqlite3.connect(db_path)
+    c.row_factory = sqlite3.Row
+    try:
+        return [dict(e) for e in _commun.evenements_publiables(c)]
+    finally:
+        c.close()
+
+
+def _lignes(fichier):
+    with open(fichier, encoding="utf-8-sig", newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def test_le_resume_de_provenance_compte_ce_qui_est_publie(client, db_path, tmp_path,
+                                                          png_bytes):
+    """Constat 1 — le résumé de provenance (`journal.indicateurs_provenance`) des métadonnées
+    et de la description comptait le détail : ses régions dans `regions`, ses actes dans
+    `evenements`. Des NOMBRES, comparés à ce que le même artefact publie : une marque ne s'y
+    voit pas, et le cliquet de marques était resté vert."""
+    s = semer(client, png_bytes)
+    publies = _publies(db_path)
+    assert publies, "le journal publié est vide : la comparaison ne mesure rien"
+    code, out, err = _outil(db_path, "metadonnees_collection.py", "--json", "-")
+    assert code == 0, err
+    prov = json.loads(out)["metadonnees_collection"]["paradonnee"]["provenance"]
+    code, out, err = _outil(db_path, "metadonnees_collection.py",
+                            "--csv-dir", str(tmp_path / "t"))
+    assert code == 0, err
+    regions = _lignes(tmp_path / "t" / "regions.csv")
+    evenements = _lignes(tmp_path / "t" / "evenement.csv")
+    # Les régions : celles que l'artefact publie — la case et la bulle témoin, pas le détail.
+    assert prov["regions"]["total"] == len(regions) == 2, (prov["regions"], len(regions))
+    # Les actes : ceux de la table publiée, au nombre, par type, par agent, et ses bornes.
+    ev = prov["evenements"]
+    assert ev["total"] == len(publies) == len(evenements), (ev["total"], len(publies))
+    assert ev["par_type"] == dict(Counter(e["type"] for e in publies))
+    assert ev["par_agent"] == dict(Counter(e["agent_type"] for e in publies))
+    assert (ev["premier"], ev["dernier"]) == (min(e["date"] for e in publies),
+                                              max(e["date"] for e in publies))
+    # La description dit les mêmes nombres, par la route comme par l'outil, et son audit
+    # compte les régions comme sa couverture.
+    d = client.get(f"/api/collections/{s['collection']}/depot/description").json()
+    d = d["description_collection"]
+    audit = d["provenance_globale"]["audit"]
+    assert audit["regions"]["total"] == d["couverture"]["regions"]["total"] == 2
+    assert audit["evenements"]["total"] == len(publies)
+    code, out, err = _outil(db_path, "description_collection.py", "--json", "-")
+    assert code == 0, err
+    audit = json.loads(out)["description_collection"]["provenance_globale"]["audit"]
+    assert audit["regions"]["total"] == 2 and audit["evenements"]["total"] == len(publies)
+
+
+def _amorcee(client, s):
+    """Une copie AMORCÉE au cran du découpage, dans une autre collection du même projet :
+    ses régions — le détail compris — naissent SANS acte (E3)."""
+    projet = next(p for p in client.get("/api/projets").json() if p["repli"])["id"]
+    etude = client.post("/api/collections", json={"nom": "Étude", "projet_id": projet}).json()
+    doc = next(a for a in client.get("/api/albums").json() if a["id"] == s["album"])
+    r = client.post(f"/api/collections/{etude['id']}/prendre", json={"documents": [
+        {"document_id": doc["document_id"], "reponse": "amorcer", "album_id": s["album"],
+         "cran": "decoupage"}]})
+    assert r.status_code == 200, r.text
+    (ligne,) = r.json()["documents"]
+    assert ligne["etat"] == "fait", ligne
+    copie = ligne["copie_id"]
+    (pl,) = client.get(f"/api/albums/{copie}/planches").json()
+    regions = client.get(f"/api/planches/{pl['id']}/regions").json()
+    det = next(x for x in regions if x["type"] == "detail" and x["nom"] == NOM)
+    bulle = next(x for x in regions if x["type"] == "bulle")
+    return {"album": copie, "planche": pl["id"], "detail": det["id"],
+            "case": det["parent_id"], "bulle": bulle["id"]}
+
+
+@pytest.mark.parametrize("emporter", ["case", "planche", "album", "repartir"])
+def test_un_detail_ne_sans_acte_ne_sort_pas_apres_sa_cascade(client, db_path, tmp_path,
+                                                             png_bytes, emporter):
+    """Constat 2 — un détail NÉ SANS ACTE (une région recopiée par une copie amorcée, E3),
+    annoté, puis emporté par la cascade de sa case, de sa planche, de son album, ou par une
+    remise à zéro au cran des images : plus rien ne le disait d'un type retenu, et l'acte sur
+    sa note partait au dépôt. L'acte porte désormais le type de sa région
+    (`journal.CLE_REGION_RETENUE`), écrit quand la région existe."""
+    s = semer(client, png_bytes)
+    c = _amorcee(client, s)
+    sans = c["detail"]
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM evenement WHERE cible_table = 'regions' "
+                            "AND cible_id = ?", (sans,)).fetchone()[0] == 0, \
+            "la copie a un acte sur son détail : le cas n'est pas celui qu'on mesure"
+    finally:
+        conn.close()
+    for rid in (sans, c["bulle"]):
+        assert client.put(f"/api/regions/{rid}/annotation",
+                          json={"note": NOTE + "COPIE"}).status_code == 200
+    r = {"case": lambda: client.delete(f"/api/regions/{c['case']}"),
+         "planche": lambda: client.delete(f"/api/planches/{c['planche']}"),
+         "album": lambda: client.delete(f"/api/albums/{c['album']}"),
+         "repartir": lambda: client.post(f"/api/albums/{c['album']}/repartir",
+                                         json={"cran": "images"})}[emporter]()
+    assert r.status_code in (200, 204), r.text
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("SELECT 1 FROM regions WHERE id = ?", (sans,)).fetchone() is None
+        assert conn.execute("SELECT COUNT(*) FROM evenement WHERE cible_table = "
+                            "'annotations' AND cible_id = ?", (sans,)).fetchone()[0] == 1
+    finally:
+        conn.close()
+    assert not [e for e in _publies(db_path) if e["cible_id"] == sans
+                and e["cible_table"] == "annotations"], "l'acte sur la note du détail sort"
+    code, out, err = _outil(db_path, "provenance_export.py", "--out-dir", str(tmp_path / "p"))
+    assert code == 0, err
+    texte = "\n".join(f.read_text("utf-8") for f in (tmp_path / "p").glob("**/*")
+                      if f.is_file())
+    assert f"annotations/{sans}" not in texte, "l'acte sur la note du détail est publié"
+    # Le témoin : la bulle de la copie, annotée et emportée par le même chemin, sort, elle —
+    # la coupure porte sur le détail, pas sur ce que la cascade a emporté.
+    assert f"annotations/{c['bulle']}" in texte, "le témoin ne sort pas : rien n'est mesuré"

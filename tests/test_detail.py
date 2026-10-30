@@ -5,6 +5,8 @@ Un DÉTAIL d'image se trace dans une case depuis la page Annotation : il porte u
 sorte d'aucun artefact se joue dans `tests/test_detail_sorties.py` ; ici, ce que les routes
 d'écriture tiennent, ce que Ctrl+Z rend, et la re-segmentation qui le garde.
 """
+import sqlite3
+
 import pipeline.segmentation as seg
 
 
@@ -138,3 +140,166 @@ def test_un_detail_ne_se_cherche_pas(client, planche):
                           json={"note": "ZZCHERCHE9"}).status_code == 200
     trouves = client.get("/api/recherche", params={"q": "ZZCHERCHE9"}).json()["results"]
     assert [r["region_id"] for r in trouves] == [bulle]
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée du commit 9 (ANN-7, tranche 2, commit 10)
+# --------------------------------------------------------------------------- #
+def _lu(client, planche):
+    return {x["id"]: x for x in client.get(f"/api/planches/{planche['id']}/regions").json()}
+
+
+def _sql(db_path, sql, *params):
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(sql, params)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_une_case_qui_porte_un_detail_ne_change_pas_de_type(client, planche):
+    """Constat 3 — un détail se range dans une case ou nulle part : la case qui en porte un
+    devenait une bulle, et le détail restait sous elle."""
+    case = _case(client, planche)
+    d = _detail(client, planche, case).json()["id"]
+    for autre in ("bulle", "texte", "personnage"):
+        r = client.put(f"/api/regions/{case}", json={"type": autre})
+        assert r.status_code == 422, r.text
+        assert "porte un détail" in r.json()["detail"]
+    assert _lu(client, planche)[case]["type"] == "case"
+    # Le même type renvoyé passe ; une case sans détail change de type comme avant.
+    assert client.put(f"/api/regions/{case}", json={"type": "case"}).status_code == 200
+    vide = _case(client, planche)
+    assert client.put(f"/api/regions/{vide}", json={"type": "bulle"}).status_code == 200
+    # Une case qui ne porte qu'une bulle aussi : la règle porte sur le détail.
+    autre = _case(client, planche)
+    client.post(f"/api/planches/{planche['id']}/regions",
+                json={"type": "bulle", "x": 5, "y": 5, "w": 9, "h": 9, "parent_id": autre})
+    assert client.put(f"/api/regions/{autre}", json={"type": "personnage"}).status_code == 200
+    # Le détail sorti de la case, elle change de type.
+    assert client.put(f"/api/regions/{d}", json={"parent_id": None}).status_code == 200
+    assert client.put(f"/api/regions/{case}", json={"type": "bulle"}).status_code == 200
+
+
+def _ctrl_z_refuse(client):
+    r = client.post("/api/undo")
+    assert r.status_code == 409, r.text
+    assert "ne peut plus être rétabli" in r.json()["detail"]["message"], r.json()
+
+
+def test_ctrl_z_ne_rend_pas_un_type_qui_laisserait_un_detail_sous_une_bulle(client, planche,
+                                                                          db_path):
+    """Constat 3 — une bulle devenue case reçoit un détail ; défaire le changement de type la
+    rendrait bulle, avec le détail sous elle. Le détail est posé sans acte (une région
+    recopiée) : l'acte en tête de la pile reste le changement de type."""
+    b = client.post(f"/api/planches/{planche['id']}/regions",
+                    json={"type": "bulle", "x": 0, "y": 0, "w": 300, "h": 300}).json()["id"]
+    assert client.put(f"/api/regions/{b}", json={"type": "case"}).status_code == 200
+    _sql(db_path, "INSERT INTO regions (planche_id, parent_id, type, x, y, w, h, ordre, source) "
+                  "VALUES (?, ?, 'detail', 20, 20, 9, 9, 1, 'manuel')", planche["id"], b)
+    _ctrl_z_refuse(client)
+    assert _lu(client, planche)[b]["type"] == "case"
+
+
+def test_ctrl_z_ne_rend_pas_un_detail_sous_une_case_devenue_bulle(client, planche, db_path):
+    """Constat 3 — un détail supprimé, sa case devenue bulle depuis (ici par la base, comme
+    par un autre écran) : Ctrl+Z ne le repose pas sous la bulle."""
+    case = _case(client, planche)
+    d = _detail(client, planche, case).json()["id"]
+    assert client.delete(f"/api/regions/{d}").status_code == 204
+    _sql(db_path, "UPDATE regions SET type = 'bulle' WHERE id = ?", case)
+    _ctrl_z_refuse(client)
+    assert d not in _lu(client, planche)
+
+
+def test_ctrl_z_ne_ramene_pas_un_detail_dans_une_case_devenue_bulle(client, planche,
+                                                                    db_path):
+    """Constat 3 — un détail déplacé d'une case à une autre, la première devenue bulle
+    depuis : Ctrl+Z ne l'y ramène pas (`undo._parent_valide`)."""
+    a = _case(client, planche)
+    b = client.post(f"/api/planches/{planche['id']}/regions",
+                    json={"type": "case", "x": 300, "y": 0, "w": 100, "h": 100}).json()["id"]
+    d = _detail(client, planche, a).json()["id"]
+    assert client.put(f"/api/regions/{d}", json={"parent_id": b}).status_code == 200
+    _sql(db_path, "UPDATE regions SET type = 'bulle' WHERE id = ?", a)
+    _ctrl_z_refuse(client)
+    assert _lu(client, planche)[d]["parent_id"] == b
+
+
+def test_ctrl_z_ne_range_rien_sous_un_detail(client, planche, db_path):
+    """Constat 3 — rien ne se range sous un détail, pas plus par Ctrl+Z : une bulle déplacée
+    d'une région devenue détail depuis (par la base : aucune route ne le permet) n'y revient
+    pas (`undo._parent_valide`)."""
+    a = _case(client, planche)
+    b = client.post(f"/api/planches/{planche['id']}/regions",
+                    json={"type": "case", "x": 300, "y": 0, "w": 100, "h": 100}).json()["id"]
+    bulle = client.post(f"/api/planches/{planche['id']}/regions",
+                        json={"type": "bulle", "x": 5, "y": 5, "w": 9, "h": 9,
+                              "parent_id": a}).json()["id"]
+    assert client.put(f"/api/regions/{bulle}", json={"parent_id": b}).status_code == 200
+    _sql(db_path, "UPDATE regions SET type = 'detail' WHERE id = ?", a)
+    _ctrl_z_refuse(client)
+    assert _lu(client, planche)[bulle]["parent_id"] == b
+
+
+def test_le_detail_ne_prend_pas_de_rang_parmi_ce_qui_sort(client, planche):
+    """Constat 5 — l'ordre stocké est un rang entre frères, et l'export le publie : un
+    détail rangé parmi eux laissait un trou (une bulle seule de sa case à l'ordre 2) d'où se
+    lisait qu'une région retenue la précédait. Les régions qui sortent sont rangées 1..N,
+    les détails après."""
+    case = _case(client, planche)
+    # Un détail en haut à gauche, AVANT la bulle en ordre de lecture.
+    d = client.post(f"/api/planches/{planche['id']}/regions",
+                    json={"type": "detail", "x": 0, "y": 0, "w": 5, "h": 5,
+                          "parent_id": case}).json()["id"]
+    b1 = client.post(f"/api/planches/{planche['id']}/regions",
+                     json={"type": "bulle", "x": 50, "y": 50, "w": 20, "h": 20,
+                           "parent_id": case}).json()["id"]
+    # Créée après le détail, la bulle prend le premier rang de ce qui sort.
+    lu = _lu(client, planche)
+    assert lu[b1]["ordre"] == 1, lu[b1]
+    assert client.post(f"/api/planches/{planche['id']}/reordonner").status_code == 200
+    b2 = client.post(f"/api/planches/{planche['id']}/regions",
+                     json={"type": "bulle", "x": 100, "y": 200, "w": 20, "h": 20,
+                           "parent_id": case}).json()["id"]
+    lu = _lu(client, planche)
+    assert (lu[b1]["ordre"], lu[b2]["ordre"]) == (1, 2), (lu[b1], lu[b2])
+    # Déplacer une bulle, ou le détail, ne range jamais le détail parmi elles.
+    assert client.post(f"/api/regions/{b2}/deplacer", json={"sens": "haut"}).status_code == 200
+    assert client.post(f"/api/regions/{d}/deplacer", json={"sens": "haut"}).json()["moved"] \
+        is False
+    lu = _lu(client, planche)
+    assert (lu[b2]["ordre"], lu[b1]["ordre"], lu[d]["ordre"]) == (1, 2, 3)
+    # L'export : les enfants de la case, 1..N sans trou.
+    album = client.get(f"/api/export/json?album_id={planche['album_id']}").json()
+    cases = album["planches"][0]["regions"]
+    enfants = next(c for c in cases if c["id"] == case)["enfants"]
+    assert sorted(e["ordre"] for e in enfants) == [1, 2]
+
+
+def test_ctrl_z_defait_la_note_d_un_detail(client, planche):
+    """Commit 10 — l'acte sur la note d'un détail porte le type de sa région dans sa charge
+    (`journal.CLE_REGION_RETENUE`) : Ctrl+Z la lit comme avant, et la marque ne touche que
+    les actes sur un détail."""
+    import json
+    import journal
+    case = _case(client, planche)
+    d = _detail(client, planche, case).json()["id"]
+    for note in ("un", "deux"):
+        for rid in (d, case):
+            assert client.put(f"/api/regions/{rid}/annotation",
+                              json={"note": note}).status_code == 200
+    assert client.post("/api/undo").status_code == 200
+    assert client.post("/api/undo").status_code == 200
+    for rid in (d, case):
+        assert client.get(f"/api/regions/{rid}/annotation").json()["note"] == "un"
+    import database
+    with database.get_connection() as conn:
+        charges = {cid: (json.loads(av) if av else None, json.loads(ap))
+                   for cid, av, ap in conn.execute(
+                       "SELECT cible_id, avant, apres FROM evenement WHERE cible_table = "
+                       "'annotations' AND type = 'modification'")}
+    cle = journal.CLE_REGION_RETENUE
+    assert charges[d][0][cle] == charges[d][1][cle] == "detail"
+    assert cle not in charges[case][0] and cle not in charges[case][1]

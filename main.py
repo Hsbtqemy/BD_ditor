@@ -91,6 +91,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _PLANCHE_TUE, _planche_rendue,
     _get_projet, _get_region, _get_valeur,
     _groupes, _norm_tag, _patch_lexique, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
+    _garder_case_d_un_detail,
     _sans_accents, _sql_a_montrer, _tags_caches, _validate_parent, _valider_detail,
     _vocabulaire_d_export,
     db, portee_courante,
@@ -125,7 +126,7 @@ from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, ecarter_dossiers_d_a
                              phrase_de_refus,
                              remove_planche_files)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
-from pipeline.ordering import move_region, reorder_planche
+from pipeline.ordering import move_region, reorder_planche, retenue
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
 from pipeline import sharedocs
 from pipeline.sharedocs import ShareDocsError
@@ -1093,9 +1094,15 @@ def create_region(planche_id: int, region: RegionIn,
                           parent_id=region.parent_id)
     ordre = region.ordre
     if ordre is None:
+        # Commit 10 (constat 5) — une région qui SORT se range après celles qui sortent, sans
+        # compter les détails (`pipeline.ordering`) ; un détail, après toute sa fratrie. Un
+        # détail peut partager ce rang jusqu'au prochain réordonnancement : le reculer ici
+        # changerait son empreinte, et l'écran qui crée se signalerait à lui-même un
+        # changement venu d'ailleurs (CONC-4, `static/lib/signal-planche.js`).
+        sans_details = "" if retenue(region.type) else f" AND {sql_region_sortante('regions')}"
         row = conn.execute(
             "SELECT COALESCE(MAX(ordre), 0) + 1 AS n FROM regions "
-            "WHERE planche_id = ? AND parent_id IS ?",
+            f"WHERE planche_id = ? AND parent_id IS ?{sans_details}",
             (planche_id, region.parent_id),
         ).fetchone()
         ordre = row["n"]
@@ -1191,6 +1198,10 @@ def update_region(region_id: int, patch: RegionUpdate,
     if "type" in fields and (fields["type"] == TYPE_DETAIL) != (existing["type"] == TYPE_DETAIL):
         raise HTTPException(422, "Un détail reste un détail : tracez une autre zone, ou "
                                  "supprimez celle-ci.")
+    # Commit 10 (relecture croisée du commit 9, constat 3) — un détail se range dans une case
+    # ou nulle part : la case qui en porte un ne change pas de type, sans quoi le détail se
+    # retrouvait sous une bulle.
+    _garder_case_d_un_detail(conn, existing, fields.get("type"))
     if "parent_id" in fields:
         _validate_parent(conn, existing["planche_id"], fields["parent_id"], region_id)
     if {"nom", "ocr_texte", "parent_id"} & set(fields):

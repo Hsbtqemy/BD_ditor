@@ -8,11 +8,25 @@ gauche→droite dans chaque rangée) et réordonnancement.
 La séquence de lecture globale (transcription) se reconstruit par parcours de
 l'arbre dans cet ordre. Ce schéma rend le déplacement manuel trivial (échange de
 deux frères) et reste cohérent avec l'affichage en arbre.
+
+Un DÉTAIL (`config.TYPES_REGION_RETENUS`, G17) ne prend pas de rang parmi les autres
+(ANN-7, tranche 2, commit 10 ; relecture croisée du commit 9, constat 5) : les régions
+qui SORTENT sont rangées 1..N entre elles, les détails viennent après, N+1..N+M. Sans
+quoi l'export, qui tait le détail, montrait un trou dans l'ordre — une bulle seule de sa
+case à l'ordre 2 — d'où se lisait qu'une région retenue la précédait.
 """
 from __future__ import annotations
 
 import sqlite3
 from collections import defaultdict
+
+from config import TYPES_REGION_RETENUS
+
+
+def retenue(type_region) -> bool:
+    """La région de ce type est-elle RETENUE de toute sortie (un détail, G17) ? Elle se
+    range alors après ses frères qui sortent, jamais parmi eux."""
+    return type_region in TYPES_REGION_RETENUS
 
 
 def reading_order(boxes: list[dict]) -> list[dict]:
@@ -58,7 +72,7 @@ def reorder_planche(conn: sqlite3.Connection, planche_id: int) -> dict:
     de lecture et reçoit des rangs 1..N. Renvoie {'planche_id', 'regions'}.
     """
     rows = conn.execute(
-        "SELECT id, parent_id, x, y, w, h FROM regions WHERE planche_id = ?",
+        "SELECT id, parent_id, type, x, y, w, h FROM regions WHERE planche_id = ?",
         (planche_id,),
     ).fetchall()
     groups: dict = defaultdict(list)
@@ -66,7 +80,10 @@ def reorder_planche(conn: sqlite3.Connection, planche_id: int) -> dict:
         groups[r["parent_id"]].append(dict(r))
     n = 0
     for group in groups.values():
-        for rank, r in enumerate(reading_order(group), start=1):
+        # Les régions qui sortent d'abord, 1..N ; les détails ensuite (cf. en tête).
+        rangees = (reading_order([r for r in group if not retenue(r["type"])])
+                   + reading_order([r for r in group if retenue(r["type"])]))
+        for rank, r in enumerate(rangees, start=1):
             conn.execute("UPDATE regions SET ordre = ? WHERE id = ?", (rank, r["id"]))
             n += 1
     return {"planche_id": planche_id, "regions": n}
@@ -82,21 +99,26 @@ def move_region(conn: sqlite3.Connection, region_id: int, sens: str) -> dict:
     if sens not in ("haut", "bas"):
         raise ValueError(f"Sens invalide : {sens!r}")
     r = conn.execute(
-        "SELECT id, parent_id, planche_id FROM regions WHERE id = ?", (region_id,)
+        "SELECT id, parent_id, planche_id, type FROM regions WHERE id = ?", (region_id,)
     ).fetchone()
     if r is None:
         raise ValueError(f"Région {region_id} introuvable")
     sibs = conn.execute(
-        "SELECT id FROM regions WHERE planche_id = ? AND parent_id IS ? "
+        "SELECT id, type FROM regions WHERE planche_id = ? AND parent_id IS ? "
         "ORDER BY ordre, id",
         (r["planche_id"], r["parent_id"]),
     ).fetchall()
-    ids = [s["id"] for s in sibs]
+    # Un détail ne se déplace que parmi les détails, une autre région parmi les autres : les
+    # régions qui sortent gardent leurs rangs 1..N (cf. en tête), les détails viennent après.
+    sortent = [s["id"] for s in sibs if not retenue(s["type"])]
+    details = [s["id"] for s in sibs if retenue(s["type"])]
+    ids = details if retenue(r["type"]) else sortent
     i = ids.index(region_id)
     j = i - 1 if sens == "haut" else i + 1
     if j < 0 or j >= len(ids):
         return {"moved": False, "region_id": region_id}   # déjà en bout de fratrie
     ids[i], ids[j] = ids[j], ids[i]
-    for rank, sid in enumerate(ids, start=1):
+    for rank, sid in enumerate(sortent + details, start=1):
         conn.execute("UPDATE regions SET ordre = ? WHERE id = ?", (rank, sid))
-    return {"moved": True, "region_id": region_id, "ordre": j + 1}
+    rang = j + 1 + (len(sortent) if retenue(r["type"]) else 0)
+    return {"moved": True, "region_id": region_id, "ordre": rang}

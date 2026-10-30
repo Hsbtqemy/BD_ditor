@@ -369,15 +369,25 @@ Deux paliers de métadonnées descriptives (FAIR/dépôt, cf. `docs/dictionnaire
 (ANN-7, tranche 2, commit 9 ; G17) : un détail d'image, tracé dans une case depuis la page
 Annotation, qui porte un NOM (`regions.nom`, écrit par `POST`/`PUT` des régions, gardé par
 `vu` comme le texte) et jamais de texte ; il se range dans une case ou nulle part, rien ne se
-range sous lui, il ne change jamais de type et rien ne le devient (422 nommés,
-`socle._valider_detail`) ; seul un détail porte un nom. L'Atelier le MONTRE (son type, sa
-couleur, l'arbre) et le LAISSE ; la re-segmentation le garde. **Il est RETENU DE TOUTE
+range sous lui, il ne change jamais de type et rien ne le devient, et la case qui en porte
+un ne change pas de type (422 nommés, `socle._valider_detail`, `_garder_case_d_un_detail` ;
+commit 10) ; Ctrl+Z tient les mêmes règles (`undo._parent_valide`, l'inversion d'un type et
+celle d'une suppression : l'acte est passé). Seul un détail porte un nom. L'Atelier le MONTRE
+(son type, sa couleur, l'arbre) et le LAISSE ; la re-segmentation le garde. Il ne prend pas
+de rang parmi ses frères qui sortent (`pipeline/ordering.py` : eux 1..N, les détails après),
+sans quoi l'`ordre` exporté gardait son trou. **Il est RETENU DE TOUTE
 SORTIE jusqu'à la tranche 4** (`config.TYPES_REGION_RETENUS`, lus par UN fragment,
 `database.sql_region_sortante`) : exports d'album (JSON, CSV, TEI), recherche — l'écran
 comme son export —, figures (422 nommé), voie du dépôt, outils de `tools/` (le périmètre de
 `_commun.portee_albums` et, au corpus entier, `REGIONS_SORTANTES`), IIIF, et le journal
 publié (`_commun.sql_evenement_detail`, une quatrième coupure de `evenements_publiables` :
-ni ses actes ni ceux de sa note, vivant ou supprimé). `tests/test_detail_sorties.py` le JOUE
+ni ses actes ni ceux de sa note, vivant ou supprimé ; depuis le commit 10, tout acte sur une
+région retenue porte son type dans sa charge, `journal.CLE_REGION_RETENUE`, écrit quand la
+région existe : un détail né sans acte — une région recopiée, E3 — se reconnaît encore après
+la cascade de sa case, de sa planche, de son album ou d'une remise à zéro ; l'ensemble des
+régions retenues se calcule une fois par requête). Le résumé de provenance des métadonnées
+et de la description compte ce qui est publié — ses régions sans détail, ses actes sans
+ceux qu'on tait (`journal.indicateurs_provenance`, `actes_tus`). `tests/test_detail_sorties.py` le JOUE
 sur chaque sortie, avec une bulle témoin ; un tag posé sur lui reste du vocabulaire, dit par
 appartenance. Une GRILLE appartient à UN projet, se
 VERSIONNE (`grille_version`, brouillon puis publiée ; une version publiée ne change plus, hors

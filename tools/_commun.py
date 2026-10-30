@@ -24,6 +24,7 @@ if str(_REPO) not in sys.path:
 
 import database  # noqa: E402  (après l'ajustement de sys.path ci-dessus)
 from config import TYPES_REGION_RETENUS  # noqa: E402  (G17 : ni détail)
+import journal  # noqa: E402  (la clé d'un acte sur un détail, et ses cibles)
 
 
 def forcer_utf8() -> None:
@@ -306,8 +307,7 @@ def clause_personnages(alias: str = "personnages") -> str:
 # Les cibles du journal qui désignent une RÉGION par leur `cible_id` (« les actes
 # d'annotation ciblent le region_id », `journal.py`) ; `token_correction` la porte dans sa
 # charge, `planches` désigne la planche.
-_CIBLES_PAR_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
-                      "region_attribut")
+_CIBLES_PAR_REGION = journal.CIBLES_PAR_REGION
 
 
 def _json(alias: str, colonne: str, cle: str) -> str:
@@ -364,26 +364,42 @@ def _sql_region_d_evenement(e: str) -> str:
             f"{_json(e, 'apres', 'region_id')}, {_json(e, 'avant', 'region_id')}) END)")
 
 
-def _sql_evenement_detail_direct(e: str) -> str:
+def _sql_regions_retenues() -> str:
+    """Sous-requête SANS CORRÉLATION : les régions qu'on sait RETENUES de toute sortie — un
+    détail qui vit, ou dont un acte du journal a dit le type : l'instantané d'un acte
+    `regions`, ou la clé `journal.CLE_REGION_RETENUE` que tout acte sur une région retenue
+    porte depuis le commit 10 (ANN-7, tranche 2 ; relecture croisée du commit 9, constat 2).
+    Un détail ne change jamais de type (la route le refuse, dans les deux sens) et ses
+    identifiants ne reviennent pas (v30) : une région dite retenue une fois l'est pour
+    toujours.
+
+    Calculée UNE fois par requête (constat 4) : la forme corrélée relisait les actes d'une
+    région pour chaque acte, quadratique en actes par région — 35 s pour 300 000 actes."""
     retenus = ", ".join(f"'{t}'" for t in TYPES_REGION_RETENUS)
-    region = _sql_region_d_evenement(e)
-    # Un DÉTAIL ne change jamais de type (la route le refuse) et ses identifiants ne
-    # reviennent pas (v30) : une région qu'un acte du journal a dite d'un type retenu l'est
-    # pour toujours, vivante ou supprimée depuis.
-    return (f"(EXISTS (SELECT 1 FROM regions _rd WHERE _rd.id = {region} "
-            f"AND NOT {database.sql_region_sortante('_rd')}) "
-            f"OR EXISTS (SELECT 1 FROM evenement _ed WHERE _ed.cible_table = 'regions' "
-            f"AND _ed.cible_id = {region} AND ({_json('_ed', 'apres', 'type')} IN ({retenus}) "
-            f"OR {_json('_ed', 'avant', 'type')} IN ({retenus}))))")
+    cle = journal.CLE_REGION_RETENUE
+    dit_retenue = (f"({_json('_xr', 'apres', cle)} IN ({retenus}) "
+                   f"OR {_json('_xr', 'avant', cle)} IN ({retenus}) "
+                   f"OR (_xr.cible_table = 'regions' AND ({_json('_xr', 'apres', 'type')} "
+                   f"IN ({retenus}) OR {_json('_xr', 'avant', 'type')} IN ({retenus}))))")
+    return (f"(SELECT _rd.id FROM regions _rd WHERE NOT {database.sql_region_sortante('_rd')} "
+            f"UNION SELECT {_sql_region_d_evenement('_xr')} FROM evenement _xr "
+            f"WHERE {dit_retenue})")
 
 
 def sql_evenement_detail(e: str = "evenement") -> str:
     """Fragment SQL VRAI si l'acte `e` porte sur une région RETENUE de toute sortie — un
     détail (G17, ANN-7, tranche 2, commit 9) — ou en défait un. Le journal publié n'en dit
-    rien : ni sa création, ni son nom, ni sa note, ni qu'il a existé."""
-    return (f"COALESCE(({_sql_evenement_detail_direct(e)} OR ({e}.cible_table = 'evenement' "
-            f"AND EXISTS (SELECT 1 FROM evenement _ud WHERE _ud.id = {e}.cible_id "
-            f"AND {_sql_evenement_detail_direct('_ud')}))), 0)")
+    rien : ni sa création, ni son nom, ni sa note, ni qu'il a existé.
+
+    Ce qu'il ne sait PAS reconnaître, et c'est écrit : un acte écrit AVANT le commit 10 (sans
+    la clé) sur un détail né sans acte — une région recopiée — et parti depuis, quand aucun
+    acte postérieur ne l'a dit retenu. Le type `detail` est né au commit 9, le même jour, et
+    n'a jamais été servi en production."""
+    retenues = _sql_regions_retenues()
+    return (f"COALESCE(({_sql_region_d_evenement(e)} IN {retenues} "
+            f"OR ({e}.cible_table = 'evenement' AND EXISTS (SELECT 1 FROM evenement _ud "
+            f"WHERE _ud.id = {e}.cible_id AND {_sql_region_d_evenement('_ud')} IN {retenues}))"
+            f"), 0)")
 
 
 def activites_publiables(conn, colonnes) -> list:

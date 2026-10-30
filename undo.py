@@ -27,7 +27,7 @@ from typing import Optional
 
 import conflit
 import journal
-from config import TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUATION
+from config import TYPE_DETAIL, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUATION
 from database import (NATURE_COLLECTIF, annotation_vide, cle_tag, espace_de_region,
                       reindex_region,
                       unindex_region)
@@ -447,6 +447,12 @@ def _inverser_modification_region(conn, region_id, avant, apres, voit=None, depu
     # passent AVANT toute écriture (`_garder_liens_du_type`).
     if "type" in changees:
         _garder_liens_du_type(conn, region_id, avant, voit, depuis)
+        # Commit 10 (constat 3) — rendre son ancien type à une case qui porte un détail le
+        # laisserait sous une bulle : l'état d'avant ne se rétablit plus.
+        if avant.get("type") != "case" and conn.execute(
+                "SELECT 1 FROM regions WHERE parent_id = ? AND type = ? LIMIT 1",
+                (region_id, TYPE_DETAIL)).fetchone():
+            raise Irretablissable()
     # AUTH-14 — le parent qu'on rend se valide comme la route le valide (`_validate_parent`) :
     # présent, dans la MÊME planche, sans cycle. Sans quoi Ctrl+Z rattachait une bulle à une
     # case d'une autre collection (relecture croisée, S1).
@@ -1165,6 +1171,14 @@ def _inverser(conn, e, voit=None) -> int:
             elif t == "modification":
                 _inverser_modification_region(conn, cid, avant, apres, voit, depuis=e["id"])
             elif t == "suppression":
+                # Commit 10 (constat 3) — le parent qui la reçoit suit les règles d'un détail
+                # (`_parent_convient`) : un détail ne revient pas sous une case devenue bulle.
+                parent = (avant or {}).get("parent_id")
+                r = (conn.execute("SELECT type FROM regions WHERE id = ?", (parent,)).fetchone()
+                     if parent is not None else None)
+                if r is not None and not _parent_convient(conn, None, r["type"],
+                                                          (avant or {}).get("type")):
+                    raise Irretablissable()
                 _recreer_region_profond(conn, avant, depuis=e["id"])
             return cid
         if table == "annotations":        # cible_id = region_id (v20 : stable, cf. put_annotation)
@@ -1240,13 +1254,29 @@ def _planches_instantane(snap: dict) -> list:
     return sorted({n.get("planche_id") for n in _noeuds(snap)}, key=lambda x: (x is None, x))
 
 
-def _parent_valide(conn, region_id, parent_id, planche_id) -> bool:
-    """Ce que la route exige d'un parent (`socle._validate_parent`) : présent, dans la même
-    planche, ni la région elle-même ni l'un de ses descendants."""
-    r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (parent_id,)).fetchone()
+def _parent_valide(conn, region_id, parent_id, planche_id, type_region=None) -> bool:
+    """Ce que la route exige d'un parent (`socle._validate_parent`, `socle._valider_detail`) :
+    présent, dans la même planche, ni la région elle-même ni l'un de ses descendants, jamais
+    un détail ; et sous un DÉTAIL, une case (ANN-7, tranche 2, commit 10 ; relecture croisée
+    du commit 9, constat 3 : Ctrl+Z reposait un détail sous une case devenue bulle).
+    `type_region` : le type de la région rendue, lu en base s'il n'est pas donné."""
+    r = conn.execute("SELECT planche_id, type FROM regions WHERE id = ?",
+                     (parent_id,)).fetchone()
     if r is None or r["planche_id"] != planche_id or parent_id == region_id:
         return False
+    if not _parent_convient(conn, region_id, r["type"], type_region):
+        return False
     return parent_id not in set(_descendants(conn, region_id))
+
+
+def _parent_convient(conn, region_id, type_parent, type_region=None) -> bool:
+    """Les règles d'un DÉTAIL sur son parent : rien sous un détail, un détail sous une case."""
+    if type_parent == TYPE_DETAIL:
+        return False
+    if type_region is None and region_id is not None:
+        row = conn.execute("SELECT type FROM regions WHERE id = ?", (region_id,)).fetchone()
+        type_region = row["type"] if row else None
+    return type_region != TYPE_DETAIL or type_parent == "case"
 
 
 def _recreee_depuis(conn, region_id, e) -> bool:

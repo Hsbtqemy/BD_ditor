@@ -60,7 +60,8 @@ from _commun import (version_outil, environnement, composants,  # noqa: E402  (p
                      # COL-4 — ni bac à sable ni jeu ne sortent
                      HorsDuCorpus, activites_publiables, albums_du_corpus,
                      clause_personnages, clause_vocabulaire, exiger_hors_isoles,
-                     REGIONS_SORTANTES)                      # G17 : ni détail
+                     REGIONS_SORTANTES,                      # G17 : ni détail
+                     sql_evenement_detail)
 
 
 def _grouper(conn, sql, cle=0, params=()):
@@ -405,7 +406,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             # A3 : indicateurs dérivés du journal de provenance (part machine/humaine, dérive,
             # comptes de runs & d'actes). Le détail est dans les tables `activite`/`evenement`.
             "provenance": journal.indicateurs_provenance(
-                conn, album_ids, cibles=CIBLES_CORPUS),   # AUTH-1 : compter ce qu'on publie
+                conn, album_ids, cibles=CIBLES_CORPUS,   # AUTH-1 : compter ce qu'on publie
+                actes_tus=sql_evenement_detail("evenement")),   # G17 : ni détail
             # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
             # COL-4 : sans le vocabulaire des bacs à sable ni du jeu.
             "lexique": database.lexique_resume(conn, collection_id,

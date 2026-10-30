@@ -95,6 +95,52 @@ def inscrire_run_termine(conn: sqlite3.Connection, type: str, *, agent: Optional
     return cur.lastrowid
 
 
+# Les cibles du journal qui désignent une RÉGION par leur `cible_id` (« les actes
+# d'annotation ciblent le region_id ») ; `token_correction` la porte dans sa charge
+# (`region_id`). `tools/_commun.py` la relit d'ici : une seule liste.
+CIBLES_PAR_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
+                     "region_attribut")
+
+# ANN-7, tranche 2, commit 10 (relecture croisée du commit 9, constat 2) — la clé qu'un acte
+# sur une région RETENUE de toute sortie (un détail, G17) porte dans sa charge, avec le type
+# de la région. Le journal publié se coupe par elle (`tools/_commun.sql_evenement_detail`) :
+# un détail né SANS acte — une région recopiée par une copie amorcée, aucun événement n'étant
+# recopié (E3) — puis emporté par la cascade de sa case, de sa planche ou de son album ne se
+# reconnaissait plus, et les actes sur sa note partaient au dépôt. Écrite au moment de
+# l'acte, quand la région existe forcément, elle ne dépend d'aucun chemin de suppression.
+CLE_REGION_RETENUE = "region_retenue"
+
+
+def _marquer_region_retenue(conn: sqlite3.Connection, cible_table: str,
+                            cible_id: Optional[int], avant: Any, apres: Any):
+    """Les charges de l'acte, marquées de `CLE_REGION_RETENUE` si sa région est d'un type
+    retenu (`config.TYPES_REGION_RETENUS`) ; telles quelles sinon. Seules les charges qui
+    sont des dicts reçoivent la clé — une charge absente le reste, pour que l'annulation,
+    qui lit `avant is None` comme « il n'y avait rien », ne change pas de sens —, et un
+    instantané de région qui dit déjà son type n'a rien à redire."""
+    if cible_table in CIBLES_PAR_REGION:
+        region = cible_id
+    elif cible_table == "token_correction":
+        region = next((c.get("region_id") for c in (apres, avant)
+                       if isinstance(c, dict) and c.get("region_id") is not None), None)
+    else:
+        return avant, apres
+    if region is None:
+        return avant, apres
+    from config import TYPES_REGION_RETENUS
+    row = conn.execute("SELECT type FROM regions WHERE id = ?", (region,)).fetchone()
+    if row is None or row[0] not in TYPES_REGION_RETENUS:
+        return avant, apres
+
+    def marque(charge):
+        if not isinstance(charge, dict):
+            return charge
+        if cible_table == "regions" and charge.get("type") == row[0]:
+            return charge
+        return {**charge, CLE_REGION_RETENUE: row[0]}
+    return marque(avant), marque(apres)
+
+
 def journaliser(conn: sqlite3.Connection, type: str, cible_table: str,
                 cible_id: Optional[int], *, avant: Any = None, apres: Any = None,
                 agent: Optional[str] = None, agent_type: str = "humain",
@@ -103,9 +149,11 @@ def journaliser(conn: sqlite3.Connection, type: str, cible_table: str,
 
     `type` ∈ {creation, modification, suppression, validation, lien, delien}. `avant`/`apres`
     = états (dicts) sérialisés en JSON. Pour un acte humain, `agent` défaut = l'agent courant.
+    Un acte sur un DÉTAIL porte son type dans sa charge (`_marquer_region_retenue`).
     """
     if agent_type == "humain" and agent is None:
         agent = agent_courant.get()
+    avant, apres = _marquer_region_retenue(conn, cible_table, cible_id, avant, apres)
     cur = conn.execute(
         "INSERT INTO evenement (activite_id, type, agent, agent_type, cible_table, "
         "cible_id, avant, apres) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -247,7 +295,7 @@ def version_moteur(distribution: Optional[str]) -> Optional[str]:
 # Indicateurs dérivés — la couverture / la dérive lues DEPUIS le journal
 # --------------------------------------------------------------------------- #
 def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
-                           cibles=None) -> dict:
+                           cibles=None, actes_tus: Optional[str] = None) -> dict:
     """Agrégats DÉRIVÉS de la surface dénormalisée (`activite_id`/`touche`) et du journal :
     quantifient la part machine vs humaine et la DÉRIVE (pré-remplissage machine RETOUCHÉ).
 
@@ -266,18 +314,27 @@ def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
     résumé plus large que ce qu'il résume ne se lit pas comme un filtre, mais comme un
     défaut. C'est le même écart que `provenance_export.construire()` refermait de son côté,
     et le refermer là ne suffisait pas.
+
+    `actes_tus` — un fragment SQL sur l'alias `evenement`, VRAI pour un acte que l'artefact
+    TAIT alors même que sa table est publiée : aujourd'hui les actes sur un DÉTAIL
+    (`tools/_commun.sql_evenement_detail`, ANN-7, tranche 2, commit 10). Fourni par
+    l'appelant pour la même raison que `cibles`. Le bloc `regions`, lui, ne compte jamais un
+    détail (G17, `database.sql_region_sortante`) : il compte ce qui sort, pour tout appelant.
     """
+    from database import sql_region_sortante      # import paresseux (database importe journal)
+    sortante = sql_region_sortante("r")
     if album_ids:
         ph = ",".join("?" * len(album_ids))
-        join = f" JOIN planches p ON p.id = r.planche_id WHERE p.album_id IN ({ph})"
+        join = (f" JOIN planches p ON p.id = r.planche_id WHERE p.album_id IN ({ph}) "
+                f"AND {sortante}")
         params = list(album_ids)
     else:
-        join, params = "", []
+        join, params = f" WHERE {sortante}", []
 
     def cnt(extra: str = "") -> int:
         sql = f"SELECT COUNT(*) FROM regions r{join}"
         if extra:
-            sql += (" AND " if join else " WHERE ") + extra
+            sql += " AND " + extra
         return conn.execute(sql, params).fetchone()[0]
 
     total = cnt()
@@ -301,6 +358,8 @@ def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
         cibles = tuple(sorted(cibles))
         ou = f" WHERE cible_table IN ({','.join('?' * len(cibles))})" if cibles else " WHERE 0"
         p_ev = list(cibles)
+    if actes_tus:
+        ou += (" AND " if ou else " WHERE ") + f"NOT ({actes_tus})"
 
     ev_type = {r["type"]: r["n"] for r in conn.execute(
         f"SELECT type, COUNT(*) AS n FROM evenement{ou} GROUP BY type ORDER BY type", p_ev)}
