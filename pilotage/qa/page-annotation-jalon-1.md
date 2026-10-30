@@ -56,29 +56,29 @@ SUR PLACE et se signale.
 
 ### Deux écrans sur le même relevé — `stagiaire` et `proprio`, planche 1, bulle « HEY TouCHE-Moi… »
 
-- [ ] `proprio` ouvre la même bulle : il voit les relevés posés par `stagiaire`, avec leurs traits
-- [ ] `proprio` change la précision d'« origine du son » (s'il a été retiré, `stagiaire` le repose avant) et sort du champ ; puis `stagiaire`, SANS recharger, change la même précision et sort du champ : un bandeau prend la place de la ligne du guide, nomme `proprio`, et offre « Remplacer par la mienne » et « Garder l'autre »
-- [ ] Tant que le bandeau est ouvert, cliquer une entrée de la grille ne change rien : un message dit « Réglez d'abord le conflit, en bas de la grille. » ; « Garder l'autre » ferme le bandeau et la précision dit celle de proprio
+- [x] `proprio` ouvre la même bulle : il voit les relevés posés par `stagiaire`, avec leurs traits
+- [x] `proprio` tape « le préau » dans la précision d'« origine du son » et sort du champ ; puis `stagiaire`, SANS recharger, tape un AUTRE texte, « la cour », dans la même précision et sort du champ : un bandeau prend la place de la ligne du guide, nomme `proprio`, et offre « Remplacer par la mienne » et « Garder l'autre » (le même texte des deux côtés ne fait pas de conflit : rien ne se perd)
+- [x] Tant que le bandeau est ouvert, cliquer une entrée de la grille ne change rien : un message dit « Réglez d'abord le conflit, en bas de la grille. » ; « Garder l'autre » ferme le bandeau et la précision dit celle de proprio
 
 ### Terminer et parcourir — `stagiaire`
 
-- [ ] Sur une bulle de la planche 1, le pied de la colonne du milieu dit « Sons et images (fictive) : à faire », et l'en-tête dit « zone i / n de « Sons et images (fictive) » »
-- [ ] « Terminée, suivante › » passe à la zone suivante ; « ‹ Précédente » y revient : le pied dit « ✓ Sons et images (fictive) : terminée », et l'onglet de la grille porte ✓
-- [ ] « Rouvrir » : le pied redit « … : à faire », le ✓ de l'onglet part
-- [ ] Clic sur « b1 · bulle » de la case c1 (zone 2 / 41), « Terminée, suivante › » deux fois (b1 puis b2 terminées), « Parcours » : « à faire seulement », clic sur la case c1 dans la minicarte (zone 1 / 41), puis « Suivante › » : l'en-tête dit « zone 4 / 41 » (Case c2), b1 et b2 sautées
-- [ ] « Parcours » toujours sur « à faire seulement », sur la case c2 (zone 4 / 41) : Ctrl+Entrée mène à la zone 5 / 41, dont le pied dit encore « … : à faire » ; Ctrl+Maj+Entrée revient à la zone 4, puis à la zone 1 (b1 et b2 sautées)
-- [ ] Clic sur la case c1 dans la minicarte, « Afficher » sur « A. Sons » : le pied dit « Sons et images (fictive) › A. Sons : à faire » ; « Terminée, suivante › », puis de nouveau clic sur la case c1 dans la minicarte : le pied dit « ✓ Sons et images (fictive) › A. Sons : terminée · stagiaire » ; « Afficher » sur « Toute la grille » : le pied redit « Sons et images (fictive) : à faire »
+- [x] Sur une bulle de la planche 1, le pied de la colonne du milieu dit « Sons et images (fictive) : à faire », et l'en-tête dit « zone i / n de « Sons et images (fictive) » »
+- [x] « Terminée, suivante › » passe à la zone suivante ; « ‹ Précédente » y revient : le pied dit « ✓ Sons et images (fictive) : terminée », et l'onglet de la grille porte ✓
+- [x] « Rouvrir » : le pied redit « … : à faire », le ✓ de l'onglet part
+- [x] Clic sur « b1 · bulle » de la case c1 (zone 2 / 41), « Terminée, suivante › » deux fois (b1 puis b2 terminées), « Parcours » : « à faire seulement », clic sur la case c1 dans la minicarte (zone 1 / 41), puis « Suivante › » : l'en-tête dit « zone 4 / 41 » (Case c2), b1 et b2 sautées
+- [x] « Parcours » toujours sur « à faire seulement », sur la case c2 (zone 4 / 41) : Ctrl+Entrée mène à la zone 5 / 41, dont le pied dit encore « … : à faire » ; Ctrl+Maj+Entrée revient à la zone 4, puis à la zone 1 (b1 et b2 sautées)
+- [x] Clic sur la case c1 dans la minicarte, « Afficher » sur « A. Sons » : le pied dit « Sons et images (fictive) › A. Sons : à faire » ; « Terminée, suivante › », puis de nouveau clic sur la case c1 dans la minicarte : le pied dit « ✓ Sons et images (fictive) › A. Sons : terminée · stagiaire » ; « Afficher » sur « Toute la grille » : le pied redit « Sons et images (fictive) : à faire »
 
 ### Annuler — `stagiaire`
 
-- [ ] Poser « cri » sur un mot, puis Ctrl+Z (focus hors d'un champ de saisie) : un message « Annulé : … » s'affiche, le trait et la ligne de la liste disparaissent
-- [ ] Atelier (/), même planche, mode « Édition » : déplacer la bulle « HEY… » à la souris, puis Ctrl+Z : un message « Annulé : modification d'une région » s'affiche, et X / Y de « Coordonnées » reviennent à leurs valeurs d'avant
+- [x] Poser « cri » sur un mot, puis Ctrl+Z (focus hors d'un champ de saisie) : un message « Annulé : … » s'affiche, le trait et la ligne de la liste disparaissent
+- [x] Atelier (/), même planche, mode « Édition » : déplacer la bulle « HEY… » à la souris, puis Ctrl+Z : un message « Annulé : modification d'une région » s'affiche, et X / Y de « Coordonnées » reviennent à leurs valeurs d'avant
 
 ### Lire sans écrire — `stagiaire`, « Carnet d'arrivant »
 
 - [ ] Collection « Carnet d'arrivant », Album « esther v1 », Planche 1, bulle b2 de la case c1, « HEY » désigné : la grille est là, ses entrées se VOIENT éteintes ; cliquer « cri » ou « crac » ne pose rien (la liste « Sur « HEY » » dit « — ») et un message dit qu'on lit cet album
-- [ ] « Terminée, suivante › » est éteint, et son infobulle dit qu'on lit cet album
+- [x] « Terminée, suivante › » est éteint, et son infobulle dit qu'on lit cet album
 
 ### Le lien avec l'Atelier — `stagiaire`
 
-- [ ] « Ouvrir dans l'Atelier ↗ » ouvre l'Atelier sur la même bulle ; son retour ramène à la page Annotation, sur la même bulle
+- [x] « Ouvrir dans l'Atelier ↗ » ouvre l'Atelier sur la même bulle ; son retour ramène à la page Annotation, sur la même bulle
