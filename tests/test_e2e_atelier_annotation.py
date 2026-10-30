@@ -71,7 +71,8 @@ SURFACES_HORS_PERIMETRE = {
 # Le bloc qui PROUVE que le panneau s'est chargé, pour les types où « Locuteur » doit
 # rester caché. Chaque type muet a le sien : une case reçoit une situation, une boîte
 # personnage une identité.
-TEMOIN = {"case": "#situation-section", "personnage": "#perso-section"}
+TEMOIN = {"case": "#situation-section", "personnage": "#perso-section",
+          "detail": "#note-input"}   # un détail (commit 9) : une note, rien d'autre
 
 # Ce que le nom accessible du champ doit NOMMER, type par type. Le libellé entier n'est
 # pas verrouillé — seulement la propriété qui manquait : il disait « à la bulle » devant
@@ -103,6 +104,7 @@ def atelier(live_server):
                  "cartouche": region("cartouche", 60, 300, case),
                  "texte": region("texte", 400, 60, case),
                  "personnage": region("personnage", 400, 300, case),
+                 "detail": region("detail", 400, 520, case),
                  "tintin": c.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]}
     finally:
         c.close()

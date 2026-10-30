@@ -682,6 +682,26 @@ function selectedRegion() {
 }
 
 /* Remplit le sélecteur de parent (cases de la planche, hors soi-même + descendants). */
+/* Le TYPE d'une région dans le panneau. ANN-7, tranche 2, commit 9 — un DÉTAIL se trace sur
+   la page Annotation ; l'Atelier le MONTRE (son type ici, sa couleur sur l'image, sa place
+   dans l'arbre) et le LAISSE : la liste ne l'offre à aucune autre région, et ne change pas
+   un détail en autre chose — le serveur refuse les deux (G17 : un détail ne sort pas). */
+function typeDeRegion(type) {
+  const sel = $("#region-type");
+  let opt = sel.querySelector('option[value="detail"]');
+  if (type === "detail" && !opt) {
+    opt = document.createElement("option");
+    opt.value = "detail";
+    opt.textContent = "détail";
+    sel.appendChild(opt);
+  } else if (type !== "detail" && opt) {
+    opt.remove();
+  }
+  sel.value = type;
+  sel.disabled = type === "detail";
+  sel.title = type === "detail" ? "Un détail se trace sur la page Annotation, et reste un détail" : "";
+}
+
 function renderParentOptions(r) {
   const sel = $("#region-parent");
   if (!sel) return;
@@ -757,7 +777,7 @@ function renderPanel() {
         : "")
     : "—";
   $("#region-id").textContent = "#" + r.id;
-  $("#region-type").value = r.type;
+  typeDeRegion(r.type);
   $("#region-source").textContent = r.source;
   renderParentOptions(r);   // « Rattachée à » : visible dès qu'une région est sélectionnée
 

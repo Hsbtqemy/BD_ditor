@@ -388,7 +388,8 @@ function rendreTete() {
 function rendreCase() {
   const boite = $("#an-vue-case");
   const c = caseCourante();
-  if (!S.planche || !c) { boite.replaceChildren(); return; }
+  const trace = $("#an-trace");                   // ce qu'un tracé propose (commit 9) reste
+  if (!S.planche || !c) { boite.replaceChildren(trace); return; }
   const rect = c.case;
   const etiq = A.etiquettesDeLaCase(c);
   // La case, cadrée à la taille qu'elle prend dans la boîte (`meet`), le dérivé en FOND :
@@ -426,8 +427,7 @@ function rendreCase() {
       class: `an-vz t-${z.type}${z.id === S.zoneId ? " choisi" : ""}`, x: z.x, y: z.y,
       width: z.w, height: z.h, "data-zone": z.id }));
     if (taille === null) continue;
-    const nom = z.type === "personnage" && S.personnages.get(z.id)
-      ? S.personnages.get(z.id) : etiq.get(z.id);
+    const nom = A.nomSurImage(z, etiq.get(z.id), S.personnages.get(z.id));
     const t = svg("text", { class: "an-vz-lbl", x: z.x + taille * 0.4, y: z.y + taille * 1.1,
                             "font-size": taille.toFixed(2),
                             "stroke-width": (taille / 7).toFixed(2), "aria-hidden": "true" });
@@ -435,7 +435,7 @@ function rendreCase() {
     racine.appendChild(t);
   }
   cadre.appendChild(racine);
-  boite.replaceChildren(cadre);
+  boite.replaceChildren(cadre, trace);
 }
 
 /* Les boîtes personnage de la case COURANTE disent leur personnage sur l'image : une requête
@@ -550,6 +550,22 @@ async function rendreContexte() {
   }
   $("#an-ctx-perso").textContent = "…";
   $("#an-ctx-perso").classList.add("muted");
+  // Le nom d'un détail, la transcription d'un texte hors bulle (commit 9) : ils se lisent sur
+  // la région elle-même, sans requête.
+  const detail = !!z && !z.pseudo && z.type === "detail";
+  montrer("#an-ctx-nom-t", detail);
+  montrer("#an-ctx-nom", detail);
+  $("#an-nom").hidden = !gestes.has("nom");
+  $("#an-nom-lu").hidden = gestes.has("nom");
+  if (detail) {
+    $("#an-nom").value = z.nom || "";
+    $("#an-nom-lu").textContent = z.nom || "—";
+    $("#an-nom-lu").classList.toggle("muted", !z.nom);
+  }
+  montrer("#an-ctx-tr-t", gestes.has("transcription"));
+  montrer("#an-ctx-tr", gestes.has("transcription"));
+  if (gestes.has("transcription")) $("#an-transcription").value = z.ocr_texte || "";
+  $("#an-zone-supprimer").hidden = !gestes.has("supprimer");
   if (!id) return;
   const lire = (chemin, cle) => apiGet(chemin).then((d) => d[cle]).catch(() => undefined);
   const [locuteur, personnage, note] = await Promise.all([
@@ -720,6 +736,8 @@ function bandeauDuContexte(cf) {
   const c = cf.detail.conflit;
   const locuteur = cf.lieu === "locuteur";
   const quoi = locuteur ? BDConflit.texteLienNonEnregistre(cf.saisie)
+    : cf.lieu === "nom" ? "Votre nom n'est pas enregistré : il reste dans le Contexte."
+    : cf.lieu === "ocr_texte" ? "Votre transcription n'est pas enregistrée : elle reste dans le Contexte."
     : "Votre note n'est pas enregistrée : elle reste dans le Contexte.";
   const version = locuteur ? BDConflit.nomPersonnage(c.personnage, "locuteur")
     : c.valeur_actuelle === null || c.valeur_actuelle === undefined || c.valeur_actuelle === ""
@@ -750,6 +768,23 @@ async function resoudreConflitDuContexte(cf, garderMienne) {
     if (ici) $("#an-loc-input").focus();
     return;
   }
+  if (cf.lieu === "nom" || cf.lieu === "ocr_texte") {
+    // La version de l'autre devient celle de la région ; « la mienne » repart dessus.
+    const loc = regionLue(cf.regionId);
+    const autre = c.valeur_actuelle === undefined ? null : c.valeur_actuelle;
+    if (loc) loc[cf.lieu] = autre;
+    const champ = $(cf.lieu === "nom" ? "#an-nom" : "#an-transcription");
+    if (garderMienne) {
+      const valeur = ici ? champ.value.trim() || null : cf.saisie;
+      await enchainer(cf.lieu, () => ecrireChampDeZone(cf.regionId, cf.lieu, valeur, autre));
+    } else {
+      if (ici) champ.value = autre || "";
+      if (cf.lieu === "nom") rendreCase();
+      annoncer("La version enregistrée est gardée.");
+    }
+    if (ici) champ.focus();
+    return;
+  }
   const actuelle = c.valeur_actuelle === null || c.valeur_actuelle === undefined ? "" : c.valeur_actuelle;
   if (garderMienne) {
     const texte = ici ? $("#an-note").value : cf.saisie;
@@ -771,6 +806,202 @@ async function resoudreConflitDuContexte(cf, garderMienne) {
 /* Une note retenue par un conflit part quand il est réglé — si aucun autre ne s'est ouvert. */
 function noteEnAttente() {
   if (!S.conflit && S.note.sale && !S.note.minuterie && S.note.region !== null) partirNote(S.note.region);
+}
+
+/* ───────────── Tracer une zone (commit 9) ─────────────
+   Un GLISSÉ dans la case agrandie trace un rectangle ; on dit ensuite ce qu'il est — un
+   « Détail d'image », qu'on nomme, ou un « Texte hors bulle », qu'on transcrit puis qu'on
+   annote (`POST /api/planches/{id}/regions`, rangé dans la case). Un clic reste un clic :
+   en deçà de quelques pixels d'écran, rien ne se trace, et le clic qui suit un tracé ne
+   choisit rien. Pendant le glissé, seul le rectangle bouge — rien d'autre ne se redessine
+   sous le pointeur ; il se termine aussi quand le navigateur l'avale (`pointercancel`,
+   `blur`). Une zone tracée ici n'est jamais une case. Pas de tracé au clavier ni au doigt
+   dans ce commit : « Tracer une zone » au doigt vient avec l'item 9 du cadrage. */
+const TR = { depart: null, ecran: null, svg: null, rect: null, trace: false, finiA: 0 };
+const TRACE_ECRAN_PX = 6;            // en deçà, un clic qui a tremblé
+
+function pointMaster(svgEl, ev) {
+  const m = svgEl.getScreenCTM();
+  if (!m) return null;
+  const pt = svgEl.createSVGPoint();
+  pt.x = ev.clientX;
+  pt.y = ev.clientY;
+  const p = pt.matrixTransform(m.inverse());
+  return { x: p.x, y: p.y };
+}
+
+function oterRectTrace() {
+  const r = document.querySelector("#an-vue-case .an-trace-rect");
+  if (r) r.remove();
+}
+
+function annulerTrace() {
+  TR.depart = null;
+  TR.trace = false;
+  TR.rect = null;
+  oterRectTrace();
+  $("#an-trace").hidden = true;
+}
+
+function brancherTrace() {
+  const boite = $("#an-vue-case");
+  boite.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || !S.planche || !ecrivable() || S.designer !== null) return;
+    const svgEl = e.target.closest && e.target.closest("svg.an-case-svg");
+    if (!svgEl) return;
+    if (!$("#an-trace").hidden) annulerTrace();
+    TR.svg = svgEl;
+    TR.depart = pointMaster(svgEl, e);
+    TR.ecran = [e.clientX, e.clientY];
+    TR.trace = false;
+  });
+  boite.addEventListener("pointermove", (e) => {
+    if (!TR.depart) return;
+    if (!TR.trace && Math.hypot(e.clientX - TR.ecran[0], e.clientY - TR.ecran[1]) < TRACE_ECRAN_PX) return;
+    TR.trace = true;
+    const c = caseCourante();
+    const p = pointMaster(TR.svg, e);
+    if (!c || !p) return;
+    const r = A.rectangleTrace(TR.depart, p, c.case, 1) || { x: TR.depart.x, y: TR.depart.y, w: 0, h: 0 };
+    let el = TR.svg.querySelector(".an-trace-rect");
+    if (!el) { el = svg("rect", { class: "an-trace-rect" }); TR.svg.appendChild(el); }
+    el.setAttribute("x", r.x); el.setAttribute("y", r.y);
+    el.setAttribute("width", r.w); el.setAttribute("height", r.h);
+  });
+  const fin = (e) => {
+    if (!TR.depart) return;
+    const trace = TR.trace;
+    const p = e && e.type === "pointerup" ? pointMaster(TR.svg, e) : null;
+    const c = caseCourante();
+    const depart = TR.depart;
+    TR.depart = null;
+    if (!trace) return;                            // un clic : le `click` choisit
+    TR.finiA = Date.now();
+    TR.rect = p && c ? A.rectangleTrace(depart, p, c.case) : null;
+    if (!TR.rect) { oterRectTrace(); return; }
+    TR.caseIx = S.caseIx;
+    $("#an-trace").hidden = false;
+    annoncer("Zone tracée : détail d'image, ou texte hors bulle ?");
+    const b = $('#an-trace [data-trace="detail"]');
+    if (b) b.focus();
+  };
+  document.addEventListener("pointerup", fin);
+  document.addEventListener("pointercancel", () => { if (TR.depart) annulerTrace(); });
+  window.addEventListener("blur", () => { if (TR.depart) annulerTrace(); });
+  $("#an-trace").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-trace]");
+    if (!b) return;
+    if (!b.dataset.trace) { annulerTrace(); return; }
+    creerZoneTracee(b.dataset.trace);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && (!$("#an-trace").hidden || TR.depart)) annulerTrace();
+  });
+}
+
+/* La zone tracée naît dans la case — ou sur la planche, pour la case pseudo —, puis la page
+   la choisit et met le focus sur son nom ou sa transcription. */
+async function creerZoneTracee(type) {
+  if (conflitOuvert()) return;
+  const rect = TR.rect;
+  const c = S.rangement[TR.caseIx];
+  annulerTrace();
+  if (!rect || !c || !S.planche || !A.TRACABLES.includes(type)) return;
+  let creee;
+  try {
+    creee = await apiSend("POST", `/api/planches/${S.planche.id}/regions`, {
+      type, ...rect, parent_id: c.case.pseudo ? null : c.case.id, source: "manuel" });
+  } catch (err) {
+    toast(err.message || "Refusé.", "error");
+    return;
+  }
+  annoncer(type === "detail" ? "Détail tracé : nommez-le." : "Texte tracé : transcrivez-le.");
+  await ouvrirPlanche(S.planche.id, creee.id, { caseIx: S.caseIx, zoneId: S.zoneId });
+  const champ = $(type === "detail" ? "#an-nom" : "#an-transcription");
+  if (champ && !champ.hidden) champ.focus();
+}
+
+/* ── Le nom d'un détail, la transcription d'un texte hors bulle ──
+   Chacun s'écrit sur la région (`PUT /api/regions/{id}`) avec la valeur que l'écran voyait
+   (`vu`, CONC-3), lue sur la région de la planche au moment où le geste PART. */
+function regionLue(id) { return S.regions.find((x) => x.id === id) || null; }
+
+function envoyerChampDeZone(champ, valeur) {
+  const z = zoneCourante();
+  if (!z || z.pseudo || !ecrivable()) return null;
+  const rid = z.id;
+  const actuel = (r) => (r ? (champ === "nom" ? r.nom : r.ocr_texte) || null : null);
+  if (actuel(regionLue(rid)) === valeur) return null;
+  if (conflitOuvert()) return null;
+  return enchainer(champ, () => {
+    const vu = actuel(regionLue(rid));
+    if (vu === valeur) return null;
+    return ecrireChampDeZone(rid, champ, valeur, vu);
+  });
+}
+
+async function ecrireChampDeZone(rid, champ, valeur, vu) {
+  if (S.conflit) return null;
+  let r;
+  try {
+    r = await apiSend("PUT", `/api/regions/${rid}`, { [champ]: valeur, vu: { [champ]: vu } });
+  } catch (e) {
+    if (refusDuContexte(e, champ, rid, valeur)) return null;
+    toast((champ === "nom" ? "Nom : " : "Transcription : ") + e.message, "error");
+    return null;
+  }
+  const loc = regionLue(rid);
+  if (loc) { loc.nom = r.nom; loc.ocr_texte = r.ocr_texte; }
+  if (champ === "nom") {
+    annoncer(r.nom ? `Nom : ${r.nom}.` : "Nom retiré.");
+    rendreCase();
+  } else {
+    annoncer("Transcription enregistrée.");
+    rendreZones();
+    $("#an-preparee").textContent = S.planche ? A.preparation(S.regions, S.planche.relecture_statut) : "";
+    if ((zoneCourante() || {}).id === rid) {
+      S.mots = null;
+      S.sel = [];
+      await chargerMots();
+      rendreMots();
+    }
+    // Le texte change : les relevés de la zone se ré-ancrent, et leur état se relit.
+    await relireReleves();
+  }
+  return r;
+}
+
+/* « Supprimer cette zone » : une zone que la page TRACE (un détail, un texte hors bulle),
+   confirmée comme dans l'Atelier, avec ce qui est posé sur elle ; Ctrl+Z la rend. */
+async function supprimerZone() {
+  const z = zoneCourante();
+  const c = caseCourante();
+  if (!z || z.pseudo || !A.TRACABLES.includes(z.type) || !ecrivable()) return;
+  if (conflitOuvert()) return;
+  const n = S.releves.filter((r) => r.region_id === z.id).length;
+  const quoi = `Supprimer ${laZone(z)}${n ? ` et ${n > 1 ? `ses ${n} relevés` : "son relevé"}` : ""} ? Ctrl+Z la rend.`;
+  if (!confirm(quoi)) return;
+  try {
+    await apiSend("DELETE", `/api/regions/${z.id}`);
+  } catch (e) {
+    if (!refusDuContexte(e, "", z.id, null)) toast(e.message || "Refusé.", "error");
+    return;
+  }
+  annoncer(`Supprimé : ${laZone(z)}.`);
+  await ouvrirPlanche(S.planche.id, c && !c.case.pseudo ? c.case.id : null,
+                      { caseIx: S.caseIx, zoneId: null });
+}
+
+function brancherZonesTracees() {
+  brancherTrace();
+  const nom = $("#an-nom");
+  nom.addEventListener("change", () => envoyerChampDeZone("nom", nom.value.trim() || null));
+  nom.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); envoyerChampDeZone("nom", nom.value.trim() || null); }
+  });
+  const tr = $("#an-transcription");
+  tr.addEventListener("change", () => envoyerChampDeZone("ocr_texte", tr.value.trim() || null));
+  $("#an-zone-supprimer").addEventListener("click", supprimerZone);
 }
 
 function brancherContexte() {
@@ -2760,8 +2991,9 @@ function afficherSignal(autres) {
    planche qu'on QUITTE ; « Actualiser » les garde, eux, tant que leur relevé est là. */
 async function gardesDeSortie(quitter) {
   if (precisionEnVol) { try { await precisionEnVol; } catch (_) { /* dit par `ecrire` */ } }
-  // Le Contexte (commit 8) : la note pas encore partie part, le locuteur en vol revient.
-  for (const envoi of [viderNote(), ENVOIS.loc]) {
+  // Le Contexte (commit 8) : la note pas encore partie part, le locuteur en vol revient ;
+  // le nom d'un détail et une transcription aussi (commit 9).
+  for (const envoi of [viderNote(), ENVOIS.loc, ENVOIS.nom, ENVOIS.ocr_texte]) {
     if (envoi) { try { await envoi; } catch (_) { /* dit par l'envoi */ } }
   }
   // Un conflit ouvert — celui que la précision vient peut-être d'ouvrir — attend son choix.
@@ -2898,6 +3130,7 @@ function brancher() {
     }
   });
   $("#an-vue-case").addEventListener("click", (e) => {
+    if (Date.now() - TR.finiA < 400) return;      // le clic qui termine un tracé (commit 9)
     const r = e.target.closest("[data-zone]");
     if (!r) return;
     if (S.designer !== null && r.dataset.zone !== "") { designerLien(Number(r.dataset.zone)); return; }
@@ -3097,7 +3330,7 @@ async function annulerPage() {
   if (conflitOuvert()) return;
   // Ce qui n'est pas parti part d'abord : Ctrl+Z défait le DERNIER geste, et une note tapée
   // juste avant en est un (commit 8).
-  for (const envoi of [viderNote(), ENVOIS.loc]) {
+  for (const envoi of [viderNote(), ENVOIS.loc, ENVOIS.nom, ENVOIS.ocr_texte]) {
     if (envoi) { try { await envoi; } catch (_) { /* dit par l'envoi */ } }
   }
   if (conflitOuvert()) return;
@@ -3144,6 +3377,7 @@ async function demarrer() {
   brancherParcours();
   brancherSynthese();
   brancherContexte();
+  brancherZonesTracees();
   try {
     await chargerAlbums();
   } catch (e) {

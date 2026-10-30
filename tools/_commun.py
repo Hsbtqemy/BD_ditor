@@ -23,6 +23,7 @@ if str(_REPO) not in sys.path:
     sys.path.append(str(_REPO))
 
 import database  # noqa: E402  (après l'ajustement de sys.path ci-dessus)
+from config import TYPES_REGION_RETENUS  # noqa: E402  (G17 : ni détail)
 
 
 def forcer_utf8() -> None:
@@ -203,13 +204,23 @@ def portee_albums(album_ids) -> dict | None:
       • `regions`  : `(SELECT id FROM regions …)`     → `... WHERE region_id IN {p['regions']}`
 
     Un ensemble vide (collection sans album) donne `(-1)` : aucun id ne matche → sortie vide,
-    honnête. Partagé par metadonnees_collection.py et description_collection.py."""
+    honnête. Partagé par metadonnees_collection.py et description_collection.py.
+
+    Les `regions` sont celles qui SORTENT : un détail n'y est jamais (G17,
+    `database.sql_region_sortante`). Le corpus entier n'a pas de portée ; ce qui y lit des
+    régions emploie `REGIONS_SORTANTES`."""
     if album_ids is None:
         return None
     a = ",".join(str(int(i)) for i in album_ids) or "-1"
     planches = f"(SELECT id FROM planches WHERE album_id IN ({a}))"
-    regions = f"(SELECT id FROM regions WHERE planche_id IN {planches})"
+    regions = (f"(SELECT id FROM regions WHERE planche_id IN {planches} "
+               f"AND {database.sql_region_sortante('regions')})")
     return {"albums": f"({a})", "planches": planches, "regions": regions}
+
+
+# Les régions qui SORTENT, sur le corpus entier : toutes, sauf un détail (G17). Le pendant de
+# `portee_albums(...)["regions"]` quand aucune portée n'est posée.
+REGIONS_SORTANTES = f"(SELECT id FROM regions WHERE {database.sql_region_sortante('regions')})"
 
 
 # --------------------------------------------------------------------------- #
@@ -342,6 +353,37 @@ def sql_activite_isolee(a: str = "activite") -> str:
             f"AND {database.sql_album_isole('_aa')}) "
             f"OR EXISTS (SELECT 1 FROM albums _ab WHERE _ab.id = {_json(a, 'portee', 'album_id')} "
             f"AND {database.sql_album_isole('_ab')}))")
+
+
+def _sql_region_d_evenement(e: str) -> str:
+    """La région que l'acte `e` vise, quand il en vise une (sa cible, ou la charge d'une
+    correction grammaticale) ; NULL sinon."""
+    cibles = ", ".join(repr(c) for c in _CIBLES_PAR_REGION)
+    return (f"(CASE WHEN {e}.cible_table IN ({cibles}) THEN {e}.cible_id "
+            f"WHEN {e}.cible_table = 'token_correction' THEN COALESCE("
+            f"{_json(e, 'apres', 'region_id')}, {_json(e, 'avant', 'region_id')}) END)")
+
+
+def _sql_evenement_detail_direct(e: str) -> str:
+    retenus = ", ".join(f"'{t}'" for t in TYPES_REGION_RETENUS)
+    region = _sql_region_d_evenement(e)
+    # Un DÉTAIL ne change jamais de type (la route le refuse) et ses identifiants ne
+    # reviennent pas (v30) : une région qu'un acte du journal a dite d'un type retenu l'est
+    # pour toujours, vivante ou supprimée depuis.
+    return (f"(EXISTS (SELECT 1 FROM regions _rd WHERE _rd.id = {region} "
+            f"AND NOT {database.sql_region_sortante('_rd')}) "
+            f"OR EXISTS (SELECT 1 FROM evenement _ed WHERE _ed.cible_table = 'regions' "
+            f"AND _ed.cible_id = {region} AND ({_json('_ed', 'apres', 'type')} IN ({retenus}) "
+            f"OR {_json('_ed', 'avant', 'type')} IN ({retenus}))))")
+
+
+def sql_evenement_detail(e: str = "evenement") -> str:
+    """Fragment SQL VRAI si l'acte `e` porte sur une région RETENUE de toute sortie — un
+    détail (G17, ANN-7, tranche 2, commit 9) — ou en défait un. Le journal publié n'en dit
+    rien : ni sa création, ni son nom, ni sa note, ni qu'il a existé."""
+    return (f"COALESCE(({_sql_evenement_detail_direct(e)} OR ({e}.cible_table = 'evenement' "
+            f"AND EXISTS (SELECT 1 FROM evenement _ud WHERE _ud.id = {e}.cible_id "
+            f"AND {_sql_evenement_detail_direct('_ud')}))), 0)")
 
 
 def activites_publiables(conn, colonnes) -> list:
@@ -582,10 +624,12 @@ def evenements_publiables(conn, ordre: str = "ASC"):
     # COL-4 — et pas les actes faits dans un bac à sable ou sur le jeu : une TROISIÈME
     # coupure, par PROJET, que ne voient ni la liste blanche ni les colonnes. Ce qu'elle
     # sait relier est écrit sous `sql_evenement_isole`.
+    # Ni les actes sur un DÉTAIL (G17) : une QUATRIÈME coupure, par la région visée.
     return conn.execute(
         f"SELECT {', '.join(COLONNES_EVENEMENT_PUBLIEES)} FROM evenement "
         f"WHERE cible_table IN ({','.join('?' * len(cibles))}) "
         f"AND NOT {sql_evenement_isole('evenement')} "
+        f"AND NOT {sql_evenement_detail('evenement')} "
         f"ORDER BY id {ordre}", cibles)
 
 

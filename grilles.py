@@ -31,8 +31,9 @@ FORMES = ("simple", "variantes", "qualificatifs")
 
 # Les CIBLES (cadrage R2) : des mots d'une zone de texte ; une région entière, d'un des types
 # qu'elle nomme (`personnage` est la BOÎTE, une région, Q4) ; la planche (la SURFACE,
-# IMG-2) ; l'entité du registre des personnages (Q4). `detail` et `entite` s'importent — ce
-# sont des données — mais aucun relevé ne s'y pose en tranche 1 (G3, G17).
+# IMG-2) ; l'entité du registre des personnages (Q4). `entite` s'importe — c'est une donnée
+# — mais aucun relevé ne s'y pose avant l'étage de projet des personnages (G3). Un `detail`
+# se trace sur la page Annotation depuis la tranche 2 (commit 9, G17), et s'y relève.
 CIBLE_MOTS = "mots"
 CIBLES_ZONE = ("bulle", "cartouche", "texte", "case", "personnage", "detail")
 CIBLE_PLANCHE = "planche"

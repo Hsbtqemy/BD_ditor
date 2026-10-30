@@ -65,8 +65,8 @@ l'écrit d'ordinaire sous son entrée.
 
 **Plusieurs cibles** s'écrivent séparées par ` | ` — `bulle | cartouche | texte` : toute la
 zone, l'une des trois. Seuls des types de zone se combinent entre eux : `mots | case` ne veut
-rien dire, et `planche` comme `entite` vont seules. Le type `detail` s'importe, mais la région
-`detail` viendra avec l'écran qui la trace.
+rien dire, et `planche` comme `entite` vont seules. Un `detail` se trace dans une case, sur la
+page Annotation (« Détail d'image ») ; il ne sort d'aucun export avant la tranche 4.
 
 « **Porte sur** » est la cible des entrées qui ne disent pas la leur ; elle se déclare à
 l'import (ci-dessous), pas dans le fichier.

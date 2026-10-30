@@ -285,13 +285,51 @@
      sur un album où l'on écrit (`ecrit`) — le locuteur d'une zone de texte, la note de toute
      zone. Le personnage d'une boîte reste EN LECTURE : il s'écrit dans l'Atelier (le cadrage
      ne le met pas dans le Contexte modifiable). Rien sur un album qu'on ne fait que lire, ni
-     sur la case pseudo, qui n'est pas une région. */
+     sur la case pseudo, qui n'est pas une région.
+     Commit 9 : le NOM d'un détail ; la TRANSCRIPTION d'une zone de texte hors bulle (le type
+     `texte`, celui que la page trace ; une bulle et un cartouche se transcrivent dans
+     l'Atelier) ; et « Supprimer cette zone » sur les deux sortes que la page TRACE — le
+     détail et le texte hors bulle —, jamais sur une case, une bulle, un cartouche ou une
+     boîte, qui se suppriment dans l'Atelier. */
   function gestesDuContexte(zone, ecrit) {
     const out = new Set();
     if (!ecrit || !zone || zone.pseudo) return out;
     if (estTexte(zone.type)) out.add("locuteur");
     out.add("note");
+    if (zone.type === "detail") out.add("nom");
+    if (zone.type === "texte") out.add("transcription");
+    if (TRACABLES.includes(zone.type)) out.add("supprimer");
     return out;
+  }
+
+  /* TRACER UNE ZONE (jalon 3, commit 9) : les deux sortes qu'un tracé crée, dans une case —
+     un détail d'image, un texte hors bulle. « Une zone tracée ici n'est jamais une case ». */
+  const TRACABLES = ["detail", "texte"];
+  const TRACE_MIN = 8;            // en pixels master : en deçà, c'est un clic, pas un tracé
+
+  /* Le rectangle qu'un glissé trace, de `a` à `b` (des points en pixels master), borné à la
+     case `rect` (la planche pour la case pseudo) ; `null` s'il est plus petit que `min` sur
+     l'un de ses côtés — un clic qui a tremblé n'est pas une zone. Des entiers : le serveur
+     prend des pixels. */
+  function rectangleTrace(a, b, rect, min = TRACE_MIN) {
+    if (!a || !b || !rect) return null;
+    const borne = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const x1 = borne(Math.min(a.x, b.x), rect.x, rect.x + rect.w);
+    const x2 = borne(Math.max(a.x, b.x), rect.x, rect.x + rect.w);
+    const y1 = borne(Math.min(a.y, b.y), rect.y, rect.y + rect.h);
+    const y2 = borne(Math.max(a.y, b.y), rect.y, rect.y + rect.h);
+    const x = Math.round(x1), y = Math.round(y1);
+    const w = Math.round(x2) - x, h = Math.round(y2) - y;
+    return w >= min && h >= min ? { x, y, w, h } : null;
+  }
+
+  /* Ce qu'une zone dit SUR L'IMAGE : le personnage d'une boîte, le nom d'un détail, sinon son
+     étiquette (« b1 »). */
+  function nomSurImage(zone, etiquette, personnage) {
+    if (!zone) return "";
+    if (zone.type === "personnage" && personnage) return personnage;
+    if (zone.type === "detail" && zone.nom) return zone.nom;
+    return etiquette || "";
   }
 
   /* Ce qu'une note enregistre : `null` quand la saisie ne change rien à ce que l'écran a vu
@@ -1345,7 +1383,7 @@
   return { TYPES_TEXTE, CLES_ADRESSE, CLE_RELEVES, estTexte, nomType, deLa, casesDeLaPlanche,
            etiquette, etiquettesDeLaCase, situer, libellePlanche, preparation, adresse,
            lireAdresse, lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
-           gestesDuContexte, noteAEnvoyer,
+           gestesDuContexte, noteAEnvoyer, TRACABLES, TRACE_MIN, rectangleTrace, nomSurImage,
            normaliser, masquee, grillesVisibles, grilleAOuvrir, infobulleGrille, arbre,
            entreesSous, chemin, vuesAfficher, relevesDeLaZone, compter, marquePlusieurs,
            marqueCible, chercher, ligneDuGuide, guideComplet,

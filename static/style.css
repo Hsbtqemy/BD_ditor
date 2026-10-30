@@ -1321,6 +1321,8 @@ button[aria-busy="true"]:disabled { opacity: .75; cursor: progress; }
 .region.region-cartouche,
 .region.region-texte      { stroke: var(--accent-pink);   fill: color-mix(in srgb, var(--accent-pink) 8%, transparent); }
 .region.region-personnage { stroke: var(--accent-violet); fill: color-mix(in srgb, var(--accent-violet) 8%, transparent); }
+/* ANN-7, tranche 2, commit 9 — un détail d'image, tracé sur la page Annotation. */
+.region.region-detail     { stroke: var(--accent-amber);  fill: color-mix(in srgb, var(--accent-amber) 8%, transparent); stroke-dasharray: 6 3; }
 /* État (surcharge le type) */
 .region.annotee { stroke: var(--accent-green); fill: color-mix(in srgb, var(--accent-green) 9%, transparent); }
 .region.selected { stroke: var(--accent-blue); fill: color-mix(in srgb, var(--accent-blue) 14%, transparent); stroke-width: 3px; }
@@ -1500,6 +1502,7 @@ h3.collapsible:hover { color: var(--text); }
 .tnode-cartouche .tn-dot,
 .tnode-texte .tn-dot      { background: var(--accent-pink); }
 .tnode-personnage .tn-dot { background: var(--accent-violet); }
+.tnode-detail .tn-dot     { background: var(--accent-amber); }
 
 .tn-label { text-transform: capitalize; color: var(--text); }
 .tnode-case .tn-label { font-weight: 600; }
@@ -3918,8 +3921,23 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
   font-size: .9231rem; padding: .1538rem .6154rem; border-radius: 10px;
   background: var(--bg-input); border: 1px solid var(--border);
 }
+/* Ce qu'un tracé propose, par-dessus la case (commit 9). */
+.an-trace { position: absolute; top: .4615rem; left: .4615rem; display: flex; flex-wrap: wrap;
+            gap: .3077rem; padding: .3077rem; background: var(--bg-panel);
+            border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 14px var(--shadow);
+            max-width: calc(100% - .9231rem); }
+.an-trace[hidden] { display: none; }
+.an-trace-rect { fill: color-mix(in srgb, var(--accent-amber) 12%, transparent);
+                 stroke: var(--accent-amber); stroke-width: 2px; stroke-dasharray: 5 3;
+                 vector-effect: non-scaling-stroke; pointer-events: none; }
+.an-nom { display: block; width: 100%; box-sizing: border-box; font: inherit;
+          padding: .3077rem .4615rem; background: var(--bg-input); color: var(--text);
+          border: 1px solid var(--border); border-radius: 4px; }
+.an-nom[hidden] { display: none; }
+.an-supprimer { align-self: flex-start; color: var(--ink-red); }
+.an-supprimer[hidden] { display: none; }
 .an-vue-case {
-  flex: 0 0 auto; height: var(--h-case); min-height: 10rem;
+  flex: 0 0 auto; height: var(--h-case); min-height: 10rem; position: relative;
   border: 1px solid var(--border); border-radius: 6px; padding: .4615rem;
   background: var(--stage-a); display: flex; align-items: center; justify-content: center;
 }
@@ -3927,7 +3945,8 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
    en fond, le calque des zones par-dessus. `overflow: hidden` : une étiquette ne sort pas. */
 .an-crop { position: relative; flex: 0 0 auto; overflow: hidden; max-width: 100%;
            max-height: 100%; background-color: var(--media-bg); background-repeat: no-repeat; }
-.an-case-svg { display: block; width: 100%; height: 100%; overflow: hidden; }
+.an-case-svg { display: block; width: 100%; height: 100%; overflow: hidden;
+               user-select: none; }   /* un tracé ne sélectionne pas la page (commit 9) */
 .an-fond { fill: transparent; stroke: none; cursor: pointer; }
 .an-fond.choisi { stroke: var(--accent-blue); stroke-width: 3px; vector-effect: non-scaling-stroke; }
 .an-vz {
@@ -3939,6 +3958,11 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 }
 .an-vz.t-personnage {
   stroke: var(--accent-violet); fill: color-mix(in srgb, var(--accent-violet) 8%, transparent);
+}
+/* Un détail d'image (commit 9) : pointillé, la couleur ne le dit pas seule. */
+.an-vz.t-detail {
+  stroke: var(--accent-amber); stroke-dasharray: 6 3;
+  fill: color-mix(in srgb, var(--accent-amber) 8%, transparent);
 }
 .an-vz:hover { fill: color-mix(in srgb, var(--accent-blue) 10%, transparent); }
 .an-vz.choisi {

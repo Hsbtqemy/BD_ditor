@@ -59,7 +59,8 @@ from _commun import (version_outil, environnement, composants,  # noqa: E402  (p
                      COLONNES_ACTIVITE_PUBLIEES,
                      # COL-4 — ni bac à sable ni jeu ne sortent
                      HorsDuCorpus, activites_publiables, albums_du_corpus,
-                     clause_personnages, clause_vocabulaire, exiger_hors_isoles)
+                     clause_personnages, clause_vocabulaire, exiger_hors_isoles,
+                     REGIONS_SORTANTES)                      # G17 : ni détail
 
 
 def _grouper(conn, sql, cle=0, params=()):
@@ -95,7 +96,9 @@ def _cartes(conn, album_ids=None, collection_id=None) -> dict:
     ou_terme, p_terme = clause_vocabulaire(collection_id, "t.collection_id")
     ou_val, p_val = clause_vocabulaire(collection_id, "v.collection_id")
     ou_dim, p_dim = clause_vocabulaire(collection_id, "d.collection_id")
-    w_reg = f" WHERE region_id IN {p['regions']}" if p else ""
+    # Les régions sont toujours bornées : un détail ne sort pas (G17), corpus entier compris.
+    regs = p["regions"] if p else REGIONS_SORTANTES
+    w_reg = f" WHERE region_id IN {regs}"
     w_pl = f" WHERE album_id IN {p['albums']}" if p else ""
     pl_ids = [r[0] for r in conn.execute("SELECT id FROM planches" + w_pl)]
     perso_nom = {r["id"]: r["nom"] for r in conn.execute(
@@ -116,7 +119,7 @@ def _cartes(conn, album_ids=None, collection_id=None) -> dict:
             "SELECT ra.region_id, d.nom, v.valeur FROM region_attribut ra "
             "JOIN attribut_valeur v ON v.id = ra.valeur_id "
             "JOIN attribut_dimension d ON d.id = v.dimension_id "
-            + (f"WHERE ra.region_id IN {p['regions']} AND " if p else "WHERE ")
+            + f"WHERE ra.region_id IN {regs} AND "
             + f"{ou_val} AND {ou_dim} ORDER BY d.nom, v.valeur",
             params=[*p_val, *p_dim]),
         "perso_attr": _grouper(conn,
@@ -144,7 +147,7 @@ def _cartes(conn, album_ids=None, collection_id=None) -> dict:
             "SELECT a.region_id, t.label FROM annotations a "
             "JOIN annotation_tags at ON at.annotation_id = a.id "
             "JOIN tags t ON t.id = at.tag_id "
-            + (f"WHERE a.region_id IN {p['regions']} AND " if p else "WHERE ")
+            + f"WHERE a.region_id IN {regs} AND "
             + f"{ou_terme} ORDER BY t.label",
             params=list(p_terme)),
         "tokens": _tokens_by_region(conn, album_ids),
@@ -351,8 +354,10 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
         planches = []
         for p in conn.execute("SELECT * FROM planches WHERE album_id = ? ORDER BY numero, id",
                              (a["id"],)):
-            regs = conn.execute("SELECT * FROM regions WHERE planche_id = ? ORDER BY ordre, id",
-                               (p["id"],)).fetchall()
+            regs = conn.execute(   # un détail ne sort pas (G17)
+                "SELECT * FROM regions WHERE planche_id = ? "
+                f"AND {database.sql_region_sortante('regions')} ORDER BY ordre, id",
+                (p["id"],)).fetchall()
             cits = database.citations_regions(conn, [r["id"] for r in regs])
             par_parent: dict = {}
             for r in regs:
@@ -421,7 +426,9 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     ou_app, p_app = clause_vocabulaire(collection_id)   # AUTH-11, COL-4 (cf. `_cartes`)
     P = portee_albums(album_ids)
     w_pl = f" WHERE album_id IN {P['albums']}" if P else ""          # planches.album_id
-    w_rp = f" WHERE p.album_id IN {P['albums']}" if P else ""        # regions ⋈ planches
+    # regions ⋈ planches — un détail ne sort pas (G17), corpus entier compris.
+    w_rp = (f" WHERE p.album_id IN {P['albums']} AND " if P else " WHERE ") \
+        + database.sql_region_sortante("r")
     cits = database.citations_regions(conn, [r["id"] for r in conn.execute(
         "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id" + w_rp)])
     out: dict = {}

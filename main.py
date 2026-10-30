@@ -22,8 +22,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI,
                     DATA_DIR, IMG_EXTS, REFERENT_CONTACT, REFERENT_NOM, RELECTURE,
-                    ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
+                    ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPE_DETAIL,
+                    TYPES_REGION)
 from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, DEMANDE_SUPPRESSION_DOCUMENT,
+                      sql_region_sortante,
                       DEMANDE_SUPPRESSION_PLANCHE,
                       annotation_vide,
                       citations_regions,
@@ -89,7 +91,8 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _PLANCHE_TUE, _planche_rendue,
     _get_projet, _get_region, _get_valeur,
     _groupes, _norm_tag, _patch_lexique, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
-    _sans_accents, _sql_a_montrer, _tags_caches, _validate_parent, _vocabulaire_d_export,
+    _sans_accents, _sql_a_montrer, _tags_caches, _validate_parent, _valider_detail,
+    _vocabulaire_d_export,
     db, portee_courante,
 )
 # ARCH-1 — les domaines sortis de ce fichier. `include_router`, plus bas, les rend
@@ -1086,6 +1089,8 @@ def create_region(planche_id: int, region: RegionIn,
     if region.type not in TYPES_REGION:
         raise HTTPException(422, f"Type invalide : {region.type}")
     _validate_parent(conn, planche_id, region.parent_id)
+    nom = _valider_detail(conn, region.type, nom=region.nom, ocr_texte=region.ocr_texte,
+                          parent_id=region.parent_id)
     ordre = region.ordre
     if ordre is None:
         row = conn.execute(
@@ -1096,10 +1101,10 @@ def create_region(planche_id: int, region: RegionIn,
         ordre = row["n"]
     cur = conn.execute(
         """INSERT INTO regions
-              (planche_id, parent_id, type, x, y, w, h, ordre, ocr_texte, source)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+              (planche_id, parent_id, type, x, y, w, h, ordre, ocr_texte, source, nom)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (planche_id, region.parent_id, region.type, region.x, region.y,
-         region.w, region.h, ordre, region.ocr_texte, region.source),
+         region.w, region.h, ordre, region.ocr_texte, region.source, nom),
     )
     new_id = cur.lastrowid
     if region.ocr_texte:
@@ -1180,8 +1185,24 @@ def update_region(region_id: int, patch: RegionUpdate,
     existing = _region_a_ecrire(conn, portee, region_id)
     if "type" in fields and fields["type"] not in TYPES_REGION:
         raise HTTPException(422, f"Type invalide : {fields['type']}")
+    # ANN-7, tranche 2, commit 9 (G17) — un détail reste un détail, et rien ne le devient :
+    # changer de type ferait passer une région d'un côté à l'autre de la frontière des
+    # sorties (`config.TYPES_REGION_RETENUS`), et le nom n'a de sens que sur un détail.
+    if "type" in fields and (fields["type"] == TYPE_DETAIL) != (existing["type"] == TYPE_DETAIL):
+        raise HTTPException(422, "Un détail reste un détail : tracez une autre zone, ou "
+                                 "supprimez celle-ci.")
     if "parent_id" in fields:
         _validate_parent(conn, existing["planche_id"], fields["parent_id"], region_id)
+    if {"nom", "ocr_texte", "parent_id"} & set(fields):
+        # Le nom ne se juge que s'il s'écrit : une région d'avant qui en porterait un (posé
+        # hors des routes) ne se fige pas pour autant.
+        nom = _valider_detail(
+            conn, existing["type"],
+            nom=fields["nom"] if "nom" in fields else None,
+            ocr_texte=fields["ocr_texte"] if "ocr_texte" in fields else existing["ocr_texte"],
+            parent_id=fields["parent_id"] if "parent_id" in fields else existing["parent_id"])
+        if "nom" in fields:
+            fields["nom"] = nom
     vu = patch.vu or {}
     inconnus = set(vu) - set(CHAMPS_VUS)
     if inconnus:
@@ -2542,8 +2563,10 @@ def _album_payload(conn: sqlite3.Connection, clause_tag: tuple[str, list],
         p["numero_editorial"] = nums.get(p["id"])   # None si paratexte ; `role` déjà présent
         p["dimensions_cm"] = dimensions_cm(p["largeur_px"], p["hauteur_px"],   # matériel (A6)
                                            p["dpi_x"], p["dpi_y"])
+        # Un DÉTAIL ne sort pas (G17, `database.sql_region_sortante`).
         regions = _rows(conn.execute(
-            "SELECT * FROM regions WHERE planche_id = ?", (p["id"],)))
+            f"SELECT * FROM regions WHERE planche_id = ? AND {sql_region_sortante('regions')}",
+            (p["id"],)))
         p["regions"] = _region_tree(regions, conn, clause_tag)
     album["planches"] = planches
     return album
@@ -2615,7 +2638,7 @@ def export_csv(album_id: int, collection_id: Optional[int] = None,
            JOIN planches p ON p.id = r.planche_id
            JOIN albums a ON a.id = p.album_id
            LEFT JOIN annotations an ON an.region_id = r.id
-           WHERE a.id = ?
+           WHERE a.id = ? AND {sql_region_sortante('r')}
            ORDER BY p.numero, r.parent_id IS NOT NULL, r.ordre, r.id""",
         (*p_tag, album_id),
     ))
@@ -2736,8 +2759,10 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
         else:                              # paratexte (couverture, liminaire…) : hors numérotation
             surface.set("type", "paratexte")
 
+        # Un DÉTAIL ne sort pas (G17, `database.sql_region_sortante`).
         regions = _rows(conn.execute(
-            "SELECT * FROM regions WHERE planche_id = ?", (p["id"],)))
+            f"SELECT * FROM regions WHERE planche_id = ? AND {sql_region_sortante('regions')}",
+            (p["id"],)))
         by_parent: dict = {}
         for r in regions:
             by_parent.setdefault(r["parent_id"], []).append(r)

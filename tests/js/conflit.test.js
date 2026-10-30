@@ -65,6 +65,9 @@ test("un conflit arrivé après qu'on a quitté le champ dit que la saisie n'est
                "Note modifiée par Bob Martin à 14 h 32 : la vôtre n'a pas été enregistrée.");
   assert.equal(C.messageNonEnregistre({ champ: "ocr_texte", auteur }, MAINTENANT),
                "Texte modifié par Bob Martin à 14 h 32 : le vôtre n'a pas été enregistré.");
+  // Le nom d'un détail (ANN-7, tranche 2, commit 9).
+  assert.equal(C.messageNonEnregistre({ champ: "nom", auteur }, MAINTENANT),
+               "Nom modifié par Bob Martin à 14 h 32 : le vôtre n'a pas été enregistré.");
 });
 
 test("le message d'une région supprimée dit ce qu'elle était", () => {
@@ -73,6 +76,8 @@ test("le message d'une région supprimée dit ce qu'elle était", () => {
                "Cette case a été supprimée par Alice Dupont à 8 h 14.");
   assert.equal(C.messageSuppression(sup, "cartouche", MAINTENANT),
                "Ce cartouche a été supprimé par Alice Dupont à 8 h 14.");
+  assert.equal(C.messageSuppression(sup, "detail", MAINTENANT),
+               "Ce détail a été supprimé par Alice Dupont à 8 h 14.");
   assert.equal(C.messageSuppression(sup, "inconnu", MAINTENANT),
                "Cette région a été supprimée par Alice Dupont à 8 h 14.");
 });

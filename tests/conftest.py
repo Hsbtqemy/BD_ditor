@@ -212,7 +212,7 @@ def region(client, planche):
 # dans `config.TYPES_LOCUTEUR` : un test qui tirerait son attendu de la constante qu'il
 # éprouve en serait le miroir, et la retirer du serveur ne ferait rien tomber.
 TYPES_PARLANTS = ("bulle", "cartouche", "texte")
-TYPES_MUETS = ("case", "personnage")
+TYPES_MUETS = ("case", "personnage", "detail")   # le détail : ANN-7, tranche 2, commit 9
 
 
 @pytest.fixture(params=TYPES_PARLANTS)

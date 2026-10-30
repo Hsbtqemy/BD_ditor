@@ -210,7 +210,11 @@ test("le Contexte modifiable : le locuteur d'une zone de texte, la note de toute
   const g = (z, e) => [...A.gestesDuContexte(z, e)].sort();
   assert.deepEqual(g(R(2, "bulle", 0, 0, 1, 1), true), ["locuteur", "note"]);
   assert.deepEqual(g(R(2, "cartouche", 0, 0, 1, 1), true), ["locuteur", "note"]);
-  assert.deepEqual(g(R(2, "texte", 0, 0, 1, 1), true), ["locuteur", "note"]);
+  // Le texte hors bulle se transcrit ici, et se supprime : la page le trace (commit 9).
+  assert.deepEqual(g(R(2, "texte", 0, 0, 1, 1), true), ["locuteur", "note", "supprimer", "transcription"]);
+  // Le détail : un nom, une note, et se supprime ; ni locuteur ni transcription.
+  assert.deepEqual(g(R(4, "detail", 0, 0, 1, 1), true), ["nom", "note", "supprimer"]);
+  assert.deepEqual(g(R(4, "detail", 0, 0, 1, 1), false), []);
   // Le personnage d'une boîte reste en lecture ; la case n'a qu'une note.
   assert.deepEqual(g(R(3, "personnage", 0, 0, 1, 1), true), ["note"]);
   assert.deepEqual(g(R(1, "case", 0, 0, 1, 1), true), ["note"]);
@@ -218,6 +222,34 @@ test("le Contexte modifiable : le locuteur d'une zone de texte, la note de toute
   assert.deepEqual(g(R(2, "bulle", 0, 0, 1, 1), false), []);
   assert.deepEqual(g({ pseudo: true, type: "case" }, true), []);
   assert.deepEqual(g(null, true), []);
+});
+
+test("tracer une zone : un glissé borné à la case, jamais un clic qui a tremblé", () => {
+  const c = { x: 100, y: 100, w: 200, h: 300 };
+  assert.deepEqual(A.rectangleTrace({ x: 120, y: 130 }, { x: 180, y: 200 }, c), { x: 120, y: 130, w: 60, h: 70 });
+  // Dans n'importe quel sens.
+  assert.deepEqual(A.rectangleTrace({ x: 180, y: 200 }, { x: 120, y: 130 }, c), { x: 120, y: 130, w: 60, h: 70 });
+  // Borné à la case.
+  assert.deepEqual(A.rectangleTrace({ x: 50, y: 50 }, { x: 150, y: 450 }, c), { x: 100, y: 100, w: 50, h: 300 });
+  // Des entiers.
+  assert.deepEqual(A.rectangleTrace({ x: 120.4, y: 130.6 }, { x: 180.2, y: 200.9 }, c), { x: 120, y: 131, w: 60, h: 70 });
+  // Trop petit sur un côté : rien. Le seuil par défaut, puis un seuil donné.
+  assert.equal(A.rectangleTrace({ x: 120, y: 130 }, { x: 127, y: 200 }, c), null);
+  assert.deepEqual(A.rectangleTrace({ x: 120, y: 130 }, { x: 128, y: 138 }, c), { x: 120, y: 130, w: 8, h: 8 });
+  assert.equal(A.rectangleTrace({ x: 120, y: 130 }, { x: 140, y: 150 }, c, 30), null);
+  // Hors de la case entière : rien.
+  assert.equal(A.rectangleTrace({ x: 0, y: 0 }, { x: 50, y: 50 }, c), null);
+  assert.equal(A.rectangleTrace(null, { x: 1, y: 1 }, c), null);
+  assert.deepEqual(A.TRACABLES, ["detail", "texte"]);
+});
+
+test("ce qu'une zone dit sur l'image : un personnage, le nom d'un détail, sinon l'étiquette", () => {
+  assert.equal(A.nomSurImage({ type: "personnage" }, "p1", "Haddock"), "Haddock");
+  assert.equal(A.nomSurImage({ type: "personnage" }, "p1", null), "p1");
+  assert.equal(A.nomSurImage({ type: "detail", nom: "la lampe" }, "d1", null), "la lampe");
+  assert.equal(A.nomSurImage({ type: "detail", nom: null }, "d1", null), "d1");
+  assert.equal(A.nomSurImage({ type: "bulle", nom: "x" }, "b1", "Haddock"), "b1");
+  assert.equal(A.nomSurImage(null, "b1"), "");
 });
 
 test("une note ne part que si elle change ce que l'écran a vu", () => {

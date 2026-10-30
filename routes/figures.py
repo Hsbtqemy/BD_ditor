@@ -20,6 +20,7 @@ from fastapi.responses import Response
 
 import autorisation
 import figure as figure_citable
+from config import TYPES_REGION_RETENUS
 from pipeline.ocr import region_crop_png
 
 from socle import (FigureIn, _exiger_export, _exiger_export_region, _get_region, db,
@@ -67,7 +68,11 @@ def _figure_zip(conn, portee: autorisation.Portee, payload: FigureIn) -> tuple[s
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for rid in payload.regions:
-            _get_region(conn, portee, rid)          # 404 si hors portée — pas de passe-droit
+            region = _get_region(conn, portee, rid)   # 404 si hors portée — pas de passe-droit
+            # Un DÉTAIL ne sort pas de l'instance avant la tranche 4 (G17) : il ne se cite pas.
+            if region["type"] in TYPES_REGION_RETENUS:
+                raise HTTPException(422, "Un détail ne sort pas de l'instance : il ne se cite "
+                                         "pas encore.")
             _exiger_export_region(conn, portee, rid)   # 403 : lisible, pas à sortir (DROIT-2)
             png = region_crop_png(conn, rid, max_dim=taille)
             if png is None:

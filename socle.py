@@ -54,7 +54,7 @@ from database import (CRAN_IMAGES, NATURE_COLLECTIF, CRANS, CRANS_DE_REPARTIR, D
                       projet_de_collection, rangement_traverse, retirer_document_sans_copie,
                       sql_album_isole, sql_est_jeu, sql_projet_d_album, sql_projet_de,
                       unindex_region)
-from config import BAC_A_SABLE_PLAFOND_PLANCHES
+from config import BAC_A_SABLE_PLAFOND_PLANCHES, TYPE_DETAIL
 from pipeline.ingest import (chemin_d_image_sur, dossiers_d_album, elaguer_dossier_d_album,
                              remove_album_files, remove_planche_files)
 
@@ -1789,6 +1789,28 @@ def _refuser_si_verrouillee(planche: dict) -> dict:
     return planche
 
 
+def _valider_detail(conn: sqlite3.Connection, type_region: str, *, nom=None,
+                    ocr_texte=None, parent_id=None) -> Optional[str]:
+    """Les règles d'un DÉTAIL (ANN-7, tranche 2, commit 9 ; G17), communes à la création et
+    à la modification. Rend le nom à écrire (rogné, `None` si vide) ; lève un 422 nommé :
+      · un nom ne se pose que sur un détail ;
+      · un détail ne porte pas de texte (un texte hors bulle est une zone `texte`) ;
+      · un détail se range dans une CASE, ou nulle part ;
+    et aucune région ne se range SOUS un détail (`_validate_parent`)."""
+    nom = (nom or "").strip() or None
+    if type_region != TYPE_DETAIL:
+        if nom is not None:
+            raise HTTPException(422, "Seul un détail porte un nom.")
+        return None
+    if (ocr_texte or "").strip():
+        raise HTTPException(422, "Un détail ne porte pas de texte : tracez une zone de texte.")
+    if parent_id is not None:
+        parent = conn.execute("SELECT type FROM regions WHERE id = ?", (parent_id,)).fetchone()
+        if parent is not None and parent["type"] != "case":
+            raise HTTPException(422, "Un détail se range dans une case.")
+    return nom
+
+
 def _validate_parent(conn: sqlite3.Connection, planche_id: int,
                      parent_id: Optional[int], region_id: Optional[int] = None) -> None:
     """Valide un parent_id : il doit exister, être sur LA MÊME planche, et ne pas
@@ -1798,11 +1820,13 @@ def _validate_parent(conn: sqlite3.Connection, planche_id: int,
     if parent_id is None:
         return
     parent = _row(conn.execute(
-        "SELECT planche_id FROM regions WHERE id = ?", (parent_id,)))
+        "SELECT planche_id, type FROM regions WHERE id = ?", (parent_id,)))
     if parent is None:
         raise HTTPException(422, f"parent_id {parent_id} introuvable")
     if parent["planche_id"] != planche_id:
         raise HTTPException(422, "parent_id appartient à une autre planche")
+    if parent["type"] == TYPE_DETAIL:
+        raise HTTPException(422, "Rien ne se range sous un détail.")
     if region_id is not None:
         if parent_id == region_id:
             raise HTTPException(422, "Une région ne peut pas être son propre parent")
@@ -2458,11 +2482,13 @@ class RegionIn(BaseModel):
     ordre: Optional[int] = None
     ocr_texte: Optional[str] = None
     source: str = "manuel"
+    # Le nom libre d'un DÉTAIL (v37, G17 ; ANN-7, tranche 2, commit 9) — et de lui seul.
+    nom: Optional[str] = Field(None, max_length=200)
 
 
 # CONC-3 (Q1) — les champs d'une région dont l'écran peut déclarer la valeur qu'il avait vue.
 # `ordre` et `source` n'en sont pas : l'ordre se recalcule, la source suit la retouche.
-CHAMPS_VUS = ("type", "x", "y", "w", "h", "parent_id", "ocr_texte")
+CHAMPS_VUS = ("type", "x", "y", "w", "h", "parent_id", "ocr_texte", "nom")
 
 
 class RegionUpdate(BaseModel):
@@ -2477,6 +2503,7 @@ class RegionUpdate(BaseModel):
     ordre: Optional[int] = None
     ocr_texte: Optional[str] = None
     source: Optional[str] = None
+    nom: Optional[str] = Field(None, max_length=200)   # un détail seulement (commit 9)
     vu: Optional[dict[str, Any]] = None
 
 

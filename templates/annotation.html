@@ -88,7 +88,21 @@
                         title="Enregistrée en tapant ; Ctrl+Z hors du champ la défait"></textarea>
               <span id="an-note-etat" class="an-note-etat muted small" aria-live="polite"></span>
             </dd>
+            <dt id="an-ctx-nom-t" hidden><label for="an-nom">Nom</label></dt>
+            <dd id="an-ctx-nom" data-ctx="nom" hidden>
+              <span id="an-nom-lu" class="an-note-lu"></span>
+              <input type="text" id="an-nom" class="an-nom" maxlength="200" hidden
+                     autocomplete="off" placeholder="Le nom de ce détail"
+                     title="Écrit sur l'image ; Entrée ou la sortie du champ l'enregistrent">
+            </dd>
+            <dt id="an-ctx-tr-t" hidden><label for="an-transcription">Transcription</label></dt>
+            <dd id="an-ctx-tr" data-ctx="transcription" hidden>
+              <textarea id="an-transcription" class="an-note" rows="2" spellcheck="false"
+                        title="Le texte hors bulle, tel qu'il est écrit ; enregistré à la sortie du champ"></textarea>
+            </dd>
           </dl>
+          <button id="an-zone-supprimer" class="ghost small an-supprimer" type="button" hidden
+                  title="Une zone tracée ici, et ce qui est posé sur elle ; Ctrl+Z la rend">Supprimer cette zone</button>
         </section>
       </div>
       <div id="an-p-synthese" class="an-panneau" role="tabpanel" aria-labelledby="an-ong-synthese" hidden>
@@ -113,8 +127,17 @@
         <span class="nav-spacer"></span>
         <span id="an-tete-rang" class="muted small" title="Rang de la case dans l'ordre de lecture"></span>
       </div>
+      <!-- Tracer une zone (commit 9) : un glissé dans la case, puis sa sorte, proposée
+           par-dessus la case (`#an-trace`, que le dessin de la case garde). -->
       <div id="an-vue-case" class="an-vue-case"
-           title="Cliquez une zone pour la choisir, ou le fond pour la case"></div>
+           title="Cliquez une zone pour la choisir, ou le fond pour la case ; glissez pour tracer un détail ou un texte hors bulle"><div
+           id="an-trace" class="an-trace" role="group" aria-label="La zone tracée est" hidden>
+          <button type="button" class="ghost small" data-trace="detail"
+                  title="Un détail de l'image, qu'on nomme">Détail d'image</button>
+          <button type="button" class="ghost small" data-trace="texte"
+                  title="Un texte hors bulle, qu'on transcrit puis qu'on annote">Texte hors bulle</button>
+          <button type="button" class="ghost small" data-trace="" title="Échap">Annuler</button>
+        </div></div>
       <div id="an-zones" class="an-zones" role="group" aria-label="Zones de la case"></div>
       <!-- « Porte sur » (commit 3) : ce que la grille ouverte vise depuis la zone choisie. -->
       <div id="an-porte" class="an-porte" role="group" aria-label="Le relevé porte sur"></div>

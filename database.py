@@ -15,7 +15,8 @@ import unicodedata
 from contextlib import contextmanager
 from typing import Iterator
 
-from config import DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUATION
+from config import (DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_REGION_RETENUS,
+                    TYPES_SITUATION)
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
@@ -2890,6 +2891,16 @@ def sql_acte_isole(e: str = "evenement") -> str:
     return (f"COALESCE(({_sql_acte_isole_direct(e)} OR ({e}.cible_table = 'evenement' AND "
             f"EXISTS (SELECT 1 FROM evenement _xu WHERE _xu.id = {e}.cible_id "
             f"AND {_sql_acte_isole_direct('_xu')}))), 0)")
+
+
+def sql_region_sortante(alias: str = "r") -> str:
+    """Fragment SQL VRAI si la région `alias` peut SORTIR de l'instance — par un export
+    d'album, la recherche exportée, une figure, la voie du dépôt, un outil de `tools/`, le
+    IIIF. Un DÉTAIL ne sort pas jusqu'à la tranche 4 (G17, `config.TYPES_REGION_RETENUS`).
+    Le point d'appel est UNIQUE : chaque sortie l'emploie, et `tests/test_detail_sorties.py`
+    les joue toutes. Les types sont des constantes du code, jamais une saisie."""
+    types = ", ".join(f"'{t}'" for t in TYPES_REGION_RETENUS)
+    return f"{alias}.type NOT IN ({types})"
 
 
 def sql_est_isole(expr: str) -> str:

@@ -1469,3 +1469,178 @@ def test_quitter_la_planche_attend_la_note_et_son_conflit(page, decor):
     with _http(decor) as c:
         assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il crie"
 
+
+# --------------------------------------------------------------------------- #
+# Jalon 3, commit 9 — tracer une zone : un détail d'image, un texte hors bulle
+# --------------------------------------------------------------------------- #
+def _glisser(page, fx1, fy1, fx2, fy2):
+    """Un glissé dans la case agrandie, en fractions de sa boîte à l'écran."""
+    b = page.locator("#an-vue-case svg.an-case-svg").bounding_box()
+    page.mouse.move(b["x"] + b["width"] * fx1, b["y"] + b["height"] * fy1)
+    page.mouse.down()
+    page.mouse.move(b["x"] + b["width"] * (fx1 + fx2) / 2, b["y"] + b["height"] * (fy1 + fy2) / 2,
+                    steps=4)
+    page.mouse.move(b["x"] + b["width"] * fx2, b["y"] + b["height"] * fy2, steps=4)
+    page.mouse.up()
+
+
+def _regions(d):
+    with _http(d) as c:
+        return {r["id"]: r for r in c.get(f"/api/planches/{d['planche']}/regions").json()}
+
+
+def test_tracer_un_detail_le_nommer_et_le_lire_sur_l_image(page, decor):
+    _ouvrir(page, decor)                                     # la case c1, sans zone
+    avant = set(_regions(decor))
+    # Un détail DANS la boîte personnage (80, 400)–(230, 700) de la case (20, 20, 360, 900) :
+    # le glissé commence et finit sur la boîte, et le clic qui le termine ne la choisit pas.
+    _glisser(page, 0.25, 0.47, 0.5, 0.7)
+    choix = page.locator("#an-trace")
+    expect(choix).to_be_visible()
+    expect(page.locator("#an-vue-case .an-trace-rect")).to_have_count(1)
+    expect(page.locator("#an-tete-case")).to_have_text("Case c1")
+    expect(page.locator("#an-tete-zone")).to_have_text("")            # le glissé n'a rien choisi
+    with page.expect_response(lambda r: r.request.method == "POST"
+                              and r.url.endswith(f"/planches/{decor['planche']}/regions")) as rep:
+        choix.locator('[data-trace="detail"]').click()
+    corps = rep.value.request.post_data_json
+    assert corps["type"] == "detail" and corps["parent_id"] == decor["c1"]
+    assert corps["w"] > 50 and corps["h"] > 50                         # des pixels master
+    nouvelles = set(_regions(decor)) - avant
+    assert len(nouvelles) == 1
+    d = nouvelles.pop()
+    expect(choix).to_be_hidden()
+    expect(page.locator("#an-tete-zone")).to_have_text(re.compile(r"^détail d\d$"))
+    nom = page.locator("#an-nom")
+    expect(nom).to_be_focused()
+    nom.fill("le téléphone")
+    with page.expect_response(lambda r: r.request.method == "PUT"
+                              and r.url.endswith(f"/api/regions/{d}")) as rep:
+        nom.press("Enter")
+    assert rep.value.request.post_data_json == {"nom": "le téléphone", "vu": {"nom": None}}
+    assert _regions(decor)[d]["nom"] == "le téléphone"
+    expect(page.locator("#an-vue-case text.an-vz-lbl", has_text="le téléphone")).to_have_count(1)
+    # Ni locuteur ni transcription : un détail a un nom et une note.
+    expect(page.locator("#an-ctx-loc")).to_be_hidden()
+    expect(page.locator("#an-ctx-tr")).to_be_hidden()
+    expect(page.locator("#an-note")).to_be_visible()
+    # Échap annule un tracé, sans rien créer.
+    _glisser(page, 0.1, 0.6, 0.4, 0.75)
+    expect(choix).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(choix).to_be_hidden()
+    expect(page.locator("#an-vue-case .an-trace-rect")).to_have_count(0)
+    assert len(_regions(decor)) == len(avant) + 1
+
+
+def test_un_nom_change_ailleurs_ouvre_le_bandeau(page, decor):
+    with _http(decor) as c:
+        d = c.post(f"/api/planches/{decor['planche']}/regions",
+                   json={"type": "detail", "x": 200, "y": 100, "w": 100, "h": 100,
+                         "parent_id": decor["c1"], "nom": "la lampe"}).json()["id"]
+    _ouvrir(page, decor, d)
+    nom = page.locator("#an-nom")
+    expect(nom).to_have_value("la lampe")
+    with _http(decor) as c:
+        assert c.put(f"/api/regions/{d}", json={"nom": "le phare"}).status_code == 200
+    nom.fill("la lampe de poche")
+    nom.press("Enter")
+    expect(page.locator("#an-cf-titre")).to_contain_text("Nom modifié")
+    expect(page.locator("#an-guide-contenu")).to_contain_text("le phare")
+    expect(nom).to_have_value("la lampe de poche")
+    page.locator("#an-cf-autre").click()
+    expect(nom).to_have_value("le phare")
+    expect(page.locator("#an-vue-case text.an-vz-lbl", has_text="le phare")).to_have_count(1)
+    assert _regions(decor)[d]["nom"] == "le phare"
+    # « Remplacer par la mienne », sur un nouveau conflit.
+    with _http(decor) as c:
+        assert c.put(f"/api/regions/{d}", json={"nom": "la torche"}).status_code == 200
+    nom.fill("la lanterne")
+    nom.press("Enter")
+    expect(page.locator("#an-cf-titre")).to_contain_text("Nom modifié")
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator("#an-vue-case text.an-vz-lbl", has_text="la lanterne")).to_have_count(1)
+    assert _regions(decor)[d]["nom"] == "la lanterne"
+
+
+def test_tracer_un_texte_hors_bulle_le_transcrire_puis_l_annoter(page, decor):
+    _ouvrir(page, decor)
+    avant = set(_regions(decor))
+    _glisser(page, 0.1, 0.55, 0.5, 0.7)
+    page.locator('#an-trace [data-trace="texte"]').click()
+    expect(page.locator("#an-transcription")).to_be_focused()
+    t = (set(_regions(decor)) - avant).pop()
+    assert _regions(decor)[t]["type"] == "texte" and _regions(decor)[t]["parent_id"] == decor["c1"]
+    page.locator("#an-transcription").fill("PSST, PAR ICI")
+    with page.expect_response(lambda r: r.request.method == "PUT"
+                              and r.url.endswith(f"/api/regions/{t}")) as rep:
+        page.locator("#an-transcription").blur()
+    assert rep.value.request.post_data_json == {"ocr_texte": "PSST, PAR ICI",
+                                                "vu": {"ocr_texte": None}}
+    expect(page.locator("#an-mots")).to_have_text("PSST, PAR ICI")
+    assert _regions(decor)[t]["ocr_texte"] == "PSST, PAR ICI"
+    # Un texte se transcrit puis s'ANNOTE : ses mots se désignent, le cri s'y pose.
+    _mot(page, 0).click()
+    page.locator("#an-plan [role=checkbox]", has_text="cri").first.click()
+    assert any(r["region_id"] == t and [m["rang"] for m in r["mots"]] == [0]
+               for r in _releves(decor))
+    # Il a un locuteur, comme toute zone de texte.
+    expect(page.locator("#an-loc-input")).to_be_visible()
+
+
+def test_supprimer_une_zone_tracee_puis_ctrl_z_la_rend(page, decor):
+    with _http(decor) as c:
+        d = c.post(f"/api/planches/{decor['planche']}/regions",
+                   json={"type": "detail", "x": 200, "y": 100, "w": 100, "h": 100,
+                         "parent_id": decor["c1"], "nom": "la lampe"}).json()["id"]
+    # Une bulle ne se supprime pas d'ici : elle n'est pas tracée par la page.
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-zone-supprimer")).to_be_hidden()
+    _ouvrir(page, decor, d)
+    bouton = page.locator("#an-zone-supprimer")
+    expect(bouton).to_be_visible()
+    messages = []
+    page.once("dialog", lambda dlg: (messages.append(dlg.message), dlg.dismiss()))
+    bouton.click()
+    assert messages and "le détail" in messages[0] and "Ctrl+Z" in messages[0]
+    assert d in _regions(decor)                                  # refusé : rien ne part
+    page.once("dialog", lambda dlg: dlg.accept())
+    bouton.click()
+    expect(page.locator("#an-tete-zone")).to_have_text("")
+    expect(page.locator(f'#an-vue-case rect[data-zone="{d}"]')).to_have_count(0)
+    assert d not in _regions(decor)
+    page.locator("#an-mots").focus()
+    page.keyboard.press("Control+z")
+    expect(page.locator("#toasts")).to_contain_text("Annulé :")
+    expect(page.locator(f'#an-vue-case rect[data-zone="{d}"]')).to_have_count(1)
+    assert _regions(decor)[d]["nom"] == "la lampe"
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_une_lectrice_ne_trace_rien(page, live_server):
+    admin = {"Remote-User": "decor", "Remote-Name": "Decor Admin", "Remote-Groups": "bd-admins"}
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=180,
+                      headers={**ECRITURE, **admin}) as c:
+        cid = c.post("/api/collections", json={"nom": "Étude lue"}).json()["id"]
+        du_projet(c, cid, "utilisateur", "lectrice", headers={**ECRITURE, **admin})
+        assert c.put(f"/api/collections/{cid}/acces", json={
+            "genre": "utilisateur", "principal": "lectrice", "niveau": "lecture"}).status_code == 200
+        aid = c.post("/api/albums", json={"titre": "Lu", "collection_id": cid}).json()["id"]
+        pid = c.post(f"/api/albums/{aid}/import",
+                     files={"file": ("p.png", make_png(800, 1000), "image/png")}).json()["id"]
+        case = c.post(f"/api/planches/{pid}/regions",
+                      json={"type": "case", "x": 20, "y": 20, "w": 700, "h": 900}).json()["id"]
+        d = c.post(f"/api/planches/{pid}/regions",
+                   json={"type": "detail", "x": 60, "y": 60, "w": 200, "h": 120,
+                         "parent_id": case, "nom": "la lampe"}).json()["id"]
+    page.set_extra_http_headers({"Remote-User": "lectrice"})
+    page.goto(f"{live_server}/annotation?album={aid}&planche={pid}&region={d}",
+              wait_until="networkidle")
+    expect(page.locator("#an-nom-lu")).to_have_text("la lampe", timeout=15000)
+    expect(page.locator("#an-nom")).to_be_hidden()
+    expect(page.locator("#an-zone-supprimer")).to_be_hidden()
+    _glisser(page, 0.5, 0.5, 0.9, 0.9)
+    expect(page.locator("#an-trace")).to_be_hidden()
+    expect(page.locator("#an-vue-case .an-trace-rect")).to_have_count(0)
+

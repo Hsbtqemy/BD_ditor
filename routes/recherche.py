@@ -29,7 +29,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import autorisation
 from config import STATUTS
-from database import citations_regions, est_bac_a_sable, sql_projet_d_album
+from database import (citations_regions, est_bac_a_sable, sql_projet_d_album,
+                      sql_region_sortante)
 from pipeline import nlp
 
 from socle import (_clause_lemme, _cle_tag, _csv_response, _csv_safe, _get_projet,
@@ -57,6 +58,9 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
     ou, params_portee = portee.clause_album("a.id")
     where.append(ou)
     params.extend(params_portee)
+    # Un DÉTAIL ne se cherche pas, et donc ne s'exporte pas (G17) : ce cœur sert l'écran ET
+    # l'export CSV, et la tranche 4 décidera de ce qui compte et de ce qui sort.
+    where.append(sql_region_sortante("r"))
 
     base = (
         "SELECT r.id AS region_id, r.type, r.x, r.y, r.w, r.h, r.ocr_texte, "

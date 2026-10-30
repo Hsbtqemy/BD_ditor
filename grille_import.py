@@ -249,9 +249,6 @@ def lire(flux_entrees, flux_listes=None, *, porte_sur=None) -> dict:
             avert.append(f"{ou} : « {l['cle']} » vise l'entité du registre : elle s'importe, "
                          "mais aucun relevé ne s'y pose avant l'étage de projet des "
                          "personnages (G3)")
-        if "detail" in effectives:
-            avert.append(f"{ou} : « {l['cle']} » vise un détail : le type de région `detail` "
-                         "viendra avec l'écran qui le trace (G17)")
         entrees[l["cle"]] = {
             "rubrique_cle": rubrique_cle, "rang": len(entrees), "forme": forme,
             "libelle": l["libelle"], "definition": l["definition"],

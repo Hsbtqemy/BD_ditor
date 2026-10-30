@@ -241,8 +241,21 @@ STATUTS_DIFFUSION = ("public", "embargo", "restreint", "prive")
 # Vocabulaire extensible ; seul 'recit' a un sens spécial côté dérivation.
 ROLES_PLANCHE = ("recit", "paratexte")
 
-# Types de régions autorisés
-TYPES_REGION = ("case", "bulle", "personnage", "texte", "cartouche")
+# Types de régions autorisés. `detail` (ANN-7, tranche 2, commit 9 ; G17) : un DÉTAIL
+# d'image, tracé dans une case depuis la page Annotation, qui porte un NOM (`regions.nom`)
+# et jamais de texte. Il est la cible des entrées d'une grille qui visent un détail.
+TYPES_REGION = ("case", "bulle", "personnage", "texte", "cartouche", "detail")
+
+# Les types de régions RETENUS DE TOUTE SORTIE (G17, tranché le 2026-10-25 : « une région
+# SORT par les exports dès qu'elle existe ») : ni export d'album (JSON, CSV, TEI), ni
+# recherche exportée, ni figure, ni voie du dépôt, ni outil de `tools/`, ni IIIF, ni journal
+# de provenance. La tranche 4 décidera de ce qui sort. Une seule liste, lue par
+# `database.sql_region_sortante` ; `tests/test_detail_sorties.py` la JOUE sur chaque sortie.
+TYPES_REGION_RETENUS = ("detail",)
+
+# Le type qui porte un NOM, et lui seul (`regions.nom`, v37). Un détail ne porte pas de
+# texte : un texte hors bulle est une zone `texte`.
+TYPE_DETAIL = "detail"
 
 # Types de régions qui reçoivent un LOCUTEUR (ANN-6) : celles qui portent du texte — la
 # bulle, le cartouche (un récitatif a un narrateur) et la zone de texte. Ni la case, ni la

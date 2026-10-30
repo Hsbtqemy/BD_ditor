@@ -42,7 +42,7 @@ import database  # noqa: E402  (collection_row / collection_album_ids — palier
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from config import DB_PATH, BASE_DIR  # noqa: E402
 from _commun import (version_outil, environnement, portee_albums,  # noqa: E402  (provenance /
-                     forcer_utf8, CIBLES_CORPUS,                   # env / portée / stdout
+                     forcer_utf8, CIBLES_CORPUS, REGIONS_SORTANTES,  # env / portée / stdout
                                                                    # + liste blanche AUTH-1
                      HorsDuCorpus, albums_du_corpus, clause_personnages,   # COL-4 : ni bac
                      clause_vocabulaire, exiger_hors_isoles,               # à sable ni jeu
@@ -120,17 +120,20 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     hors_isole = (f"(collection_id IS NULL OR collection_id NOT IN (SELECT _di.id FROM "
                   f"collection _di WHERE {sql_collection_isolee('_di')}))")
     perso_ok = clause_personnages()
-    if P is None:                                   # corpus entier : aucun filtre
-        W_alb = W_pl = W_reg = W_tok = A_reg = A_tok = W_pose = ""
+    # Les RÉGIONS sont toujours bornées : un détail ne se décrit pas (G17), corpus entier
+    # compris — ni dans les comptes par type, ni dans ce qui se pose sur lui.
+    if P is None:                                   # corpus entier : aucun filtre d'album
+        W_alb = W_pl = ""
+        R = REGIONS_SORTANTES
     else:
         W_alb = f" WHERE id IN {P['albums']}"
         W_pl = f" WHERE album_id IN {P['albums']}"
-        W_reg = f" WHERE id IN {P['regions']}"           # regions.id
-        A_reg = f" AND id IN {P['regions']}"
-        W_tok = f" WHERE region_id IN {P['regions']}"    # tables portant region_id
-        A_tok = f" AND region_id IN {P['regions']}"
-        W_pose = (f" WHERE annotation_id IN (SELECT id FROM annotations "
-                  f"WHERE region_id IN {P['regions']})")
+        R = P["regions"]
+    W_reg = f" WHERE id IN {R}"                      # regions.id
+    A_reg = f" AND id IN {R}"
+    W_tok = f" WHERE region_id IN {R}"               # tables portant region_id
+    A_tok = f" AND region_id IN {R}"
+    W_pose = f" WHERE annotation_id IN (SELECT id FROM annotations WHERE region_id IN {R})"
 
     # --- Volumes de base ---------------------------------------------------- #
     albums = _un(conn, "SELECT COUNT(*) FROM albums" + W_alb)

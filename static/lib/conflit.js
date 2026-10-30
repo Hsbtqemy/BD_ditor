@@ -45,6 +45,8 @@
     lien_region_id: ["Lien", "m", "le lien"],
     mots: ["Passage", "m", "le passage"],
     releve: ["Relevé", "m", "le relevé"],
+    // ANN-7, tranche 2, commit 9 — le nom d'un détail, sur la page Annotation.
+    nom: ["Nom", "m", "le nom"],
   };
   const INCONNU = ["Valeur", "f", "la valeur"];
 
@@ -55,6 +57,7 @@
     cartouche: ["Ce cartouche", "m"],
     texte: ["Cette zone de texte", "f"],
     personnage: ["Cette boîte personnage", "f"],
+    detail: ["Ce détail", "m"],
   };
 
   const accord = (genre) => (genre === "m" ? "" : genre === "mp" ? "s" : "e");
