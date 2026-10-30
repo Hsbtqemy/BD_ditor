@@ -100,10 +100,12 @@ def test_l_adresse_ouvre_la_zone_et_le_contexte_se_lit(page, decor):
     expect(page.locator("#an-tete-case")).to_have_text("Case c1")
     expect(page.locator("#an-tete-zone")).to_have_text("bulle b1")
     expect(page.locator("#an-mots")).to_have_text("MILLE SABORDS !")
-    expect(page.locator('#an-ctx-corps dd[data-ctx="locuteur"]')).to_have_text("Haddock")
-    expect(page.locator('#an-ctx-corps dd[data-ctx="note"]')).to_have_text("il jure")
-    # Aucun champ dans le Contexte : il se lit ici, il s'écrit dans l'Atelier.
-    expect(page.locator(".an-ctx input, .an-ctx textarea, .an-ctx select")).to_have_count(0)
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    # Sur un album où l'on écrit, le Contexte s'écrit ici (commit 8) : le champ du locuteur,
+    # la note dans son champ.
+    expect(page.locator("#an-loc-input")).to_be_visible()
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    expect(page.locator("#an-note-lu")).to_be_hidden()
     expect(page.locator("#an-preparee")).to_contain_text("2 zones de texte")
 
 
@@ -893,6 +895,9 @@ def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
         assert r.status_code == 201, r.text
         assert c.post(f"/api/releves/{r.json()['id']}/doutes",
                       json={"texte": "Un juron ?"}).status_code == 201
+        perso = c.post("/api/personnages", json={"nom": "Haddock"}).json()["id"]
+        assert c.put(f"/api/regions/{bulle}/locuteur",
+                     json={"personnage_id": perso}).status_code == 200
     page.set_extra_http_headers({"Remote-User": "lectrice"})
     page.goto(f"{live_server}/annotation?album={aid}&planche={pid}&region={bulle}",
               wait_until="networkidle")
@@ -914,6 +919,20 @@ def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
     cri.dispatch_event("click")
     expect(page.locator("#toasts")).to_contain_text("Vous lisez cet album")
     expect(page.locator("#an-annonce")).to_have_text("Vous lisez cet album : rien ne s'y pose.")
+    # Le TITRE d'une entrée à variantes s'éteint comme le reste (passe des correctifs) ; le
+    # survol y montre encore le guide.
+    tete = page.locator("#an-plan .an-ent-tete", has_text="onomatopée de choc")
+    expect(tete).to_have_attribute("aria-disabled", "true")
+    assert tete.evaluate("(b) => getComputedStyle(b).cursor") != "pointer"
+    tete.hover()
+    expect(page.locator("#an-guide-contenu")).to_contain_text("le bruit d'un choc")
+    # Le Contexte se LIT, sans aucun champ (commit 8).
+    page.locator("#an-ong-planche").click()
+    expect(page.locator("#an-note-lu")).to_have_text("—")
+    expect(page.locator("#an-note")).to_be_hidden()
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    expect(page.locator("#an-loc-saisie")).to_be_hidden()
+    expect(page.locator("#an-loc-retirer")).to_be_hidden()
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30,
                       headers={**ECRITURE, **admin}) as c:
         assert len(c.get(f"/api/planches/{pid}/releves").json()["releves"]) == 1
@@ -1102,7 +1121,8 @@ def test_le_lien_se_designe_sur_la_minicarte_et_dit_sa_zone(page, decor):
     expect(page.locator("#an-tete-case")).to_have_text("Case c1")      # la case n'a pas changé
     r = [x for x in _releves(decor) if x["entree_cle"] == "reponse-a"]
     assert r[0]["lien"]["region_id"] == decor["cartouche"]
-    expect(page.locator("#an-poses-liste .an-pose-lien")).to_have_text("↔ b1 « PENDANT CE TEMPS… »")
+    # Le cartouche est dans une AUTRE case : le lien la nomme (passe des correctifs).
+    expect(page.locator("#an-poses-liste .an-pose-lien")).to_have_text("↔ c2 · b1 « PENDANT CE TEMPS… »")
     # Après la désignation, la minicarte rechoisit des cases.
     page.locator('#an-mini .an-mz[data-case="1"]').click()
     expect(page.locator("#an-tete-case")).to_have_text("Case c2")
@@ -1197,3 +1217,255 @@ def test_l_atelier_et_la_page_annotation_partagent_le_lieu(page, decor):
     page.goto(f"{decor['base']}/annotation?album={decor['album']}&planche={decor['planche']}"
               f"&region={decor['c2']}", wait_until="networkidle")
     expect(page.locator("#an-tete-case")).to_have_text("Case c2", timeout=15000)
+
+
+# --------------------------------------------------------------------------- #
+# Jalon 3, commit 8 — les restes de la passe, le Contexte modifiable
+# --------------------------------------------------------------------------- #
+def test_un_lien_vers_une_autre_case_nomme_sa_case(page, decor):
+    """« ↔ b1 « Pédé ! » » ne disait pas laquelle des deux b1 (passe des correctifs)."""
+    with _http(decor) as c:                        # une bulle dans la case c2 : c2 a sa b1
+        b2 = c.post(f"/api/planches/{decor['planche']}/regions",
+                    json={"type": "bulle", "x": 450, "y": 200, "w": 200, "h": 80,
+                          "parent_id": decor["c2"]}).json()["id"]
+        c.put(f"/api/regions/{b2}", json={"ocr_texte": "PÉDÉ !"})
+    loin = _poser(decor, region_id=decor["bulle"], entree_cle="reponse-a")
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{loin['id']}",
+                     json={"lien_region_id": b2}).status_code == 200
+    _ouvrir(page, decor, decor["bulle"])
+    lien = page.locator("#an-poses-liste .an-pose-lien")
+    expect(lien).to_have_text(re.compile(r"^↔ c2 · b\d « PÉDÉ ! »$"))
+    # Dans la même case, la forme courte : une seconde bulle de c1.
+    with _http(decor) as c:
+        b3 = c.post(f"/api/planches/{decor['planche']}/regions",
+                    json={"type": "bulle", "x": 60, "y": 760, "w": 200, "h": 80,
+                          "parent_id": decor["c1"]}).json()["id"]
+        c.put(f"/api/regions/{b3}", json={"ocr_texte": "OUI"})
+        pres = _poser(decor, region_id=decor["bulle"], entree_cle="reponse-a")
+        assert c.put(f"/api/releves/{pres['id']}",
+                     json={"lien_region_id": b3}).status_code == 200
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#an-poses-liste .an-pose-lien", has_text="OUI")).to_have_text(
+        re.compile(r"^↔ b\d « OUI »$"), timeout=15000)
+
+
+def test_une_ligne_tient_sur_sa_hauteur_pendant_la_designation(page, decor):
+    """Mesuré le 2026-10-30 : « réponse à une autre bulle » s'étalait sur 91 px pendant
+    « Désigner sur la planche » — la pastille seule, le libellé coupé, les marques empilées."""
+    page.set_viewport_size({"width": 1400, "height": 900})
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-plan [role=checkbox]", has_text="réponse à une autre bulle").click()
+    ligne = page.locator("#an-poses-liste .an-pose", has_text="réponse à une autre bulle")
+    bouton = ligne.locator(".an-lien-btn")
+    expect(bouton).to_be_visible()
+    hors = ligne.bounding_box()["height"]
+    bouton.click()
+    expect(bouton).to_have_attribute("aria-pressed", "true")
+    pendant = ligne.bounding_box()["height"]
+    lib = ligne.locator(".an-pose-lib")
+    # Le libellé tient sur UNE ligne, la pastille à sa hauteur, et la ligne ne grandit pas.
+    assert lib.bounding_box()["height"] < 26, lib.bounding_box()
+    pastille, l = ligne.locator(".an-pastille").bounding_box(), lib.bounding_box()
+    assert abs((pastille["y"] + pastille["height"] / 2) - (l["y"] + l["height"] / 2)) < 8
+    assert pendant <= hors + 1 and pendant < 64, (hors, pendant)
+
+
+def test_le_locuteur_se_choisit_et_se_retire_dans_le_contexte(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    champ = page.locator("#an-loc-input")
+    champ.fill("Tournesol")
+    expect(page.locator("#an-loc-liste")).to_contain_text("Créer « Tournesol »")
+    with page.expect_response(lambda r: "/locuteur" in r.url and r.request.method == "PUT") as rep:
+        champ.press("Enter")
+    corps = rep.value.request.post_data_json
+    assert corps["personnage_vu"] is not None      # la valeur VUE part avec le choix
+    expect(page.locator("#an-loc-nom")).to_have_text("Tournesol")
+    expect(page.locator("#an-loc-liste")).to_be_hidden()
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["nom"] == "Tournesol"
+    page.locator("#an-loc-retirer").click()
+    expect(page.locator("#an-loc-nom")).to_have_text("—")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"] is None
+    # Le CARTOUCHE a un locuteur ; la boîte personnage n'en a pas, son personnage se lit.
+    page.locator('#an-mini .an-mz[data-case="1"]').click()
+    page.locator(f'#an-vue-case rect[data-zone="{decor["cartouche"]}"]').click()
+    expect(page.locator("#an-loc-input")).to_have_attribute("aria-label", "Attribuer un locuteur au cartouche")
+    page.locator('#an-mini .an-mz[data-case="0"]').click()
+    page.locator(f'#an-vue-case rect[data-zone="{decor["boite"]}"]').click()
+    expect(page.locator("#an-ctx-loc")).to_be_hidden()
+    expect(page.locator("#an-ctx-perso")).to_have_text("Haddock")
+
+
+def test_deux_personnages_du_meme_nom_se_departagent_dans_le_contexte(page, decor):
+    """Le champ est celui de l'Atelier : Entrée ne prend pas un homonyme au hasard."""
+    with _http(decor) as c:
+        for serie in ("Spirou", "Gaston"):
+            assert c.post("/api/personnages", json={"nom": "Zed", "serie": serie}).status_code in (200, 201)
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-loc-input").fill("Zed")
+    page.locator("#an-loc-input").press("Enter")
+    liste = page.locator("#an-loc-liste")
+    expect(liste.locator("div")).to_have_count(2)
+    expect(liste).to_contain_text("Gaston")
+    with _http(decor) as c:                        # rien n'est pris
+        assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["nom"] == "Haddock"
+    liste.locator("div", has_text="Spirou").dispatch_event("mousedown")
+    expect(page.locator("#an-loc-nom")).to_have_text("Zed · Spirou")
+
+
+def test_un_locuteur_change_ailleurs_ouvre_le_bandeau(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    with _http(decor) as c:                        # un autre écran attribue Milou
+        milou = c.post("/api/personnages", json={"nom": "Milou"}).json()["id"]
+        assert c.put(f"/api/regions/{decor['bulle']}/locuteur",
+                     json={"personnage_id": milou}).status_code == 200
+        tournesol = c.post("/api/personnages", json={"nom": "Tournesol"}).json()["id"]
+    hauteur = lambda: page.evaluate(  # noqa: E731
+        "() => Math.round(document.querySelector('#an-grille').getBoundingClientRect().height)")
+    avant = hauteur()
+    page.locator("#an-loc-input").fill("Tournesol")
+    expect(page.locator("#an-loc-liste")).to_contain_text("Tournesol")
+    page.locator("#an-loc-input").press("Enter")
+    expect(page.locator("#an-cf-titre")).to_contain_text("Locuteur modifié")
+    expect(page.locator("#an-guide-contenu")).to_contain_text("Votre choix, Tournesol, n'est pas enregistré.")
+    expect(page.locator("#an-guide-contenu")).to_contain_text("Milou")
+    assert hauteur() == avant
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["id"] == milou
+    # Tant que le bandeau attend, la note ne part pas non plus.
+    page.locator("#an-note").fill("il jure encore")
+    page.locator("#an-note").blur()
+    page.wait_for_timeout(800)
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il jure"
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator("#an-loc-nom")).to_have_text("Tournesol")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["id"] == tournesol
+    # La note retenue part une fois le conflit réglé.
+    expect(page.locator("#an-note-etat")).to_have_text("Enregistrée")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il jure encore"
+
+
+def test_la_note_s_ecrit_et_un_conflit_garde_la_saisie(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    note = page.locator("#an-note")
+    expect(note).to_have_value("il jure")
+    with page.expect_response(lambda r: r.url.endswith(f"/regions/{decor['bulle']}/annotation")
+                              and r.request.method == "PUT") as rep:
+        note.fill("il jure comme un charretier")
+    assert rep.value.request.post_data_json == {"note": "il jure comme un charretier",
+                                                "note_vue": "il jure"}
+    expect(page.locator("#an-note-etat")).to_have_text("Enregistrée")
+    with _http(decor) as c:                        # un autre écran récrit la note
+        assert c.put(f"/api/regions/{decor['bulle']}/annotation",
+                     json={"note": "il crie"}).status_code == 200
+    note.fill("il jure, et fort")
+    expect(page.locator("#an-cf-titre")).to_contain_text("Note modifiée")
+    expect(page.locator("#an-guide-contenu")).to_contain_text("il crie")
+    expect(note).to_have_value("il jure, et fort")          # la saisie reste
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator("#an-note-etat")).to_have_text("Enregistrée")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il jure, et fort"
+    # « Garder l'autre » : la version de l'autre revient dans le champ.
+    with _http(decor) as c:
+        assert c.put(f"/api/regions/{decor['bulle']}/annotation",
+                     json={"note": "il hurle"}).status_code == 200
+    note.fill("il jure, encore")
+    expect(page.locator("#an-cf-titre")).to_contain_text("Note modifiée")
+    page.locator("#an-cf-autre").click()
+    expect(note).to_have_value("il hurle")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il hurle"
+
+
+def test_une_note_tapee_puis_une_autre_zone_part_sur_la_sienne(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-note").fill("il jure, vite")
+    # Aussitôt une autre zone, avant le délai de frappe : la note part sur la BULLE.
+    page.locator(f'#an-vue-case rect[data-zone="{decor["boite"]}"]').click()
+    expect(page.locator("#an-tete-zone")).to_have_text(re.compile("boîte"))
+    page.wait_for_timeout(800)
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il jure, vite"
+        assert c.get(f"/api/regions/{decor['boite']}/annotation").json()["note"] in (None, "")
+    expect(page.locator("#an-note")).to_have_value("")
+
+
+def test_ctrl_z_defait_le_locuteur_et_la_note(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-note").fill("il jure, puis non")
+    page.locator("#an-loc-input").fill("Tournesol")
+    expect(page.locator("#an-loc-liste")).to_contain_text("Créer « Tournesol »")
+    page.locator("#an-loc-input").press("Enter")
+    expect(page.locator("#an-loc-nom")).to_have_text("Tournesol")
+    page.locator("#an-mots").focus()
+    page.keyboard.press("Control+z")
+    expect(page.locator("#toasts")).to_contain_text("Annulé :")
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["nom"] == "Haddock"
+    page.locator("#an-mots").focus()
+    page.keyboard.press("Control+z")
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il jure"
+
+
+def test_ctrl_z_attend_la_note_partie(page, decor):
+    """Ctrl+Z défait le DERNIER geste : une note partie juste avant, dont la réponse n'est pas
+    revenue, en est un. Sans attendre son retour, Ctrl+Z défaisait le geste d'AVANT — ici le
+    relevé du décor — et la note restait."""
+    avant = len(_releves(decor))
+    retenues = []
+    page.route("**/api/regions/*/annotation",
+               lambda route: retenues.append(route) if route.request.method == "PUT"
+               else route.continue_())
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-note").fill("il jure, puis non")
+    page.locator("#an-mots").focus()                # la sortie du champ envoie la note
+    for _ in range(50):
+        if retenues:
+            break
+        page.wait_for_timeout(100)
+    assert retenues, "la note n'est pas partie"
+    annulations = []
+    page.on("request", lambda r: annulations.append(r.url) if r.url.endswith("/api/undo") else None)
+    page.keyboard.press("Control+z")
+    page.wait_for_timeout(800)
+    assert annulations == [], "Ctrl+Z est parti avant le retour de la note"
+    retenues[0].continue_()
+    expect(page.locator("#toasts")).to_contain_text("Annulé :")
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il jure"
+    assert len(_releves(decor)) == avant
+
+
+def test_quitter_la_planche_attend_la_note_et_son_conflit(page, decor):
+    """Un départ de la planche passe par ses gardes : la note pas encore partie part d'abord,
+    et si elle reçoit un 409, le bandeau s'ouvre et la planche RESTE."""
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=180,
+                      headers=ECRITURE) as c:
+        p2 = c.post(f"/api/albums/{decor['album']}/import",
+                    files={"file": ("p2.png", make_png(800, 1000), "image/png")}).json()["id"]
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    with _http(decor) as c:                        # un autre écran récrit la note
+        assert c.put(f"/api/regions/{decor['bulle']}/annotation",
+                     json={"note": "il crie"}).status_code == 200
+    page.locator("#an-note").fill("il jure, je pars")
+    page.locator("#an-planche-choix").select_option(str(p2))
+    expect(page.locator("#an-cf-titre")).to_contain_text("Note modifiée")
+    expect(page.locator("#an-planche-choix")).to_have_value(str(decor["planche"]))
+    expect(page.locator("#an-tete-zone")).to_have_text("bulle b1")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il crie"
+

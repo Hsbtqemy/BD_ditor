@@ -71,6 +71,9 @@ MODULES_MONTES = {
                         "l'Administration, dans la fiche d'une collection (UX-16)",
     "lib/membres-projet.js": "monté par l'Administration, dans la fiche d'un projet (COL-3), "
                              "et par la ligne du bac à sable, dans « Inviter… » (COL-4)",
+    "lib/champ-personnage.js": "monté par l'Atelier, pour le locuteur et l'identité d'une "
+                               "boîte, et par la page Annotation, pour le locuteur du Contexte "
+                               "(ANN-7, tranche 2, commit 8)",
 }
 
 # COL-4 — un script de surface PARTAGÉ par les cinq pages : la ligne du bac à sable, son
@@ -114,6 +117,15 @@ NON_RESOLUS = {
         "d'où le garde `.bac-modal[hidden] { display: none; }` dans la feuille — vérifié le "
         "2026-10-24 par `tests/test_e2e_bac_a_sable.py`, qui exige le dialogue VISIBLE à "
         "l'ouverture et CACHÉ après « Annuler »."),
+    ("lib/champ-personnage.js", "sug"): (
+        "La liste des propositions du champ « personnage », que l'hôte CONFIE au montage "
+        "(`#loc-suggest` et `#perso-suggest` dans l'Atelier, `#an-loc-liste` sur la page "
+        "Annotation) : la cible est un paramètre, pas un identifiant écrit ici. `.tag-suggest` "
+        "ne pose aucun `display`, l'attribut agit — vérifié le 2026-10-30 par "
+        "`test_e2e_annotation_page.test_le_locuteur_se_choisit_et_se_retire_dans_le_contexte`, "
+        "qui exige la liste VISIBLE pendant la saisie et CACHÉE après le choix. Dans "
+        "`viewer.js`, `sug.hidden` se rattachait jusque-là, par la définition la plus proche en "
+        "amont, à un autre `sug` du fichier : un hasard de la résolution, pas une couverture."),
     ("lib/membres-projet.js", "libre"): (
         "La saisie libre de « Qui y entre » d'un projet (COL-3), une par partie montée, sur "
         "le patron de celle de « Qui entre » : la cible est la CLASSE `.mp-libre`, cherchée "

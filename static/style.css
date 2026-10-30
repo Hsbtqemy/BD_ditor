@@ -3819,7 +3819,19 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .an-ctx-corps { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr);
                 gap: .3077rem .7692rem; }
 .an-ctx-corps dt { color: var(--text-muted); font-size: .9231rem; }
-.an-ctx-corps dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.an-ctx-corps dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; min-width: 0; }
+/* Le Contexte modifiable (commit 8) : la puce du locuteur et son champ, la note. Les champs
+   prennent la largeur de la colonne, jamais plus (le patron de `.tag-input-wrap > input`). */
+.an-loc-puce { display: flex; align-items: center; gap: .3077rem; min-width: 0; }
+.an-loc-nom { overflow-wrap: anywhere; min-width: 0; }
+.an-loc-x { padding: 0 .4615rem; }
+.an-loc-saisie { margin-top: .3077rem; white-space: normal; }
+.an-loc-saisie > input { width: 100%; box-sizing: border-box; }
+.an-note { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit;
+           padding: .3077rem .4615rem; background: var(--bg-input); color: var(--text);
+           border: 1px solid var(--border); border-radius: 4px; }
+.an-note[hidden] { display: none; }
+.an-note-etat { display: block; min-height: 1.2em; white-space: normal; }
 
 /* Les deux vues de la colonne de gauche (commit 5) : la planche, la Synthèse. Le garde
    `[hidden]` : `display: flex` écraserait l'attribut (cf. `test_e2e_masquage`). */
@@ -4087,7 +4099,11 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-poses-liste { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto;
                   min-height: 0; display: flex; flex-direction: column; gap: .1538rem; }
 .an-pose { display: flex; flex-wrap: wrap; align-items: center; gap: .1538rem .3077rem; }
-.an-pose-btn { flex: 1 1 10rem; min-width: 0; display: flex; flex-wrap: wrap; align-items: center;
+/* La base du bouton est son CONTENU (`auto`), pas une largeur fixe : quand ses gestes ne
+   tiennent plus à côté, ils passent à la ligne au lieu d'écraser le libellé (passe des
+   correctifs, 2026-10-30 : pendant « Désigner sur la planche », la ligne s'étalait sur 91 px,
+   la pastille seule et le libellé coupé en deux). */
+.an-pose-btn { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center;
                gap: .1538rem .4615rem; text-align: left; background: none; color: var(--text);
                border: 1px solid transparent; border-radius: 5px; padding: .1538rem .3077rem;
                cursor: pointer; font: inherit; }

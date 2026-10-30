@@ -454,6 +454,23 @@ def test_annulation_js_servi_et_charge_avant_le_script_de_page(client):
                 < html.index(page_script)), route
 
 
+def test_champ_personnage_js_servi_et_charge_avant_le_script_de_page(client):
+    """Même garde-fou pour le champ « personnage » (static/lib/champ-personnage.js, ANN-7,
+    tranche 2, commit 8) : servi, et chargé AVANT le script des deux surfaces qui le montent
+    (l'Atelier pour le locuteur et l'identité d'une boîte, la page Annotation pour le
+    locuteur du Contexte) — et après `propositions.js`, dont il tire la règle des homonymes.
+    Sans lui, `BDChampPersonnage` est indéfini au démarrage, et la surface lève."""
+    js = client.get("/static/lib/champ-personnage.js")
+    assert js.status_code == 200 and "monter" in js.text
+    for route, page_script in (("/", "/static/viewer.js"),
+                               ("/annotation", "/static/annotation.js")):
+        html = client.get(route).text
+        assert "/static/lib/champ-personnage.js" in html, route
+        assert (html.index("/static/lib/propositions.js")
+                < html.index("/static/lib/champ-personnage.js")
+                < html.index(page_script)), route
+
+
 def test_casse_js_servi_et_charge_avant_le_script_de_page(client):
     """Même garde-fou pour la normalisation de casse (static/lib/casse.js, NLP-3) : servi,
     et chargé AVANT viewer.js, seule surface qui l'utilise.

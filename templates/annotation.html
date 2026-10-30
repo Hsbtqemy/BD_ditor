@@ -60,10 +60,35 @@
           <!-- Désigner un lien (commit 7) : la minicarte change de rôle, et le dit sur elle. -->
           <p id="an-mini-mode" class="an-mini-mode" hidden>Cliquez la zone liée · Échap annule</p>
         </div>
+        <!-- Le Contexte (commit 8) : ce qui n'est pas du vocabulaire. Sur un album où l'on
+             écrit, le locuteur et la note s'écrivent ICI ; le personnage d'une boîte reste en
+             lecture. Les lignes sont FIXES : la zone choisie les montre ou les cache. -->
         <section class="an-ctx" aria-labelledby="an-ctx-titre">
           <h2 class="an-titre" id="an-ctx-titre"
-              title="Ce qui n'est pas du vocabulaire : il se lit ici, et s'écrit dans l'Atelier">Contexte</h2>
-          <dl id="an-ctx-corps" class="an-ctx-corps"></dl>
+              title="Ce qui n'est pas du vocabulaire : le locuteur, la note">Contexte</h2>
+          <dl id="an-ctx-corps" class="an-ctx-corps">
+            <dt id="an-ctx-loc-t" hidden>Locuteur</dt>
+            <dd id="an-ctx-loc" data-ctx="locuteur" hidden>
+              <span id="an-loc-puce" class="an-loc-puce"><span id="an-loc-nom" class="an-loc-nom"></span><button
+                id="an-loc-retirer" class="ghost small an-loc-x" type="button" hidden
+                aria-label="Retirer le locuteur" title="Retirer le locuteur">×</button></span>
+              <div id="an-loc-saisie" class="tag-input-wrap an-loc-saisie" hidden>
+                <input type="text" id="an-loc-input" autocomplete="off" spellcheck="false"
+                       placeholder="Attribuer un personnage…" aria-label="Attribuer un locuteur">
+                <div id="an-loc-liste" class="tag-suggest" hidden></div>
+              </div>
+            </dd>
+            <dt id="an-ctx-perso-t" hidden>Personnage</dt>
+            <dd id="an-ctx-perso" data-ctx="personnage" hidden
+                title="L'identité d'une boîte s'écrit dans l'Atelier"></dd>
+            <dt id="an-ctx-note-t" hidden><label for="an-note" id="an-note-lbl">Note</label></dt>
+            <dd id="an-ctx-note" data-ctx="note" hidden>
+              <span id="an-note-lu" class="an-note-lu"></span>
+              <textarea id="an-note" class="an-note" rows="2" hidden
+                        title="Enregistrée en tapant ; Ctrl+Z hors du champ la défait"></textarea>
+              <span id="an-note-etat" class="an-note-etat muted small" aria-live="polite"></span>
+            </dd>
+          </dl>
         </section>
       </div>
       <div id="an-p-synthese" class="an-panneau" role="tabpanel" aria-labelledby="an-ong-synthese" hidden>
@@ -202,6 +227,8 @@
 <script src="/static/lib/bibliotheque.js"></script><!-- l'ordre des collections, celui de l'Atelier -->
 <script src="/static/lib/atelier.js"></script><!-- le filtre de collection, partagé avec l'Atelier -->
 <script src="/static/lib/conflit.js"></script><!-- les mots du bandeau de CONC-3 -->
+<script src="/static/lib/propositions.js"></script><!-- les homonymes du champ « personnage » -->
+<script src="/static/lib/champ-personnage.js"></script><!-- le locuteur, commun avec l'Atelier -->
 <script src="/static/lib/annulation.js"></script><!-- Ctrl+Z, commun avec l'Atelier -->
 <script src="/static/lib/signal-planche.js"></script><!-- « ⟳ Actualiser », commun avec l'Atelier -->
 <script src="/static/lib/annotation.js"></script>

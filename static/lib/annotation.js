@@ -281,6 +281,27 @@
     return lignes;
   }
 
+  /* LE CONTEXTE MODIFIABLE (jalon 3, commit 8) : les lignes du Contexte qu'un geste écrit,
+     sur un album où l'on écrit (`ecrit`) — le locuteur d'une zone de texte, la note de toute
+     zone. Le personnage d'une boîte reste EN LECTURE : il s'écrit dans l'Atelier (le cadrage
+     ne le met pas dans le Contexte modifiable). Rien sur un album qu'on ne fait que lire, ni
+     sur la case pseudo, qui n'est pas une région. */
+  function gestesDuContexte(zone, ecrit) {
+    const out = new Set();
+    if (!ecrit || !zone || zone.pseudo) return out;
+    if (estTexte(zone.type)) out.add("locuteur");
+    out.add("note");
+    return out;
+  }
+
+  /* Ce qu'une note enregistre : `null` quand la saisie ne change rien à ce que l'écran a vu
+     (rien ne part), la note à écrire sinon. Les espaces de fin ne comptent pas. */
+  function noteAEnvoyer(saisie, vue) {
+    const s = String(saisie === null || saisie === undefined ? "" : saisie).replace(/\s+$/, "");
+    const v = String(vue === null || vue === undefined ? "" : vue).replace(/\s+$/, "");
+    return s === v ? null : s;
+  }
+
   /* ───────────── LA GRILLE, EN LECTURE (commit 2) ─────────────
      Ce qui suit lit ce que servent `GET /api/projets/{id}/grilles` (les grilles ACTIVES du
      projet, leur version, les collections qui les masquent) et `GET /api/grilles/{id}/
@@ -1252,9 +1273,13 @@
 
   /* La zone qu'un LIEN désigne, en mots, sur la ligne du relevé (Hugo, passe du jalon 1 :
      « Changer le lien » ne disait pas laquelle) : son étiquette et le début de son texte —
-     « b2 « PÉDÉ ! » » —, ou, la zone disparue, ce qu'elle disait. `null` sans lien. */
+     « b2 « PÉDÉ ! » » —, ou, la zone disparue, ce qu'elle disait. `null` sans lien.
+     `depuis` : la région du relevé. Une zone d'une AUTRE case que la sienne dit sa case
+     (passe des correctifs, 2026-10-30 : « b1 » ne disait pas laquelle des deux b1) —
+     « c2 · b1 « PÉDÉ ! » » ; un relevé de la planche, qui n'est dans aucune case, la dit
+     toujours. Une zone hors de toute case se dit « hors des cases ». */
   const COURT = 24;
-  function nomDuLien(rangement, regions, lien) {
+  function nomDuLien(rangement, regions, lien, depuis) {
     if (!lien) return null;
     const court = (t) => {
       const x = String(t || "").replace(/\s+/g, " ").trim();
@@ -1266,13 +1291,19 @@
     const r = (Array.isArray(regions) ? regions : []).find((x) => x.id === lien.region_id);
     const ou = situer(rangement, lien.region_id);
     let etiq = null;
+    let laCase = null;
     if (ou) {
       const c = rangement[ou.caseIx];
       etiq = ou.zoneId === null ? etiquette(c.case) : etiquettesDeLaCase(c).get(ou.zoneId);
+      const ici = depuis === null || depuis === undefined ? null : situer(rangement, depuis);
+      if (ou.zoneId !== null && (!ici || ici.caseIx !== ou.caseIx)) {
+        laCase = c.case.pseudo ? "hors des cases" : etiquette(c.case);
+      }
     }
     const texte = r && r.ocr_texte ? court(r.ocr_texte) : "";
     if (!etiq && !texte) return "une autre zone";
-    return [etiq, texte ? `« ${texte} »` : null].filter(Boolean).join(" ");
+    const nom = [etiq, texte ? `« ${texte} »` : null].filter(Boolean).join(" ");
+    return laCase ? `${laCase} · ${nom}` : nom;
   }
 
   /* Les relevés de la SURFACE (la planche entière) : la liste de toute zone les porte, en
@@ -1314,6 +1345,7 @@
   return { TYPES_TEXTE, CLES_ADRESSE, CLE_RELEVES, estTexte, nomType, deLa, casesDeLaPlanche,
            etiquette, etiquettesDeLaCase, situer, libellePlanche, preparation, adresse,
            lireAdresse, lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
+           gestesDuContexte, noteAEnvoyer,
            normaliser, masquee, grillesVisibles, grilleAOuvrir, infobulleGrille, arbre,
            entreesSous, chemin, vuesAfficher, relevesDeLaZone, compter, marquePlusieurs,
            marqueCible, chercher, ligneDuGuide, guideComplet,

@@ -206,6 +206,33 @@ test("le Contexte, en lecture : ce qui n'est pas du vocabulaire", () => {
   assert.deepEqual(A.contexte(null, {}), []);
 });
 
+test("le Contexte modifiable : le locuteur d'une zone de texte, la note de toute zone", () => {
+  const g = (z, e) => [...A.gestesDuContexte(z, e)].sort();
+  assert.deepEqual(g(R(2, "bulle", 0, 0, 1, 1), true), ["locuteur", "note"]);
+  assert.deepEqual(g(R(2, "cartouche", 0, 0, 1, 1), true), ["locuteur", "note"]);
+  assert.deepEqual(g(R(2, "texte", 0, 0, 1, 1), true), ["locuteur", "note"]);
+  // Le personnage d'une boîte reste en lecture ; la case n'a qu'une note.
+  assert.deepEqual(g(R(3, "personnage", 0, 0, 1, 1), true), ["note"]);
+  assert.deepEqual(g(R(1, "case", 0, 0, 1, 1), true), ["note"]);
+  // Rien en lecture, ni sur la case pseudo, ni sans zone.
+  assert.deepEqual(g(R(2, "bulle", 0, 0, 1, 1), false), []);
+  assert.deepEqual(g({ pseudo: true, type: "case" }, true), []);
+  assert.deepEqual(g(null, true), []);
+});
+
+test("une note ne part que si elle change ce que l'écran a vu", () => {
+  assert.equal(A.noteAEnvoyer("il jure", "il jure"), null);
+  assert.equal(A.noteAEnvoyer("il jure  ", "il jure"), null);
+  assert.equal(A.noteAEnvoyer("il jure", "il jure \n"), null);
+  assert.equal(A.noteAEnvoyer("il jure fort ", "il jure"), "il jure fort");
+  assert.equal(A.noteAEnvoyer("", "il jure"), "");
+  assert.equal(A.noteAEnvoyer("", null), null);
+  assert.equal(A.noteAEnvoyer(null, ""), null);
+  assert.equal(A.noteAEnvoyer("x", undefined), "x");
+  // Les espaces de TÊTE comptent : seule la fin est rognée.
+  assert.equal(A.noteAEnvoyer(" il jure", "il jure"), " il jure");
+});
+
 test("les mots d'une sorte : son nom et son article", () => {
   assert.equal(A.nomType("personnage"), "boîte personnage");
   assert.equal(A.deLa("bulle"), "de la bulle");
@@ -859,15 +886,39 @@ test("un lien dit la zone qu'il désigne : son étiquette, le début de son text
                   zones: [{ id: 11, type: "bulle", citation: { bulle: 2 } }, { id: 12, type: "personnage" },
                           { id: 13, type: "cartouche" }] },
                 { case: { id: 2, type: "case", citation: { case: 2 } }, zones: [] }];
-  assert.equal(A.nomDuLien(rang, regions, { region_id: 11, existe: true }), "b2 « PÉDÉ ! »");
-  assert.equal(A.nomDuLien(rang, regions, { region_id: 13, existe: true }), "ca1 « UN TRÈS LONG CARTOUCHE… »");
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 11, existe: true }, 11), "b2 « PÉDÉ ! »");
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 13, existe: true }, 11), "ca1 « UN TRÈS LONG CARTOUCHE… »");
   assert.equal(A.nomDuLien(rang, regions, { region_id: 2, existe: true }), "c2");
-  assert.equal(A.nomDuLien(rang, regions, { region_id: 12, existe: true }), "p1");
+  assert.equal(A.nomDuLien(rang, regions, { region_id: 12, existe: true }, 11), "p1");
   assert.equal(A.nomDuLien(rang, regions, { region_id: 99, existe: true }), "une autre zone");
   assert.equal(A.nomDuLien(rang, regions, { region_id: 99, existe: false, texte: "ADIEU" }),
                "zone disparue « ADIEU »");
   assert.equal(A.nomDuLien(rang, regions, { region_id: 99, existe: false }), "zone disparue");
   assert.equal(A.nomDuLien(rang, regions, null), null);
+});
+
+test("un lien vers une zone d'une AUTRE case nomme cette case ; dans la même, la forme courte", () => {
+  const regions = [{ id: 11, type: "bulle", ocr_texte: "PÉDÉ !" }, { id: 21, type: "bulle", ocr_texte: "OUI" },
+                   { id: 31, type: "bulle", ocr_texte: "DEHORS" }];
+  const rang = [{ case: { id: 1, type: "case", citation: { case: 1 } },
+                  zones: [{ id: 11, type: "bulle", citation: { bulle: 1 } }] },
+                { case: { id: 2, type: "case", citation: { case: 2 } },
+                  zones: [{ id: 21, type: "bulle", citation: { bulle: 1 } }] },
+                { case: { id: null, type: "case", pseudo: true }, zones: [{ id: 31, type: "bulle" }] }];
+  const l = (id) => ({ region_id: id, existe: true });
+  assert.equal(A.nomDuLien(rang, regions, l(21), 11), "c2 · b1 « OUI »");
+  assert.equal(A.nomDuLien(rang, regions, l(11), 21), "c1 · b1 « PÉDÉ ! »");
+  // Dans la même case : la bulle, ou la case elle-même, qui porte le relevé.
+  assert.equal(A.nomDuLien(rang, regions, l(11), 11), "b1 « PÉDÉ ! »");
+  assert.equal(A.nomDuLien(rang, regions, l(11), 1), "b1 « PÉDÉ ! »");
+  // Un lien vers une case se dit déjà par sa case.
+  assert.equal(A.nomDuLien(rang, regions, l(2), 11), "c2");
+  // Un relevé de la planche (aucune région) : la case est toujours dite.
+  assert.equal(A.nomDuLien(rang, regions, l(21), null), "c2 · b1 « OUI »");
+  assert.equal(A.nomDuLien(rang, regions, l(21)), "c2 · b1 « OUI »");
+  // Hors de toute case.
+  assert.equal(A.nomDuLien(rang, regions, l(31), 11), "hors des cases · b1 « DEHORS »");
+  assert.equal(A.nomDuLien(rang, regions, l(31), 31), "b1 « DEHORS »");
 });
 
 test("les relevés de la surface ; sur quoi un relevé est posé, un seul libellé par cible", () => {

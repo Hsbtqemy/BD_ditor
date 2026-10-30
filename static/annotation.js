@@ -83,6 +83,9 @@ const S = {
   guideReplie: false,          // la boîte du guide repliée (commit 7), retenue sur le poste
   reponses: new Map(),         // doute → réponse en cours d'écriture (« À revoir »)
   changer: null,               // le relevé dont « Changer… » montre les variantes
+  // Le Contexte modifiable (commit 8)
+  loc: { region: null, vu: undefined },        // le locuteur de la zone, et sa valeur VUE
+  note: { region: null, sale: false, minuterie: null },   // la note de la zone, à envoyer
 };
 let tourContexte = 0;          // la lecture du Contexte la plus récente gagne
 let tourPlanche = 0;           // idem pour une planche
@@ -474,33 +477,310 @@ function rendreZones() {
                                  A.estTexte(z.type) ? z.ocr_texte || "" : "")));
 }
 
-/* ───────────── Le Contexte, en lecture ───────────── */
+/* ───────────── Le Contexte (commit 1 en lecture, commit 8 modifiable) ─────────────
+   Ce qui n'est pas du vocabulaire : le locuteur d'une zone de texte, le personnage d'une
+   boîte, la note de toute zone. Sur un album où l'on écrit, le LOCUTEUR et la NOTE s'écrivent
+   ici (`BDAnnotation.gestesDuContexte`) ; le personnage d'une boîte reste en lecture. Les
+   lignes sont fixes, dans le gabarit : la zone les montre ou les cache.
+
+   CHAQUE ÉCRITURE PORTE CE QUE L'ÉCRAN VOYAIT, comme dans l'Atelier : le locuteur
+   `personnage_vu` (CONC-4), la note `note_vue` (CONC-3). Un 409 ouvre le bandeau de la page,
+   dans la boîte du guide, comme pour un relevé ; tant qu'il attend, aucun autre geste ne part.
+   Les gestes d'un même champ partent L'UN APRÈS L'AUTRE (`enchainer`) : la valeur vue se lit
+   au moment où le geste part, après la réponse du précédent — sans quoi deux choix coup sur
+   coup déclaraient tous deux la valeur d'avant le premier (la leçon de CONC-4 dans
+   l'Atelier). Le champ « personnage » lui-même — lectures en vol, homonymes — est celui de
+   l'Atelier (`lib/champ-personnage.js`). */
+const NOTE_DELAI_MS = 500;            // le délai de frappe de la note, celui de l'Atelier
+const ENVOIS = {};                    // champ → le geste en cours (une promesse)
+// La note VUE, zone par zone : une note qui part après qu'on a quitté sa zone déclare encore
+// ce que l'écran y avait vu — la réponse du geste précédent comprise.
+const NOTES_VUES = new Map();
+
+function enchainer(cle, envoyer) {
+  // Rien en cours : partir TOUT DE SUITE, pendant que l'écran montre encore ce qui part.
+  const p = ENVOIS[cle] ? ENVOIS[cle].then(envoyer, envoyer) : envoyer();
+  ENVOIS[cle] = p;
+  const fin = () => { if (ENVOIS[cle] === p) ENVOIS[cle] = null; };
+  p.then(fin, fin);
+  return p;
+}
+
+function montrer(id, oui) { $(id).hidden = !oui; }
+
+/* « au cartouche », « à la bulle », « à la zone de texte » : à qui l'on attribue. */
+const A_LA = { bulle: "à la bulle", cartouche: "au cartouche", texte: "à la zone de texte" };
+
 async function rendreContexte() {
   const tour = ++tourContexte;
   const z = zoneCourante();
-  const dessiner = (donnees) => {
-    if (tour !== tourContexte) return;
-    const dl = $("#an-ctx-corps");
-    const lignes = A.contexte(z, donnees);
-    dl.replaceChildren(...lignes.flatMap((l) => {
-      const dt = document.createElement("dt");
-      dt.textContent = l.libelle;
-      const dd = document.createElement("dd");
-      dd.textContent = l.valeur;
-      dd.dataset.ctx = l.cle;
-      if (l.valeur === "—" || l.valeur === "…") dd.classList.add("muted");
-      return [dt, dd];
-    }));
-  };
-  dessiner({});
-  if (!z || z.pseudo) return;
-  const lire = (chemin, cle) => apiGet(chemin).then((d) => d[cle]).catch(() => null);
+  const gestes = A.gestesDuContexte(z, ecrivable());
+  const id = z && !z.pseudo ? z.id : null;
+  const memeLoc = S.loc.region !== null && S.loc.region === id;
+  const memeNote = S.note.region !== null && S.note.region === id;
+  const lignes = new Set(A.contexte(z, {}).map((l) => l.cle));
+  montrer("#an-ctx-loc-t", lignes.has("locuteur"));
+  montrer("#an-ctx-loc", lignes.has("locuteur"));
+  montrer("#an-ctx-perso-t", lignes.has("personnage"));
+  montrer("#an-ctx-perso", lignes.has("personnage"));
+  montrer("#an-ctx-note-t", lignes.has("note"));
+  montrer("#an-ctx-note", lignes.has("note"));
+  // Le locuteur : la puce, et le champ quand on écrit. Relu sur la MÊME zone (« Actualiser »,
+  // Ctrl+Z), le champ garde le nom à moitié tapé.
+  S.loc = { region: lignes.has("locuteur") ? id : null, vu: undefined };
+  montrer("#an-loc-saisie", gestes.has("locuteur"));
+  if (!memeLoc) { $("#an-loc-input").value = ""; $("#an-loc-liste").hidden = true; }
+  montrerLocuteur(undefined, false);
+  $("#an-loc-input").setAttribute("aria-label",
+    `Attribuer un locuteur ${(z && A_LA[z.type]) || ""}`.trim());
+  // La note : le champ quand on écrit, sinon le texte. Une saisie pas encore partie sur la
+  // MÊME zone n'est pas écrasée par la relecture.
+  const garderNote = memeNote && S.note.sale;
+  S.note = { region: lignes.has("note") ? id : null, sale: garderNote,
+             minuterie: garderNote ? S.note.minuterie : null };
+  const champ = $("#an-note");
+  champ.hidden = !gestes.has("note");
+  $("#an-note-lu").hidden = gestes.has("note");
+  $("#an-note-lu").textContent = "…";
+  $("#an-note-lu").classList.add("muted");
+  if (!garderNote) {
+    champ.disabled = true;                        // le temps de lire ce que la zone porte
+    champ.value = "";
+    marquerNote("");
+  }
+  $("#an-ctx-perso").textContent = "…";
+  $("#an-ctx-perso").classList.add("muted");
+  if (!id) return;
+  const lire = (chemin, cle) => apiGet(chemin).then((d) => d[cle]).catch(() => undefined);
   const [locuteur, personnage, note] = await Promise.all([
-    A.estTexte(z.type) ? lire(`/api/regions/${z.id}/locuteur`, "locuteur") : null,
-    z.type === "personnage" ? lire(`/api/regions/${z.id}/personnage`, "personnage") : null,
-    lire(`/api/regions/${z.id}/annotation`, "note"),
+    lignes.has("locuteur") ? lire(`/api/regions/${id}/locuteur`, "locuteur") : null,
+    lignes.has("personnage") ? lire(`/api/regions/${id}/personnage`, "personnage") : null,
+    lire(`/api/regions/${id}/annotation`, "note"),
   ]);
-  dessiner({ locuteur, personnage, note });
+  if (tour !== tourContexte) return;
+  const val = new Map(A.contexte(z, { locuteur, personnage, note }).map((l) => [l.cle, l.valeur]));
+  if (lignes.has("locuteur")) montrerLocuteur(locuteur, locuteur !== undefined);
+  if (lignes.has("personnage")) {
+    $("#an-ctx-perso").textContent = val.get("personnage");
+    $("#an-ctx-perso").classList.toggle("muted", ["—", "…"].includes(val.get("personnage")));
+  }
+  $("#an-note-lu").textContent = val.get("note");
+  $("#an-note-lu").classList.toggle("muted", ["—", "…"].includes(val.get("note")));
+  // Une lecture en échec ne donne aucune valeur VUE : la note reste fermée, plutôt que
+  // d'écrire par-dessus ce qu'on n'a pas lu.
+  if (note === undefined) return;
+  if (!S.note.sale) {
+    NOTES_VUES.set(id, note || "");
+    champ.value = note || "";
+  }
+  champ.disabled = false;
+}
+
+/* La puce du locuteur. `vu` : ce rendu est-il ce que le serveur porte — la lecture, ou la
+   réponse d'un geste ? Il devient alors la valeur VUE que le prochain geste déclare.
+   `undefined` : pas encore lu (« … »). */
+function montrerLocuteur(loc, vu = true) {
+  if (vu) S.loc.vu = loc ? loc.id : null;
+  const nom = $("#an-loc-nom");
+  nom.textContent = loc === undefined ? "…"
+    : loc ? (loc.serie ? `${loc.nom} · ${loc.serie}` : loc.nom) : "—";
+  nom.classList.toggle("muted", !loc);
+  $("#an-loc-retirer").hidden = !(loc && ecrivable());
+}
+
+/* Le geste vaut pour la zone où il est FAIT (`rid`), pas celle du moment. */
+function choisirLocuteur(pid, rid, nom) {
+  if (rid === null || rid === undefined) return null;
+  if (conflitOuvert()) return null;
+  return enchainer("loc", () => envoyerLocuteur(pid, rid, nom));
+}
+
+async function envoyerLocuteur(pid, rid, nom) {
+  if (S.conflit) return;                          // le geste précédent a ouvert le bandeau
+  const corps = { personnage_id: pid };
+  if (rid === S.loc.region && S.loc.vu !== undefined) corps.personnage_vu = S.loc.vu;
+  try {
+    const { locuteur } = await apiSend("PUT", `/api/regions/${rid}/locuteur`, corps);
+    if (S.loc.region === rid) montrerLocuteur(locuteur);
+    annoncer(`Locuteur : ${locuteur ? locuteur.nom : "aucun"}.`);
+  } catch (e) {
+    if (refusDuContexte(e, "locuteur", rid, { id: pid, nom })) return;
+    toast("Locuteur : " + e.message, "error");
+  }
+}
+
+function retirerLocuteur() {
+  const rid = S.loc.region;
+  if (rid === null) return null;
+  if (conflitOuvert()) return null;
+  return enchainer("loc", () => envoyerRetraitLocuteur(rid));
+}
+
+async function envoyerRetraitLocuteur(rid) {
+  if (S.conflit) return;
+  const vu = rid === S.loc.region ? S.loc.vu : undefined;
+  const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
+  try {
+    await apiSend("DELETE", `/api/regions/${rid}/locuteur${q}`);
+  } catch (e) {
+    if (refusDuContexte(e, "locuteur", rid, null)) return;
+    toast("Locuteur : " + e.message, "error");
+    return;
+  }
+  if (S.loc.region === rid) {
+    montrerLocuteur(null);
+    $("#an-loc-input").focus();
+  }
+  annoncer("Locuteur retiré.");
+}
+
+/* La note : partie après le délai de frappe, à la sortie du champ, et avant tout départ de
+   la zone (`viderNote`) — chaque fois avec le texte du moment et la zone d'où elle part. */
+function marquerNote(etat) {
+  $("#an-note-etat").textContent = { envoi: "Enregistrement…", fait: "Enregistrée",
+                                     attente: "En attente de votre choix" }[etat] || "";
+}
+
+function noteModifiee() {
+  if (S.note.region === null) return;
+  S.note.sale = true;
+  marquerNote("envoi");
+  clearTimeout(S.note.minuterie);
+  const rid = S.note.region;
+  S.note.minuterie = setTimeout(() => partirNote(rid), NOTE_DELAI_MS);
+}
+
+function partirNote(rid) {
+  clearTimeout(S.note.minuterie);
+  S.note.minuterie = null;
+  if (rid !== S.note.region || !S.note.sale) return ENVOIS.note || null;
+  const texte = $("#an-note").value;
+  return enchainer("note", () => envoyerNote(rid, texte));
+}
+
+/* Ce qui n'est pas parti part maintenant ; rend la promesse du dernier envoi (ou null). */
+function viderNote() {
+  if (S.note.minuterie) return partirNote(S.note.region);
+  return ENVOIS.note || null;
+}
+
+async function envoyerNote(rid, texte) {
+  const ici = rid === S.note.region;
+  // Un conflit ouvert — sur cette note ou ailleurs — attend son choix : la note ne part pas
+  // (« un autre geste d'écriture le désigne au lieu de partir ») ; elle reste à envoyer, et
+  // part quand le conflit est réglé (`resoudreConflit`).
+  if (S.conflit) {
+    if (ici) { S.note.sale = true; marquerNote("attente"); }
+    return;
+  }
+  const vue = NOTES_VUES.get(rid);
+  // Une note qu'on n'a pas LUE ne s'écrit pas : rien ne dirait sur quoi elle écrit.
+  if (vue === undefined) return;
+  const note = A.noteAEnvoyer(texte, vue);
+  if (ici) S.note.sale = false;                    // un geste pendant l'aller-retour la resalit
+  if (note === null) { if (ici) marquerNote(""); return; }
+  try {
+    await apiSend("PUT", `/api/regions/${rid}/annotation`, { note, note_vue: vue });
+    NOTES_VUES.set(rid, note);
+    if (rid === S.note.region && !S.note.sale) marquerNote("fait");
+    annoncer("Note enregistrée.");
+  } catch (e) {
+    if (rid === S.note.region) S.note.sale = true;
+    if (refusDuContexte(e, "note", rid, texte)) { if (rid === S.note.region) marquerNote("attente"); return; }
+    marquerNote("");
+    toast("Note : " + e.message, "error");
+  }
+}
+
+/* Un refus d'une ligne du Contexte : le 409 de CONC-3 ouvre le bandeau si l'on est encore
+   sur cette zone (sinon le dire) ; un 410, la zone supprimée ailleurs. Rend vrai s'il l'a
+   pris. `saisie` : le choix ({ id, nom }), null pour un retrait ; le texte pour une note. */
+function refusDuContexte(e, lieu, rid, saisie) {
+  if (e && e.statut === 410) {
+    toast(BDConflit.messageSuppression(e.detail && e.detail.suppression, typeDeRegion(rid)), "", 8000);
+    return true;
+  }
+  const c = e && e.statut === 409 && e.detail && e.detail.conflit;
+  if (!c || c.champ !== lieu) return false;
+  const z = zoneCourante();
+  if (z && z.id === rid && !S.conflit) {
+    S.conflit = { sorte: "contexte", lieu, regionId: rid, detail: e.detail, saisie };
+    rendreGuide();
+    annoncer(BDConflit.titreConflit(c));
+    const b = $("#an-cf-mienne");
+    if (b) b.focus();
+  } else {
+    toast(BDConflit.messageNonEnregistre(c), "error", 8000);
+  }
+  return true;
+}
+
+/* Le bandeau d'un conflit du Contexte : ce qui n'est pas enregistré, la version de l'autre. */
+function bandeauDuContexte(cf) {
+  const c = cf.detail.conflit;
+  const locuteur = cf.lieu === "locuteur";
+  const quoi = locuteur ? BDConflit.texteLienNonEnregistre(cf.saisie)
+    : "Votre note n'est pas enregistrée : elle reste dans le Contexte.";
+  const version = locuteur ? BDConflit.nomPersonnage(c.personnage, "locuteur")
+    : c.valeur_actuelle === null || c.valeur_actuelle === undefined || c.valeur_actuelle === ""
+      ? "—" : String(c.valeur_actuelle);
+  return [
+    el("p", { classe: "an-bandeau-titre", id: "an-cf-titre" },
+       el("span", { "aria-hidden": "true", texte: "⚠ " }), BDConflit.titreConflit(c)),
+    el("p", { texte: quoi }),
+    el("p", { classe: "an-bandeau-version" },
+       el("span", { classe: "muted", texte: "Version enregistrée : " }), version),
+  ];
+}
+
+/* « Remplacer par la mienne » / « Garder l'autre » sur une ligne du Contexte. La version de
+   l'autre devient la valeur VUE ; si un troisième a écrit entre-temps, un nouveau bandeau. */
+async function resoudreConflitDuContexte(cf, garderMienne) {
+  const c = cf.detail.conflit;
+  const ici = cf.regionId === (zoneCourante() || {}).id;
+  if (cf.lieu === "locuteur") {
+    if (garderMienne) {
+      if (ici) S.loc.vu = c.valeur_actuelle === undefined ? null : c.valeur_actuelle;
+      await (cf.saisie ? choisirLocuteur(cf.saisie.id, cf.regionId, cf.saisie.nom)
+        : enchainer("loc", () => envoyerRetraitLocuteur(cf.regionId)));
+    } else {
+      if (ici) montrerLocuteur(c.personnage || null);
+      annoncer("La version enregistrée est gardée.");
+    }
+    if (ici) $("#an-loc-input").focus();
+    return;
+  }
+  const actuelle = c.valeur_actuelle === null || c.valeur_actuelle === undefined ? "" : c.valeur_actuelle;
+  if (garderMienne) {
+    const texte = ici ? $("#an-note").value : cf.saisie;
+    NOTES_VUES.set(cf.regionId, actuelle);
+    if (ici) S.note.sale = true;
+    await enchainer("note", () => envoyerNote(cf.regionId, texte));
+  } else {
+    NOTES_VUES.set(cf.regionId, actuelle);
+    if (ici) {
+      S.note.sale = false;
+      $("#an-note").value = actuelle;
+      marquerNote("fait");
+    }
+    annoncer("La version enregistrée est gardée.");
+  }
+  if (ici) $("#an-note").focus();
+}
+
+/* Une note retenue par un conflit part quand il est réglé — si aucun autre ne s'est ouvert. */
+function noteEnAttente() {
+  if (!S.conflit && S.note.sale && !S.note.minuterie && S.note.region !== null) partirNote(S.note.region);
+}
+
+function brancherContexte() {
+  BDChampPersonnage.monter("#an-loc-input", "#an-loc-liste", choisirLocuteur, () => S.loc.region);
+  $("#an-loc-retirer").addEventListener("click", retirerLocuteur);
+  const champ = $("#an-note");
+  champ.addEventListener("input", noteModifiee);
+  // La note de la zone qu'on quitte part à la sortie du champ, avec son texte et sa zone :
+  // tout changement de zone fait sortir du champ (un clic, une touche, un bouton).
+  champ.addEventListener("blur", () => { viderNote(); });
 }
 
 /* ───────────── La grille, en lecture (commit 2) ─────────────
@@ -695,8 +975,11 @@ function entree(e, plan, n) {
   const r0 = poses[0] || null;
   const lecture = ecrivable() ? null : "true";
   if (e.forme === "variantes") {
+    // Le titre ne pose rien (il montre le guide), mais il s'éteint avec le reste de la
+    // grille sur un album qu'on ne fait que lire (passe des correctifs, 2026-10-30).
     const tete = el("button", { type: "button", classe: `an-ent-btn an-ent-tete${guide ? " guide" : ""}`,
-                                "data-guide-e": e.cle, id: `an-ent-${e.cle}` },
+                                "data-guide-e": e.cle, id: `an-ent-${e.cle}`,
+                                "aria-disabled": lecture },
                     el("span", { classe: "an-ent-lib", texte: e.libelle }),
                     el("span", { classe: "muted small", texte: "une parmi" }), ...marques(e, n));
     const vars = el("div", { classe: "an-vars" }, ...(e.variantes || []).map((v) =>
@@ -1431,7 +1714,9 @@ function bandeau() {
   const cf = S.conflit;
   const plan = planDe(cf.g);
   const lignes = [];
-  if (cf.sorte === "valeur") {
+  if (cf.sorte === "contexte") {
+    lignes.push(...bandeauDuContexte(cf));
+  } else if (cf.sorte === "valeur") {
     const c = cf.detail.conflit;
     const actuelle = c.valeur_actuelle;
     let version;
@@ -1471,6 +1756,13 @@ function bandeau() {
 async function resoudreConflit(garderMienne) {
   const cf = S.conflit;
   S.conflit = null;
+  if (cf.sorte === "contexte") {
+    rendreGuide();
+    await resoudreConflitDuContexte(cf, garderMienne);
+    rendreGuide();
+    noteEnAttente();
+    return;
+  }
   if (garderMienne) {
     if (cf.sorte === "valeur") {
       // On renvoie SA version, gardée cette fois sur la valeur qu'on vient de lire.
@@ -1487,6 +1779,7 @@ async function resoudreConflit(garderMienne) {
     annoncer("La version enregistrée est gardée.");
   }
   rendreGuide();
+  noteEnAttente();
 }
 
 async function relireReleves() {
@@ -1546,8 +1839,9 @@ function itemReleve(r) {
   const passage = A.motsDuReleve(r).length && S.mots && S.mots.region_id === r.region_id
     ? `« ${A.texteDuPassage(S.mots.mots, A.motsDuReleve(r), S.mots.texte)} »`
     : A.ciblePosee(r, zoneCourante(), typeDeRegion);
-  // Un lien posé dit QUELLE zone il désigne (passe du jalon 1).
-  const lien = r.lien ? A.nomDuLien(rangementSynthese(), S.regions, r.lien) : null;
+  // Un lien posé dit QUELLE zone il désigne (passe du jalon 1) — et sa case, si elle n'est
+  // pas celle du relevé.
+  const lien = r.lien ? A.nomDuLien(rangementSynthese(), S.regions, r.lien, r.region_id) : null;
   const etat = A.motEtat(r);
   const libelle = A.libelleReleve(r, plan);
   const li = el("li", { classe: `an-pose${masquee ? " an-pose-masquee" : ""}` },
@@ -2466,6 +2760,10 @@ function afficherSignal(autres) {
    planche qu'on QUITTE ; « Actualiser » les garde, eux, tant que leur relevé est là. */
 async function gardesDeSortie(quitter) {
   if (precisionEnVol) { try { await precisionEnVol; } catch (_) { /* dit par `ecrire` */ } }
+  // Le Contexte (commit 8) : la note pas encore partie part, le locuteur en vol revient.
+  for (const envoi of [viderNote(), ENVOIS.loc]) {
+    if (envoi) { try { await envoi; } catch (_) { /* dit par l'envoi */ } }
+  }
   // Un conflit ouvert — celui que la précision vient peut-être d'ouvrir — attend son choix.
   if (conflitOuvert()) return false;
   if (quitter && brouillonEnCours()) {
@@ -2797,6 +3095,12 @@ async function refusPasse(err) {
    de l'album s'ouvre ; ailleurs, le message suffit. */
 async function annulerPage() {
   if (conflitOuvert()) return;
+  // Ce qui n'est pas parti part d'abord : Ctrl+Z défait le DERNIER geste, et une note tapée
+  // juste avant en est un (commit 8).
+  for (const envoi of [viderNote(), ENVOIS.loc]) {
+    if (envoi) { try { await envoi; } catch (_) { /* dit par l'envoi */ } }
+  }
+  if (conflitOuvert()) return;
   const res = await BDAnnulation.annuler({ apiSend, toast });
   if (!res || !res.planche_id) return;
   if (S.planche && res.planche_id === S.planche.id) {
@@ -2839,6 +3143,7 @@ async function demarrer() {
   brancherPose();
   brancherParcours();
   brancherSynthese();
+  brancherContexte();
   try {
     await chargerAlbums();
   } catch (e) {
