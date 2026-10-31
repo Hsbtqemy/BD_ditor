@@ -175,6 +175,27 @@ def test_ouvrir_dans_l_atelier_mene_a_la_meme_zone_et_en_revient(page, decor):
     expect(page.locator("#an-tete-zone")).to_have_text("bulle b1", timeout=15000)
 
 
+def test_annoter_depuis_l_atelier_mene_a_la_meme_zone_et_en_revient(page, decor):
+    """H2 : le pendant d'« Ouvrir dans l'Atelier ↗ » — la zone que l'on vient de choisir, pas
+    celle de l'arrivée : le lien suit la sélection."""
+    page.goto(f"{decor['base']}/?album={decor['album']}&planche={decor['planche']}"
+              f"&region={decor['c1']}", wait_until="networkidle")
+    lien = page.locator("#btn-annoter")
+    expect(lien).to_have_attribute("href", re.compile(rf"region={decor['c1']}&"))
+    page.evaluate("id => selectRegion(id)", decor["bulle"])
+    expect(lien).to_have_attribute("href", re.compile(rf"region={decor['bulle']}&"))
+    assert f"planche={decor['planche']}" in lien.get_attribute("href")
+    assert "retour=" in lien.get_attribute("href")
+    lien.click()
+    page.wait_for_url("**/annotation?*", timeout=15000)
+    expect(page.locator("#an-tete-zone")).to_have_text("bulle b1", timeout=15000)
+    retour = page.locator("#back-link")
+    expect(retour).to_be_visible()
+    retour.click()
+    page.wait_for_url(re.compile(r"/\?album="), timeout=15000)
+    expect(page.locator("#region-type")).to_be_visible(timeout=15000)
+
+
 def test_la_page_est_dans_la_navigation_entre_l_atelier_et_la_bibliotheque(page, decor):
     _ouvrir(page, decor)
     liens = page.locator("#site-nav .surf-nav a.surf-link")

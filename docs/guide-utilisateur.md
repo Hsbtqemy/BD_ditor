@@ -29,17 +29,18 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 
 ---
 
-## 2. Les cinq surfaces
+## 2. Les six surfaces
 
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
 | **Bibliothèque** | `/corpus` | une **liste** et une **fiche** : à gauche les collections du **projet** où vous travaillez — la case d'une collection filtre les albums, son nom ouvre sa fiche — puis ses albums ; à droite la fiche ouverte. Créer et décrire les albums et les collections, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, **importer les planches d'un album en lot**, lancer les traitements par lot, suivre l'avancement planche par planche |
 | **Atelier** | `/` | tout ce qui se fait sur une planche : ajouter une image à l'album affiché, corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
+| **Annotation** | `/annotation` | poser les **relevés** d'une grille sur une planche, case par case : désigner des mots ou une zone, choisir l'entrée, douter, marquer *terminée*, relire la planche dans la Synthèse |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
 | **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels projets existent et qui y entre, ce que l'instance détient (**le fonds**, et les suppressions qu'on lui demande), quels comptes et quels groupes existent — et, pour un administrateur, qui entre dans quelle collection —, la version servie, l'état des moteurs |
 
-Une barre de navigation commune les relie, sur les cinq pages. Les réglages d'affichage —
+Une barre de navigation commune les relie, sur les six pages. Les réglages d'affichage —
 thème clair/sombre, contraste élevé, zoom de l'interface — y sont aussi, et suivent d'une
 surface à l'autre. Elle dit enfin dans quel **projet** vous travaillez : le mot *Projet*,
 suivi de son nom — ou d'une liste déroulante dès que vous en voyez plusieurs (§4,
@@ -253,10 +254,14 @@ La Bibliothèque affiche par planche un **statut de relecture** — à faire, en
 qui avance tout seul à mesure que les mots sont relus, et qu'on peut forcer si besoin.
 
 ### Étape 6 — Annoter
-**Atelier · mode Annotation (`A`)**
+**Page Annotation (`/annotation`) · Atelier, mode Annotation (`A`)**
 
-C'est le cœur du travail. Sélectionnez une région ; le panneau de droite propose, selon son
-type :
+C'est le cœur du travail, et il a deux écrans. Une **grille** se relève dans la **page
+Annotation** (§4, *Annotation*) ; on y arrive par la navigation, ou par **Annoter ↗** dans le
+panneau de droite de l'Atelier, qui ouvre la zone sélectionnée. Le mode Annotation de l'Atelier pose le
+reste, décrit ici : le locuteur, le personnage d'une boîte, la situation, les tags, la note.
+
+Sélectionnez une région ; le panneau de droite propose, selon son type :
 
 - le **locuteur** d'une zone de texte — bulle, cartouche ou texte : quelle entité
   personnage y parle. Celui d'un cartouche se choisit dans le registre des personnages,
@@ -962,6 +967,76 @@ Sur écran étroit, les deux panneaux deviennent des tiroirs, ouverts par les ba
 
 Autres raccourcis : **`Ctrl+Z`** annule la dernière action d'annotation ; **`Échap`** annule un
 tracé en cours et désélectionne (en sauvegardant ce qui était en attente).
+
+Dans le panneau de droite, **Annoter ↗** ouvre la zone sélectionnée dans la page Annotation, et
+*← Retour* ramène ici.
+
+### Annotation (`/annotation`)
+
+Trois colonnes, dont les tailles ne bougent pas pendant le travail : la **planche** et son
+**Contexte** · la **case** agrandie · la **grille**. Les listes *Collection*, *Album* et
+*Planche* sont celles du projet courant ; la collection est le même choix que dans l'Atelier.
+**Ouvrir dans l'Atelier ↗** mène à la même zone, avec son retour. Passer de l'Atelier à cette
+page par la navigation garde l'album, la planche et la zone. Sur un album que vous ne faites
+que lire, tout se voit, auteurs et fils de doutes compris, et aucun geste n'est offert.
+
+**Choisir ce qu'on annote.** Cliquez une case sur la minicarte : elle s'agrandit au centre.
+Dans la case, cliquez une zone — bulle, cartouche, texte, boîte personnage, détail — ou le
+fond, qui désigne la case ; la rangée *Zones de la case* fait la même chose au clavier.
+
+**Désigner des mots.** Dans *Texte* : un clic, un glissé ou Maj+clic pour un passage, Ctrl+clic
+pour ajouter ou retirer un mot (« ne … pas »). Au clavier : les flèches, Maj+flèches, Espace,
+Entrée pour aller chercher dans la grille, Échap pour ne rien désigner. **Porte sur** dit ce
+sur quoi le relevé portera — ces mots, toute la bulle, la case, une boîte, un détail, la
+planche —, selon ce que la grille ouverte vise.
+
+**Poser.** Chaque grille active du projet a son onglet, sauf celles que la collection masque.
+*Afficher* montre toute la grille ou une rubrique ; *Chercher dans la grille* (touche `/`) ignore
+accents et apostrophes, cherche aussi dans les exemples, comprend « X par Y » pour un phénomène
+et un qualificatif, et Entrée y pose le premier résultat. Une entrée simple se coche ; une
+entrée à variantes attend une variante, et une autre variante remplace la première ; une entrée
+à qualificatifs attend un ou plusieurs choix. Recocher sur le même passage retire. La ligne du
+guide dit la définition, la structure, les exemples, les pièges de ce que vous survolez ; *Guide
+▾* la replie, *Guide complet ▸* ouvre tout le guide.
+
+**Ce qui est posé** se lit en bas de la grille — sur les mots désignés, sinon sur la zone, et
+en dernier *Sur la planche* —, et en traits sous les mots, un couloir par relevé, à la couleur
+de sa rubrique. *Relevés ▾* règle les grilles montrées. Un clic sur une ligne redésigne son
+passage ; **?** ouvre un doute, **✕** retire. Une entrée qui attend une précision la demande
+sur la ligne ; une entrée qui attend un lien offre *Désigner sur la planche* : cliquez l'autre
+zone, sur la minicarte ou dans la case.
+
+**Douter.** **?** ouvre son formulaire dans la boîte du guide, le commentaire est obligatoire,
+un second **?** ajoute au fil. Un doute se lève dans la Synthèse : *Garder*, *Changer…* — pour
+une autre entrée, retirez puis posez l'autre —, ou *Retirer*.
+
+**Terminée et parcours.** Le pied dit si la zone est terminée pour la grille, ou pour la
+rubrique affichée : une passe commune et signée, que *Rouvrir* défait. *Suivante* passe sans
+rien marquer (Ctrl+Entrée), *Précédente* revient (Ctrl+Maj+Entrée), *Terminée, suivante* marque
+et avance. Le parcours se déduit de ce que la grille vise, dans l'ordre de lecture ; *à faire
+seulement* saute ce qui est terminé.
+
+**Le Contexte**, sous la minicarte, porte ce qui n'est pas du vocabulaire : le locuteur, la
+note, le nom d'un détail, la transcription d'un texte hors bulle. Le personnage d'une boîte s'y
+lit et s'écrit dans l'Atelier.
+
+**Tracer une zone.** Glissez dans la case agrandie, puis choisissez **Détail d'image** — qu'on
+nomme ; son nom s'écrit sur l'image — ou **Texte hors bulle** — qu'on transcrit, puis qu'on
+annote. *Supprimer cette zone* ne s'offre que sur ces deux sortes. Un détail ne sort d'aucun
+export. La zone se range à la fin de sa case ; **↻** au-dessus de l'arbre, dans l'Atelier, la remet
+à sa place de lecture.
+
+**La Synthèse**, second onglet de la colonne de gauche : *Relevés* (toute la planche, case par
+case ; un clic ouvre le relevé), *À revoir* (les doutes, les relevés dont le texte a changé ou
+dont un mot a disparu, avec *Rattacher aux mots désignés*, ce qui reste à compléter, les doutes
+levés), *Décompte* (par grille, rubrique, entrée, variante, qualificatif, et les zones
+terminées).
+
+**À plusieurs.** Si la planche a changé ailleurs, **⟳ Actualiser** paraît dans la bande : il
+garde votre zone, vos mots désignés et ce que vous écriviez. Si quelqu'un a modifié la valeur
+que vous changez, un bandeau prend la place du guide : *Remplacer par la mienne* ou *Garder
+l'autre*. **Ctrl+Z**, hors d'un champ, défait votre dernier geste : poser, retirer, le texte,
+le nom, la note, le locuteur, une zone tracée.
 
 ### Recherche (`/recherche`)
 

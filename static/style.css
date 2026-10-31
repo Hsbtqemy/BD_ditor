@@ -3054,6 +3054,7 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 
 /* ── Figures citables (DROIT-1) ───────────────────────────────────────────────────── */
 .fig-row { gap: .4rem; }
+.btn-annoter { margin-left: auto; white-space: nowrap; text-decoration: none; }
 .fig-champs { display: grid; grid-template-columns: repeat(auto-fill, minmax(16.1538rem, 1fr));
               gap: .15rem .8rem; }
 .fig-champs label { display: flex; align-items: center; gap: .4rem; font-size: .88rem; }

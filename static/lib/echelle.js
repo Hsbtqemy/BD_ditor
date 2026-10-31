@@ -94,6 +94,7 @@
     corrections: ["correction", "corrections"], annotations: ["annotation", "annotations"],
     tags: ["tag", "tags"], attributs: ["attribut de case", "attributs de case"],
     locuteurs: ["locuteur", "locuteurs"], presences: ["présence", "présences"],
+    noms: ["nom de détail", "noms de détail"],
     planches_devalidees: ["validation de planche", "validations de planche"],
   };
   function compte(cle, n) {
@@ -105,7 +106,7 @@
      précédent — la table de `database.compter_le_travail`, cran par cran. */
   const AJOUTS = {
     images: [], decoupage: ["regions"], transcription: ["textes"], grammaire: ["corrections"],
-    annotations: ["annotations", "tags", "attributs", "locuteurs", "presences"],
+    annotations: ["annotations", "tags", "attributs", "locuteurs", "presences", "noms"],
   };
 
   /* L'ÉCHELLE EN TABLEAU (écran de la 3b, « l'aperçu se lit DANS l'échelle ») : une ligne par
@@ -224,7 +225,7 @@
   /* « Part », en nombres, validations comprises — les comptes que l'aperçu rend
      (`database.compter_repartir`), dans l'ordre de l'échelle. */
   const ORDRE_PART = ["regions", "textes", "corrections", "annotations", "attributs",
-                      "locuteurs", "presences", "planches_devalidees"];
+                      "locuteurs", "presences", "noms", "planches_devalidees"];
   function part(comptes) {
     const c = comptes || {};
     return ORDRE_PART.filter((k) => Number(c[k]) > 0).map((k) => compte(k, c[k]));

@@ -280,13 +280,17 @@ sont COMPTÉS dans l'aperçu, jamais posés et invisibles. Les passes suivent, l
 (une conversation de l'équipe source). Entre deux projets, l'auteur d'un relevé recopié
 arrive vide (G9). En tranche 1 une grille n'est active que dans son projet : entre deux
 projets, rien ne suit encore. Les zones `detail` et `texte`, des régions, partent au cran
-`decoupage`.
+`decoupage` ; le NOM d'un détail ne suit qu'au cran `annotations` (Hugo, 2026-10-30) : il dit ce
+que l'image montre, ce qui est déjà de l'interprétation. Un détail sans nom reste valide.
 
-## 12. Ce que la tranche 1 ne fait pas
+## 12. Ce qui n'existe pas encore
 
-- Aucun écran : ni la page Annotation, ni le guide produit, ni le bilan d'import à l'écran
-  (l'import se fait par l'outil en ligne de commande et par une route, comme
-  `tools/importer_vocabulaire.py`).
+La page Annotation (tranche 2 ; ses gestes : `guide-utilisateur.md`, § Annotation) pose, doute,
+parcourt et relit. Restent à venir :
+
+- Le bilan d'import à l'écran, et l'écran des grilles dans la fiche du projet : importer,
+  publier et activer passent par l'outil en ligne de commande et par une route, comme
+  `tools/importer_vocabulaire.py`.
 - Ni le catalogue, ni la montée de version d'un projet, ni la dérivation.
 - Ni le basculement des tags et des attributs, ni la conversion.
 - Rien dans la Recherche, l'Exploration ou les exports : un relevé ne SORT par aucune voie avant

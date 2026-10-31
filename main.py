@@ -25,7 +25,7 @@ from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPE_DETAIL,
                     TYPES_REGION)
 from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, DEMANDE_SUPPRESSION_DOCUMENT,
-                      sql_region_sortante,
+                      rangs_de_sortie, sql_region_sortante,
                       DEMANDE_SUPPRESSION_PLANCHE,
                       annotation_vide,
                       citations_regions,
@@ -126,7 +126,7 @@ from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, ecarter_dossiers_d_a
                              phrase_de_refus,
                              remove_planche_files)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
-from pipeline.ordering import move_region, reorder_planche, retenue
+from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
 from pipeline import sharedocs
 from pipeline.sharedocs import ShareDocsError
@@ -1094,15 +1094,9 @@ def create_region(planche_id: int, region: RegionIn,
                           parent_id=region.parent_id)
     ordre = region.ordre
     if ordre is None:
-        # Commit 10 (constat 5) — une région qui SORT se range après celles qui sortent, sans
-        # compter les détails (`pipeline.ordering`) ; un détail, après toute sa fratrie. Un
-        # détail peut partager ce rang jusqu'au prochain réordonnancement : le reculer ici
-        # changerait son empreinte, et l'écran qui crée se signalerait à lui-même un
-        # changement venu d'ailleurs (CONC-4, `static/lib/signal-planche.js`).
-        sans_details = "" if retenue(region.type) else f" AND {sql_region_sortante('regions')}"
         row = conn.execute(
             "SELECT COALESCE(MAX(ordre), 0) + 1 AS n FROM regions "
-            f"WHERE planche_id = ? AND parent_id IS ?{sans_details}",
+            "WHERE planche_id = ? AND parent_id IS ?",
             (planche_id, region.parent_id),
         ).fetchone()
         ordre = row["n"]
@@ -2470,6 +2464,7 @@ def _region_tree(regions: list[dict], conn: sqlite3.Connection,
         by_parent.setdefault(r["parent_id"], []).append(r)
 
     cits = citations_regions(conn, [r["id"] for r in regions])
+    rangs = rangs_de_sortie(regions)         # l'ordre publié, sans trou (`regions` : ce qui sort)
 
     def build(parent_id):
         nodes = []
@@ -2480,7 +2475,7 @@ def _region_tree(regions: list[dict], conn: sqlite3.Connection,
                 "id": r["id"], "type": r["type"],
                 "citation": cits.get(r["id"]),
                 "x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"],
-                "ordre": r["ordre"], "source": r["source"],
+                "ordre": rangs[r["id"]], "source": r["source"],
                 "ocr_texte": r["ocr_texte"],
                 "annotation": {
                     "note": ann["note"],
@@ -2639,7 +2634,7 @@ def export_csv(album_id: int, collection_id: Optional[int] = None,
     ou_tag, p_tag = _vocabulaire_d_export(titre, "tg.collection_id")
     rows = _rows(conn.execute(
         f"""SELECT a.titre AS album, p.numero AS ordre_import, r.id AS region_id,
-                  r.type, r.parent_id, r.x, r.y, r.w, r.h, r.ordre, r.source,
+                  r.planche_id, r.type, r.parent_id, r.x, r.y, r.w, r.h, r.ordre, r.source,
                   r.ocr_texte,
                   an.note,
                   (SELECT GROUP_CONCAT(tg.label, '|')
@@ -2657,8 +2652,10 @@ def export_csv(album_id: int, collection_id: Optional[int] = None,
     # le paratexte groupable) ; `planche` = numéro ÉDITORIAL cité (vide pour le
     # paratexte) ; `citation` = repère « pl·c(·b) ». Cf. docs/numerotation-et-citation.md.
     cits = citations_regions(conn, [r["region_id"] for r in rows])
+    rangs = rangs_de_sortie(rows, cle="region_id")   # l'ordre publié, sans trou
     for r in rows:
         c = cits.get(r["region_id"]) or {}
+        r["ordre"] = rangs[r["region_id"]]
         r["planche"] = c["planche"] if c.get("planche") is not None else ""
         r["citation"] = c.get("texte", "")
         # L'ordre d'un `GROUP_CONCAT` sans `ORDER BY` n'est promis par personne : il suivait

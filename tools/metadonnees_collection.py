@@ -321,12 +321,12 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
              for r in conn.execute("SELECT label, bucket, marc FROM contribution_role "
                                    "ORDER BY label")]
 
-    def region_node(r, par_parent, cits):
+    def region_node(r, par_parent, cits, rangs):
         ocr = r["ocr_texte"] or ""
         node = {
             "id": r["id"], "type": r["type"],
             "x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"],
-            "ordre": r["ordre"], "source": r["source"], "date_creation": r["date_creation"],
+            "ordre": rangs[r["id"]], "source": r["source"], "date_creation": r["date_creation"],
             "citation": (cits.get(r["id"]) or {}).get("texte"),
             "ocr": {"present": bool(ocr.strip()), "longueur": len(ocr),
                     **({"texte": ocr} if verbatim else {})},
@@ -345,7 +345,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
         if c["tokens"].get(r["id"]):
             node["tokens"] = [{k: v for k, v in t.items() if not (k == "auteur" and v is None)}
                               for t in c["tokens"][r["id"]]]
-        enfants = [region_node(x, par_parent, cits) for x in par_parent.get(r["id"], [])]
+        enfants = [region_node(x, par_parent, cits, rangs)
+                   for x in par_parent.get(r["id"], [])]
         if enfants:
             node["enfants"] = enfants
         return node
@@ -363,6 +364,7 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             par_parent: dict = {}
             for r in regs:
                 par_parent.setdefault(r["parent_id"], []).append(r)
+            rangs = database.rangs_de_sortie(regs)   # l'ordre publié, sans trou
             planches.append({
                 "id": p["id"], "numero": p["numero"], "role": p["role"],
                 "numero_editorial": c["numero_editorial"].get(p["id"]),
@@ -377,7 +379,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
                 "dimensions_cm": database.dimensions_cm(
                     p["largeur_px"], p["hauteur_px"], p["dpi_x"], p["dpi_y"]),
                 "chemin_tiff": p["chemin_tiff"], "chemin_web": p["chemin_web"],
-                "regions": [region_node(r, par_parent, cits) for r in par_parent.get(None, [])],
+                "regions": [region_node(r, par_parent, cits, rangs)
+                            for r in par_parent.get(None, [])],
             })
         albums.append({
             "id": a["id"], "titre": a["titre"], "auteur": a["auteur"], "annee": a["annee"],
@@ -490,12 +493,14 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
         reg_cols.append("ocr_texte")
     reg_cols += ["locuteur", "presence"]
     reg_rows = []
-    for r in conn.execute("SELECT r.*, p.album_id AS album_id FROM regions r "
-                         "JOIN planches p ON p.id = r.planche_id" + w_rp
-                         + " ORDER BY r.planche_id, r.ordre, r.id"):
+    lignes_regions = conn.execute("SELECT r.*, p.album_id AS album_id FROM regions r "
+                                  "JOIN planches p ON p.id = r.planche_id" + w_rp
+                                  + " ORDER BY r.planche_id, r.ordre, r.id").fetchall()
+    rangs = database.rangs_de_sortie(lignes_regions)   # l'ordre publié, sans trou
+    for r in lignes_regions:
         ocr = r["ocr_texte"] or ""
         ligne = [r["id"], r["planche_id"], r["album_id"], r["parent_id"], r["type"],
-                 r["x"], r["y"], r["w"], r["h"], r["ordre"], r["source"], r["date_creation"],
+                 r["x"], r["y"], r["w"], r["h"], rangs[r["id"]], r["source"], r["date_creation"],
                  (cits.get(r["id"]) or {}).get("texte"),
                  1 if ocr.strip() else 0, len(ocr)]
         if verbatim:

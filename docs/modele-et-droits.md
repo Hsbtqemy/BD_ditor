@@ -1083,6 +1083,7 @@ leurs qualificatifs. Elle appartient à UN projet, et c'est à ce projet que tou
 | Lire le plan d'une version publiée | les membres du projet ; quiconque lit un album d'un projet où la grille est active ; quiconque lit un album qui porte un de ses relevés, même désactivée |
 | La masquer dans une collection | qui **administre** la collection (son propriétaire) — un filtre de ce qu'on propose, pas une garde |
 | Poser, modifier, retirer un relevé ; ouvrir un doute, y répondre, le lever ; marquer une passe « terminée » ou la rouvrir | quiconque **écrit** dans l'album, sur une grille active de son projet |
+| Tracer une zone dans une case — un détail d'image, un texte hors bulle —, la nommer, la transcrire, la supprimer | quiconque **écrit** dans l'album ; un détail ne sort d'aucun export avant la tranche 4 |
 
 Un relevé n'a pas de collection : il vit sur une zone ou sur une planche, donc dans l'album,
 et se lit comme lui. Désactiver une grille ne supprime aucun relevé : ils restent, en

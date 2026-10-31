@@ -2903,6 +2903,27 @@ def sql_region_sortante(alias: str = "r") -> str:
     return f"{alias}.type NOT IN ({types})"
 
 
+def rangs_de_sortie(regions, *, cle: str = "id") -> dict[int, int]:
+    """Le rang qu'une région PUBLIE : `{identifiant: rang}`, 1..N entre frères — même planche,
+    même parent — dans l'ordre stocké, identifiant en second.
+
+    `regions.ordre` suit la lecture, détails compris (ANN-7, tranche 2, tranché par Hugo le
+    2026-10-30) ; or un détail ne sort pas (`sql_region_sortante`), et publier le rang stocké
+    laisserait un trou où il était — une bulle seule de sa case à l'ordre 2 —, d'où se
+    lirait qu'une région retenue la précède. Chaque sortie qui publie `ordre` passe donc par
+    ici, avec des lignes déjà bornées à ce qui sort : la règle est écrite une fois, et
+    `tests/test_detail_sorties.py` la JOUE sur chaque sortie. `cle` : le nom de la colonne
+    de l'identifiant dans ces lignes ; elles portent `planche_id`, `parent_id` et `ordre`."""
+    fratries: dict = {}
+    for r in regions:
+        fratries.setdefault((r["planche_id"], r["parent_id"]), []).append(r)
+    rangs: dict[int, int] = {}
+    for freres in fratries.values():
+        freres.sort(key=lambda r: (r["ordre"] or 0, r[cle]))
+        rangs.update((r[cle], rang) for rang, r in enumerate(freres, start=1))
+    return rangs
+
+
 def sql_est_isole(expr: str) -> str:
     """Fragment SQL VRAI si le projet `expr` est ISOLÉ — un bac à sable, ou le projet de jeu.
     C'est ce que les surfaces qui traversent les projets écartent (S8), et ce que la prise,
@@ -3094,7 +3115,8 @@ def document_d_album(conn: sqlite3.Connection, album_id: int) -> int | None:
 #                    l'avancée de la reconnaissance des planches ;
 #   transcription  + le texte des régions, et leurs tokens ;
 #   grammaire      + les corrections grammaticales, et la relecture forcée des planches ;
-#   annotations    + notes et tags, attributs de case, locuteurs, présences.
+#   annotations    + notes et tags, attributs de case, locuteurs, présences, relevés et
+#                    passes, le nom d'un détail.
 # La VALIDATION ne suit à aucun cran (`validee`, `verrouillee`, `verrou_par`) : valider est
 # le jugement de qui relit, dans SA copie.
 CRAN_ORIGINE = "origine"
@@ -3249,7 +3271,12 @@ def creer_copie(conn: sqlite3.Connection, document_id: int, collection_id: int, 
 # région copiée n'a que sa géométrie. Toute autre colonne de `regions` suit dès le
 # découpage — une colonne ajoutée demain suit par défaut, comme la notice.
 REGION_TEXTE = {"ocr_texte": None, "touche": 0}
+# Le NOM d'un détail est du cran `annotations` (tranché par Hugo le 2026-10-30, ANN-7,
+# tranche 2) : il dit ce que l'image montre, ce qui est déjà de l'interprétation. Le détail
+# lui-même, une région, suit dès le découpage ; il y arrive sans nom, et reste valide.
+REGION_NOM = {"nom": None}
 _REGION_HORS_COPIE = frozenset({"id", "planche_id", "parent_id"})
+_SQL_NOM_POSE = "TRIM(COALESCE(nom, '')) <> ''"
 
 
 def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran: str,
@@ -3316,8 +3343,9 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
     # porter un identifiant plus grand que son enfant (une région re-parentée).
     colonnes = [c[1] for c in conn.execute("PRAGMA table_info(regions)")
                 if c[1] not in _REGION_HORS_COPIE]
-    valeurs = [c if texte or c not in REGION_TEXTE else "?" for c in colonnes]
-    params_texte = [] if texte else [REGION_TEXTE[c] for c in colonnes if c in REGION_TEXTE]
+    laissees = {**({} if texte else REGION_TEXTE), **({} if annotations else REGION_NOM)}
+    valeurs = ["?" if c in laissees else c for c in colonnes]
+    params_laissees = [laissees[c] for c in colonnes if c in laissees]
     regions = {}
     sources = conn.execute(
         "SELECT r.id, r.planche_id, r.parent_id FROM regions r "
@@ -3327,7 +3355,7 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
         regions[r["id"]] = conn.execute(
             f"INSERT INTO regions (planche_id, {', '.join(colonnes)}) "
             f"SELECT ?, {', '.join(valeurs)} FROM regions WHERE id = ?",
-            (planches[r["planche_id"]], *params_texte, r["id"])).lastrowid
+            (planches[r["planche_id"]], *params_laissees, r["id"])).lastrowid
     for r in sources:
         if r["parent_id"] is not None:
             conn.execute("UPDATE regions SET parent_id = ? WHERE id = ?",
@@ -3393,6 +3421,9 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
             n_tags += len(tags)
         copies.update(annotations=n_annot, tags=n_tags)
         laisses["tags"] = n_tags_laisses
+        copies["noms"] = conn.execute(
+            f"SELECT COUNT(*) FROM regions WHERE id IN ({','.join('?' * len(regions))}) "
+            f"AND {_SQL_NOM_POSE}", list(regions.values())).fetchone()[0] if regions else 0
         n_attr = n_attr_total = 0
         for s, c in regions.items():
             n_attr_total += conn.execute("SELECT COUNT(*) FROM region_attribut "
@@ -3569,6 +3600,7 @@ def compter_le_travail(conn: sqlite3.Connection, depuis: int, cran: str,
                 n_tags += vus
         copies.update(annotations=n_annot, tags=n_tags)
         laisses["tags"] = n_tags_laisses
+        copies["noms"] = n(f"SELECT COUNT(*) FROM regions WHERE id {dans} AND {_SQL_NOM_POSE}")
         total = n(f"SELECT COUNT(*) FROM region_attribut WHERE region_id {dans}")
         copies["attributs"] = n(
             "SELECT COUNT(*) FROM region_attribut ra "
@@ -3917,7 +3949,8 @@ def niveau_de_travail(conn: sqlite3.Connection, album_id: int,
     dessous de quoi on peut repartir de zéro (E8). Un FAIT, lu sur ce qui VIT, cran par cran
     de haut en bas (la liste d'E1) :
 
-    - `annotations` (4) : une annotation, un attribut de case, un locuteur, une présence ;
+    - `annotations` (4) : une annotation, un attribut de case, un locuteur, une présence, un
+      relevé, une passe, le nom d'un détail ;
     - `grammaire` (3) : une correction grammaticale, ou la relecture forcée d'une planche ;
     - `transcription` (2) : un texte non vide ;
     - `decoupage` (1) : une région ;
@@ -3934,7 +3967,8 @@ def niveau_de_travail(conn: sqlite3.Connection, album_id: int,
            for t in ("annotations", "region_attribut", "bulle_locuteur",
                      "personnage_presence", "releve", "passe")) or any(
             existe(f"SELECT 1 FROM {t} WHERE planche_id IN (SELECT p.id FROM planches p "
-                   f"WHERE {filtre})") for t in ("releve", "passe")):
+                   f"WHERE {filtre})") for t in ("releve", "passe")) or existe(
+            f"SELECT 1 FROM regions WHERE id IN ({regions}) AND {_SQL_NOM_POSE}"):
         return rang_du_cran(CRAN_ANNOTATIONS)
     if existe(f"SELECT 1 FROM token_correction WHERE region_id IN ({regions})") or existe(
             f"SELECT 1 FROM planches p WHERE {filtre} AND p.relecture IS NOT NULL"):
@@ -3960,7 +3994,8 @@ def repartir_de_zero(conn: sqlite3.Connection, album_id: int, cran: str, *,
 
     Ce qui part, par cran d'arrivée — l'inverse de l'échelle d'E1 :
     - vers `grammaire` : les annotations (notes et tags), les attributs de case, les
-      locuteurs, les présences ;
+      locuteurs, les présences, les relevés et les passes, le nom des détails (qui restent,
+      sans nom : ce sont des régions) ;
     - vers `transcription` : en plus, les corrections grammaticales et la relecture forcée
       des planches ;
     - vers `decoupage` : en plus, le texte des régions (`ocr_texte` NULL, `touche` 0) et
@@ -4023,6 +4058,12 @@ def repartir_de_zero(conn: sqlite3.Connection, album_id: int, cran: str, *,
                                                             cle_planche=True)
     comptes["locuteurs"] = retirer("bulle_locuteur")
     comptes["presences"] = retirer("personnage_presence")
+    # Tout cran d'arrivée est sous `annotations` : le nom part toujours, le détail reste.
+    comptes["noms"] = 0
+    for lot in lots(regions):
+        comptes["noms"] += conn.execute(
+            f"UPDATE regions SET nom = NULL WHERE id IN ({', '.join('?' * len(lot))}) "
+            f"AND {_SQL_NOM_POSE}", lot).rowcount
     if rang < rang_du_cran(CRAN_GRAMMAIRE):
         comptes["corrections"] = retirer("token_correction")
         sur_les_planches("UPDATE planches SET relecture = NULL", " AND relecture IS NOT NULL")
@@ -4082,6 +4123,8 @@ def compter_repartir(conn: sqlite3.Connection, album_id: int, cran: str, *,
                for t, table in (("annotations", "annotations"), ("attributs", "region_attribut"),
                                 ("locuteurs", "bulle_locuteur"),
                                 ("presences", "personnage_presence"))}
+    comptes["noms"] = n(f"SELECT COUNT(*) FROM regions WHERE id IN ({regions}) "
+                        f"AND {_SQL_NOM_POSE}")
     planches_sql = f"SELECT p.id FROM planches p WHERE p.album_id = ?{une[0]}"
     for t, table in (("releves", "releve"), ("passes", "passe")):
         comptes[t] = conn.execute(

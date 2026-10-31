@@ -654,6 +654,16 @@ const RANGEMENT = [
 const planDe = (cibles, porte) => ({ porte_sur: porte || [], rubriques: [],
   entrees: cibles.map((c, i) => ({ cle: `e${i}`, cibles: c, retiree: false })) });
 
+test("le parcours suit la lecture : une grille qui vise bulles et détails les passe mêlés", () => {
+  // L'ordre stocké range un détail à sa place de lecture (Hugo, 2026-10-30).
+  const R2 = (id, type, parent, ordre) => ({ id, type, parent_id: parent, ordre, x: 0, y: 0, w: 1, h: 1 });
+  const rangement = A.casesDeLaPlanche(
+    [R2(1, "case", null, 1), R2(2, "bulle", 1, 3), R2(3, "detail", 1, 1), R2(4, "bulle", 1, 2),
+     R2(5, "detail", 1, 4)], 100, 100);
+  assert.deepEqual(A.parcours(rangement, planDe([["bulle"], ["detail"]])).map((e) => e.zoneId),
+                   [3, 4, 2, 5]);
+});
+
 test("le parcours se DÉRIVE des cibles, dans l'ordre de lecture", () => {
   const p = (plan) => A.parcours(RANGEMENT, plan).map((e) => e.zoneId === null ? `c${e.caseIx}` : e.zoneId);
   assert.deepEqual(p(planDe([["mots"]])), [11, 13, 22]);

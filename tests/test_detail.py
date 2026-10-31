@@ -243,39 +243,38 @@ def test_ctrl_z_ne_range_rien_sous_un_detail(client, planche, db_path):
     assert _lu(client, planche)[bulle]["parent_id"] == b
 
 
-def test_le_detail_ne_prend_pas_de_rang_parmi_ce_qui_sort(client, planche):
-    """Constat 5 — l'ordre stocké est un rang entre frères, et l'export le publie : un
-    détail rangé parmi eux laissait un trou (une bulle seule de sa case à l'ordre 2) d'où se
-    lisait qu'une région retenue la précédait. Les régions qui sortent sont rangées 1..N,
-    les détails après."""
+def test_l_ordre_stocke_suit_la_lecture_details_compris(client, planche):
+    """Tranché par Hugo le 2026-10-30 (renverse le constat 5 du commit 10) : un détail se
+    range à sa place de lecture parmi ses frères. L'export, lui, renumérote sans lui
+    (`tests/test_detail_sorties.py`)."""
     case = _case(client, planche)
+    pid = planche["id"]
     # Un détail en haut à gauche, AVANT la bulle en ordre de lecture.
-    d = client.post(f"/api/planches/{planche['id']}/regions",
+    d = client.post(f"/api/planches/{pid}/regions",
                     json={"type": "detail", "x": 0, "y": 0, "w": 5, "h": 5,
                           "parent_id": case}).json()["id"]
-    b1 = client.post(f"/api/planches/{planche['id']}/regions",
+    b1 = client.post(f"/api/planches/{pid}/regions",
                      json={"type": "bulle", "x": 50, "y": 50, "w": 20, "h": 20,
                            "parent_id": case}).json()["id"]
-    # Créée après le détail, la bulle prend le premier rang de ce qui sort.
+    # Créée après le détail, la bulle a SON rang : elle ne partage pas le sien.
     lu = _lu(client, planche)
-    assert lu[b1]["ordre"] == 1, lu[b1]
-    assert client.post(f"/api/planches/{planche['id']}/reordonner").status_code == 200
-    b2 = client.post(f"/api/planches/{planche['id']}/regions",
-                     json={"type": "bulle", "x": 100, "y": 200, "w": 20, "h": 20,
+    assert (lu[d]["ordre"], lu[b1]["ordre"]) == (1, 2), (lu[d], lu[b1])
+    b2 = client.post(f"/api/planches/{pid}/regions",
+                     json={"type": "bulle", "x": 2, "y": 200, "w": 20, "h": 20,
                            "parent_id": case}).json()["id"]
+    d2 = client.post(f"/api/planches/{pid}/regions",
+                     json={"type": "detail", "x": 100, "y": 200, "w": 5, "h": 5,
+                           "parent_id": case}).json()["id"]
+    assert client.post(f"/api/planches/{pid}/reordonner").status_code == 200
     lu = _lu(client, planche)
-    assert (lu[b1]["ordre"], lu[b2]["ordre"]) == (1, 2), (lu[b1], lu[b2])
-    # Déplacer une bulle, ou le détail, ne range jamais le détail parmi elles.
-    assert client.post(f"/api/regions/{b2}/deplacer", json={"sens": "haut"}).status_code == 200
-    assert client.post(f"/api/regions/{d}/deplacer", json={"sens": "haut"}).json()["moved"] \
-        is False
+    assert [lu[i]["ordre"] for i in (d, b1, b2, d2)] == [1, 2, 3, 4]
+    # « Descendre » passe une bulle après un détail, et « Monter » un détail avant une bulle.
+    r = client.post(f"/api/regions/{b2}/deplacer", json={"sens": "bas"}).json()
+    assert (r["moved"], r["ordre"]) == (True, 4), r
+    r = client.post(f"/api/regions/{d}/deplacer", json={"sens": "bas"}).json()
+    assert (r["moved"], r["ordre"]) == (True, 2), r
     lu = _lu(client, planche)
-    assert (lu[b2]["ordre"], lu[b1]["ordre"], lu[d]["ordre"]) == (1, 2, 3)
-    # L'export : les enfants de la case, 1..N sans trou.
-    album = client.get(f"/api/export/json?album_id={planche['album_id']}").json()
-    cases = album["planches"][0]["regions"]
-    enfants = next(c for c in cases if c["id"] == case)["enfants"]
-    assert sorted(e["ordre"] for e in enfants) == [1, 2]
+    assert [lu[i]["ordre"] for i in (b1, d, d2, b2)] == [1, 2, 3, 4]
 
 
 def test_ctrl_z_defait_la_note_d_un_detail(client, planche):

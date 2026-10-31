@@ -125,6 +125,30 @@ test("l'adresse l'emporte toujours ; `retour` seul ne l'emporte pas, et se garde
                    { qs: "?retour=%2Fcorpus&album=3&planche=7", source: "lieu" });
 });
 
+test("« Annoter ↗ » : la même zone dans la page Annotation, et le retour vers l'Atelier", () => {
+  const lien = Nav.lienAnnotation({ album: 7, planche: 12, region: 40, collection: 3 },
+                                  "/?album=7&planche=12&region=40");
+  const u = new URL(lien, "http://x");
+  assert.equal(u.pathname, "/annotation");
+  assert.equal(u.searchParams.get("album"), "7");
+  assert.equal(u.searchParams.get("planche"), "12");
+  assert.equal(u.searchParams.get("region"), "40");
+  assert.equal(u.searchParams.get("collection"), "3");
+  assert.equal(u.searchParams.get("retour"), "/?album=7&planche=12&region=40");
+  // Rien de choisi : la page d'annotation nue, qui reprendra le lieu retenu.
+  assert.equal(Nav.lienAnnotation({ album: null, planche: null, region: null }, null),
+               "/annotation");
+  assert.equal(Nav.lienAnnotation(null, null), "/annotation");
+  // Sans zone, la planche ; la collection « toutes » passe telle quelle.
+  const sans = new URL(Nav.lienAnnotation({ album: 7, planche: 12, region: null,
+                                            collection: "toutes" }, "/"), "http://x");
+  assert.equal(sans.searchParams.has("region"), false);
+  assert.equal(sans.searchParams.get("collection"), "toutes");
+  // Un retour qui sort de l'instance n'est pas porté.
+  assert.equal(new URL(Nav.lienAnnotation({ album: 7 }, "//evil.com"), "http://x")
+    .searchParams.has("retour"), false);
+});
+
 test("sans lieu, ou un stockage qui lève, l'état de départ ordinaire", () => {
   assert.deepEqual(Nav.etatAvecLieu("", stockage({ "bd-etat:annotation": "grille=5" }), "annotation"),
                    { qs: "?grille=5", source: "memoire" });

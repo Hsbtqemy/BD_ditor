@@ -727,6 +727,13 @@ function syncUrl() {
   if (state.planche) p.set("planche", state.planche.id);
   if (state.selectedId != null) p.set("region", state.selectedId);
   if (state.mode !== MODE_PAR_DEFAUT) p.set("mode", state.mode);
+  // « Annoter ↗ » : la zone courante dans la page Annotation, et son retour ici. Un `retour`
+  // reçu ne s'y empile pas : il reste à l'Atelier, dont il dit d'où l'on vient.
+  const ici = p.toString();
+  $("#btn-annoter").href = Nav.lienAnnotation(
+    { album: state.albumId, planche: state.planche && state.planche.id,
+      region: state.selectedId, collection: state.collection },
+    location.pathname + (ici ? "?" + ici : ""));
   if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit au reload
   const qs = p.toString();
   history.replaceState(null, "", qs ? "?" + qs : location.pathname);

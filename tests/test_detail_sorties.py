@@ -31,6 +31,7 @@ from pathlib import Path
 
 import pytest
 
+import database
 from conftest import REPO_ROOT
 from grilles_decor import csv_de, importer
 
@@ -109,7 +110,7 @@ def semer(client, png_bytes):
                                             "region_id": detail["id"], "entree_cle": "objet"})
     assert rel.status_code == 201, rel.text
     return {"collection": cid, "album": aid, "planche": pl["id"], "detail": detail["id"],
-            "parti": parti["id"], "nu": nu["id"], "bulle": bulle["id"],
+            "parti": parti["id"], "nu": nu["id"], "bulle": bulle["id"], "case": case["id"],
             "releve": rel.json()["id"]}
 
 
@@ -321,7 +322,7 @@ def _amorcee(client, s):
     copie = ligne["copie_id"]
     (pl,) = client.get(f"/api/albums/{copie}/planches").json()
     regions = client.get(f"/api/planches/{pl['id']}/regions").json()
-    det = next(x for x in regions if x["type"] == "detail" and x["nom"] == NOM)
+    det = next(x for x in regions if x["type"] == "detail")
     bulle = next(x for x in regions if x["type"] == "bulle")
     return {"album": copie, "planche": pl["id"], "detail": det["id"],
             "case": det["parent_id"], "bulle": bulle["id"]}
@@ -371,3 +372,68 @@ def test_un_detail_ne_sans_acte_ne_sort_pas_apres_sa_cascade(client, db_path, tm
     # Le témoin : la bulle de la copie, annotée et emportée par le même chemin, sort, elle —
     # la coupure porte sur le détail, pas sur ce que la cascade a emporté.
     assert f"annotations/{c['bulle']}" in texte, "le témoin ne sort pas : rien n'est mesuré"
+
+
+def _rangs_csv(texte, colonne_id):
+    """`{region_id: ordre}` d'une table de régions en CSV."""
+    return {int(l[colonne_id]): int(l["ordre"]) for l in csv.DictReader(io.StringIO(texte))}
+
+
+def test_l_ordre_publie_n_a_pas_de_trou(client, db_path, tmp_path, png_bytes):
+    """L'ordre STOCKÉ suit la lecture, détails compris ; chaque sortie qui publie `ordre` le
+    renumérote 1..N sans eux (`database.rangs_de_sortie`). Sans quoi la bulle du milieu sortait
+    à l'ordre 3 sous une bulle à l'ordre 1, et le trou disait qu'une région retenue y est."""
+    s = semer(client, png_bytes)
+    pid, case = s["planche"], s["case"]
+    # Le détail du semis est à (20, 20) : une bulle à sa droite vient APRÈS lui en lecture.
+    apres = client.post(f"/api/planches/{pid}/regions",
+                        json={"type": "bulle", "x": 34, "y": 21, "w": 4, "h": 4,
+                              "parent_id": case}).json()["id"]
+    bulle = s["bulle"]
+    # La fratrie du semis, rangée par lecture à la main : témoin, détail, bulle d'après.
+    conn = sqlite3.connect(db_path)
+    with conn:
+        for rang, rid in enumerate((bulle, s["detail"], apres), start=1):
+            conn.execute("UPDATE regions SET ordre = ? WHERE id = ?", (rang, rid))
+    conn.close()
+    lu = {r["id"]: r for r in client.get(f"/api/planches/{pid}/regions").json()}
+    assert (lu[bulle]["ordre"], lu[s["detail"]]["ordre"], lu[apres]["ordre"]) == (1, 2, 3)
+
+    attendu = {bulle: 1, apres: 2}
+    a, c = s["album"], s["collection"]
+    # L'export JSON de l'album.
+    album = client.get(f"/api/export/json?album_id={a}").json()
+    arbre = next(x for x in album["planches"][0]["regions"] if x["id"] == case)
+    assert {e["id"]: e["ordre"] for e in arbre["enfants"]} == attendu
+    # L'export CSV de l'album.
+    texte = client.get(f"/api/export/csv?album_id={a}").text
+    assert {k: v for k, v in _rangs_csv(texte, "region_id").items() if k in attendu} == attendu
+    # Les métadonnées, par la voie du dépôt et par l'outil : l'arbre JSON et la table CSV.
+    def arbre_de(d):
+        racines = d["metadonnees_collection"]["albums"][0]["planches"][0]["regions"]
+        return {e["id"]: e["ordre"] for e in next(x for x in racines
+                                                  if x["id"] == case)["enfants"]}
+    assert arbre_de(client.get(f"/api/collections/{c}/depot/metadonnees").json()) == attendu
+    code, out, err = _outil(db_path, "metadonnees_collection.py", "--json", "-")
+    assert code == 0, err
+    assert arbre_de(json.loads(out)) == attendu
+    code, out, err = _outil(db_path, "metadonnees_collection.py",
+                            "--csv-dir", str(tmp_path / "ordre"))
+    assert code == 0, err
+    table = _rangs_csv((tmp_path / "ordre" / "regions.csv").read_text("utf-8-sig"), "id")
+    assert {k: v for k, v in table.items() if k in attendu} == attendu
+    assert s["detail"] not in table
+
+
+def test_le_rang_publie_est_par_fratrie_et_sans_trou():
+    """La règle seule : par planche ET par parent, l'ordre stocké puis l'identifiant, un ordre
+    absent d'abord — comme le tri des exports. Mutant tué : une fratrie qui ignore la planche."""
+    lignes = [{"id": 1, "planche_id": 1, "parent_id": None, "ordre": 4},
+              {"id": 2, "planche_id": 1, "parent_id": None, "ordre": 9},
+              {"id": 3, "planche_id": 1, "parent_id": 1, "ordre": 2},
+              {"id": 4, "planche_id": 1, "parent_id": 1, "ordre": 2},
+              {"id": 5, "planche_id": 1, "parent_id": 1, "ordre": None},
+              {"id": 6, "planche_id": 2, "parent_id": None, "ordre": 7}]
+    assert database.rangs_de_sortie(lignes) == {1: 1, 2: 2, 5: 1, 3: 2, 4: 3, 6: 1}
+    assert database.rangs_de_sortie([{"region_id": 8, "planche_id": 1, "parent_id": None,
+                                      "ordre": 3}], cle="region_id") == {8: 1}

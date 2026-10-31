@@ -312,6 +312,8 @@ def test_une_case_devenue_bulle_perd_sa_situation_et_un_ctrl_z_rend_les_deux(pag
         d = c.post("/api/attributs/dimensions", json={"cible": "case", "nom": "lieu"}).json()["id"]
         v = c.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "falaise"}).json()["id"]
         assert c.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v}).status_code == 200
+        # Une case qui porte un détail ne change pas de type (commit 10) : le décor en a un.
+        assert c.delete(f"/api/regions/{atelier['detail']}").status_code == 204
     _ouvrir(page, atelier, "case")
     expect(page.locator("#sit-current")).to_contain_text("falaise", timeout=15000)
 

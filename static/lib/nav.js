@@ -111,6 +111,22 @@
     return { qs: "?" + m.toString(), source: "lieu" };
   }
 
+  /* « Annoter ↗ » (H2 du cadrage d'ANN-7, tranche 2) : de l'Atelier vers la page Annotation,
+     le même album, la même planche, la zone courante, la collection choisie, et le retour
+     vers l'Atelier (`retour`, borné comme partout) — le pendant de « Ouvrir dans l'Atelier ↗ ».
+     Le mode Annotation de l'Atelier reste : son sort se règle au basculement (tranche 3). */
+  function lienAnnotation(etat, retour) {
+    const p = new URLSearchParams();
+    for (const k of ["album", "planche", "region", "collection"]) {
+      const v = etat ? etat[k] : null;
+      if (v !== null && v !== undefined && v !== "") p.set(k, String(v));
+    }
+    const sur = safeRetour(retour);
+    if (sur) p.set("retour", sur);
+    const qs = p.toString();
+    return "/annotation" + (qs ? "?" + qs : "");
+  }
+
   return { safeRetour, CLE_ETAT, stockageDeSession, adresseExplicite, etatDeDepart, memoriser,
-           CLE_LIEU, retenirLieu, etatAvecLieu };
+           CLE_LIEU, retenirLieu, etatAvecLieu, lienAnnotation };
 });

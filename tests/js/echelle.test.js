@@ -126,6 +126,11 @@ test("« Part » : les nombres de l'aperçu, validations comprises, dans l'ordre
                             corrections: 1 }),
                    ["12 textes", "1 correction", "2 annotations", "3 validations de planche"]);
   assert.deepEqual(E.part({}), []);
+  // Le nom d'un détail est du cran des annotations : il se compte quand il part ou suit.
+  assert.deepEqual(E.part({ presences: 1, noms: 2, planches_devalidees: 1 }),
+                   ["1 présence", "2 noms de détail", "1 validation de planche"]);
+  const l = E.lignesEchelle({ copies: { regions: 1, noms: 1 } });
+  assert.equal(l[l.length - 1].texte, "1 nom de détail");
 });
 
 test("ce qui reste, pour un album et pour une planche", () => {

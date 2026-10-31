@@ -152,6 +152,56 @@ def test_a_chaque_cran_ce_qui_doit_suivre_suit_et_rien_au_dessus(db_path, source
     assert _travail(db_path, source["a"]) == {**ATTENDU["annotations"], "attributs": 2}
 
 
+@pytest.mark.parametrize("cran", ["decoupage", "transcription", "grammaire", "annotations"])
+def test_le_nom_d_un_detail_ne_suit_qu_au_cran_des_annotations(client, db_path, source, cran):
+    """Tranché par Hugo le 2026-10-30 : un nom dit ce que l'image montre, ce qui est déjà de
+    l'interprétation. Le détail, une région, suit dès le découpage, et reste valide sans nom ;
+    l'aperçu compte le nom au cran où il suit, et la naissance dit la même chose."""
+    d = _ok(client.post(f"/api/planches/{source['pl']}/regions", headers=LEA,
+                        json={"type": "detail", "x": 150, "y": 20, "w": 20, "h": 20,
+                              "parent_id": source["case"], "nom": "la lampe"}), 201)["id"]
+    ap = _ok(_apercu(client, source, ADMIN, cran=cran))
+    b = _ligne(_amorcer(client, source, ADMIN, cran=cran))["copie_id"]
+    (copie,) = _sql(db_path, "SELECT r.id, r.nom, r.x FROM regions r JOIN planches p "
+                             "ON p.id = r.planche_id WHERE p.album_id = ? "
+                             "AND r.type = 'detail'", (b,))
+    assert copie["x"] == 150
+    assert copie["nom"] == ("la lampe" if cran == "annotations" else None)
+    assert ap["copies"].get("noms", 0) == (1 if cran == "annotations" else 0)
+    # La charge de la naissance dit la même chose que l'aperçu.
+    charge = json.loads(_sql(
+        db_path, "SELECT apres FROM evenement WHERE cible_table = 'document' AND cible_id = ? "
+                 "AND json_extract(apres, '$.album_id') = ?", (source["doc"], b))[0]["apres"])
+    assert charge["copie"]["copies"] == ap["copies"]
+    # La source garde le sien.
+    assert _sql(db_path, "SELECT nom FROM regions WHERE id = ?", (d,))[0]["nom"] == "la lampe"
+    # Sans nom, le détail reste un détail qui s'écrit, se nomme et se lit.
+    pl = _sql(db_path, "SELECT id FROM planches WHERE album_id = ?", (b,))[0]["id"]
+    assert client.put(f"/api/regions/{copie['id']}", headers=ADMIN,
+                      json={"nom": "le phare"}).status_code == 200
+    lues = client.get(f"/api/planches/{pl}/regions", headers=ADMIN).json()
+    assert [r["nom"] for r in lues if r["type"] == "detail"] == ["le phare"]
+
+
+def test_un_nom_de_detail_est_du_travail_au_cran_des_annotations(client, db_path, source):
+    """Une copie qui ne porte qu'un nom est au cran `annotations` : ce qu'une demande d'en
+    partir lit, et ce au-dessous de quoi on repart de zéro."""
+    b = _copier(source, "decoupage")
+    def niveau():
+        conn = database.get_connection()
+        try:
+            return database.niveau_de_travail(conn, b)
+        finally:
+            conn.close()
+    assert niveau() == database.rang_du_cran("decoupage")
+    pl = _sql(db_path, "SELECT id FROM planches WHERE album_id = ?", (b,))[0]["id"]
+    d = _ok(client.post(f"/api/planches/{pl}/regions", headers=ADMIN,
+                        json={"type": "detail", "x": 150, "y": 20, "w": 20, "h": 20}), 201)["id"]
+    assert niveau() == database.rang_du_cran("decoupage")     # sans nom, une région
+    _ok(client.put(f"/api/regions/{d}", headers=ADMIN, json={"nom": "la lampe"}))
+    assert niveau() == database.rang_du_cran("annotations")
+
+
 def test_la_copie_vierge_n_a_toujours_aucune_region(db_path, source):
     b = _copier(source, database.CRAN_IMAGES)
     assert _travail(db_path, b)["regions"] == 0
@@ -705,8 +755,8 @@ def test_l_apercu_d_une_copie_sans_region(client, db_path, source):
     _sql(db_path, "DELETE FROM regions")
     ap = _ok(_apercu(client, source, ADMIN))
     assert ap["copies"] == {"regions": 0, "textes": 0, "corrections": 0, "annotations": 0,
-                            "tags": 0, "attributs": 0, "locuteurs": 0, "presences": 0,
-                            "releves": 0, "passes": 0}
+                            "tags": 0, "noms": 0, "attributs": 0, "locuteurs": 0,
+                            "presences": 0, "releves": 0, "passes": 0}
     assert ap["laisses"] == {"tags": 0, "attributs": 0, "releves": 0} and ap["personnages"] == 0
 
 

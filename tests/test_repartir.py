@@ -24,6 +24,7 @@ Principale (`lea_tient`), ce qui lui laisse ses gestes ; `sam` demande.
 """
 import pytest
 
+import database
 from conftest import ADMIN
 from test_amorcer import LEA, SAM, _travail, source  # noqa: F401
 from test_fonds import _accorder, _planche
@@ -97,6 +98,39 @@ def test_chaque_cran_retire_ce_qui_est_au_dessus_et_rien_d_autre(client, source,
     # Les comptes de la charge disent ce qui est parti.
     assert rendu["comptes"]["annotations"] == 1
     assert rendu["comptes"]["planches_devalidees"] == 1
+
+
+@pytest.mark.parametrize("cran", ["grammaire", "transcription", "decoupage"])
+def test_repartir_retire_le_nom_d_un_detail_qui_reste(client, source, db_path, cran):
+    """L'inverse de l'échelle : le nom d'un détail est du cran `annotations`, tout cran
+    d'arrivée est au-dessous. Le détail, une région, reste jusqu'au cran des images. L'aperçu
+    compte ce que l'acte retire."""
+    d = _ok(client.post(f"/api/planches/{source['pl']}/regions", headers=LEA,
+                        json={"type": "detail", "x": 150, "y": 20, "w": 20, "h": 20,
+                              "parent_id": source["case"], "nom": "la lampe"}), 201)["id"]
+    conn = database.get_connection()
+    try:
+        apercu = database.compter_repartir(conn, source["a"], cran)
+    finally:
+        conn.close()
+    assert apercu["noms"] == 1
+    rendu = _ok(_repartir(client, source["a"], cran, LEA))
+    assert rendu["comptes"]["noms"] == 1
+    (lu,) = _sql(db_path, "SELECT type, nom FROM regions WHERE id = ?", (d,))
+    assert (lu["type"], lu["nom"]) == ("detail", None)
+    # Sans nom, il reste valide : il se renomme.
+    _ok(client.put(f"/api/regions/{d}", headers=LEA, json={"nom": "le phare"}))
+
+
+def test_une_copie_sans_rien_d_autre_qu_un_nom_repart(client, source, db_path):
+    """Une planche qui ne porte qu'un nom n'est pas « rien à retirer »."""
+    _ok(_repartir(client, source["a"], "decoupage", LEA))
+    d = _ok(client.post(f"/api/planches/{source['pl']}/regions", headers=LEA,
+                        json={"type": "detail", "x": 150, "y": 20, "w": 20, "h": 20,
+                              "nom": "la lampe"}), 201)["id"]
+    rendu = _ok(_repartir(client, source["a"], "decoupage", LEA))
+    assert (rendu["depuis_cran"], rendu["comptes"]["noms"]) == ("annotations", 1)
+    assert _sql(db_path, "SELECT nom FROM regions WHERE id = ?", (d,))[0]["nom"] is None
 
 
 def test_on_ne_repart_que_vers_plus_bas(client, source):

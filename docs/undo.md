@@ -537,6 +537,26 @@ disparu, comptés dans `releves_non_rendus`. Un relevé retiré par la LEVÉE d'
 types à eux, hors de la pile. Un texte retouché qui ré-ancre les relevés n'écrit rien quand
 un mot est perdu : Ctrl+Z du texte les rend normaux sans rien rejouer.
 
+## La page Annotation (ANN-7, tranche 2)
+
+Ctrl+Z y est le même qu'à l'Atelier : la pile est par agent et non par écran, si bien qu'un
+geste fait sur l'une se défait depuis l'autre. La partie commune vit dans
+`static/lib/annulation.js` — l'appel, le message lent, « Annulé : … », le refus de CONC-3 et
+« Passer ce geste », le raccourci hors d'un champ — ; chaque surface rafraîchit ce qu'elle
+montre. Dans un champ, Ctrl+Z reste l'annulation native.
+
+La page y met les gestes qu'elle fait : un relevé (poser, modifier, retirer), la note, le
+locuteur, le texte d'un texte hors bulle, le nom d'un détail, une zone tracée, une zone
+supprimée. Le `nom` est dans l'instantané d'une région (`journal._REGION_COLS`) : Ctrl+Z d'une
+suppression rend un détail avec son nom, et Ctrl+Z d'un nom retouché rend l'ancien. Les règles
+d'un détail tiennent à l'annulation comme à la route (`undo._parent_valide`) : pas de détail
+sous autre chose qu'une case, rien sous un détail, et un état d'avant qui les violerait passe
+l'acte. Ctrl+Z d'une création de zone est refusé, avec « Passer ce geste », dès qu'un relevé
+vit sur elle (`undo._garder_releves_de_creation`, plus haut).
+
+Ne se défont pas : le doute, sa réponse, sa levée, et la passe « terminée ». Ils ont leurs
+types à eux, et *Rouvrir* défait une passe.
+
 ## Boucle
 
 - **API** : `GET /api/undo/prochain` (aperçu : `{evenement_id, description}` ou `null`) ·
