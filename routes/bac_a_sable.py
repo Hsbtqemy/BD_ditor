@@ -1,8 +1,8 @@
 """Mon bac à sable (COL-4) — un projet à soi, rempli d'un jeu, effacé chaque lundi.
 
 Un clic crée, pour CE compte, un projet dont il est le seul responsable, rempli d'une copie
-de chaque document du jeu (`jeu_document`, préparé par `tools/preparer_jeu.py`) ; recliquer
-y ramène. Le propriétaire peut le remettre à neuf, y faire entrer des collègues au rôle de
+de chaque document du jeu (`jeu_document`, préparé par `tools/preparer_jeu.py`), avec une
+grille fictive active (`socle._poser_la_grille_du_bac`) ; recliquer y ramène. Le propriétaire peut le remettre à neuf, y faire entrer des collègues au rôle de
 membre (`PUT /api/projets/{id}/membres`, borné dans `routes/projets.py`), et il part avec
 tous les autres le lundi à 4 h, heure de Paris, sans exception (Hugo, 2026-10-22).
 

@@ -62,6 +62,18 @@ TRAVAIL_JPEG_QUALITY = 80
 BAC_A_SABLE_JOUR = 0
 BAC_A_SABLE_HEURE = 4
 BAC_A_SABLE_PLAFOND_PLANCHES = 50
+# La grille FICTIVE que chaque bac à sable reçoit à sa naissance (ANN-7, tranche 2, H4 ; Hugo,
+# 2026-10-27). Une DONNÉE lue à chaque naissance, jamais écrite dans le code : le modèle du
+# format (`docs/import-grille.md`), déjà fictif, déjà importé tel quel par les tests, et qui
+# fait jouer les trois formes et toutes les cibles — l'arrivant s'exerce sur ce que la
+# documentation décrit. Le changer change les grilles des bacs à sable À VENIR, pas celles
+# qui existent. `tools/` entre dans l'image comme le reste (`COPY . .`) ; la suite le joue
+# dans l'image (`tests/test_grille_du_bac.py`). « Porte sur » : la cible des entrées qui ne
+# déclarent pas la leur.
+GRILLE_DU_BAC = BASE_DIR / "tools" / "grille-modele.csv"
+GRILLE_DU_BAC_LISTES = BASE_DIR / "tools" / "grille-modele-listes-qualificatifs.csv"
+GRILLE_DU_BAC_NOM = "Grille d'exemple"
+GRILLE_DU_BAC_PORTE_SUR = "mots"
 
 # Déconnexion (INFRA-1). Derrière le proxy d'authentification (Authelia), l'URL de
 # logout vit sur le sous-domaine du PORTAIL, cible comprise :

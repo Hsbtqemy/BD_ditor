@@ -25,6 +25,7 @@ la fiche ARCH-1 posait comme condition du découpage.
 """
 from __future__ import annotations
 
+import csv
 import logging
 import re
 import sqlite3
@@ -37,6 +38,7 @@ from pydantic import BaseModel, Field
 
 import autorisation
 import conflit
+import grille_import
 import journal
 from database import (CRAN_IMAGES, NATURE_COLLECTIF, CRANS, CRANS_DE_REPARTIR, DEMANDE_AMORCER,
                       DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_REPARTIR,
@@ -54,7 +56,8 @@ from database import (CRAN_IMAGES, NATURE_COLLECTIF, CRANS, CRANS_DE_REPARTIR, D
                       projet_de_collection, rangement_traverse, retirer_document_sans_copie,
                       sql_album_isole, sql_est_jeu, sql_projet_d_album, sql_projet_de,
                       unindex_region)
-from config import BAC_A_SABLE_PLAFOND_PLANCHES, TYPE_DETAIL
+from config import (BAC_A_SABLE_PLAFOND_PLANCHES, GRILLE_DU_BAC, GRILLE_DU_BAC_LISTES,
+                    GRILLE_DU_BAC_NOM, GRILLE_DU_BAC_PORTE_SUR, TYPE_DETAIL)
 from pipeline.ingest import (chemin_d_image_sur, dossiers_d_album, elaguer_dossier_d_album,
                              remove_album_files, remove_planche_files)
 
@@ -648,10 +651,11 @@ def _creer_bac_a_sable(conn, login: str) -> int:
     """Fait naître le bac à sable de `login` et rend son id : le projet (nom stocké « Bac à
     sable », la date de son effacement), son propriétaire RESPONSABLE dans `projet_acces` —
     pour que tout ce qui lit les membres marche sans branche —, sa collection de base
-    OUVERTE en écriture à ses membres (l'invité écrit là où est le jeu), et une copie de
-    chaque document du jeu, jusqu'à son cran (`database.creer_copie` : aucune image copiée).
-    S'écrit au journal comme une création de projet. À appeler SOUS le verrou d'écriture,
-    après avoir relu qu'il n'en a pas ; ne commite pas."""
+    OUVERTE en écriture à ses membres (l'invité écrit là où est le jeu), une copie de chaque
+    document du jeu, jusqu'à son cran (`database.creer_copie` : aucune image copiée), et une
+    grille fictive active (`_poser_la_grille_du_bac`). S'écrit au journal comme une création
+    de projet. À appeler SOUS le verrou d'écriture, après avoir relu qu'il n'en a pas ; ne
+    commite pas."""
     efface_le = prochain_effacement()
     pid = conn.execute(
         "INSERT INTO projet (nom, description, bac_a_sable_de, efface_le) VALUES (?, ?, ?, ?)",
@@ -676,7 +680,41 @@ def _creer_bac_a_sable(conn, login: str) -> int:
             "JOIN albums a ON a.id = jd.album_reference AND a.document_id = jd.document_id "
             "ORDER BY jd.rang, jd.document_id").fetchall():
         creer_copie(conn, document_id, base, par=login, depuis=reference, cran=cran)
+    _poser_la_grille_du_bac(conn, pid)
     return pid
+
+
+def _poser_la_grille_du_bac(conn, projet_id: int) -> Optional[int]:
+    """La grille FICTIVE d'un bac à sable naissant, importée, publiée et active (ANN-7,
+    tranche 2, H4) : la page Annotation s'y sert sans aucune autre action. Elle est au bac à
+    sable — une grille par bac à sable, sans lien avec celle d'un autre —, part avec lui
+    (`_effacer_bac_a_sable`), et n'est à PERSONNE, comme le jeu : aucun `par`, le journal
+    garde seul l'acte, sous `grille`, retenu de toute sortie et hors de ce qu'un compte laisse.
+
+    Son fichier absent ou refusé — une image mal construite — ne coûte pas le bac à sable,
+    qui sert sans elle à tout le reste : il NAÎT SANS GRILLE, ce que le journal du serveur
+    dit en ERREUR avec sa cause, et que la page Annotation dit à qui y entre (« Aucune
+    grille »). La dernière version écrite est défaite, jusqu'à la grille : un point de
+    sauvegarde, la transaction de l'appelant restant ouverte. Rend l'identifiant, ou None.
+    Une erreur de la BASE n'est pas celle du fichier, et remonte."""
+    conn.execute("SAVEPOINT grille_du_bac")
+    try:
+        with open(GRILLE_DU_BAC, encoding="utf-8-sig", newline="") as entrees, \
+                open(GRILLE_DU_BAC_LISTES, encoding="utf-8-sig", newline="") as listes:
+            gid = grille_import.installer(
+                conn, projet_id=projet_id, flux_entrees=entrees, flux_listes=listes,
+                nom=GRILLE_DU_BAC_NOM, porte_sur=GRILLE_DU_BAC_PORTE_SUR,
+                note="Grille fictive, pour apprendre : elle part avec le bac à sable.")
+    except (OSError, ValueError, csv.Error, grille_import.Refus) as exc:
+        conn.execute("ROLLBACK TO grille_du_bac")
+        conn.execute("RELEASE grille_du_bac")
+        anomalies = "; ".join(getattr(exc, "anomalies", ())[:5])
+        logging.getLogger("bd_annotator").error(
+            "Le bac à sable %s naît SANS grille : %s n'a pas pu être importée (%s%s)",
+            projet_id, GRILLE_DU_BAC.name, exc, f" — {anomalies}" if anomalies else "")
+        return None
+    conn.execute("RELEASE grille_du_bac")
+    return gid
 
 
 def _sortir_du_bac(conn, projet_id: int, genre: str, principal: str) -> bool:
@@ -1518,7 +1556,8 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
         conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
         journal.journaliser(conn, "suppression", "collection", collection_id,
                             avant={"nom": nom, "bac_a_sable": True})
-    # ANN-7 (G6) — ses GRILLES partent avec lui : elles n'existaient que là. Leurs relevés et
+    # ANN-7 (G6, H4) — ses GRILLES partent avec lui, celle de sa naissance comprise : elles
+    # n'existaient que là (le plan, avec sa version, en cascade). Leurs relevés et
     # leurs passes sont partis avec ses albums ; leurs activations et leurs masques d'abord
     # (la clé de l'activation sur la grille est sans action).
     grilles_du_bac = [r[0] for r in conn.execute("SELECT id FROM grille WHERE projet_id = ?",

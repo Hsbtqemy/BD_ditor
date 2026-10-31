@@ -72,6 +72,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_ISOLE, _MOTIF_BAC_PROPRIETAIRE,
     _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS, _MOTIF_JEU_SOURCE,
     _MOTIF_EXPORT_BAC, _bac_a_sable_de, _collection_locale_d_un_bac, _creer_bac_a_sable,
+    _poser_la_grille_du_bac,
     _exiger_l_export_hors_bac, _exiger_le_plafond, _planches_importees_du_bac,
     _MOTIF_EXPORT_IMPORTEE, _SQL_IMAGES_DU_JEU, _SQL_IMAGES_EXPORTABLES,
     _refuser_le_bac_a_sable, _MOTIF_PAS_UN_BAC, _TOURS_D_EFFACEMENT, _effacer_bac_a_sable,

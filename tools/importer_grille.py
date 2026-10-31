@@ -57,7 +57,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import database  # noqa: E402
 import grille_import  # noqa: E402
 import grilles  # noqa: E402
-import journal  # noqa: E402
 
 CODE_REFUS = 1
 
@@ -211,12 +210,7 @@ def cmd_publier(args) -> int:
             conn.rollback()
             _err(f"La grille {args.publier} n'a pas de brouillon à publier.")
             return CODE_REFUS
-        conn.execute("UPDATE grille_version SET etat = ?, publiee_par = NULL, "
-                     "publiee_le = datetime('now') WHERE id = ?",
-                     (grilles.ETAT_PUBLIEE, v["id"]))
-        journal.journaliser(conn, "modification", "grille", args.publier,
-                            avant={"version": v["numero"], "etat": grilles.ETAT_BROUILLON},
-                            apres={"version": v["numero"], "etat": grilles.ETAT_PUBLIEE})
+        grille_import.publier(conn, args.publier, v, par=None)
         try:
             dit = _activer_et_masquer(conn, args, args.publier, v["numero"])
         except grille_import.Refus as e:

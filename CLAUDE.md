@@ -403,6 +403,13 @@ d'écran et non une garde. **Rien d'une grille n'est dans le code** : elle entre
 tableur, deux CSV point-virgule (`grille_import.py`, `tools/importer_grille.py`,
 `POST /api/projets/{id}/grilles/import`), refusé ENTIER à la première anomalie de structure,
 avec un bilan ; le modèle de `tools/` est FICTIF, et aucune vraie grille ne vit dans le dépôt.
+**Chaque bac à sable reçoit ce modèle à sa naissance** (H4, Hugo, 2026-10-27 ;
+`config.GRILLE_DU_BAC`, `socle._poser_la_grille_du_bac`, `grille_import.installer`) : une
+grille à lui, publiée et active, qui n'est à personne (aucun `par`), part avec lui et revient
+neuve à la remise à neuf ; le fichier absent ou refusé ne coûte pas le bac à sable, qui naît
+sans grille, le journal du serveur le disant en erreur et la page « Aucune grille ». C'est
+une donnée lue, pas du code, et `tools/` entre dans l'image (`tests/test_grille_du_bac.py`).
+Les bacs à sable d'avant la reçoivent à leur remise à neuf ou au lundi suivant, sans migration.
 Un RELEVÉ applique une entrée à une cible — des MOTS d'une zone de texte (`releve_mot`, par
 rang dans le découpage de `mots.py`, que rend `GET /api/regions/{id}/mots` ; pas de jumeau
 navigateur), une RÉGION entière (case, bulle, cartouche, texte, personnage, détail), ou la
@@ -1156,8 +1163,8 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   un invité le QUITTE de lui-même (`POST /api/bac-a-sable/{id}/quitter`), et qui en sort
   — ou qu'on retire — y perd tout ce qu'il tenait, la propriété de ses collections
   comprise (`socle._sortir_du_bac`). Il naît avec une copie de chaque document du JEU
-  (`projet.jeu`, caché, `jeu_document`, préparé par `tools/preparer_jeu.py`), et
-  `efface_le` porte le lundi à 4 h de Paris, sans exception — l'effacement passe par
+  (`projet.jeu`, caché, `jeu_document`, préparé par `tools/preparer_jeu.py`) et une grille fictive
+  active (H4, cf. § Données, les GRILLES), et `efface_le` porte le lundi à 4 h de Paris, sans exception — l'effacement passe par
   `socle._effacer_bac_a_sable`, que traversent la remise à neuf et
   `tools/effacer_bacs_a_sable.py`. Un par login : l'index unique partiel
   `idx_projet_bac_a_sable_de` ET la relecture sous le verrou (la remise à neuf relit

@@ -20,7 +20,9 @@ une colonne en trop est ignorée).
    si une entrée est à qualificatifs.
 
 Un modèle FICTIF, qui fait jouer toutes les possibilités : `tools/grille-modele.csv` et
-`tools/grille-modele-listes-qualificatifs.csv`.
+`tools/grille-modele-listes-qualificatifs.csv`. C'est aussi la grille que chaque bac à sable
+reçoit à sa naissance, sous le nom « Grille d'exemple » : le changer change celle des bacs à
+sable à venir, jamais celle de ceux qui existent.
 
 ## Le fichier des entrées
 

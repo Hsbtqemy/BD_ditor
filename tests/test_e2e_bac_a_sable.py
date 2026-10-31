@@ -40,6 +40,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 import database  # noqa: E402
 import main  # noqa: E402
+from config import GRILLE_DU_BAC_NOM  # noqa: E402
 from conftest import make_png  # noqa: E402
 from test_jeu import ecrire_jeu  # noqa: E402
 from tools.mesurer_reflow import ECRASEMENT, SONDE, decrire_ecrasement  # noqa: E402
@@ -176,6 +177,54 @@ def _dialogue(page):
 
 
 pytestmark_proxy = pytest.mark.parametrize("live_server", [True], indirect=True)
+
+
+# ── La grille de sa naissance (H4) ─────────────────────────────────────────────────────
+
+@pytest.fixture
+def jeu_a_annoter(live_server, tmp_path):
+    """Un parcours au cran `transcription` : une case et sa bulle, déjà là à la naissance."""
+    depot = ecrire_jeu(tmp_path / "jeu-depot", [{
+        "cle": "parcours", "titre": "Le parcours", "role": "pas-a-pas", "rang": 1,
+        "cran": "transcription",
+        "planches": [{"fichier": "p1.png", "regions": [
+            {"type": "case", "x": 0, "y": 0, "w": 400, "h": 500, "enfants": [
+                {"type": "bulle", "x": 20, "y": 20, "w": 200, "h": 80,
+                 "texte": "AAAH ! OUILLE"}]}]}]}], images=("p1.png",))
+    _outil(tmp_path, "tools/preparer_jeu.py", "--depot", str(depot), "--appliquer")
+    _api(live_server, CAMILLE, "GET", "/api/moi")
+    return {"base": live_server, "tmp": tmp_path}
+
+
+@pytestmark_proxy
+def test_la_page_annotation_s_y_sert_sans_aucune_autre_action(page, jeu_a_annoter):
+    """camille n'a RIEN importé, publié ni activé. Le premier clic, puis la navigation : la
+    page Annotation dit la grille de son bac à sable, et on y pose un relevé."""
+    jeu = jeu_a_annoter
+    _sous(page, CAMILLE)
+    page.goto(jeu["base"] + "/", wait_until="networkidle")
+    page.locator("#portee-vide .portee-vide-geste button").click()
+    page.wait_for_url(re.compile(r"/\?album=\d+&planche=\d+$"))
+    page.wait_for_load_state("networkidle")
+    page.locator('a[href="/annotation"]').first.click()
+    page.wait_for_url(re.compile(r"/annotation"))
+    page.wait_for_load_state("networkidle")
+    onglets = page.locator("#an-onglets [role=tab]")
+    expect(onglets).to_have_count(1)
+    expect(onglets).to_contain_text(GRILLE_DU_BAC_NOM)
+    page.locator('.an-zone-btn[title="AAAH ! OUILLE"]').click()
+    mot = page.locator("#an-mot-0")
+    expect(mot).to_have_text("AAAH")
+    mot.click()
+    cri = page.locator("#an-plan [role=checkbox]", has_text="cri").first
+    expect(cri).to_have_attribute("aria-checked", "false")
+    cri.click()
+    expect(cri).to_have_attribute("aria-checked", "true")
+    expect(page.locator("#an-annonce")).to_have_text("Posé : cri")
+    vue = _api(jeu["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    planche = vue["jeu"][0]["planche_ids"][0]
+    releves = _api(jeu["base"], CAMILLE, "GET", f"/api/planches/{planche}/releves")["releves"]
+    assert [r["entree_cle"] for r in releves] == ["cri"]
 
 
 # ── Le premier clic ────────────────────────────────────────────────────────────────────

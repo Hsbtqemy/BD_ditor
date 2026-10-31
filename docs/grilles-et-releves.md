@@ -233,7 +233,9 @@ retenu est la VALEUR vue (G1, 2026-10-25), qui donne le même refus sans colonne
 
 - **Une grille appartient à un projet** (`COL-3`) ; ses responsables la créent, l'importent et
   la publient (`peut_gerer_projet`), et l'administrateur passe outre. Aucune validation
-  préalable : l'administrateur trie après coup (`ANN-7`).
+  préalable : l'administrateur trie après coup (`ANN-7`). **Un bac à sable en reçoit une à sa
+  naissance** (H4, 2026-10-27) : le modèle fictif du format, importé, publié et activé pour
+  lui seul, qui part avec lui ; son propriétaire peut y en importer d'autres.
 - **Elle s'active sur un projet** : toutes les collections du projet comptent avec elle. Un
   album n'a qu'un projet (le rangement ne traverse pas, `COL-3`) : les grilles actives sur un
   album sont celles de son projet. **Une collection peut MASQUER une grille active** (Q1,

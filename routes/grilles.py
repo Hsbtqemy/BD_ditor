@@ -218,12 +218,7 @@ def publier_version(grille_id: int, numero: int, conn: sqlite3.Connection = Depe
     if v["etat"] != grilles.ETAT_BROUILLON:
         raise HTTPException(409, f"La version {numero} n'est pas un brouillon : elle est "
                                  f"{v['etat']}.")
-    conn.execute("UPDATE grille_version SET etat = ?, publiee_par = ?, "
-                 "publiee_le = datetime('now') WHERE id = ?",
-                 (grilles.ETAT_PUBLIEE, portee.utilisateur, v["id"]))
-    journal.journaliser(conn, "modification", "grille", grille_id,
-                        avant={"version": numero, "etat": grilles.ETAT_BROUILLON},
-                        apres={"version": numero, "etat": grilles.ETAT_PUBLIEE})
+    grille_import.publier(conn, grille_id, v, par=portee.utilisateur)
     conn.commit()
     return _vue_grille(conn, g)
 

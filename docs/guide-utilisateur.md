@@ -405,8 +405,9 @@ Dublin Core / DataCite et la **provenance** restent, elles, en ligne de commande
 ### Mon bac à sable
 
 Un **projet à vous**, pour apprendre l'outil : il naît au premier clic, rempli d'un jeu de
-planches, et **tout ce qu'il contient s'efface chaque lundi à 4 h** (heure de Paris), le
-même moment pour tout le monde. Rien n'en sort vers le vrai corpus — seule s'exporte la
+planches, avec une grille d'exemple prête dans la page *Annotation*, et **tout ce qu'il
+contient s'efface chaque lundi à 4 h** (heure de Paris), le même moment pour tout le monde.
+Rien n'en sort vers le vrai corpus — seule s'exporte la
 copie d'un document libre du jeu où l'on n'a rien importé —, rien n'y entre du fonds, et la
 Recherche comme l'Exploration ne le voient pas : leurs chiffres restent ceux du vrai corpus. Les règles sont dans [`modele-et-droits.md`](modele-et-droits.md) §2, *Le bac à
 sable*.

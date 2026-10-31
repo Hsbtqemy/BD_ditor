@@ -509,6 +509,10 @@ effacement se lit dans le bac à sable.
   membres, ne s'attribue que là, et part avec lui. Un personnage du registre s'y attribue
   aussi, mais ce qu'on en fait là ne compte pas ailleurs : ni pour le cacher, ni pour le
   montrer.
+- **Il naît avec une grille d'exemple, publiée et active** : un modèle fictif, à ce bac à
+  sable seul, sur laquelle la page Annotation s'exerce sans rien régler. Elle part avec lui,
+  relevés compris, et revient neuve à la remise à neuf. Son fichier manquant, le bac à sable
+  naît quand même, sans elle : la page Annotation dit « Aucune grille ».
 - **Ses tags ont leurs propres libellés** : un libellé tapé dans un bac à sable n'y prend
   rien au vrai corpus, qui peut avoir le même, et rien ne se voit d'un côté à l'autre. On
   les lit, les renomme, les fusionne et les supprime dans le 📖 Lexique, comme ailleurs —

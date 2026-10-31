@@ -600,13 +600,38 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_lis
 
 
 # --------------------------------------------------------------------------- #
-# Activer, masquer — le cœur partagé de la route et de l'outil (ANN-7, tranche 2, H3)
+# Publier, activer, masquer — le cœur partagé de la route et de l'outil (ANN-7, tranche 2, H3)
 # --------------------------------------------------------------------------- #
 # Les règles du MODÈLE seulement : qui a le droit (gérer le projet, administrer la
 # collection) est vérifié AVANT par l'appelant — la route par la portée, l'outil parce qu'un
 # shell tient la base entre ses mains. Ni commit, ni verrou : l'appelant tient la transaction.
 _MOTIF_JEU = ("C'est le jeu des bacs à sable : il ne reçoit pas de grille, et ne se change "
               "que par son outil (`tools/preparer_jeu.py`).")
+
+
+def publier(conn: sqlite3.Connection, grille_id: int, version, *, par=None) -> None:
+    """PUBLIE un brouillon (`version` : sa ligne, vérifiée par l'appelant) : il devient une
+    version figée, qui garde son numéro, et l'acte s'écrit sous `grille`."""
+    import journal                               # import paresseux, cf. `importer`
+    conn.execute("UPDATE grille_version SET etat = ?, publiee_par = ?, "
+                 "publiee_le = datetime('now') WHERE id = ?",
+                 (grilles.ETAT_PUBLIEE, par, version["id"]))
+    journal.journaliser(conn, "modification", "grille", grille_id,
+                        avant={"version": version["numero"], "etat": grilles.ETAT_BROUILLON},
+                        apres={"version": version["numero"], "etat": grilles.ETAT_PUBLIEE})
+
+
+def installer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_listes=None,
+              nom: str, porte_sur: str, note: str | None = None, par=None) -> int:
+    """Une grille NEUVE, importée, publiée et active sur le projet, d'un seul geste : ce que
+    reçoit un bac à sable à sa naissance (H4). Rien de neuf : les trois gestes d'une personne,
+    à la suite, sous leurs règles. Lève ce qu'ils lèvent ; rend l'identifiant de la grille."""
+    res = importer(conn, projet_id=projet_id, flux_entrees=flux_entrees,
+                   flux_listes=flux_listes, nom=nom, porte_sur=porte_sur, note=note, par=par)
+    gid, numero = res["grille_id"], res["version"]["numero"]
+    publier(conn, gid, grilles.version(conn, gid, numero), par=par)
+    activer(conn, projet_id=projet_id, grille_id=gid, numero=numero, par=par)
+    return gid
 
 
 def version_activable(conn: sqlite3.Connection, grille_id: int):
