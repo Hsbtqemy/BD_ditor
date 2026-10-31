@@ -5,7 +5,9 @@ statut: livré
 
 # COL-4 — « Mon bac à sable » : un projet de test à soi, remis à neuf chaque semaine, où l'on apprend l'outil
 
-**Arrêté sur** `0449efb` (2026-10-25, EN PRODUCTION : `main` = `f8dfa5c`, déployé à la main par
+**Arrêté sur** `5adfd60` (2026-10-31, sur `dev`, pas encore en production : le résumé de
+provenance tait les actes et les runs d'un projet isolé, comme le journal publié). Avant cela,
+`0449efb` (2026-10-25, EN PRODUCTION : `main` = `f8dfa5c`, déployé à la main par
 Hugo — la veille refuse à raison une version qui migre). Le bac à sable SANS wizard est livré :
 le côté serveur (v35, relu en croisé, corrigé, contre-relu), l'écran tranché sur maquette, les
 retours de la passe `bac-a-sable` (jouée 38 sur 38), la chaîne entière verte. En production le
@@ -123,7 +125,9 @@ wizard (`UX-6`, lot 4). Fiche ouverte le 2026-10-21 sur une demande de Hugo (Con
 
 ### Relevé par la relecture croisée d'ANN-7 — 2026-10-30
 
-- [ ] Le résumé de provenance de la description et des métadonnées du dépôt (`journal.indicateurs_provenance`) ne compte pas les actes d'un projet isolé, que le journal publié tait (`sql_evenement_isole`) — attendu : les deux nombres d'actes concordent. Relevé par la relecture croisée du commit 9 d'ANN-7 (`32a8e02`), lu dans le code, non joué ; depuis `3536bb2`, le paramètre `actes_tus` le ferme en une ligne chez les deux appelants
+- [x] Le résumé de provenance de la description et des métadonnées du dépôt (`journal.indicateurs_provenance`) ne compte pas les actes d'un projet isolé, que le journal publié tait (`sql_evenement_isole`) — attendu : les deux nombres d'actes concordent. Relevé par la relecture croisée du commit 9 d'ANN-7 (`32a8e02`), lu dans le code, non joué ; depuis `3536bb2`, le paramètre `actes_tus` le ferme en une ligne chez les deux appelants — **Codé le 2026-10-31, `5adfd60`**, confirmé sur un vrai acte d'un bac à sable ; le même résumé comptait aussi les RUNS d'un projet isolé, fermés dans le même commit (`runs_tus`) ; 7 mutants tombés, suite par défaut 3 328 verts, code 0
+- [ ] Une collection sans album ne compte pas toute l'instance dans son résumé de provenance — attendu : `journal.indicateurs_provenance` avec une liste VIDE rend zéro, comme `_commun.portee_albums`, qui le traite (`(-1)`) ; aujourd'hui `if album_ids:` la lit comme le corpus entier, et la description comme les métadonnées d'une collection vide publient alors les totaux de l'instance. Relevé par l'agent de `5adfd60` le 2026-10-31, lu dans le code, non joué
+- [ ] Un compte qui n'a fait qu'ouvrir un bac à sable ne prend pas de rang dans les pseudonymes — attendu : `_commun.pseudonymes()` ne compte aucun acte d'un projet isolé, comme `comptes.traces`, sans quoi il renumérote ceux qui annotent après lui. Aujourd'hui il prend un rang par ses actes `projet` et `collection`. Relevé par le même agent, antérieur à ce travail, lu dans le code, non joué
 
 ## Contexte
 
