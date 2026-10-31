@@ -485,3 +485,22 @@ def test_a11y_tiroir_et_feuille_ouverts(page, decor, theme, bascule):
       .some((a) => a.playState === 'running')""")
     viol = _audit(page)
     assert not viol, _fmt(viol)
+
+
+def test_ouvrir_un_releve_depuis_le_tiroir_rend_le_focus_a_sa_bascule(page, decor):
+    """Une ligne de la Synthèse ferme le tiroir qui la porte : le focus resterait dans un panneau
+    caché, inatteignable."""
+    page.set_viewport_size(TABLETTE)
+    with _http(decor) as c:
+        c.post("/api/releves", json={"region_id": decor["c2"], "grille_id": decor["grille"],
+                                     "version": 1, "entree_cle": "regard-camera"})
+    _ouvrir(page, decor, decor["bulle"])
+    bascule = page.locator("#an-tiroir-planche")
+    bascule.click()
+    page.locator("#an-ong-synthese").click()
+    ligne = page.locator("#an-syn-corps [data-syn-releve]").last
+    expect(ligne).to_be_visible()
+    ligne.focus()
+    page.keyboard.press("Enter")
+    expect(bascule).to_have_attribute("aria-expanded", "false")
+    expect(bascule).to_be_focused()

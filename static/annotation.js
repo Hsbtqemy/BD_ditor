@@ -263,6 +263,7 @@ function zoneCourante() {
 
 /* Choisir une case et, dedans, une zone (null : la case). Redessine ce qui en dépend. */
 function choisir(caseIx, zoneId) {
+  const avant = document.activeElement;
   // « Porte sur » ne garde pas un choix fait dans une autre zone (passe du jalon 1 : une
   // bulle s'ouvrait sur « la planche ») : la zone repart de sa première option.
   if (caseIx !== S.caseIx || zoneId !== S.zoneId) S.porte = null;
@@ -283,6 +284,9 @@ function choisir(caseIx, zoneId) {
   rendreSynthese();
   lirePersonnagesDeLaCase();
   syncAdresse();
+  // Ce qui avait le focus a pu partir avec la zone d'où l'on vient : un champ que celle-ci n'a
+  // pas, le bouton de « Supprimer cette zone », une zone de l'autre case.
+  if (avant && avant !== document.body && focusTombe()) focusSurLaZone();
   const z = zoneCourante();
   return chargerMots().then(() => {
     if (zoneCourante() === z) { rendreMots(); rendreCorps(); rendreListe(); }
@@ -338,7 +342,7 @@ function rendreMini() {
     racine.appendChild(r);
   });
   for (const e of enfants) racine.appendChild(e);
-  boite.replaceChildren(racine);
+  redessinerSansPerdreLeFocus(boite, () => boite.replaceChildren(racine));
 }
 
 /* Les marques de la minicarte : la case en cours ; une case TERMINÉE pour la grille (et la
@@ -461,17 +465,56 @@ async function lirePersonnagesDeLaCase() {
   if (caseCourante() === c) rendreCase();
 }
 
-/* Un bouton redessiné garde le focus qu'avait celui qu'il remplace (passe du jalon 3) :
-   retiré du document, le bouton laissait le focus sur `body`, et le clavier perdait son
-   contour. `attribut` dit quel bouton est le même d'un dessin à l'autre. */
-function redessinerSansPerdreLeFocus(boite, attribut, dessiner) {
+/* Un contrôle redessiné garde le focus qu'avait celui qu'il remplace (passe du jalon 3) :
+   retiré du document, il laissait le focus sur `body`, et le clavier perdait son contour.
+   Le même contrôle se reconnaît d'un dessin à l'autre à sa balise et à ses `data-*`, qui disent
+   déjà ce qu'il désigne. S'il est parti avec son geste, `repli` dit où aller. Le focus ailleurs
+   n'est pas touché : ni le filtre, ni un champ qu'on est en train de remplir. Le navigateur
+   ne donne le contour qu'au clavier : une souris n'en gagne pas, et rien ne défile. */
+const FOCUS = { remis: false };       // le focus remis ici n'est pas un geste de la personne
+
+function remettreLeFocus(x) {
+  FOCUS.remis = true;
+  x.focus({ preventScroll: true });
+  FOCUS.remis = false;
+}
+
+function repereDe(x) { return `${x.tagName}|${JSON.stringify(x.dataset || {})}`; }
+
+function redessinerSansPerdreLeFocus(boite, dessiner, repli) {
   const actif = document.activeElement;
-  const cle = actif && boite.contains(actif) ? actif.getAttribute(attribut) : null;
+  const dedans = !!actif && actif !== boite && boite.contains(actif);
+  const garde = dedans ? { cle: repereDe(actif), debut: actif.selectionStart, fin: actif.selectionEnd,
+                           // Une précision n'existe qu'à son envoi : le dessin ne l'efface pas.
+                           valeur: actif.matches(".an-prec") ? actif.value : null } : null;
   dessiner();
-  if (cle === null) return;
-  const cible = [...boite.querySelectorAll(`[${attribut}]`)]
-    .find((b) => b.getAttribute(attribut) === cle);
-  if (cible) cible.focus();
+  if (!garde || actif.isConnected) return;
+  const cible = [...boite.querySelectorAll("button, input, textarea, select, [tabindex]")]
+    .find((x) => repereDe(x) === garde.cle);
+  if (!cible) {
+    const ailleurs = repli ? repli() : null;
+    if (ailleurs) remettreLeFocus(ailleurs);
+    return;
+  }
+  if (garde.valeur !== null) cible.value = garde.valeur;
+  remettreLeFocus(cible);
+  if (typeof garde.debut === "number" && cible.setSelectionRange) {
+    try { cible.setSelectionRange(garde.debut, garde.fin); } catch (e) { /* champ sans sélection */ }
+  }
+}
+
+/* Ce qui avait le focus a disparu, s'est éteint ou s'est caché. Un élément caché le garde pour
+   `activeElement` jusqu'au prochain dessin du navigateur : il faut le demander. */
+function focusTombe() {
+  const a = document.activeElement;
+  if (!a || a === document.body || !a.isConnected || a.disabled) return true;
+  return !a.getClientRects().length;
+}
+
+/* Le bouton de la zone courante : là où mène un geste dont le bouton n'est plus. */
+function focusSurLaZone() {
+  const b = $("#an-zones [aria-pressed='true']");
+  if (b) remettreLeFocus(b);
 }
 
 /* La rangée des zones de la case : la case elle-même, puis chacune de ses zones. Le chemin
@@ -491,7 +534,7 @@ function rendreZones() {
     if (titre) b.title = titre;
     return b;
   };
-  redessinerSansPerdreLeFocus(rangee, "data-zone", () => rangee.replaceChildren(
+  redessinerSansPerdreLeFocus(rangee, () => rangee.replaceChildren(
     bouton(null, c.case.pseudo ? "La planche" : "La case " + A.etiquette(c.case)),
     ...c.zones.map((z) => bouton(z.id, `${etiq.get(z.id)} · ${A.nomType(z.type)}`,
                                  A.estTexte(z.type) ? z.ocr_texte || "" : ""))));
@@ -554,16 +597,22 @@ async function rendreContexte() {
   $("#an-loc-input").setAttribute("aria-label",
     `Attribuer un locuteur ${(z && A_LA[z.type]) || ""}`.trim());
   // La note : le champ quand on écrit, sinon le texte. Une saisie pas encore partie sur la
-  // MÊME zone n'est pas écrasée par la relecture.
-  const garderNote = memeNote && S.note.sale;
+  // MÊME zone n'est pas écrasée par la relecture ; une saisie qui ATTEND un conflit revient
+  // au champ, quelle que soit la zone d'où l'on arrive : c'est elle que le bandeau promet.
+  const attente = saisieEnAttente("note", id);
+  const garderNote = (memeNote && S.note.sale) || !!attente;
   S.note = { region: lignes.has("note") ? id : null, sale: garderNote,
-             minuterie: garderNote ? S.note.minuterie : null };
+             minuterie: memeNote && S.note.sale ? S.note.minuterie : null };
   const champ = $("#an-note");
   champ.hidden = !gestes.has("note");
   $("#an-note-lu").hidden = gestes.has("note");
   $("#an-note-lu").textContent = "…";
   $("#an-note-lu").classList.add("muted");
-  if (!garderNote) {
+  if (attente) {
+    champ.value = attente.saisie;
+    champ.disabled = false;
+    marquerNote("attente");
+  } else if (!garderNote) {
     champ.disabled = true;                        // le temps de lire ce que la zone porte
     champ.value = "";
     marquerNote("");
@@ -578,13 +627,13 @@ async function rendreContexte() {
   $("#an-nom").hidden = !gestes.has("nom");
   $("#an-nom-lu").hidden = gestes.has("nom");
   if (detail) {
-    $("#an-nom").value = z.nom || "";
+    $("#an-nom").value = valeurDuChamp("nom", z);
     $("#an-nom-lu").textContent = z.nom || "—";
     $("#an-nom-lu").classList.toggle("muted", !z.nom);
   }
   montrer("#an-ctx-tr-t", gestes.has("transcription"));
   montrer("#an-ctx-tr", gestes.has("transcription"));
-  if (gestes.has("transcription")) $("#an-transcription").value = z.ocr_texte || "";
+  if (gestes.has("transcription")) $("#an-transcription").value = valeurDuChamp("ocr_texte", z);
   $("#an-zone-supprimer").hidden = !gestes.has("supprimer");
   if (!id) return;
   const lire = (chemin, cle) => apiGet(chemin).then((d) => d[cle]).catch(() => undefined);
@@ -631,10 +680,13 @@ function choisirLocuteur(pid, rid, nom) {
   return enchainer("loc", () => envoyerLocuteur(pid, rid, nom));
 }
 
-async function envoyerLocuteur(pid, rid, nom) {
+/* `vuDit` : la valeur vue quand le geste la connaît sans la zone — la réponse à un bandeau, qui
+   peut partir d'une autre zone. */
+async function envoyerLocuteur(pid, rid, nom, vuDit) {
   if (S.conflit) return;                          // le geste précédent a ouvert le bandeau
   const corps = { personnage_id: pid };
-  if (rid === S.loc.region && S.loc.vu !== undefined) corps.personnage_vu = S.loc.vu;
+  const vu = vuDit !== undefined ? vuDit : rid === S.loc.region ? S.loc.vu : undefined;
+  if (vu !== undefined) corps.personnage_vu = vu;
   try {
     const { locuteur } = await apiSend("PUT", `/api/regions/${rid}/locuteur`, corps);
     if (S.loc.region === rid) montrerLocuteur(locuteur);
@@ -652,9 +704,9 @@ function retirerLocuteur() {
   return enchainer("loc", () => envoyerRetraitLocuteur(rid));
 }
 
-async function envoyerRetraitLocuteur(rid) {
+async function envoyerRetraitLocuteur(rid, vuDit) {
   if (S.conflit) return;
-  const vu = rid === S.loc.region ? S.loc.vu : undefined;
+  const vu = vuDit !== undefined ? vuDit : rid === S.loc.region ? S.loc.vu : undefined;
   const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
   try {
     await apiSend("DELETE", `/api/regions/${rid}/locuteur${q}`);
@@ -682,7 +734,7 @@ function marquerNote(etat) {
 function noteModifiee() {
   if (S.note.region === null) return;
   S.note.sale = true;
-  marquerNote("envoi");
+  marquerNote(S.conflit ? "attente" : "envoi");
   clearTimeout(S.note.minuterie);
   const rid = S.note.region;
   S.note.minuterie = setTimeout(() => partirNote(rid), NOTE_DELAI_MS);
@@ -705,9 +757,10 @@ function viderNote() {
 async function envoyerNote(rid, texte) {
   const ici = rid === S.note.region;
   // Un conflit ouvert — sur cette note ou ailleurs — attend son choix : la note ne part pas
-  // (« un autre geste d'écriture le désigne au lieu de partir ») ; elle reste à envoyer, et
-  // part quand le conflit est réglé (`resoudreConflit`).
+  // (« un autre geste d'écriture le désigne au lieu de partir ») ; elle est RETENUE, et part
+  // quand le conflit est réglé (`resoudreConflit`).
   if (S.conflit) {
+    retenir("note", rid, texte);
     if (ici) { S.note.sale = true; marquerNote("attente"); }
     return;
   }
@@ -730,27 +783,97 @@ async function envoyerNote(rid, texte) {
   }
 }
 
-/* Un refus d'une ligne du Contexte : le 409 de CONC-3 ouvre le bandeau si l'on est encore
-   sur cette zone (sinon le dire) ; un 410, la zone supprimée ailleurs. Rend vrai s'il l'a
-   pris. `saisie` : le choix ({ id, nom }), null pour un retrait ; le texte pour une note. */
+/* Un refus d'une ligne du Contexte : le 409 de CONC-3 ouvre le bandeau, un 410 dit la zone
+   supprimée ailleurs, et rend le texte qui n'a plus où s'écrire. Rend vrai s'il l'a pris.
+   `saisie` : le choix ({ id, nom }), null pour un retrait ; le texte pour une note, un nom,
+   une transcription.
+
+   LA SAISIE VIT DANS LE CONFLIT (`S.conflit.saisie`) tant qu'il attend, jamais dans le champ :
+   le champ appartient à la zone affichée, et le bandeau reste ouvert d'une zone à l'autre.
+   Le refus peut donc revenir sur une zone QUITTÉE — la note part à la sortie du champ — : le
+   bandeau s'ouvre quand même, mais sans prendre le focus de ce qu'on fait maintenant. */
 function refusDuContexte(e, lieu, rid, saisie) {
   if (e && e.statut === 410) {
-    toast(BDConflit.messageSuppression(e.detail && e.detail.suppression, typeDeRegion(rid)), "", 8000);
+    const dit = BDConflit.messageSuppression(e.detail && e.detail.suppression, typeDeRegion(rid));
+    const perdu = typeof saisie === "string" ? saisie.trim() : "";
+    if (perdu) toast(`${dit} Votre texte n'est pas envoyé : « ${perdu} »`, "error", 12000);
+    else toast(dit, "", 8000);
     return true;
   }
   const c = e && e.statut === 409 && e.detail && e.detail.conflit;
   if (!c || c.champ !== lieu) return false;
-  const z = zoneCourante();
-  if (z && z.id === rid && !S.conflit) {
-    S.conflit = { sorte: "contexte", lieu, regionId: rid, detail: e.detail, saisie };
-    rendreGuide();
-    annoncer(BDConflit.titreConflit(c));
-    const b = $("#an-cf-mienne");
-    if (b) b.focus();
-  } else {
-    toast(BDConflit.messageNonEnregistre(c), "error", 8000);
+  if (S.conflit) {
+    // Un autre conflit attend déjà : ce texte passera après lui. Un choix de locuteur n'a pas
+    // de champ où attendre : il se dit.
+    if (CHAMPS_DE_SAISIE[lieu]) retenir(lieu, rid, saisie);
+    else toast(BDConflit.messageNonEnregistre(c), "error", 8000);
+    return true;
   }
+  const ici = (zoneCourante() || {}).id === rid;
+  const champ = ici && CHAMPS_DE_SAISIE[lieu] ? $(CHAMPS_DE_SAISIE[lieu]) : null;
+  // Le champ encore sous les doigts porte la dernière version ; sinon il reçoit celle qui
+  // attend — une relecture de la zone a pu l'écrire pendant l'aller-retour.
+  const enCours = !!champ && document.activeElement === champ;
+  S.conflit = { sorte: "contexte", lieu, regionId: rid, detail: e.detail,
+                saisie: enCours ? saisieDuChamp(lieu, champ) : saisie };
+  if (champ && !enCours) champ.value = S.conflit.saisie === null ? "" : S.conflit.saisie;
+  rendreGuide();
+  annoncer(BDConflit.titreConflit(c));
+  const b = $("#an-cf-mienne");
+  if (b && ici) b.focus();
   return true;
+}
+
+/* CE QUI ATTEND. Trois champs portent un texte (`CHAMPS_DE_SAISIE`), et un conflit ouvert les
+   retient tous : celui qu'il vise, dans `S.conflit.saisie` ; les autres, dans `RETENUES`, qui
+   partent quand il est réglé (`reprendreRetenues`). Ni l'un ni l'autre ne dépend du champ : on
+   change de zone pendant qu'un conflit attend, et le champ repart sur celle d'arrivée. */
+const CHAMPS_DE_SAISIE = { note: "#an-note", nom: "#an-nom", ocr_texte: "#an-transcription" };
+const RETENUES = new Map();           // « lieu:région » → { lieu, rid, saisie }
+const cleRetenue = (lieu, rid) => `${lieu}:${rid}`;
+
+function conflitSur(lieu, rid) {
+  const cf = S.conflit;
+  return !!cf && cf.sorte === "contexte" && cf.lieu === lieu && cf.regionId === rid;
+}
+
+/* La saisie telle qu'elle partirait : une note verbatim, un nom ou une transcription épurés. */
+function saisieDuChamp(lieu, champ) {
+  return lieu === "note" ? champ.value : champ.value.trim() || null;
+}
+
+function retenir(lieu, rid, saisie) {
+  if (conflitSur(lieu, rid)) S.conflit.saisie = saisie;
+  else RETENUES.set(cleRetenue(lieu, rid), { lieu, rid, saisie });
+  // Un envoi enchaîné peut arriver quand le champ n'a plus la dernière version.
+  const sel = CHAMPS_DE_SAISIE[lieu];
+  if ((zoneCourante() || {}).id === rid && document.activeElement !== $(sel)) {
+    $(sel).value = saisie === null ? "" : saisie;
+  }
+}
+
+/* Ce qui attend sur ce champ : `{ saisie }`, ou null. */
+function saisieEnAttente(lieu, rid) {
+  if (rid === null || rid === undefined) return null;
+  if (conflitSur(lieu, rid)) return { saisie: S.conflit.saisie };
+  return RETENUES.get(cleRetenue(lieu, rid)) || null;
+}
+
+/* Le nom ou la transcription que montre le champ d'une zone : ce qui attend, sinon la région. */
+function valeurDuChamp(lieu, z) {
+  const a = saisieEnAttente(lieu, z.id);
+  return (a ? a.saisie : z[lieu]) || "";
+}
+
+/* Le conflit est réglé : ce qu'il retenait part, une saisie après l'autre, dans l'ordre où
+   elles sont arrivées. Un nouveau conflit arrête la file : le reste attend sa réponse. */
+async function reprendreRetenues() {
+  for (const r of [...RETENUES.values()]) {
+    if (S.conflit) return;
+    RETENUES.delete(cleRetenue(r.lieu, r.rid));
+    if (r.lieu === "note") await enchainer("note", () => envoyerNote(r.rid, r.saisie));
+    else await enchainer(r.lieu, () => envoyerSiChange(r.rid, r.lieu, r.saisie));
+  }
 }
 
 /* Un conflit du Contexte se voit DEPUIS LE CHAMP (passe du jalon 3) : le bandeau naît en bas à
@@ -785,10 +908,12 @@ function bandeauDuContexte(cf) {
   const version = locuteur ? BDConflit.nomPersonnage(c.personnage, "locuteur")
     : c.valeur_actuelle === null || c.valeur_actuelle === undefined || c.valeur_actuelle === ""
       ? "—" : String(c.valeur_actuelle);
+  // Le bandeau suit d'une zone à l'autre : ailleurs, il dit où la saisie attend.
+  const ailleurs = cf.regionId === (zoneCourante() || {}).id ? null : laZoneDe(cf.regionId);
   return [
     el("p", { classe: "an-bandeau-titre", id: "an-cf-titre" },
        el("span", { "aria-hidden": "true", texte: "⚠ " }), BDConflit.titreConflit(c)),
-    el("p", { texte: quoi }),
+    el("p", { texte: ailleurs ? `${quoi} (${ailleurs})` : quoi }),
     el("p", { classe: "an-bandeau-version" },
        el("span", { classe: "muted", texte: "Version enregistrée : " }), version),
   ];
@@ -801,9 +926,11 @@ async function resoudreConflitDuContexte(cf, garderMienne) {
   const ici = cf.regionId === (zoneCourante() || {}).id;
   if (cf.lieu === "locuteur") {
     if (garderMienne) {
-      if (ici) S.loc.vu = c.valeur_actuelle === undefined ? null : c.valeur_actuelle;
-      await (cf.saisie ? choisirLocuteur(cf.saisie.id, cf.regionId, cf.saisie.nom)
-        : enchainer("loc", () => envoyerRetraitLocuteur(cf.regionId)));
+      const vu = c.valeur_actuelle === undefined ? null : c.valeur_actuelle;
+      if (ici) S.loc.vu = vu;
+      await enchainer("loc", () => (cf.saisie
+        ? envoyerLocuteur(cf.saisie.id, cf.regionId, cf.saisie.nom, vu)
+        : envoyerRetraitLocuteur(cf.regionId, vu)));
     } else {
       if (ici) montrerLocuteur(c.personnage || null);
       annoncer("La version enregistrée est gardée.");
@@ -818,8 +945,7 @@ async function resoudreConflitDuContexte(cf, garderMienne) {
     if (loc) loc[cf.lieu] = autre;
     const champ = $(cf.lieu === "nom" ? "#an-nom" : "#an-transcription");
     if (garderMienne) {
-      const valeur = ici ? champ.value.trim() || null : cf.saisie;
-      await enchainer(cf.lieu, () => ecrireChampDeZone(cf.regionId, cf.lieu, valeur, autre));
+      await enchainer(cf.lieu, () => ecrireChampDeZone(cf.regionId, cf.lieu, cf.saisie, autre));
     } else {
       if (ici) champ.value = autre || "";
       if (cf.lieu === "nom") rendreCase();
@@ -830,10 +956,9 @@ async function resoudreConflitDuContexte(cf, garderMienne) {
   }
   const actuelle = c.valeur_actuelle === null || c.valeur_actuelle === undefined ? "" : c.valeur_actuelle;
   if (garderMienne) {
-    const texte = ici ? $("#an-note").value : cf.saisie;
     NOTES_VUES.set(cf.regionId, actuelle);
     if (ici) S.note.sale = true;
-    await enchainer("note", () => envoyerNote(cf.regionId, texte));
+    await enchainer("note", () => envoyerNote(cf.regionId, cf.saisie));
   } else {
     NOTES_VUES.set(cf.regionId, actuelle);
     if (ici) {
@@ -1011,12 +1136,13 @@ function brancherTrace() {
   $("#an-trace").addEventListener("click", (e) => {
     const b = e.target.closest("[data-trace]");
     if (!b) return;
-    if (!b.dataset.trace) { annulerTrace(); return; }
+    if (!b.dataset.trace) { annulerTrace(); $("#an-tracer").focus(); return; }
     creerZoneTracee(b.dataset.trace);
   });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !($("#an-trace").hidden === false || TR.depart || S.tracer)) return;
-    const auClavier = !!TR.clavier;
+    // Le rectangle au clavier, ou les boutons de la sorte : ils partent avec le tracé.
+    const auClavier = !!TR.clavier || $("#an-trace").contains(document.activeElement);
     annulerTrace();
     if (auClavier) $("#an-tracer").focus();
   });
@@ -1036,6 +1162,7 @@ async function creerZoneTracee(type) {
       type, ...rect, parent_id: c.case.pseudo ? null : c.case.id, source: "manuel" });
   } catch (err) {
     toast(err.message || "Refusé.", "error");
+    if (focusTombe()) $("#an-tracer").focus();
     return;
   }
   annoncer(type === "detail" ? "Détail tracé : nommez-le." : "Texte tracé : transcrivez-le.");
@@ -1051,22 +1178,31 @@ async function creerZoneTracee(type) {
    (`vu`, CONC-3), lue sur la région de la planche au moment où le geste PART. */
 function regionLue(id) { return S.regions.find((x) => x.id === id) || null; }
 
+function valeurLue(rid, champ) {
+  const r = regionLue(rid);
+  return r ? r[champ] || null : null;
+}
+
 function envoyerChampDeZone(champ, valeur) {
   const z = zoneCourante();
   if (!z || z.pseudo || !ecrivable()) return null;
   const rid = z.id;
-  const actuel = (r) => (r ? (champ === "nom" ? r.nom : r.ocr_texte) || null : null);
-  if (actuel(regionLue(rid)) === valeur) return null;
+  if (valeurLue(rid, champ) === valeur) return null;
   if (conflitOuvert()) return null;
-  return enchainer(champ, () => {
-    const vu = actuel(regionLue(rid));
-    if (vu === valeur) return null;
-    return ecrireChampDeZone(rid, champ, valeur, vu);
-  });
+  return enchainer(champ, () => envoyerSiChange(rid, champ, valeur));
+}
+
+/* La valeur vue se lit quand le geste PART, après la réponse du précédent. */
+function envoyerSiChange(rid, champ, valeur) {
+  const vu = valeurLue(rid, champ);
+  return vu === valeur ? null : ecrireChampDeZone(rid, champ, valeur, vu);
 }
 
 async function ecrireChampDeZone(rid, champ, valeur, vu) {
-  if (S.conflit) return null;
+  if (S.conflit) {                        // le geste précédent a ouvert le bandeau
+    retenir(champ, rid, valeur);
+    return null;
+  }
   let r;
   try {
     r = await apiSend("PUT", `/api/regions/${rid}`, { [champ]: valeur, vu: { [champ]: vu } });
@@ -1077,6 +1213,12 @@ async function ecrireChampDeZone(rid, champ, valeur, vu) {
   }
   const loc = regionLue(rid);
   if (loc) { loc.nom = r.nom; loc.ocr_texte = r.ocr_texte; }
+  // Un dessin du Contexte a pu relire la zone pendant l'aller-retour : le champ suit, sauf sous
+  // les doigts.
+  const sel = CHAMPS_DE_SAISIE[champ];
+  if ((zoneCourante() || {}).id === rid && document.activeElement !== $(sel)) {
+    $(sel).value = r[champ] || "";
+  }
   if (champ === "nom") {
     annoncer(r.nom ? `Nom : ${r.nom}.` : "Nom retiré.");
     rendreCase();
@@ -1120,11 +1262,17 @@ async function supprimerZone() {
 function brancherZonesTracees() {
   brancherTrace();
   const nom = $("#an-nom");
+  const tr = $("#an-transcription");
+  // Retouchés pendant qu'un conflit attend, ils ne partent pas : la dernière version attend.
+  for (const [lieu, champ] of [["nom", nom], ["ocr_texte", tr]]) {
+    champ.addEventListener("input", () => {
+      if (S.conflit && zoneCourante()) retenir(lieu, zoneCourante().id, saisieDuChamp(lieu, champ));
+    });
+  }
   nom.addEventListener("change", () => envoyerChampDeZone("nom", nom.value.trim() || null));
   nom.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); envoyerChampDeZone("nom", nom.value.trim() || null); }
   });
-  const tr = $("#an-transcription");
   tr.addEventListener("change", () => envoyerChampDeZone("ocr_texte", tr.value.trim() || null));
   $("#an-zone-supprimer").addEventListener("click", supprimerZone);
 }
@@ -1228,7 +1376,7 @@ function rendreOnglets() {
   const visibles = A.grillesVisibles(S.grilles, S.collection);
   const z = zoneCourante();
   const cible = S.planche && z ? A.cibleDePasse(z, S.planche.id) : null;
-  liste.replaceChildren(...visibles.map((g) => {
+  redessinerSansPerdreLeFocus(liste, () => liste.replaceChildren(...visibles.map((g) => {
     const n = A.compter(ici, g.id, null).total;
     const choisi = g.id === S.grilleId;
     const fini = A.terminee(S.passes, cible, g.id, "", planDe(g)).terminee;
@@ -1240,7 +1388,7 @@ function rendreOnglets() {
               fini ? el("span", { classe: "an-fini", "aria-hidden": "true", texte: "✓ " }) : null,
               g.nom, n ? el("span", { classe: "an-n", texte: ` (${n})` }) : null,
               fini ? el("span", { classe: "sr-only", texte: " — terminée ici" }) : null);
-  }));
+  })));
   const corps = $("#an-grille-corps");
   if (S.grilleId !== null) corps.setAttribute("aria-labelledby", `an-onglet-${S.grilleId}`);
   else corps.setAttribute("aria-labelledby", "an-grille-titre");
@@ -1290,7 +1438,8 @@ function rendreCorps() {
   S.etats = new Map(plan.entrees.map((e) => [e.cle,
     A.relevesSurLaCible(S.releves, g.id, e.cle, A.cibleDePose(e, ctx))]));
   const tete = A.arbre(plan).filter((r) => S.vue === "*" || r.cle === S.vue);
-  arbre.replaceChildren(...tete.map((r) => rubrique(g, plan, r, n, 3)));
+  redessinerSansPerdreLeFocus(arbre, () => arbre.replaceChildren(
+    ...tete.map((r) => rubrique(g, plan, r, n, 3))));
 }
 
 function rubrique(g, plan, noeud, n, niveau) {
@@ -1577,9 +1726,6 @@ function brancherGrille() {
       const cle = `${S.grilleId}:${rub.dataset.rub}`;
       if (S.replis.has(cle)) S.replis.delete(cle); else S.replis.add(cle);
       rendreCorps();
-      const remis = [...document.querySelectorAll("#an-plan [data-rub]")]
-        .find((b) => b.dataset.rub === rub.dataset.rub);
-      if (remis) remis.focus();
       return;
     }
     const b = e.target.closest("[data-guide-e]");
@@ -1607,6 +1753,7 @@ function brancherGrille() {
     if (b) montrerGuide(b.dataset.guideE, b.dataset.guideV);
   });
   plan.addEventListener("focusin", (e) => {
+    if (FOCUS.remis) return;                     // un redessin : la ligne du guide ne change pas
     const b = e.target.closest("[data-guide-e]");
     if (b) montrerGuide(b.dataset.guideE, b.dataset.guideV);
   });
@@ -1645,7 +1792,9 @@ function brancherGrille() {
   });
   $("#an-ailleurs").addEventListener("click", (e) => {
     const b = e.target.closest("[data-grille]");
-    if (b) choisirGrille(Number(b.dataset.grille));
+    if (!b) return;
+    choisirGrille(Number(b.dataset.grille));
+    champ.focus();                               // le bouton part avec son geste ; on cherche encore
   });
   // « / » cherche dans la grille, hors d'un champ de saisie.
   document.addEventListener("keydown", (e) => {
@@ -1724,7 +1873,7 @@ function rendrePorte() {
   const c = caseCourante();
   const opts = plan ? A.optionsPorteSur(plan, zoneCourante(), c ? c.case : null) : [];
   if (!opts.some((o) => o.cle === S.porte)) S.porte = opts.length ? opts[0].cle : null;
-  redessinerSansPerdreLeFocus(boite, "data-porte", () => boite.replaceChildren(
+  redessinerSansPerdreLeFocus(boite, () => boite.replaceChildren(
     el("span", { classe: "an-gr-lbl", texte: "Porte sur" }),
     ...(opts.length ? opts.map((o) => el("button", {
       type: "button", classe: "ghost small an-porte-btn", "data-porte": o.cle,
@@ -2163,6 +2312,8 @@ async function resoudreConflit(garderMienne) {
     rendreGuide();
     await resoudreConflitDuContexte(cf, garderMienne);
     rendreGuide();
+    focusApresConflit(cf);
+    await reprendreRetenues();
     noteEnAttente();
     return;
   }
@@ -2182,7 +2333,19 @@ async function resoudreConflit(garderMienne) {
     annoncer("La version enregistrée est gardée.");
   }
   rendreGuide();
+  focusApresConflit(cf);
+  await reprendreRetenues();
   noteEnAttente();
+}
+
+/* Les boutons du bandeau partent avec lui. Le champ d'un conflit du Contexte a repris le focus
+   sur sa zone (`resoudreConflitDuContexte`) ; ailleurs, le bouton de la zone où l'on est. Pour
+   un relevé, son entrée dans la grille, ou le filtre si elle n'est pas dessinée. */
+function focusApresConflit(cf) {
+  if (!focusTombe()) return;
+  if (!cf.e) { focusSurLaZone(); return; }
+  const entree = document.getElementById(`an-ent-${cf.e.cle}`);
+  remettreLeFocus(entree && entree.getClientRects().length ? entree : $("#an-filtre"));
 }
 
 async function relireReleves() {
@@ -2215,22 +2378,35 @@ function rendreListe() {
   const montres = A.listeSurLaZone(relevesMontres(), z, c ? c.case : null, plancheId, sel);
   // Le relevé de la PLANCHE se lit partout, en bas et à part (Hugo, 2026-10-30).
   const surface = z.pseudo ? [] : A.relevesDeSurface(relevesMontres(), plancheId);
-  liste.replaceChildren(...(montres.length ? montres.map(itemReleve)
-    : [el("li", { classe: "an-pose-vide muted", texte: "—" })]),
+  // ✕ part avec son relevé : le ✕ suivant, pour en retirer plusieurs de suite.
+  redessinerSansPerdreLeFocus(liste, () => liste.replaceChildren(
+    ...(montres.length ? montres.map(itemReleve)
+      : [el("li", { classe: "an-pose-vide muted", texte: "—" })]),
     ...(surface.length ? [el("li", { classe: "an-pose-groupe", id: "an-poses-planche",
                                      texte: "Sur la planche" }),
-                          ...surface.map(itemReleve)] : []));
+                          ...surface.map(itemReleve)] : [])),
+  () => liste.querySelector("[data-retirer]") || $("#an-releves-btn"));
   rendrePopover();
   rendreBarre();
 }
 
 /* « la bulle b1 », « le cartouche b2 », « la case c3 », « la boîte p1 ». */
-function laZone(z) {
-  const c = caseCourante();
-  const etiq = z.type === "case" ? A.etiquette(z) : c ? A.etiquettesDeLaCase(c).get(z.id) : "";
+function nommerZone(z, etiq) {
   const nom = z.type === "personnage" ? "la boîte"
     : `${["cartouche", "texte", "detail"].includes(z.type) ? "le" : "la"} ${A.nomType(z.type)}`;
   return `${nom} ${etiq || ""}`.trim();
+}
+
+function laZone(z) {
+  const c = caseCourante();
+  return nommerZone(z, z.type === "case" ? A.etiquette(z)
+    : c ? A.etiquettesDeLaCase(c).get(z.id) : "");
+}
+
+/* La même, pour une région de la planche qui n'est pas la zone courante ; null hors d'elle. */
+function laZoneDe(id) {
+  const r = regionLue(id);
+  return r ? nommerZone(r, etiquetteDe({ region_id: id })) : null;
 }
 
 function itemReleve(r) {
@@ -2301,7 +2477,7 @@ function rendrePopover() {
   const pop = $("#an-releves-pop");
   const m = A.grillesMontrees(S.reglage, S.grilles, S.grilleId);
   const g = grilleOuverte();
-  pop.replaceChildren(...S.grilles.map((x) => el("label", { classe: "an-pop-l" },
+  redessinerSansPerdreLeFocus(pop, () => pop.replaceChildren(...S.grilles.map((x) => el("label", { classe: "an-pop-l" },
     el("input", { type: "checkbox", "data-voir": x.id, checked: m.has(x.id),
                   disabled: x.id === S.grilleId }),
     ` ${x.nom}`, x.id === S.grilleId ? el("span", { classe: "muted small", texte: " · ouverte" })
@@ -2309,7 +2485,7 @@ function rendrePopover() {
   el("div", { classe: "an-pop-gestes" },
      el("button", { type: "button", classe: "ghost small", "data-voir-tout": "1", texte: "Toutes" }),
      el("button", { type: "button", classe: "ghost small", "data-voir-seule": "1",
-                    texte: `${g ? g.nom : "La grille"} seule` })));
+                    texte: `${g ? g.nom : "La grille"} seule` }))));
 }
 
 function changerReglage(ids) {
@@ -2736,24 +2912,14 @@ function rendreSynthese() {
   }
   if (S.gauche !== "synthese") return;
   const corps = $("#an-syn-corps");
-  // Redessiner ne fait pas perdre la saisie en cours ni sa place (une réponse, une précision).
-  const actif = document.activeElement && corps.contains(document.activeElement)
-    ? document.activeElement : null;
-  const garde = actif && actif.id ? { id: actif.id, debut: actif.selectionStart,
-                                      fin: actif.selectionEnd } : null;
-  if (!S.planche) corps.replaceChildren(el("p", { classe: "muted", texte: "—" }));
-  else if (S.synVue === "revoir") corps.replaceChildren(...vueARevoir(montres));
-  else if (S.synVue === "decompte") corps.replaceChildren(...vueDecompte());
-  else corps.replaceChildren(...vueRelevesParCase(montres));
-  if (garde) {
-    const x = document.getElementById(garde.id);
-    if (x) {
-      x.focus();
-      if (typeof garde.debut === "number" && x.setSelectionRange) {
-        try { x.setSelectionRange(garde.debut, garde.fin); } catch (e) { /* champ sans sélection */ }
-      }
-    }
-  }
+  // Redessiner ne fait perdre ni le focus, ni la place dans une saisie (une réponse, une
+  // précision) ; un bouton parti avec son geste (« Garder ») rend le focus à la vue.
+  redessinerSansPerdreLeFocus(corps, () => {
+    if (!S.planche) corps.replaceChildren(el("p", { classe: "muted", texte: "—" }));
+    else if (S.synVue === "revoir") corps.replaceChildren(...vueARevoir(montres));
+    else if (S.synVue === "decompte") corps.replaceChildren(...vueDecompte());
+    else corps.replaceChildren(...vueRelevesParCase(montres));
+  }, () => $("#an-syn-vues [aria-pressed='true']"));
 }
 
 /* Synthèse › Relevés : toute la planche par case, dans l'ordre de lecture, puis la planche ;
@@ -2969,7 +3135,7 @@ async function ouvrirReleve(r, opts) {
     S.vue = "*";
     S.guide = null;
   }
-  fermerTiroir(false);                       // un clic ouvre le relevé : on va le voir
+  fermerTiroir(true);                        // un clic ouvre le relevé : on va le voir
   await choisir(ou.caseIx, ou.zoneId);
   if (!sansMots && A.motsDuReleve(r).length && S.mots && S.mots.region_id === r.region_id) {
     const n = S.mots.mots.length;
@@ -3396,8 +3562,11 @@ function brancher() {
     e.target.value = String(id);
     if (id) ouvrirPlanche(id).catch((err) => toast(err.message, "error"));
   });
-  $("#an-actualiser").addEventListener("click", () =>
-    actualiserPlanche().catch((err) => toast(err.message, "error")));
+  $("#an-actualiser").addEventListener("click", async () => {
+    const tenait = document.activeElement === $("#an-actualiser");
+    await actualiserPlanche().catch((err) => toast(err.message, "error"));
+    if (tenait && focusTombe()) focusSurLaZone();   // le bouton se cache une fois la planche relue
+  });
   // Le signal : de temps en temps, et au retour sur l'onglet.
   setInterval(verifierPlanche, BDSignal.INTERVALLE_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) verifierPlanche(); });
@@ -3577,6 +3746,8 @@ async function marquerTerminee() {
   }
   apresPasse();
   aller(1);
+  // Plus rien à marquer : le bouton s'est éteint sous le focus.
+  if (focusTombe()) ($("#an-rouvrir").hidden ? $("#an-suiv") : $("#an-rouvrir")).focus();
 }
 
 /* « Rouvrir » : la zone n'est plus terminée — la passe de la rubrique et celle de toute la

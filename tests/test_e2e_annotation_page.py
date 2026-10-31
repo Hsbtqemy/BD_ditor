@@ -2041,3 +2041,854 @@ def test_l_arbre_de_l_atelier_ecrit_detail_avec_son_accent(page, decor):
     # Les valeurs ne changent pas : le serveur lit toujours « detail ».
     expect(page.locator("#region-type")).to_have_value("detail")
     assert _regions(decor)[d]["type"] == "detail"
+
+
+# --------------------------------------------------------------------------- #
+# Tranche 2, commit 15 — une saisie en conflit survit, et le focus reste où l'on agit
+# --------------------------------------------------------------------------- #
+def _zone(page, texte):
+    page.locator("#an-zones .an-zone-btn", has_text=texte).click()
+    expect(page.locator("#an-tete-zone")).to_contain_text(texte)
+
+
+def _lire_note(d, rid):
+    with _http(d) as c:
+        return c.get(f"/api/regions/{rid}/annotation").json()["note"]
+
+
+def _retenir_les_envois(page, motif, methode="PUT"):
+    """Retient les écritures vers `motif` jusqu'à `lacher()` ; les lectures passent, et les
+    écritures d'après aussi."""
+    retenues, actif = [], [True]
+
+    def gerer(route):
+        if actif[0] and route.request.method == methode:
+            retenues.append(route)
+        else:
+            route.continue_()
+
+    def lacher():
+        actif[0] = False
+        retenues[0].continue_()
+
+    page.route(motif, gerer)
+    return retenues, lacher
+
+
+def _prepare_conflit(page, d, champ):
+    """Ouvre `champ` et son conflit. Rend ce que chaque test en lit : le champ, sa zone, et de
+    quoi lire la base."""
+    if champ == "note":
+        rid, zone, sel, autre_zone = d["bulle"], "bulle", "#an-note", "personnage"
+        _ouvrir(page, d, rid)
+        expect(page.locator(sel)).to_have_value("il jure")
+        _conflit_de_note(page, d, "Version autre", "Ma version")
+        lire = lambda: _lire_note(d, rid)  # noqa: E731
+        chemin, cle = f"/regions/{rid}/annotation", "note"
+    elif champ == "nom":
+        rid, zone, sel, autre_zone = _detail(d, nom="la lampe"), "détail", "#an-nom", "bulle"
+        _ouvrir(page, d, rid)
+        expect(page.locator(sel)).to_have_value("la lampe")
+        _conflit_de_nom(page, d, rid, "Version autre", "Ma version")
+        lire = lambda: _regions(d)[rid]["nom"]  # noqa: E731
+        chemin, cle = f"/regions/{rid}", "nom"
+    else:
+        rid, zone, sel, autre_zone = _texte_hors_bulle(d), "texte", "#an-transcription", "bulle"
+        _ouvrir(page, d, rid)
+        expect(page.locator(sel)).to_have_value("PSST")
+        _conflit_de_transcription(page, d, rid, "Version autre", "Ma version")
+        lire = lambda: _regions(d)[rid]["ocr_texte"]  # noqa: E731
+        chemin, cle = f"/regions/{rid}", "ocr_texte"
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    return {"champ": champ, "rid": rid, "zone": zone, "sel": sel, "autre": autre_zone,
+            "lire": lire, "chemin": chemin, "cle": cle}
+
+
+def _part_en(page, cf, attendu):
+    """« Remplacer par la mienne » : mesure LA requête partie, avec la valeur vue."""
+    with page.expect_request(lambda r: r.url.endswith(cf["chemin"]) and r.method == "PUT") as q:
+        page.locator("#an-cf-mienne").click()
+    corps = q.value.post_data_json
+    assert corps[cf["cle"]] == attendu
+    assert (corps["note_vue"] if cf["champ"] == "note" else corps["vu"][cf["cle"]]) == "Version autre"
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert cf["lire"]() == attendu
+
+
+@pytest.mark.parametrize("champ", ["note", "nom", "transcription"])
+@pytest.mark.parametrize("retouche", [False, True], ids=["telle-quelle", "retouchee"])
+def test_une_saisie_en_conflit_survit_a_un_aller_retour(page, decor, champ, retouche):
+    """Conflit ouvert, on change de zone, on revient : le champ montre MA saisie — la dernière,
+    retouchée après le 409 s'il le faut —, et « Remplacer par la mienne » l'écrit. Le champ
+    repartait sur la version de l'autre (ou l'ancienne), et le bouton n'écrivait rien de neuf."""
+    cf = _prepare_conflit(page, decor, champ)
+    mienne = "Ma version"
+    if retouche:
+        mienne = "Ma version, retouchée"
+        page.locator(cf["sel"]).fill(mienne)
+    _zone(page, cf["autre"])
+    _zone(page, cf["zone"])
+    page.wait_for_load_state("networkidle")
+    expect(page.locator(cf["sel"])).to_have_value(mienne)
+    expect(page.locator(".an-en-conflit")).to_have_count(1)
+    _part_en(page, cf, mienne)
+    expect(page.locator(cf["sel"])).to_have_value(mienne)
+
+
+@pytest.mark.parametrize("champ", ["note", "nom", "transcription"])
+def test_une_saisie_en_conflit_part_aussi_depuis_une_autre_zone(page, decor, champ):
+    """Le bandeau reste ouvert d'une zone à l'autre : y répondre d'ailleurs écrit la saisie
+    retouchée, pas celle du premier refus."""
+    cf = _prepare_conflit(page, decor, champ)
+    page.locator(cf["sel"]).fill("Ma version, retouchée")
+    _zone(page, cf["autre"])
+    _part_en(page, cf, "Ma version, retouchée")
+
+
+@pytest.mark.parametrize("champ", ["note", "nom", "transcription"])
+def test_garder_l_autre_jette_la_saisie_apres_un_aller_retour(page, decor, champ):
+    cf = _prepare_conflit(page, decor, champ)
+    _zone(page, cf["autre"])
+    _zone(page, cf["zone"])
+    envois = []
+    page.on("request", lambda r: envois.append(r.url) if r.method == "PUT" else None)
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator(cf["sel"])).to_have_value("Version autre")
+    page.locator(cf["sel"]).blur()
+    page.wait_for_timeout(700)
+    assert envois == []
+    assert cf["lire"]() == "Version autre"
+
+
+def test_un_choix_de_locuteur_en_conflit_survit_et_declare_la_version_vue(page, decor):
+    """Le choix vit dans le conflit. Répondu DEPUIS UNE AUTRE ZONE, il déclare quand même ce
+    que le bandeau a montré : sans quoi un troisième serait écrasé sans le dire."""
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    _conflit_de_locuteur(page, decor, "Zed", "Yann")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    with _http(decor) as c:
+        zed = c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["id"]
+    _zone(page, "personnage")
+    with page.expect_request(lambda r: r.url.endswith("/locuteur") and r.method == "PUT") as q:
+        page.locator("#an-cf-mienne").click()
+    assert q.value.post_data_json["personnage_vu"] == zed
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["nom"] == "Yann"
+    # Retour sur la zone, un autre conflit : le choix survit de même.
+    _zone(page, "bulle")
+    expect(page.locator("#an-loc-nom")).to_have_text("Yann")
+    _conflit_de_locuteur(page, decor, "Xavier", "Willy")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    _zone(page, "personnage")
+    _zone(page, "bulle")
+    expect(page.locator("#an-loc-nom")).to_have_text("Xavier")
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator("#an-loc-nom")).to_have_text("Willy")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["nom"] == "Willy"
+
+
+def test_une_autre_planche_attend_le_conflit_meme_depuis_une_autre_zone(page, decor):
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=180,
+                      headers=ECRITURE) as c:
+        p2 = c.post(f"/api/albums/{decor['album']}/import",
+                    files={"file": ("p2.png", make_png(800, 1000), "image/png")}).json()["id"]
+    cf = _prepare_conflit(page, decor, "nom")
+    page.locator(cf["sel"]).fill("Ma version, retouchée")
+    _zone(page, "bulle")
+    page.locator("#an-planche-choix").select_option(str(p2))
+    expect(page.locator("#an-cf-mienne")).to_be_focused()
+    expect(page.locator("#an-planche-choix")).to_have_value(str(decor["planche"]))
+    _zone(page, "détail")
+    expect(page.locator(cf["sel"])).to_have_value("Ma version, retouchée")
+    _part_en(page, cf, "Ma version, retouchée")
+
+
+@pytest.mark.parametrize("champ", ["note", "nom", "transcription"])
+def test_actualiser_ne_perd_rien_d_une_saisie_en_conflit(page, decor, champ):
+    cf = _prepare_conflit(page, decor, champ)
+    page.locator(cf["sel"]).fill("Ma version, retouchée")
+    _poser(decor, region_id=decor["c2"], entree_cle="regard-camera")
+    _retour_sur_l_onglet(page)
+    bouton = page.locator("#an-actualiser")
+    expect(bouton).to_be_visible()
+    bouton.click()
+    expect(page.locator("#an-cf-mienne")).to_be_focused()
+    expect(page.locator(cf["sel"])).to_have_value("Ma version, retouchée")
+    _part_en(page, cf, "Ma version, retouchée")
+
+
+@pytest.mark.parametrize("champ", ["note", "nom", "transcription"])
+def test_une_saisie_retenue_par_un_autre_conflit_survit_et_part(page, decor, champ):
+    """Un AUTRE conflit attend (sur le locuteur de la bulle) : le champ ne part pas. Changer de
+    zone l'effaçait sans un mot ; il revient au retour, et part quand le conflit est réglé."""
+    if champ == "note":
+        rid, sel, zone = decor["boite"], "#an-note", "personnage"
+        lire = lambda: _lire_note(decor, rid)  # noqa: E731
+    elif champ == "nom":
+        rid, sel, zone = _detail(decor, nom="la lampe"), "#an-nom", "détail"
+        lire = lambda: _regions(decor)[rid]["nom"]  # noqa: E731
+    else:
+        rid, sel, zone = _texte_hors_bulle(decor), "#an-transcription", "texte"
+        lire = lambda: _regions(decor)[rid]["ocr_texte"]  # noqa: E731
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    _conflit_de_locuteur(page, decor, "Zed", "Yann")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    _zone(page, zone)
+    page.wait_for_load_state("networkidle")
+    page.locator(sel).fill("Ma saisie")
+    page.locator(sel).blur()
+    _zone(page, "bulle")
+    _zone(page, zone)
+    page.wait_for_load_state("networkidle")
+    expect(page.locator(sel)).to_have_value("Ma saisie")
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_timeout(300)
+    page.wait_for_load_state("networkidle")
+    assert lire() == "Ma saisie"
+
+
+def test_un_refus_arrive_apres_le_depart_de_la_zone_ouvre_le_bandeau(page, decor):
+    """La note part à la sortie du champ, et le 409 revient quand on est déjà ailleurs : un
+    toast disait « la vôtre n'a pas été enregistrée », et le texte était perdu. Le conflit
+    s'ouvre, sans prendre le focus de ce qu'on fait maintenant, et la note attend sur sa zone."""
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    with _http(decor) as c:
+        assert c.put(f"/api/regions/{decor['bulle']}/annotation",
+                     json={"note": "Version autre"}).status_code == 200
+    retenues, lacher = _retenir_les_envois(page, "**/api/regions/*/annotation")
+    page.locator("#an-note").fill("Ma version")
+    bouton = page.locator("#an-zones .an-zone-btn", has_text="personnage")
+    bouton.click()
+    expect(page.locator("#an-tete-zone")).to_contain_text("personnage")
+    assert len(retenues) == 1
+    lacher()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(page.locator("#an-guide-contenu")).to_contain_text("bulle b1")
+    expect(bouton).to_be_focused()
+    expect(page.locator(".an-en-conflit")).to_have_count(0)
+    _zone(page, "bulle")
+    page.wait_for_load_state("networkidle")
+    expect(page.locator("#an-note")).to_have_value("Ma version")
+    expect(page.locator("#an-ctx-note.an-en-conflit")).to_have_count(1)
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert _lire_note(decor, decor["bulle"]) == "Ma version"
+
+
+def test_un_refus_revenu_sur_la_meme_zone_rend_la_saisie_au_champ(page, decor):
+    """Un clic sur la zone où l'on est relit le Contexte pendant que la note est en vol : le
+    champ reprenait la version de l'autre sous le bandeau qui promet « elle reste »."""
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    with _http(decor) as c:
+        assert c.put(f"/api/regions/{decor['bulle']}/annotation",
+                     json={"note": "Version autre"}).status_code == 200
+    retenues, lacher = _retenir_les_envois(page, "**/api/regions/*/annotation")
+    page.locator("#an-note").fill("Ma version")
+    page.locator("#an-zones .an-zone-btn", has_text="bulle").click()
+    page.wait_for_load_state("networkidle")
+    assert len(retenues) == 1
+    lacher()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(page.locator("#an-note")).to_have_value("Ma version")
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert _lire_note(decor, decor["bulle"]) == "Ma version"
+
+
+def test_une_note_sur_une_zone_supprimee_ailleurs_se_dit_avec_son_texte(page, decor):
+    """« Remplacer par la mienne » sur une zone supprimée entre-temps : il n'y a plus où
+    l'écrire, et le message rend le texte, comme pour un doute dont le relevé a été retiré."""
+    t = _texte_hors_bulle(decor)
+    _ouvrir(page, decor, t)
+    expect(page.locator("#an-transcription")).to_have_value("PSST")
+    page.wait_for_load_state("networkidle")
+    with _http(decor) as c:
+        assert c.put(f"/api/regions/{t}/annotation", json={"note": "Version autre"}).status_code == 200
+    page.locator("#an-note").fill("Ma note perdue")
+    page.locator("#an-note").blur()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    with _http(decor) as c:
+        assert c.delete(f"/api/regions/{t}").status_code in (200, 204)
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#toasts")).to_contain_text("Ma note perdue")
+
+
+# Le focus au clavier. Le contour se lit : `:focus-visible` et un trait réel, à Entrée comme à
+# Espace ; une souris n'en gagne pas.
+_CONTOUR = """() => { const a = document.activeElement; const s = getComputedStyle(a);
+  return { tag: a.tagName, visible: a.matches(':focus-visible'),
+           trait: s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0 }; }"""
+
+
+def _au_clavier(page, cible):
+    """Le focus arrive sur `cible` par une touche, comme à la main : c'est ce qui donne le
+    contour du clavier."""
+    cible.focus()
+    page.keyboard.press("Shift+Tab")
+    page.keyboard.press("Tab")
+    expect(cible).to_be_focused()
+
+
+def _focus_tenu(page, cible):
+    expect(cible).to_be_focused()
+    page.wait_for_load_state("networkidle")
+    expect(cible).to_be_focused()
+    c = page.evaluate(_CONTOUR)
+    assert c["visible"] and c["trait"], c
+
+
+TOUCHES = pytest.mark.parametrize("touche", ["Enter", " "], ids=["entree", "espace"])
+
+
+@TOUCHES
+def test_poser_au_clavier_garde_le_focus_sur_l_entree_ou_la_variante(page, decor, touche):
+    """Le geste principal au clavier : l'entrée redessinée garde le contour, et l'on enchaîne
+    sans repartir du haut de la page."""
+    _ouvrir(page, decor, decor["c2"])
+    regard = page.locator("#an-ent-regard-camera")
+    _au_clavier(page, regard)
+    page.keyboard.press(touche)
+    expect(regard).to_have_attribute("aria-checked", "true")
+    _focus_tenu(page, regard)
+    page.keyboard.press(touche)
+    expect(regard).to_have_attribute("aria-checked", "false")
+    _focus_tenu(page, regard)
+    # Une variante, sur la bulle ; puis sa voisine, par Tab, sans revenir au début.
+    page.locator('#an-zones .an-zone-btn', has_text="La case").first.click()
+    _ouvrir(page, decor, decor["bulle"])
+    crie = page.locator("#an-plan .an-var", has_text="crié")
+    _au_clavier(page, crie)
+    page.keyboard.press(touche)
+    expect(crie).to_have_attribute("aria-pressed", "true")
+    _focus_tenu(page, crie)
+    page.keyboard.press("Tab")
+    assert page.evaluate("() => !!document.activeElement.closest('#an-plan')")
+    chuchote = page.locator("#an-plan .an-var", has_text="chuchoté")
+    _au_clavier(page, chuchote)
+    page.keyboard.press(touche)
+    expect(chuchote).to_have_attribute("aria-pressed", "true")
+    _focus_tenu(page, chuchote)
+    # Un qualificatif, sur un mot désigné.
+    _mot(page, 1).click()
+    objet = page.locator("#an-plan .an-ent", has=page.locator("text=origine du son")) \
+        .locator(".an-var", has_text="objet")
+    _au_clavier(page, objet)
+    page.keyboard.press(touche)
+    expect(objet).to_have_attribute("aria-pressed", "true")
+    _focus_tenu(page, objet)
+
+
+def test_le_focus_ne_quitte_pas_le_filtre_ni_un_champ_qu_on_vient_de_remplir(page, decor):
+    _ouvrir(page, decor, decor["c2"])
+    page.keyboard.press("/")
+    filtre = page.locator("#an-filtre")
+    expect(filtre).to_be_focused()
+    filtre.fill("regard")
+    expect(page.locator("#an-resultats .an-res").first).to_be_visible()
+    page.keyboard.press("Enter")
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="regard caméra")).to_have_count(1)
+    expect(filtre).to_be_focused()
+    filtre.fill("")
+    # Une pose dont la réponse revient quand on écrit déjà la note : le redessin n'y touche pas.
+    retenues, lacher = _retenir_les_envois(page, "**/api/releves", "POST")
+    entree = page.locator("#an-plan .an-var", has_text="crié")
+    _ouvrir(page, decor, decor["bulle"])
+    entree.click()
+    for _ in range(50):
+        if retenues:
+            break
+        page.wait_for_timeout(100)
+    assert retenues
+    note = page.locator("#an-note")
+    note.focus()
+    note.fill("il jure encore")
+    lacher()
+    expect(entree).to_have_attribute("aria-pressed", "true")
+    expect(note).to_be_focused()
+
+
+def test_la_souris_ne_gagne_pas_de_contour(page, decor):
+    _poser(decor, region_id=decor["c2"], entree_cle="regard-camera")
+    _ouvrir(page, decor, decor["bulle"])
+    crie = page.locator("#an-plan .an-var", has_text="crié")
+    crie.click()
+    expect(crie).to_have_attribute("aria-pressed", "true")
+    page.wait_for_load_state("networkidle")
+    assert page.evaluate(_CONTOUR)["visible"] is False
+    page.locator('#an-porte [data-porte="zone"]').click()
+    assert page.evaluate(_CONTOUR)["visible"] is False
+    _synthese(page, "releves")
+    page.locator('#an-syn-corps [data-syn-case="1"]').click()
+    expect(page.locator("#an-tete-case")).to_have_text("Case c2")
+    assert page.evaluate(_CONTOUR)["visible"] is False
+
+
+def _deuxieme_grille(d, nom="Lexique"):
+    with _http(d) as c:
+        return grille_active_vivante(c, nom=nom, projet_id=d["projet"])["grille_id"]
+
+
+@TOUCHES
+def test_un_onglet_de_grille_non_ouvert_garde_le_focus(page, decor, touche):
+    _deuxieme_grille(decor)
+    _ouvrir(page, decor, decor["bulle"])
+    fermee = page.locator('#an-onglets [aria-selected="false"]').get_attribute("data-grille")
+    onglet = page.locator(f"#an-onglet-{fermee}")
+    _au_clavier(page, page.locator('#an-onglets [aria-selected="true"]'))
+    onglet.focus()                                 # tabindex="-1" : un non-ouvert n'a pas de Tab
+    page.keyboard.press(touche)
+    expect(onglet).to_have_attribute("aria-selected", "true")
+    _focus_tenu(page, onglet)
+    # « Aussi dans » disparaît avec son geste : le focus revient au filtre.
+    page.locator("#an-filtre").fill("cri")
+    aussi = page.locator("#an-ailleurs [data-grille]")
+    expect(aussi).to_be_visible()
+    _au_clavier(page, aussi)
+    page.keyboard.press(touche)
+    _focus_tenu(page, page.locator("#an-filtre"))
+
+
+@TOUCHES
+def test_les_cases_de_releves_gardent_le_focus(page, decor, touche):
+    _deuxieme_grille(decor)
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-releves-btn").click()
+    autre = page.locator("#an-releves-pop [data-voir]:not([disabled])").get_attribute("data-voir")
+    case = page.locator(f'#an-releves-pop [data-voir="{autre}"]')
+    expect(case).to_be_visible()
+    _au_clavier(page, case)
+    page.keyboard.press(" ")
+    expect(case).to_be_checked()
+    _focus_tenu(page, case)
+    page.keyboard.press(" ")
+    expect(case).not_to_be_checked()
+    _focus_tenu(page, case)
+    # Les deux boutons du panneau.
+    toutes = page.locator("#an-releves-pop [data-voir-tout]")
+    _au_clavier(page, toutes)
+    page.keyboard.press(touche)
+    expect(case).to_be_checked()
+    _focus_tenu(page, toutes)
+    seule = page.locator("#an-releves-pop [data-voir-seule]")
+    _au_clavier(page, seule)
+    page.keyboard.press(touche)
+    expect(case).not_to_be_checked()
+    _focus_tenu(page, seule)
+
+
+@TOUCHES
+def test_les_boutons_de_la_synthese_gardent_le_focus(page, decor, touche):
+    regard = _poser(decor, region_id=decor["c2"], entree_cle="regard-camera")
+    _ouvrir(page, decor, decor["bulle"])
+    _synthese(page, "releves")
+    corps = page.locator("#an-syn-corps")
+    # « Case c2 · 1 » : le geste change de zone, et le bouton reste là, marqué courant.
+    c2 = corps.locator('[data-syn-case="1"]')
+    _au_clavier(page, c2)
+    page.keyboard.press(touche)
+    expect(page.locator("#an-tete-case")).to_have_text("Case c2")
+    expect(c2).to_have_attribute("aria-current", "true")
+    _focus_tenu(page, c2)
+    # Une ligne : elle ouvre son relevé, et reste.
+    ligne = corps.locator(f'[data-syn-releve="{_cri(decor)["id"]}"]')
+    _au_clavier(page, ligne)
+    page.keyboard.press(touche)
+    expect(page.locator("#an-tete-zone")).to_have_text("bulle b1")
+    _focus_tenu(page, ligne)
+    assert regard
+    # Le Décompte : « cette zone », « la planche ».
+    page.locator('#an-syn-vues [data-syn="decompte"]').click()
+    zone = corps.locator('[data-portee="zone"]')
+    _au_clavier(page, zone)
+    page.keyboard.press(touche)
+    expect(zone).to_have_attribute("aria-pressed", "true")
+    _focus_tenu(page, zone)
+
+
+@TOUCHES
+def test_un_bouton_qui_disparait_avec_son_geste_rend_le_focus_a_cote(page, decor, touche):
+    r = _poser(decor, region_id=decor["bulle"], entree_cle="ton-de-voix", variante_cle="crie")
+    _douter_api(decor, r["id"], "crié ?")
+    _ouvrir(page, decor, decor["bulle"])
+    # « Changer… » reste, et ses variantes aussi.
+    _synthese(page, "revoir")
+    corps = page.locator("#an-syn-corps")
+    changer = corps.locator(f'[data-changer="{r["id"]}"]')
+    _au_clavier(page, changer)
+    page.keyboard.press(touche)
+    expect(changer).to_have_attribute("aria-pressed", "true")
+    _focus_tenu(page, changer)
+    # « Garder » lève le doute : son bouton part, le focus va au bouton de la vue.
+    garder = corps.locator(f'[data-lever="garde"][data-pour="{r["id"]}"]')
+    _au_clavier(page, garder)
+    page.keyboard.press(touche)
+    expect(garder).to_have_count(0)
+    _focus_tenu(page, page.locator('#an-syn-vues [data-syn="revoir"]'))
+    # ✕ dans la liste : le suivant de la liste, sinon « Relevés ▾ ».
+    page.locator("#an-ong-planche").click()
+    _ouvrir(page, decor, decor["bulle"])
+    retirer = page.locator(f'#an-poses-liste [data-retirer="{r["id"]}"]')
+    _au_clavier(page, retirer)
+    page.keyboard.press(touche)
+    expect(retirer).to_have_count(0)
+    _focus_tenu(page, page.locator("#an-poses-liste [data-retirer]").first)
+    page.keyboard.press(touche)
+    expect(page.locator("#an-poses-liste [data-retirer]")).to_have_count(0)
+    _focus_tenu(page, page.locator("#an-releves-btn"))
+
+
+@TOUCHES
+def test_les_gestes_d_une_ligne_de_ce_qui_est_pose_gardent_le_focus(page, decor, touche):
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, 1).click()
+    origine = page.locator("#an-plan .an-ent", has=page.locator("text=origine du son"))
+    origine.locator(".an-var", has_text="objet").click()
+    expect(page.locator("#an-poses-liste .an-prec")).to_be_visible()
+    r = [x for x in _releves(decor) if x["entree_cle"] == "origine-du-son"][0]
+    # La précision : Entrée l'enregistre, et le champ reste, avec son texte.
+    champ = page.locator("#an-poses-liste .an-prec")
+    _au_clavier(page, champ)
+    page.keyboard.type("le salon")
+    page.keyboard.press("Enter")
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="« le salon »")).to_have_count(1)
+    _focus_tenu(page, champ)
+    expect(champ).to_have_value("le salon")
+    # La ligne elle-même.
+    ligne = page.locator(f'#an-poses-liste .an-pose-btn[data-releve="{r["id"]}"]')
+    _au_clavier(page, ligne)
+    page.keyboard.press(touche)
+    _focus_tenu(page, ligne)
+
+
+@TOUCHES
+def test_repondre_a_un_conflit_de_valeur_rend_le_focus_a_son_entree(page, decor, touche):
+    with _http(decor) as c:
+        r = c.post("/api/releves", json={"region_id": decor["bulle"], "grille_id": decor["grille"],
+                                         "version": 1, "entree_cle": "ton-de-voix",
+                                         "variante_cle": "crie"}).json()
+    _ouvrir(page, decor, decor["bulle"])
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{r['id']}", json={"variante_cle": "chuchote"}).status_code == 200
+    crie = page.locator("#an-plan .an-var", has_text="crié")
+    _au_clavier(page, crie)
+    page.keyboard.press(touche)                    # le retrait, refusé
+    autre = page.locator("#an-cf-autre")
+    expect(autre).to_be_visible()
+    expect(page.locator("#an-cf-mienne")).to_be_focused()
+    page.keyboard.press("Tab")
+    expect(autre).to_be_focused()
+    page.keyboard.press(touche)
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    _focus_tenu(page, page.locator("#an-ent-ton-de-voix"))
+
+
+@TOUCHES
+def test_un_conflit_du_contexte_repondu_d_ailleurs_rend_le_focus_a_la_zone(page, decor, touche):
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    _conflit_de_note(page, decor, "il crie", "il jure fort")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    _zone(page, "personnage")
+    autre = page.locator("#an-cf-autre")
+    _au_clavier(page, autre)
+    page.keyboard.press(touche)
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    _focus_tenu(page, page.locator("#an-zones .an-zone-btn", has_text="personnage"))
+
+
+@TOUCHES
+def test_actualiser_au_clavier_rend_le_focus_a_la_zone(page, decor, touche):
+    _ouvrir(page, decor, decor["bulle"])
+    _poser(decor, region_id=decor["c2"], entree_cle="regard-camera")
+    _retour_sur_l_onglet(page)
+    bouton = page.locator("#an-actualiser")
+    expect(bouton).to_be_visible()
+    _au_clavier(page, bouton)
+    page.keyboard.press(touche)
+    expect(bouton).to_be_hidden()
+    _focus_tenu(page, page.locator("#an-zones .an-zone-btn", has_text="bulle"))
+
+
+def test_ctrl_entree_d_un_champ_qui_disparait_rend_le_focus_a_la_zone(page, decor):
+    """Le locuteur n'existe pas sur une boîte : Ctrl+Entrée depuis son champ mène à une zone où
+    il se cache, et le focus tombait."""
+    _ouvrir(page, decor, decor["bulle"])
+    _au_clavier(page, page.locator("#an-loc-input"))
+    page.keyboard.press("Control+Enter")
+    expect(page.locator("#an-tete-zone")).not_to_have_text("bulle b1")
+    page.wait_for_load_state("networkidle")
+    expect(page.locator("#an-loc-input")).to_be_hidden()
+    assert page.evaluate("() => document.activeElement.tagName") != "BODY"
+    # Les mots de la bulle : leur boîte cesse d'être focalisable le temps de lire les suivants.
+    _ouvrir(page, decor, decor["bulle"])
+    expect(_mot(page, 2)).to_be_visible()
+    _au_clavier(page, page.locator("#an-mots"))
+    page.keyboard.press("Control+Enter")
+    expect(page.locator("#an-tete-zone")).not_to_have_text("bulle b1")
+    page.wait_for_load_state("networkidle")
+    assert page.evaluate("() => document.activeElement.tagName") != "BODY"
+
+
+def test_un_trace_au_clavier_rend_le_focus_a_son_bouton(page, decor):
+    _ouvrir(page, decor, decor["c2"])
+    tracer = page.locator("#an-tracer")
+    # Annuler, puis Échap, une fois la sorte proposée : les boutons partent avec le choix.
+    for geste in ("annuler", "echap"):
+        _au_clavier(page, tracer)
+        page.keyboard.press("Enter")
+        expect(page.locator("#an-vue-case")).to_be_focused()
+        page.keyboard.press("Enter")
+        sorte = page.locator('#an-trace [data-trace="detail"]')
+        expect(sorte).to_be_focused()
+        if geste == "annuler":
+            page.locator('#an-trace [data-trace=""]').focus()
+            page.keyboard.press("Enter")
+        else:
+            page.keyboard.press("Escape")
+        expect(page.locator("#an-trace")).to_be_hidden()
+        _focus_tenu(page, tracer)
+
+
+def test_supprimer_une_zone_au_clavier_rend_le_focus_a_la_case(page, decor):
+    t = _texte_hors_bulle(decor)
+    _ouvrir(page, decor, t)
+    page.on("dialog", lambda d: d.accept())
+    bouton = page.locator("#an-zone-supprimer")
+    expect(bouton).to_be_visible()
+    _au_clavier(page, bouton)
+    page.keyboard.press("Enter")
+    expect(page.locator("#an-tete-zone")).to_have_text("")
+    _focus_tenu(page, page.locator('#an-zones .an-zone-btn[aria-pressed="true"]'))
+
+
+def test_terminee_sur_la_derniere_zone_garde_le_focus_dans_le_pied(page, decor):
+    """« Terminée, suivante » s'éteint quand il n'y a plus de suivante à marquer : le bouton
+    éteint perdait le focus."""
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-parcours-sel").select_option("afaire")
+    fin = page.locator("#an-terminee-suiv")
+    total = 0
+    _au_clavier(page, fin)
+    while total < 12 and fin.is_enabled():
+        total += 1
+        page.keyboard.press("Enter")
+        page.wait_for_load_state("networkidle")
+        tag = page.evaluate("() => document.activeElement.tagName")
+        assert tag != "BODY", f"focus perdu au passage {total}"
+    assert total
+    _focus_tenu(page, page.locator("#an-pied :focus"))
+
+
+def test_la_minicarte_garde_son_focus_a_ctrl_z(page, decor):
+    """Ctrl+Z relit la planche, et la minicarte se redessine sous le focus."""
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    page.locator("#an-note").fill("il jure, puis non")
+    with page.expect_response(lambda r: r.url.endswith("/annotation") and r.request.method == "PUT"):
+        page.locator("#an-note").blur()
+    expect(page.locator("#an-note-etat")).to_have_text("Enregistrée")
+    case = page.locator('#an-mini .an-mz[data-case="1"]')
+    _au_clavier(page, case)
+    page.keyboard.press("Control+z")
+    expect(page.locator("#toasts")).to_contain_text("Annulé :")
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    page.wait_for_load_state("networkidle")
+    expect(case).to_be_focused()
+
+
+def _detail_ouvert(page, d):
+    rid = _detail(d, nom="la lampe")
+    _ouvrir(page, d, rid)
+    expect(page.locator("#an-nom")).to_have_value("la lampe")
+    page.wait_for_load_state("networkidle")
+    return rid
+
+
+@pytest.mark.parametrize("doigts", ["sous-les-doigts", "champ-quitte"])
+def test_un_nom_retouche_pendant_l_aller_retour_est_ce_qui_attend(page, decor, doigts):
+    """Le 409 revient sur un champ retouché entre-temps : c'est la dernière version qui attend.
+    Champ quitté, elle part derrière le premier envoi, trouve le bandeau ouvert, et s'arrêtait là."""
+    rid = _detail_ouvert(page, decor)
+    with _http(decor) as c:
+        assert c.put(f"/api/regions/{rid}", json={"nom": "Version autre"}).status_code == 200
+    retenues, lacher = _retenir_les_envois(page, f"**/api/regions/{rid}")
+    nom = page.locator("#an-nom")
+    nom.fill("Première")
+    nom.press("Enter")
+    for _ in range(50):
+        if retenues:
+            break
+        page.wait_for_timeout(100)
+    assert retenues
+    nom.fill("Seconde")
+    if doigts == "champ-quitte":
+        page.locator("#an-filtre").focus()
+        page.wait_for_timeout(100)
+    lacher()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(nom).to_have_value("Seconde")
+    with page.expect_request(lambda r: r.url.endswith(f"/regions/{rid}") and r.method == "PUT") as q:
+        page.locator("#an-cf-mienne").click()
+    assert q.value.post_data_json == {"nom": "Seconde", "vu": {"nom": "Version autre"}}
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert _regions(decor)[rid]["nom"] == "Seconde"
+
+
+def test_un_champ_relu_pendant_l_aller_retour_suit_la_reponse(page, decor):
+    """Un clic sur la zone où l'on est relit le Contexte pendant que le nom est en vol : le champ
+    reprenait l'ancien nom, et le gardait une fois le nouveau enregistré."""
+    rid = _detail_ouvert(page, decor)
+    retenues, lacher = _retenir_les_envois(page, f"**/api/regions/{rid}")
+    nom = page.locator("#an-nom")
+    nom.fill("la lanterne")
+    page.locator("#an-zones .an-zone-btn", has_text="détail").click()
+    for _ in range(50):
+        if retenues:
+            break
+        page.wait_for_timeout(100)
+    assert retenues
+    expect(nom).to_have_value("la lampe")
+    lacher()
+    expect(nom).to_have_value("la lanterne")
+    page.wait_for_load_state("networkidle")
+    assert _regions(decor)[rid]["nom"] == "la lanterne"
+
+
+def test_un_refus_arrive_pendant_un_autre_conflit_attend_son_tour(page, decor):
+    """La note est en vol quand un autre conflit s'ouvre : son 409 ne perd pas le texte, il
+    ouvre son bandeau une fois le premier réglé."""
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    with _http(decor) as c:
+        assert c.put(f"/api/regions/{decor['bulle']}/annotation",
+                     json={"note": "Version autre"}).status_code == 200
+    retenues, lacher = _retenir_les_envois(page, "**/api/regions/*/annotation")
+    page.locator("#an-note").fill("Ma version")
+    page.locator("#an-note").blur()
+    for _ in range(50):
+        if retenues:
+            break
+        page.wait_for_timeout(100)
+    assert retenues
+    _conflit_de_locuteur(page, decor, "Zed", "Yann")
+    expect(page.locator("#an-cf-titre")).to_contain_text("Locuteur")
+    _zone(page, "personnage")                      # plus de champ où la note survivrait seule
+    lacher()
+    page.wait_for_load_state("networkidle")
+    expect(page.locator("#an-cf-titre")).to_contain_text("Locuteur")
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_contain_text("Note modifiée")
+    _zone(page, "bulle")
+    page.wait_for_load_state("networkidle")
+    expect(page.locator("#an-note")).to_have_value("Ma version")
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert _lire_note(decor, decor["bulle"]) == "Ma version"
+
+
+def test_le_focus_remis_ne_reprend_pas_la_ligne_du_guide(page, decor):
+    """Le redessin remet le focus sur l'entrée posée ; le guide, lui, suit le pointeur parti sur
+    une autre entrée : un focus remis n'est pas un geste."""
+    _ouvrir(page, decor, decor["bulle"])
+    retenues, lacher = _retenir_les_envois(page, "**/api/releves", "POST")
+    crie = page.locator("#an-plan .an-var", has_text="crié")
+    crie.click()
+    for _ in range(50):
+        if retenues:
+            break
+        page.wait_for_timeout(100)
+    assert retenues
+    page.locator("#an-ent-regard-camera").hover()
+    expect(page.locator("#an-guide-contenu .an-g-lib")).to_have_text("regard caméra")
+    lacher()
+    expect(crie).to_have_attribute("aria-pressed", "true")
+    expect(crie).to_be_focused()
+    page.wait_for_load_state("networkidle")
+    expect(page.locator("#an-guide-contenu .an-g-lib")).to_have_text("regard caméra")
+
+
+def test_une_precision_en_cours_survit_a_un_redessin_de_la_liste(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, 1).click()
+    origine = page.locator("#an-plan .an-ent", has=page.locator("text=origine du son"))
+    origine.locator(".an-var", has_text="objet").click()
+    champ = page.locator("#an-poses-liste .an-prec")
+    expect(champ).to_be_visible()
+    retenues, lacher = _retenir_les_envois(page, "**/api/releves", "POST")
+    # Le champ retiré du document part par sa sortie (`focusout`) : on la retient aussi, pour
+    # lire ce que montre le dessin, et non ce que la réponse de cette écriture ramènerait.
+    ecrites, lacher_ecrites = _retenir_les_envois(page, "**/api/releves/*")
+    page.locator("#an-plan .an-var", has_text="crié").click()
+    for _ in range(50):
+        if retenues:
+            break
+        page.wait_for_timeout(100)
+    assert retenues
+    champ.focus()
+    page.keyboard.type("le sal")
+    page.keyboard.press("ArrowLeft")
+    page.keyboard.press("ArrowLeft")
+    page.keyboard.press("ArrowLeft")
+    lacher()
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "true")
+    expect(champ).to_be_focused()
+    expect(champ).to_have_value("le sal")
+    page.keyboard.type("L")                        # la place dans le champ reste
+    expect(champ).to_have_value("le Lsal")
+    if ecrites:
+        lacher_ecrites()
+
+
+def test_le_guide_complet_rend_le_focus_a_son_bouton(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    bouton = page.locator("#an-guide-complet")
+    for sortie in ("Escape", "fermer"):
+        _au_clavier(page, bouton)
+        page.keyboard.press("Enter")
+        expect(page.locator("#an-guide-modal")).to_be_visible()
+        if sortie == "Escape":
+            page.keyboard.press("Escape")
+        else:
+            page.locator("#an-guide-fermer").focus()
+            page.keyboard.press("Enter")
+        expect(page.locator("#an-guide-modal")).to_be_hidden()
+        expect(bouton).to_be_focused()
+
+
+def test_une_note_retenue_par_un_conflit_de_releve_part_quand_il_est_regle(page, decor):
+    """La grille attend son choix, on écrit la note d'une autre zone, on en repart : elle part
+    quand le bandeau est réglé, d'où qu'on y réponde."""
+    with _http(decor) as c:
+        r = c.post("/api/releves", json={"region_id": decor["bulle"], "grille_id": decor["grille"],
+                                         "version": 1, "entree_cle": "ton-de-voix",
+                                         "variante_cle": "crie"}).json()
+    _ouvrir(page, decor, decor["bulle"])
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{r['id']}", json={"variante_cle": "chuchote"}).status_code == 200
+    page.locator("#an-plan .an-var", has_text="crié").click()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    _zone(page, "personnage")
+    page.wait_for_load_state("networkidle")
+    page.locator("#an-note").fill("Ma note")
+    page.locator("#an-note").blur()
+    _zone(page, "bulle")
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_timeout(300)
+    page.wait_for_load_state("networkidle")
+    assert _lire_note(decor, decor["boite"]) == "Ma note"
