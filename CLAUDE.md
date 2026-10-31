@@ -392,7 +392,7 @@ région existe : un détail né sans acte — une région recopiée, E3 — se r
 la cascade de sa case, de sa planche, de son album ou d'une remise à zéro ; l'ensemble des
 régions retenues se calcule une fois par requête). Le résumé de provenance des métadonnées
 et de la description compte ce qui est publié — ses régions sans détail, ses actes sans
-ceux qu'on tait (`journal.indicateurs_provenance`, `actes_tus`). `tests/test_detail_sorties.py` le JOUE
+ceux qu'on tait, ceux d'un projet isolé compris (`journal.indicateurs_provenance`, `actes_tus`, `runs_tus`, depuis COL-4 ; `_commun.sql_evenement_tu`, la coupure de la table publiée, écrite une fois). `tests/test_detail_sorties.py` le JOUE
 sur chaque sortie, avec une bulle témoin ; un tag posé sur lui reste du vocabulaire, dit par
 appartenance. Une GRILLE appartient à UN projet, se
 VERSIONNE (`grille_version`, brouillon puis publiée ; une version publiée ne change plus, hors

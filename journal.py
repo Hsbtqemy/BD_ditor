@@ -295,7 +295,8 @@ def version_moteur(distribution: Optional[str]) -> Optional[str]:
 # Indicateurs dérivés — la couverture / la dérive lues DEPUIS le journal
 # --------------------------------------------------------------------------- #
 def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
-                           cibles=None, actes_tus: Optional[str] = None) -> dict:
+                           cibles=None, actes_tus: Optional[str] = None,
+                           runs_tus: Optional[str] = None) -> dict:
     """Agrégats DÉRIVÉS de la surface dénormalisée (`activite_id`/`touche`) et du journal :
     quantifient la part machine vs humaine et la DÉRIVE (pré-remplissage machine RETOUCHÉ).
 
@@ -316,10 +317,11 @@ def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
     et le refermer là ne suffisait pas.
 
     `actes_tus` — un fragment SQL sur l'alias `evenement`, VRAI pour un acte que l'artefact
-    TAIT alors même que sa table est publiée : aujourd'hui les actes sur un DÉTAIL
-    (`tools/_commun.sql_evenement_detail`, ANN-7, tranche 2, commit 10). Fourni par
-    l'appelant pour la même raison que `cibles`. Le bloc `regions`, lui, ne compte jamais un
-    détail (G17, `database.sql_region_sortante`) : il compte ce qui sort, pour tout appelant.
+    TAIT alors même que sa table est publiée : les actes sur un DÉTAIL et ceux d'un projet
+    isolé (`tools/_commun.sql_evenement_tu`). `runs_tus`, de même sur l'alias `activite` : les
+    runs d'un projet isolé (`tools/_commun.sql_activite_isolee`). Fournis par l'appelant pour
+    la même raison que `cibles`. Le bloc `regions`, lui, ne compte jamais un détail (G17,
+    `database.sql_region_sortante`) : il compte ce qui sort, pour tout appelant.
     """
     from database import sql_region_sortante      # import paresseux (database importe journal)
     sortante = sql_region_sortante("r")
@@ -347,8 +349,9 @@ def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
         "taux_touche": round(touchees / total, 4) if total else None,
         "taux_derive": round(derive / machine, 4) if machine else None,
     }
+    ou_run = f" WHERE NOT ({runs_tus})" if runs_tus else ""
     act = {r["type"]: r["n"] for r in conn.execute(
-        "SELECT type, COUNT(*) AS n FROM activite GROUP BY type ORDER BY type")}
+        f"SELECT type, COUNT(*) AS n FROM activite{ou_run} GROUP BY type ORDER BY type")}
 
     # Le filtre porte aussi sur `premier`/`dernier` : une borne posée par un acte que
     # l'artefact ne publie pas daterait un corpus d'après son administration.

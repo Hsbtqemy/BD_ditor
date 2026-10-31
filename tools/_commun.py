@@ -402,6 +402,15 @@ def sql_evenement_detail(e: str = "evenement") -> str:
             f"), 0)")
 
 
+def sql_evenement_tu(e: str = "evenement") -> str:
+    """Fragment SQL VRAI si le journal publié TAIT l'acte `e`, sa table fût-elle publiée :
+    un acte d'un projet isolé, ou sur un détail. UN fragment, lu par la table publiée
+    (`evenements_publiables`) et par le résumé de ses deux artefacts
+    (`journal.indicateurs_provenance`) : écrit deux fois, le résumé comptait les actes d'un
+    bac à sable que la table ne publiait pas (COL-4, relevé par la relecture d'ANN-7)."""
+    return f"({sql_evenement_isole(e)} OR {sql_evenement_detail(e)})"
+
+
 def activites_publiables(conn, colonnes) -> list:
     """Les runs du journal qui partent au dépôt, par id : tous, sauf ceux d'un projet
     isolé (`sql_activite_isolee`). Partagé par les deux sérialisations du journal, pour la
@@ -640,12 +649,12 @@ def evenements_publiables(conn, ordre: str = "ASC"):
     # COL-4 — et pas les actes faits dans un bac à sable ou sur le jeu : une TROISIÈME
     # coupure, par PROJET, que ne voient ni la liste blanche ni les colonnes. Ce qu'elle
     # sait relier est écrit sous `sql_evenement_isole`.
-    # Ni les actes sur un DÉTAIL (G17) : une QUATRIÈME coupure, par la région visée.
+    # Ni les actes sur un DÉTAIL (G17) : une QUATRIÈME coupure, par la région visée. Les
+    # deux dans `sql_evenement_tu`, que le résumé de provenance lit aussi.
     return conn.execute(
         f"SELECT {', '.join(COLONNES_EVENEMENT_PUBLIEES)} FROM evenement "
         f"WHERE cible_table IN ({','.join('?' * len(cibles))}) "
-        f"AND NOT {sql_evenement_isole('evenement')} "
-        f"AND NOT {sql_evenement_detail('evenement')} "
+        f"AND NOT {sql_evenement_tu('evenement')} "
         f"ORDER BY id {ordre}", cibles)
 
 

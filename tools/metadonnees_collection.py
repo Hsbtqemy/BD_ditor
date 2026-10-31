@@ -61,7 +61,7 @@ from _commun import (version_outil, environnement, composants,  # noqa: E402  (p
                      HorsDuCorpus, activites_publiables, albums_du_corpus,
                      clause_personnages, clause_vocabulaire, exiger_hors_isoles,
                      REGIONS_SORTANTES,                      # G17 : ni détail
-                     sql_evenement_detail)
+                     sql_activite_isolee, sql_evenement_tu)
 
 
 def _grouper(conn, sql, cle=0, params=()):
@@ -410,7 +410,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             # comptes de runs & d'actes). Le détail est dans les tables `activite`/`evenement`.
             "provenance": journal.indicateurs_provenance(
                 conn, album_ids, cibles=CIBLES_CORPUS,   # AUTH-1 : compter ce qu'on publie
-                actes_tus=sql_evenement_detail("evenement")),   # G17 : ni détail
+                actes_tus=sql_evenement_tu("evenement"),   # ni détail, ni bac à sable
+                runs_tus=sql_activite_isolee("activite")),
             # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
             # COL-4 : sans le vocabulaire des bacs à sable ni du jeu.
             "lexique": database.lexique_resume(conn, collection_id,

@@ -6,9 +6,19 @@ corpus. Et une portée totale ne reçoit, de soixante-quinze bacs à sable, que 
 où elle est invitée : elle est BORNÉE (Hugo, 2026-10-24) — la vue Projets de
 l'Administration (`bacs_a_sable=1`) lui dit seulement qu'ils existent.
 """
+import csv
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+from collections import Counter
+
 import pytest
 
-from conftest import ADMIN, make_png
+import database
+import journal
+from conftest import ADMIN, REPO_ROOT, make_png
 from test_bac_a_sable import HUGO, LEA, RESP, SAM, _copie, _sql, decor, jeu  # noqa: F401
 
 
@@ -163,3 +173,86 @@ def test_le_fonds_masque_les_bacs_a_sable_et_le_jeu(client, corpus):
                                            headers=HUGO).json()["documents"]
             for c in d["copies"]}
     assert not {"Le parcours", "Un exemple", "Sous droits"} & tout
+
+
+# --------------------------------------------------------------------------- #
+# Le résumé de provenance compte ce que le journal publie (relevé par la relecture d'ANN-7)
+# --------------------------------------------------------------------------- #
+def _outil(db_path, outil, *args):
+    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(db_path.parent)}
+    c = sqlite3.connect(db_path)
+    try:
+        c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        c.close()
+    r = subprocess.run([sys.executable, str(REPO_ROOT / "tools" / outil), *args],
+                       cwd=str(REPO_ROOT), env=env, capture_output=True)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")[-600:]
+    return r.stdout.decode("utf-8")
+
+
+def _lignes(fichier):
+    with open(fichier, encoding="utf-8-sig", newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def _publies(db_path):
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import _commun
+    c = sqlite3.connect(db_path)
+    c.row_factory = sqlite3.Row
+    try:
+        return [dict(e) for e in _commun.evenements_publiables(c)]
+    finally:
+        c.close()
+
+
+def test_le_resume_de_provenance_ne_compte_pas_un_bac_a_sable(client, corpus, tmp_path):
+    """De VRAIS actes dans le bac à sable de lea — une région posée, son texte retouché, sa
+    note — et un run sur sa planche : ni la table publiée ni le résumé des deux artefacts ne
+    les comptent. Des NOMBRES, comparés à ce que le même artefact publie ; le témoin, ce sont
+    les actes du bac à sable d'abord lus au journal, et ceux du vrai corpus comptés."""
+    db = corpus["db"]
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import _commun
+    planche = _copie(corpus, "exemple")["planche_ids"][0]
+    reg = client.post(f"/api/planches/{planche}/regions", headers=LEA,
+                      json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
+    client.put(f"/api/regions/{reg}", headers=LEA, json={"ocr_texte": "DANS LE BAC"})
+    client.put(f"/api/regions/{reg}/annotation", headers=LEA, json={"note": "n", "tags": []})
+    conn = database.get_connection()
+    try:
+        journal.inscrire_run_termine(conn, "segmentation", agent="kumiko", agent_type="moteur",
+                                     version=None, params=None,
+                                     portee={"planche_id": planche},
+                                     debut="2026-10-30 10:00:00", comptes={})
+        cibles = sorted(_commun.CIBLES_CORPUS)
+        du_bac = conn.execute(
+            f"SELECT COUNT(*) FROM evenement WHERE cible_table IN ({','.join('?' * len(cibles))}) "
+            "AND cible_id = ?", (*cibles, reg)).fetchone()[0]
+        tous = conn.execute(
+            f"SELECT COUNT(*) FROM evenement WHERE cible_table IN ({','.join('?' * len(cibles))})",
+            cibles).fetchone()[0]
+    finally:
+        conn.close()
+    publies = _publies(db)
+    assert du_bac >= 2 and publies, "le semis ne mesure rien"
+    assert len(publies) <= tous - du_bac
+    assert any(e["cible_id"] == corpus["region_reelle"] for e in publies), "le témoin"
+    assert not any(e["cible_id"] == reg for e in publies)
+
+    meta = json.loads(_outil(db, "metadonnees_collection.py", "--json", "-"))
+    prov = meta["metadonnees_collection"]["paradonnee"]["provenance"]
+    _outil(db, "metadonnees_collection.py", "--csv-dir", str(tmp_path / "t"))
+    evenements = _lignes(tmp_path / "t" / "evenement.csv")
+    activites = _lignes(tmp_path / "t" / "activite.csv")
+    audit = json.loads(_outil(db, "description_collection.py", "--json", "-"))
+    audit = audit["description_collection"]["provenance_globale"]["audit"]
+    for nom, resume in (("métadonnées", prov), ("description", audit)):
+        ev = resume["evenements"]
+        assert ev["total"] == len(publies) == len(evenements), (nom, ev["total"], len(publies))
+        assert ev["par_type"] == dict(Counter(e["type"] for e in publies)), nom
+        assert ev["par_agent"] == dict(Counter(e["agent_type"] for e in publies)), nom
+        assert (ev["premier"], ev["dernier"]) == (min(e["date"] for e in publies),
+                                                  max(e["date"] for e in publies)), nom
+        assert resume["activites"]["total"] == len(activites) == 0, (nom, resume["activites"])
