@@ -86,6 +86,9 @@ const S = {
   // Le Contexte modifiable (commit 8)
   loc: { region: null, vu: undefined },        // le locuteur de la zone, et sa valeur VUE
   note: { region: null, sale: false, minuterie: null },   // la note de la zone, à envoyer
+  // Au doigt et sans souris (commit 12)
+  tracer: false,               // « Tracer une zone » armé
+  doigt: null,                 // « Étendre », « Ajouter un mot » : le mode, ou null
 };
 let tourContexte = 0;          // la lecture du Contexte la plus récente gagne
 let tourPlanche = 0;           // idem pour une planche
@@ -196,6 +199,7 @@ async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
   // La MÊME planche relue (« Actualiser », Ctrl+Z) garde ses brouillons ; une autre non —
   // les gardes ont déjà refusé d'y aller avec un brouillon (`gardesDeSortie`).
   const meme = !!S.planche && id !== null && S.planche.id === id;
+  if (!meme) annulerTrace();                     // un tracé n'a de sens que sur SA planche
   S.planche = id === null ? null : S.planches.find((p) => p.id === id) || null;
   S.regions = [];
   S.releves = [];
@@ -262,11 +266,13 @@ function choisir(caseIx, zoneId) {
   // « Porte sur » ne garde pas un choix fait dans une autre zone (passe du jalon 1 : une
   // bulle s'ouvrait sur « la planche ») : la zone repart de sa première option.
   if (caseIx !== S.caseIx || zoneId !== S.zoneId) S.porte = null;
+  if (caseIx !== S.caseIx && S.tracer) annulerTrace();   // un rectangle n'a de sens que dans SA case
   S.caseIx = caseIx;
   S.zoneId = zoneId;
   S.sel = [];
   S.ancre = null;
   S.curseur = null;
+  S.doigt = null;
   marquerMini();
   rendreTete();
   rendreCase();
@@ -436,6 +442,7 @@ function rendreCase() {
   }
   cadre.appendChild(racine);
   boite.replaceChildren(cadre, trace);
+  if (TR.clavier) dessinerRectTrace(TR.clavier);
 }
 
 /* Les boîtes personnage de la case COURANTE disent leur personnage sur l'image : une requête
@@ -815,9 +822,15 @@ function noteEnAttente() {
    en deçà de quelques pixels d'écran, rien ne se trace, et le clic qui suit un tracé ne
    choisit rien. Pendant le glissé, seul le rectangle bouge — rien d'autre ne se redessine
    sous le pointeur ; il se termine aussi quand le navigateur l'avale (`pointercancel`,
-   `blur`). Une zone tracée ici n'est jamais une case. Pas de tracé au clavier ni au doigt
-   dans ce commit : « Tracer une zone » au doigt vient avec l'item 9 du cadrage. */
-const TR = { depart: null, ecran: null, svg: null, rect: null, trace: false, finiA: 0 };
+   `blur`). Une zone tracée ici n'est jamais une case.
+
+   SANS SOURIS (commit 12), « Tracer une zone » arme le geste : au DOIGT, un toucher choisit et
+   un glissé fait défiler, sauf une fois armé (`touch-action: none`, posé d'avance : le
+   navigateur le lit au début du geste) ; au CLAVIER, un rectangle naît au milieu de la case, la
+   boîte prend le focus, les flèches le déplacent, Maj+flèches changent sa taille, Entrée le
+   valide, Échap renonce. Ce qui suit — la sorte, le nom — est le même. */
+const TR = { depart: null, ecran: null, svg: null, rect: null, trace: false, finiA: 0,
+             clavier: null };
 const TRACE_ECRAN_PX = 6;            // en deçà, un clic qui a tremblé
 
 function pointMaster(svgEl, ev) {
@@ -835,21 +848,81 @@ function oterRectTrace() {
   if (r) r.remove();
 }
 
-function annulerTrace() {
+function dessinerRectTrace(r) {
+  const racine = document.querySelector("#an-vue-case svg.an-case-svg");
+  if (!racine) return;
+  let e = racine.querySelector(".an-trace-rect");
+  if (!e) { e = svg("rect", { class: "an-trace-rect" }); racine.appendChild(e); }
+  e.setAttribute("x", r.x); e.setAttribute("y", r.y);
+  e.setAttribute("width", r.w); e.setAttribute("height", r.h);
+}
+
+/* « Tracer une zone » : son état, et la boîte de la case qui le porte. Le clavier y entre : la
+   boîte ne prend le focus que le temps de placer le rectangle. */
+function marquerTracer() {
+  const b = $("#an-tracer");
+  b.hidden = !S.planche || !ecrivable();
+  b.setAttribute("aria-pressed", String(S.tracer));
+  const boite = $("#an-vue-case");
+  boite.classList.toggle("an-dessin", S.tracer);
+  if (TR.clavier) {
+    boite.tabIndex = 0;
+    boite.setAttribute("role", "group");
+    boite.setAttribute("aria-label", "Zone à tracer : flèches pour la déplacer, Maj+flèches "
+                       + "pour sa taille, Entrée pour la valider, Échap pour renoncer");
+  } else {
+    boite.removeAttribute("tabindex");
+    boite.removeAttribute("role");
+    boite.removeAttribute("aria-label");
+  }
+}
+
+/* `garderLeMode` : le geste échoue, ou recommence, sans qu'on ait renoncé à tracer. */
+function annulerTrace(garderLeMode = false) {
   TR.depart = null;
   TR.trace = false;
   TR.rect = null;
+  TR.clavier = null;
   oterRectTrace();
   $("#an-trace").hidden = true;
+  if (!garderLeMode) S.tracer = false;
+  marquerTracer();
+}
+
+function proposerSorteDeTrace() {
+  TR.caseIx = S.caseIx;
+  TR.clavier = null;
+  $("#an-trace").hidden = false;
+  marquerTracer();
+  annoncer("Zone tracée : détail d'image, ou texte hors bulle ?");
+  const b = $('#an-trace [data-trace="detail"]');
+  if (b) b.focus();
+}
+
+function basculerTracer(auClavier) {
+  if (S.tracer) { annulerTrace(); return; }
+  if (conflitOuvert() || !S.planche || !ecrivable()) return;
+  S.tracer = true;
+  const c = caseCourante();
+  if (auClavier && c) {
+    TR.clavier = A.rectangleInitial(c.case);
+    dessinerRectTrace(TR.clavier);
+  }
+  marquerTracer();
+  if (TR.clavier) {
+    $("#an-vue-case").focus();
+    annoncer("Flèches pour déplacer la zone, Maj+flèches pour sa taille, Entrée pour valider.");
+  } else annoncer("Glissez dans la case pour tracer la zone. Échap annule.");
 }
 
 function brancherTrace() {
   const boite = $("#an-vue-case");
   boite.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || !S.planche || !ecrivable() || S.designer !== null) return;
+    if (e.pointerType !== "mouse" && !S.tracer) return;   // au doigt, armé seulement
     const svgEl = e.target.closest && e.target.closest("svg.an-case-svg");
     if (!svgEl) return;
-    if (!$("#an-trace").hidden) annulerTrace();
+    if (!$("#an-trace").hidden || TR.clavier) annulerTrace(true);
     TR.svg = svgEl;
     TR.depart = pointMaster(svgEl, e);
     TR.ecran = [e.clientX, e.clientY];
@@ -862,11 +935,8 @@ function brancherTrace() {
     const c = caseCourante();
     const p = pointMaster(TR.svg, e);
     if (!c || !p) return;
-    const r = A.rectangleTrace(TR.depart, p, c.case, 1) || { x: TR.depart.x, y: TR.depart.y, w: 0, h: 0 };
-    let el = TR.svg.querySelector(".an-trace-rect");
-    if (!el) { el = svg("rect", { class: "an-trace-rect" }); TR.svg.appendChild(el); }
-    el.setAttribute("x", r.x); el.setAttribute("y", r.y);
-    el.setAttribute("width", r.w); el.setAttribute("height", r.h);
+    dessinerRectTrace(A.rectangleTrace(TR.depart, p, c.case, 1)
+                      || { x: TR.depart.x, y: TR.depart.y, w: 0, h: 0 });
   });
   const fin = (e) => {
     if (!TR.depart) return;
@@ -879,15 +949,29 @@ function brancherTrace() {
     TR.finiA = Date.now();
     TR.rect = p && c ? A.rectangleTrace(depart, p, c.case) : null;
     if (!TR.rect) { oterRectTrace(); return; }
-    TR.caseIx = S.caseIx;
-    $("#an-trace").hidden = false;
-    annoncer("Zone tracée : détail d'image, ou texte hors bulle ?");
-    const b = $('#an-trace [data-trace="detail"]');
-    if (b) b.focus();
+    proposerSorteDeTrace();
   };
   document.addEventListener("pointerup", fin);
-  document.addEventListener("pointercancel", () => { if (TR.depart) annulerTrace(); });
-  window.addEventListener("blur", () => { if (TR.depart) annulerTrace(); });
+  document.addEventListener("pointercancel", () => { if (TR.depart) annulerTrace(true); });
+  window.addEventListener("blur", () => { if (TR.depart) annulerTrace(true); });
+  // Le rectangle du clavier : la boîte a le focus le temps de le placer.
+  boite.addEventListener("keydown", (e) => {
+    if (!TR.clavier || e.target !== boite) return;
+    const c = caseCourante();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      TR.rect = TR.clavier;
+      proposerSorteDeTrace();
+      return;
+    }
+    const r = c ? A.rectangleClavier(TR.clavier, e.key, e.shiftKey, c.case) : null;
+    if (!r) return;
+    e.preventDefault();
+    TR.clavier = r;
+    dessinerRectTrace(r);
+  });
+  // `detail` vaut 0 pour un clic né du clavier (Entrée, Espace) : il n'y a pas de pointeur.
+  $("#an-tracer").addEventListener("click", (e) => basculerTracer(e.detail === 0));
   $("#an-trace").addEventListener("click", (e) => {
     const b = e.target.closest("[data-trace]");
     if (!b) return;
@@ -895,7 +979,10 @@ function brancherTrace() {
     creerZoneTracee(b.dataset.trace);
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && (!$("#an-trace").hidden || TR.depart)) annulerTrace();
+    if (e.key !== "Escape" || !($("#an-trace").hidden === false || TR.depart || S.tracer)) return;
+    const auClavier = !!TR.clavier;
+    annulerTrace();
+    if (auClavier) $("#an-tracer").focus();
   });
 }
 
@@ -917,6 +1004,8 @@ async function creerZoneTracee(type) {
   }
   annoncer(type === "detail" ? "Détail tracé : nommez-le." : "Texte tracé : transcrivez-le.");
   await ouvrirPlanche(S.planche.id, creee.id, { caseIx: S.caseIx, zoneId: S.zoneId });
+  // Le Contexte est dans le tiroir, sur un écran étroit : on y écrit tout de suite.
+  if (enTiroir()) { montrerGauche("planche"); ouvrirTiroir(false); }
   const champ = $(type === "detail" ? "#an-nom" : "#an-transcription");
   if (champ && !champ.hidden) champ.focus();
 }
@@ -1295,6 +1384,7 @@ function rendreResultats(plan, filtre) {
 function marquerGuide() {
   const force = !!(S.conflit || S.formDoute);
   const replie = S.guideReplie && !force;
+  if (force && enFeuille()) ouvrirFeuille(false);     // la boîte du guide est dans la feuille
   $("#an-guide-contenu").hidden = replie;
   $("#an-grille").classList.toggle("guide-replie", replie);
   const b = $("#an-guide-replier");
@@ -1582,6 +1672,7 @@ function grilleDe(id) { return S.grilles.find((g) => g.id === id) || null; }
 
 /* ── « Porte sur » ── */
 function rendrePorte() {
+  marquerTracer();
   const boite = $("#an-porte");
   const plan = planDe(grilleOuverte());
   const c = caseCourante();
@@ -1634,6 +1725,7 @@ function rendreMots() {
     boite.removeAttribute(a);
   }
   legende.replaceChildren();
+  $("#an-doigt").hidden = true;
   if (!z || z.pseudo || !A.estTexte(z.type)) {
     titre.textContent = "Texte";
     boite.replaceChildren("—");
@@ -1649,6 +1741,7 @@ function rendreMots() {
     return;
   }
   boite.classList.remove("muted");
+  marquerDoigt();
   boite.setAttribute("role", "listbox");
   boite.setAttribute("aria-multiselectable", "true");
   boite.setAttribute("tabindex", "0");
@@ -1713,6 +1806,15 @@ function marquerSelection() {
   } else boite.removeAttribute("aria-activedescendant");
 }
 
+/* « Étendre », « Ajouter un mot » : offerts dès qu'il y a des mots ; le CSS ne les montre que là
+   où un doigt existe. */
+function marquerDoigt() {
+  $("#an-doigt").hidden = false;
+  for (const b of document.querySelectorAll("#an-doigt [data-doigt]")) {
+    b.setAttribute("aria-pressed", String(b.dataset.doigt === S.doigt));
+  }
+}
+
 /* Ce qui suit un changement de sélection, hors glissé : la porte passe aux mots, la liste
    et l'état des entrées suivent. */
 function apresSelection() {
@@ -1732,7 +1834,30 @@ function brancherMots() {
     const m = e.target.closest && e.target.closest(".an-mot");
     return m ? Number(m.dataset.rang) : null;
   };
+  // Au doigt, c'est le `click` qui désigne : un toucher qui s'avère un défilement n'en produit
+  // pas, là où `pointerdown` aurait désigné le mot sous le pouce. Pas de glissé non plus : il
+  // fait défiler le texte, et « Étendre » tient sa place.
+  let pointeur = "mouse";
+  boite.addEventListener("click", (e) => {
+    if (pointeur === "mouse") return;
+    const r = motSous(e);
+    if (r === null) return;
+    const n = A.motTouche(S.sel, S.ancre, r, S.doigt);
+    S.sel = n.sel;
+    S.ancre = n.ancre;
+    S.curseur = r;
+    boite.focus({ preventScroll: true });
+    apresSelection();
+  });
+  $("#an-doigt").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-doigt]");
+    if (!b) return;
+    S.doigt = A.basculerDoigt(S.doigt, b.dataset.doigt);
+    marquerDoigt();
+  });
   boite.addEventListener("pointerdown", (e) => {
+    pointeur = e.pointerType || "mouse";
+    if (pointeur !== "mouse") return;
     const r = motSous(e);
     if (r === null || e.button !== 0) return;
     e.preventDefault();
@@ -1835,6 +1960,7 @@ function apresEcriture() {
 function conflitOuvert() {
   if (!S.conflit) return false;
   toast("Réglez d'abord le conflit, en bas de la grille.", "error");
+  if (enFeuille()) ouvrirFeuille(false);
   const b = $("#an-cf-mienne");
   if (b) b.focus();
   return true;
@@ -2031,7 +2157,7 @@ function rendreListe() {
   const m = A.grillesMontrees(S.reglage, S.grilles, S.grilleId);
   const autres = [...m].filter((id) => id !== S.grilleId).length;
   bouton.textContent = `Relevés : ${g ? g.nom : "—"}${autres ? ` + ${autres}` : ""} ▾`;
-  if (!z) { titre.textContent = "—"; liste.replaceChildren(); return; }
+  if (!z) { titre.textContent = "—"; liste.replaceChildren(); rendreBarre(); return; }
   // La liste suit « Porte sur » : des mots désignés ne la restreignent que si l'on pose
   // sur des mots (passe du jalon 1 : « toute la bulle » ne changeait rien tant qu'un mot
   // restait désigné).
@@ -2049,6 +2175,7 @@ function rendreListe() {
                                      texte: "Sur la planche" }),
                           ...surface.map(itemReleve)] : []));
   rendrePopover();
+  rendreBarre();
 }
 
 /* « la bulle b1 », « le cartouche b2 », « la case c3 », « la boîte p1 ». */
@@ -2156,6 +2283,7 @@ async function designerLien(regionId) {
   const r = S.releves.find((x) => x.id === S.designer);
   S.designer = null;
   marquerDesignation();
+  apresDesignation();
   if (!r) return;
   const g = grilleDe(r.grille_id);
   const plan = planDe(g);
@@ -2241,6 +2369,7 @@ function brancherPose() {
     if (e.key === "Escape" && S.designer !== null) {
       S.designer = null;
       marquerDesignation();
+      apresDesignation();
       rendreListe();
       rendreSynthese();
     }
@@ -2272,6 +2401,7 @@ function basculerDesignation(id) {
   S.designer = S.designer === id ? null : id;
   marquerDesignation();
   if (S.designer !== null) annoncer("Désignez l'autre zone de texte, sur la planche ou dans la case. Échap annule.");
+  if (S.designer !== null) avantDesignation(); else apresDesignation();
   rendreListe();
   rendreSynthese();
 }
@@ -2793,6 +2923,7 @@ async function ouvrirReleve(r, opts) {
     S.vue = "*";
     S.guide = null;
   }
+  fermerTiroir(false);                       // un clic ouvre le relevé : on va le voir
   await choisir(ou.caseIx, ou.zoneId);
   if (!sansMots && A.motsDuReleve(r).length && S.mots && S.mots.region_id === r.region_id) {
     const n = S.mots.mots.length;
@@ -3086,6 +3217,115 @@ async function changerCollection(valeur) {
   await afficherAlbums(S.albumId, null);
 }
 
+/* ───────────── Les écrans étroits (commit 12) ─────────────
+   Sous 75em, la planche et son Contexte passent dans un TIROIR, ouvert par « ☰ Planche et
+   contexte » ; sous 47,5em, la grille est une FEUILLE qui monte du bas par « Poser… ▴ », et la
+   barre qui la commande dit ce sur quoi on poserait. Le seuil reste au CSS : on DEMANDE au
+   document si la bascule est affichée (le patron des tiroirs de l'Atelier, `setupTiroirs`).
+
+   Le tiroir ne ferme rien derrière lui : la maquette y désigne un lien en touchant une bulle de
+   la minicarte, et il ne couvre pas toute la largeur. La FEUILLE couvre l'écran : elle rend le
+   reste inerte le temps qu'elle est là — ni tabulation ni lecteur d'écran sous elle —, et
+   l'inertie part avec elle, y compris quand la fenêtre s'élargit, où il n'y a plus de feuille.
+   Ce qu'elle porte s'y ouvre d'office : le bandeau d'un conflit, le formulaire d'un doute. */
+const affiche = (el) => getComputedStyle(el).display !== "none";
+function enTiroir() { return affiche($("#an-tiroir-planche")); }
+function enFeuille() { return affiche($("#an-barre-poser")); }
+function tiroirOuvert() { return $("#annot").classList.contains("planche-ouverte"); }
+function feuilleOuverte() { return $("#annot").classList.contains("grille-ouverte"); }
+
+function ouvrirTiroir(focaliser) {
+  fermerFeuille(false);
+  $("#annot").classList.add("planche-ouverte");
+  $("#an-tiroir-planche").setAttribute("aria-expanded", "true");
+  document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: "tiroir" }));
+  if (focaliser) $("#an-gauche-fermer").focus();
+}
+
+function fermerTiroir(rendreFocus) {
+  if (!tiroirOuvert()) return;
+  $("#annot").classList.remove("planche-ouverte");
+  $("#an-tiroir-planche").setAttribute("aria-expanded", "false");
+  // Le focus vit peut-être dans le tiroir : le laisser là le rendrait inatteignable.
+  if (rendreFocus && enTiroir()) $("#an-tiroir-planche").focus();
+}
+
+/* Tout ce que la feuille recouvre. Pas `#annot-app` entier : la modale du guide complet s'ouvre
+   depuis la feuille, et `#an-annonce` doit continuer de parler. */
+function rendreInerteSousLaFeuille(inerte) {
+  for (const s of ["#site-nav", "#header", "#an-zone", "#an-gauche", "#an-barre-poser"]) {
+    $(s).inert = inerte;
+  }
+}
+
+function ouvrirFeuille(focaliser) {
+  fermerTiroir(false);
+  $("#annot").classList.add("grille-ouverte");
+  $("#an-poser").setAttribute("aria-expanded", "true");
+  rendreInerteSousLaFeuille(true);
+  document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: "tiroir" }));
+  if (!focaliser) return;
+  // Au doigt, pas sur le filtre : le clavier virtuel couvrirait la feuille qu'on vient d'ouvrir.
+  let doigt = false;
+  try { doigt = window.matchMedia("(pointer: coarse)").matches; } catch (e) { doigt = false; }
+  (doigt ? $("#an-grille-fermer") : $("#an-filtre")).focus({ preventScroll: true });
+}
+
+function fermerFeuille(rendreFocus) {
+  if (!feuilleOuverte()) return;
+  $("#annot").classList.remove("grille-ouverte");
+  $("#an-poser").setAttribute("aria-expanded", "false");
+  rendreInerteSousLaFeuille(false);
+  if (rendreFocus && enFeuille()) $("#an-poser").focus();
+}
+
+/* Désigner un lien se fait sur la planche : la feuille s'efface, le tiroir s'ouvre sur la
+   minicarte, et tout revient comme avant quand c'est fait ou qu'on y renonce. */
+const DESIGNATION = { feuille: false, tiroir: false };
+function avantDesignation() {
+  DESIGNATION.feuille = feuilleOuverte();
+  DESIGNATION.tiroir = false;
+  if (!enTiroir()) return;
+  DESIGNATION.tiroir = !tiroirOuvert();
+  montrerGauche("planche");
+  ouvrirTiroir(false);
+}
+
+function apresDesignation() {
+  if (DESIGNATION.tiroir) fermerTiroir(false);
+  if (DESIGNATION.feuille && enFeuille()) ouvrirFeuille(false);
+  DESIGNATION.feuille = DESIGNATION.tiroir = false;
+}
+
+/* La barre de « Poser… ▴ » : ce sur quoi on poserait, et dans quelle grille. */
+function rendreBarre() {
+  const g = grilleOuverte();
+  const titre = $("#an-poses-titre").textContent;
+  $("#an-barre-sel").textContent = g ? `${titre} · ${g.nom}` : titre;
+}
+
+function brancherEtroit() {
+  $("#an-tiroir-planche").addEventListener("click", () => {
+    if (tiroirOuvert()) fermerTiroir(true); else ouvrirTiroir(true);
+  });
+  $("#an-gauche-fermer").addEventListener("click", () => fermerTiroir(true));
+  $("#an-poser").addEventListener("click", () => {
+    if (feuilleOuverte()) fermerFeuille(true); else ouvrirFeuille(true);
+  });
+  $("#an-grille-fermer").addEventListener("click", () => fermerFeuille(true));
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !$("#an-guide-modal").hidden) return;
+    if (e.defaultPrevented) return;              // Échap a déjà vidé le filtre
+    if (feuilleOuverte()) fermerFeuille(true);
+    else if (tiroirOuvert()) fermerTiroir(true);
+  });
+  // Élargir la fenêtre rend les colonnes : plus de feuille à quitter, donc plus d'inertie.
+  window.addEventListener("resize", () => {
+    if (feuilleOuverte() && !enFeuille()) fermerFeuille(false);
+    if (tiroirOuvert() && !enTiroir()) fermerTiroir(false);
+  });
+}
+
 function brancher() {
   // Changer de collection, d'album ou de planche passe par les gardes d'un départ : un
   // conflit ouvert, une précision en vol, un doute ou une réponse à moitié écrits.
@@ -3120,13 +3360,14 @@ function brancher() {
     const d = e.target.closest("[data-region]");
     if (d && S.designer !== null) { designerLien(Number(d.dataset.region)); return; }
     const r = e.target.closest(".an-mz");
-    if (r) choisir(Number(r.dataset.case), null);
+    if (r) { choisir(Number(r.dataset.case), null); fermerTiroir(true); }
   });
   mini.addEventListener("keydown", (e) => {
     const r = e.target.closest(".an-mz");
     if (r && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
       choisir(Number(r.dataset.case), null);
+      fermerTiroir(true);
     }
   });
   $("#an-vue-case").addEventListener("click", (e) => {
@@ -3378,6 +3619,7 @@ async function demarrer() {
   brancherSynthese();
   brancherContexte();
   brancherZonesTracees();
+  brancherEtroit();
   try {
     await chargerAlbums();
   } catch (e) {

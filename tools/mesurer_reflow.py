@@ -150,6 +150,21 @@ ECRASEMENT = """(racine) => {
   const r = document.querySelector(racine);
   if (!r) return null;
   const visible = (e) => { const b = e.getBoundingClientRect(); return b.width > 1 && b.height > 1; };
+  // Le rectangle qu'on VOIT d'une commande : coupé par les cadres qui la contiennent. Une ligne
+  // d'une liste qui défile a un rectangle sous le bas de son cadre, là où rien d'elle ne se voit
+  // ni ne se touche : sans cette coupe, la feuille de la grille (`.an-grille-corps`, page
+  // Annotation) se lisait comme écrasée sur les boutons qui la suivent.
+  const vu = (e) => {
+    const b = e.getBoundingClientRect();
+    const o = { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+    for (let p = e.parentElement; p && p !== r.parentElement; p = p.parentElement) {
+      if (getComputedStyle(p).overflowY === 'visible') continue;
+      const c = p.getBoundingClientRect();
+      o.left = Math.max(o.left, c.left); o.right = Math.min(o.right, c.right);
+      o.top = Math.max(o.top, c.top); o.bottom = Math.min(o.bottom, c.bottom);
+    }
+    return o;
+  };
   const nom = (e) => e.id ? '#' + e.id : e.tagName.toLowerCase() +
     (typeof e.className === 'string' && e.className.trim()
        ? '.' + e.className.trim().split(/\\s+/).join('.') : '') +
@@ -161,7 +176,7 @@ ECRASEMENT = """(racine) => {
     for (let j = i + 1; j < commandes.length; j++) {
       const a = commandes[i], b = commandes[j];
       if (a.contains(b) || b.contains(a)) continue;
-      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      const ra = vu(a), rb = vu(b);
       const l = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
       const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
       if (l > 1 && h > 1) chevauchements.push({ a: nom(a), b: nom(b), px: Math.round(l) });
@@ -255,6 +270,12 @@ DEPLIES = {
     "#an-releves-btn": {
         "nom": "grilles des relevés", "panneau": "#an-releves-pop",
         "surfaces": ["/annotation"]},
+    # Les écrans étroits (commit 12) : le tiroir de la planche, et la grille qui monte du bas.
+    # Fermés, ils sont escamotés pour la sonde ; ouverts, on mesure ce qu'on y trouve.
+    "#an-tiroir-planche": {
+        "nom": "tiroir de la planche", "panneau": "#an-gauche", "surfaces": ["/annotation"]},
+    "#an-poser": {
+        "nom": "grille qui monte du bas", "panneau": "#an-grille", "surfaces": ["/annotation"]},
     # La boîte du guide (commit 7) se replie et se déplie ; dépliée par défaut, et mesurée
     # dépliée : c'est là qu'elle a le plus à porter.
     "#an-guide-replier": {

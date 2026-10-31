@@ -1026,6 +1026,11 @@ annote. *Supprimer cette zone* ne s'offre que sur ces deux sortes. Un détail ne
 export. La zone se range à la fin de sa case ; **↻** au-dessus de l'arbre, dans l'Atelier, la remet
 à sa place de lecture.
 
+**Sans souris, tracer** passe par **✎ Tracer une zone**, à droite de *Porte sur*. Au doigt, il
+arme le geste : glissez alors dans la case. Au clavier, il pose un rectangle au milieu de la
+case : les flèches le déplacent, Maj+flèches changent sa taille, Entrée le valide, Échap
+renonce.
+
 **La Synthèse**, second onglet de la colonne de gauche : *Relevés* (toute la planche, case par
 case ; un clic ouvre le relevé), *À revoir* (les doutes, les relevés dont le texte a changé ou
 dont un mot a disparu, avec *Rattacher aux mots désignés*, ce qui reste à compléter, les doutes
@@ -1037,6 +1042,15 @@ garde votre zone, vos mots désignés et ce que vous écriviez. Si quelqu'un a m
 que vous changez, un bandeau prend la place du guide : *Remplacer par la mienne* ou *Garder
 l'autre*. **Ctrl+Z**, hors d'un champ, défait votre dernier geste : poser, retirer, le texte,
 le nom, la note, le locuteur, une zone tracée.
+
+**Sur une tablette, sur un téléphone.** La colonne de gauche — la planche, le Contexte, la
+Synthèse — passe dans un tiroir : **☰ Planche et contexte**, *Fermer ✕* ou Échap ; choisir une
+case le referme. Sur un téléphone, la grille monte du bas : la barre du bas dit ce sur quoi vous
+poseriez, **Poser… ▴** ouvre la grille, *Fermer ✕* la referme. Toucher un mot le désigne, le
+retoucher le retire. **Étendre**, puis un mot : le passage va jusqu'à lui. **Ajouter un mot**,
+puis un mot : il entre dans le passage ou en sort, pour « ne … pas ». Pour un lien, *Désigner
+sur la planche* efface la grille et ouvre la planche : touchez l'autre zone, et la grille
+revient.
 
 ### Recherche (`/recherche`)
 

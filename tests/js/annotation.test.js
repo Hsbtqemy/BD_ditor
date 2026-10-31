@@ -645,6 +645,67 @@ test("l'entrée qui naît en la posant suit la cible de la version", () => {
                    ["hors-champ", "objet"]);
 });
 
+/* ── Commit 12 : au doigt, et tracer au clavier ── */
+test("au doigt : un mot commence ou retire ; Étendre et Ajouter valent tant qu'il y a un passage", () => {
+  assert.deepEqual(A.motTouche([], null, 3, null), { sel: [3], ancre: 3 });
+  assert.deepEqual(A.motTouche([3], 3, 5, null), { sel: [5], ancre: 5 });
+  assert.deepEqual(A.motTouche([3], 3, 3, null), { sel: [], ancre: 3 }, "le mot seul se retire");
+  // Sans passage, les modes commencent un mot, comme un toucher simple.
+  assert.deepEqual(A.motTouche([], null, 2, "etendre"), { sel: [2], ancre: 2 });
+  assert.deepEqual(A.motTouche([], null, 2, "ajouter"), { sel: [2], ancre: 2 });
+  // Étendre part de l'ancre, dans les deux sens, et ne la déplace pas.
+  assert.deepEqual(A.motTouche([1], 1, 4, "etendre"), { sel: [1, 2, 3, 4], ancre: 1 });
+  assert.deepEqual(A.motTouche([3], 3, 1, "etendre"), { sel: [1, 2, 3], ancre: 3 });
+  assert.deepEqual(A.motTouche([1, 2], null, 4, "etendre").sel, [4], "sans ancre, du mot touché");
+  // Ajouter fait le trou de « ne … pas », et le défait.
+  assert.deepEqual(A.motTouche([1, 2, 3], 1, 2, "ajouter"), { sel: [1, 3], ancre: 2 });
+  assert.deepEqual(A.motTouche([1, 3], 2, 5, "ajouter"), { sel: [1, 3, 5], ancre: 5 });
+  assert.deepEqual(A.motTouche([1], 1, 1, "ajouter"), { sel: [], ancre: 1 });
+});
+
+test("les deux modes s'excluent, et retoucher le sien l'éteint", () => {
+  assert.equal(A.basculerDoigt(null, "etendre"), "etendre");
+  assert.equal(A.basculerDoigt("etendre", "ajouter"), "ajouter");
+  assert.equal(A.basculerDoigt("ajouter", "ajouter"), null);
+});
+
+test("tracer au clavier : le rectangle naît au milieu, un tiers de la case", () => {
+  assert.deepEqual(A.rectangleInitial({ x: 20, y: 20, w: 360, h: 900 }),
+                   { x: 140, y: 320, w: 120, h: 300 });
+  // Jamais moins que la zone minimale, ni plus que la case.
+  assert.deepEqual(A.rectangleInitial({ x: 0, y: 0, w: 12, h: 30 }), { x: 2, y: 10, w: 8, h: 10 });
+  assert.deepEqual(A.rectangleInitial({ x: 0, y: 0, w: 5, h: 5 }), { x: 0, y: 0, w: 5, h: 5 });
+  assert.equal(A.rectangleInitial(null), null);
+});
+
+test("tracer au clavier : les flèches déplacent, Maj+flèches changent la taille, dans la case", () => {
+  const c = { x: 20, y: 20, w: 360, h: 900 };
+  const r = { x: 140, y: 320, w: 120, h: 300 };
+  assert.deepEqual(A.rectangleClavier(r, "ArrowRight", false, c), { x: 158, y: 320, w: 120, h: 300 });
+  assert.deepEqual(A.rectangleClavier(r, "ArrowLeft", false, c), { x: 122, y: 320, w: 120, h: 300 });
+  assert.deepEqual(A.rectangleClavier(r, "ArrowUp", false, c), { x: 140, y: 275, w: 120, h: 300 });
+  assert.deepEqual(A.rectangleClavier(r, "ArrowDown", false, c), { x: 140, y: 365, w: 120, h: 300 });
+  assert.deepEqual(A.rectangleClavier(r, "ArrowRight", true, c), { x: 140, y: 320, w: 138, h: 300 });
+  assert.deepEqual(A.rectangleClavier(r, "ArrowDown", true, c), { x: 140, y: 320, w: 120, h: 345 });
+  assert.deepEqual(A.rectangleClavier(r, "ArrowUp", true, c), { x: 140, y: 320, w: 120, h: 255 });
+  // Il reste dans la case, et n'y devient jamais plus petit qu'une zone.
+  const bord = { x: 20, y: 20, w: 120, h: 300 };
+  assert.deepEqual(A.rectangleClavier(bord, "ArrowLeft", false, c), bord);
+  assert.deepEqual(A.rectangleClavier(bord, "ArrowUp", false, c), bord);
+  const fin = { x: 260, y: 620, w: 120, h: 300 };
+  assert.deepEqual(A.rectangleClavier(fin, "ArrowRight", false, c), fin);
+  assert.deepEqual(A.rectangleClavier(fin, "ArrowDown", false, c), fin);
+  assert.deepEqual(A.rectangleClavier(fin, "ArrowRight", true, c), fin, "pas de taille hors case");
+  assert.deepEqual(A.rectangleClavier(fin, "ArrowDown", true, c), fin);
+  const petit = { x: 40, y: 40, w: 8, h: 8 };
+  assert.deepEqual(A.rectangleClavier(petit, "ArrowLeft", true, c), petit);
+  assert.deepEqual(A.rectangleClavier(petit, "ArrowUp", true, c), petit);
+  // Toute autre touche n'est pas pour lui.
+  assert.equal(A.rectangleClavier(r, "Tab", false, c), null);
+  assert.equal(A.rectangleClavier(r, "a", true, c), null);
+  assert.equal(A.rectangleClavier(null, "ArrowLeft", false, c), null);
+});
+
 /* ── Commit 4 : « terminée », le parcours ── */
 const RANGEMENT = [
   { case: { id: 1, type: "case" },

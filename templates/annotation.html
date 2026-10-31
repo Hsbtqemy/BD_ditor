@@ -45,13 +45,19 @@
          du travail effectué ») : la planche et son Contexte ; la Synthèse (commit 5) — les
          relevés de la planche par case, ce qui est à revoir, le décompte. -->
     <aside id="an-gauche" class="an-col an-gauche" aria-label="Planche et synthèse">
-      <div class="an-gauche-onglets" role="tablist" aria-label="Planche ou synthèse">
-        <button type="button" role="tab" id="an-ong-planche" class="ghost an-onglet"
-                aria-selected="true" aria-controls="an-p-planche">Planche</button>
-        <button type="button" role="tab" id="an-ong-synthese" class="ghost an-onglet"
-                aria-selected="false" aria-controls="an-p-synthese" tabindex="-1"
-                title="Les relevés de la planche, ce qui est à revoir, le décompte">Synthèse<span
-                id="an-n-revoir" class="an-n"></span></button>
+      <div class="an-gauche-tete">
+        <div class="an-gauche-onglets" role="tablist" aria-label="Planche ou synthèse">
+          <button type="button" role="tab" id="an-ong-planche" class="ghost an-onglet"
+                  aria-selected="true" aria-controls="an-p-planche">Planche</button>
+          <button type="button" role="tab" id="an-ong-synthese" class="ghost an-onglet"
+                  aria-selected="false" aria-controls="an-p-synthese" tabindex="-1"
+                  title="Les relevés de la planche, ce qui est à revoir, le décompte">Synthèse<span
+                  id="an-n-revoir" class="an-n"></span></button>
+        </div>
+        <!-- Sous 75em, cette colonne est un tiroir (commit 12) : sa bascule est dans la tête de
+             la case. -->
+        <button id="an-gauche-fermer" class="ghost small an-etroit" type="button"
+                title="Échap">Fermer ✕</button>
       </div>
       <div id="an-p-planche" class="an-panneau" role="tabpanel" aria-labelledby="an-ong-planche">
         <h2 class="an-titre" id="an-mini-titre">Planche</h2>
@@ -122,6 +128,8 @@
 
     <section id="an-zone" class="an-col an-zone" aria-labelledby="an-tete-case">
       <div class="an-tete">
+        <button id="an-tiroir-planche" class="ghost small an-etroit" type="button"
+                aria-expanded="false" aria-controls="an-gauche">☰ Planche et contexte</button>
         <h2 class="an-titre" id="an-tete-case">—</h2>
         <span id="an-tete-zone" class="an-badge"></span>
         <span class="nav-spacer"></span>
@@ -130,7 +138,7 @@
       <!-- Tracer une zone (commit 9) : un glissé dans la case, puis sa sorte, proposée
            par-dessus la case (`#an-trace`, que le dessin de la case garde). -->
       <div id="an-vue-case" class="an-vue-case"
-           title="Cliquez une zone pour la choisir, ou le fond pour la case ; glissez pour tracer un détail ou un texte hors bulle"><div
+           title="Cliquez une zone pour la choisir, ou le fond pour la case ; à la souris, glissez pour tracer un détail ou un texte hors bulle"><div
            id="an-trace" class="an-trace" role="group" aria-label="La zone tracée est" hidden>
           <button type="button" class="ghost small" data-trace="detail"
                   title="Un détail de l'image, qu'on nomme">Détail d'image</button>
@@ -140,13 +148,27 @@
         </div></div>
       <div id="an-zones" class="an-zones" role="group" aria-label="Zones de la case"></div>
       <!-- « Porte sur » (commit 3) : ce que la grille ouverte vise depuis la zone choisie. -->
-      <div id="an-porte" class="an-porte" role="group" aria-label="Le relevé porte sur"></div>
+      <div class="an-porte-l">
+        <div id="an-porte" class="an-porte" role="group" aria-label="Le relevé porte sur"></div>
+        <!-- Tracer sans souris (commit 12) : au doigt, ce bouton arme le glissé ; au clavier, il
+             pose un rectangle que les flèches déplacent. -->
+        <button id="an-tracer" class="ghost small" type="button" aria-pressed="false" hidden
+                title="Tracer une nouvelle zone dans la case : un détail d'image, ou un texte hors bulle. À la souris, il suffit de glisser.">✎ Tracer une zone</button>
+      </div>
       <!-- Les MOTS de la zone, à désigner : clic, glissé, Maj+clic, Ctrl+clic, clavier.
            Sous chacun, les traits des relevés, un couloir par relevé. -->
       <section class="an-texte-bloc" aria-labelledby="an-texte-titre">
         <div class="an-mots-tete">
           <h3 class="an-sous-titre" id="an-texte-titre">Texte</h3>
           <span id="an-legende" class="an-legende" aria-hidden="true"></span>
+          <span class="nav-spacer"></span>
+          <!-- Au doigt (commit 12) : ce que Maj+clic et Ctrl+clic font à la souris. -->
+          <span id="an-doigt" class="an-doigt" role="group" aria-label="Désigner au doigt" hidden>
+            <button type="button" class="ghost small" data-doigt="etendre" aria-pressed="false"
+                    title="Le prochain mot touché étend le passage jusqu'à lui">Étendre</button>
+            <button type="button" class="ghost small" data-doigt="ajouter" aria-pressed="false"
+                    title="Le prochain mot touché s'ajoute au passage, ou en sort">Ajouter un mot</button>
+          </span>
         </div>
         <div id="an-mots" class="an-mots muted"
              title="Clic, glisser ou Maj+clic : un passage. Ctrl+clic : ajouter ou retirer un mot (« ne … pas »). Au clavier : flèches, Maj+flèches, Espace, Entrée pour chercher dans la grille, Échap pour ne rien désigner.">—</div>
@@ -180,6 +202,11 @@
          ne masque pas, « Afficher », le filtre (« / »), le plan, la ligne du guide à hauteur
          fixe et le guide complet. -->
     <aside id="an-grille" class="an-col an-grille" aria-labelledby="an-grille-titre">
+      <!-- Sous 47,5em, la grille monte du bas par « Poser… ▴ » (commit 12). -->
+      <div class="an-gr-fermer-l an-etroit-feuille">
+        <span class="nav-spacer"></span>
+        <button id="an-grille-fermer" class="ghost small" type="button" title="Échap">Fermer ✕</button>
+      </div>
       <div class="an-gr-tete">
         <h2 class="an-titre" id="an-grille-titre">Grille</h2>
         <div id="an-onglets" class="an-onglets" role="tablist" aria-labelledby="an-grille-titre"></div>
@@ -228,6 +255,11 @@
       </div>
       </div>
     </aside>
+    <div id="an-barre-poser" class="an-barre-poser">
+      <span id="an-barre-sel" class="small an-barre-sel"></span>
+      <button id="an-poser" class="primary" type="button" aria-controls="an-grille"
+              aria-expanded="false">Poser… ▴</button>
+    </div>
   </main>
   <!-- Ce qu'on pose, retire ou refuse, dit au lecteur d'écran. -->
   <p id="an-annonce" class="sr-only" role="status" aria-live="polite"></p>

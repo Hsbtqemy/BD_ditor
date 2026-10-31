@@ -3746,9 +3746,9 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
    disposition qui NE BOUGE PAS pendant le travail (Hugo, 2026-10-14) : la boîte de la case a
    une hauteur constante, la rangée des zones et le bloc du texte aussi ; passer d'une case
    ou d'une zone à l'autre ne change la taille de rien. Les seuils sont ceux de la maquette
-   v3 : deux colonnes sous 75em, une sous 47,5em ; les gestes au doigt et les tiroirs
-   viendront avec les écrans étroits (jalon 3). Le cadre défilant est À LA PAGE, comme sur
-   les autres surfaces : `html, body { overflow: hidden }` clippe la racine. */
+   v3 : deux colonnes sous 75em, et la planche passe dans un tiroir ; une sous 47,5em, et la
+   grille monte du bas par « Poser… ▴ ». Le cadre défilant est À LA PAGE, comme sur les autres
+   surfaces : `html, body { overflow: hidden }` clippe la racine. */
 #annot-app { display: flex; flex-direction: column; height: 100%; }
 #annot-app #site-nav, #annot-app #header { flex: 0 0 auto; }
 .an-header { flex-wrap: wrap; row-gap: .3077rem; padding-top: .3077rem; padding-bottom: .3077rem; }
@@ -3839,7 +3839,9 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 
 /* Les deux vues de la colonne de gauche (commit 5) : la planche, la Synthèse. Le garde
    `[hidden]` : `display: flex` écraserait l'attribut (cf. `test_e2e_masquage`). */
-.an-gauche-onglets { display: flex; flex-wrap: wrap; gap: .3077rem; flex: 0 0 auto; }
+.an-gauche-tete { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem;
+                  justify-content: space-between; flex: 0 0 auto; }
+.an-gauche-onglets { display: flex; flex-wrap: wrap; gap: .3077rem; }
 .an-panneau { display: flex; flex-direction: column; gap: .7692rem; min-width: 0; }
 .an-panneau[hidden] { display: none; }
 .an-n:not(:empty) { font-weight: 400; color: var(--text-muted); }
@@ -3942,6 +3944,14 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
   border: 1px solid var(--border); border-radius: 6px; padding: .4615rem;
   background: var(--stage-a); display: flex; align-items: center; justify-content: center;
 }
+/* « Tracer une zone » armé (commit 12) : un doigt qui glisse trace, il ne fait pas défiler.
+   Sur le calque de la case, jamais sur sa boîte : `touch-action` vaut pour tout ce qu'elle
+   contient, et le choix « Détail d'image · Texte hors bulle », qu'elle porte, ne recevait plus
+   de `click` — mesuré dans Chromium, `pointerup` et `touchend` passaient, et rien ne suivait. */
+.an-vue-case.an-dessin .an-case-svg { touch-action: none; }
+.an-vue-case.an-dessin .an-case-svg, .an-vue-case.an-dessin .an-fond,
+.an-vue-case.an-dessin .an-vz { cursor: crosshair; }
+.an-vue-case:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* La case : son cadre a la taille de la case dans la boîte (posée par le script), le dérivé
    en fond, le calque des zones par-dessus. `overflow: hidden` : une étiquette ne sort pas. */
 .an-crop { position: relative; flex: 0 0 auto; overflow: hidden; max-width: 100%;
@@ -3975,14 +3985,25 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .an-vz-lbl { fill: var(--label-fill); font-family: monospace; font-weight: 600;
              paint-order: stroke; stroke: var(--label-halo); pointer-events: none; }
 
+/* Les rangées de la colonne de la case gardent leur hauteur : c'est la colonne qui défile.
+   `flex: 0 0 auto` n'est pas une précaution pour `.an-zones` : un cadre défilant n'a pas de
+   hauteur minimale automatique, si bien qu'en `flex-shrink: 1` il absorbait tout le manque de
+   place — 21 px à 1280 × 720, 0 à 640 de haut, mesuré le 2026-10-31 ; derrière le proxy, ses
+   bandes en plus suffisaient à l'annuler à 720. */
+.an-tete, .an-zones, .an-porte-l { flex: 0 0 auto; }
 /* La rangée des zones de la case — le chemin au clavier vers chacune —, à hauteur fixe. */
 .an-zones { display: flex; flex-wrap: wrap; gap: .3077rem; align-content: flex-start;
             height: 4.6rem; overflow-y: auto; }
 .an-zone-btn[aria-pressed="true"] { border-color: var(--accent-blue); background: var(--bg-input); }
 
-/* « Porte sur » (commit 3) : une rangée de hauteur fixe, qu'elle offre un choix ou trois. */
+/* « Porte sur » (commit 3) : une rangée de hauteur fixe, qu'elle offre un choix ou trois.
+   « Tracer une zone » (commit 12) la termine, à droite. */
+.an-porte-l { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+              gap: .3077rem .9231rem; }
 .an-porte { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem;
-            min-height: 2rem; }
+            min-height: 2rem; min-width: 0; }
+#an-tracer[aria-pressed="true"] { border-color: var(--accent-blue); background: var(--bg-input);
+                                  font-weight: 600; }
 .an-porte-btn[aria-pressed="true"] { border-color: var(--accent-blue); background: var(--bg-input);
                                      font-weight: 600; }
 
@@ -3994,6 +4015,13 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
    passage à trou n'en a pas sous les mots sautés. */
 .an-texte-bloc { flex: 0 0 auto; }
 .an-mots-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3077rem .7692rem; }
+.an-mots-tete .nav-spacer { flex: 1; }
+/* « Étendre », « Ajouter un mot » : là où un doigt existe — `any-pointer` et non `pointer` : un
+   portable tactile a une souris pour pointeur principal. Ils ne valent que pour le doigt. */
+.an-doigt { display: none; gap: .3077rem; }
+@media (any-pointer: coarse) { .an-doigt:not([hidden]) { display: inline-flex; } }
+.an-doigt [aria-pressed="true"] { border-color: var(--accent-blue); color: var(--accent-blue);
+                                  font-weight: 600; }
 .an-legende { display: inline-flex; flex-wrap: wrap; gap: .3077rem .7692rem;
               font-size: .8462rem; color: var(--text-muted); }
 .an-leg { display: inline-flex; align-items: center; gap: .3077rem; }
@@ -4196,29 +4224,78 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-gc-table th, .an-gc-table td { border: 1px solid var(--border); padding: .3077rem .4615rem;
                                    text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 
-/* Deux colonnes : la case et la grille ; la planche passe sous la case. La page défile
-   alors en entier, dans `main`. Des rangées `max-content` et des colonnes à `min-height:
-   auto` : en `auto`, une grille de hauteur DÉFINIE répartit sa hauteur entre ses rangées,
-   et la colonne de la case, rognée à sa part, débordait sur la planche (mesuré à 1000 et à
-   360 px). */
+/* Fenêtre basse : la page se resserre une fois pour toutes, rien ne bouge ensuite (la v3). */
+@media (max-height: 50em) {
+  .annot { --h-case: calc(36 * var(--vh-visible)); }
+  .an-guide { height: 9.2308rem; }
+  .an-bas { height: 18.4615rem; }
+  .an-gr-tete { padding-top: .6154rem; gap: .4615rem; }
+}
+
+/* Ce qui n'existe que sur un écran étroit : la bascule et la fermeture du tiroir, la fermeture
+   de la feuille, la barre « Poser… ▴ ». Le CSS seul en décide, et le script le lui DEMANDE
+   (`enTiroir`, `enFeuille`) : recopier un seuil en ferait deux à tenir d'accord. */
+.an-etroit, .an-etroit-feuille, .an-barre-poser { display: none; }
+
+/* Deux colonnes : la case et la grille ; la planche et son Contexte passent dans un TIROIR, qui
+   ne ferme rien derrière lui : désigner un lien s'y fait sur la minicarte comme dans la case.
+   La page défile en entier, dans `main`. Des rangées `max-content` et des colonnes à
+   `min-height: auto` : en `auto`, une grille de hauteur DÉFINIE répartit sa hauteur entre ses
+   rangées, et la colonne de la case, rognée à sa part, débordait (mesuré à 1000 et à 360 px).
+   Fermé, le tiroir n'est pas seulement hors champ : `visibility` le sort de la tabulation. */
 @media (max-width: 75em) {
   .annot { grid-template-columns: minmax(0, 1fr) minmax(16rem, 38%);
-           grid-template-rows: auto max-content max-content;
-           grid-template-areas: "bandeau bandeau" "zone grille" "gauche grille";
+           grid-template-rows: auto max-content;
+           grid-template-areas: "bandeau bandeau" "zone grille";
            overflow-y: auto; }
   .an-col { overflow: visible; min-height: auto; }
   .an-grille-corps { overflow: visible; }
   .an-poses { height: auto; min-height: 10.7692rem; }
   .an-bas { height: auto; }
   .an-bas .an-poses { min-height: 10.7692rem; }
-  .an-gauche { border-right: none; border-top: 1px solid var(--border); }
+  .an-etroit { display: inline-flex; }
+  .an-gauche {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 70; width: min(24rem, 88%);
+    overflow: auto; box-shadow: 4px 0 16px var(--shadow); transform: translateX(-101%);
+    visibility: hidden; transition: transform .18s ease, visibility 0s linear .18s;
+  }
+  .annot.planche-ouverte .an-gauche {
+    transform: none; visibility: visible; transition: transform .18s ease;
+  }
 }
-/* Une colonne : la case, la planche, puis la grille. */
+/* Une colonne : la case. Toute la page défile, ses bandes comprises, et la grille est une
+   FEUILLE qui monte du bas, modale le temps qu'elle est là (`inert` sur le reste). */
 @media (max-width: 47.5em) {
-  .annot { grid-template-columns: minmax(0, 1fr);
-           grid-template-rows: auto max-content max-content max-content;
-           grid-template-areas: "bandeau" "zone" "gauche" "grille"; }
-  .an-zone { padding: .9231rem; }
-  .an-grille { border-left: none; border-top: 1px solid var(--border); }
+  #annot-app { display: block; overflow-y: auto; }
+  .annot { display: block; overflow: visible; --h-case: calc(40 * var(--vh-visible));
+           padding-bottom: 4.5rem; }
+  .an-zone { padding: .9231rem; overflow: visible; }
   .an-champ select { max-width: 100%; }
+  .an-etroit-feuille { display: flex; }
+  .an-gr-fermer-l { flex: 0 0 auto; padding: .4615rem .9231rem 0; }
+  .an-grille {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; border-left: none;
+    border-top: 1px solid var(--border); border-radius: 12px 12px 0 0;
+    height: calc(88 * var(--vh-visible)); overflow: hidden;
+    box-shadow: 0 -8px 28px var(--shadow); transform: translateY(105%); visibility: hidden;
+    transition: transform .2s ease, visibility 0s linear .2s;
+  }
+  .annot.grille-ouverte .an-grille {
+    transform: none; visibility: visible; transition: transform .2s ease;
+  }
+  .an-grille-corps { overflow-y: auto; }
+  .an-bas { height: 15.3846rem; }
+  .an-bas .an-poses { min-height: 0; }
+  .an-guide { height: 9.2308rem; }
+  .an-barre-poser {
+    display: flex; position: fixed; z-index: 65; left: 0; right: 0; bottom: 0;
+    align-items: center; gap: .7692rem; background: var(--bg-panel);
+    padding: .6154rem 1rem calc(.6154rem + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--border);
+  }
+  .an-barre-sel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                  white-space: nowrap; color: var(--text-muted); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .an-gauche, .an-grille { transition: none !important; }
 }

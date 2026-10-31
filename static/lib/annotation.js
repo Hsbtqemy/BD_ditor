@@ -323,6 +323,35 @@
     return w >= min && h >= min ? { x, y, w, h } : null;
   }
 
+  /* TRACER AU CLAVIER (commit 12) : « Tracer une zone » pose un rectangle au milieu de la case
+     (le tiers de ses côtés, jamais moins que la zone minimale ni plus que la case), les flèches
+     le déplacent, Maj+flèches changent sa taille, par pas d'un vingtième de la case. Toujours
+     dans la case, jamais plus petit que `TRACE_MIN`. `null` pour une touche qui n'est pas une
+     flèche. */
+  function rectangleInitial(rect) {
+    if (!rect) return null;
+    const w = Math.min(rect.w, Math.max(TRACE_MIN, Math.round(rect.w / 3)));
+    const h = Math.min(rect.h, Math.max(TRACE_MIN, Math.round(rect.h / 3)));
+    return { x: Math.round(rect.x + (rect.w - w) / 2), y: Math.round(rect.y + (rect.h - h) / 2),
+             w, h };
+  }
+
+  const FLECHES = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+  function rectangleClavier(r, touche, taille, rect) {
+    const f = FLECHES[touche];
+    if (!f || !r || !rect) return null;
+    const dx = f[0] * Math.max(1, Math.round(rect.w / 20));
+    const dy = f[1] * Math.max(1, Math.round(rect.h / 20));
+    if (taille) {
+      return { x: r.x, y: r.y,
+               w: Math.max(TRACE_MIN, Math.min(rect.x + rect.w - r.x, r.w + dx)),
+               h: Math.max(TRACE_MIN, Math.min(rect.y + rect.h - r.y, r.h + dy)) };
+    }
+    return { x: Math.max(rect.x, Math.min(rect.x + rect.w - r.w, r.x + dx)),
+             y: Math.max(rect.y, Math.min(rect.y + rect.h - r.h, r.y + dy)), w: r.w, h: r.h };
+  }
+
   /* Ce qu'une zone dit SUR L'IMAGE : le personnage d'une boîte, le nom d'un détail, sinon son
      étiquette (« b1 »). */
   function nomSurImage(zone, etiquette, personnage) {
@@ -668,6 +697,21 @@
     const s = new Set(rangs(sel));
     if (s.has(rang)) s.delete(rang); else s.add(rang);
     return rangs(s);
+  }
+
+  /* AU DOIGT (commit 12) : ni Maj ni Ctrl. « Étendre » et « Ajouter un mot » sont des MODES,
+     l'un excluant l'autre — retoucher le sien l'éteint —, qui valent pour le prochain mot
+     touché, tant qu'il y a un passage ; sans passage, un mot touché le commence. Toucher le mot
+     seul désigné le retire. Rend `{ sel, ancre }`. */
+  function basculerDoigt(mode, choisi) { return mode === choisi ? null : choisi; }
+
+  function motTouche(sel, ancre, rang, mode) {
+    const s = rangs(sel);
+    if (s.length && mode === "etendre") {
+      return { sel: plage(ancre === null || ancre === undefined ? rang : ancre, rang), ancre };
+    }
+    if (mode === "ajouter") return { sel: basculer(s, rang), ancre: rang };
+    return { sel: s.length === 1 && s[0] === rang ? [] : [rang], ancre: rang };
   }
 
   /* Le texte d'un passage, ses trous dits « … » : « ne … pas ». `mots` : le découpage.
@@ -1383,6 +1427,7 @@
   return { TYPES_TEXTE, CLES_ADRESSE, CLE_RELEVES, estTexte, nomType, deLa, casesDeLaPlanche,
            etiquette, etiquettesDeLaCase, situer, libellePlanche, preparation, adresse,
            lireAdresse, lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
+           rectangleInitial, rectangleClavier, basculerDoigt, motTouche,
            gestesDuContexte, noteAEnvoyer, TRACABLES, TRACE_MIN, rectangleTrace, nomSurImage,
            normaliser, masquee, grillesVisibles, grilleAOuvrir, infobulleGrille, arbre,
            entreesSous, chemin, vuesAfficher, relevesDeLaZone, compter, marquePlusieurs,

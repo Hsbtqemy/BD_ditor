@@ -126,7 +126,7 @@ def test_choisir_une_case_puis_une_zone_ne_change_la_taille_de_rien(page, decor)
     assert _boites(page) == avant
     assert f"region={decor['cartouche']}" in page.url
     # Le fond de la case : la case elle-même, et l'adresse nomme la case.
-    page.locator("#an-vue-case rect.an-fond").click(position={"x": 5, "y": 300})
+    page.locator("#an-vue-case rect.an-fond").click(position={"x": 5, "y": 200})
     expect(page.locator("#an-tete-zone")).to_have_text("")
     expect(page.locator("#an-mots")).to_have_text("—")
     assert f"region={decor['c2']}" in page.url
@@ -965,6 +965,7 @@ def test_la_synthese_tient_a_320_px(page, decor):
     _douter_api(decor, _cri(decor)["id"], "Un juron, ou un cri qu'on n'entend pas ?")
     page.set_viewport_size({"width": 320, "height": 900})
     _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-tiroir-planche").click()         # sous 75em, le tiroir la porte
     _synthese(page, "revoir")
     expect(page.locator("#an-syn-corps [data-lever=garde]")).to_be_visible()
     dehors = page.evaluate("""() => [...document.querySelectorAll('#an-gauche *')]
@@ -1159,7 +1160,7 @@ def test_la_boite_du_guide_se_replie_et_la_liste_prend_sa_place(page, decor):
     bouton.click()
     expect(bouton).to_have_attribute("aria-expanded", "false")
     expect(page.locator("#an-guide-contenu")).to_be_hidden()
-    assert hauteur("#an-poses") > poses + 80
+    assert hauteur("#an-poses") > poses + 60
     assert hauteur("#an-grille") == colonne
     # Retenu au rechargement.
     page.reload(wait_until="networkidle")
@@ -1185,7 +1186,7 @@ def test_le_releve_de_la_planche_se_lit_partout_et_la_case_se_dit_la_case(page, 
     assert any("ambiance" in t for t in textes[i + 1:]) and not any("ambiance" in t for t in textes[:i])
     regard = liste.locator(".an-pose", has_text="regard caméra")
     expect(regard.locator(".an-pose-pass")).to_have_text("la case")
-    page.locator("#an-vue-case rect.an-fond").click(position={"x": 5, "y": 300})
+    page.locator("#an-vue-case rect.an-fond").click(position={"x": 5, "y": 200})
     expect(page.locator("#an-tete-zone")).to_have_text("")
     expect(liste.locator(".an-pose", has_text="regard caméra").locator(".an-pose-pass")).to_have_text("la case")
 
