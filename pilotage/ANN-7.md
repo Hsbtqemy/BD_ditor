@@ -178,6 +178,14 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 - [x] À 720 px de haut, derrière le proxy, la rangée « Zones de la case » de la page Annotation garde sa hauteur — attendu : visible. Mesuré par l'agent du jalon 3 le 2026-10-30 : elle tombe à 0 px ; hypothèse, le `flex-shrink` d'une rangée à hauteur fixe qui porte un `overflow` — **Codé le 2026-10-31, `953531d`** : l'hypothèse était juste, le proxy n'y était pour rien (60 px à 800 de haut, 21 à 720, 0 à 640)
 - [ ] **Un bac à sable naît avec une grille fictive activée** — attendu : codé (H4, ≈ 1 jour), à la fin de la tranche 2 ou en tête du wizard ; effacée avec lui
 
+### Relevé au rejeu de la passe du jalon 3 — 2026-10-31 (`pilotage/qa/page-annotation-jalon-3.md`)
+
+- [ ] « Porte sur » dit « tout le texte » sur une zone `texte`, et de même sur un cartouche — attendu : à l'écran. Il dit « toute le texte » (`optionsPorteSur`, `static/lib/annotation.js` : « toute » devant un nom masculin)
+- [ ] Après le 422 d'un changement de type refusé, la liste « Type » de l'Atelier revient sur le type de la région — attendu : sur Case #59 portant un détail, « Type » sur « bulle » refusé, la liste redit « case » sans resélectionner. Elle reste sur « bulle » (`patchRegion` ne la rétablit pas)
+- [ ] L'arbre de l'Atelier écrit « Détail » avec son accent — attendu : à l'écran. Il écrit « Detail », `rg.type` brut
+- [ ] Le Contexte de la page Annotation ne s'étire pas — attendu : sur une bulle, pas de vide entre ses lignes. Mesuré : 235 px contre 108 en passant `#an-ctx-corps dd` de `white-space: pre-line` à `normal`, sans gêne fonctionnelle
+- [ ] Entrée ou Espace sur un bouton de « Porte sur » ou de la rangée des zones garde le focus sur le bouton redessiné — attendu : au clavier, le contour reste visible sur ce bouton. Le nouveau rendu laisse le focus sur `BODY` ; Chromium repart du bloc voisin, mais le focus visible disparaît
+
 ### Relevé par Hugo en jouant la passe du jalon 1 — 2026-10-28 (`pilotage/qa/page-annotation-jalon-1.md`)
 
 - [x] Dans la liste de ce qui est posé, la précision d'un relevé et son ✕ tiennent sur UNE ligne : le champ se réduit, ✕ reste à sa droite (sur la recette, à la largeur de Hugo, ✕ passait sous le champ) — **Codé le 2026-10-30, `97112ae`**
