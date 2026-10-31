@@ -168,7 +168,9 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
 > (2026-09-24).** Ses deux tables, `activite` et `evenement`, voyagent dans l'archive CSV,
 > le classeur XLSX et le dépôt ShareDocs (l'arbre JSON, lui, ne les porte pas), et rien ne
 > les borne par collection : « un run/acte n'appartient pas à un album, et l'acte SURVIT à
-> la suppression de sa cible → non re-scopable ». Ce qui partait de travers n'était pas ce
+> la suppression de sa cible → non re-scopable ». Seule une collection SANS ALBUM les rend
+> vides, avec un résumé de provenance à zéro : elle n'a rien à résumer, et elle publiait
+> sinon les totaux de l'instance. Ce qui partait de travers n'était pas ce
 > grain, c'étaient les **charges** `avant`/`apres`, recopiées mot pour mot : comme
 > `journal._REGION_COLS` contient `ocr_texte`, l'export d'une collection emportait le texte
 > des œuvres de **toute** l'instance, y compris sans `--verbatim` — le drapeau contourné et

@@ -338,7 +338,7 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                 "audit": journal.indicateurs_provenance(
                     conn, album_ids, cibles=CIBLES_CORPUS,   # AUTH-1 : cf. metadonnees
                     actes_tus=sql_evenement_tu("evenement"),   # ni détail, ni bac à sable
-                    runs_tus=sql_activite_isolee("activite")),
+                    runs_tus=sql_activite_isolee("activite"), corpus=row is None),
                 "environnement": environnement(),  # python + versions installées (à l'export)
             },
             # Paradonnée QUALITÉ (fiabilité du corpus, tout dérivé) : part relue, accord du

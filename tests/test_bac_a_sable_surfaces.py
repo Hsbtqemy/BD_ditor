@@ -256,3 +256,94 @@ def test_le_resume_de_provenance_ne_compte_pas_un_bac_a_sable(client, corpus, tm
         assert (ev["premier"], ev["dernier"]) == (min(e["date"] for e in publies),
                                                   max(e["date"] for e in publies)), nom
         assert resume["activites"]["total"] == len(activites) == 0, (nom, resume["activites"])
+
+
+# --------------------------------------------------------------------------- #
+# Une collection sans album n'a rien à résumer (relecture de `5adfd60`)
+# --------------------------------------------------------------------------- #
+def _resumes(db, *args):
+    """Le résumé de provenance des deux artefacts, sortis par leurs outils."""
+    meta = json.loads(_outil(db, "metadonnees_collection.py", "--json", "-", *args))
+    audit = json.loads(_outil(db, "description_collection.py", "--json", "-", *args))
+    return (("métadonnées", meta["metadonnees_collection"]["paradonnee"]["provenance"]),
+            ("description", audit["description_collection"]["provenance_globale"]["audit"]))
+
+
+def _seme_un_run(planche):
+    conn = database.get_connection()
+    try:
+        journal.inscrire_run_termine(conn, "segmentation", agent="kumiko", agent_type="moteur",
+                                     version=None, params=None, portee={"planche_id": planche},
+                                     debut="2026-10-30 10:00:00", comptes={})
+    finally:
+        conn.close()
+
+
+def test_une_collection_sans_album_ne_compte_rien(client, corpus, tmp_path):
+    """Les vraies sorties d'une collection VIDE, à côté d'une instance qui a du travail : le
+    témoin est la collection voisine, dont le même résumé n'est pas à zéro."""
+    db = corpus["db"]
+    pl = client.get(f"/api/albums/{corpus['reel']}/planches", headers=RESP).json()[0]["id"]
+    _seme_un_run(pl)
+    vide = client.post("/api/collections", headers=RESP,
+                       json={"nom": "Vide", "projet_id": corpus["etude"]}).json()["id"]
+
+    for nom, resume in _resumes(db, "--collection", str(corpus["col"])):
+        assert resume["regions"]["total"] >= 1, nom
+        assert resume["evenements"]["total"] >= 1 and resume["activites"]["total"] >= 1, nom
+
+    def a_zero(nom, resume):
+        assert resume["portee_regions"] == "collection", nom
+        assert resume["regions"] == {"total": 0, "machine": 0, "humaines": 0, "touchees": 0,
+                                     "derive": 0, "taux_touche": None, "taux_derive": None}, nom
+        assert resume["activites"] == {"total": 0, "par_type": {}}, nom
+        assert resume["evenements"] == {"total": 0, "par_type": {}, "par_agent": {},
+                                        "premier": None, "dernier": None}, nom
+
+    for nom, resume in _resumes(db, "--collection", str(vide)):
+        a_zero(nom, resume)
+    # … par la voie du dépôt comme par l'outil.
+    r = client.get(f"/api/collections/{vide}/depot/description", headers=RESP)
+    assert r.status_code == 200, r.text
+    a_zero("route description",
+           r.json()["description_collection"]["provenance_globale"]["audit"])
+    r = client.get(f"/api/collections/{vide}/depot/metadonnees", headers=RESP)
+    assert r.status_code == 200, r.text
+    a_zero("route métadonnées", r.json()["metadonnees_collection"]["paradonnee"]["provenance"])
+    # Le résumé dit ce que le même artefact publie : ses tables du journal aussi sont vides,
+    # et celles d'une collection qui a un album ne le sont pas.
+    _outil(db, "metadonnees_collection.py", "--collection", str(vide),
+           "--csv-dir", str(tmp_path / "vide"))
+    assert _lignes(tmp_path / "vide" / "evenement.csv") == []
+    assert _lignes(tmp_path / "vide" / "activite.csv") == []
+    _outil(db, "metadonnees_collection.py", "--collection", str(corpus["col"]),
+           "--csv-dir", str(tmp_path / "pleine"))
+    assert _lignes(tmp_path / "pleine" / "evenement.csv")
+    assert _lignes(tmp_path / "pleine" / "activite.csv")
+
+
+def test_le_corpus_ne_compte_pas_les_bacs_a_sable_meme_sans_autre_album(client, corpus,
+                                                                        tmp_path):
+    """Le corpus entier, quand TOUT album vivant est d'un projet isolé :
+    `_commun.albums_du_corpus` rend une liste vide, et non `None`. Ses régions ne se comptent
+    pas ; le journal reste au grain du corpus, celui que publie le même artefact."""
+    db = corpus["db"]
+    assert client.delete(f"/api/albums/{corpus['reel']}", headers=HUGO).status_code == 204
+    assert _sql(db, "SELECT COUNT(*) AS n FROM regions")[0]["n"] >= 1, "le semis"
+    _outil(db, "metadonnees_collection.py", "--csv-dir", str(tmp_path / "t"))
+    evenements = _lignes(tmp_path / "t" / "evenement.csv")
+    assert evenements, "le témoin : il reste un journal à résumer"
+    for nom, resume in _resumes(db):
+        assert resume["regions"]["total"] == 0, (nom, resume["regions"])
+        assert resume["portee_regions"] == "corpus", nom
+        assert resume["evenements"]["total"] == len(evenements), nom
+
+
+def test_le_corpus_se_dit_corpus_a_cote_d_un_bac_a_sable(client, corpus):
+    """`albums_du_corpus` rend la liste des albums dès qu'un bac à sable existe : le résumé
+    d'un corpus entier ne se dit pas pour autant celui d'une collection."""
+    for nom, resume in _resumes(corpus["db"]):
+        assert resume["regions"]["total"] >= 1, nom
+        assert resume["portee_regions"] == "corpus", nom
+    for nom, resume in _resumes(corpus["db"], "--collection", str(corpus["col"])):
+        assert resume["portee_regions"] == "collection", nom

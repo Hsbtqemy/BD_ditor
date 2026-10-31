@@ -296,13 +296,21 @@ def version_moteur(distribution: Optional[str]) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
                            cibles=None, actes_tus: Optional[str] = None,
-                           runs_tus: Optional[str] = None) -> dict:
+                           runs_tus: Optional[str] = None, corpus: bool = False) -> dict:
     """Agrégats DÉRIVÉS de la surface dénormalisée (`activite_id`/`touche`) et du journal :
     quantifient la part machine vs humaine et la DÉRIVE (pré-remplissage machine RETOUCHÉ).
 
     Le bloc `regions` est SCOPÉ par `album_ids` (export `--collection`) ; les compteurs
     `activites`/`evenements` restent au grain du CORPUS (un run/acte n'appartient pas
     proprement à un album, et l'acte survit à la suppression de sa cible → non re-scopable).
+
+    `album_ids=None` lit le corpus entier ; une liste VIDE n'est pas ce cas-là, c'est un
+    périmètre sans album (la règle de `tools/_commun.portee_albums`), et elle ne compte
+    aucune région. Une collection sans album n'a alors rien à résumer, et le journal non
+    plus : le rendre à ce grain publiait les totaux de l'instance sous une collection vide.
+    `corpus=True` est l'appelant qui balaie le corpus entier en écartant les projets isolés
+    (`tools/_commun.albums_du_corpus`) : ses `album_ids` bornent les régions, jamais le
+    journal, même vides ; et le résumé se dit celui du corpus.
 
     `cibles` restreint les compteurs d'événements à ces `cible_table`. Un APPELANT le passe,
     et la liste ne vit pas ici : c'est une décision d'EXPORT (`tools/_commun.py`), et
@@ -325,13 +333,14 @@ def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
     """
     from database import sql_region_sortante      # import paresseux (database importe journal)
     sortante = sql_region_sortante("r")
-    if album_ids:
-        ph = ",".join("?" * len(album_ids))
+    if album_ids is None:
+        join, params = f" WHERE {sortante}", []
+    else:
+        ph = ",".join("?" * len(album_ids))         # `IN ()` : aucune ligne, en SQLite
         join = (f" JOIN planches p ON p.id = r.planche_id WHERE p.album_id IN ({ph}) "
                 f"AND {sortante}")
         params = list(album_ids)
-    else:
-        join, params = f" WHERE {sortante}", []
+    rien_a_resumer = album_ids is not None and not album_ids and not corpus
 
     def cnt(extra: str = "") -> int:
         sql = f"SELECT COUNT(*) FROM regions r{join}"
@@ -349,13 +358,15 @@ def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
         "taux_touche": round(touchees / total, 4) if total else None,
         "taux_derive": round(derive / machine, 4) if machine else None,
     }
-    ou_run = f" WHERE NOT ({runs_tus})" if runs_tus else ""
+    ou_run = " WHERE 0" if rien_a_resumer else f" WHERE NOT ({runs_tus})" if runs_tus else ""
     act = {r["type"]: r["n"] for r in conn.execute(
         f"SELECT type, COUNT(*) AS n FROM activite{ou_run} GROUP BY type ORDER BY type")}
 
     # Le filtre porte aussi sur `premier`/`dernier` : une borne posée par un acte que
     # l'artefact ne publie pas daterait un corpus d'après son administration.
-    if cibles is None:
+    if rien_a_resumer:
+        ou, p_ev = " WHERE 0", []
+    elif cibles is None:
         ou, p_ev = "", []
     else:
         cibles = tuple(sorted(cibles))
@@ -372,7 +383,7 @@ def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
     bornes = conn.execute(
         f"SELECT MIN(date) AS a, MAX(date) AS b FROM evenement{ou}", p_ev).fetchone()
     return {
-        "portee_regions": "collection" if album_ids else "corpus",
+        "portee_regions": "corpus" if corpus or album_ids is None else "collection",
         "regions": regions,
         "activites": {"total": sum(act.values()), "par_type": act},
         "evenements": {"total": sum(ev_type.values()), "par_type": ev_type,

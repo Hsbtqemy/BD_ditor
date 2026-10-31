@@ -168,7 +168,9 @@ ne nomme que le relevé, le doute et le message, par leurs identifiants.
   `taux_derive` ;
 - **activités** / **événements** (grain **corpus** — un run/acte n'appartient pas à un album,
   et l'acte survit à la suppression de sa cible → non re-scopable) : comptes par type, par
-  agent (humain vs moteur), bornes temporelles.
+  agent (humain vs moteur), bornes temporelles. **Une collection SANS ALBUM n'est pas ce
+  grain** : elle n'a rien à résumer, ses compteurs sont à zéro et ses tables
+  `activite`/`evenement` vides, sans quoi elle publierait les totaux de l'instance.
 
 Branchés dans les exports : `metadonnees_collection.py` (`paradonnee.provenance` + tables
 CSV `activite`/`evenement`) et `description_collection.py`

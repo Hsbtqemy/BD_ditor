@@ -411,7 +411,7 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             "provenance": journal.indicateurs_provenance(
                 conn, album_ids, cibles=CIBLES_CORPUS,   # AUTH-1 : compter ce qu'on publie
                 actes_tus=sql_evenement_tu("evenement"),   # ni détail, ni bac à sable
-                runs_tus=sql_activite_isolee("activite")),
+                runs_tus=sql_activite_isolee("activite"), corpus=row is None),
             # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
             # COL-4 : sans le vocabulaire des bacs à sable ni du jeu.
             "lexique": database.lexique_resume(conn, collection_id,
@@ -606,12 +606,16 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     # leur nom, qui EST l'auditabilité revendiquée. Le mapping est celui du chemin JSON :
     # deux tables du même export qui nommeraient différemment la même personne se
     # contrediraient, et la chaîne de révisions cesserait de se lire.
+    # Une collection SANS ALBUM n'a pas de journal à publier : son résumé est à zéro
+    # (`journal.indicateurs_provenance`), et un résumé qui contredit ses tables se lit
+    # comme une perte de données.
+    vide = row is not None and not album_ids
     pseudo = pseudonymes(conn)
     out["activite"] = (
         list(COLONNES_ACTIVITE_PUBLIEES),
         [[pseudo.get(a["agent"], a["agent"]) if col == "agent" else a[col]
           for col in COLONNES_ACTIVITE_PUBLIEES]
-         for a in activites_publiables(conn, COLONNES_ACTIVITE_PUBLIEES)])   # COL-4
+         for a in ([] if vide else activites_publiables(conn, COLONNES_ACTIVITE_PUBLIEES))])
     # Les ACTES, sans leurs CHARGES (AUTH-11, 2026-09-24). Les colonnes ne sont plus
     # écrites ici : elles viennent de `COLONNES_EVENEMENT_PUBLIEES`, à côté de la liste
     # blanche des cibles, pour qu'une seule décision gouverne les deux sérialisations. La
@@ -621,7 +625,7 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
         list(COLONNES_EVENEMENT_PUBLIEES),
         [[pseudo.get(e["agent"], e["agent"]) if col == "agent" else e[col]
           for col in COLONNES_EVENEMENT_PUBLIEES]
-         for e in evenements_publiables(conn)])
+         for e in ([] if vide else evenements_publiables(conn))])
     return out
 
 
