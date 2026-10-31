@@ -3823,19 +3823,31 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .an-ctx-corps { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr);
                 gap: .3077rem .7692rem; }
 .an-ctx-corps dt { color: var(--text-muted); font-size: .9231rem; }
-.an-ctx-corps dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; min-width: 0; }
+.an-ctx-corps dd { margin: 0; overflow-wrap: anywhere; min-width: 0; position: relative; }
+/* Les retours à la ligne d'une note sont du contenu ; ceux du gabarit, non (`pre-line` sur
+   la ligne entière écartait ses blocs : 235 px contre 108 sur une bulle). */
+.an-note-lu { white-space: pre-line; }
+/* Un conflit se voit depuis le champ : l'encre d'alerte, jamais l'accent brut, et une mention
+   qui le dit en mots. Ombre et position absolue : ni la ligne ni le champ ne changent de
+   taille (`bottom: 100%` la pose dans le blanc au-dessus de la ligne, sous le titre ou sur la
+   ligne d'état de la note). */
+.an-en-conflit .an-note, .an-en-conflit .an-nom, .an-en-conflit .an-loc-saisie > input {
+  border-color: var(--ink-red); box-shadow: 0 0 0 1px var(--ink-red); }
+.an-en-conflit .an-note-etat, .an-ctx-attente { color: var(--ink-red); font-weight: 600; }
+.an-ctx-attente { position: absolute; right: 0; bottom: 100%; padding: 0 .2308rem;
+                  font-size: .8462rem; line-height: 1.2; background: var(--bg-panel); }
 /* Le Contexte modifiable (commit 8) : la puce du locuteur et son champ, la note. Les champs
    prennent la largeur de la colonne, jamais plus (le patron de `.tag-input-wrap > input`). */
 .an-loc-puce { display: flex; align-items: center; gap: .3077rem; min-width: 0; }
 .an-loc-nom { overflow-wrap: anywhere; min-width: 0; }
 .an-loc-x { padding: 0 .4615rem; }
-.an-loc-saisie { margin-top: .3077rem; white-space: normal; }
+.an-loc-saisie { margin-top: .3077rem; }
 .an-loc-saisie > input { width: 100%; box-sizing: border-box; }
 .an-note { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit;
            padding: .3077rem .4615rem; background: var(--bg-input); color: var(--text);
            border: 1px solid var(--border); border-radius: 4px; }
 .an-note[hidden] { display: none; }
-.an-note-etat { display: block; min-height: 1.2em; white-space: normal; }
+.an-note-etat { display: block; min-height: 1.2em; line-height: 1.2; }
 
 /* Les deux vues de la colonne de gauche (commit 5) : la planche, la Synthèse. Le garde
    `[hidden]` : `display: flex` écraserait l'attribut (cf. `test_e2e_masquage`). */
@@ -4091,6 +4103,10 @@ body.an-designer .an-mz-enfant.t-texte {
                         border: 1px solid var(--border); border-radius: 5px; font: inherit; }
 .an-grille-corps { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 .9231rem .6154rem; }
 .an-rub { margin-top: .4615rem; }
+/* La teinte d'une rubrique de tête, dessinée par la classe `.an-teinte-N` de ses relevés : le
+   filet suit la hauteur de la section, sous-rubriques comprises. */
+.an-rub-tete { position: relative; padding-left: .6154rem; }
+.an-rub-filet { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 2px; }
 .an-rub-titre { margin: 0; font-size: 1rem; }
 .an-rub-btn { width: 100%; display: flex; align-items: center; gap: .4615rem; background: none;
               border: none; color: var(--text); padding: .3077rem .1538rem; cursor: pointer;
@@ -4190,8 +4206,9 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-box { display: inline-flex; align-items: center; justify-content: center;
           font-size: .7692rem; line-height: 1; }
 /* Le bandeau d'un conflit prend la place de la ligne du guide, à la même hauteur. */
-.an-guide-contenu.an-conflit { border-left: 3px solid var(--accent-amber); padding-left: .6154rem; }
+.an-guide-contenu.an-conflit { border-left: 3px solid var(--ink-red); padding-left: .6154rem; }
 .an-bandeau-titre { font-weight: 700; }
+.an-conflit .an-bandeau-titre { color: var(--ink-red); }
 .an-bandeau-gestes { display: flex; flex-wrap: wrap; gap: .4615rem; }
 
 .an-guide { flex: 0 0 auto; height: 12.3077rem; border-top: 1px solid var(--border);

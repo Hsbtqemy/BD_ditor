@@ -992,6 +992,7 @@ sur quoi le relevé portera — ces mots, toute la bulle, la case, une boîte, u
 planche —, selon ce que la grille ouverte vise.
 
 **Poser.** Chaque grille active du projet a son onglet, sauf celles que la collection masque.
+Chaque grande rubrique porte sa couleur, un filet et une pastille : celle de ses relevés.
 *Afficher* montre toute la grille ou une rubrique ; *Chercher dans la grille* (touche `/`) ignore
 accents et apostrophes, cherche aussi dans les exemples, comprend « X par Y » pour un phénomène
 et un qualificatif, et Entrée y pose le premier résultat. Une entrée simple se coche ; une
@@ -1019,7 +1020,9 @@ seulement* saute ce qui est terminé.
 
 **Le Contexte**, sous la minicarte, porte ce qui n'est pas du vocabulaire : le locuteur, la
 note, le nom d'un détail, la transcription d'un texte hors bulle. Le personnage d'une boîte s'y
-lit et s'écrit dans l'Atelier.
+lit et s'écrit dans l'Atelier. Si quelqu'un d'autre a changé cette valeur entre-temps, le champ
+passe à l'encre d'alerte et dit *En attente de votre choix* : le bandeau, en bas de la grille,
+offre de remplacer par la vôtre ou de garder l'autre.
 
 **Tracer une zone.** Glissez dans la case agrandie, puis choisissez **Détail d'image** — qu'on
 nomme ; son nom s'écrit sur l'image — ou **Texte hors bulle** — qu'on transcrit, puis qu'on

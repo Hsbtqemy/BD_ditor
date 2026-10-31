@@ -779,10 +779,24 @@
   function teinte(plan, entreeCle, n) {
     const e = ((plan && plan.entrees) || []).find((x) => x.cle === entreeCle);
     if (!e || !(e.rubriques || []).length) return null;
+    return teinteDeRubrique(plan, e.rubriques[0], n);
+  }
+
+  /* La teinte d'une rubrique de TÊTE, celle que portent ses relevés : le filet et la pastille
+     du plan (passe du jalon 3). `null` pour tout ce qui n'est pas de tête : un gris. */
+  function teinteDeRubrique(plan, cle, n) {
     const tete = ((plan && plan.rubriques) || []).filter((r) => r.parent_cle === null
       || r.parent_cle === undefined).map((r) => r.cle);
-    const i = tete.indexOf(e.rubriques[0]);
+    const i = tete.indexOf(cle);
     return i < 0 ? null : i % (n || 7);
+  }
+
+  /* Le CHAMP du Contexte qu'un conflit ouvert fait attendre (passe du jalon 3) : la ligne
+     `data-ctx` à marquer, sur la zone qu'on regarde seulement. `null` ailleurs : un conflit
+     sur un relevé, ou sur une autre zone que celle qu'on a rejointe entre-temps. */
+  function champEnConflit(conflit, zone) {
+    if (!conflit || conflit.sorte !== "contexte" || !zone || zone.id !== conflit.regionId) return null;
+    return conflit.lieu === "ocr_texte" ? "transcription" : conflit.lieu;
   }
 
   /* « PORTE SUR » : ce que la grille ouverte vise depuis la zone choisie — des mots d'une
@@ -796,8 +810,9 @@
     const sur = (type) => entrees.some((e) => e.pose === "zone" && (e.cibles || []).includes(type));
     if (texte && entrees.some((e) => e.pose === "mots")) out.push({ cle: "mots", libelle: "des mots" });
     if (zone && !zone.pseudo && zone.type !== "case" && sur(zone.type)) {
-      out.push({ cle: "zone", libelle: `toute ${zone.type === "personnage" ? "la boîte"
-        : MASCULINS.has(zone.type) ? "le " + nomType(zone.type) : "la " + nomType(zone.type)}` });
+      out.push({ cle: "zone", libelle: zone.type === "personnage" ? "toute la boîte"
+        : MASCULINS.has(zone.type) ? `tout le ${nomType(zone.type)}`
+        : `toute la ${nomType(zone.type)}` });
     }
     if (caseRegion && !caseRegion.pseudo && sur("case")) out.push({ cle: "case", libelle: "la case" });
     if (entrees.some((e) => e.pose === "planche")) out.push({ cle: "planche", libelle: "la planche" });
@@ -1433,7 +1448,7 @@
            entreesSous, chemin, vuesAfficher, relevesDeLaZone, compter, marquePlusieurs,
            marqueCible, chercher, ligneDuGuide, guideComplet,
            rangs, plage, basculer, texteDuPassage, memesMots, motsDuReleve, couloirs, teinte,
-           optionsPorteSur, cibleDePose, relevesSurLaCible, geste, libelleReleve, motEtat,
+           teinteDeRubrique, champEnConflit, optionsPorteSur, cibleDePose, relevesSurLaCible, geste, libelleReleve, motEtat,
            listeSurLaZone, lireReglage, retenirReglage, grillesMontrees,
            remplacementCardinalite, creerDansLeFiltre, vuDuReleve, entreeNeuve,
            ciblesVisees, visePlanche, assurerPlanche, parcours, rangDansParcours,

@@ -686,13 +686,16 @@ function selectedRegion() {
    la page Annotation ; l'Atelier le MONTRE (son type ici, sa couleur sur l'image, sa place
    dans l'arbre) et le LAISSE : la liste ne l'offre à aucune autre région, et ne change pas
    un détail en autre chose — le serveur refuse les deux (G17 : un détail ne sort pas). */
+/* Le mot qu'un type prend à l'écran ; la valeur reste celle du serveur. */
+function nomDuType(type) { return type === "detail" ? "détail" : type; }
+
 function typeDeRegion(type) {
   const sel = $("#region-type");
   let opt = sel.querySelector('option[value="detail"]');
   if (type === "detail" && !opt) {
     opt = document.createElement("option");
     opt.value = "detail";
-    opt.textContent = "détail";
+    opt.textContent = nomDuType("detail");
     sel.appendChild(opt);
   } else if (type !== "detail" && opt) {
     opt.remove();
@@ -765,6 +768,17 @@ function setupBack() {
   }
 }
 
+/* Ce qu'on change d'une région dans le panneau : son type, son rattachement, ses coordonnées,
+   tels que la région les porte. */
+function rendreChampsDeRegion(r) {
+  typeDeRegion(r.type);
+  renderParentOptions(r);   // « Rattachée à » : visible dès qu'une région est sélectionnée
+  $("#coord-x").value = r.x;
+  $("#coord-y").value = r.y;
+  $("#coord-w").value = r.w;
+  $("#coord-h").value = r.h;
+}
+
 function renderPanel() {
   const hasPlanche = !!state.planche;
   const r = selectedRegion();
@@ -784,17 +798,11 @@ function renderPanel() {
         : "")
     : "—";
   $("#region-id").textContent = "#" + r.id;
-  typeDeRegion(r.type);
   $("#region-source").textContent = r.source;
-  renderParentOptions(r);   // « Rattachée à » : visible dès qu'une région est sélectionnée
+  rendreChampsDeRegion(r);
 
   $("#panel-edition").hidden = state.mode !== "edition";
   $("#panel-annotation").hidden = state.mode !== "annotation";
-
-  $("#coord-x").value = r.x;
-  $("#coord-y").value = r.y;
-  $("#coord-w").value = r.w;
-  $("#coord-h").value = r.h;
 
   $("#panel-ocr").hidden = !r.ocr_texte;
   if (r.ocr_texte) $("#ocr-text").textContent = r.ocr_texte;
@@ -1130,7 +1138,7 @@ function renderTree() {
           ? `<span class="tn-caret" data-fold="${rg.id}">${isCollapsed ? "▸" : "▾"}</span>`
           : `<span class="tn-caret tn-spacer"></span>`) +
         `<span class="tn-dot"></span>` +
-        `<span class="tn-label">${rg.type}</span>` +
+        `<span class="tn-label">${nomDuType(rg.type)}</span>` +
         `<span class="tn-id mono">#${rg.id}</span>` +
         meta +
         (rg.annotee ? `<span class="tn-check">✓</span>` : "") +
@@ -2534,6 +2542,10 @@ async function patchRegion(id, fields, vuExplicite = null) {
       return;
     }
     toast("Échec mise à jour : " + e.message, "error");
+    // Refusée, la valeur demandée resterait à l'écran sur une région qui ne l'a pas prise.
+    if (id === state.selectedId && state.regionsById.has(id)) {
+      rendreChampsDeRegion(state.regionsById.get(id));
+    }
   }
 }
 

@@ -461,6 +461,19 @@ async function lirePersonnagesDeLaCase() {
   if (caseCourante() === c) rendreCase();
 }
 
+/* Un bouton redessiné garde le focus qu'avait celui qu'il remplace (passe du jalon 3) :
+   retiré du document, le bouton laissait le focus sur `body`, et le clavier perdait son
+   contour. `attribut` dit quel bouton est le même d'un dessin à l'autre. */
+function redessinerSansPerdreLeFocus(boite, attribut, dessiner) {
+  const actif = document.activeElement;
+  const cle = actif && boite.contains(actif) ? actif.getAttribute(attribut) : null;
+  dessiner();
+  if (cle === null) return;
+  const cible = [...boite.querySelectorAll(`[${attribut}]`)]
+    .find((b) => b.getAttribute(attribut) === cle);
+  if (cible) cible.focus();
+}
+
 /* La rangée des zones de la case : la case elle-même, puis chacune de ses zones. Le chemin
    au clavier vers une zone, et sa liste lisible. */
 function rendreZones() {
@@ -478,10 +491,10 @@ function rendreZones() {
     if (titre) b.title = titre;
     return b;
   };
-  rangee.replaceChildren(
+  redessinerSansPerdreLeFocus(rangee, "data-zone", () => rangee.replaceChildren(
     bouton(null, c.case.pseudo ? "La planche" : "La case " + A.etiquette(c.case)),
     ...c.zones.map((z) => bouton(z.id, `${etiq.get(z.id)} · ${A.nomType(z.type)}`,
-                                 A.estTexte(z.type) ? z.ocr_texte || "" : "")));
+                                 A.estTexte(z.type) ? z.ocr_texte || "" : ""))));
 }
 
 /* ───────────── Le Contexte (commit 1 en lecture, commit 8 modifiable) ─────────────
@@ -659,9 +672,11 @@ async function envoyerRetraitLocuteur(rid) {
 
 /* La note : partie après le délai de frappe, à la sortie du champ, et avant tout départ de
    la zone (`viderNote`) — chaque fois avec le texte du moment et la zone d'où elle part. */
+const ATTENTE = "En attente de votre choix";
+
 function marquerNote(etat) {
   $("#an-note-etat").textContent = { envoi: "Enregistrement…", fait: "Enregistrée",
-                                     attente: "En attente de votre choix" }[etat] || "";
+                                     attente: ATTENTE }[etat] || "";
 }
 
 function noteModifiee() {
@@ -736,6 +751,27 @@ function refusDuContexte(e, lieu, rid, saisie) {
     toast(BDConflit.messageNonEnregistre(c), "error", 8000);
   }
   return true;
+}
+
+/* Un conflit du Contexte se voit DEPUIS LE CHAMP (passe du jalon 3) : le bandeau naît en bas à
+   droite alors qu'on regarde à gauche. Le champ prend l'alerte, et une mention le dit en mots
+   — sur la ligne d'état de la note, déjà réservée ; au-dessus du champ pour les autres, posée
+   sans prendre de place : rien ne bouge. Lu dans `S.conflit` à chaque `rendreGuide`, le
+   passage obligé d'un conflit qui s'ouvre, se règle ou qu'on rejoint : la marque ne peut pas
+   lui survivre. */
+function marquerConflit() {
+  const champ = A.champEnConflit(S.conflit, zoneCourante());
+  let ligne = null;
+  for (const dd of document.querySelectorAll("#an-ctx-corps dd")) {
+    const oui = dd.dataset.ctx === champ;
+    dd.classList.toggle("an-en-conflit", oui);
+    if (oui) ligne = dd;
+  }
+  if (champ === "note") marquerNote("attente");
+  const mention = $("#an-ctx-attente");
+  mention.textContent = ATTENTE;
+  mention.hidden = !ligne || champ === "note";
+  if (!mention.hidden) ligne.append(mention);
 }
 
 /* Le bandeau d'un conflit du Contexte : ce qui n'est pas enregistré, la version de l'autre. */
@@ -1261,13 +1297,20 @@ function rubrique(g, plan, noeud, n, niveau) {
   const cle = `${g.id}:${noeud.cle}`;
   const ouvert = !S.replis.has(cle);
   const compte = n.parRubrique.get(noeud.cle) || 0;
+  // Une rubrique de TÊTE porte sa teinte, celle de ses relevés : un filet sur toute sa hauteur,
+  // sous-rubriques comprises, et une pastille dans son titre, qui reste quand elle est repliée.
+  const tete = niveau === 3;
+  const teinte = tete ? classeTeinte(A.teinteDeRubrique(plan, noeud.cle, PALETTE)) : null;
   const titre = el(`h${Math.min(niveau, 6)}`, { classe: "an-rub-titre" },
     el("button", { type: "button", classe: "an-rub-btn", "data-rub": noeud.cle,
                    "aria-expanded": String(ouvert) },
        el("span", { classe: "an-caret", "aria-hidden": "true", texte: "▾" }),
+       tete ? el("i", { classe: `an-pastille ${teinte}`, "aria-hidden": "true" }) : null,
        el("span", { classe: "an-rub-lib", texte: noeud.libelle }),
        el("span", { classe: "an-cnt", texte: compte ? `${compte} ici` : "" })));
-  const sec = el("section", { classe: `an-rub an-niv-${Math.min(noeud.profondeur || 0, 3)}` },
+  const sec = el("section", { classe: `an-rub an-niv-${Math.min(noeud.profondeur || 0, 3)}`
+                                       + (tete ? " an-rub-tete" : "") },
+                 tete ? el("i", { classe: `an-rub-filet ${teinte}`, "aria-hidden": "true" }) : null,
                  titre);
   if (!ouvert) return sec;
   for (const e of noeud.entrees) sec.append(entree(e, plan, n));
@@ -1409,6 +1452,7 @@ function basculerGuide() {
 
 function rendreGuide() {
   marquerGuide();
+  marquerConflit();
   const boite = $("#an-guide-contenu");
   boite.classList.toggle("an-conflit", !!S.conflit);
   boite.classList.toggle("an-doute-form", !S.conflit && !!S.formDoute);
@@ -1638,6 +1682,8 @@ function brancherGrille() {
    Pendant un GLISSÉ, rien n'est redessiné sous le pointeur : seules les classes des mots
    changent ; les traits, la liste et la grille se redessinent au relâchement. */
 const PALETTE = 7;              // les teintes des rubriques, `.an-teinte-0` à `-6`
+// Sans teinte (une entrée sans rubrique), le gris : la même classe partout, plan et relevés.
+const classeTeinte = (t) => (t === null ? "an-trait-autre" : `an-teinte-${t}`);
 
 function annoncer(texte) {
   const a = $("#an-annonce");
@@ -1678,12 +1724,12 @@ function rendrePorte() {
   const c = caseCourante();
   const opts = plan ? A.optionsPorteSur(plan, zoneCourante(), c ? c.case : null) : [];
   if (!opts.some((o) => o.cle === S.porte)) S.porte = opts.length ? opts[0].cle : null;
-  boite.replaceChildren(
+  redessinerSansPerdreLeFocus(boite, "data-porte", () => boite.replaceChildren(
     el("span", { classe: "an-gr-lbl", texte: "Porte sur" }),
     ...(opts.length ? opts.map((o) => el("button", {
       type: "button", classe: "ghost small an-porte-btn", "data-porte": o.cle,
       "aria-pressed": String(o.cle === S.porte), texte: o.libelle }))
-      : [el("span", { classe: "muted", texte: "—" })]));
+      : [el("span", { classe: "muted", texte: "—" })])));
 }
 
 /* ── Les mots ── */
@@ -1753,7 +1799,7 @@ function rendreMots() {
   const lanes = surZone.map((r) => {
     const t = r.grille_id === S.grilleId ? A.teinte(plan, r.entree_cle, PALETTE) : null;
     return { lane: lanesDe.get(r.id), rangs: A.motsDuReleve(r),
-             classe: t === null ? "an-trait-autre" : `an-teinte-${t}`, releve: r };
+             classe: classeTeinte(t), releve: r };
   });
   const nLanes = lanes.reduce((m, x) => Math.max(m, x.lane + 1), 0);
   const parties = [];
@@ -2205,7 +2251,7 @@ function itemReleve(r) {
   const li = el("li", { classe: `an-pose${masquee ? " an-pose-masquee" : ""}` },
     el("button", { type: "button", classe: "an-pose-btn", "data-releve": r.id,
                    title: masquee ? "Grille masquée dans cette collection : en lecture" : null },
-       el("i", { classe: `an-pastille ${t === null ? "an-trait-autre" : `an-teinte-${t}`}`,
+       el("i", { classe: `an-pastille ${classeTeinte(t)}`,
                  "aria-hidden": "true" }),
        el("span", { classe: "an-pose-lib", texte: libelle }),
        el("span", { classe: "an-pose-pass", texte: passage }),
@@ -2668,7 +2714,7 @@ function ligneSynthese(r) {
   const etat = A.motEtat(r);
   return el("button", { type: "button", classe: "an-syn-r", "data-syn-releve": r.id,
                         title: "Ouvrir ce relevé" },
-    el("i", { classe: `an-pastille ${t === null ? "an-trait-autre" : `an-teinte-${t}`}`,
+    el("i", { classe: `an-pastille ${classeTeinte(t)}`,
               "aria-hidden": "true" }),
     el("span", { classe: "an-pose-lib", texte: A.libelleReleve(r, plan) }),
     el("span", { classe: "an-syn-zone", texte: etiquetteDe(r) }),

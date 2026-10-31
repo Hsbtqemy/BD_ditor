@@ -511,6 +511,10 @@ def test_creer_une_entree_dans_une_grille_ouverte_et_releves(page, decor):
     expect(page.locator("#an-annonce")).to_have_text("Posé : Moulinsart")
     expect(page.locator("#an-plan .an-ent-btn", has_text="Moulinsart")).to_have_attribute(
         "aria-checked", "true")
+    # Une entrée sans rubrique : « Sans rubrique » porte le gris de ses relevés.
+    sans = page.locator("#an-plan .an-rub-tete", has_text="Sans rubrique")
+    expect(sans.locator(".an-rub-filet.an-trait-autre")).to_have_count(1)
+    expect(sans.locator(".an-rub-titre .an-pastille.an-trait-autre")).to_have_count(1)
     # « Relevés : ▾ » : la grille ouverte seule, puis aussi « Signaux » — retenu au rechargement.
     page.keyboard.press("Escape")
     page.locator("#an-mots").focus()
@@ -947,6 +951,8 @@ def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
     assert tete.evaluate("(b) => getComputedStyle(b).cursor") != "pointer"
     tete.hover()
     expect(page.locator("#an-guide-contenu")).to_contain_text("le bruit d'un choc")
+    # Éteinte, la grille garde ses couleurs : elles nomment les parties, pas un geste.
+    expect(page.locator("#an-plan .an-rub-tete > .an-rub-filet.an-teinte-0").first).to_be_visible()
     # Le Contexte se LIT, sans aucun champ (commit 8).
     page.locator("#an-ong-planche").click()
     expect(page.locator("#an-note-lu")).to_have_text("—")
@@ -1666,3 +1672,372 @@ def test_une_lectrice_ne_trace_rien(page, live_server):
     expect(page.locator("#an-trace")).to_be_hidden()
     expect(page.locator("#an-vue-case .an-trace-rect")).to_have_count(0)
 
+
+# --------------------------------------------------------------------------- #
+# Les correctifs de la passe du jalon 3 (commit 14)
+# --------------------------------------------------------------------------- #
+_RECTS = """() => ['#an-gauche', '#an-zone', '#an-grille', '.an-ctx', '#an-ctx-corps', '#an-guide',
+                   '#an-note', '#an-nom', '#an-transcription', '#an-loc-input']
+  .map((s) => { const r = document.querySelector(s).getBoundingClientRect();
+                return [s, Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; })"""
+_JETON = """(nom) => { const s = document.createElement('span'); s.style.color = `var(${nom})`;
+  document.body.appendChild(s); const v = getComputedStyle(s).color; s.remove(); return v; }"""
+
+
+def _detail(d, **corps):
+    with _http(d) as c:
+        return c.post(f"/api/planches/{d['planche']}/regions",
+                      json={"type": "detail", "x": 200, "y": 100, "w": 100, "h": 100,
+                            "parent_id": d["c1"], **corps}).json()["id"]
+
+
+def _texte_hors_bulle(d):
+    with _http(d) as c:
+        t = c.post(f"/api/planches/{d['planche']}/regions",
+                   json={"type": "texte", "x": 60, "y": 750, "w": 200, "h": 80,
+                         "parent_id": d["c1"]}).json()["id"]
+        assert c.put(f"/api/regions/{t}", json={"ocr_texte": "PSST"}).status_code == 200
+    return t
+
+
+def _conflit_de_note(page, d, ailleurs, mienne):
+    with _http(d) as c:
+        assert c.put(f"/api/regions/{d['bulle']}/annotation",
+                     json={"note": ailleurs}).status_code == 200
+    page.locator("#an-note").fill(mienne)
+    page.locator("#an-note").blur()
+
+
+def _conflit_de_locuteur(page, d, ailleurs, mienne):
+    with _http(d) as c:
+        pid = c.post("/api/personnages", json={"nom": ailleurs}).json()["id"]
+        c.post("/api/personnages", json={"nom": mienne})
+        assert c.put(f"/api/regions/{d['bulle']}/locuteur",
+                     json={"personnage_id": pid}).status_code == 200
+    page.locator("#an-loc-input").fill(mienne)
+    expect(page.locator("#an-loc-liste")).to_contain_text(mienne)
+    page.locator("#an-loc-input").press("Enter")
+
+
+def _conflit_de_nom(page, d, rid, ailleurs, mienne):
+    with _http(d) as c:
+        assert c.put(f"/api/regions/{rid}", json={"nom": ailleurs}).status_code == 200
+    page.locator("#an-nom").fill(mienne)
+    page.locator("#an-nom").press("Enter")
+
+
+def _conflit_de_transcription(page, d, rid, ailleurs, mienne):
+    with _http(d) as c:
+        assert c.put(f"/api/regions/{rid}", json={"ocr_texte": ailleurs}).status_code == 200
+    page.locator("#an-transcription").fill(mienne)
+    page.locator("#an-transcription").blur()
+
+
+def _plus_de_mention(mention, champ):
+    if champ == "note":                # sa ligne d'état reste, et passe à autre chose
+        expect(mention).not_to_have_text("En attente de votre choix")
+    else:
+        expect(mention).to_be_hidden()
+
+
+@pytest.mark.parametrize("champ", ["note", "locuteur", "nom", "transcription"])
+def test_un_conflit_du_contexte_se_voit_depuis_le_champ(page, decor, champ):
+    """Hugo, sur la passe : le bandeau naît en bas à droite alors qu'on regarde à gauche. Le
+    champ prend l'alerte, le bandeau la même couleur, la mention le dit en mots, RIEN ne
+    bouge — et la marque part avec le conflit, par les deux réponses."""
+    page.set_viewport_size({"width": 1600, "height": 900})
+    # Le thème sombre : en clair, `--ink-red` EST l'accent, et l'écart ne se verrait pas.
+    page.add_init_script("localStorage.setItem('bd-theme', 'dark')")
+    if champ in ("note", "locuteur"):
+        region, ligne, saisie = decor["bulle"], f"#an-ctx-{'note' if champ == 'note' else 'loc'}", \
+            "#an-note" if champ == "note" else "#an-loc-input"
+        provoquer = (lambda a, m: _conflit_de_note(page, decor, a, m)) if champ == "note" \
+            else (lambda a, m: _conflit_de_locuteur(page, decor, a, m))
+    elif champ == "nom":
+        region, ligne, saisie = _detail(decor, nom="la lampe"), "#an-ctx-nom", "#an-nom"
+        provoquer = lambda a, m: _conflit_de_nom(page, decor, region, a, m)  # noqa: E731
+    else:
+        region, ligne, saisie = _texte_hors_bulle(decor), "#an-ctx-tr", "#an-transcription"
+        provoquer = lambda a, m: _conflit_de_transcription(page, decor, region, a, m)  # noqa: E731
+    _ouvrir(page, decor, region)
+    expect(page.locator(saisie)).to_be_enabled()
+    expect(page.locator(saisie)).to_be_visible()
+    page.wait_for_function("() => !document.querySelector('#an-note').disabled")
+    avant = page.evaluate(_RECTS)
+    mention = page.locator("#an-note-etat" if champ == "note" else "#an-ctx-attente")
+
+    provoquer("Version A", "Ma version A")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(page.locator(f"{ligne}.an-en-conflit")).to_have_count(1)
+    expect(page.locator(".an-en-conflit")).to_have_count(1)
+    expect(mention).to_be_visible()
+    expect(mention).to_have_text("En attente de votre choix")
+    ligne_mention = mention.evaluate("(m) => m.closest('dd').id")
+    assert f"#{ligne_mention}" == ligne, "la mention n'est pas sur le champ en conflit"
+    if champ == "note":                # sa ligne d'état dit déjà l'attente, une seule fois
+        expect(page.locator("#an-ctx-attente")).to_be_hidden()
+    alerte = page.evaluate(_JETON, "--ink-red")
+    assert page.locator(saisie).evaluate("(c) => getComputedStyle(c).borderTopColor") == alerte
+    assert mention.evaluate("(m) => getComputedStyle(m).color") == alerte
+    assert page.locator("#an-guide-contenu").evaluate(
+        "(c) => getComputedStyle(c).borderLeftColor") == alerte
+    assert page.locator("#an-cf-titre").evaluate("(c) => getComputedStyle(c).color") == alerte
+    assert page.evaluate(_RECTS) == avant, "le conflit a fait bouger quelque chose"
+    # La mention ne recouvre pas le champ ni son libellé.
+    m, s = mention.bounding_box(), page.locator(saisie).bounding_box()
+    assert m["y"] + m["height"] <= s["y"] + 1 or m["y"] >= s["y"] + s["height"] - 1
+
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator(".an-en-conflit")).to_have_count(0)
+    _plus_de_mention(mention, champ)
+
+    provoquer("Version B", "Ma version B")
+    expect(page.locator(f"{ligne}.an-en-conflit")).to_have_count(1)
+    expect(mention).to_have_text("En attente de votre choix")
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator(".an-en-conflit")).to_have_count(0)
+    _plus_de_mention(mention, champ)
+    assert page.evaluate(_RECTS) == avant
+
+
+def test_la_marque_d_un_conflit_suit_la_zone_ou_il_attend(page, decor):
+    d = _detail(decor, nom="la lampe")
+    _ouvrir(page, decor, d)
+    expect(page.locator("#an-nom")).to_have_value("la lampe")
+    _conflit_de_nom(page, decor, d, "le phare", "la lanterne")
+    expect(page.locator("#an-ctx-nom.an-en-conflit")).to_have_count(1)
+    page.locator("#an-zones .an-zone-btn", has_text="bulle").click()
+    expect(page.locator("#an-tete-zone")).to_have_text(re.compile("bulle"))
+    expect(page.locator(".an-en-conflit")).to_have_count(0)
+    expect(page.locator("#an-ctx-attente")).to_be_hidden()
+    expect(page.locator("#an-cf-titre")).to_be_visible()             # il attend toujours
+    page.locator("#an-zones .an-zone-btn", has_text="détail").click()
+    expect(page.locator("#an-ctx-nom.an-en-conflit")).to_have_count(1)
+    expect(page.locator("#an-ctx-attente")).to_be_visible()
+    # La note aussi, sur sa ligne d'état.
+    page.locator("#an-cf-autre").click()
+    expect(page.locator(".an-en-conflit")).to_have_count(0)
+    page.locator("#an-zones .an-zone-btn", has_text="bulle").click()
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    _conflit_de_note(page, decor, "il crie", "il jure fort")
+    expect(page.locator("#an-ctx-note.an-en-conflit")).to_have_count(1)
+    page.locator("#an-zones .an-zone-btn", has_text="détail").click()
+    expect(page.locator(".an-en-conflit")).to_have_count(0)
+    expect(page.locator("#an-note-etat")).not_to_have_text("En attente de votre choix")
+    page.locator("#an-zones .an-zone-btn", has_text="bulle").click()
+    expect(page.locator("#an-ctx-note.an-en-conflit")).to_have_count(1)
+    expect(page.locator("#an-note-etat")).to_have_text("En attente de votre choix")
+
+
+def test_les_encres_du_conflit_et_la_palette_tiennent_dans_les_quatre_themes(page, decor):
+    """axe ne mesure ni un filet de 3 px ni un état qu'il n'a pas vu : l'encre d'alerte (texte,
+    4,5:1, sur le panneau et sur la boîte du guide ; bordure, 3:1), et chaque teinte de la
+    palette contre le fond du plan et des mots (3:1), dans les quatre thèmes."""
+    mesure = """() => {
+      const rgb = (c) => c.match(/rgba?\\(([^)]+)\\)/)[1].split(',').map(Number);
+      const jeton = (n) => { const s = document.createElement('span'); s.style.color = `var(${n})`;
+        document.body.appendChild(s); const v = rgb(getComputedStyle(s).color); s.remove(); return v; };
+      const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+        return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+      const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+      const plan = document.querySelector('#an-plan');
+      const fondPlan = rgb(getComputedStyle(document.querySelector('#an-grille')).backgroundColor);
+      const fondMots = rgb(getComputedStyle(document.querySelector('#an-mots')).backgroundColor);
+      const teintes = {};
+      for (const c of [0, 1, 2, 3, 4, 5, 6].map((i) => `an-teinte-${i}`).concat('an-trait-autre')) {
+        const i = document.createElement('i'); i.className = c; plan.appendChild(i);
+        const v = rgb(getComputedStyle(i).backgroundColor); i.remove();
+        teintes[c] = Math.min(ratio(v, fondPlan), ratio(v, fondMots));
+      }
+      const encre = jeton('--ink-red');
+      return { teintes, panneau: ratio(encre, jeton('--bg-panel')), guide: ratio(encre, jeton('--bg-deep')),
+               champ: ratio(encre, jeton('--bg-panel')) };
+    }"""
+    echecs = []
+    for theme in ("dark", "light"):
+        for contraste in ("normal", "high"):
+            page.goto(decor["base"] + "/annotation", wait_until="domcontentloaded")
+            page.evaluate(f"() => {{ localStorage.setItem('bd-theme', '{theme}'); "
+                          f"localStorage.setItem('bd-contrast', '{contraste}'); }}")
+            _ouvrir(page, decor, decor["bulle"])
+            expect(page.locator("#an-plan .an-rub-filet").first).to_be_visible()
+            m = page.evaluate(mesure)
+            assert len(m["teintes"]) == 8
+            for cle, r in m["teintes"].items():
+                if r < 3:
+                    echecs.append(f"{theme}/{contraste} {cle} : {r:.2f} (seuil 3)")
+            for cle in ("panneau", "guide"):
+                if m[cle] < 4.5:
+                    echecs.append(f"{theme}/{contraste} encre sur {cle} : {m[cle]:.2f} (seuil 4,5)")
+    assert not echecs, "\n".join(echecs)
+
+
+def _fond(locator):
+    return locator.evaluate("(e) => getComputedStyle(e).backgroundColor")
+
+
+def test_le_plan_porte_la_teinte_de_ses_rubriques_et_de_leurs_releves(page, decor):
+    """Hugo : on ne repère pas les parties de la grille. Le filet sur toute la hauteur de la
+    rubrique de tête, sous-rubriques comprises, la pastille dans son titre, la teinte des
+    relevés — et le nom reste."""
+    _poser(decor, region_id=decor["bulle"], entree_cle="origine-du-son", mots=[1])
+    _ouvrir(page, decor, decor["bulle"])
+    tetes = page.locator("#an-plan .an-rub-tete")
+    expect(tetes).to_have_count(5)
+    expect(page.locator("#an-plan .an-rub-filet")).to_have_count(5)    # les têtes, seules
+    sons = tetes.filter(has_text="A. Sons")
+    prov = tetes.filter(has_text="B. Provenance")
+    expect(sons.locator(".an-rub-tete")).to_have_count(0)
+    expect(sons.locator(".an-rub")).not_to_have_count(0)               # il a des sous-rubriques
+    # Le filet couvre la rubrique, sous-rubriques comprises ; le titre garde sa pastille.
+    filet = sons.locator("> .an-rub-filet")
+    expect(filet).to_be_visible()
+    hauteur = sons.evaluate("(s) => s.getBoundingClientRect().height")
+    assert abs(filet.bounding_box()["height"] - hauteur) <= 1
+    dernier = sons.locator(".an-ent-btn").last.bounding_box()
+    assert filet.bounding_box()["y"] + filet.bounding_box()["height"] >= dernier["y"] + dernier["height"] - 1
+    # La teinte d'une rubrique est celle de ses traits et de ses pastilles.
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="cri")).to_be_visible()
+    trait_cri = page.locator("#an-mots .an-mot .an-trait.an-teinte-0").first
+    assert _fond(filet) == _fond(sons.locator(".an-rub-titre .an-pastille")) == _fond(trait_cri)
+    pastille_cri = page.locator("#an-poses-liste li", has_text="cri").locator(".an-pastille")
+    assert _fond(filet) == _fond(pastille_cri)
+    pastille_or = page.locator("#an-poses-liste li", has_text="origine du son").locator(".an-pastille")
+    assert _fond(prov.locator("> .an-rub-filet")) == _fond(pastille_or)
+    assert _fond(prov.locator("> .an-rub-filet")) != _fond(filet)
+    # Le nom reste, et la couleur ne se lit pas au lecteur d'écran.
+    expect(sons.locator(".an-rub-titre .an-rub-lib").first).to_have_text("A. Sons")
+    expect(sons.locator("> .an-rub-filet")).to_have_attribute("aria-hidden", "true")
+    # Repliée, réduite à son titre, elle garde sa couleur.
+    prov.locator(".an-rub-btn").click()
+    prov = page.locator("#an-plan .an-rub-tete", has_text="B. Provenance")
+    expect(prov.locator(".an-rub-btn")).to_have_attribute("aria-expanded", "false")
+    expect(prov.locator(".an-rub-titre .an-pastille")).to_be_visible()
+    assert _fond(prov.locator(".an-rub-titre .an-pastille")) == _fond(pastille_or)
+    # « Afficher » n'en montre qu'une : elle garde son rang dans la grille, donc sa teinte.
+    rang_e = _fond(tetes.filter(has_text="E. Image").locator("> .an-rub-filet"))
+    page.locator("#an-afficher").select_option(label="E. Image")
+    expect(page.locator("#an-plan .an-rub-tete")).to_have_count(1)
+    assert _fond(page.locator("#an-plan .an-rub-filet")) == rang_e
+
+
+def test_porte_sur_et_la_rangee_des_zones_gardent_le_focus_clavier(page, decor):
+    """Le bouton est redessiné : retiré du document, il laissait le focus sur `body`, et le
+    contour du clavier disparaissait."""
+    _ouvrir(page, decor, decor["bulle"])
+    actif = "() => [document.activeElement.dataset.porte ?? document.activeElement.dataset.zone ?? " \
+            "document.activeElement.tagName, document.activeElement.matches(':focus-visible')]"
+    zone = page.locator('#an-porte [data-porte="zone"]')
+    page.locator('#an-porte [data-porte="mots"]').focus()
+    page.keyboard.press("Tab")                     # le contour du clavier, comme à la main
+    for touche in ("Enter", " "):
+        expect(zone).to_be_focused()
+        page.keyboard.press(touche)
+        expect(zone).to_have_attribute("aria-pressed", "true")
+        expect(zone).to_be_focused()
+        assert page.evaluate(actif) == ["zone", True]
+        page.keyboard.press("Shift+Tab")
+        page.keyboard.press(touche)
+        mots = page.locator('#an-porte [data-porte="mots"]')
+        expect(mots).to_have_attribute("aria-pressed", "true")
+        expect(mots).to_be_focused()
+        assert page.evaluate(actif) == ["mots", True]
+        page.keyboard.press("Tab")
+    # La rangée des zones : la case, puis la bulle, à Entrée puis à Espace.
+    boite = page.locator("#an-zones .an-zone-btn", has_text="personnage")
+    bulle = page.locator("#an-zones .an-zone-btn", has_text="bulle")
+    bulle.focus()
+    page.keyboard.press("Tab")
+    expect(boite).to_be_focused()
+    page.keyboard.press("Enter")
+    expect(page.locator("#an-tete-zone")).to_have_text(re.compile("personnage"))
+    expect(boite).to_be_focused()
+    assert page.evaluate(actif)[1] is True
+    page.keyboard.press("Shift+Tab")
+    expect(bulle).to_be_focused()
+    page.keyboard.press(" ")
+    expect(page.locator("#an-tete-zone")).to_have_text(re.compile("bulle"))
+    expect(bulle).to_be_focused()
+    assert page.evaluate(actif)[1] is True
+
+
+def test_le_contexte_ne_s_etire_pas_et_une_note_garde_ses_lignes(page, decor):
+    """`white-space: pre-line` sur la ligne entière faisait des blancs du gabarit des lignes
+    vides (235 px contre 108 sur une bulle). Les retours à la ligne d'une NOTE sont du contenu."""
+    with _http(decor) as c:
+        c.put(f"/api/regions/{decor['bulle']}/annotation", json={"note": "il jure\npuis se tait"})
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure\npuis se tait")
+    # Chaque ligne fait exactement la hauteur de ce qu'elle porte.
+    lignes = page.evaluate("""() => ['#an-ctx-loc', '#an-ctx-note'].map((s) => {
+      const dd = document.querySelector(s);
+      const vus = [...dd.children].filter((e) => e.getBoundingClientRect().height > 0);
+      const haut = Math.min(...vus.map((e) => e.getBoundingClientRect().top));
+      const bas = Math.max(...vus.map((e) => e.getBoundingClientRect().bottom));
+      return [s, dd.getBoundingClientRect().height, bas - haut]; })""")
+    for s, hauteur, contenu in lignes:
+        assert abs(hauteur - contenu) <= 1, f"{s} : {hauteur} px pour {contenu} px de contenu"
+    # Un retour à la ligne se lit, en écriture comme en lecture.
+    page.route(re.compile(r"/api/albums(\?.*)?$"), lambda route: route.fulfill(
+        response=(r := route.fetch()),
+        json=[{**a, "ecrivable": False} for a in r.json()]))
+    _ouvrir(page, decor, decor["bulle"])
+    lu = page.locator("#an-note-lu")
+    expect(lu).to_be_visible()
+    expect(lu).to_have_text(re.compile("il jure"))
+    assert lu.evaluate("(e) => e.innerText") == "il jure\npuis se tait"
+
+
+def _atelier_sur(page, d, region):
+    page.goto(f"{d['base']}/?album={d['album']}&planche={d['planche']}&region={region}",
+              wait_until="networkidle")
+    expect(page.locator("#region-type")).to_be_visible(timeout=15000)
+
+
+def test_un_type_refuse_revient_au_type_de_la_region(page, decor):
+    """Passe du jalon 3 : la case qui porte un détail ne change pas de type, et la liste
+    restait sur le type refusé, à l'écran d'une région qui ne l'avait pas pris."""
+    _detail(decor)
+    _atelier_sur(page, decor, decor["c1"])
+    sel = page.locator("#region-type")
+    expect(sel).to_have_value("case")
+    with page.expect_response(lambda r: r.request.method == "PUT"
+                              and r.url.endswith(f"/api/regions/{decor['c1']}")) as rep:
+        sel.select_option("bulle")
+    assert rep.value.status == 422
+    expect(page.locator("#toasts")).to_contain_text("Échec mise à jour")
+    expect(sel).to_have_value("case")
+    assert _regions(decor)[decor["c1"]]["type"] == "case"
+
+
+def test_un_rattachement_ou_des_coordonnees_refuses_reviennent_aussi(page, decor):
+    """Les autres champs du même chemin ; le serveur n'a pas de refus à portée de ces gestes
+    sur ce décor, on lui en fait dire un."""
+    _atelier_sur(page, decor, decor["bulle"])
+    page.route(re.compile(rf"/api/regions/{decor['bulle']}$"), lambda route: route.fulfill(
+        status=422, content_type="application/json", body='{"detail": "Refusé pour le test."}'))
+    parent = page.locator("#region-parent")
+    expect(parent).to_have_value(str(decor["c1"]))
+    parent.select_option("")
+    expect(page.locator("#toasts")).to_contain_text("Refusé pour le test.")
+    expect(parent).to_have_value(str(decor["c1"]))
+    page.click('.mode-btn[data-mode="edition"]')
+    w = page.locator("#coord-w")
+    expect(w).to_have_value("200")
+    w.fill("999")
+    w.blur()
+    expect(w).to_have_value("200")
+    # Un autre champ à moitié écrit ne bouge pas : seul le panneau de la région revient.
+    expect(page.locator("#region-type")).to_have_value("bulle")
+
+
+def test_l_arbre_de_l_atelier_ecrit_detail_avec_son_accent(page, decor):
+    d = _detail(decor, nom="la lampe")
+    _atelier_sur(page, decor, d)
+    expect(page.locator(".tnode-detail .tn-label")).to_have_text("détail")
+    assert page.locator(".tnode-detail .tn-label").inner_text() == "Détail"     # la capitale du CSS
+    # Les valeurs ne changent pas : le serveur lit toujours « detail ».
+    expect(page.locator("#region-type")).to_have_value("detail")
+    assert _regions(decor)[d]["type"] == "detail"

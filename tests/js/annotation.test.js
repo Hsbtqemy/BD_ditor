@@ -507,11 +507,52 @@ test("la teinte suit la rubrique de tête", () => {
   assert.equal(A.teinte(PLAN, "orpheline", 7), null);
 });
 
+test("une rubrique de tête porte la teinte de ses relevés (passe du jalon 3)", () => {
+  // Toute entrée rangée, jusque dans une sous-rubrique, a la teinte de sa rubrique de tête.
+  for (const e of PLAN.entrees.filter((x) => (x.rubriques || []).length)) {
+    assert.equal(A.teinte(PLAN, e.cle, 7), A.teinteDeRubrique(PLAN, e.rubriques[0], 7), e.cle);
+  }
+  assert.equal(A.teinteDeRubrique(PLAN, "sons", 7), 0);
+  assert.equal(A.teinteDeRubrique(PLAN, "provenance", 7), 1);
+  assert.equal(A.teinteDeRubrique(PLAN, "image", 2), 0);       // rang 2, palette de 2
+  // Une sous-rubrique n'est pas de tête, « Sans rubrique » non plus : le gris.
+  assert.equal(A.teinteDeRubrique(PLAN, "sons > voix", 7), null);
+  assert.equal(A.teinteDeRubrique(PLAN, "", 7), null);
+  assert.equal(A.teinteDeRubrique(null, "sons", 7), null);
+  // Le rang se lit dans le PLAN, non dans ce qu'« Afficher » montre, et une grille à une
+  // seule rubrique a la première teinte.
+  const seule = { rubriques: [{ cle: "r", libelle: "R", parent_cle: null }] };
+  assert.equal(A.teinteDeRubrique(seule, "r", 7), 0);
+});
+
+test("le champ qu'un conflit fait attendre : sur la zone qu'on regarde, et sur elle seule", () => {
+  const bulle = { id: 10, type: "bulle" };
+  const cf = (lieu, regionId) => ({ sorte: "contexte", lieu, regionId });
+  assert.equal(A.champEnConflit(cf("note", 10), bulle), "note");
+  assert.equal(A.champEnConflit(cf("locuteur", 10), bulle), "locuteur");
+  assert.equal(A.champEnConflit(cf("nom", 10), bulle), "nom");
+  assert.equal(A.champEnConflit(cf("ocr_texte", 10), bulle), "transcription");
+  // Une autre zone, aucun conflit, un conflit sur un relevé, aucune zone : rien à marquer.
+  assert.equal(A.champEnConflit(cf("note", 11), bulle), null);
+  assert.equal(A.champEnConflit(null, bulle), null);
+  assert.equal(A.champEnConflit({ sorte: "valeur", regionId: 10 }, bulle), null);
+  assert.equal(A.champEnConflit(cf("note", 10), null), null);
+});
+
 test("« Porte sur » : ce que la grille vise depuis la zone", () => {
   const bulle = { id: 10, type: "bulle" }, laCase = { id: 5, type: "case" };
   assert.deepEqual(A.optionsPorteSur(PLAN, bulle, laCase).map((o) => o.cle),
                    ["mots", "zone", "case"]);
   assert.equal(A.optionsPorteSur(PLAN, bulle, laCase)[1].libelle, "toute la bulle");
+  // « toute » devant un féminin, « tout » devant un masculin (passe du jalon 3).
+  const partout = { entrees: [{ cle: "z", pose: "zone",
+    cibles: ["bulle", "cartouche", "texte", "personnage", "detail"] }] };
+  const dit = (type) => A.optionsPorteSur(partout, { id: 1, type }, null)[0].libelle;
+  assert.equal(dit("bulle"), "toute la bulle");
+  assert.equal(dit("cartouche"), "tout le cartouche");
+  assert.equal(dit("texte"), "tout le texte");
+  assert.equal(dit("personnage"), "toute la boîte");
+  assert.equal(dit("detail"), "tout le détail");
   assert.deepEqual(A.optionsPorteSur(PLAN, laCase, laCase).map((o) => o.cle), ["case"]);
   const planche = { entrees: [{ cle: "a", pose: "planche", cibles: ["planche"] }] };
   assert.deepEqual(A.optionsPorteSur(planche, bulle, laCase).map((o) => o.cle), ["planche"]);
