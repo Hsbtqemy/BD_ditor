@@ -315,36 +315,6 @@ def _json(alias: str, colonne: str, cle: str) -> str:
             f"END, '$.{cle}')")
 
 
-def _sql_planche_d_evenement(e: str) -> str:
-    cibles = ", ".join(repr(c) for c in _CIBLES_PAR_REGION)
-    region = (f"(CASE WHEN {e}.cible_table IN ({cibles}) THEN {e}.cible_id "
-              f"WHEN {e}.cible_table = 'token_correction' THEN COALESCE("
-              f"{_json(e, 'apres', 'region_id')}, {_json(e, 'avant', 'region_id')}) END)")
-    return (f"COALESCE((SELECT _er.planche_id FROM regions _er WHERE _er.id = {region}), "
-            f"CASE WHEN {e}.cible_table = 'planches' THEN {e}.cible_id END, "
-            f"CASE WHEN {e}.cible_table = 'regions' THEN COALESCE("
-            f"{_json(e, 'apres', 'planche_id')}, {_json(e, 'avant', 'planche_id')}) END)")
-
-
-def _sql_evenement_isole_direct(e: str) -> str:
-    return (f"EXISTS (SELECT 1 FROM planches _ep JOIN albums _ea ON _ea.id = _ep.album_id "
-            f"WHERE _ep.id = {_sql_planche_d_evenement(e)} "
-            f"AND {database.sql_album_isole('_ea')})")
-
-
-def sql_evenement_isole(e: str = "evenement") -> str:
-    """Fragment SQL VRAI si l'acte `e` (un alias de `evenement`) porte sur un objet d'un
-    projet isolé — ce que l'outil sait relier : la région ou la planche visée si elle VIT
-    encore, sinon la planche que nomme la charge d'un acte sur une région ; pour une
-    annulation (`cible_table = 'evenement'`), l'acte qu'elle défait. Ce qu'il ne sait PAS
-    relier, et c'est écrit : un acte dont la région ET la planche ont disparu — un bac à
-    sable déjà effacé —, qui sort alors sans contenu (son type, sa date, sa cible par
-    identifiant, son agent pseudonymisé), comme tout acte d'une cible détruite."""
-    return (f"({_sql_evenement_isole_direct(e)} OR ({e}.cible_table = 'evenement' AND "
-            f"EXISTS (SELECT 1 FROM evenement _e2 WHERE _e2.id = {e}.cible_id "
-            f"AND {_sql_evenement_isole_direct('_e2')})))")
-
-
 def sql_activite_isolee(a: str = "activite") -> str:
     """Fragment SQL VRAI si le run `a` porte sur une planche (`portee.planche_id`, la portée
     d'une passe ML) ou un album (`portee.album_id`) d'un projet isolé encore vivant."""
@@ -404,11 +374,13 @@ def sql_evenement_detail(e: str = "evenement") -> str:
 
 def sql_evenement_tu(e: str = "evenement") -> str:
     """Fragment SQL VRAI si le journal publié TAIT l'acte `e`, sa table fût-elle publiée :
-    un acte d'un projet isolé, ou sur un détail. UN fragment, lu par la table publiée
+    un acte d'un projet isolé (`database.sql_acte_isole`, vivant ou parti avec son bac à
+    sable, la coupure des rangs de `pseudonymes` : un acte publié sans rang sortirait sous
+    un login), ou sur un détail. UN fragment, lu par la table publiée
     (`evenements_publiables`) et par le résumé de ses deux artefacts
     (`journal.indicateurs_provenance`) : écrit deux fois, le résumé comptait les actes d'un
     bac à sable que la table ne publiait pas (COL-4, relevé par la relecture d'ANN-7)."""
-    return f"({sql_evenement_isole(e)} OR {sql_evenement_detail(e)})"
+    return f"({database.sql_acte_isole(e)} OR {sql_evenement_detail(e)})"
 
 
 def activites_publiables(conn, colonnes) -> list:
@@ -636,7 +608,8 @@ def evenements_publiables(conn, ordre: str = "ASC"):
     les mêmes actes se contrediraient, et rien ne le signalerait.
 
     CONSÉQUENCE À CONNAÎTRE : `pseudonymes()` numérote sur le journal ENTIER, retenues
-    comprises, et ce n'est pas un oubli. Son invariant est qu'une personne garde son numéro
+    comprises (hors `CIBLES_SANS_RANG` et hors projets isolés, ci-dessous), et ce n'est pas un
+    oubli. Son invariant est qu'une personne garde son numéro
     d'un artefact à l'autre et d'un dépôt au suivant ; le restreindre aux actes publiés le
     ferait dépendre de la liste blanche, si bien qu'y ajouter une table demain renumérote
     des dépôts déjà déposés. Le prix est que la suite publiée peut avoir des TROUS — un
@@ -648,7 +621,7 @@ def evenements_publiables(conn, ordre: str = "ASC"):
     cibles = tuple(sorted(CIBLES_CORPUS))
     # COL-4 — et pas les actes faits dans un bac à sable ou sur le jeu : une TROISIÈME
     # coupure, par PROJET, que ne voient ni la liste blanche ni les colonnes. Ce qu'elle
-    # sait relier est écrit sous `sql_evenement_isole`.
+    # sait relier est écrit sous `database.sql_acte_isole`.
     # Ni les actes sur un DÉTAIL (G17) : une QUATRIÈME coupure, par la région visée. Les
     # deux dans `sql_evenement_tu`, que le résumé de provenance lit aussi.
     return conn.execute(
@@ -690,6 +663,9 @@ def evenements_publiables(conn, ordre: str = "ASC"):
 #: grille administre un vocabulaire, il n'annote pas. Les RELEVÉS, eux, n'y sont pas (G10,
 #: Hugo, 2026-10-25) : ils comptent dans les rangs dès la tranche 1, pour que leur sortie, en
 #: tranche 4, ne renumérote pas tous ceux qui annotent.
+#:
+#: La même raison vaut pour un PROJET ISOLÉ, mais la coupure n'est pas une cible :
+#: `pseudonymes()` y écarte tout acte, quelle qu'en soit la cible.
 CIBLES_SANS_RANG = frozenset({"document", "collection_album", "demande", "region_attribut",
                               "tags", "grille"})
 
@@ -712,6 +688,14 @@ def pseudonymes(conn) -> dict:
     et `easyocr` sont des LOGICIELS. Les nommer EST l'auditabilité qu'on revendique, et
     c'est pourquoi ils ne sont jamais collectés ici — un `pseudonymes(...).get(nom, nom)`
     les laisse passer tout seuls.
+
+    **Ce qui se fait dans un projet ISOLÉ (bac à sable, jeu) ne donne aucun rang** (COL-4),
+    par les fragments qui l'écartent ailleurs : `database.sql_acte_isole`, celui de
+    `comptes.traces` et du journal publié, `sql_activite_isolee`, celui des runs publiés, et
+    `database.sql_album_isole` pour une correction. Rien de cela ne sort : tout compte qui
+    ouvre un bac à sable prenait un rang et renumérotait ceux qui annotent après lui. La
+    coupure d'un acte est celle de la table publiée, sans quoi un acte publié sans rang
+    sortirait sous son login. La première trace d'un compte se lit donc hors de ses bacs.
 
     ORDRE D'APPARITION et non ordre alphabétique : un annotateur qui rejoint l'équipe
     renumérote tout ce qui le suit dans l'alphabet, si bien que deux dépôts successifs du
@@ -755,13 +739,19 @@ def pseudonymes(conn) -> dict:
             "SELECT agent, MIN(date) AS d FROM evenement "
             "WHERE agent_type = 'humain' AND agent IS NOT NULL "
             f"AND cible_table NOT IN ({', '.join(repr(c) for c in hors_rang)}) "
+            f"AND NOT {database.sql_acte_isole('evenement')} "
             "GROUP BY agent",
             # `activite` n'a pas de colonne `date` mais un `date_debut` : un run a une
             # durée, un acte a un instant.
             "SELECT agent, MIN(date_debut) AS d FROM activite "
-            "WHERE agent_type = 'humain' AND agent IS NOT NULL GROUP BY agent",
+            "WHERE agent_type = 'humain' AND agent IS NOT NULL "
+            f"AND NOT {sql_activite_isolee('activite')} GROUP BY agent",
             "SELECT auteur AS agent, MIN(date_modif) AS d FROM token_correction "
-            "WHERE auteur IS NOT NULL GROUP BY auteur"):
+            "WHERE auteur IS NOT NULL AND NOT EXISTS (SELECT 1 FROM regions _tr "
+            "JOIN planches _tp ON _tp.id = _tr.planche_id "
+            "JOIN albums _ta ON _ta.id = _tp.album_id "
+            "WHERE _tr.id = token_correction.region_id "
+            f"AND {database.sql_album_isole('_ta')}) GROUP BY auteur"):
         for r in conn.execute(sql):
             nom, d = r[0], r[1] or ""
             if nom not in vus or d < vus[nom]:

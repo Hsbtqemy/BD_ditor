@@ -37,7 +37,7 @@ porte un **instantané profond** (région + annotation + sous-arbre).
 Le journal garde le login : c'est ce qui rend l'audit possible, et le cloisonnement
 d'AUTH-2 borde déjà qui peut le lire. Mais **tout artefact qui QUITTE l'instance remplace
 l'agent humain par un pseudonyme stable** — `annotateur-1`, `annotateur-2`… — via
-`tools/_commun.pseudonymes()`, partagé par `provenance_export.py` (PROV-JSON **et** TEI) et
+`tools/_commun.pseudonymes()`, qui ne compte rien de ce qui se fait dans un projet isolé (bac à sable, jeu : rien n'en sort, et un compte qui n'a fait qu'y passer renumérotait ceux qui annotent après lui), partagé par `provenance_export.py` (PROV-JSON **et** TEI) et
 par les trois chemins de `metadonnees_collection.py` (JSON, CSV, XLSX).
 
 **Les moteurs gardent leur nom**, et ce n'est pas un oubli : `kumiko`, `yolov8-bulles`,

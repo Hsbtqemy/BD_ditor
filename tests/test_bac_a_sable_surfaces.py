@@ -347,3 +347,155 @@ def test_le_corpus_se_dit_corpus_a_cote_d_un_bac_a_sable(client, corpus):
         assert resume["portee_regions"] == "corpus", nom
     for nom, resume in _resumes(corpus["db"], "--collection", str(corpus["col"])):
         assert resume["portee_regions"] == "collection", nom
+
+
+# --------------------------------------------------------------------------- #
+# Un projet isolé ne donne aucun rang dans les pseudonymes
+# --------------------------------------------------------------------------- #
+RITA = {"Remote-User": "rita", "Remote-Groups": ""}
+
+
+def _rangs():
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import _commun
+    conn = database.get_connection()
+    try:
+        return _commun.pseudonymes(conn)
+    finally:
+        conn.close()
+
+
+def _faire_annoter(client, corpus, qui):
+    """`qui` écrit dans la collection du vrai projet, et annote la bulle du corpus."""
+    login = qui["Remote-User"]
+    assert client.put(f"/api/projets/{corpus['etude']}/membres", headers=RESP,
+                      json={"genre": "utilisateur", "principal": login,
+                            "role": "membre"}).status_code == 200
+    assert client.put(f"/api/collections/{corpus['col']}/acces", headers=RESP,
+                      json={"genre": "utilisateur", "principal": login,
+                            "niveau": "ecriture"}).status_code == 200
+    r = client.put(f"/api/regions/{corpus['region_reelle']}/annotation", headers=qui,
+                   json={"note": f"note de {login}", "tags": []})
+    assert r.status_code == 200, r.text
+
+
+def _dater(db, login, date, ou="1"):
+    assert _sql(db, f"UPDATE evenement SET date = ? WHERE agent = ? AND {ou} RETURNING id",
+                (date, login)), f"aucun acte de {login} à dater"
+
+
+def _agents_publies(db, tmp_path):
+    """Les agents que sortent réellement les tables du journal et le graphe PROV."""
+    _outil(db, "metadonnees_collection.py", "--csv-dir", str(tmp_path / "agents"))
+    _outil(db, "provenance_export.py", "--out-dir", str(tmp_path / "prov"))
+    prov = "".join(f.read_text(encoding="utf-8") for f in (tmp_path / "prov").iterdir())
+    return ({e["agent"] for e in _lignes(tmp_path / "agents" / "evenement.csv")}
+            | {a["agent"] for a in _lignes(tmp_path / "agents" / "activite.csv")},
+            prov)
+
+
+def test_ouvrir_un_bac_a_sable_ne_donne_aucun_rang(client, corpus):
+    """Deux comptes n'ont fait qu'ouvrir un bac à sable, AVANT que rita n'annote : elle sort
+    au rang qu'elle aurait sans eux. Le témoin : leurs actes `projet` et `collection` sont
+    bien au journal, aux dates les plus anciennes."""
+    db = corpus["db"]
+    _faire_annoter(client, corpus, RITA)
+    _dater(db, "lea", "2026-01-01 08:00:00")
+    _dater(db, "hugo", "2026-01-02 08:00:00")
+    _dater(db, "decor", "2026-01-03 08:00:00")
+    _dater(db, "resp", "2026-02-01 08:00:00")
+    _dater(db, "rita", "2026-03-01 08:00:00")
+    for login in ("lea", "hugo"):
+        assert {"projet", "collection"} <= {e["cible_table"] for e in _sql(
+            db, "SELECT cible_table FROM evenement WHERE agent = ?", (login,))}, login
+    assert _rangs() == {"decor": "annotateur-1", "resp": "annotateur-2", "rita": "annotateur-3"}
+
+
+def test_le_rang_d_un_compte_se_lit_hors_de_son_bac_a_sable(client, corpus, tmp_path):
+    """lea travaille dans son bac à sable, puis annote le corpus après rita : ni son rang ni
+    celui de rita ne doivent rien au bac, et elle sort sous pseudonyme."""
+    db = corpus["db"]
+    _dater(db, "lea", "2026-01-01 08:00:00")
+    _faire_annoter(client, corpus, RITA)
+    _dater(db, "decor", "2026-01-03 08:00:00")
+    _dater(db, "resp", "2026-02-01 08:00:00")
+    _dater(db, "rita", "2026-03-01 08:00:00")
+    _faire_annoter(client, corpus, LEA)
+    _dater(db, "lea", "2026-04-01 08:00:00",
+           ou=f"cible_table = 'annotations' AND cible_id = {corpus['region_reelle']}")
+    rangs = _rangs()
+    assert list(rangs) == ["decor", "resp", "rita", "lea"]
+    assert rangs["lea"] == "annotateur-4"
+    agents, prov = _agents_publies(db, tmp_path)
+    assert "annotateur-4" in agents and "annotateur-4" in prov
+    assert not agents & {"lea", "rita", "resp", "hugo", "sam"}
+    assert '"lea"' not in prov and "agent:lea" not in prov
+
+
+def test_rien_ne_redonne_un_rang_une_fois_le_bac_a_sable_efface(client, corpus, tmp_path):
+    """Le travail de comptes qui ne sont passés que par un bac à sable : une note, une région
+    retirée après avoir été annotée, une collection créée puis supprimée par une invitée.
+    Vivant ou remis à neuf, rien de cela ne donne de rang, et rien ne sort sous un login :
+    un acte publié sans rang sortirait EN CLAIR (`pseudonymes(...).get(nom, nom)`)."""
+    db = corpus["db"]
+    planche = _copie(corpus, "exemple")["planche_ids"][0]
+    reg = client.post(f"/api/planches/{planche}/regions", headers=LEA,
+                      json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
+    assert client.put(f"/api/regions/{reg}/annotation", headers=LEA,
+                      json={"note": "n", "tags": []}).status_code == 200
+    assert client.delete(f"/api/regions/{reg}", headers=LEA).status_code == 204
+    assert client.put(f"/api/regions/{corpus['region_du_bac']}/annotation", headers=LEA,
+                      json={"note": "gardée", "tags": []}).status_code == 200
+    # Une région RECOPIÉE n'a aucun acte de création : validée, son premier acte ne nomme
+    # pas sa planche, et seule sa suppression le dit.
+    recopiee = client.get(f"/api/planches/{_copie(corpus, 'grammaire')['planche_ids'][0]}"
+                          "/regions", headers=LEA).json()[-1]["id"]
+    assert client.put(f"/api/regions/{recopiee}/annotation", headers=LEA,
+                      json={"note": "n", "tags": []}).status_code == 200
+    r = client.post(f"/api/regions/{recopiee}/grammaire/valider", headers=LEA)
+    assert r.status_code == 200, r.text
+    assert client.delete(f"/api/regions/{recopiee}", headers=LEA).status_code == 204
+    assert _sql(db, "SELECT type FROM evenement WHERE cible_table = 'regions' AND cible_id = ? "
+                    "ORDER BY id", (recopiee,)) == [{"type": "validation"},
+                                                    {"type": "suppression"}]
+    col = client.post("/api/collections", headers=SAM,
+                      json={"nom": "Essai", "projet_id": corpus["bac"]["id"]})
+    assert col.status_code == 201, col.text
+    assert client.delete(f"/api/collections/{col.json()['id']}",
+                         headers=SAM).status_code == 204
+    assert _sql(db, "SELECT COUNT(*) AS n FROM evenement WHERE agent = 'sam'")[0]["n"] >= 2
+
+    temoin = {"decor", "resp"}
+    assert set(_rangs()) == temoin
+    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=LEA).status_code == 200
+    assert _sql(db, "SELECT COUNT(*) AS n FROM evenement WHERE agent = 'lea' "
+                    "AND type = 'abandon'")[0]["n"] >= 1, "le semis : un geste passé par elle"
+    assert set(_rangs()) == temoin
+    agents, prov = _agents_publies(db, tmp_path)
+    assert not agents & {"lea", "sam", "hugo"}
+    assert not any(a in prov for a in ('"lea"', "agent:lea", '"sam"', "agent:sam"))
+
+
+def test_ni_correction_ni_run_d_un_projet_isole_ne_donnent_un_rang(client, corpus):
+    """Les deux autres sources du rang, hors du journal d'actes : une correction grammaticale
+    et un run humain dans le bac à sable ne comptent pas ; les mêmes dans le corpus comptent."""
+    db = corpus["db"]
+    grammaire = _copie(corpus, "grammaire")["planche_ids"][0]
+    assert _sql(db, "UPDATE token_correction SET auteur = 'lea' WHERE region_id IN "
+                    "(SELECT id FROM regions WHERE planche_id = ?) RETURNING id", (grammaire,))
+    _sql(db, "INSERT INTO token_correction (region_id, ordre, forme, auteur) "
+             "VALUES (?, 0, 'otage', 'tok')", (corpus["region_reelle"],))
+    reelle = _sql(db, "SELECT planche_id AS p FROM regions WHERE id = ?",
+                  (corpus["region_reelle"],))[0]["p"]
+    conn = database.get_connection()
+    try:
+        for agent, planche in (("sam", grammaire), ("run", reelle)):
+            journal.inscrire_run_termine(conn, "session", agent=agent, agent_type="humain",
+                                         version=None, params=None,
+                                         portee={"planche_id": planche},
+                                         debut="2026-10-30 10:00:00", comptes={})
+    finally:
+        conn.close()
+    rangs = _rangs()
+    assert "lea" not in rangs and "sam" not in rangs
+    assert {"tok", "run"} <= set(rangs)

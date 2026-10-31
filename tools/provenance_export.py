@@ -12,7 +12,7 @@ append-only (`activite` = runs ; `evenement` = actes atomiques avant/après, cf.
 
 Grain CORPUS : le journal n'est pas re-scopable par album (un acte survit à la suppression
 de sa cible). COL-4 : sans les actes ni les runs d'un bac à sable ou du jeu, dans la mesure
-de ce que `_commun.sql_evenement_isole` sait relier — une cible encore vivante. Modèle PRAGMATIQUE : un LOG D'ACTES append-only (chaque `evenement` est une
+de ce que `database.sql_acte_isole` et `_commun.sql_activite_isolee` savent relier. Modèle PRAGMATIQUE : un LOG D'ACTES append-only (chaque `evenement` est une
 prov:Activity), non un graphe à versionnement strict d'entités — c'est honnête et suffisant
 pour un entrepôt. Le versionnement fin (`wasRevisionOf` entre versions d'entité) reste une
 extension possible.

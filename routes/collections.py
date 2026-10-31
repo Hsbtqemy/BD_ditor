@@ -41,7 +41,8 @@ from config import STATUTS_DIFFUSION
 from database import (DEMANDE_REJOINDRE, LONGUEUR_MOTIF, NATURES,
                       clore_rejoindre_d_une_copie_au_fonds, noms_lisibles,
                       collection_row, collections,
-                      document_d_album, est_du_projet_par_reference, etat_embargo,
+                      document_d_album, est_bac_a_sable, est_du_projet_par_reference,
+                      etat_embargo,
                       nom_reserve, poser_projet_de_copie,
                       projet_d_album, projet_de_collection,
                       collection_de_base, projet_de_jeu, projet_par_defaut, ranger_copie,
@@ -448,8 +449,12 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
             conn.execute(f"UPDATE {table} SET collection_id = ? WHERE collection_id = ?",
                          (base, collection_id))
     conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
+    # … et sa `suppression` le dit, comme celle d'un effacement : sa ligne partie, plus rien ne
+    # relierait les actes faits sur elle à un projet isolé (`database.sql_acte_isole`).
     journal.journaliser(conn, "suppression", "collection", collection_id,
-                        avant={"nom": c["nom"]})
+                        avant={"nom": c["nom"],
+                               **({"bac_a_sable": True} if est_bac_a_sable(conn, projet)
+                                  else {})})
     conn.commit()
     return Response(status_code=204)
 

@@ -381,8 +381,8 @@ def test_ses_actes_s_ecrivent_sous_grille_et_ne_comptent_pour_personne(client, j
     conn = database.get_connection()
     try:
         assert "lea" not in comptes.traces(conn)[0], "ni une fois l'ancien bac à sable parti"
-        # Ses actes sous `grille`, seuls, ne donnent aucun rang (le reste de la naissance
-        # d'un bac à sable, qui en donne un depuis COL-4, n'est pas la question ici).
+        # Ses actes sous `grille`, seuls, ne donnent aucun rang : `CIBLES_SANS_RANG`, et non
+        # le projet isolé, que le reste de la naissance d'un bac à sable fait écarter.
         conn.execute("DELETE FROM evenement WHERE cible_table <> 'grille'")
         conn.commit()
         assert _sql("SELECT COUNT(*) AS n FROM evenement WHERE agent = 'lea'")[0]["n"] >= 8

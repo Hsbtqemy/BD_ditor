@@ -2847,18 +2847,30 @@ def _sql_acte_isole_direct(e: str) -> str:
               f"'personnage_presence', 'region_attribut', 'releve') THEN {e}.cible_id "
               f"WHEN {e}.cible_table = 'token_correction' THEN "
               f"COALESCE({j('apres', 'region_id')}, {j('avant', 'region_id')}) END)")
+    # Une région retirée depuis ne se lit plus : sa planche reste écrite dans la charge de ses
+    # propres actes (`regions` : sa création, sa suppression), lue seulement pour un acte qui
+    # ne la porte pas — une note, un locuteur, un relevé posé sur elle.
+    charge_region = (f"COALESCE(json_extract(CASE WHEN json_valid(_xo{s}.apres) "
+                     f"THEN _xo{s}.apres END, '$.planche_id'), "
+                     f"json_extract(CASE WHEN json_valid(_xo{s}.avant) "
+                     f"THEN _xo{s}.avant END, '$.planche_id'))")
     planche = (f"COALESCE((SELECT _xr{s}.planche_id FROM regions _xr{s} "
                f"WHERE _xr{s}.id = {region}), "
                f"CASE WHEN {e}.cible_table IN ('planches', 'releve_planche') "
                f"THEN {e}.cible_id END, "
                f"CASE WHEN {e}.cible_table = 'regions' THEN "
-               f"COALESCE({j('apres', 'planche_id')}, {j('avant', 'planche_id')}) END)")
+               f"COALESCE({j('apres', 'planche_id')}, {j('avant', 'planche_id')}) END, "
+               f"(SELECT {charge_region} FROM evenement _xo{s} "
+               f"WHERE _xo{s}.cible_table = 'regions' AND _xo{s}.cible_id = {region} "
+               f"AND {charge_region} IS NOT NULL LIMIT 1))")
 
     def effaces(cle):
         return (f"SELECT _xj{s}.value FROM evenement _xe{s}, "
                 f"json_each(_xe{s}.avant, '$.{cle}') _xj{s} "
                 f"WHERE _xe{s}.cible_table = 'projet' AND _xe{s}.type = 'suppression' "
                 f"AND json_valid(_xe{s}.avant) AND json_extract(_xe{s}.avant, '$.bac_a_sable')")
+    # Une collection partie avec son bac à sable, ou supprimée dedans : la charge de sa
+    # `suppression` le dit, sa ligne n'étant plus là pour nommer son projet.
     collection_effacee = (f"SELECT _xc{s}.cible_id FROM evenement _xc{s} "
                           f"WHERE _xc{s}.cible_table = 'collection' "
                           f"AND _xc{s}.type = 'suppression' AND json_valid(_xc{s}.avant) "
@@ -2887,8 +2899,20 @@ def sql_acte_isole(e: str = "evenement") -> str:
     sa `suppression` sous `projet`, les planches et les régions qu'il emporte ; une
     collection d'un bac à sable effacé l'est sous `collection` ; un projet, par
     `SQL_BACS_EFFACES` — et aucun de ces identifiants ne revient. Une annulation
-    (`cible_table = 'evenement'`) suit l'acte qu'elle défait."""
-    return (f"COALESCE(({_sql_acte_isole_direct(e)} OR ({e}.cible_table = 'evenement' AND "
+    (`cible_table = 'evenement'`) suit l'acte qu'elle défait, un geste passé
+    (`cible_table = 'annulation'`, `undo.ecarter`) celui qu'il passe.
+
+    C'est la coupure du journal publié (`tools/_commun.sql_evenement_tu`) ET celle des rangs
+    (`tools/_commun.pseudonymes`), et il faut que ce soit la même : un acte publié sans rang
+    sortirait sous le LOGIN de son agent.
+
+    Ce qu'il ne sait PAS relier, et c'est écrit : un acte sur une région d'une planche
+    ou d'un album supprimés à l'intérieur d'un bac à sable, la planche n'étant nommée ni par
+    une ligne ni par l'effacement ; un acte sur une région sans aucun acte `regions` (recopiée par une
+    copie amorcée) une fois celle-ci partie. Il compte alors comme un acte ordinaire : un rang,
+    et une ligne publiée sous pseudonyme, sans contenu."""
+    return (f"COALESCE(({_sql_acte_isole_direct(e)} OR "
+            f"({e}.cible_table IN ('evenement', 'annulation') AND "
             f"EXISTS (SELECT 1 FROM evenement _xu WHERE _xu.id = {e}.cible_id "
             f"AND {_sql_acte_isole_direct('_xu')}))), 0)")
 
