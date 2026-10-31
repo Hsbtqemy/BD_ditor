@@ -791,7 +791,9 @@ async function envoyerNote(rid, texte) {
    LA SAISIE VIT DANS LE CONFLIT (`S.conflit.saisie`) tant qu'il attend, jamais dans le champ :
    le champ appartient à la zone affichée, et le bandeau reste ouvert d'une zone à l'autre.
    Le refus peut donc revenir sur une zone QUITTÉE — la note part à la sortie du champ — : le
-   bandeau s'ouvre quand même, mais sans prendre le focus de ce qu'on fait maintenant. */
+   bandeau s'ouvre quand même, mais sans prendre le focus de ce qu'on fait maintenant. Il ne le
+   prend pas non plus à un champ SOUS LES DOIGTS : la note part après le délai de frappe, et
+   l'espace suivante aurait activé « Remplacer par la mienne », écrasant l'autre sans décision. */
 function refusDuContexte(e, lieu, rid, saisie) {
   if (e && e.statut === 410) {
     const dit = BDConflit.messageSuppression(e.detail && e.detail.suppression, typeDeRegion(rid));
@@ -820,7 +822,7 @@ function refusDuContexte(e, lieu, rid, saisie) {
   rendreGuide();
   annoncer(BDConflit.titreConflit(c));
   const b = $("#an-cf-mienne");
-  if (b && ici) b.focus();
+  if (b && ici && !enCours) b.focus();
   return true;
 }
 
@@ -1188,7 +1190,9 @@ function envoyerChampDeZone(champ, valeur) {
   if (!z || z.pseudo || !ecrivable()) return null;
   const rid = z.id;
   if (valeurLue(rid, champ) === valeur) return null;
-  if (conflitOuvert()) return null;
+  // Un conflit ouvert retient ce texte, comme une note : la sortie du champ qui mène au bandeau
+  // n'a pas à lui reprendre le clic, et Entrée à y porter le focus sous les doigts.
+  if (S.conflit) { retenir(champ, rid, valeur); return null; }
   return enchainer(champ, () => envoyerSiChange(rid, champ, valeur));
 }
 

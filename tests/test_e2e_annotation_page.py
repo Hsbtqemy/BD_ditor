@@ -1477,6 +1477,36 @@ def test_ctrl_z_attend_la_note_partie(page, decor):
     assert len(_releves(decor)) == avant
 
 
+def test_un_409_pendant_la_frappe_laisse_le_focus_dans_le_champ(page, decor):
+    """La note part après le délai de frappe : le 409 revient sous les doigts. S'il prenait le
+    focus, l'espace suivante activerait « Remplacer par la mienne » et écraserait l'autre sans
+    décision — trouvé au rejeu de la passe des correctifs du jalon 3, au clavier réel."""
+    _ouvrir(page, decor, decor["bulle"])
+    note = page.locator("#an-note")
+    expect(note).to_have_value("il jure")
+    with _http(decor) as c:
+        assert c.put(f"/api/regions/{decor['bulle']}/annotation",
+                     json={"note": "il crie"}).status_code == 200
+    note.click()
+    page.keyboard.press("Control+End")
+    page.keyboard.type(" vite")
+    expect(page.locator("#an-cf-titre")).to_be_visible()     # la pause : le 409 est revenu
+    expect(note).to_be_focused()
+    page.keyboard.type(" et encore")                         # commence par une espace
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(note).to_have_value("il jure vite et encore")
+    expect(page.locator("#an-note-etat")).to_have_text("En attente de votre choix")
+    page.wait_for_load_state("networkidle")
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il crie"
+    page.locator("#an-cf-mienne").click()                    # le choix part avec TOUTE la frappe
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator("#an-note-etat")).to_have_text("Enregistrée")
+    with _http(decor) as c:
+        assert (c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"]
+                == "il jure vite et encore")
+
+
 def test_quitter_la_planche_attend_la_note_et_son_conflit(page, decor):
     """Un départ de la planche passe par ses gardes : la note pas encore partie part d'abord,
     et si elle reçoit un 409, le bandeau s'ouvre et la planche RESTE."""
@@ -2388,6 +2418,12 @@ def test_poser_au_clavier_garde_le_focus_sur_l_entree_ou_la_variante(page, decor
     page.keyboard.press(touche)
     expect(objet).to_have_attribute("aria-pressed", "true")
     _focus_tenu(page, objet)
+
+
+def test_un_clic_sur_le_signe_du_filtre_donne_le_focus_au_filtre(page, decor):
+    _ouvrir(page, decor, decor["c2"])
+    page.locator(".an-filtre-wrap kbd").click()
+    expect(page.locator("#an-filtre")).to_be_focused()
 
 
 def test_le_focus_ne_quitte_pas_le_filtre_ni_un_champ_qu_on_vient_de_remplir(page, decor):
