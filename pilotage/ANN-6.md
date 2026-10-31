@@ -480,7 +480,15 @@ semaines » (Hugo, le même jour).
   que la maquette propose : toucher un mot, puis « Étendre » et toucher le dernier pour un
   passage ; « Un détail » à choisir avant de glisser, pour ne pas bloquer le défilement ;
   sur téléphone, la grille monte du bas par « Poser… ». Simulé dans Chromium seulement.
-  Sans survol, la ligne du guide ne suit que le dernier geste
+  Sans survol, la ligne du guide ne suit que le dernier geste. **Codé le 2026-10-31,
+  `953531d`, joué au toucher dans Chromium émulé et jamais sur un appareil.** À y regarder,
+  relevé par l'agent : après un tracé rapide, le premier toucher est-il perdu (mesuré :
+  doigt levé en pleine vitesse, le toucher suivant ne donne aucun `click`, doigt arrêté
+  avant de se lever, tout marche ; le test s'arrête avant de lever, il masque donc ce
+  cas) ; tracer sans que la page défile, Safari iOS compris ; le clavier virtuel et la
+  feuille à 88 % de la hauteur ; Étendre et Ajouter sur une bulle longue ; une feuille très
+  basse en paysage, où `.an-bas` garde sa hauteur fixe ; le tiroir sur tablette pendant une
+  désignation de lien
 
 ### Le modèle — à cadrer avant tout code
 
