@@ -488,7 +488,12 @@ semaines » (Hugo, le même jour).
   cas) ; tracer sans que la page défile, Safari iOS compris ; le clavier virtuel et la
   feuille à 88 % de la hauteur ; Étendre et Ajouter sur une bulle longue ; une feuille très
   basse en paysage, où `.an-bas` garde sa hauteur fixe ; le tiroir sur tablette pendant une
-  désignation de lien
+  désignation de lien. **La passe est `pilotage/qa/page-annotation-appareils.md`** (2026-11-01),
+  en production dans un bac à sable, rejouée sans écran avant d'être rendue ; ce rejeu a vu,
+  hors des cases : un appareil neuf ouvre le « Projet principal », où la page Annotation est
+  vide ; au téléphone, la fin d'une longue bulle passe sous le bord du bloc des mots ;
+  l'étiquette « Cliquez la zone liée » (qui dit « Cliquez » au doigt) couvre le haut de la
+  minicarte ; la hauteur de la feuille, en `vh`, ne rapetisse pas quand le clavier sort
 
 ### Le modèle — à cadrer avant tout code
 

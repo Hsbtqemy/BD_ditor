@@ -12,7 +12,7 @@ duree: 60 min
 
 **Rejouée sans écran avant d'être rendue**, sous ces deux identités, sur une copie du décor : tout sauf la zone « Sur un vrai appareil ». La case du `Type` de l'Atelier dit un défaut relevé à ce rejeu ; une case qui dit faux alors que l'écran a raison se corrige SUR PLACE et se signale. Le premier enregistrement qui réindexe (une note, une transcription) peut prendre quelques secondes (6 s mesurées) : « Enregistrement… » n'est pas une panne.
 
-**La zone « Sur un vrai appareil » ne se joue pas sur la recette** : celle-ci écoute sur `bd.127-0-0-1.sslip.io`, c'est-à-dire le poste lui-même, et Caddy n'y est lié qu'à 127.0.0.1, donc un téléphone ne l'atteint pas. Elle attend la production, dans un bac à sable, une fois H4 et la fusion faites ; ses cases seront alors réécrites, chacune sur sa ligne, avec les noms de ce bac à sable.
+**La zone « Sur un vrai appareil » a quitté cette passe le 2026-11-01** : elle ne se jouait pas sur la recette, qui n'écoute que sur le poste, et vit désormais, réécrite pour un bac à sable de la production, dans `page-annotation-appareils.md`.
 
 **Ce que la passe ne juge pas** : le doute, la Synthèse et « ⟳ Actualiser » (jalon 2) ; 320 px, grande police et contraste (mesurés par les tests). En fin de passe, la recette porte des zones tracées, trois copies et des relevés : `restaurer avant-ann7-j1` avant toute autre passe qui part de ce décor.
 
@@ -78,17 +78,3 @@ duree: 60 min
 
 - [x] Planche « planche 2 », clic sur la case c1 dans la minicarte, clic sur « la planche » de « Porte sur », puis la touche Tab trois fois : le contour de focus est sur « ✎ Tracer une zone ». Entrée : un rectangle tireté au milieu de la case. Touches ← puis ↓ : il se déplace ; Maj+→ puis Maj+↓ : il grandit ; Échap : il disparaît, et le contour revient sur « ✎ Tracer une zone »
 - [x] Entrée, puis de nouveau Entrée : « Détail d'image » a le contour ; Tab : « Texte hors bulle » l'a ; Entrée : la rangée gagne « b2 · texte », et le curseur est dans Transcription
-
-### Sur un vrai appareil — 15 min, téléphone puis tablette, après la fusion, sur la production (cf. le chapeau), PAS sur la recette ; ce qui gêne s'écrit dans `ANN-6`
-
-- [ ] Téléphone, page Annotation, Collection Test, esther v1, planche 1 : « ☰ Planche et contexte » en tête de la colonne, en bas une barre qui dit ce sur quoi on poserait, et « Poser… ▴ » ; rien ne dépasse à droite. Toucher ☰, puis la case c1 sur la minicarte : le tiroir se referme, la case s'agrandit
-- [ ] Toucher « b2 · bulle », puis le mot « HEY » : il se surligne, et la barre dit « Sur « HEY » » ; le retoucher : plus aucun mot n'est désigné
-- [ ] Toucher « b1 · bulle », la longue (27 mots). Toucher « CM2 », « Étendre » (le bouton reste enfoncé), toucher « tellement » : le passage va de l'un à l'autre. « Ajouter un mot », toucher « Politique » : il entre ; toucher « dirdit » : il sort. Pendant tout cela, les deux boutons et le mot touché restent à l'écran, sans saut du défilement
-- [ ] « Ajouter un mot » pour l'éteindre, « Poser… ▴ » : la grille monte du bas ; cocher « cri » ; « Fermer ✕ » : la page revient, et le passage porte son trait
-- [ ] « Poser… ▴ », toucher « Chercher dans la grille… » : le clavier virtuel paraît, le champ reste visible au-dessus de lui ; taper « echo » : « écho » se lit sans que la feuille (88 % de la hauteur) passe sous le clavier ; « Fermer ✕ »
-- [ ] Toucher « La case c1 », glisser le doigt dans la case agrandie SANS avoir touché « ✎ Tracer une zone » : la page défile ou rien ne bouge, mais aucun rectangle ne naît
-- [ ] Toucher « ✎ Tracer une zone » (il reste enfoncé), glisser le doigt lentement dans la case, l'arrêter, le lever : un rectangle suit le doigt, la page ne défile pas (sur un iPhone, dire si Safari défile quand même), puis « Détail d'image », « Texte hors bulle », « Annuler » paraissent ; toucher « Annuler »
-- [ ] Toucher « ✎ Tracer une zone », tracer VITE, le doigt levé en pleine course, puis toucher UNE fois « Détail d'image » : le détail naît à ce premier toucher, et le tiroir s'ouvre. Mesuré en émulation : ce toucher est perdu, il en faut un second ; dire ce que fait le vrai appareil
-- [ ] Le tiroir ouvert, le curseur dans Nom : le clavier virtuel laisse le champ visible ; taper un nom, valider, « Fermer ✕ » : le nom s'écrit sur l'image
-- [ ] Téléphone couché, s'il fait moins de 760 px de large : « Poser… ▴ » : la grille se lit et ses entrées se cochent. Mesuré en émulation à 667 × 375 : la grille n'y reçoit que 8 px, la boîte de bas gardant sa hauteur ; dire ce que fait le vrai appareil (au-delà de 760 px, il n'y a pas de feuille : la grille reste en colonne à droite, et on regarde si elle se sert)
-- [ ] Tablette, moins de 1 200 px de large (en portrait si besoin) : la grille à droite, « ☰ Planche et contexte » en tête de la colonne. Case c3, « b1 · bulle », cocher « réponse à une autre bulle », « Désigner sur la planche » : le tiroir s'ouvre de lui-même, et la minicarte porte « Cliquez la zone liée · Échap annule » ; toucher une bulle de la minicarte : le tiroir se referme, et la ligne nomme la zone liée
