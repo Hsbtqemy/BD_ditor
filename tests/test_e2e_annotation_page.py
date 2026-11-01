@@ -2866,9 +2866,11 @@ def test_une_precision_en_cours_survit_a_un_redessin_de_la_liste(page, decor):
     champ = page.locator("#an-poses-liste .an-prec")
     expect(champ).to_be_visible()
     retenues, lacher = _retenir_les_envois(page, "**/api/releves", "POST")
-    # Le champ retiré du document part par sa sortie (`focusout`) : on la retient aussi, pour
-    # lire ce que montre le dessin, et non ce que la réponse de cette écriture ramènerait.
-    ecrites, lacher_ecrites = _retenir_les_envois(page, "**/api/releves/*")
+    # Le champ retiré du document émet sa sortie (`focusout`) : elle ne vaut pas départ, et
+    # rien ne doit partir de ce qui est à moitié tapé.
+    ecrites = []
+    page.on("request", lambda r: ecrites.append(r.url)
+            if r.method == "PUT" and "/api/releves/" in r.url else None)
     page.locator("#an-plan .an-var", has_text="crié").click()
     for _ in range(50):
         if retenues:
@@ -2886,8 +2888,12 @@ def test_une_precision_en_cours_survit_a_un_redessin_de_la_liste(page, decor):
     expect(champ).to_have_value("le sal")
     page.keyboard.type("L")                        # la place dans le champ reste
     expect(champ).to_have_value("le Lsal")
-    if ecrites:
-        lacher_ecrites()
+    page.wait_for_timeout(200)
+    assert not ecrites, "le dessin a enregistré une précision à moitié tapée"
+    champ.blur()                                # c'est la sortie du champ qui l'envoie
+    page.wait_for_load_state("networkidle")
+    assert [r for r in _releves(decor)
+            if r["entree_cle"] == "origine-du-son"][0]["precision"] == "le Lsal"
 
 
 def test_le_guide_complet_rend_le_focus_a_son_bouton(page, decor):
@@ -2928,3 +2934,482 @@ def test_une_note_retenue_par_un_conflit_de_releve_part_quand_il_est_regle(page,
     page.wait_for_timeout(300)
     page.wait_for_load_state("networkidle")
     assert _lire_note(decor, decor["boite"]) == "Ma note"
+
+
+# ── Les voies de perte de saisie (tranche 2, commit 17) ──
+# Chacune mesurée avant d'être corrigée : ces tests échouaient sur le code d'avant.
+
+def _second_projet(d):
+    """Un autre projet, avec un album : la bande du haut passe à un sélecteur."""
+    with _http(d) as c:
+        p = c.post("/api/projets", json={"nom": "Second", "acces_membres": "ecriture"}).json()["id"]
+        col = c.post("/api/collections", json={"nom": "Étude", "projet_id": p}).json()["id"]
+        a = c.post("/api/albums", json={"titre": "Autre album", "collection_id": col}).json()["id"]
+        c.post(f"/api/albums/{a}/import", files={"file": ("p.png", make_png(), "image/png")})
+    return p
+
+
+def _ouvrir_brouillon(page, d, sorte):
+    """La page ouverte, un doute ou une réponse à moitié écrits. Rend le champ."""
+    if sorte == "doute":
+        _ouvrir(page, d, d["bulle"])
+        page.locator(f'#an-poses-liste [data-douter="{_cri(d)["id"]}"]').click()
+        champ = page.locator("#an-dt-texte")
+    else:
+        doute = _douter_api(d, _cri(d)["id"], "Un juron ?")
+        _ouvrir(page, d, d["bulle"])
+        _synthese(page, "revoir")
+        champ = page.locator(f"#an-rep-{doute['id']}")
+    expect(champ).to_be_visible()
+    champ.click()
+    page.keyboard.type("à moitié")
+    return champ
+
+
+@pytest.mark.parametrize("sorte", ["doute", "reponse"])
+def test_changer_de_projet_attend_un_brouillon(page, decor, sorte):
+    """Un brouillon de doute se disait « relevé retiré ailleurs » et partait, une réponse partait
+    sans un mot. Le changement est refusé AVANT d'écrire : rien ne bouge, ni la page, ni le
+    sélecteur, ni le projet retenu, que d'autres onglets liraient."""
+    autre = _second_projet(decor)
+    champ = _ouvrir_brouillon(page, decor, sorte)
+    choix = page.locator("#projet-choix")
+    choix.select_option(str(autre))
+    expect(page.locator("#toasts")).to_contain_text("en cours d'écriture")
+    expect(page.locator("#toasts")).not_to_contain_text("ailleurs")
+    expect(choix).to_have_value(str(decor["projet"]))
+    assert page.evaluate("() => BDProjet.lire()") != autre
+    expect(champ).to_be_visible()
+    expect(champ).to_have_value("à moitié")
+    expect(page.locator("#an-album")).to_have_value(str(decor["album"]))
+    # Sans brouillon, le même geste passe, et le projet choisi est retenu.
+    champ.fill("")
+    choix.select_option(str(autre))
+    expect(choix).to_have_value(str(autre))
+    expect(page.locator("#an-album option")).to_have_text(["Autre album"])
+    assert page.evaluate("() => BDProjet.lire()") == autre
+
+
+def test_un_changement_refuse_revient_au_projet_ou_l_on_est(page, decor):
+    """Le sélecteur revient au projet COURANT, pas à celui de l'arrivée sur la page."""
+    autre = _second_projet(decor)
+    page.add_init_script(f"localStorage.setItem('bd-projet', '{autre}')")
+    page.goto(f"{decor['base']}/annotation", wait_until="networkidle")
+    choix = page.locator("#projet-choix")
+    expect(choix).to_have_value(str(autre))
+    choix.select_option(str(decor["projet"]))
+    expect(page.locator("#an-album")).to_have_value(str(decor["album"]))
+    expect(page.locator("#an-mini .an-mz")).to_have_count(2)
+    page.wait_for_load_state("networkidle")
+    _zone(page, "bulle")
+    page.locator(f'#an-poses-liste [data-douter="{_cri(decor)["id"]}"]').click()
+    page.locator("#an-dt-texte").fill("à moitié")
+    choix.select_option(str(autre))
+    expect(page.locator("#toasts")).to_contain_text("en cours d'écriture")
+    expect(choix).to_have_value(str(decor["projet"]))
+
+
+def test_changer_de_projet_attend_un_conflit_ouvert(page, decor):
+    """Le bandeau restait ouvert sur le projet d'arrivée, la note effacée de son champ, pour
+    une zone que la page ne montrait plus."""
+    autre = _second_projet(decor)
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    _conflit_de_note(page, decor, "Version autre", "Ma version")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    choix = page.locator("#projet-choix")
+    choix.select_option(str(autre))
+    expect(page.locator("#toasts")).to_contain_text("Réglez d'abord le conflit")
+    expect(choix).to_have_value(str(decor["projet"]))
+    expect(page.locator("#an-note")).to_have_value("Ma version")
+    expect(page.locator("#an-album")).to_have_value(str(decor["album"]))
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    choix.select_option(str(autre))
+    expect(page.locator("#an-album option")).to_have_text(["Autre album"])
+
+
+def _sorties(page):
+    """Répond aux demandes du navigateur à la sortie. Rend `(vues, reponse)` : `reponse["partir"]`
+    faux, on reste."""
+    vues, reponse = [], {"partir": False}
+
+    def repondre(dialogue):
+        vues.append(dialogue.type)
+        if reponse["partir"]:
+            dialogue.accept()
+        else:
+            dialogue.dismiss()
+
+    page.on("dialog", repondre)
+    return vues, reponse
+
+
+def _vers_la_bibliotheque(page):
+    page.locator('#site-nav a[href="/corpus"]').first.click()
+
+
+@pytest.mark.parametrize("sorte", ["conflit", "doute", "reponse"])
+def test_quitter_par_la_navigation_demande_quand_une_saisie_se_perdrait(page, decor, sorte):
+    """Le lien de la navigation partait sans rien dire : la saisie du bandeau, le brouillon, la
+    réponse disparaissaient avec la page. Le navigateur demande ; rester garde tout."""
+    if sorte == "conflit":
+        _ouvrir(page, decor, decor["bulle"])
+        expect(page.locator("#an-note")).to_have_value("il jure")
+        _conflit_de_note(page, decor, "Version autre", "Ma version")
+        expect(page.locator("#an-cf-titre")).to_be_visible()
+        champ, valeur = page.locator("#an-note"), "Ma version"
+    else:
+        champ, valeur = _ouvrir_brouillon(page, decor, sorte), "à moitié"
+    vues, reponse = _sorties(page)
+    _vers_la_bibliotheque(page)
+    expect(champ).to_have_value(valeur)
+    page.wait_for_timeout(300)
+    assert vues == ["beforeunload"]
+    assert "/annotation" in page.url
+    expect(champ).to_have_value(valeur)
+    reponse["partir"] = True                       # « Quitter » : on part vraiment
+    _vers_la_bibliotheque(page)
+    page.wait_for_url("**/corpus*")
+    assert vues == ["beforeunload", "beforeunload"]
+
+
+def test_un_conflit_sans_rien_dans_les_champs_retient_aussi_la_page(page, decor):
+    """Un choix de locuteur en conflit n'est dans aucun champ : la saisie vit dans le bandeau."""
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    _conflit_de_locuteur(page, decor, "Zed", "Yann")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    vues, _ = _sorties(page)
+    _vers_la_bibliotheque(page)
+    page.wait_for_timeout(300)
+    assert vues == ["beforeunload"]
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+
+
+@pytest.mark.parametrize("champ", ["precision", "nom", "transcription"])
+def test_recharger_demande_quand_un_champ_n_est_pas_parti(page, decor, champ):
+    """Recharger ne fait pas sortir du champ : ce qui y est tapé n'est parti nulle part."""
+    if champ == "precision":
+        _ouvrir(page, decor, decor["bulle"])
+        cible = _avec_une_precision(page)
+    elif champ == "nom":
+        _ouvrir(page, decor, _detail(decor, nom="la lampe"))
+        cible = page.locator("#an-nom")
+    else:
+        _ouvrir(page, decor, _texte_hors_bulle(decor))
+        cible = page.locator("#an-transcription")
+    page.wait_for_load_state("networkidle")
+    cible.click()
+    page.keyboard.type("x")
+    vues, _ = _sorties(page)
+    page.evaluate("() => { setTimeout(() => location.reload(), 0); }")
+    expect(cible).to_be_focused()
+    page.wait_for_timeout(400)
+    assert vues == ["beforeunload"]
+    expect(cible).to_be_focused()
+
+
+def test_recharger_demande_quand_la_note_n_est_pas_partie(page, decor):
+    """La note part après le délai de frappe : recharger avant le perdait (mesuré)."""
+    _ouvrir(page, decor, decor["bulle"])
+    note = page.locator("#an-note")
+    expect(note).to_have_value("il jure")
+    page.wait_for_load_state("networkidle")
+    note.click()
+    vues, _ = _sorties(page)
+    # Dans la même tâche : le délai de frappe ne doit pas avoir le temps de passer.
+    page.evaluate("""() => {
+      const c = document.querySelector('#an-note');
+      c.value += ' encore';
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+      setTimeout(() => location.reload(), 0);
+    }""")
+    page.wait_for_timeout(300)
+    assert vues == ["beforeunload"]
+    expect(note).to_have_value("il jure encore")
+
+
+def test_quitter_une_page_sans_enjeu_ne_demande_rien(page, decor):
+    """Un formulaire de doute vide, un champ cliqué sans rien y changer : rien à perdre."""
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    page.wait_for_load_state("networkidle")
+    page.locator(f'#an-poses-liste [data-douter="{_cri(decor)["id"]}"]').click()
+    expect(page.locator("#an-dt-texte")).to_be_visible()
+    page.locator("#an-note").click()
+    vues, _ = _sorties(page)
+    _vers_la_bibliotheque(page)
+    page.wait_for_url("**/corpus*")
+    assert vues == []
+
+
+def test_une_note_enregistree_ne_retient_plus_la_page(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    note = page.locator("#an-note")
+    expect(note).to_have_value("il jure")
+    page.wait_for_load_state("networkidle")
+    note.click()
+    page.keyboard.type(" encore")
+    expect(page.locator("#an-note-etat")).to_have_text("Enregistrée")
+    vues, _ = _sorties(page)
+    _vers_la_bibliotheque(page)
+    page.wait_for_url("**/corpus*")
+    assert vues == []
+
+
+def test_un_conflit_regle_ne_retient_plus_la_page(page, decor):
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    _conflit_de_note(page, decor, "Version autre", "Ma version")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    vues, _ = _sorties(page)
+    _vers_la_bibliotheque(page)
+    page.wait_for_url("**/corpus*")
+    assert vues == []
+
+
+def _avec_une_precision(page):
+    """Un relevé « origine du son » sur le second mot : sa ligne attend une précision."""
+    _mot(page, 1).click()
+    origine = page.locator("#an-plan .an-ent", has=page.locator("text=origine du son"))
+    origine.locator(".an-var", has_text="objet").click()
+    champ = page.locator("#an-poses-liste .an-prec")
+    expect(champ).to_be_visible()
+    return champ
+
+
+def _origine(d):
+    return next(r for r in _releves(d) if r["entree_cle"] == "origine-du-son")
+
+
+def _precision_sous_conflit(page, d):
+    """Un champ de précision, et un conflit de locuteur qui attend."""
+    _ouvrir(page, d, d["bulle"])
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    champ = _avec_une_precision(page)
+    _conflit_de_locuteur(page, d, "Zed", "Yann")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    return champ
+
+
+def test_une_precision_ecrite_pendant_un_autre_conflit_survit_et_part(page, decor):
+    """Elle n'attendait nulle part : la sortie du champ disait « réglez d'abord le conflit » et
+    prenait le focus, et le premier dessin de la liste l'effaçait."""
+    champ = _precision_sous_conflit(page, decor)
+    champ.fill("le salon")
+    champ.blur()
+    page.wait_for_timeout(200)
+    expect(page.locator("#toasts")).not_to_contain_text("Réglez d'abord")
+    expect(page.locator("#an-cf-mienne")).not_to_be_focused()
+    expect(champ).to_have_attribute("title", "En attente de votre choix")
+    assert _origine(decor)["precision"] is None
+    _zone(page, "personnage")
+    page.wait_for_load_state("networkidle")
+    _zone(page, "bulle")
+    page.wait_for_load_state("networkidle")
+    _mot(page, 1).click()
+    expect(champ).to_be_visible()
+    expect(champ).to_have_value("le salon")
+    expect(champ).to_have_attribute("title", "En attente de votre choix")
+    with page.expect_request(lambda r: "/api/releves/" in r.url and r.method == "PUT") as q:
+        page.locator("#an-cf-autre").click()
+    assert q.value.post_data_json == {"precision": "le salon", "vu": {"precision": None}}
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert _origine(decor)["precision"] == "le salon"
+    expect(champ).to_have_value("le salon")
+    expect(champ).not_to_have_attribute("title", "En attente de votre choix")
+
+
+def test_quitter_le_champ_d_une_precision_pour_le_bandeau_ne_vole_pas_le_clic(page, decor):
+    """Le piège du commit 16 : la sortie du champ reprenait le focus, et le clic sur le bandeau
+    tombait dans le vide (mesuré : le bandeau restait ouvert)."""
+    champ = _precision_sous_conflit(page, decor)
+    champ.click()
+    page.keyboard.type("le salon")
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert _origine(decor)["precision"] == "le salon"
+
+
+def test_une_retenue_pas_encore_repartie_retient_la_page(page, decor):
+    """Le conflit est réglé, et les saisies qu'il retenait partent l'une après l'autre : tant que
+    la dernière attend son tour, quitter la perdrait."""
+    champ = _precision_sous_conflit(page, decor)
+    _zone(page, "personnage")
+    page.wait_for_load_state("networkidle")
+    page.locator("#an-note").fill("Ma note")
+    page.locator("#an-note").blur()
+    _zone(page, "bulle")
+    page.wait_for_load_state("networkidle")
+    _mot(page, 1).click()
+    champ.fill("le salon")
+    champ.blur()
+    notes, lacher = _retenir_les_envois(page, "**/api/regions/*/annotation")
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    for _ in range(50):
+        if notes:
+            break
+        page.wait_for_timeout(100)
+    assert notes
+    vues, _ = _sorties(page)
+    _vers_la_bibliotheque(page)
+    page.wait_for_timeout(300)
+    assert vues == ["beforeunload"]
+    lacher()
+    page.wait_for_load_state("networkidle")
+    assert _origine(decor)["precision"] == "le salon"
+
+
+def test_une_precision_retenue_deja_ecrite_ailleurs_ne_repart_pas(page, decor):
+    """« Garder l'autre » relit le relevé, et l'autre a écrit le même texte : rien à envoyer."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    rid = _origine(decor)["id"]
+    origine = page.locator("#an-plan .an-ent", has=page.locator("text=origine du son"))
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{rid}",
+                     json={"qualificatifs": ["objet", "personnage"]}).status_code == 200
+    origine.locator(".an-var", has_text="hors champ").click()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    champ.fill("le salon")
+    champ.blur()
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{rid}", json={"precision": "le salon"}).status_code == 200
+    ecrites = []
+    page.on("request", lambda r: ecrites.append(r.url)
+            if r.method == "PUT" and "/api/releves/" in r.url else None)
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert ecrites == []
+    expect(champ).to_have_value("le salon")
+
+
+def test_une_precision_ramenee_a_sa_valeur_n_attend_plus_rien(page, decor):
+    champ = _precision_sous_conflit(page, decor)
+    champ.fill("le salon")
+    champ.blur()
+    champ.fill("")
+    champ.blur()
+    expect(champ).not_to_have_attribute("title", "En attente de votre choix")
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert _origine(decor)["precision"] is None
+
+
+def test_les_deux_champs_d_une_precision_retenue_disent_la_meme_chose(page, decor):
+    """La liste et « À compléter » montrent le même relevé : l'autre champ, resté sur l'ancienne
+    valeur, aurait repris la retenue à sa sortie."""
+    champ = _precision_sous_conflit(page, decor)
+    _synthese(page, "revoir")
+    jumeau = page.locator("#an-syn-corps .an-prec")
+    expect(jumeau).to_be_visible()
+    champ.fill("le salon")
+    champ.blur()
+    expect(jumeau).to_have_value("le salon")
+    jumeau.focus()
+    jumeau.blur()
+    _zone(page, "personnage")                      # « À compléter » se redessine, et la redit
+    page.wait_for_load_state("networkidle")
+    expect(jumeau).to_have_value("le salon")
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    assert _origine(decor)["precision"] == "le salon"
+
+
+@pytest.mark.parametrize("reponse", ["mienne", "autre"])
+def test_une_precision_retouchee_pendant_son_propre_conflit(page, decor, reponse):
+    """Sa retouche suit le conflit : « Remplacer » écrit la dernière version, « Garder l'autre »
+    ne laisse rien partir derrière lui."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    rid = _origine(decor)["id"]
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{rid}", json={"precision": "de l'autre"}).status_code == 200
+    champ.fill("la mienne")
+    champ.blur()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(champ).to_have_value("la mienne")
+    champ.fill("la mienne, retouchée")
+    champ.blur()
+    expect(page.locator("#toasts")).not_to_contain_text("Réglez d'abord")
+    page.locator(f"#an-cf-{reponse}").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    page.wait_for_load_state("networkidle")
+    attendu = "la mienne, retouchée" if reponse == "mienne" else "de l'autre"
+    assert _origine(decor)["precision"] == attendu
+    expect(champ).to_have_value(attendu)
+
+
+def test_une_precision_retenue_sur_un_releve_retire_rend_son_texte(page, decor):
+    """Le conflit était sur le retrait de ce relevé : « Remplacer » le retire, et la précision
+    retenue n'a plus où s'écrire. Elle se dit, plutôt que de se perdre."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    r = _origine(decor)
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{r['id']}",
+                     json={"qualificatifs": ["hors-champ"]}).status_code == 200
+    page.locator(f'#an-poses-liste [data-retirer="{r["id"]}"]').click()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    champ.fill("le salon")
+    champ.blur()
+    page.locator("#an-cf-mienne").click()
+    expect(page.locator("#toasts")).to_contain_text("« le salon »")
+    assert not [x for x in _releves(decor) if x["id"] == r["id"]]
+
+
+def test_une_precision_a_moitie_tapee_survit_a_actualiser(page, decor):
+    """« Actualiser » relit la planche pendant qu'on est revenu dans le champ : le dessin qui
+    suit n'envoie rien, et la frappe continue à sa place."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    _retour_sur_l_onglet(page)
+    _poser(decor, region_id=decor["bulle"], entree_cle="ton-de-voix", variante_cle="crie")
+    _retour_sur_l_onglet(page)
+    bouton = page.locator("#an-actualiser")
+    expect(bouton).to_be_visible()
+    lues, lacher = _retenir_les_envois(page, "**/api/planches/*/releves", "GET")
+    ecrites = []
+    page.on("request", lambda r: ecrites.append(r.url)
+            if r.method == "PUT" and "/api/releves/" in r.url else None)
+    bouton.click()
+    for _ in range(50):
+        if lues:
+            break
+        page.wait_for_timeout(100)
+    assert lues
+    champ.click()
+    page.keyboard.type("le sal")
+    page.keyboard.press("ArrowLeft")
+    lacher()
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "true")
+    expect(bouton).to_be_hidden()
+    expect(champ).to_be_focused()
+    page.keyboard.type("L")
+    expect(champ).to_have_value("le saLl")
+    assert ecrites == []
+    assert _origine(decor)["precision"] is None
+
+
+def test_une_precision_dont_la_ligne_s_en_va_s_enregistre(page, decor):
+    """Le champ part avec sa ligne sans qu'on l'ait quitté, et la frappe n'a plus de suite : le
+    texte part, il ne se perd pas."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    champ.click()
+    page.keyboard.type("le salon")
+    # Un clic sans sortie du champ, comme un raccourci.
+    page.evaluate("() => document.querySelector('#an-zones .an-zone-btn:last-child').click()")
+    expect(page.locator("#an-tete-zone")).to_contain_text("personnage")
+    page.wait_for_load_state("networkidle")
+    assert _origine(decor)["precision"] == "le salon"

@@ -19,7 +19,9 @@
    se désigne sur la minicarte et dit sa zone, le relevé de la planche se lit partout, le
    lieu se partage avec l'Atelier. Commit 6 : DEUX ÉCRANS — « ⟳ Actualiser »
    quand la planche a changé ailleurs (régions, relevés, passes, doutes), et les gardes d'un
-   départ de la planche.
+   départ de la planche. Commit 17 : ces gardes valent aussi pour un changement de projet, le
+   navigateur demande avant de quitter une page qui perdrait une saisie, et une précision ne
+   part que quand on quitte son champ — retenue si un conflit attend.
 
    LA DISPOSITION NE BOUGE PAS PENDANT LE TRAVAIL (Hugo, 2026-10-14) : trois colonnes, une
    boîte de case de hauteur constante, des blocs de hauteur fixe ; l'aide est en infobulle,
@@ -471,7 +473,8 @@ async function lirePersonnagesDeLaCase() {
    déjà ce qu'il désigne. S'il est parti avec son geste, `repli` dit où aller. Le focus ailleurs
    n'est pas touché : ni le filtre, ni un champ qu'on est en train de remplir. Le navigateur
    ne donne le contour qu'au clavier : une souris n'en gagne pas, et rien ne défile. */
-const FOCUS = { remis: false };       // le focus remis ici n'est pas un geste de la personne
+const FOCUS = { remis: false,          // le focus remis ici n'est pas un geste de la personne
+                dessin: false };       // un dessin retire le champ : il n'en sort personne
 
 function remettreLeFocus(x) {
   FOCUS.remis = true;
@@ -487,11 +490,17 @@ function redessinerSansPerdreLeFocus(boite, dessiner, repli) {
   const garde = dedans ? { cle: repereDe(actif), debut: actif.selectionStart, fin: actif.selectionEnd,
                            // Une précision n'existe qu'à son envoi : le dessin ne l'efface pas.
                            valeur: actif.matches(".an-prec") ? actif.value : null } : null;
-  dessiner();
+  // Retiré du document, le champ émet sa sortie : ce n'est pas l'annotateur qui le quitte, et
+  // une précision à moitié tapée ne part pas pour autant (`enregistrerPrecision`).
+  FOCUS.dessin = true;
+  try { dessiner(); } finally { FOCUS.dessin = false; }
   if (!garde || actif.isConnected) return;
   const cible = [...boite.querySelectorAll("button, input, textarea, select, [tabindex]")]
     .find((x) => repereDe(x) === garde.cle);
   if (!cible) {
+    // Sa ligne est partie : la frappe n'a plus de suite, et le texte part comme à la sortie du
+    // champ, depuis le champ retiré, qui le porte encore.
+    if (garde.valeur !== null) enregistrerPrecision(actif);
     const ailleurs = repli ? repli() : null;
     if (ailleurs) remettreLeFocus(ailleurs);
     return;
@@ -829,7 +838,9 @@ function refusDuContexte(e, lieu, rid, saisie) {
 /* CE QUI ATTEND. Trois champs portent un texte (`CHAMPS_DE_SAISIE`), et un conflit ouvert les
    retient tous : celui qu'il vise, dans `S.conflit.saisie` ; les autres, dans `RETENUES`, qui
    partent quand il est réglé (`reprendreRetenues`). Ni l'un ni l'autre ne dépend du champ : on
-   change de zone pendant qu'un conflit attend, et le champ repart sur celle d'arrivée. */
+   change de zone pendant qu'un conflit attend, et le champ repart sur celle d'arrivée. La
+   précision d'un relevé y attend aussi (commit 17), sous la clé du RELEVÉ : elle a sa propre
+   écriture (`retenirPrecision`), et un conflit sur elle garde sa saisie dans son geste. */
 const CHAMPS_DE_SAISIE = { note: "#an-note", nom: "#an-nom", ocr_texte: "#an-transcription" };
 const RETENUES = new Map();           // « lieu:région » → { lieu, rid, saisie }
 const cleRetenue = (lieu, rid) => `${lieu}:${rid}`;
@@ -873,7 +884,8 @@ async function reprendreRetenues() {
   for (const r of [...RETENUES.values()]) {
     if (S.conflit) return;
     RETENUES.delete(cleRetenue(r.lieu, r.rid));
-    if (r.lieu === "note") await enchainer("note", () => envoyerNote(r.rid, r.saisie));
+    if (r.lieu === "precision") await reprendrePrecision(r.rid, r.saisie);
+    else if (r.lieu === "note") await enchainer("note", () => envoyerNote(r.rid, r.saisie));
     else await enchainer(r.lieu, () => envoyerSiChange(r.rid, r.lieu, r.saisie));
   }
 }
@@ -2447,7 +2459,7 @@ function itemReleve(r) {
   if (gestes && e && e.precision) {
     actes.append(el("input", { type: "text", classe: "an-prec", "data-releve": r.id,
                                "aria-label": `${e.precision} — ${libelle}`, placeholder: e.precision,
-                               value: r.precision || "", maxlength: 500 }));
+                               ...valeurDePrecision(r), maxlength: 500 }));
   }
   if (gestes && e && e.lien) {
     const designe = S.designer === r.id;
@@ -2642,18 +2654,71 @@ function marquerDesignation() {
 }
 
 /* La précision attendue : Entrée ou la sortie du champ l'enregistrent, avec `vu` — dans la
-   liste de ce qui est posé comme dans Synthèse › À revoir. */
+   liste de ce qui est posé comme dans Synthèse › À revoir. Un dessin qui retire le champ n'est
+   pas une sortie (`FOCUS.dessin`). Un conflit ouvert la RETIENT, sans toast ni focus : passer
+   par `conflitOuvert` ici volerait le clic qui mène du champ au bandeau (le piège du commit 16). */
 let precisionEnVol = null;     // l'enregistrement d'une précision, que les gardes attendent
 function enregistrerPrecision(champ) {
+  if (FOCUS.dessin) return null;
   const r = S.releves.find((x) => x.id === Number(champ.dataset.releve));
-  if (!r || (champ.value.trim() || null) === (r.precision || null)) return null;
-  if (conflitOuvert()) return null;
+  if (!r) return null;
+  const valeur = champ.value.trim() || null;
+  if (S.conflit) { retenirPrecision(r, valeur); return null; }
+  if (!A.champModifie(valeur, r.precision)) return null;
+  return envoyerPrecision(r, valeur);
+}
+
+function envoyerPrecision(r, valeur) {
   const envoi = ecrire(grilleDe(r.grille_id), entreeDe(r), null, {
-    action: "modifier", releve: r, corps: { precision: champ.value.trim() || null },
+    action: "modifier", releve: r, corps: { precision: valeur },
     vu: { precision: r.precision || null } });
   precisionEnVol = envoi;
   envoi.finally(() => { if (precisionEnVol === envoi) precisionEnVol = null; });
   return envoi;
+}
+
+/* Le conflit qui attend porte-t-il sur CETTE précision ? Sa saisie vit alors dans son geste. */
+function conflitSurPrecision(id) {
+  const cf = S.conflit;
+  return !!cf && cf.sorte === "valeur" && cf.gst.action === "modifier"
+    && cf.gst.releve.id === id && cf.detail.conflit.champ === "precision";
+}
+
+/* Ce que montre le champ d'une précision : ce qui attend, sinon le relevé. */
+function valeurDePrecision(r) {
+  if (conflitSurPrecision(r.id)) return { value: S.conflit.gst.corps.precision || "" };
+  const a = RETENUES.get(cleRetenue("precision", r.id));
+  return a ? { value: a.saisie || "", title: ATTENTE } : { value: r.precision || "" };
+}
+
+function retenirPrecision(r, valeur) {
+  if (conflitSurPrecision(r.id)) {
+    S.conflit.gst.corps.precision = valeur;
+  } else if (A.champModifie(valeur, r.precision)) {
+    RETENUES.set(cleRetenue("precision", r.id), { lieu: "precision", rid: r.id, saisie: valeur });
+    annoncer("Précision retenue : elle partira quand le conflit sera réglé.");
+  } else {
+    RETENUES.delete(cleRetenue("precision", r.id));
+  }
+  // La liste et « À compléter » peuvent montrer le même relevé : l'autre champ, resté sur
+  // l'ancienne valeur, reprendrait la retenue à sa sortie.
+  const vue = valeurDePrecision(r);
+  for (const x of document.querySelectorAll(".an-prec")) {
+    if (Number(x.dataset.releve) !== r.id) continue;
+    x.value = vue.value;
+    x.title = vue.title || "";
+  }
+}
+
+/* Le conflit est réglé : la précision part, sur la version qu'on lit maintenant. Son relevé a pu
+   partir avec la réponse au bandeau : le texte se dit, plutôt que de se perdre. */
+async function reprendrePrecision(id, valeur) {
+  const r = S.releves.find((x) => x.id === id);
+  if (!r) {
+    if (valeur) toast(`Ce relevé a été retiré ; votre précision n'est pas envoyée : « ${valeur} »`, "error", 12000);
+    return;
+  }
+  if (A.champModifie(valeur, r.precision)) await envoyerPrecision(r, valeur);
 }
 
 /* ───────────── Le doute (commit 5) ─────────────
@@ -2781,10 +2846,7 @@ async function refusDoute(err, r) {
 }
 
 /* Un brouillon de doute ou de réponse : changer de planche le perdrait. */
-function brouillonEnCours() {
-  if (S.formDoute && S.formDoute.texte.trim()) return true;
-  return [...S.reponses.values()].some((t) => t.trim());
-}
+function brouillonEnCours() { return A.brouillonEnCours(S.formDoute, S.reponses); }
 
 /* RÉPONDRE à un doute ouvert (« À revoir »). */
 async function repondre(douteId) {
@@ -3043,7 +3105,7 @@ function itemACompleter(r) {
   if ((r.causes || []).includes("precision_manquante") && e.precision) {
     gestes.append(el("input", { type: "text", classe: "an-prec", id: `an-rv-prec-${r.id}`,
                                 "data-releve": r.id, "aria-label": `${e.precision} — ${libelle}`,
-                                placeholder: e.precision, value: r.precision || "",
+                                placeholder: e.precision, ...valeurDePrecision(r),
                                 maxlength: 500 }));
   }
   if ((r.causes || []).includes("lien_manquant") && e.lien) {
@@ -3332,8 +3394,8 @@ function afficherSignal(autres) {
   if (n && !montre) annoncer("La planche a changé ailleurs : « Actualiser » la recharge.");
 }
 
-/* LES GARDES d'un départ de la planche ouverte — changer de collection, d'album, de planche
-   (`quitter`) — et d'« Actualiser ». Un conflit ouvert attend son choix ; une précision en
+/* LES GARDES d'un départ de la planche ouverte — changer de projet, de collection, d'album, de
+   planche (`quitter`) — et d'« Actualiser ». Un conflit ouvert attend son choix ; une précision en
    cours d'enregistrement part d'abord. Un doute ou une réponse à moitié écrits retiennent la
    planche qu'on QUITTE ; « Actualiser » les garde, eux, tant que leur relevé est là. */
 async function gardesDeSortie(quitter) {
@@ -3350,6 +3412,31 @@ async function gardesDeSortie(quitter) {
     return false;
   }
   return true;
+}
+
+/* Le champ sous les doigts porte-t-il autre chose que ce qui est enregistré ? Un lien de la
+   navigation fait sortir du champ, donc partir le texte ; recharger, ou fermer l'onglet, non. */
+function saisieSousLesDoigts() {
+  const a = document.activeElement;
+  if (!a || !a.matches) return false;
+  if (a.matches(".an-prec")) {
+    const r = S.releves.find((x) => x.id === Number(a.dataset.releve));
+    return !!r && A.champModifie(a.value, r.precision);
+  }
+  const z = zoneCourante();
+  if (!z) return false;
+  return (a.id === "an-nom" && A.champModifie(a.value, z.nom))
+    || (a.id === "an-transcription" && A.champModifie(a.value, z.ocr_texte));
+}
+
+/* QUITTER LA PAGE : le navigateur demande quand une saisie n'existe qu'ici
+   (`BDAnnotation.departPerdrait`), jamais sinon. */
+function retenirLaPage(e) {
+  if (!A.departPerdrait({ conflit: S.conflit, retenues: RETENUES.size, noteSale: S.note.sale,
+                          sousLesDoigts: saisieSousLesDoigts(), formDoute: S.formDoute,
+                          reponses: S.reponses })) return;
+  e.preventDefault();
+  e.returnValue = "";
 }
 
 /* « ⟳ Actualiser » : relire la planche — ses régions, ses relevés, ses passes — SANS RIEN
@@ -3612,6 +3699,10 @@ function brancher() {
       attente = requestAnimationFrame(rendreCase);
     }).observe($("#an-vue-case"));
   }
+  // Changer de projet quitte la planche : les mêmes gardes, posées AVANT que le sélecteur de la
+  // bande écrive quoi que ce soit (`BDProjet.verdictDeDepart`).
+  BDProjet.poserGardeDeDepart(() => gardesDeSortie(true));
+  window.addEventListener("beforeunload", retenirLaPage);
   document.addEventListener(BDProjet.EVENEMENT, (e) => {
     const id = e.detail ? e.detail.id : null;
     if (id == null || id === S.projet) return;

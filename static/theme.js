@@ -728,7 +728,21 @@
       choix.id = "projet-choix";
       projets.forEach(function (p) { choix.appendChild(new Option(p.nom, String(p.id))); });
       choix.value = String(id);
-      choix.addEventListener("change", function () { lib.choisir(Number(choix.value)); });
+      choix.dataset.courant = String(id);
+      // Une page qui a quelque chose à perdre répond d'abord (`verdictDeDepart`) : le sélecteur
+      // revient au projet courant le temps de sa réponse, et y reste si elle refuse. Sans
+      // garde — cinq surfaces sur six —, le choix est immédiat.
+      choix.addEventListener("change", function () {
+        var voulu = choix.value;
+        var verdict = lib.verdictDeDepart();
+        if (verdict === null) { lib.choisir(Number(voulu)); return; }
+        choix.value = choix.dataset.courant;
+        verdict.then(function (oui) {
+          if (!oui) return;
+          choix.value = voulu;
+          lib.choisir(Number(voulu));
+        });
+      });
       wrap.appendChild(lbl);
       wrap.appendChild(choix);
     }
@@ -762,7 +776,9 @@
     document.addEventListener("bd:projet-change", function (e) {
       var choix = document.getElementById("projet-choix");
       var v = e.detail && e.detail.id != null ? String(e.detail.id) : null;
-      if (choix && v !== null && choix.value !== v) choix.value = v;
+      if (!choix || v === null) return;
+      choix.dataset.courant = v;
+      if (choix.value !== v) choix.value = v;
     });
     // …ou dans un AUTRE onglet : même raison que pour le thème, plus haut. La page est
     // prévenue comme si le choix venait d'elle, sans le réécrire.

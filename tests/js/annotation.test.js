@@ -1098,3 +1098,35 @@ test("la boîte du guide repliée se retient sur le poste ; sans stockage, dépl
   assert.equal(A.lireGuideReplie(null), false);
   assert.equal(A.retenirGuideReplie(null, true), false);
 });
+
+test("un champ se compare à ce qui est enregistré, sans ses blancs ; vide vaut absent", () => {
+  assert.equal(A.champModifie("le salon", "le salon"), false);
+  assert.equal(A.champModifie("  le salon ", "le salon"), false);
+  assert.equal(A.champModifie("", null), false);
+  assert.equal(A.champModifie("   ", undefined), false);
+  assert.equal(A.champModifie("", ""), false);
+  assert.equal(A.champModifie("le sal", "le salon"), true);
+  assert.equal(A.champModifie("x", null), true);
+  assert.equal(A.champModifie("", "le salon"), true);
+});
+
+test("un brouillon est un texte : un formulaire ouvert et vide n'en est pas un", () => {
+  assert.equal(A.brouillonEnCours(null, new Map()), false);
+  assert.equal(A.brouillonEnCours({ texte: "" }, new Map()), false);
+  assert.equal(A.brouillonEnCours({ texte: "   " }, new Map([[1, " "]])), false);
+  assert.equal(A.brouillonEnCours({ texte: "à moitié" }, new Map()), true);
+  assert.equal(A.brouillonEnCours(null, new Map([[1, ""], [2, "à moitié"]])), true);
+});
+
+test("un départ ne perd quelque chose que si l'une des saisies attend, et chacune suffit", () => {
+  const rien = { conflit: false, retenues: 0, noteSale: false, sousLesDoigts: false,
+                 formDoute: null, reponses: new Map() };
+  assert.equal(A.departPerdrait(rien), false);
+  assert.equal(A.departPerdrait(), false);
+  for (const un of [{ conflit: true }, { retenues: 1 }, { noteSale: true },
+                    { sousLesDoigts: true }, { formDoute: { texte: "a" } },
+                    { reponses: new Map([[1, "a"]]) }]) {
+    assert.equal(A.departPerdrait({ ...rien, ...un }), true, JSON.stringify(Object.keys(un)));
+  }
+  assert.equal(A.departPerdrait({ ...rien, formDoute: { texte: " " } }), false);
+});

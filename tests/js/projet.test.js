@@ -252,3 +252,29 @@ test("+ Faire entrer dit ce que la base ouvre à l'arrivant, selon sa position (
   const regle = P.phraseEntree();
   assert.ok(regle.startsWith("Sa collection de base lui est ouverte selon ce que le projet"), regle);
 });
+
+test("sans garde posée, aucun verdict : le sélecteur choisit tout de suite, comme avant", () => {
+  const { poserGardeDeDepart, verdictDeDepart } = require("../../static/lib/projet.js");
+  poserGardeDeDepart(null);
+  assert.equal(verdictDeDepart(), null);
+  poserGardeDeDepart("pas une fonction");
+  assert.equal(verdictDeDepart(), null);
+});
+
+test("une garde répond, sync ou non ; une garde qui lève ou refuse garde la page", async () => {
+  const { poserGardeDeDepart, verdictDeDepart } = require("../../static/lib/projet.js");
+  try {
+    poserGardeDeDepart(() => true);
+    assert.equal(await verdictDeDepart(), true);
+    poserGardeDeDepart(async () => true);
+    assert.equal(await verdictDeDepart(), true);
+    poserGardeDeDepart(async () => false);
+    assert.equal(await verdictDeDepart(), false);
+    poserGardeDeDepart(() => undefined);
+    assert.equal(await verdictDeDepart(), false);
+    poserGardeDeDepart(() => { throw new Error("x"); });
+    assert.equal(await verdictDeDepart(), false);
+    poserGardeDeDepart(async () => { throw new Error("x"); });
+    assert.equal(await verdictDeDepart(), false);
+  } finally { poserGardeDeDepart(null); }
+});

@@ -369,6 +369,30 @@
     return s === v ? null : s;
   }
 
+  /* Un champ à une ligne (nom, transcription, précision) dit-il autre chose que ce qui est
+     enregistré ? Comme à l'envoi : sans ses blancs, et vide vaut absent. */
+  function champModifie(valeur, enregistre) {
+    return (String(valeur === null || valeur === undefined ? "" : valeur).trim() || null)
+      !== (enregistre || null);
+  }
+
+  /* Un doute ou une réponse à moitié écrits. Un formulaire ouvert et vide n'en est pas un.
+     `reponses` : doute → texte. */
+  function brouillonEnCours(formDoute, reponses) {
+    if (formDoute && formDoute.texte.trim()) return true;
+    return [...(reponses || new Map()).values()].some((t) => t.trim());
+  }
+
+  /* CE QU'UN DÉPART DE LA PAGE PERDRAIT (commit 17) : le navigateur ne demande que si une saisie
+     n'existe qu'ici. Un conflit qui attend, ce qu'il retient, un brouillon, une note pas encore
+     partie, un champ sous les doigts — recharger n'en fait pas sortir. Un envoi EN VOL n'y est
+     pas : il est parti, et cliquer un lien juste après avoir écrit ne demande rien. */
+  function departPerdrait(etat) {
+    const e = etat || {};
+    return !!(e.conflit || e.retenues || e.noteSale || e.sousLesDoigts)
+      || brouillonEnCours(e.formDoute, e.reponses);
+  }
+
   /* ───────────── LA GRILLE, EN LECTURE (commit 2) ─────────────
      Ce qui suit lit ce que servent `GET /api/projets/{id}/grilles` (les grilles ACTIVES du
      projet, leur version, les collections qui les masquent) et `GET /api/grilles/{id}/
@@ -1443,7 +1467,8 @@
            etiquette, etiquettesDeLaCase, situer, libellePlanche, preparation, adresse,
            lireAdresse, lienAtelier, echelle, taillePourEcran, recadrage, dansLaCase, contexte,
            rectangleInitial, rectangleClavier, basculerDoigt, motTouche,
-           gestesDuContexte, noteAEnvoyer, TRACABLES, TRACE_MIN, rectangleTrace, nomSurImage,
+           gestesDuContexte, noteAEnvoyer, champModifie, brouillonEnCours, departPerdrait,
+           TRACABLES, TRACE_MIN, rectangleTrace, nomSurImage,
            normaliser, masquee, grillesVisibles, grilleAOuvrir, infobulleGrille, arbre,
            entreesSous, chemin, vuesAfficher, relevesDeLaZone, compter, marquePlusieurs,
            marqueCible, chercher, ligneDuGuide, guideComplet,

@@ -93,6 +93,25 @@
     }
   }
 
+  /* LA GARDE D'UN DÉPART (ANN-7, tranche 2, commit 17). Changer de projet redessine la page, et
+     une page peut avoir quelque chose à perdre : une seule en pose une aujourd'hui, la page
+     Annotation. Le sélecteur de la bande la demande AVANT de choisir, parce que `choisir` écrit
+     le projet retenu, que les autres onglets lisent : s'y opposer après coup les aurait fait
+     changer de projet pour rien. Rien de posé, aucun verdict (`null`) : le sélecteur choisit
+     tout de suite, comme toujours, et les autres surfaces ne voient aucune différence. Sinon,
+     la promesse d'un booléen ; une garde qui lève vaut un refus — on reste, rien n'est perdu.
+     `choisir` lui-même n'est pas gardé : l'adresse bascule au chargement, sans rien à perdre. */
+  let gardeDeDepart = null;
+
+  function poserGardeDeDepart(garde) {
+    gardeDeDepart = typeof garde === "function" ? garde : null;
+  }
+
+  function verdictDeDepart() {
+    if (!gardeDeDepart) return null;
+    return Promise.resolve().then(gardeDeDepart).then((oui) => oui === true, () => false);
+  }
+
   /* Les collections d'UN projet, parmi celles qu'on lit. Sans projet courant — la liste des
      projets n'a pas pu être lue — on ne retient rien et on ne cache rien : la liste est
      rendue entière, plutôt que vidée par une panne qui ne la concerne pas. */
@@ -231,6 +250,7 @@
   }
 
   return { CLE, EVENEMENT, LONGUEUR_NOM, ROLES, POSITIONS, courant, lire, retenir, choisir,
-           duProjet, albumsDuProjet, basculeVers, pourRanger, libelleRole, position,
+           poserGardeDeDepart, verdictDeDepart, duProjet, albumsDuProjet, basculeVers,
+           pourRanger, libelleRole, position,
            phraseChangement, phraseEntree };
 });
