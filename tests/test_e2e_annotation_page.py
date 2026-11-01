@@ -3338,6 +3338,8 @@ def test_une_precision_retouchee_pendant_son_propre_conflit(page, decor, reponse
     champ.fill("la mienne")
     champ.blur()
     expect(page.locator("#an-cf-titre")).to_be_visible()
+    # Ce qu'on a saisi est un texte : le bandeau disait « Votre choix » (rejeu du 2026-11-01).
+    expect(page.locator("#an-guide-contenu")).to_contain_text("Votre précision n'est pas enregistrée.")
     expect(champ).to_have_value("la mienne")
     champ.fill("la mienne, retouchée")
     champ.blur()
@@ -3775,3 +3777,116 @@ def test_le_projet_change_dans_un_autre_onglet_suit_sans_saisie(page, decor):
     expect(page.locator("#an-album option")).to_have_text(["Autre album"])
     expect(page.locator("#projet-choix")).to_have_value(str(autre))
     autre_onglet.close()
+
+
+# --------------------------------------------------------------------------- #
+# Un geste ne part qu'une fois (rejeu de la passe des correctifs, 2026-11-01)
+# --------------------------------------------------------------------------- #
+# Le geste se calcule sur ce que la page sait des relevés, que seule la réponse change : deux
+# Entrée avant elle reposaient le relevé au lieu de le retirer (mesuré à 30 ms, sans retard).
+def test_deux_entrees_avant_la_reponse_ne_posent_qu_un_releve(page, decor):
+    _ouvrir(page, decor, decor["c2"])
+    regard = page.locator("#an-ent-regard-camera")
+    _au_clavier(page, regard)
+    avant = len(_releves(decor))
+    retenues, lacher = _retenir_les_envois(page, "**/api/releves", "POST")
+    page.keyboard.press("Enter")
+    _attendre_retenue(page, retenues)
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(200)
+    assert len(retenues) == 1
+    with _reponse_de(page, "/api/releves", "POST"):
+        lacher()
+    expect(regard).to_have_attribute("aria-checked", "true")
+    assert len(_releves(decor)) == avant + 1
+
+
+def test_deux_entrees_avant_la_reponse_ne_retirent_qu_une_fois(page, decor):
+    """Le second DELETE recevait un 404, et l'écran disait à tort qu'un autre l'avait retiré."""
+    _ouvrir(page, decor, decor["c2"])
+    regard = page.locator("#an-ent-regard-camera")
+    _au_clavier(page, regard)
+    page.keyboard.press("Enter")
+    expect(regard).to_have_attribute("aria-checked", "true")
+    retenues, lacher = _retenir_les_envois(page, "**/api/releves/*", "DELETE")
+    page.keyboard.press("Enter")
+    _attendre_retenue(page, retenues)
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(200)
+    assert len(retenues) == 1
+    with _reponse_de(page, RELEVE, "DELETE"):
+        lacher()
+    expect(regard).to_have_attribute("aria-checked", "false")
+    expect(page.locator("#toasts")).not_to_contain_text("par un autre écran")
+
+
+def test_deux_gestes_differents_partent_ensemble(page, decor):
+    """Le témoin : c'est LE MÊME geste qui attend sa réponse, pas la grille entière."""
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, 1).click()
+    avant = len(_releves(decor))
+    retenues, lacher = _retenir_les_envois(page, "**/api/releves", "POST")
+    page.locator("#an-plan .an-var", has_text="crié").click()
+    _attendre_retenue(page, retenues)
+    page.locator("#an-plan .an-ent", has=page.locator("text=origine du son")) \
+        .locator(".an-var", has_text="objet").click()
+    for _ in range(50):
+        if len(retenues) == 2:
+            break
+        page.wait_for_timeout(100)
+    assert len(retenues) == 2
+    with _reponse_de(page, "/api/releves", "POST"):
+        lacher()
+    with _reponse_de(page, "/api/releves", "POST"):
+        retenues[1].continue_()
+    assert len(_releves(decor)) == avant + 2
+
+
+@pytest.mark.parametrize("par", ["grille", "filtre"])
+def test_entree_maintenue_ne_pose_et_ne_retire_qu_une_fois(page, decor, par):
+    """Maintenue, Entrée se répète : le relevé clignotait, posé puis retiré à chaque répétition."""
+    _ouvrir(page, decor, decor["c2"])
+    regard = page.locator("#an-ent-regard-camera")
+    avant = len(_releves(decor))
+    if par == "grille":
+        _au_clavier(page, regard)
+    else:
+        page.keyboard.press("/")
+        page.locator("#an-filtre").fill("regard")
+        expect(page.locator("#an-resultats .an-res").first).to_be_visible()
+    with _reponse_de(page, "/api/releves", "POST"):
+        page.keyboard.down("Enter")
+    page.keyboard.down("Enter")
+    page.wait_for_timeout(300)
+    page.keyboard.up("Enter")
+    assert len(_releves(decor)) == avant + 1
+
+
+def test_deux_entrees_sur_creer_ne_creent_qu_une_entree(page, decor):
+    with _http(decor) as c:
+        g = grille_active_vivante(c, nom="Lieux", ouverte=True, projet_id=decor["projet"])
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f"#an-onglet-{g['grille_id']}").click()
+    _mot(page, 1).click()
+    page.locator("#an-filtre").fill("Moulinsart")
+    expect(page.locator("#an-resultats .an-res-creer")).to_be_visible()
+    retenues, lacher = _retenir_les_envois(page, "**/api/releves", "POST")
+    page.locator("#an-filtre").press("Enter")
+    _attendre_retenue(page, retenues)
+    page.locator("#an-filtre").press("Enter")
+    page.wait_for_timeout(200)
+    assert len(retenues) == 1
+    lacher()
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="Moulinsart")).to_have_count(1)
+
+
+def test_le_bandeau_d_un_choix_dit_choix(page, decor):
+    """Le témoin de « Votre précision » : un qualificatif, lui, se choisit."""
+    _ouvrir(page, decor, decor["bulle"])
+    _avec_une_precision(page)
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{_origine(decor)['id']}",
+                     json={"qualificatifs": ["personnage"]}).status_code == 200
+    page.locator("#an-plan .an-ent", has=page.locator("text=origine du son")) \
+        .locator(".an-var", has_text="hors champ").click()
+    expect(page.locator("#an-guide-contenu")).to_contain_text("Votre choix n'est pas enregistré.")

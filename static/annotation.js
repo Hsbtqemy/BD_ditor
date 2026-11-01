@@ -1770,6 +1770,8 @@ function brancherGrille() {
     if (b.getAttribute("aria-disabled") === "true") { direLecture(); return; }
     poser(b.dataset.guideE, { variante: b.dataset.guideV, qualificatif: b.dataset.qualif });
   });
+  // Maintenue, Entrée se répète, et chaque répétition rejouerait le clic : posé, retiré, posé.
+  plan.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.repeat) e.preventDefault(); });
   // Un survol ne compte que si le pointeur a BOUGÉ : le focus qui fait défiler le plan, ou
   // un redessin, amène une autre entrée sous un pointeur immobile, et le navigateur émet un
   // `mouseover` qui reprenait la ligne du guide au clavier (mesuré : défilement 0 → 148 px,
@@ -1811,9 +1813,9 @@ function brancherGrille() {
       const actif = $(`#an-res-${S.actif}`);
       if (actif) actif.scrollIntoView({ block: "nearest" });
     } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && S.filtre.trim() && n) {
-      // Entrée POSE le résultat désigné (ou le retire s'il est déjà posé là).
+      // Entrée POSE le résultat désigné (ou le retire s'il est déjà posé là) ; maintenue, une fois.
       e.preventDefault();
-      poserResultat(S.resultats[S.actif]);
+      if (!e.repeat) poserResultat(S.resultats[S.actif]);
     }
   });
   $("#an-resultats").addEventListener("click", (e) => {
@@ -2265,6 +2267,17 @@ function refus(err, contexte) {
   annoncer(err.message || "Refusé.");
 }
 
+/* Un même geste ne part qu'une fois à la fois. Il se calcule sur `S.releves`, que seule la
+   réponse change : deux Entrée avant elle reposaient le relevé, ou le retiraient deux fois et
+   disaient qu'un autre écran l'avait fait. Un geste DIFFÉRENT part sans attendre. */
+const GESTES_EN_VOL = new Set();
+
+async function uneSeuleFois(cle, envoi) {
+  if (GESTES_EN_VOL.has(cle)) return;
+  GESTES_EN_VOL.add(cle);
+  try { await envoi(); } finally { GESTES_EN_VOL.delete(cle); }
+}
+
 /* Le geste d'un clic dans la grille, ou d'Entrée sur un résultat du filtre. */
 async function poser(entreeCle, choix) {
   if (conflitOuvert()) return;
@@ -2277,7 +2290,8 @@ async function poser(entreeCle, choix) {
   if (cible.erreur) { toast(cible.erreur, "error"); annoncer(cible.erreur); return; }
   const gst = A.geste(e, A.relevesSurLaCible(S.releves, g.id, e.cle, cible), choix);
   if (!gst) return;
-  await ecrire(g, e, cible, gst);
+  await uneSeuleFois(JSON.stringify([g.id, entreeCle, corpsDeCible(cible), choix || {}]),
+                     () => ecrire(g, e, cible, gst));
 }
 
 /* « Créer « … » » : une entrée naît en la posant, dans une grille ouverte (G14). */
@@ -2289,10 +2303,12 @@ async function creer(libelle) {
   const e = A.entreeNeuve(plan, libelle);
   const cible = A.cibleDePose(e, contexteDePose());
   if (cible.erreur) { toast(cible.erreur, "error"); annoncer(cible.erreur); return; }
-  await ecrire(g, e, cible, { action: "poser", corps: {} }, libelle);
-  S.filtre = "";
-  $("#an-filtre").value = "";
-  rendreCorps();
+  await uneSeuleFois(JSON.stringify(["creer", g.id, libelle]), async () => {
+    await ecrire(g, e, cible, { action: "poser", corps: {} }, libelle);
+    S.filtre = "";
+    $("#an-filtre").value = "";
+    rendreCorps();
+  });
 }
 
 async function rechargerPlan(g) {
@@ -2326,8 +2342,9 @@ function bandeau() {
     lignes.push(el("p", { classe: "an-bandeau-titre", id: "an-cf-titre" },
                    el("span", { "aria-hidden": "true", texte: "⚠ " }),
                    BDConflit.titreConflit(c)));
-    lignes.push(el("p", { texte: cf.gst.action === "retirer"
-      ? "Votre retrait n'est pas enregistré." : "Votre choix n'est pas enregistré." }));
+    lignes.push(el("p", { texte: cf.gst.action === "retirer" ? "Votre retrait n'est pas enregistré."
+      : c.champ === "precision" ? "Votre précision n'est pas enregistrée."
+      : "Votre choix n'est pas enregistré." }));
     lignes.push(el("p", { classe: "an-bandeau-version" },
                    el("span", { classe: "muted", texte: "Version enregistrée : " }), version));
   } else {
