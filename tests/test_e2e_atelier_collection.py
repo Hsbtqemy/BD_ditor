@@ -222,7 +222,12 @@ def test_sans_stockage_l_atelier_s_ouvre_sur_la_base_sans_erreur(page, decor):
     expect(_albums(page)).to_have_text(["De A (0)", "De A et de B (0)"])
     expect(page.locator(".toast.error")).to_have_count(0)
     # Le choix n'a tenu que le temps de la page : rouvert sans lien, l'Atelier revient sur
-    # la base. (Recharger rouvrirait l'album de l'adresse, que la règle du lien suit.)
+    # la base. (Recharger rouvrirait l'album de l'adresse, que la règle du lien suit.) Le
+    # LIEU, lui, vit dans la session de l'onglet (`bd-lieu`, partagé avec la page Annotation) :
+    # gardé, il rouvrirait « De A », donc Étude A. On attend qu'il soit écrit puis on l'efface,
+    # sans quoi le test courait contre lui — rouge dans l'image, une fois sur trois au poste.
+    page.wait_for_url(re.compile(rf"album={d['albums']['De A']}\b"))
+    page.evaluate("() => sessionStorage.removeItem('bd-lieu')")
     page.goto(d["base"] + "/", wait_until="networkidle")
     expect(_collection(page)).to_have_value(str(d["cols"]["base"]))
     expect(_albums(page)).to_have_text(["De la base (0)"])
