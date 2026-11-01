@@ -876,6 +876,17 @@
     return { region_id: r.id };
   }
 
+  /* « PORTE SUR » APRÈS UNE POSE : une entrée de toute la zone, posée avec des mots désignés,
+     n'est pas sur eux, et la liste, restée à « Sur « HEY » », disait « — » : on croyait n'avoir
+     rien posé (Hugo, 2026-11-01). La liste passe à la zone ; les mots restent désignés, et en
+     désigner un la ramène. Un relevé de la planche se lit déjà partout, en bas de la liste. */
+  function porteApresPose(porte, cible, sel, options) {
+    if (porte !== "mots" || !rangs(sel).length) return porte;
+    if (!cible || cible.erreur || cible.planche_id !== undefined || cible.mots) return porte;
+    const o = (options || []).find((x) => x.cle === "zone" || x.cle === "case");
+    return o ? o.cle : porte;
+  }
+
   /* Les relevés d'une entrée sur CETTE cible (la même région ou la planche ; pour des mots,
      le même passage). */
   function relevesSurLaCible(releves, grilleId, entreeCle, cible) {
@@ -1473,7 +1484,7 @@
            entreesSous, chemin, vuesAfficher, relevesDeLaZone, compter, marquePlusieurs,
            marqueCible, chercher, ligneDuGuide, guideComplet,
            rangs, plage, basculer, texteDuPassage, memesMots, motsDuReleve, couloirs, teinte,
-           teinteDeRubrique, champEnConflit, optionsPorteSur, cibleDePose, relevesSurLaCible, geste, libelleReleve, motEtat,
+           teinteDeRubrique, champEnConflit, optionsPorteSur, cibleDePose, porteApresPose, relevesSurLaCible, geste, libelleReleve, motEtat,
            listeSurLaZone, lireReglage, retenirReglage, grillesMontrees,
            remplacementCardinalite, creerDansLeFiltre, vuDuReleve, entreeNeuve,
            ciblesVisees, visePlanche, assurerPlanche, parcours, rangDansParcours,

@@ -1644,6 +1644,12 @@ function conflitBloque() {
   return true;
 }
 
+/* La navigation et la fermeture de l'onglet passent à côté de `conflitBloque` : le navigateur
+   demande, sans quoi la saisie du bandeau partait avec la page (Hugo, 2026-11-01). */
+window.addEventListener("beforeunload", (e) => {
+  if (state.conflit) { e.preventDefault(); e.returnValue = ""; }
+});
+
 /* Un 410 : la région a été supprimée ailleurs. Toast NEUTRE de 8 s, et elle quitte l'écran. */
 function regionDisparue(e, id) {
   if (!e || e.statut !== 410) return false;

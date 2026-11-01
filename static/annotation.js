@@ -2290,8 +2290,21 @@ async function poser(entreeCle, choix) {
   if (cible.erreur) { toast(cible.erreur, "error"); annoncer(cible.erreur); return; }
   const gst = A.geste(e, A.relevesSurLaCible(S.releves, g.id, e.cle, cible), choix);
   if (!gst) return;
-  await uneSeuleFois(JSON.stringify([g.id, entreeCle, corpsDeCible(cible), choix || {}]),
-                     () => ecrire(g, e, cible, gst));
+  await uneSeuleFois(JSON.stringify([g.id, entreeCle, corpsDeCible(cible), choix || {}]), async () => {
+    if (await ecrire(g, e, cible, gst) && gst.action !== "retirer") listeSurLaCible(cible);
+  });
+}
+
+/* La liste montre ce qu'on vient de poser : elle quitte des mots qu'il ne touche pas. */
+function listeSurLaCible(cible) {
+  const c = caseCourante();
+  const options = A.optionsPorteSur(planDe(grilleOuverte()), zoneCourante(), c ? c.case : null);
+  const porte = A.porteApresPose(S.porte, cible, S.sel, options);
+  if (porte === S.porte) return;
+  S.porte = porte;
+  rendrePorte();
+  rendreCorps();
+  rendreListe();
 }
 
 /* « Créer « … » » : une entrée naît en la posant, dans une grille ouverte (G14). */
@@ -2304,7 +2317,7 @@ async function creer(libelle) {
   const cible = A.cibleDePose(e, contexteDePose());
   if (cible.erreur) { toast(cible.erreur, "error"); annoncer(cible.erreur); return; }
   await uneSeuleFois(JSON.stringify(["creer", g.id, libelle]), async () => {
-    await ecrire(g, e, cible, { action: "poser", corps: {} }, libelle);
+    if (await ecrire(g, e, cible, { action: "poser", corps: {} }, libelle)) listeSurLaCible(cible);
     S.filtre = "";
     $("#an-filtre").value = "";
     rendreCorps();

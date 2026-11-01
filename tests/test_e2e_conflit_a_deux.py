@@ -218,6 +218,40 @@ def test_deux_notes_le_bandeau_nomme_garde_la_saisie_et_bloque_le_mode(page, dec
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_quitter_l_atelier_pendant_un_conflit_demande_d_abord(page, decor):
+    """La navigation passait à côté du bandeau : la saisie partait avec la page, sans un mot."""
+    s = decor
+    ctx_a, a = _contexte(page, ALICE)
+    ctx_b, b = _contexte(page, BOB)
+    try:
+        _ouvrir(a, s["url_bulle"], "annotation")
+        _ouvrir(b, s["url_bulle"], "annotation")
+        vues = []
+        b.on("dialog", lambda d: (vues.append(d.type), d.dismiss()))
+        a.fill("#note-input", "note de A")
+        expect(a.locator("#save-state")).to_have_text("Enregistré", timeout=15000)
+        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "note de A") == "note de A"
+        b.click("#note-input")
+        b.keyboard.type("note de B")
+        expect(b.locator("#bandeau-conflit")).to_be_visible(timeout=15000)
+        b.locator('#site-nav a[href="/corpus"]').first.click()
+        expect(b.locator("#bandeau-conflit")).to_be_visible()
+        b.wait_for_timeout(300)
+        assert vues == ["beforeunload"]
+        assert "/corpus" not in b.url
+        assert b.input_value("#note-input") == "note de B"
+        # Le conflit réglé, plus rien à perdre : la page part sans demander.
+        b.locator("#bandeau-conflit button", has_text="Garder l'autre").click()
+        expect(b.locator("#bandeau-conflit")).to_be_hidden()
+        with b.expect_navigation():
+            b.locator('#site-nav a[href="/corpus"]').first.click()
+        assert vues == ["beforeunload"]
+    finally:
+        ctx_a.close()
+        ctx_b.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_transcription_le_texte_de_l_autre_n_est_plus_ecrase(page, decor):
     s = decor
     ctx_a, a = _contexte(page, ALICE)

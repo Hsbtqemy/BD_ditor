@@ -3890,3 +3890,51 @@ def test_le_bandeau_d_un_choix_dit_choix(page, decor):
     page.locator("#an-plan .an-ent", has=page.locator("text=origine du son")) \
         .locator(".an-var", has_text="hors champ").click()
     expect(page.locator("#an-guide-contenu")).to_contain_text("Votre choix n'est pas enregistré.")
+
+
+# --------------------------------------------------------------------------- #
+# Une entrée de toute la zone, posée avec des mots désignés (Hugo, 2026-11-01)
+# --------------------------------------------------------------------------- #
+def _porte(page, texte):
+    return page.locator("#an-porte .an-porte-btn", has_text=texte)
+
+
+def test_une_entree_de_la_zone_posee_sur_des_mots_montre_sa_ligne(page, decor):
+    """La liste restait à « Sur « … » » et disait « — » : on croyait n'avoir rien posé."""
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, 1).click()
+    expect(_porte(page, "des mots")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#an-poses-titre")).to_contain_text("Sur «")
+    page.locator("#an-plan .an-var", has_text="crié").click()
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="ton de voix · crié")).to_have_count(1)
+    expect(page.locator("#an-poses-titre")).to_contain_text("Dans")
+    expect(_porte(page, "toute la bulle")).to_have_attribute("aria-pressed", "true")
+    # Les mots restent désignés : l'entrée suivante sur des mots s'y pose, sans les redésigner.
+    expect(_mot(page, 1)).to_have_attribute("aria-selected", "true")
+    # Un mot désigné ramène la liste sur lui.
+    _mot(page, 0).click()
+    expect(_porte(page, "des mots")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#an-poses-titre")).to_contain_text("Sur «")
+
+
+def test_une_entree_sur_des_mots_garde_la_liste_sur_eux(page, decor):
+    """Le témoin : la pose sur le passage désigné ne fait rien basculer."""
+    _ouvrir(page, decor, decor["bulle"])
+    _mot(page, 1).click()
+    page.locator("#an-plan .an-ent", has=page.locator("text=origine du son")) \
+        .locator(".an-var", has_text="objet").click()
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="origine du son")).to_have_count(1)
+    expect(_porte(page, "des mots")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#an-poses-titre")).to_contain_text("Sur «")
+
+
+def test_retirer_une_entree_de_la_zone_ne_bascule_pas(page, decor):
+    """Retirer ne montre rien de neuf : la liste reste sur les mots désignés."""
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-plan .an-var", has_text="crié").click()
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "true")
+    _mot(page, 1).click()
+    with _reponse_de(page, RELEVE, "DELETE"):
+        page.locator("#an-plan .an-var", has_text="crié").click()
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "false")
+    expect(_porte(page, "des mots")).to_have_attribute("aria-pressed", "true")

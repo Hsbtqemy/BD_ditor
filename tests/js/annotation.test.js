@@ -539,6 +539,22 @@ test("le champ qu'un conflit fait attendre : sur la zone qu'on regarde, et sur e
   assert.equal(A.champEnConflit(cf("note", 10), null), null);
 });
 
+test("« Porte sur » après une pose : la liste quitte des mots que le relevé ne touche pas", () => {
+  const opts = [{ cle: "mots" }, { cle: "zone" }, { cle: "case" }, { cle: "planche" }];
+  assert.equal(A.porteApresPose("mots", { region_id: 10 }, [1], opts), "zone");
+  // Sans « toute la zone » à offrir, la case : la liste de la case montre la même ligne.
+  assert.equal(A.porteApresPose("mots", { region_id: 5 }, [1], opts.filter((o) => o.cle !== "zone")), "case");
+  // Sur les mots, sur la planche (lue partout), sans mot désigné, ou ailleurs que sur des mots.
+  assert.equal(A.porteApresPose("mots", { region_id: 10, mots: [1] }, [1], opts), "mots");
+  assert.equal(A.porteApresPose("mots", { planche_id: 3 }, [1], opts), "mots");
+  assert.equal(A.porteApresPose("mots", { region_id: 10 }, [], opts), "mots");
+  assert.equal(A.porteApresPose("case", { region_id: 10 }, [1], opts), "case");
+  // Rien où aller : on reste.
+  assert.equal(A.porteApresPose("mots", { region_id: 10 }, [1], [{ cle: "mots" }]), "mots");
+  assert.equal(A.porteApresPose("mots", null, [1], opts), "mots");
+  assert.equal(A.porteApresPose("mots", { erreur: "non" }, [1], opts), "mots");
+});
+
 test("« Porte sur » : ce que la grille vise depuis la zone", () => {
   const bulle = { id: 10, type: "bulle" }, laCase = { id: 5, type: "case" };
   assert.deepEqual(A.optionsPorteSur(PLAN, bulle, laCase).map((o) => o.cle),
