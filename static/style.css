@@ -2301,8 +2301,11 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   .lf.bi.lf--empile .lf-fiche { display: block; border-top: 1px solid var(--border); }
   .lf.bi.lf--empile .lf-retour { display: none; }
 }
-.bi-calques { display: grid; gap: .3rem; border-bottom: 1px solid var(--border);
-              padding-bottom: .45rem; min-width: 0; }
+/* `minmax(0, 1fr)` : une piste implicite grandit jusqu'au champ de création ouvert, plus large
+   que la colonne sous une préférence de 24, et toute la liste sortait de 5 px avec elle. Bornée,
+   la ligne du champ passe à la ligne. */
+.bi-calques { display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem;
+              border-bottom: 1px solid var(--border); padding-bottom: .45rem; min-width: 0; }
 .bi-calques-tete { display: flex; justify-content: space-between; align-items: baseline;
                    gap: .5rem; flex-wrap: wrap; }
 .bi-calques-tete .lf-groupe, .bi-albums-titre { margin: .2rem 0; }
