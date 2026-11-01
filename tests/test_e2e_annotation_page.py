@@ -3678,3 +3678,100 @@ def test_une_precision_retenue_sur_une_version_relue_recoit_le_409(page, decor):
     assert q.value.status == 409
     expect(page.locator("#an-cf-titre")).to_be_visible()
     assert _origine(decor)["precision"] == "de l'autre"
+
+
+def _deux_planches(d):
+    with httpx.Client(base_url=d["base"], trust_env=False, timeout=180, headers=ECRITURE) as c:
+        p2 = c.post(f"/api/albums/{d['album']}/import",
+                    files={"file": ("p2.png", make_png(800, 1000), "image/png")}).json()["id"]
+        b2 = c.post(f"/api/planches/{p2}/regions",
+                    json={"type": "bulle", "x": 60, "y": 60, "w": 200, "h": 120})
+        assert b2.status_code in (200, 201), b2.text
+        c.put(f"/api/regions/{b2.json()['id']}", json={"ocr_texte": "OUI"})
+    return p2, b2.json()["id"]
+
+
+def test_ctrl_z_vers_une_autre_planche_ne_perd_pas_un_brouillon(page, decor):
+    """Le dernier geste est sur une autre planche : Ctrl+Z l'ouvrait, le brouillon partait, et il
+    se disait « relevé retiré ailleurs ». Le geste est défait, et l'on reste."""
+    p2, b2 = _deux_planches(decor)
+    page.goto(f"{decor['base']}/annotation?album={decor['album']}&planche={p2}&region={b2}",
+              wait_until="networkidle")
+    note = page.locator("#an-note")
+    expect(note).to_be_visible()
+    note.fill("une note de la seconde planche")
+    with _reponse_de(page, "/annotation"):
+        note.blur()
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f'#an-poses-liste [data-douter="{_cri(decor)["id"]}"]').click()
+    champ = page.locator("#an-dt-texte")
+    expect(champ).to_be_visible()
+    champ.fill("à moitié")
+    page.locator("#an-mini .an-mz").first.focus()     # Ctrl+Z hors d'un champ
+    with _reponse_de(page, "/api/undo", "POST"):
+        page.keyboard.press("Control+z")
+    expect(page.locator("#toasts")).to_contain_text("Annulé :")
+    expect(page.locator("#toasts")).to_contain_text("en cours d'écriture")
+    expect(page.locator("#toasts")).not_to_contain_text("ailleurs")
+    expect(page.locator("#an-planche-choix")).to_have_value(str(decor["planche"]))
+    expect(champ).to_be_visible()
+    expect(champ).to_have_value("à moitié")
+    with _http(decor) as c:
+        assert not c.get(f"/api/regions/{b2}/annotation").json()["note"]
+
+
+def test_ctrl_z_vers_une_autre_planche_l_ouvre_sans_brouillon(page, decor):
+    """Le témoin de l'autre moitié : rien à perdre, Ctrl+Z ouvre toujours la planche du geste."""
+    p2, b2 = _deux_planches(decor)
+    page.goto(f"{decor['base']}/annotation?album={decor['album']}&planche={p2}&region={b2}",
+              wait_until="networkidle")
+    note = page.locator("#an-note")
+    expect(note).to_be_visible()
+    note.fill("une note de la seconde planche")
+    with _reponse_de(page, "/annotation"):
+        note.blur()
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator("#an-mini .an-mz").first.focus()
+    page.keyboard.press("Control+z")
+    expect(page.locator("#toasts")).to_contain_text("Annulé :")
+    expect(page.locator("#an-planche-choix")).to_have_value(str(p2))
+
+
+@pytest.mark.parametrize("sorte", ["doute", "reponse", "conflit"])
+def test_le_projet_change_dans_un_autre_onglet_ne_perd_rien(page, decor, sorte):
+    """L'autre onglet ne passe ni par le sélecteur, ni par sa garde : le changement arrive par
+    l'événement, et la page quittait la planche — le brouillon se disait « relevé retiré
+    ailleurs », une réponse partait sans un mot, le bandeau restait sur une zone disparue. La
+    page reste où elle est et le dit ; la bande revient à son projet."""
+    autre = _second_projet(decor)
+    if sorte == "conflit":
+        _ouvrir(page, decor, decor["bulle"])
+        expect(page.locator("#an-note")).to_have_value("il jure")
+        _conflit_de_note(page, decor, "Version autre", "Ma version")
+        expect(page.locator("#an-cf-titre")).to_be_visible()
+        champ, valeur = page.locator("#an-note"), "Ma version"
+    else:
+        champ, valeur = _ouvrir_brouillon(page, decor, sorte), "à moitié"
+    autre_onglet = page.context.new_page()
+    autre_onglet.goto(f"{decor['base']}/recherche", wait_until="networkidle")
+    autre_onglet.evaluate(f"() => BDProjet.choisir({autre})")
+    expect(page.locator("#toasts")).to_contain_text("autre onglet")
+    expect(page.locator("#toasts")).not_to_contain_text("ailleurs")
+    expect(champ).to_be_visible()
+    expect(champ).to_have_value(valeur)
+    expect(page.locator("#an-album")).to_have_value(str(decor["album"]))
+    expect(page.locator("#projet-choix")).to_have_value(str(decor["projet"]))
+    autre_onglet.close()
+
+
+def test_le_projet_change_dans_un_autre_onglet_suit_sans_saisie(page, decor):
+    """Le témoin : rien à perdre, la page suit l'autre onglet, comme avant."""
+    autre = _second_projet(decor)
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-note")).to_have_value("il jure")
+    autre_onglet = page.context.new_page()
+    autre_onglet.goto(f"{decor['base']}/recherche", wait_until="networkidle")
+    autre_onglet.evaluate(f"() => BDProjet.choisir({autre})")
+    expect(page.locator("#an-album option")).to_have_text(["Autre album"])
+    expect(page.locator("#projet-choix")).to_have_value(str(autre))
+    autre_onglet.close()

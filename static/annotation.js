@@ -3761,9 +3761,19 @@ function brancher() {
   // bande écrive quoi que ce soit (`BDProjet.verdictDeDepart`).
   BDProjet.poserGardeDeDepart(() => gardesDeSortie(true));
   window.addEventListener("beforeunload", retenirLaPage);
-  document.addEventListener(BDProjet.EVENEMENT, (e) => {
+  document.addEventListener(BDProjet.EVENEMENT, async (e) => {
     const id = e.detail ? e.detail.id : null;
     if (id == null || id === S.projet) return;
+    // Un AUTRE ONGLET change le projet par cet événement, sans passer par le sélecteur ni sa
+    // garde : on y répond ici. Refusé, la page reste où elle est et le dit, et la bande revient
+    // au projet qu'elle montre ; le projet retenu reste celui de l'autre onglet.
+    if (!(await gardesDeSortie(true))) {
+      toast("Le projet a changé dans un autre onglet : cette page reste ici, une saisie y attend.",
+            "error", 8000);
+      document.dispatchEvent(new CustomEvent(BDProjet.EVENEMENT, { detail: { id: S.projet } }));
+      return;
+    }
+    if (id === S.projet) return;
     S.projet = id;
     chargerAlbums().catch((err) => toast("Erreur de chargement : " + err.message, "error"));
   });
@@ -3951,6 +3961,8 @@ async function annulerPage() {
     await ouvrirPlanche(S.planche.id, res.region_id === undefined ? null : res.region_id,
                         { caseIx: S.caseIx, zoneId: S.zoneId });
   } else if (S.planches.some((p) => p.id === res.planche_id)) {
+    // Le geste est défait ; aller le voir est un départ de la planche, comme un autre.
+    if (!(await gardesDeSortie(true))) return;
     await ouvrirPlanche(res.planche_id, res.region_id === undefined ? null : res.region_id,
                         { caseIx: 0, zoneId: null });
   }
