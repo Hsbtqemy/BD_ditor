@@ -1,20 +1,20 @@
 ---
 passe: Page Annotation, correctifs de la passe du jalon 3
 chantier: ANN-7
-duree: 25 min
+duree: 40 min
 ---
 
 # QA — les correctifs de la passe du jalon 3 sur la page Annotation
 
-**Écrite le 2026-10-31 sur la recette reconstruite sur le commit 16 de la tranche** (les commits 14, 15 et 16 : `6574c04`, `dcd8a7e` et `bc6295d`), décor de l'état `avant-ann7-j1` (`C:\temp\bd-recette\etat-de-base.ps1 restaurer avant-ann7-j1`) : la grille FICTIVE « Sons et images (fictive) » active sur le « Projet principal », aucun relevé posé. Elle porte sur les relevés de la passe du jalon 3 et sur la saisie en conflit, dans `pilotage/ANN-7.md`.
+**Écrite le 2026-10-31, remise à jour le 2026-11-01 sur la recette reconstruite sur `34f0a53`**, même décor, l'état `avant-ann7-j1` (`C:\temp\bd-recette\etat-de-base.ps1 restaurer avant-ann7-j1`) : la grille FICTIVE « Sons et images (fictive) » active sur le « Projet principal », aucun relevé posé. Elle porte sur les relevés de la passe du jalon 3, sur la saisie en conflit et sur les voies de perte fermées, dans `pilotage/ANN-7.md`.
 
 **Les comptes** : `stagiaire` et `proprio`, tous deux écrivent dans « Collection Test ». Une fenêtre privée par compte, chaque zone dit laquelle. Les cases s'enchaînent dans l'ordre : chacune part de l'état laissé par la précédente.
 
 **Où se lit quoi** : sur écran large, à gauche la minicarte, et sous elle le Contexte ; au milieu la case agrandie, la rangée « Zones de la case », puis « Porte sur » et les mots de la zone ; à droite la grille, sous elle la liste de ce qui est posé, et en bas la boîte du guide.
 
-**Rejouée sans écran avant d'être rendue**, sous ces deux identités, sur une copie du décor : quatre cases y ont été réécrites. Celle qui suit « Remplacer par la mienne » et le clic sur le petit « / », nés de défauts trouvés à ce rejeu, n'ont été joués que par leurs tests e2e. Les couleurs ne se jugent qu'à l'écran : le rejeu en a mesuré la présence et le contraste, pas l'effet.
+**Rejouée sans écran avant d'être rendue**, à `34f0a53`, sous ces deux identités, sur une copie neuve du décor : les 24 cases d'un seul tenant, dans Chromium et dans le Firefox de Playwright. Une précision renvoyée pendant que la page relit le relevé n'a été jouée que par son test e2e : l'instant est trop court pour une main ; la cinquième case de cette zone passe par ce qu'une main peut faire, une précision retenue. La question du navigateur n'a été vue que comme un événement : ses mots et ses boutons sont les siens. Les couleurs ne se jugent qu'à l'écran : le rejeu en a mesuré la présence, pas l'effet.
 
-**Ce que la passe ne juge pas** : les autres voies de perte, ouvertes dans la fiche (changer de projet, quitter la page, une précision retenue) ; le focus au doigt. En fin de passe, la recette porte une zone tracée et des relevés : `restaurer avant-ann7-j1` avant toute autre passe qui part de ce décor.
+**Ce que la passe ne juge pas** : le focus au doigt ; Ctrl+Z vers une autre planche. En fin de passe, la recette porte une zone tracée, des relevés et le bac à sable de `stagiaire` : `restaurer avant-ann7-j1` avant toute autre passe qui part de ce décor.
 
 ## Reste
 
@@ -39,9 +39,18 @@ duree: 25 min
 
 ### Au clavier — fenêtre `stagiaire`, même bulle, mot « HEY » toujours désigné
 
-- [ ] Clic sur le petit « / » à droite du champ « Chercher dans la grille… » : le curseur est dans le champ. Tab trois fois — « A. Sons », « Voix », « cri » : un contour se voit sur « cri », entrée sans variante. Entrée : elle se coche, une ligne « cri » s'ajoute sous la grille, et le contour reste sur elle
+- [ ] Clic sur le petit « / » à droite du champ « Chercher dans la grille… » : le curseur est dans le champ. Tab jusqu'à « cri », après « A. Sons » et « Voix » (Firefox s'arrête d'abord sur la grille elle-même) : un contour se voit sur « cri », entrée sans variante. Entrée : elle se coche, une ligne « cri » s'ajoute sous la grille, et le contour reste sur elle
 - [ ] Entrée de nouveau : « cri » se décoche, sa ligne part, le contour y reste. Tab : le contour passe à « ton de voix », l'entrée suivante, sans repartir du haut de la page
 - [ ] Onglet « Synthèse », au-dessus de la minicarte, puis clic sur « Relevés ». Tab trois fois, jusqu'au bouton « Case c1 · 1 », Entrée : « La case c1 » s'ouvre au milieu, et le contour reste sur ce bouton. Revenir à l'onglet « Planche », faire défiler la grille, cliquer « regard caméra » (E. Image) à la souris : elle se coche, sans contour sur elle ; recliquer pour la décocher
+
+### Une saisie ne se perd plus — fenêtres `stagiaire` et `proprio`, même planche
+
+- [ ] Fenêtre `stagiaire` : clic sur « b2 · bulle », puis sur « Mon bac à sable », en haut à droite, à côté du nom du projet : l'Atelier s'ouvre sur une planche du bac à sable, avec une rangée rayée sous la bande du haut. Bouton Précédent du navigateur, puis F5 : retour sur esther v1, planche 1, bulle b2, et « Projet », dans la bande du haut, est maintenant une liste, sur « Projet principal »
+- [ ] Clic sur « Atelier » dans la navigation : la page part sans rien demander. Clic sur « Annotation » : retour sur la bulle b2. Sous la grille, sur la ligne « onomatopée de choc · bang », clic sur « ? », taper « est-ce un coup » dans la boîte du guide, sans cliquer « Douter ». Clic sur « Atelier » : cette fois, le navigateur demande s'il faut quitter la page. Refuser (« Annuler » ou « Rester ») : on est toujours sur la bulle b2, et le texte du doute est là
+- [ ] Dans la liste « Projet », choisir « Mon bac à sable » : la page ne change pas, un message en bas à droite dit « Un doute ou une réponse est en cours d'écriture : envoyez-le ou effacez-le d'abord. », la liste redit « Projet principal », et le texte du doute est là
+- [ ] Ctrl+clic sur « Atelier » : un second onglet s'ouvre. Dans cet onglet, liste « Projet » sur « Mon bac à sable », puis revenir aussitôt au premier onglet (le message dure huit secondes) : il n'a pas changé de planche, un message dit « Le projet a changé dans un autre onglet : cette page reste ici, une saisie y attend. », la liste redit « Projet principal », et le texte du doute est là. Dans le second onglet, remettre « Projet principal », fermer l'onglet. Au premier, clic sur « Annuler » sous le doute : le formulaire part
+- [ ] Clic sur le mot « SALE » dans « Mots de la bulle b2 », puis sur « origine du son » dans la grille (B. Provenance) : une ligne « origine du son » s'ajoute sous la grille, « à compléter », avec un champ « lieu ». Y taper « dans la cour », Entrée. Fenêtre `proprio` : F5, clic sur « b2 · bulle », sur le mot « SALE », puis, sous « origine du son », sur « objet ». Fenêtre `stagiaire`, sans recharger (ni F5, ni « ⟳ Actualiser ») : sous « origine du son », clic sur « personnage » : le bandeau dit « ⚠ Qualificatifs modifiés par proprio à … ». Sans répondre, remplacer « dans la cour » par « dans le couloir », clic sur le titre « Case c1 ». Fenêtre `proprio` : remplacer la précision par « dans la rue », clic sur le titre « Case c1 ». Fenêtre `stagiaire` : « Garder l'autre » : le bandeau devient « ⚠ Précision modifiée par proprio à … », avec « Version enregistrée : dans la rue », et le champ dit toujours « dans le couloir ». Fenêtre `proprio`, F5 : la précision dit « dans la rue », rien n'a été écrasé. Fenêtre `stagiaire`, « Garder l'autre » : le bandeau part, et le champ dit « dans la rue »
+- [ ] Fenêtre `proprio` : remplacer la note par « à corriger », clic sur le titre « Case c1 », attendre « Enregistrée ». Fenêtre `stagiaire`, sans recharger : ajouter « ici » à la fin de la note, clic sur le titre « Case c1 » : le bandeau de la note s'ouvre. Sans répondre, remplacer la précision par « dans le préau », clic sur « b1 · bulle », puis sur « b2 · bulle » : le champ redit « dans le préau ». « Garder l'autre » : le bandeau part, et Note dit « à corriger ». Fenêtre `proprio`, F5 : la précision dit « dans le préau »
 
 ### Les finitions — fenêtre `stagiaire`
 
