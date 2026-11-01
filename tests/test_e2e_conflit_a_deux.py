@@ -188,10 +188,16 @@ def test_deux_notes_le_bandeau_nomme_garde_la_saisie_et_bloque_le_mode(page, dec
         expect(b.locator("#toasts .toast").last).to_have_text("Choisissez d'abord une version")
         expect(b.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute("aria-pressed", "true")
         # Recliquer le mode COURANT, ou la bulle COURANTE, rechargerait le champ depuis le
-        # serveur : la saisie que le bandeau garde doit y survivre.
+        # serveur : la saisie que le bandeau garde doit y survivre. Ce qu'on juge est la lecture
+        # qui PART, et non le champ : relu tout de suite, il dit encore la saisie même si la
+        # relecture est en route, et seul un serveur rapide aurait fait voir l'écrasement.
+        relues = []
+        b.on("request", lambda r: relues.append(r.url) if r.method == "GET"
+             and r.url.endswith(f"/regions/{s['bulle']}/annotation") else None)
         b.click('.mode-btn[data-mode="annotation"]')
         b.locator(f"#overlay [data-id='{s['bulle']}']").first.click(force=True)
-        b.wait_for_load_state("networkidle")
+        b.wait_for_timeout(300)
+        assert not relues, relues
         assert b.input_value("#note-input") == "note de B"
         expect(bandeau).to_be_visible()
 

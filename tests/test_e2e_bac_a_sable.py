@@ -1302,9 +1302,12 @@ def test_la_recherche_et_l_exploration_disent_qu_elles_ne_voient_pas_le_bac(page
             page.goto(jeu["base"] + surface, wait_until="networkidle")
             loc = _phrase(page, surface, texte)
             assert loc.locator("button, details, summary, a").count() == 0
-            # Une seule, et elle ne bouge pas quand la bande se redessine.
-            page.evaluate("() => document.dispatchEvent(new CustomEvent('bd:projets-maj'))")
-            page.wait_for_load_state("networkidle")
+            # Une seule, et elle ne bouge pas quand la bande se redessine. On attend le DESSIN
+            # (`bd:bac-a-sable-maj`), qui vient après la relecture : avant lui, la page montre
+            # encore la phrase d'avant, et un doublon serait passé.
+            page.evaluate("""() => new Promise((fait) => {
+              document.addEventListener('bd:bac-a-sable-maj', () => fait(), {once: true});
+              document.dispatchEvent(new CustomEvent('bd:projets-maj')); })""")
             expect(page.locator("#bac-hors-recherche")).to_have_count(1)
             _phrase(page, surface, texte)
     # Sur les trois autres surfaces, elle n'existe pas.
