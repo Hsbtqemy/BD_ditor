@@ -234,10 +234,12 @@ def test_a_375_px_le_geste_part_d_une_carte_et_un_nom_ouvre_sa_fiche(page, etude
     expect(qui.locator(".qe-carte")).to_have_count(2)
 
     carte = qui.locator(".qe-carte", has=page.locator(".qe-qui", has_text="annotateurs"))
-    with page.expect_request(lambda r: r.method == "PUT") as envoi:
+    # La RÉPONSE : la case se coche au clic, et la base n'est lue qu'une fois le PUT écrit.
+    with page.expect_response(lambda r: r.request.method == "PUT") as reponse:
         carte.locator('.qe-case[data-cran="ecriture"]').check()
-    assert envoi.value.url == f"{base}/api/collections/{cid}/acces"
-    assert envoi.value.post_data_json["niveau"] == "ecriture"
+    envoi = reponse.value.request
+    assert envoi.url == f"{base}/api/collections/{cid}/acces"
+    assert envoi.post_data_json["niveau"] == "ecriture"
     expect(qui.locator(".qe-carte", has=page.locator(".qe-qui", has_text="annotateurs"))
            .locator('.qe-case[data-cran="ecriture"]')).to_be_checked()
     assert _acces(base, cid)[("groupe", "annotateurs")]["niveau"] == "ecriture"
@@ -353,6 +355,9 @@ def test_quitter_une_fiche_pendant_un_geste_ne_fait_taire_ni_ne_leve_rien(page, 
     qui_b = page.locator("#cg-fiche section[data-qui-entre]")
     qui_b.locator(".qe-choix").wait_for(timeout=5000)
     expect(qui_b).to_have_attribute("data-qe", str(b))
+    # L'annuaire vient APRÈS le tableau : avant lui, la ligne d'ajout offre la saisie libre, et
+    # son refus n'est pas celui-ci.
+    expect(qui_b.locator('.qe-choix option[value="groupe:annotateurs"]')).to_have_count(1)
     qui_b.locator(".qe-faire-entrer").click()
     refus = qui_b.locator(".qe-msg.erreur")
     expect(refus).to_be_visible()

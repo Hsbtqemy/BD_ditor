@@ -706,9 +706,11 @@ def test_un_glissement_seul_n_est_pas_un_conflit(page, decor):
         a.mouse.move(cx, cy)
         a.mouse.down()
         a.mouse.move(cx + 25, cy + 10, steps=5)
-        a.mouse.up()
-        a.wait_for_load_state("networkidle")
-        time.sleep(1)
+        # La RÉPONSE, et non un temps fixe : une seconde gagnait sa course sur le poste, et la
+        # perdait dès que le serveur mettait plus longtemps à écrire.
+        with a.expect_response(lambda r: r.request.method == "PUT"
+                               and "/api/regions/" in r.url):
+            a.mouse.up()
         with _client(s["base"]) as c:
             x = next(r for r in c.get(f"/api/planches/{s['planche']}/regions").json()
                      if r["id"] == s["case"])["x"]
