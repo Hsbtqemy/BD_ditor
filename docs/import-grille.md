@@ -3,7 +3,8 @@
 *ANN-7, tranche 1. Le format que lit l'outil d'import (`tools/importer_grille.py`) et la route
 `POST /api/projets/{id}/grilles/import`. Le cœur est `grille_import.py`. Ce document dit le
 format tel qu'il est lu ; un gabarit fait pour une personne qui n'a jamais vu l'outil reste
-à concevoir (case « Un gabarit de tableur qui ne perd personne » d'`ANN-7`).*
+à concevoir (case « Un gabarit de tableur qui ne perd personne » d'`ANN-7`). Ce qu'une grille
+peut demander, et ce qu'elle ne peut pas : [ce-qu-une-grille-peut-demander.md](ce-qu-une-grille-peut-demander.md).*
 
 Une grille s'écrit dans un tableur ; BéDéditeur la vérifie ENTIÈRE, rend un bilan, et la
 garde en brouillon jusqu'à ce qu'on la publie. Rien de la grille n'est dans le code : tout ce
