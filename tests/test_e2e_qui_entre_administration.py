@@ -28,6 +28,7 @@ La console est écoutée : la régression de la première moitié (un geste en r
 l'hôte redessine) ne se voyait que là.
 """
 import re
+from contextlib import contextmanager
 
 import httpx
 import pytest
@@ -127,9 +128,15 @@ def _ecritures(page):
     return parties
 
 
+@contextmanager
 def _vue_relue(page):
-    """L'attente de la relecture de la vue par l'HÔTE, que tout geste abouti déclenche."""
-    return page.expect_response(lambda r: r.url.endswith("/api/comptes-et-groupes"))
+    """La relecture de la vue par l'HÔTE, que tout geste abouti déclenche, jusqu'à son DESSIN.
+    Il ne vient qu'après `GET /api/collections`, la dernière de ses lectures, qui part quand
+    la vue a répondu : attendre la vue, c'était regarder la page d'avant, et ce qu'on y juge
+    — le message qui survit, le panneau pas remonté — passait sans avoir été éprouvé."""
+    with page.expect_response(lambda r: r.url.endswith("/api/collections")):
+        yield
+    page.wait_for_timeout(100)
 
 
 # ── Les trois gestes, mesurés ici ──────────────────────────────────────────────────────
@@ -166,7 +173,6 @@ def test_faire_entrer_cocher_et_faire_sortir_partent_de_l_administration(page, e
     qui.locator(".qe-choix").select_option("groupe:annotateurs")
     with _vue_relue(page):
         qui.locator(".qe-faire-entrer").click()
-    page.wait_for_load_state("networkidle")
     assert len(parties) == 1 and parties[0][:2] == ("PUT", url), parties
     assert {k: parties[0][2][k] for k in ("genre", "principal", "niveau")} == {
         "genre": "groupe", "principal": "annotateurs", "niveau": "lecture"}
@@ -182,7 +188,6 @@ def test_faire_entrer_cocher_et_faire_sortir_partent_de_l_administration(page, e
     case = _ligne(qui, "annotateurs").locator('.qe-case[data-cran="proprietaire"]')
     with _vue_relue(page):
         case.check()
-    page.wait_for_load_state("networkidle")
     assert len(parties) == 2 and parties[1][:2] == ("PUT", url), parties
     assert {k: parties[1][2][k] for k in ("genre", "principal", "niveau")} == {
         "genre": "groupe", "principal": "annotateurs", "niveau": "proprietaire"}
@@ -199,7 +204,6 @@ def test_faire_entrer_cocher_et_faire_sortir_partent_de_l_administration(page, e
     # 3. Faire sortir.
     with _vue_relue(page):
         _ligne(qui, "lectrice").locator(".qe-retirer").click()
-    page.wait_for_load_state("networkidle")
     assert len(parties) == 3, parties
     assert parties[2][:2] == ("DELETE", f"{url}/utilisateur/lectrice"), parties[2]
     expect(qui.locator(".qe-table tbody tr")).to_have_count(1)
@@ -366,7 +370,6 @@ def test_quitter_une_fiche_pendant_un_geste_ne_fait_taire_ni_ne_leve_rien(page, 
     # La réponse de A revient : le geste a abouti, l'hôte relit la vue.
     with _vue_relue(page):
         retenues[0].continue_()
-    page.wait_for_load_state("networkidle")
     page.wait_for_timeout(300)
     assert exceptions == [] and console == [], (exceptions, console)
     assert _acces(live_server, a)[("groupe", "annotateurs")]["niveau"] == "lecture"
@@ -432,7 +435,6 @@ def test_un_message_de_qui_entre_ne_touche_pas_la_fiche_du_projet_voisin(page, e
     qui.locator(".qe-choix").select_option("groupe:annotateurs")
     with _vue_relue(page):
         qui.locator(".qe-faire-entrer").click()                # un geste abouti
-    page.wait_for_load_state("networkidle")
     message = qui.locator(".qe-msg")
     expect(message).to_contain_text("Le groupe annotateurs entre dans « Étude réglée ici »")
     expect(voisin).to_have_text("Rien n'a changé.")
