@@ -5,9 +5,11 @@ statut: livré
 
 # COL-4 — « Mon bac à sable » : un projet de test à soi, remis à neuf chaque semaine, où l'on apprend l'outil
 
-**Arrêté sur** `c73de66` (2026-11-01, sur `dev`, pas encore en production : une collection
-sans album ne publie plus les totaux de l'instance, et ce qui se fait dans un projet isolé ne
-donne plus de rang dans les pseudonymes). Avant cela, `5adfd60` (2026-10-31 : le résumé de
+**Arrêté sur** `81c164c` (2026-11-01, sur `dev`, pas encore en production : la ligne du bac à
+sable ne recouvre plus la bande 2 de l'Atelier ; rouge de la passe navigateur dans l'image,
+police de l'image, les rangées 1 et 2 passées en `max-content`). Avant cela, `c73de66` (le même
+jour : une collection sans album ne publie plus les totaux de l'instance, et ce qui se fait dans
+un projet isolé ne donne plus de rang dans les pseudonymes), puis `5adfd60` (2026-10-31 : le résumé de
 provenance tait les actes et les runs d'un projet isolé, comme le journal publié), puis
 `0449efb` (2026-10-25, EN PRODUCTION : `main` = `f8dfa5c`, déployé à la main par
 Hugo — la veille refuse à raison une version qui migre). Le bac à sable SANS wizard est livré :
@@ -132,6 +134,10 @@ wizard (`UX-6`, lot 4). Fiche ouverte le 2026-10-21 sur une demande de Hugo (Con
 - [x] Un compte qui n'a fait qu'ouvrir un bac à sable ne prend pas de rang dans les pseudonymes — attendu : `_commun.pseudonymes()` ne compte aucun acte d'un projet isolé, comme `comptes.traces`, sans quoi il renumérote ceux qui annotent après lui. Aujourd'hui il prend un rang par ses actes `projet` et `collection`. Relevé par le même agent, antérieur à ce travail, lu dans le code, non joué — **Codé le 2026-11-01, `c73de66`**, confirmé (lea et hugo prenaient 1 et 2, rita sortait en 5 au lieu de 3). La table publiée lit le même fragment : sans cela un agent sans rang sortait sous son login ; les actes d'un bac effacé ne partent donc plus au dépôt. Trois actes échappaient à `sql_acte_isole` et y sont entrés. Mutants 9 sur 9, suite par défaut 3 335 points, code 0. Tout export fait depuis le premier bac à sable peut changer de numéros à partir du premier compte passé par un bac ; un dépôt réel n'a pas pu être vérifié
 - [ ] Un acte sur une région d'une planche ou d'un album supprimés dans un bac à sable vivant ne donne pas de rang et ne se publie pas — attendu : décision de conception, puis un test ; aujourd'hui il garde un rang et se publie sous pseudonyme, y compris après la remise à neuf (joué pour la planche), sans fuite de login, rien ne reliant plus la planche à son projet. Le remède général serait une clé « isolé » écrite dans la charge de tout acte, comme `CLE_REGION_RETENUE`. Vu par l'agent de `c73de66`, écrit dans la docstring de `sql_acte_isole`. Les collections supprimées dans un bac avant ce commit n'ont pas cette clé non plus, et aucune migration ne les rattrape
 - [ ] `pseudonymes()` reste assez rapide sur un gros journal — attendu : mesuré sur un journal réaliste avant le premier dépôt ; sur 300 000 actes synthétiques il passe de 0,15 s à 3,84 s, et `evenements_publiables` de 2,01 à 3,06 s, l'outil des métadonnées l'appelant plusieurs fois par export. Le journal de cette mesure a des identifiants qui se recoupent : l'ordre de grandeur vaut, pas le chiffre
+
+### Relevé par les passes du lot — 2026-11-01
+
+- [ ] L'Atelier reste utilisable à 320 × 800 sous une préférence de 24, ligne du bac à sable comprise — attendu : la planche a une hauteur et `#stat-coords` n'est pas coupé. Mesuré dans l'image : `#body` vaut 0 px, sans canevas, et c'était déjà le cas avant `81c164c` ; depuis ce commit, les 9,5 px manquants sortent par le bas de la barre d'état. Un défilement de la coque l'éviterait, écarté parce qu'il risquerait de rendre la sonde de reflow aveugle : lu, non mesuré
 
 ## Contexte
 
