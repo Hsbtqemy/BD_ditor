@@ -493,8 +493,11 @@ function redessinerSansPerdreLeFocus(boite, dessiner, repli) {
   const actif = document.activeElement;
   const dedans = !!actif && actif !== boite && boite.contains(actif);
   const garde = dedans ? { cle: repereDe(actif), debut: actif.selectionStart, fin: actif.selectionEnd,
-                           // Une précision n'existe qu'à son envoi : le dessin ne l'efface pas.
-                           valeur: actif.matches(".an-prec") ? actif.value : null } : null;
+                           // Une précision tapée n'existe qu'à son envoi : le dessin ne l'efface
+                           // pas, ni la version qu'elle a vue. Regardée seulement, elle suit.
+                           valeur: actif.matches(".an-prec") && actif.vuePrecision !== undefined
+                             ? actif.value : null,
+                           vue: actif.vuePrecision } : null;
   // Retiré du document, le champ émet sa sortie : ce n'est pas l'annotateur qui le quitte, et
   // une précision à moitié tapée ne part pas pour autant (`enregistrerPrecision`).
   FOCUS.dessin = true;
@@ -510,7 +513,7 @@ function redessinerSansPerdreLeFocus(boite, dessiner, repli) {
     if (ailleurs) remettreLeFocus(ailleurs);
     return;
   }
-  if (garde.valeur !== null) cible.value = garde.valeur;
+  if (garde.valeur !== null) { cible.value = garde.valeur; cible.vuePrecision = garde.vue; }
   remettreLeFocus(cible);
   if (typeof garde.debut === "number" && cible.setSelectionRange) {
     try { cible.setSelectionRange(garde.debut, garde.fin); } catch (e) { /* champ sans sélection */ }
@@ -898,7 +901,7 @@ async function reprendreRetenues() {
   for (const r of [...RETENUES.values()]) {
     if (S.conflit) return;
     RETENUES.delete(cleRetenue(r.lieu, r.rid));
-    if (r.lieu === "precision") await reprendrePrecision(r.rid, r.saisie);
+    if (r.lieu === "precision") await reprendrePrecision(r.rid, r.saisie, r.vu);
     else if (r.lieu === "note") await enchainer("note", () => envoyerNote(r.rid, r.saisie));
     else await enchainer(r.lieu, () => envoyerSiChange(r.rid, r.lieu, r.saisie));
   }
@@ -2224,6 +2227,16 @@ async function ecrire(g, e, cible, gst, nouvelle) {
   return true;
 }
 
+/* Le bandeau prend le focus, sauf à un champ SOUS LES DOIGTS : une précision part à Entrée, et
+   la frappe continue pendant l'aller-retour ; l'espace suivante aurait activé « Remplacer par
+   la mienne », écrasant l'autre sans décision (le même risque que `refusDuContexte`). */
+function focusAuBandeau() {
+  const a = document.activeElement;
+  if (a && a.matches && a.matches("textarea, input:not([type=checkbox]):not([type=radio])")) return;
+  const b = $("#an-cf-mienne");
+  if (b) b.focus();
+}
+
 /* Les refus que l'écran sait dire sans rien deviner. */
 function refus(err, contexte) {
   const d = err && err.detail;
@@ -2231,8 +2244,7 @@ function refus(err, contexte) {
     S.conflit = { sorte: "valeur", detail: d, ...contexte };
     rendreGuide();
     annoncer(BDConflit.titreConflit(d.conflit));
-    const b = $("#an-cf-mienne");
-    if (b) b.focus();
+    focusAuBandeau();
     return;
   }
   if (err.statut === 409 && d && d.releve_existant) {
@@ -2240,8 +2252,7 @@ function refus(err, contexte) {
                   remplacement: A.remplacementCardinalite(d, contexte.gst.corps) };
     rendreGuide();
     annoncer(d.message);
-    const b = $("#an-cf-mienne");
-    if (b) b.focus();
+    focusAuBandeau();
     return;
   }
   if (err.statut === 404 && contexte.gst.releve) {
@@ -2588,7 +2599,8 @@ function brancherPose() {
   liste.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.target.matches(".an-prec")) { e.preventDefault(); enregistrerPrecision(e.target); }
   });
-  liste.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) enregistrerPrecision(e.target); });
+  liste.addEventListener("input", (e) => { if (e.target.matches(".an-prec")) noterVersionVue(e.target); });
+  liste.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) sortieDePrecision(e.target); });
   const bouton = $("#an-releves-btn");
   const pop = $("#an-releves-pop");
   bouton.addEventListener("click", () => {
@@ -2682,20 +2694,38 @@ function marquerDesignation() {
    pas une sortie (`FOCUS.dessin`). Un conflit ouvert la RETIENT, sans toast ni focus : passer
    par `conflitOuvert` ici volerait le clic qui mène du champ au bandeau (le piège du commit 16). */
 let precisionEnVol = null;     // l'enregistrement d'une précision, que les gardes attendent
+
+/* LA VERSION VUE. La frappe part de ce que le champ montrait, et c'est cette version-là que son
+   envoi déclare : la page a pu relire le relevé pendant la frappe, et le champ garde la saisie
+   (`redessinerSansPerdreLeFocus`). Déclarer la version relue, que personne n'a vue, écrasait ce
+   qu'un autre venait d'écrire. Elle vit sur le champ, suit un redessin et meurt à sa sortie. */
+function noterVersionVue(champ) {
+  if (champ.vuePrecision !== undefined) return;
+  const r = S.releves.find((x) => x.id === Number(champ.dataset.releve));
+  if (r) champ.vuePrecision = r.precision || null;
+}
+
+function sortieDePrecision(champ) {
+  enregistrerPrecision(champ);
+  if (!FOCUS.dessin) delete champ.vuePrecision;
+}
+
 function enregistrerPrecision(champ) {
   if (FOCUS.dessin) return null;
   const r = S.releves.find((x) => x.id === Number(champ.dataset.releve));
   if (!r) return null;
   const valeur = champ.value.trim() || null;
-  if (S.conflit) { retenirPrecision(r, valeur); return null; }
+  const vu = champ.vuePrecision !== undefined ? champ.vuePrecision : r.precision || null;
+  if (S.conflit) { retenirPrecision(r, valeur, vu); return null; }
   if (!A.champModifie(valeur, r.precision)) return null;
-  return envoyerPrecision(r, valeur);
+  // Entrée laisse le champ sous les doigts : la suite de la frappe part de ce qui vient de partir.
+  if (champ.vuePrecision !== undefined) champ.vuePrecision = valeur;
+  return envoyerPrecision(r, valeur, vu);
 }
 
-function envoyerPrecision(r, valeur) {
+function envoyerPrecision(r, valeur, vu) {
   const envoi = ecrire(grilleDe(r.grille_id), entreeDe(r), null, {
-    action: "modifier", releve: r, corps: { precision: valeur },
-    vu: { precision: r.precision || null } });
+    action: "modifier", releve: r, corps: { precision: valeur }, vu: { precision: vu } });
   ECRITS.precision += 1;
   precisionEnVol = envoi;
   envoi.finally(() => { if (precisionEnVol === envoi) precisionEnVol = null; });
@@ -2716,11 +2746,13 @@ function valeurDePrecision(r) {
   return a ? { value: a.saisie || "", title: ATTENTE } : { value: r.precision || "" };
 }
 
-function retenirPrecision(r, valeur) {
+function retenirPrecision(r, valeur, vu) {
   if (conflitSurPrecision(r.id)) {
     S.conflit.gst.corps.precision = valeur;
   } else if (A.champModifie(valeur, r.precision)) {
-    RETENUES.set(cleRetenue("precision", r.id), { lieu: "precision", rid: r.id, saisie: valeur });
+    const deja = RETENUES.get(cleRetenue("precision", r.id));
+    RETENUES.set(cleRetenue("precision", r.id),
+                 { lieu: "precision", rid: r.id, saisie: valeur, vu: deja ? deja.vu : vu });
     annoncer("Précision retenue : elle partira quand le conflit sera réglé.");
   } else {
     RETENUES.delete(cleRetenue("precision", r.id));
@@ -2735,15 +2767,15 @@ function retenirPrecision(r, valeur) {
   }
 }
 
-/* Le conflit est réglé : la précision part, sur la version qu'on lit maintenant. Son relevé a pu
+/* Le conflit est réglé : la précision part, sur la version qu'elle avait vue. Son relevé a pu
    partir avec la réponse au bandeau : le texte se dit, plutôt que de se perdre. */
-async function reprendrePrecision(id, valeur) {
+async function reprendrePrecision(id, valeur, vu) {
   const r = S.releves.find((x) => x.id === id);
   if (!r) {
     if (valeur) toast(`Ce relevé a été retiré ; votre précision n'est pas envoyée : « ${valeur} »`, "error", 12000);
     return;
   }
-  if (A.champModifie(valeur, r.precision)) await envoyerPrecision(r, valeur);
+  if (A.champModifie(valeur, r.precision)) await envoyerPrecision(r, valeur, vu);
 }
 
 /* ───────────── Le doute (commit 5) ─────────────
@@ -3318,7 +3350,8 @@ function brancherSynthese() {
       enregistrerPrecision(e.target);
     }
   });
-  corps.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) enregistrerPrecision(e.target); });
+  corps.addEventListener("input", (e) => { if (e.target.matches(".an-prec")) noterVersionVue(e.target); });
+  corps.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) sortieDePrecision(e.target); });
 }
 
 /* ───────────── Deux écrans sur la même planche (commit 6) ─────────────

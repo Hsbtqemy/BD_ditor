@@ -3537,3 +3537,144 @@ def test_une_relecture_partie_avant_la_precision_ne_la_fait_pas_disparaitre(page
         champ.blur()
     assert q.value.status == 200, q.value.text()
     assert _origine(decor)["precision"] == "le salon bleu"
+
+
+def test_un_409_sur_une_precision_pendant_la_frappe_laisse_le_focus_dans_le_champ(page, decor):
+    """Entrée envoie la précision et la frappe continue pendant l'aller-retour : le 409 prenait
+    le focus, et l'espace suivante activait « Remplacer par la mienne » sans que personne ait
+    décidé. Le risque fermé pour le Contexte, sur la dernière ligne qui l'avait encore."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    rid = _origine(decor)["id"]
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{rid}", json={"precision": "de l'autre"}).status_code == 200
+    retenues, lacher = _retenir_les_envois(page, f"**/api/releves/{rid}")
+    champ.click()
+    page.keyboard.type("le salon")
+    page.keyboard.press("Enter")
+    _attendre_retenue(page, retenues)
+    page.keyboard.type(" bleu")
+    lacher()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(champ).to_be_focused()
+    page.keyboard.type(" et vert")                 # commence par une espace
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(champ).to_have_value("le salon bleu et vert")
+    assert _origine(decor)["precision"] == "de l'autre"
+    # Le choix part avec TOUTE la frappe, sur la version que le bandeau a montrée.
+    with _reponse_de(page, RELEVE) as q:
+        page.locator("#an-cf-mienne").click()
+    assert q.value.request.post_data_json == {"precision": "le salon bleu et vert",
+                                              "vu": {"precision": "de l'autre"}}
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    assert _origine(decor)["precision"] == "le salon bleu et vert"
+
+
+def test_une_precision_de_la_grille_garde_le_bandeau_a_la_main_hors_de_la_frappe(page, decor):
+    """Le témoin de la moitié qui ne change pas : un refus d'un geste de la GRILLE, sans champ
+    sous les doigts, donne toujours le focus au bandeau."""
+    with _http(decor) as c:
+        r = c.post("/api/releves", json={"region_id": decor["bulle"], "grille_id": decor["grille"],
+                                         "version": 1, "entree_cle": "ton-de-voix",
+                                         "variante_cle": "crie"}).json()
+    _ouvrir(page, decor, decor["bulle"])
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{r['id']}", json={"variante_cle": "chuchote"}).status_code == 200
+    page.locator("#an-plan .an-var", has_text="crié").click()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    expect(page.locator("#an-cf-mienne")).to_be_focused()
+
+
+def test_une_precision_tapee_sur_une_version_relue_recoit_le_409(page, decor):
+    """La page relit le relevé pendant la frappe, un autre vient d'y écrire : le champ garde la
+    saisie, et l'envoi déclarait la version RELUE, que l'annotateur n'a jamais vue. Il écrasait
+    l'autre en silence ; il doit recevoir le 409."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    rid = _origine(decor)["id"]
+    lacher = _actualiser_retenu(page, decor, champ)
+    champ.click()
+    page.keyboard.type("le sal")
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{rid}", json={"precision": "de l'autre"}).status_code == 200
+    lacher()
+    expect(page.locator("#an-actualiser")).to_be_hidden()
+    expect(champ).to_be_focused()
+    expect(champ).to_have_value("le sal")
+    page.keyboard.type("on")
+    with _reponse_de(page, RELEVE) as q:
+        champ.blur()
+    assert q.value.request.post_data_json == {"precision": "le salon", "vu": {"precision": None}}
+    assert q.value.status == 409
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    assert _origine(decor)["precision"] == "de l'autre"
+
+
+def test_une_precision_seulement_regardee_ne_reprend_pas_l_ancienne_valeur(page, decor):
+    """Le focus dans le champ, rien de tapé, et la page relit ce qu'un autre a écrit : le champ
+    gardait l'ancienne valeur, et la sortie l'aurait récrite par-dessus."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    rid = _origine(decor)["id"]
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{rid}", json={"precision": "la mienne, d'avant"}).status_code == 200
+    page.reload(wait_until="networkidle")
+    _mot(page, 1).click()
+    expect(champ).to_have_value("la mienne, d'avant")
+    lacher = _actualiser_retenu(page, decor, champ)
+    champ.click()
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{rid}", json={"precision": "de l'autre"}).status_code == 200
+    ecrites = []
+    page.on("request", lambda r: ecrites.append(r.url)
+            if r.method == "PUT" and "/api/releves/" in r.url else None)
+    lacher()
+    expect(page.locator("#an-actualiser")).to_be_hidden()
+    expect(champ).to_have_value("de l'autre")
+    champ.blur()
+    page.wait_for_timeout(300)                     # une absence : rien à attendre d'autre
+    assert ecrites == []
+    assert _origine(decor)["precision"] == "de l'autre"
+
+
+def test_entree_puis_la_suite_de_la_frappe_ne_se_refuse_pas_a_elle_meme(page, decor):
+    """Entrée a écrit ; la frappe continue sur ce qui vient de partir, pas sur ce que le champ
+    montrait avant : sinon la sortie du champ recevrait un 409 contre soi-même."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    champ.click()
+    page.keyboard.type("le salon")
+    with _reponse_de(page, RELEVE):
+        page.keyboard.press("Enter")
+    page.keyboard.type(" bleu")
+    with _reponse_de(page, RELEVE) as q:
+        champ.blur()
+    assert q.value.request.post_data_json == {"precision": "le salon bleu",
+                                              "vu": {"precision": "le salon"}}
+    assert q.value.status == 200
+    assert _origine(decor)["precision"] == "le salon bleu"
+
+
+def test_une_precision_retenue_sur_une_version_relue_recoit_le_409(page, decor):
+    """« Garder l'autre » relit le relevé, et la précision retenue partait « sur la version qu'on
+    lit maintenant » : ce qu'un autre avait écrit pendant l'attente disparaissait sans avoir été
+    vu."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    rid = _origine(decor)["id"]
+    origine = page.locator("#an-plan .an-ent", has=page.locator("text=origine du son"))
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{rid}",
+                     json={"qualificatifs": ["objet", "personnage"]}).status_code == 200
+    origine.locator(".an-var", has_text="hors champ").click()
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    champ.fill("le salon")
+    champ.blur()
+    with _http(decor) as c:
+        assert c.put(f"/api/releves/{rid}", json={"precision": "de l'autre"}).status_code == 200
+    with _reponse_de(page, RELEVE) as q:
+        page.locator("#an-cf-autre").click()
+    assert q.value.request.post_data_json == {"precision": "le salon", "vu": {"precision": None}}
+    assert q.value.status == 409
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    assert _origine(decor)["precision"] == "de l'autre"
