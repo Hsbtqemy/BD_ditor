@@ -254,8 +254,13 @@ kbd {
      `#site-nav`), et une rangée figée la laisserait recouvrir la barre d'outils.
      Rangée 4 en `auto` pour la même raison, depuis le 2026-10-09 : la barre d'état
      s'enroule elle aussi à toutes les largeurs, et tient sa hauteur d'une ligne de son
-     `min-height` (cf. `#statusbar`). */
-  grid-template-rows: auto var(--header-h) 1fr auto;
+     `min-height` (cf. `#statusbar`).
+     Rangée 1 en `max-content` et non en `auto` depuis le 2026-11-01 : `#site-nav` porte un
+     `min-height`, donc une rangée `auto` ne lui garantit QUE ce minimum, et cède dès que la
+     fenêtre manque de hauteur. Mesuré dans l'image à 320 × 800 sous une préférence de 24,
+     ligne du bac à sable comprise : bande de 522 px, rangée de 513, et la ligne recouvrait
+     la bande 2. La rangée `1fr` y vaut déjà 0 : ce qui ne tient plus sort par le bas. */
+  grid-template-rows: max-content var(--header-h) 1fr auto;
   /* `minmax(0, 1fr)` et pas `auto` : la colonne implicite d'une grille se dimensionne
      sur le contenu MINIMAL de ses items, qui ont `min-width: auto` par défaut. La
      coque entière grossissait donc jusqu'à la plus large de ses bandes — 665 px
@@ -920,7 +925,7 @@ button[aria-busy="true"]:disabled { opacity: .75; cursor: progress; }
 @media (max-width: 34.9375em) {
   /* Les DEUX rangées en `auto` : la quatrième l'est déjà dans la règle de base, et
      l'écrire autrement ici la figerait de nouveau sous la barre d'état. */
-  #app { grid-template-rows: auto auto 1fr auto; }
+  #app { grid-template-rows: max-content max-content 1fr auto; }
   #header { flex-wrap: wrap; row-gap: .3077rem; padding-top: .3077rem; padding-bottom: .3077rem; }
   /* `.modes` s'enroule à son tour, et c'est un FILET. Seule sur sa rangée, elle ne
      tenait pas dans 320 px sous une préférence de 24 — 339 px de boutons pour 278
@@ -1056,7 +1061,7 @@ button[aria-busy="true"]:disabled { opacity: .75; cursor: progress; }
 
      Les DEUX premières rangées en `auto` : la bande 2 tient la sienne du bloc 34.9375em
      ci-dessus, plus haut dans la source, qu'il ne faut pas écraser en la réécrivant. */
-  #app { grid-template-rows: auto auto 1fr auto; }
+  #app { grid-template-rows: max-content max-content 1fr auto; }
   #site-nav { padding-top: .3077rem; padding-bottom: .3077rem; }
 
   /* La barre du canevas relève de la même condition, mesurée le même jour : 310 px pour

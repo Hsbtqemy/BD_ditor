@@ -1219,6 +1219,25 @@ def test_ligne_d_un_login_long_avec_selecteur_a_320_px(page, jeu):
 
 
 @pytestmark_proxy
+@pytest.mark.parametrize("largeur", [320, 500, 1000])
+def test_la_bande_de_l_atelier_ne_cede_pas_a_une_fenetre_basse(page, jeu, largeur):
+    """`#site-nav` porte un `min-height` : une rangée `auto` de la grille de l'Atelier ne lui
+    garantissait que ce minimum, et la ligne du bac à sable recouvrait la bande 2 dès que la
+    fenêtre manquait de hauteur. Mesuré d'abord sous DejaVu Sans, à 320 × 800 et sous une
+    préférence de 24, où le poste ne le voyait pas ; une fenêtre basse le montre sous toute
+    police, à toutes les largeurs."""
+    bac = _ouvrir(jeu, LEA)
+    _sous(page, LEA)
+    page.goto(jeu["base"] + "/", wait_until="networkidle")
+    page.evaluate(f"localStorage.setItem('bd-projet', '{bac['id']}')")
+    page.set_viewport_size({"width": largeur, "height": 100})
+    page.goto(jeu["base"] + "/", wait_until="networkidle")
+    expect(page.locator("#bac-ligne")).to_be_visible()
+    v = page.evaluate(_RECOUVRE)
+    assert v["bas"] <= v["haut"] + 1, v
+
+
+@pytestmark_proxy
 def test_un_404_ordinaire_ne_fait_rien_hors_d_un_bac(page, jeu):
     """Hors d'un bac à sable, un 404 ordinaire ne relit rien et ne navigue pas ; dans un bac
     à sable encore là, il relit la liste UNE fois et ne navigue pas. Sur les cinq surfaces."""
