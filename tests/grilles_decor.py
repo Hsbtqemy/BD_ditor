@@ -20,9 +20,13 @@ RACINE = Path(__file__).resolve().parent.parent
 
 
 def _lire(nom: str) -> str:
-    """Le fichier tel qu'il est, fins de ligne comprises (CRLF, comme un tableur l'écrit)."""
+    """Le fichier en CRLF, comme un tableur l'écrit — quel que soit le poste. Le dépôt le garde
+    en LF : une copie Windows (`core.autocrlf`) le rend en CRLF, une copie Linux le laisse en
+    LF. Lu tel quel, les tests qui retouchent le modèle par ses lignes CRLF ne trouvaient rien
+    sur le serveur, et l'image du poste, construite depuis la copie Windows, ne le voyait pas
+    (déploiement du 2026-11-01)."""
     with open(RACINE / "tools" / nom, encoding="utf-8-sig", newline="") as f:
-        return f.read()
+        return f.read().replace("\r\n", "\n").replace("\n", "\r\n")
 
 
 MODELE = _lire("grille-modele.csv")
