@@ -93,6 +93,9 @@ const S = {
   doigt: null,                 // « Étendre », « Ajouter un mot » : le mode, ou null
 };
 let tourContexte = 0;          // la lecture du Contexte la plus récente gagne
+/* Les écritures PARTIES, par sorte. Une lecture commencée avant l'une d'elles peut revenir
+   après sa réponse, avec l'état d'avant : elle ne dit plus ce que le serveur porte. */
+const ECRITS = { note: 0, loc: 0, precision: 0 };
 let tourPlanche = 0;           // idem pour une planche
 
 /* ───────────── Le projet, les collections, les albums ───────────── */
@@ -204,7 +207,9 @@ async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
   if (!meme) annulerTrace();                     // un tracé n'a de sens que sur SA planche
   S.planche = id === null ? null : S.planches.find((p) => p.id === id) || null;
   S.regions = [];
-  S.releves = [];
+  // La MÊME planche relue garde ses relevés jusqu'à la réponse : un champ de précision qu'on
+  // quitte pendant ce temps doit retrouver le sien.
+  if (!meme) S.releves = [];
   S.passes = [];
   S.personnages = new Map();
   S.changer = null;
@@ -213,11 +218,11 @@ async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
     $("#an-planche-choix").value = String(S.planche.id);
     const [regions, lus] = await Promise.all([
       apiGet(`/api/planches/${S.planche.id}/regions`),
-      apiGet(`/api/planches/${S.planche.id}/releves`).catch(() => null),
+      lireReleves(S.planche.id),
     ]);
     if (tour !== tourPlanche) return;
     S.regions = regions;
-    S.releves = lus ? lus.releves : [];
+    if (lus || !meme) S.releves = lus ? lus.releves : [];
     S.passes = lus ? lus.passes || [] : [];
   }
   S.rangement = S.planche
@@ -645,6 +650,7 @@ async function rendreContexte() {
   if (gestes.has("transcription")) $("#an-transcription").value = valeurDuChamp("ocr_texte", z);
   $("#an-zone-supprimer").hidden = !gestes.has("supprimer");
   if (!id) return;
+  const ecrits = { ...ECRITS };
   const lire = (chemin, cle) => apiGet(chemin).then((d) => d[cle]).catch(() => undefined);
   const [locuteur, personnage, note] = await Promise.all([
     lignes.has("locuteur") ? lire(`/api/regions/${id}/locuteur`, "locuteur") : null,
@@ -653,7 +659,12 @@ async function rendreContexte() {
   ]);
   if (tour !== tourContexte) return;
   const val = new Map(A.contexte(z, { locuteur, personnage, note }).map((l) => [l.cle, l.valeur]));
-  if (lignes.has("locuteur")) montrerLocuteur(locuteur, locuteur !== undefined);
+  if (lignes.has("locuteur")) {
+    // Un locuteur parti entre-temps : sa réponse a le dernier mot. Pas encore revenue, ou refusée,
+    // la lecture montre ce qu'elle sait, sans en faire la valeur vue.
+    if (ecrits.loc === ECRITS.loc) montrerLocuteur(locuteur, locuteur !== undefined);
+    else if (S.loc.vu === undefined) montrerLocuteur(locuteur, false);
+  }
   if (lignes.has("personnage")) {
     $("#an-ctx-perso").textContent = val.get("personnage");
     $("#an-ctx-perso").classList.toggle("muted", ["—", "…"].includes(val.get("personnage")));
@@ -663,7 +674,7 @@ async function rendreContexte() {
   // Une lecture en échec ne donne aucune valeur VUE : la note reste fermée, plutôt que
   // d'écrire par-dessus ce qu'on n'a pas lu.
   if (note === undefined) return;
-  if (!S.note.sale) {
+  if (!S.note.sale && ecrits.note === ECRITS.note) {
     NOTES_VUES.set(id, note || "");
     champ.value = note || "";
   }
@@ -696,6 +707,7 @@ async function envoyerLocuteur(pid, rid, nom, vuDit) {
   const corps = { personnage_id: pid };
   const vu = vuDit !== undefined ? vuDit : rid === S.loc.region ? S.loc.vu : undefined;
   if (vu !== undefined) corps.personnage_vu = vu;
+  ECRITS.loc += 1;
   try {
     const { locuteur } = await apiSend("PUT", `/api/regions/${rid}/locuteur`, corps);
     if (S.loc.region === rid) montrerLocuteur(locuteur);
@@ -717,6 +729,7 @@ async function envoyerRetraitLocuteur(rid, vuDit) {
   if (S.conflit) return;
   const vu = vuDit !== undefined ? vuDit : rid === S.loc.region ? S.loc.vu : undefined;
   const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
+  ECRITS.loc += 1;
   try {
     await apiSend("DELETE", `/api/regions/${rid}/locuteur${q}`);
   } catch (e) {
@@ -779,6 +792,7 @@ async function envoyerNote(rid, texte) {
   const note = A.noteAEnvoyer(texte, vue);
   if (ici) S.note.sale = false;                    // un geste pendant l'aller-retour la resalit
   if (note === null) { if (ici) marquerNote(""); return; }
+  ECRITS.note += 1;
   try {
     await apiSend("PUT", `/api/regions/${rid}/annotation`, { note, note_vue: vue });
     NOTES_VUES.set(rid, note);
@@ -2364,9 +2378,19 @@ function focusApresConflit(cf) {
   remettreLeFocus(entree && entree.getClientRects().length ? entree : $("#an-filtre"));
 }
 
+/* Les relevés de la planche, ou null. Une précision partie pendant la lecture n'y est peut-être
+   pas : on attend son retour, et on relit. */
+async function lireReleves(id) {
+  const envois = ECRITS.precision;
+  const lus = await apiGet(`/api/planches/${id}/releves`).catch(() => null);
+  if (envois === ECRITS.precision) return lus;
+  if (precisionEnVol) await precisionEnVol;
+  return lireReleves(id);
+}
+
 async function relireReleves() {
   if (!S.planche) return;
-  const d = await apiGet(`/api/planches/${S.planche.id}/releves`).catch(() => null);
+  const d = await lireReleves(S.planche.id);
   if (d) { S.releves = d.releves; S.passes = d.passes || []; SIG.rebaseReleves = true; }
   apresEcriture();
 }
@@ -2672,6 +2696,7 @@ function envoyerPrecision(r, valeur) {
   const envoi = ecrire(grilleDe(r.grille_id), entreeDe(r), null, {
     action: "modifier", releve: r, corps: { precision: valeur },
     vu: { precision: r.precision || null } });
+  ECRITS.precision += 1;
   precisionEnVol = envoi;
   envoi.finally(() => { if (precisionEnVol === envoi) precisionEnVol = null; });
   return envoi;

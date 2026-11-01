@@ -3414,3 +3414,126 @@ def test_une_precision_dont_la_ligne_s_en_va_s_enregistre(page, decor):
         page.evaluate("() => document.querySelector('#an-zones .an-zone-btn:last-child').click()")
     expect(page.locator("#an-tete-zone")).to_contain_text("personnage")
     assert _origine(decor)["precision"] == "le salon"
+
+
+# ── Ce que l'agent des voies de perte a relevé (2026-11-01) ──
+
+def _lecture_en_route(page, motif):
+    """La prochaine lecture de `motif` atteint le serveur tout de suite, et sa réponse revient
+    à `lacher()` : ce qu'une écriture change entre-temps n'y est pas."""
+    retenues = []
+
+    def gerer(route):
+        if retenues or route.request.method != "GET":
+            route.continue_()
+            return
+        retenues.append((route, route.fetch()))
+
+    def lacher():
+        route, reponse = retenues[0]
+        route.fulfill(response=reponse)
+
+    page.route(motif, gerer)
+    return retenues, lacher
+
+
+def test_une_lecture_partie_avant_l_ecriture_ne_reprend_pas_la_note(page, decor):
+    """On revient sur la zone, et l'on répond au bandeau avant que sa note soit relue : la
+    relecture ramenait la version de l'autre dans le champ, et comme valeur vue. Trouvé en
+    retardant les lectures du serveur."""
+    cf = _prepare_conflit(page, decor, "note")
+    _zone(page, cf["autre"])
+    lues, lacher = _lecture_en_route(page, "**/api/regions/*/annotation")
+    _zone(page, cf["zone"])
+    _attendre_retenue(page, lues)
+    note = page.locator("#an-note")
+    expect(note).to_have_value("Ma version")
+    _part_en(page, cf, "Ma version")
+    lacher()
+    expect(page.locator("#an-note-lu")).to_have_text("Version autre")   # la lecture est arrivée
+    expect(note).to_have_value("Ma version")
+    note.fill("Ma version, et la suite")
+    with _reponse_de(page, cf["chemin"]) as q:
+        note.blur()
+    assert q.value.request.post_data_json["note_vue"] == "Ma version"
+    assert q.value.status == 200
+
+
+def test_une_lecture_partie_avant_l_ecriture_ne_reprend_pas_le_locuteur(page, decor):
+    """La même course sur le locuteur : la puce revenait à l'ancien nom, et la valeur vue avec."""
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
+    with _http(decor) as c:
+        c.post("/api/personnages", json={"nom": "Yann"})
+    _zone(page, "personnage")
+    lues, lacher = _lecture_en_route(page, "**/api/regions/*/locuteur")
+    _zone(page, "bulle")
+    _attendre_retenue(page, lues)
+    page.locator("#an-loc-input").fill("Yann")
+    expect(page.locator("#an-loc-liste")).to_contain_text("Yann")
+    with _reponse_de(page, "/locuteur"):
+        page.locator("#an-loc-input").press("Enter")
+    expect(page.locator("#an-loc-nom")).to_have_text("Yann")
+    lacher()
+    expect(page.locator("#an-note-lu")).to_have_text("il jure")         # la lecture est arrivée
+    expect(page.locator("#an-loc-nom")).to_have_text("Yann")
+
+
+def _actualiser_retenu(page, d, champ):
+    """« Actualiser » cliqué, sa relecture des relevés retenue. Rend `lacher`."""
+    _retour_sur_l_onglet(page)                     # la base du signal, avant ce qui change
+    _poser(d, region_id=d["bulle"], entree_cle="ton-de-voix", variante_cle="crie")
+    _retour_sur_l_onglet(page)
+    bouton = page.locator("#an-actualiser")
+    expect(bouton).to_be_visible()
+    lues, lacher = _retenir_les_envois(page, "**/api/planches/*/releves", "GET")
+    bouton.click()
+    _attendre_retenue(page, lues)
+    return lacher
+
+
+def test_une_precision_quittee_pendant_la_relecture_d_actualiser_part(page, decor):
+    """La relecture avait vidé la liste : la sortie du champ ne trouvait plus son relevé, et le
+    texte disparaissait au dessin suivant, sans un mot."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    lacher = _actualiser_retenu(page, decor, champ)
+    champ.click()
+    page.keyboard.type("le salon")
+    with _reponse_de(page, RELEVE) as q:
+        champ.blur()
+    assert q.value.request.post_data_json == {"precision": "le salon", "vu": {"precision": None}}
+    assert _origine(decor)["precision"] == "le salon"
+    lacher()
+    expect(page.locator("#an-actualiser")).to_be_hidden()
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "true")
+    expect(champ).to_have_value("le salon")
+
+
+def test_une_relecture_partie_avant_la_precision_ne_la_fait_pas_disparaitre(page, decor):
+    """La même sortie du champ, quand la relecture a déjà LU le serveur et que sa réponse revient
+    après l'écriture : elle ramenait l'état d'avant, le champ vide, et la version vue fausse."""
+    _ouvrir(page, decor, decor["bulle"])
+    champ = _avec_une_precision(page)
+    _retour_sur_l_onglet(page)
+    _poser(decor, region_id=decor["bulle"], entree_cle="ton-de-voix", variante_cle="crie")
+    _retour_sur_l_onglet(page)
+    bouton = page.locator("#an-actualiser")
+    expect(bouton).to_be_visible()
+    retenues, lacher = _lecture_en_route(page, "**/api/planches/*/releves")
+    bouton.click()
+    _attendre_retenue(page, retenues)
+    champ.click()
+    page.keyboard.type("le salon")
+    with _reponse_de(page, RELEVE):
+        champ.blur()
+    lacher()
+    expect(bouton).to_be_hidden()
+    expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "true")
+    expect(champ).to_have_value("le salon")
+    # Et la version vue est bien la sienne : la suite de la frappe ne se refuse pas à elle-même.
+    champ.fill("le salon bleu")
+    with _reponse_de(page, RELEVE) as q:
+        champ.blur()
+    assert q.value.status == 200, q.value.text()
+    assert _origine(decor)["precision"] == "le salon bleu"
