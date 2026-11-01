@@ -450,7 +450,8 @@ def test_le_lien_se_designe_sur_la_planche(page, decor):
     page.locator("#an-poses-liste .an-lien-btn").click()
     # L'autre zone vit dans la seconde case : on y va, puis on la touche.
     page.locator('#an-mini .an-mz[data-case="1"]').click()
-    page.locator(f'#an-vue-case rect[data-zone="{decor["cartouche"]}"]').click()
+    with _reponse_de(page, RELEVE):
+        page.locator(f'#an-vue-case rect[data-zone="{decor["cartouche"]}"]').click()
     r = [x for x in _releves(decor) if x["entree_cle"] == "reponse-a"]
     assert r[0]["lien"]["region_id"] == decor["cartouche"] and r[0]["etat"] == "normal"
 
@@ -1013,7 +1014,6 @@ def test_le_decompte_compte_toutes_les_grilles(page, decor):
 def _retour_sur_l_onglet(page):
     with page.expect_response(lambda r: r.url.endswith("/empreinte")):
         page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
-    page.wait_for_load_state("networkidle")
 
 
 def test_un_releve_pose_ailleurs_propose_actualiser_qui_garde_la_saisie(page, decor):
@@ -1144,7 +1144,8 @@ def test_le_lien_se_designe_sur_la_minicarte_et_dit_sa_zone(page, decor):
     expect(page.locator("#an-mini")).to_have_attribute("title", re.compile("zone liée"))
     # Le cartouche de la seconde case, sur la MINICARTE : le cadre de la case ne prend plus
     # le clic (Playwright refuserait de cliquer un élément recouvert).
-    page.locator(f'#an-mini rect[data-region="{decor["cartouche"]}"]').click()
+    with _reponse_de(page, RELEVE):
+        page.locator(f'#an-mini rect[data-region="{decor["cartouche"]}"]').click()
     expect(mode).to_be_hidden()
     expect(page.locator("#an-tete-case")).to_have_text("Case c1")      # la case n'a pas changé
     r = [x for x in _releves(decor) if x["entree_cle"] == "reponse-a"]
@@ -1418,9 +1419,9 @@ def test_une_note_tapee_puis_une_autre_zone_part_sur_la_sienne(page, decor):
     _ouvrir(page, decor, decor["bulle"])
     page.locator("#an-note").fill("il jure, vite")
     # Aussitôt une autre zone, avant le délai de frappe : la note part sur la BULLE.
-    page.locator(f'#an-vue-case rect[data-zone="{decor["boite"]}"]').click()
+    with _reponse_de(page, f"/regions/{decor['bulle']}/annotation"):
+        page.locator(f'#an-vue-case rect[data-zone="{decor["boite"]}"]').click()
     expect(page.locator("#an-tete-zone")).to_have_text(re.compile("boîte"))
-    page.wait_for_timeout(800)
     with _http(decor) as c:
         assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il jure, vite"
         assert c.get(f"/api/regions/{decor['boite']}/annotation").json()["note"] in (None, "")
@@ -1496,7 +1497,7 @@ def test_un_409_pendant_la_frappe_laisse_le_focus_dans_le_champ(page, decor):
     expect(page.locator("#an-cf-titre")).to_be_visible()
     expect(note).to_have_value("il jure vite et encore")
     expect(page.locator("#an-note-etat")).to_have_text("En attente de votre choix")
-    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(700)                     # une absence : le délai de frappe passé
     with _http(decor) as c:
         assert c.get(f"/api/regions/{decor['bulle']}/annotation").json()["note"] == "il crie"
     page.locator("#an-cf-mienne").click()                    # le choix part avec TOUTE la frappe
@@ -1640,7 +1641,8 @@ def test_tracer_un_texte_hors_bulle_le_transcrire_puis_l_annoter(page, decor):
     assert _regions(decor)[t]["ocr_texte"] == "PSST, PAR ICI"
     # Un texte se transcrit puis s'ANNOTE : ses mots se désignent, le cri s'y pose.
     _mot(page, 0).click()
-    page.locator("#an-plan [role=checkbox]", has_text="cri").first.click()
+    with _reponse_de(page, "/api/releves", "POST"):
+        page.locator("#an-plan [role=checkbox]", has_text="cri").first.click()
     assert any(r["region_id"] == t and [m["rang"] for m in r["mots"]] == [0]
                for r in _releves(decor))
     # Il a un locuteur, comme toute zone de texte.
@@ -2086,6 +2088,21 @@ def _lire_note(d, rid):
         return c.get(f"/api/regions/{rid}/annotation").json()["note"]
 
 
+def _reponse_de(page, chemin, methode="PUT"):
+    """Le geste rendu à sa RÉPONSE. Ce que le bandeau, le champ ou la base disent juste après un
+    clic n'en dit rien : le bandeau se ferme au clic, avant que le serveur ait écrit, et
+    `wait_for_load_state("networkidle")` rend tout de suite sur une page déjà chargée. Un test
+    qui lisait la base derrière lui gagnait sa course sur le poste et la perdait dans l'image :
+    quinze rouges, reproduits sur le poste en retardant le serveur. `chemin` : la fin de
+    l'adresse, ou `RELEVE` pour une écriture de relevé."""
+    return page.expect_response(lambda r: r.request.method == methode
+                                and (r.url.endswith(chemin) if chemin is not RELEVE
+                                     else "/api/releves/" in r.url))
+
+
+RELEVE = object()
+
+
 def _retenir_les_envois(page, motif, methode="PUT"):
     """Retient les écritures vers `motif` jusqu'à `lacher()` ; les lectures passent, et les
     écritures d'après aussi."""
@@ -2103,6 +2120,14 @@ def _retenir_les_envois(page, motif, methode="PUT"):
 
     page.route(motif, gerer)
     return retenues, lacher
+
+
+def _attendre_retenue(page, retenues):
+    for _ in range(50):
+        if retenues:
+            return
+        page.wait_for_timeout(100)
+    assert retenues
 
 
 def _prepare_conflit(page, d, champ):
@@ -2136,13 +2161,12 @@ def _prepare_conflit(page, d, champ):
 
 def _part_en(page, cf, attendu):
     """« Remplacer par la mienne » : mesure LA requête partie, avec la valeur vue."""
-    with page.expect_request(lambda r: r.url.endswith(cf["chemin"]) and r.method == "PUT") as q:
+    with _reponse_de(page, cf["chemin"]) as q:
         page.locator("#an-cf-mienne").click()
-    corps = q.value.post_data_json
+    corps = q.value.request.post_data_json
     assert corps[cf["cle"]] == attendu
     assert (corps["note_vue"] if cf["champ"] == "note" else corps["vu"][cf["cle"]]) == "Version autre"
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
     assert cf["lire"]() == attendu
 
 
@@ -2159,7 +2183,6 @@ def test_une_saisie_en_conflit_survit_a_un_aller_retour(page, decor, champ, reto
         page.locator(cf["sel"]).fill(mienne)
     _zone(page, cf["autre"])
     _zone(page, cf["zone"])
-    page.wait_for_load_state("networkidle")
     expect(page.locator(cf["sel"])).to_have_value(mienne)
     expect(page.locator(".an-en-conflit")).to_have_count(1)
     _part_en(page, cf, mienne)
@@ -2202,9 +2225,9 @@ def test_un_choix_de_locuteur_en_conflit_survit_et_declare_la_version_vue(page, 
     with _http(decor) as c:
         zed = c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["id"]
     _zone(page, "personnage")
-    with page.expect_request(lambda r: r.url.endswith("/locuteur") and r.method == "PUT") as q:
+    with _reponse_de(page, "/locuteur") as q:
         page.locator("#an-cf-mienne").click()
-    assert q.value.post_data_json["personnage_vu"] == zed
+    assert q.value.request.post_data_json["personnage_vu"] == zed
     expect(page.locator("#an-cf-titre")).to_have_count(0)
     with _http(decor) as c:
         assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["nom"] == "Yann"
@@ -2259,29 +2282,26 @@ def test_une_saisie_retenue_par_un_autre_conflit_survit_et_part(page, decor, cha
     zone l'effaçait sans un mot ; il revient au retour, et part quand le conflit est réglé."""
     if champ == "note":
         rid, sel, zone = decor["boite"], "#an-note", "personnage"
-        lire = lambda: _lire_note(decor, rid)  # noqa: E731
+        lire, chemin = (lambda: _lire_note(decor, rid)), f"/regions/{rid}/annotation"  # noqa: E731
     elif champ == "nom":
         rid, sel, zone = _detail(decor, nom="la lampe"), "#an-nom", "détail"
-        lire = lambda: _regions(decor)[rid]["nom"]  # noqa: E731
+        lire, chemin = (lambda: _regions(decor)[rid]["nom"]), f"/regions/{rid}"  # noqa: E731
     else:
         rid, sel, zone = _texte_hors_bulle(decor), "#an-transcription", "texte"
-        lire = lambda: _regions(decor)[rid]["ocr_texte"]  # noqa: E731
+        lire, chemin = (lambda: _regions(decor)[rid]["ocr_texte"]), f"/regions/{rid}"  # noqa: E731
     _ouvrir(page, decor, decor["bulle"])
     expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
     _conflit_de_locuteur(page, decor, "Zed", "Yann")
     expect(page.locator("#an-cf-titre")).to_be_visible()
     _zone(page, zone)
-    page.wait_for_load_state("networkidle")
     page.locator(sel).fill("Ma saisie")
     page.locator(sel).blur()
     _zone(page, "bulle")
     _zone(page, zone)
-    page.wait_for_load_state("networkidle")
     expect(page.locator(sel)).to_have_value("Ma saisie")
-    page.locator("#an-cf-autre").click()
+    with _reponse_de(page, chemin):
+        page.locator("#an-cf-autre").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_timeout(300)
-    page.wait_for_load_state("networkidle")
     assert lire() == "Ma saisie"
 
 
@@ -2306,12 +2326,11 @@ def test_un_refus_arrive_apres_le_depart_de_la_zone_ouvre_le_bandeau(page, decor
     expect(bouton).to_be_focused()
     expect(page.locator(".an-en-conflit")).to_have_count(0)
     _zone(page, "bulle")
-    page.wait_for_load_state("networkidle")
     expect(page.locator("#an-note")).to_have_value("Ma version")
     expect(page.locator("#an-ctx-note.an-en-conflit")).to_have_count(1)
-    page.locator("#an-cf-mienne").click()
+    with _reponse_de(page, "/annotation"):
+        page.locator("#an-cf-mienne").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
     assert _lire_note(decor, decor["bulle"]) == "Ma version"
 
 
@@ -2326,14 +2345,14 @@ def test_un_refus_revenu_sur_la_meme_zone_rend_la_saisie_au_champ(page, decor):
     retenues, lacher = _retenir_les_envois(page, "**/api/regions/*/annotation")
     page.locator("#an-note").fill("Ma version")
     page.locator("#an-zones .an-zone-btn", has_text="bulle").click()
-    page.wait_for_load_state("networkidle")
+    _attendre_retenue(page, retenues)
     assert len(retenues) == 1
     lacher()
     expect(page.locator("#an-cf-titre")).to_be_visible()
     expect(page.locator("#an-note")).to_have_value("Ma version")
-    page.locator("#an-cf-mienne").click()
+    with _reponse_de(page, "/annotation"):
+        page.locator("#an-cf-mienne").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
     assert _lire_note(decor, decor["bulle"]) == "Ma version"
 
 
@@ -2343,7 +2362,6 @@ def test_une_note_sur_une_zone_supprimee_ailleurs_se_dit_avec_son_texte(page, de
     t = _texte_hors_bulle(decor)
     _ouvrir(page, decor, t)
     expect(page.locator("#an-transcription")).to_have_value("PSST")
-    page.wait_for_load_state("networkidle")
     with _http(decor) as c:
         assert c.put(f"/api/regions/{t}/annotation", json={"note": "Version autre"}).status_code == 200
     page.locator("#an-note").fill("Ma note perdue")
@@ -2373,7 +2391,6 @@ def _au_clavier(page, cible):
 
 def _focus_tenu(page, cible):
     expect(cible).to_be_focused()
-    page.wait_for_load_state("networkidle")
     expect(cible).to_be_focused()
     c = page.evaluate(_CONTOUR)
     assert c["visible"] and c["trait"], c
@@ -2461,7 +2478,6 @@ def test_la_souris_ne_gagne_pas_de_contour(page, decor):
     crie = page.locator("#an-plan .an-var", has_text="crié")
     crie.click()
     expect(crie).to_have_attribute("aria-pressed", "true")
-    page.wait_for_load_state("networkidle")
     assert page.evaluate(_CONTOUR)["visible"] is False
     page.locator('#an-porte [data-porte="zone"]').click()
     assert page.evaluate(_CONTOUR)["visible"] is False
@@ -2664,7 +2680,6 @@ def test_ctrl_entree_d_un_champ_qui_disparait_rend_le_focus_a_la_zone(page, deco
     _au_clavier(page, page.locator("#an-loc-input"))
     page.keyboard.press("Control+Enter")
     expect(page.locator("#an-tete-zone")).not_to_have_text("bulle b1")
-    page.wait_for_load_state("networkidle")
     expect(page.locator("#an-loc-input")).to_be_hidden()
     assert page.evaluate("() => document.activeElement.tagName") != "BODY"
     # Les mots de la bulle : leur boîte cesse d'être focalisable le temps de lire les suivants.
@@ -2673,7 +2688,6 @@ def test_ctrl_entree_d_un_champ_qui_disparait_rend_le_focus_a_la_zone(page, deco
     _au_clavier(page, page.locator("#an-mots"))
     page.keyboard.press("Control+Enter")
     expect(page.locator("#an-tete-zone")).not_to_have_text("bulle b1")
-    page.wait_for_load_state("networkidle")
     assert page.evaluate("() => document.activeElement.tagName") != "BODY"
 
 
@@ -2717,10 +2731,12 @@ def test_terminee_sur_la_derniere_zone_garde_le_focus_dans_le_pied(page, decor):
     fin = page.locator("#an-terminee-suiv")
     total = 0
     _au_clavier(page, fin)
+    annonce = page.locator("#an-annonce")
     while total < 12 and fin.is_enabled():
         total += 1
+        avant = annonce.text_content()
         page.keyboard.press("Enter")
-        page.wait_for_load_state("networkidle")
+        expect(annonce).not_to_have_text(avant)    # la réponse est là, la zone a suivi
         tag = page.evaluate("() => document.activeElement.tagName")
         assert tag != "BODY", f"focus perdu au passage {total}"
     assert total
@@ -2740,7 +2756,6 @@ def test_la_minicarte_garde_son_focus_a_ctrl_z(page, decor):
     page.keyboard.press("Control+z")
     expect(page.locator("#toasts")).to_contain_text("Annulé :")
     expect(page.locator("#an-note")).to_have_value("il jure")
-    page.wait_for_load_state("networkidle")
     expect(case).to_be_focused()
 
 
@@ -2748,7 +2763,6 @@ def _detail_ouvert(page, d):
     rid = _detail(d, nom="la lampe")
     _ouvrir(page, d, rid)
     expect(page.locator("#an-nom")).to_have_value("la lampe")
-    page.wait_for_load_state("networkidle")
     return rid
 
 
@@ -2775,11 +2789,10 @@ def test_un_nom_retouche_pendant_l_aller_retour_est_ce_qui_attend(page, decor, d
     lacher()
     expect(page.locator("#an-cf-titre")).to_be_visible()
     expect(nom).to_have_value("Seconde")
-    with page.expect_request(lambda r: r.url.endswith(f"/regions/{rid}") and r.method == "PUT") as q:
+    with _reponse_de(page, f"/regions/{rid}") as q:
         page.locator("#an-cf-mienne").click()
-    assert q.value.post_data_json == {"nom": "Seconde", "vu": {"nom": "Version autre"}}
+    assert q.value.request.post_data_json == {"nom": "Seconde", "vu": {"nom": "Version autre"}}
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
     assert _regions(decor)[rid]["nom"] == "Seconde"
 
 
@@ -2799,7 +2812,6 @@ def test_un_champ_relu_pendant_l_aller_retour_suit_la_reponse(page, decor):
     expect(nom).to_have_value("la lampe")
     lacher()
     expect(nom).to_have_value("la lanterne")
-    page.wait_for_load_state("networkidle")
     assert _regions(decor)[rid]["nom"] == "la lanterne"
 
 
@@ -2824,16 +2836,14 @@ def test_un_refus_arrive_pendant_un_autre_conflit_attend_son_tour(page, decor):
     expect(page.locator("#an-cf-titre")).to_contain_text("Locuteur")
     _zone(page, "personnage")                      # plus de champ où la note survivrait seule
     lacher()
-    page.wait_for_load_state("networkidle")
     expect(page.locator("#an-cf-titre")).to_contain_text("Locuteur")
     page.locator("#an-cf-autre").click()
     expect(page.locator("#an-cf-titre")).to_contain_text("Note modifiée")
     _zone(page, "bulle")
-    page.wait_for_load_state("networkidle")
     expect(page.locator("#an-note")).to_have_value("Ma version")
-    page.locator("#an-cf-mienne").click()
+    with _reponse_de(page, "/annotation"):
+        page.locator("#an-cf-mienne").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
     assert _lire_note(decor, decor["bulle"]) == "Ma version"
 
 
@@ -2854,7 +2864,6 @@ def test_le_focus_remis_ne_reprend_pas_la_ligne_du_guide(page, decor):
     lacher()
     expect(crie).to_have_attribute("aria-pressed", "true")
     expect(crie).to_be_focused()
-    page.wait_for_load_state("networkidle")
     expect(page.locator("#an-guide-contenu .an-g-lib")).to_have_text("regard caméra")
 
 
@@ -2890,8 +2899,8 @@ def test_une_precision_en_cours_survit_a_un_redessin_de_la_liste(page, decor):
     expect(champ).to_have_value("le Lsal")
     page.wait_for_timeout(200)
     assert not ecrites, "le dessin a enregistré une précision à moitié tapée"
-    champ.blur()                                # c'est la sortie du champ qui l'envoie
-    page.wait_for_load_state("networkidle")
+    with _reponse_de(page, RELEVE):
+        champ.blur()                            # c'est la sortie du champ qui l'envoie
     assert [r for r in _releves(decor)
             if r["entree_cle"] == "origine-du-son"][0]["precision"] == "le Lsal"
 
@@ -2925,14 +2934,12 @@ def test_une_note_retenue_par_un_conflit_de_releve_part_quand_il_est_regle(page,
     page.locator("#an-plan .an-var", has_text="crié").click()
     expect(page.locator("#an-cf-titre")).to_be_visible()
     _zone(page, "personnage")
-    page.wait_for_load_state("networkidle")
     page.locator("#an-note").fill("Ma note")
     page.locator("#an-note").blur()
     _zone(page, "bulle")
-    page.locator("#an-cf-autre").click()
+    with _reponse_de(page, "/annotation"):
+        page.locator("#an-cf-autre").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_timeout(300)
-    page.wait_for_load_state("networkidle")
     assert _lire_note(decor, decor["boite"]) == "Ma note"
 
 
@@ -3000,7 +3007,6 @@ def test_un_changement_refuse_revient_au_projet_ou_l_on_est(page, decor):
     choix.select_option(str(decor["projet"]))
     expect(page.locator("#an-album")).to_have_value(str(decor["album"]))
     expect(page.locator("#an-mini .an-mz")).to_have_count(2)
-    page.wait_for_load_state("networkidle")
     _zone(page, "bulle")
     page.locator(f'#an-poses-liste [data-douter="{_cri(decor)["id"]}"]').click()
     page.locator("#an-dt-texte").fill("à moitié")
@@ -3099,7 +3105,6 @@ def test_recharger_demande_quand_un_champ_n_est_pas_parti(page, decor, champ):
     else:
         _ouvrir(page, decor, _texte_hors_bulle(decor))
         cible = page.locator("#an-transcription")
-    page.wait_for_load_state("networkidle")
     cible.click()
     page.keyboard.type("x")
     vues, _ = _sorties(page)
@@ -3115,7 +3120,6 @@ def test_recharger_demande_quand_la_note_n_est_pas_partie(page, decor):
     _ouvrir(page, decor, decor["bulle"])
     note = page.locator("#an-note")
     expect(note).to_have_value("il jure")
-    page.wait_for_load_state("networkidle")
     note.click()
     vues, _ = _sorties(page)
     # Dans la même tâche : le délai de frappe ne doit pas avoir le temps de passer.
@@ -3134,7 +3138,6 @@ def test_quitter_une_page_sans_enjeu_ne_demande_rien(page, decor):
     """Un formulaire de doute vide, un champ cliqué sans rien y changer : rien à perdre."""
     _ouvrir(page, decor, decor["bulle"])
     expect(page.locator("#an-note")).to_have_value("il jure")
-    page.wait_for_load_state("networkidle")
     page.locator(f'#an-poses-liste [data-douter="{_cri(decor)["id"]}"]').click()
     expect(page.locator("#an-dt-texte")).to_be_visible()
     page.locator("#an-note").click()
@@ -3148,7 +3151,6 @@ def test_une_note_enregistree_ne_retient_plus_la_page(page, decor):
     _ouvrir(page, decor, decor["bulle"])
     note = page.locator("#an-note")
     expect(note).to_have_value("il jure")
-    page.wait_for_load_state("networkidle")
     note.click()
     page.keyboard.type(" encore")
     expect(page.locator("#an-note-etat")).to_have_text("Enregistrée")
@@ -3165,7 +3167,6 @@ def test_un_conflit_regle_ne_retient_plus_la_page(page, decor):
     expect(page.locator("#an-cf-titre")).to_be_visible()
     page.locator("#an-cf-autre").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
     vues, _ = _sorties(page)
     _vers_la_bibliotheque(page)
     page.wait_for_url("**/corpus*")
@@ -3208,18 +3209,15 @@ def test_une_precision_ecrite_pendant_un_autre_conflit_survit_et_part(page, deco
     expect(champ).to_have_attribute("title", "En attente de votre choix")
     assert _origine(decor)["precision"] is None
     _zone(page, "personnage")
-    page.wait_for_load_state("networkidle")
     _zone(page, "bulle")
-    page.wait_for_load_state("networkidle")
     _mot(page, 1).click()
     expect(champ).to_be_visible()
     expect(champ).to_have_value("le salon")
     expect(champ).to_have_attribute("title", "En attente de votre choix")
-    with page.expect_request(lambda r: "/api/releves/" in r.url and r.method == "PUT") as q:
+    with _reponse_de(page, RELEVE) as q:
         page.locator("#an-cf-autre").click()
-    assert q.value.post_data_json == {"precision": "le salon", "vu": {"precision": None}}
+    assert q.value.request.post_data_json == {"precision": "le salon", "vu": {"precision": None}}
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
     assert _origine(decor)["precision"] == "le salon"
     expect(champ).to_have_value("le salon")
     expect(champ).not_to_have_attribute("title", "En attente de votre choix")
@@ -3231,9 +3229,9 @@ def test_quitter_le_champ_d_une_precision_pour_le_bandeau_ne_vole_pas_le_clic(pa
     champ = _precision_sous_conflit(page, decor)
     champ.click()
     page.keyboard.type("le salon")
-    page.locator("#an-cf-autre").click()
+    with _reponse_de(page, RELEVE):
+        page.locator("#an-cf-autre").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
     assert _origine(decor)["precision"] == "le salon"
 
 
@@ -3242,11 +3240,9 @@ def test_une_retenue_pas_encore_repartie_retient_la_page(page, decor):
     la dernière attend son tour, quitter la perdrait."""
     champ = _precision_sous_conflit(page, decor)
     _zone(page, "personnage")
-    page.wait_for_load_state("networkidle")
     page.locator("#an-note").fill("Ma note")
     page.locator("#an-note").blur()
     _zone(page, "bulle")
-    page.wait_for_load_state("networkidle")
     _mot(page, 1).click()
     champ.fill("le salon")
     champ.blur()
@@ -3262,8 +3258,8 @@ def test_une_retenue_pas_encore_repartie_retient_la_page(page, decor):
     _vers_la_bibliotheque(page)
     page.wait_for_timeout(300)
     assert vues == ["beforeunload"]
-    lacher()
-    page.wait_for_load_state("networkidle")
+    with _reponse_de(page, RELEVE):
+        lacher()
     assert _origine(decor)["precision"] == "le salon"
 
 
@@ -3285,9 +3281,10 @@ def test_une_precision_retenue_deja_ecrite_ailleurs_ne_repart_pas(page, decor):
     ecrites = []
     page.on("request", lambda r: ecrites.append(r.url)
             if r.method == "PUT" and "/api/releves/" in r.url else None)
-    page.locator("#an-cf-autre").click()
+    with _reponse_de(page, "/releves", "GET"):     # « Garder l'autre » relit ; la reprise suit
+        page.locator("#an-cf-autre").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(300)                     # une absence : rien à attendre d'autre
     assert ecrites == []
     expect(champ).to_have_value("le salon")
 
@@ -3301,7 +3298,7 @@ def test_une_precision_ramenee_a_sa_valeur_n_attend_plus_rien(page, decor):
     expect(champ).not_to_have_attribute("title", "En attente de votre choix")
     page.locator("#an-cf-autre").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(300)                     # une absence : rien à attendre d'autre
     assert _origine(decor)["precision"] is None
 
 
@@ -3318,11 +3315,10 @@ def test_les_deux_champs_d_une_precision_retenue_disent_la_meme_chose(page, deco
     jumeau.focus()
     jumeau.blur()
     _zone(page, "personnage")                      # « À compléter » se redessine, et la redit
-    page.wait_for_load_state("networkidle")
     expect(jumeau).to_have_value("le salon")
-    page.locator("#an-cf-autre").click()
+    with _reponse_de(page, RELEVE):
+        page.locator("#an-cf-autre").click()
     expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
     assert _origine(decor)["precision"] == "le salon"
 
 
@@ -3342,12 +3338,13 @@ def test_une_precision_retouchee_pendant_son_propre_conflit(page, decor, reponse
     champ.fill("la mienne, retouchée")
     champ.blur()
     expect(page.locator("#toasts")).not_to_contain_text("Réglez d'abord")
-    page.locator(f"#an-cf-{reponse}").click()
-    expect(page.locator("#an-cf-titre")).to_have_count(0)
-    page.wait_for_load_state("networkidle")
+    # « Garder l'autre » relit la planche : c'est la seule réponse à attendre de ce côté-là.
     attendu = "la mienne, retouchée" if reponse == "mienne" else "de l'autre"
-    assert _origine(decor)["precision"] == attendu
+    with _reponse_de(page, RELEVE if reponse == "mienne" else "/releves", "PUT" if reponse == "mienne" else "GET"):
+        page.locator(f"#an-cf-{reponse}").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
     expect(champ).to_have_value(attendu)
+    assert _origine(decor)["precision"] == attendu
 
 
 def test_une_precision_retenue_sur_un_releve_retire_rend_son_texte(page, decor):
@@ -3409,7 +3406,7 @@ def test_une_precision_dont_la_ligne_s_en_va_s_enregistre(page, decor):
     champ.click()
     page.keyboard.type("le salon")
     # Un clic sans sortie du champ, comme un raccourci.
-    page.evaluate("() => document.querySelector('#an-zones .an-zone-btn:last-child').click()")
+    with _reponse_de(page, RELEVE):
+        page.evaluate("() => document.querySelector('#an-zones .an-zone-btn:last-child').click()")
     expect(page.locator("#an-tete-zone")).to_contain_text("personnage")
-    page.wait_for_load_state("networkidle")
     assert _origine(decor)["precision"] == "le salon"
