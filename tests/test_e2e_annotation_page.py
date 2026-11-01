@@ -1297,7 +1297,11 @@ def test_une_ligne_tient_sur_sa_hauteur_pendant_la_designation(page, decor):
     assert lib.bounding_box()["height"] < 26, lib.bounding_box()
     pastille, l = ligne.locator(".an-pastille").bounding_box(), lib.bounding_box()
     assert abs((pastille["y"] + pastille["height"] / 2) - (l["y"] + l["height"] / 2)) < 8
-    assert pendant <= hors + 1 and pendant < 64, (hors, pendant)
+    # Trois rangées au plus, le geste de la ligne pour mesure : une borne en pixels supposait une
+    # chasse. Sous DejaVu Sans, « à compléter » passe à la ligne : 71 px, et une ligne saine. Le
+    # défaut d'origine, 91 px, en demandait quatre.
+    rangee = bouton.bounding_box()["height"]
+    assert pendant <= hors + 1 and pendant < 3 * rangee, (hors, pendant, rangee)
 
 
 def test_le_locuteur_se_choisit_et_se_retire_dans_le_contexte(page, decor):
