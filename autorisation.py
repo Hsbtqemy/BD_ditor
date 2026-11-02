@@ -257,7 +257,7 @@ class Portee:
     __slots__ = ("tout", "admin", "lecture", "ecriture", "propriete", "export",
                  "projets", "projets_geres", "utilisateur", "groupes",
                  "bacs_a_sable", "bacs_a_soi", "collections_bac", "hors_isoles",
-                 "bornee", "cols_bacs", "projets_bacs", "_ord")
+                 "bornee", "cols_bacs", "projets_bacs", "lecture_du_projet", "_ord")
 
     def __init__(self, *, tout: bool = False, admin: bool = False,
                  lecture: frozenset = frozenset(), ecriture: frozenset = frozenset(),
@@ -320,6 +320,10 @@ class Portee:
         # lecture : elle n'ajoute rien) ; DÉRIVÉE comme la base, jamais recopiée : qui cesse
         # d'être responsable cesse de lire. `pour_export` et `pour_le_corpus` repassent les
         # ensembles déjà dérivés sans redériver.
+        # UX-20 — `lecture_du_projet` : ce qu'on ne lit QUE par là, sans accès à soi. Pas une
+        # question d'autorisation : l'écran dit « lecture · par le projet », et seul ce point
+        # du code connaît encore la différence (`routes/collections._niveau_par_le_projet`).
+        self.lecture_du_projet = frozenset(lues_par_le_projet) - lecture
         lecture |= set(lues_par_le_projet)
         for projet_id, collection_id, niveau in bases:
             if projet_id in self.projets_geres:

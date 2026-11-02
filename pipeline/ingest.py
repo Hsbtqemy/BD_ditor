@@ -36,7 +36,8 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 from config import (CORPUS_DIR, DATA_DIR, DERIVATIVES_DIR, MAX_IMAGE_PIXELS,
-                    PILLOW_FORMATS, TRAVAIL_DPI, TRAVAIL_JPEG_QUALITY,
+                    MINIATURE_JPEG_QUALITY, MINIATURE_LARGEUR, PILLOW_FORMATS,
+                    TRAVAIL_DPI, TRAVAIL_JPEG_QUALITY,
                     WEB_JPEG_QUALITY, WEB_LARGEUR_PLANCHER, WEB_SCALE)
 
 # Garde anti-bombe de décompression : on relève la limite Pillow à une valeur
@@ -318,7 +319,7 @@ def make_web_derivative(source: Path, dest: Path,
     """
     with Image.open(source, formats=PILLOW_FORMATS) as img:   # SEC-3, cf. read_metadata
         img = image_8_bits(img)
-        return _ecrire_derive(img, dest, taille_scan or img.size, quality)
+        return _ecrire_derive(img, dest, taille_scan or img.size, quality).size
 
 
 def image_du_derive(img8: Image.Image, taille_scan: tuple[int, int]) -> Image.Image:
@@ -328,12 +329,52 @@ def image_du_derive(img8: Image.Image, taille_scan: tuple[int, int]) -> Image.Im
 
 
 def _ecrire_derive(img8: Image.Image, dest: Path, taille_scan: tuple[int, int],
-                   quality: int = WEB_JPEG_QUALITY) -> tuple[int, int]:
-    """Écrit le dérivé web d'une image déjà ramenée en 8 bits ; rend ses dimensions."""
+                   quality: int = WEB_JPEG_QUALITY) -> Image.Image:
+    """Écrit le dérivé web d'une image déjà ramenée en 8 bits ; rend l'image écrite."""
     web = image_du_derive(img8, taille_scan)
     dest.parent.mkdir(parents=True, exist_ok=True)
     web.save(dest, "JPEG", quality=quality, optimize=True)
-    return web.size
+    return web
+
+
+# --------------------------------------------------------------------------- #
+# La miniature (UX-20, Hugo, 2026-11-02 ; cf. `docs/ux20-miniature-cadrage.md`)
+# --------------------------------------------------------------------------- #
+def chemin_de_miniature(chemin: str) -> str:
+    """Le chemin de la miniature d'un dérivé, sous la forme qu'on lui donne (chemin de la
+    base, ou simple nom) : `…/planche_0001.jpg` → `…/planche_0001.miniature.jpg`.
+
+    LA règle, écrite ici seulement, et il n'y a aucune colonne : la miniature est une
+    fonction pure de `chemin_web`. Deux copies sœurs désignent le même dérivé, donc la même
+    miniature, et **la miniature suit son dérivé** : elle quitte le disque avec lui
+    (`remove_planche_files`), reste avec lui (`remove_album_files`) et se refait avec lui
+    (`tools/regenerer_derives.py`)."""
+    racine, extension = os.path.splitext(chemin)
+    return f"{racine}.miniature{extension}"
+
+
+def ecrire_miniature(web: Image.Image, dest: Path) -> None:
+    """Écrit la miniature d'un dérivé déjà en 8 bits : `MINIATURE_LARGEUR` de large, sans
+    jamais agrandir, le rapport d'aspect gardé. Écrite à côté puis substituée d'un coup : un
+    échec ne laisse ni fichier tronqué à `dest` ni fichier provisoire."""
+    if web.width > MINIATURE_LARGEUR:
+        hauteur = max(1, round(web.height * MINIATURE_LARGEUR / web.width))
+        web = web.resize((MINIATURE_LARGEUR, hauteur), Image.LANCZOS)
+    provisoire = dest.with_name(dest.name + ".provisoire")
+    try:
+        web.save(provisoire, "JPEG", quality=MINIATURE_JPEG_QUALITY, optimize=True)
+        os.replace(provisoire, dest)
+    except BaseException:
+        provisoire.unlink(missing_ok=True)
+        raise
+
+
+def faire_miniature(derive: Path, dest: Path) -> None:
+    """Tire la miniature d'un dérivé déjà sur le disque (les outils : rattrapage de
+    l'existant, dérivé régénéré). L'import, qui a le dérivé en mémoire, ne repasse pas par
+    ici."""
+    with Image.open(derive, formats=PILLOW_FORMATS) as img:     # SEC-3, cf. read_metadata
+        ecrire_miniature(image_8_bits(img), dest)
 
 
 # --------------------------------------------------------------------------- #
@@ -633,7 +674,12 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source,
                 ecrire_copie_de_travail(img8, travail, meta["largeur"], meta["hauteur"],
                                         meta["dpi"],
                                         icc=icc if img8.mode == meta["mode"] else None)
-            _ecrire_derive(img8, web_path, (meta["largeur"], meta["hauteur"]))
+            web = _ecrire_derive(img8, web_path, (meta["largeur"], meta["hauteur"]))
+            # Hors de `_reserver` : le témoin du dérivé tient déjà le numéro, et une miniature
+            # qui traînerait à ce chemin n'est celle d'aucune planche (`numero_occupe`).
+            miniature = web_path.with_name(chemin_de_miniature(web_path.name))
+            ecrits.append(miniature)
+            ecrire_miniature(web, miniature)
 
         chemin_tiff = _rel_posix(travail) if travail is not None else None
         chemin_web = _rel_posix(web_path)
@@ -690,9 +736,11 @@ def remove_album_files(album_id: int, garder=frozenset()) -> None:
     fichier gardé part en entier, comme avant (y compris ce qu'aucune planche ne désigne, un
     master orphelin d'un import raté) ; sinon seuls ses autres fichiers partent, et il reste
     pour la sœur. C'est le risque irréversible de la tranche : une image effacée sous une
-    sœur ne se rattrape pas."""
+    sœur ne se rattrape pas. Un chemin gardé garde sa miniature (UX-20) : aucune planche ne
+    la désigne, et elle partirait sinon avec « le reste »."""
     import shutil
-    garder = {(DATA_DIR / g).resolve() for g in garder if g}
+    garder = {(DATA_DIR / c).resolve() for g in garder if g
+              for c in (g, chemin_de_miniature(g))}
     for racine in (CORPUS_DIR, DERIVATIVES_DIR):
         dossier = racine / f"album_{album_id}"
         if not dossier.is_dir():
@@ -782,10 +830,12 @@ def remove_planche_files(chemin_tiff: str | None, chemin_web: str | None,
     """Supprime l'image de travail (`chemin_tiff` : la copie de travail depuis IMG-1, le
     master d'une planche d'avant la v34) et le dérivé web d'une planche (best-effort).
     `garder` : ceux des deux chemins qu'une AUTRE planche emploie encore — une copie sœur
-    (D6) —, qui restent."""
+    (D6) —, qui restent. La miniature suit son fichier (UX-20) : un dérivé peut arriver ici en
+    première position, depuis `socle._effacer_les_images_d_une_copie`."""
     for rel in (chemin_tiff, chemin_web):
         if rel and rel not in garder:
-            try:
-                (DATA_DIR / rel).unlink(missing_ok=True)
-            except OSError:  # pragma: no cover - garde défensive (permissions…)
-                pass
+            for cible in (rel, chemin_de_miniature(rel)):
+                try:
+                    (DATA_DIR / cible).unlink(missing_ok=True)
+                except OSError:  # pragma: no cover - garde défensive (permissions…)
+                    pass

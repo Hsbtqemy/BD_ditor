@@ -398,7 +398,8 @@ def test_un_import_qui_echoue_apres_ecriture_retire_ses_fichiers(client, album, 
     assert [p["id"] for p in planches] == [avant["id"]]
     for dossier in ("corpus", "derivatives"):
         fichiers = sorted(f.name for f in (data_dir / dossier / f"album_{album['id']}").iterdir())
-        assert [f.split(".")[0] for f in fichiers] == ["planche_0001"], (dossier, fichiers)
+        # `set` : le dérivé a sa miniature à côté de lui (UX-20).
+        assert {f.split(".")[0] for f in fichiers} == {"planche_0001"}, (dossier, fichiers)
 
 
 def test_l_import_valide_planche_par_planche(client, album, db_path, monkeypatch):

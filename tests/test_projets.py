@@ -453,6 +453,7 @@ def test_un_acces_de_collection_exige_d_etre_du_projet(client, decor, db_path):
     assert client.get(f"/api/albums/{decor['album']}/collections", headers=BOB).json() \
         == [{"id": decor["collection"], "nom": "Étude des émotions",
              "projet_id": decor["projet"], "mon_niveau": "lecture",
+             "niveau_par_le_projet": False,
              "administrable": False, "exportable": False}]
 
     projets = client.get("/api/projets", headers=BOB).json()

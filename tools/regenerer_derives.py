@@ -81,8 +81,8 @@ from PIL import Image                                  # noqa: E402
 from _commun import forcer_utf8                        # noqa: E402
 import database                                        # noqa: E402
 from config import DATA_DIR, PILLOW_FORMATS            # noqa: E402
-from pipeline.ingest import (MODES_GRIS_16_BITS, make_web_derivative,  # noqa: E402
-                             taille_du_derive)
+from pipeline.ingest import (MODES_GRIS_16_BITS, chemin_de_miniature,  # noqa: E402
+                             faire_miniature, make_web_derivative, taille_du_derive)
 
 # Provenances des régions posées par un moteur (segmentation, bulles).
 SOURCES_MOTEUR = ("kumiko", "auto")
@@ -175,6 +175,9 @@ def regenerer(conn, planches, *, appliquer: bool, meme_a_la_bonne_taille: bool =
                     os.replace(provisoire, dest)
                 finally:
                     provisoire.unlink(missing_ok=True)
+                # La miniature suit son dérivé (UX-20) : un dérivé corrigé garderait sinon
+                # une miniature blanche.
+                faire_miniature(dest, DATA_DIR / chemin_de_miniature(p["chemin_web"]))
                 apres = dest.stat().st_size
             else:
                 with tempfile.TemporaryDirectory() as tmp:

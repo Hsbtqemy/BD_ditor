@@ -405,7 +405,11 @@ SORTIES_DECLAREES = {
         "cadrage ; mesuré sous une lectrice par "
         "`test_une_lectrice_lit_la_demande_sans_le_nom`). Le MOTIF n'y est pas — il ne se "
         "lit que dans le fonds. Le courriel ne sort pas : `noms_lisibles` ne lit jamais "
-        "cette colonne. Avant la tranche 2 la liste ne nommait personne."),
+        "cette colonne. Avant la tranche 2 la liste ne nommait personne. UX-20 — et QUI a "
+        "fait une copie ou importé un album (`copie_par`, `copie_par_nom`, lus dans "
+        "`copie.creee_par`), à qui ÉCRIT dans la copie et à la portée totale, la borne de "
+        "`repartie` (Hugo, 2026-11-02) : une lectrice reçoit la ligne sans ces clés, mesuré "
+        "sur le JSON brut par `tests/test_copie_dans_la_liste.py`."),
     ("route", "/api/fonds"): (
         {"login", "nom"},
         "COL-3, tranche 2 — l'écran du FONDS : qui a importé chaque document "
@@ -615,6 +619,11 @@ NON_BALAYE = {
         "planche, des tailles d'image et de fichier et, en "
         "cas d'échec, le message de l'exception — un chemin de fichier au plus, jamais "
         "une colonne d'identité."),
+    ("outil", "faire_miniatures.py"): (
+        "Maintenance (UX-20) : écrit les miniatures qui manquent, sans écrire en base. Son "
+        "compte rendu est un décompte, des chemins de dérivé et des tailles de fichier, et, en "
+        "cas d'échec, le message de l'exception — un chemin de fichier au plus, jamais une "
+        "colonne d'identité."),
     ("outil", "convertir_en_copies_de_travail.py"): (
         "Maintenance (IMG-1) : remplace les masters gardés par des copies de travail et "
         "écrit `planches.chemin_tiff`/`master_origine`. Son compte rendu est un décompte, "

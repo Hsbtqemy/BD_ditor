@@ -94,7 +94,7 @@ import conflit                                          # noqa: E402
 import database                                         # noqa: E402
 from config import DATA_DIR, PILLOW_FORMATS             # noqa: E402
 from pipeline.ingest import (_metadonnees, chemin_d_image_sur,  # noqa: E402
-                             ecrire_copie_de_travail, image_8_bits)
+                             chemin_de_miniature, ecrire_copie_de_travail, image_8_bits)
 
 AVERTISSEMENT = (
     "⚠ Convertir EFFACE le master du serveur : la copie de travail (JPEG, 300 dpi effectifs) "
@@ -205,9 +205,12 @@ def orphelins(conn) -> list[tuple[str, int]]:
     planche ne désigne : un master resté après une conversion interrompue ou dont
     l'effacement a été refusé ; et, VIDES, les deux fichiers d'une réservation laissée par un
     import tué en cours de route (`ingest._reserver`). Listés, jamais effacés : un import EN
-    COURS a aussi ses fichiers réservés, et rien ne les distingue d'un reste."""
-    designes = {c for r in conn.execute("SELECT chemin_tiff, chemin_web FROM planches")
-                for c in r if c}
+    COURS a aussi ses fichiers réservés, et rien ne les distingue d'un reste. La miniature
+    d'un dérivé désigné ne l'est par aucune planche et n'est pas un reste (UX-20) ; celle
+    d'un dérivé disparu en est un."""
+    designes = set()
+    for tiff, web in conn.execute("SELECT chemin_tiff, chemin_web FROM planches"):
+        designes.update(c for c in (tiff, web, web and chemin_de_miniature(web)) if c)
     trouves = []
     for nom in ("corpus", "derivatives"):
         racine = DATA_DIR / nom

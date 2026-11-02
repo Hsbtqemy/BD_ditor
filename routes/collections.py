@@ -84,6 +84,14 @@ def _niveau_dans(portee: autorisation.Portee, collection_id: int):
     return autorisation.LECTURE if collection_id in portee.lecture else None
 
 
+def _niveau_par_le_projet(portee: autorisation.Portee, collection_id: int) -> bool:
+    """`mon_niveau` vaut-il « lecture » par le seul fait de RESPONSABLE du projet (F1, COL-3,
+    tranche 3c) ? UX-20 : l'écran dit alors « lecture · par le projet ». Faux dès qu'on a un
+    accès à soi sur la collection : il dit ce qu'on lit par ce chemin-là et par aucun autre."""
+    return (_niveau_dans(portee, collection_id) == autorisation.LECTURE
+            and collection_id in portee.lecture_du_projet)
+
+
 def _acces_de(conn, collection_id: int, *, sans_signal: bool = False) -> list[dict]:
     """Les accès accordés sur une collection, propriétaires d'abord.
 
@@ -234,6 +242,7 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
             if portee.peut_lire(c["id"]) and (jeu is None or c["projet_id"] != jeu)]
     for c in vues:
         c["mon_niveau"] = _niveau_dans(portee, c["id"])
+        c["niveau_par_le_projet"] = _niveau_par_le_projet(portee, c["id"])
         c["administrable"] = portee.peut_administrer(c["id"])
         # DROIT-2 — la seconde question que le client reçoit, et pour la même raison
         # qu'`administrable` : cacher un bouton d'export qu'on refuserait. La garde
@@ -813,6 +822,7 @@ def list_collections_album(album_id: int, conn: sqlite3.Connection = Depends(db)
     _get_album(conn, portee, album_id)
     lues = _collections_lues_d_albums(conn, portee, [album_id])[album_id]
     return [{**c, "mon_niveau": _niveau_dans(portee, c["id"]),
+             "niveau_par_le_projet": _niveau_par_le_projet(portee, c["id"]),
              "administrable": portee.peut_administrer(c["id"]),
              "exportable": portee.peut_exporter(c["id"])}
             for c in lues]

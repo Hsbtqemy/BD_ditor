@@ -33,8 +33,8 @@ from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, DEMANDE_SUPPRESSION_D
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_d_album, projet_de_collection,
                       liens_vus, relecture_planches, reindex_region, retirer_liens_caches,
-                      espace_d_album, sql_album_isole, sql_est_jeu, sql_projet_d_album,
-                      unindex_region)
+                      espace_d_album, sql_album_isole, sql_couverture_d_album, sql_est_jeu,
+                      sql_projet_d_album, unindex_region)
 import autorisation
 import conflit
 import empreinte
@@ -120,7 +120,8 @@ from pipeline import jobs
 from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import RESERVATION as RESERVATION_INTERROMPUE
-from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, ecarter_dossiers_d_album,
+from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, chemin_de_miniature,
+                             ecarter_dossiers_d_album,
                              DecodeurAbsent, ecriture_ratee, ingest_image,
                              nom_du_fichier_d_origine, numero_occupe,
                              phrase_d_ecriture_ratee, phrase_d_erreur_serveur,
@@ -495,6 +496,22 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     # `ecrivable` ne suffit plus à l'écran pour offrir « Supprimer… » et « Repartir de
     # zéro… ». `soeur` et `derniere_copie` suivent : ils valent pour qui ÉCRIT dans la copie
     # OU peut l'effacer — ce sont les mots du panneau de qui l'ouvre.
+    #
+    # UX-20 (Hugo, 2026-11-02) — `couverture` : la planche dont la grille montre la miniature
+    # (`database.sql_couverture_d_album`), NULL pour un album sans planche. Une donnée, sans
+    # borne de plus : un album de cette liste est lu, donc ses planches le sont.
+    #
+    # UX-20 (arbitrages de Hugo, 2026-11-02) — ce que la grille dit d'une copie, sous trois
+    # bornes distinctes :
+    #   · `copie_de` — l'album dont cette copie est tirée, S'IL EST DANS CETTE LISTE, donc lu.
+    #     `null` sinon, exactement comme une copie dont la source est détruite ou un album
+    #     d'origine : rien ne distingue « je ne lis pas sa source » de « il n'y en a plus ».
+    #     Un identifiant publié sans cette borne dirait qu'un album existe hors de portée ;
+    #   · `a_moi` — le compte de l'appelant a fait cette copie, ou importé cet album. Pour
+    #     tous, puisqu'il ne dit rien que de lui-même ; faux pour un album d'avant la v30
+    #     (`copie.creee_par` NULL) ;
+    #   · `copie_par`, `copie_par_nom` — QUI l'a faite, à qui ÉCRIT dans la copie et à la
+    #     portée totale, la borne de `repartie`. Un simple lecteur ne reçoit pas ces clés.
     detruire, p_detruire = portee.clause_suppression_directe("a.id")
     effacer, p_effacer = portee.clause_repartir_directe("a.id")
     ecrire, p_ecrire = portee.clause_album("a.id", ecriture=True)
@@ -533,6 +550,11 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                   NOT EXISTS (SELECT 1 FROM collection_album _fa
                               WHERE _fa.album_id = a.id) AS au_fonds,
                   (SELECT _co.cran FROM copie _co WHERE _co.album_id = a.id) AS copie_cran,
+                  (SELECT _co.creee_par FROM copie _co WHERE _co.album_id = a.id)
+                      AS _creee_par,
+                  (SELECT _co.depuis_album_id FROM copie _co WHERE _co.album_id = a.id)
+                      AS _depuis,
+                  {sql_couverture_d_album('a')} AS couverture,
                   (SELECT COUNT(*) FROM planches p WHERE p.album_id = a.id)
                       AS nb_planches,
                   (SELECT COUNT(*) FROM regions r JOIN planches p ON p.id = r.planche_id
@@ -583,8 +605,8 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     # ÉCRIT dans la copie — ceux dont le travail pouvait partir — et par une portée totale ;
     # une lectrice reçoit la puce sans nom (l'option fermée, à trancher).
     repartie = {}
+    voulus = set(ids)
     if ids:
-        voulus = set(ids)
         for r in conn.execute(
                 "SELECT json_extract(apres, '$.album_id') AS album_id, agent, date, "
                 "json_extract(apres, '$.repartir.cran') AS cran, "
@@ -607,7 +629,8 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     # COL-3, tranche 3c (F4) — le RESPONSABLE du projet de la copie lit aussi qui demande sa
     # suppression (`peut_nommer_le_demandeur`, `consentement`) : les noms se lisent tous, et
     # la borne se pose album par album, plus bas.
-    noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values() if d["demandeur"]])
+    noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values() if d["demandeur"]]
+                         + [a["_creee_par"] for a in albums if a["_creee_par"]])
     # UX-18 — l'appartenance de CHAQUE album, en une lecture, pour que la Bibliothèque
     # filtre le corpus par collection sans un appel par album. Les seules collections LUES
     # (`_collections_lues_d_albums`, la règle de `GET /api/albums/{id}/collections` écrite
@@ -624,6 +647,11 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
         for champ in ("destructible", "effacable", "ecrivable", "partage", "au_fonds",
                       "soeur", "derniere_copie"):
             a[champ] = bool(a[champ])
+        creee_par, depuis = a.pop("_creee_par"), a.pop("_depuis")
+        a["copie_de"] = depuis if depuis in voulus else None
+        a["a_moi"] = creee_par is not None and creee_par == portee.utilisateur
+        if portee.tout or a["ecrivable"]:
+            a.update(copie_par=creee_par, copie_par_nom=noms.get(creee_par))
         a["rejoindre_demande"] = sorted(set(rejoindre.get(a["id"], [])))
         a["collections"] = [{"id": c["id"], "nom": c["nom"]} for c in rangements[a["id"]]]
         a["demande_repartir"] = repartir.get(a["id"])
@@ -3150,7 +3178,24 @@ def derivative(chemin: str, request: Request, conn: sqlite3.Connection = Depends
         (f"derivatives/{chemin}", *params)))
     if row is None:
         raise HTTPException(404, "Image introuvable")
-    fichier = DATA_DIR / row["chemin_web"]
+    return _image_servie(DATA_DIR / row["chemin_web"], request)
+
+
+@app.get("/api/planches/{planche_id}/miniature")
+def miniature(planche_id: int, request: Request, conn: sqlite3.Connection = Depends(db),
+              portee: autorisation.Portee = Depends(portee_courante)):
+    """La miniature d'une planche, pour la grille de la Bibliothèque (UX-20) : par
+    l'accesseur gardé, 404 hors de portée. L'adresse porte l'identifiant et aucun chemin, et
+    le fichier n'est pas dans l'allowlist de `/derivatives`, qui ne connaît que
+    `planches.chemin_web`. Fichier absent (planche d'avant le rattrapage,
+    `tools/faire_miniatures.py`) : 404, et l'écran montre le titre sur un aplat."""
+    planche = _get_planche(conn, portee, planche_id)
+    return _image_servie(DATA_DIR / chemin_de_miniature(planche["chemin_web"]), request)
+
+
+def _image_servie(fichier, request: Request) -> Response:
+    """Sert une image DÉJÀ AUTORISÉE par l'appelant : `no-cache`, et un 304 quand l'ETag
+    concorde (les deux défauts mesurés le 2026-09-16, cf. `derivative`)."""
     if not fichier.is_file():
         raise HTTPException(404, "Image introuvable")
     # Le 304 se décide APRÈS le contrôle de portée, jamais avant : répondre « inchangé »

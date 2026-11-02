@@ -91,6 +91,29 @@ def test_le_responsable_lit_toutes_les_collections_de_son_projet(client, projet)
     assert projet["carnet"] in _collections(client, ECRIVAIN)
 
 
+def test_la_lecture_par_le_projet_se_distingue(client, projet):
+    """UX-20 — l'écran dit « lecture · par le projet » : `niveau_par_le_projet` vaut vrai sur
+    ce que le responsable ne lit QUE par la 3c, et nulle part ailleurs."""
+    carnet, vide, base = projet["carnet"], projet["vide"], projet["base"]
+    cols = _collections(client, RESP)
+    assert cols[carnet]["niveau_par_le_projet"] and cols[vide]["niveau_par_le_projet"]
+    assert not cols[base]["niveau_par_le_projet"], "il possède la base, il ne fait pas que lire"
+    rangee = client.get(f"/api/albums/{projet['album']}/collections", headers=RESP).json()
+    assert [(c["id"], c["niveau_par_le_projet"]) for c in rangee] == [(carnet, True)]
+
+    # Un accès à soi l'emporte : même niveau, plus le même chemin.
+    _ok(_acces(client, vide, "resp", "lecture"))
+    assert (_collections(client, RESP)[vide]["mon_niveau"],
+            _collections(client, RESP)[vide]["niveau_par_le_projet"]) == ("lecture", False)
+    # Ni le propriétaire, ni l'écrivain, ni l'administrateur.
+    assert not _collections(client, PROPRIO)[carnet]["niveau_par_le_projet"]
+    assert not _collections(client, ECRIVAIN)[carnet]["niveau_par_le_projet"]
+    assert not _collections(client, ADMIN)[carnet]["niveau_par_le_projet"]
+    # Un simple lecteur non plus : il lit par un accès.
+    _ok(_acces(client, vide, "ecrivain", "lecture"))
+    assert not _collections(client, ECRIVAIN)[vide]["niveau_par_le_projet"]
+
+
 def test_lire_n_ouvre_ni_l_ecriture_ni_l_export_ni_qui_entre(client, projet):
     """La lecture dérivée ne s'empile pas : `resp` n'écrit pas dans le Carnet (l'album n'y
     est pas `ecrivable`, une région se refuse), ne l'exporte pas (403 nommé, par la route

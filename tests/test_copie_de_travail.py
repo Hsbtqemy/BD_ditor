@@ -387,7 +387,8 @@ def test_un_second_import_au_meme_numero_ne_touche_pas_aux_fichiers_du_premier(
         c1.close()
         c2.close()
     assert _fichiers(data_dir) == avant
-    assert set(avant) == {p1["chemin_tiff"], p1["chemin_web"]}
+    assert set(avant) == {p1["chemin_tiff"], p1["chemin_web"],
+                          ingest.chemin_de_miniature(p1["chemin_web"])}
 
 
 def test_deux_imports_simultanes_recoivent_deux_numeros(client, album, data_dir,

@@ -570,6 +570,9 @@ OUTILS_HORS = {
     "reindex_nlp.py": "Maintenance : régénère tokens et index. Compte rendu = décompte.",
     "reindex_materiel.py": "Maintenance : relit les masters. Compte rendu = décompte.",
     "regenerer_derives.py": "Maintenance : réécrit les dérivés. Compte rendu = décompte.",
+    "faire_miniatures.py":
+        "Maintenance (UX-20) : écrit les miniatures qui manquent. Compte rendu = décompte, "
+        "chemins de fichier et tailles ; jamais un terme ni une charge.",
     "convertir_en_copies_de_travail.py":
         "Maintenance (IMG-1) : remplace les masters par des copies de travail. Compte "
         "rendu = décompte, chemins de fichier et tailles ; jamais un terme ni une charge.",
@@ -635,6 +638,8 @@ ENTREES_HORS = {
     "reindex_materiel.py": {"--dry-run", "--force"},
     "regenerer_derives.py": {"--album", "--appliquer", "--meme-a-la-bonne-taille", "--mode",
                              "--planche", "--toutes"},
+    "faire_miniatures.py": {"--album", "--appliquer", "--meme-existantes", "--planche",
+                            "--toutes"},
     "convertir_en_copies_de_travail.py": {"--album", "--appliquer"},
     "effacer_bacs_a_sable.py": {"--appliquer", "--maintenant", "--tous"},
     "preparer_jeu.py": {"--appliquer", "--depot", "--serveur"},

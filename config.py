@@ -45,6 +45,13 @@ WEB_SCALE = 0.25          # le dérivé fait 25 % de la taille du SCAN (`largeur
 WEB_LARGEUR_PLANCHER = 1600
 WEB_JPEG_QUALITY = 82
 
+# La MINIATURE d'une planche (UX-20, Hugo, 2026-11-02) : ce que charge la grille de la
+# Bibliothèque, qui ne doit charger aucun dérivé. 320 px : deux fois la carte de 10rem, pour
+# un écran à double densité. Mesuré sur 129 dérivés : 23,7 Ko en médiane. Cf.
+# `docs/ux20-miniature-cadrage.md`.
+MINIATURE_LARGEUR = 320
+MINIATURE_JPEG_QUALITY = 75
+
 # La COPIE DE TRAVAIL (IMG-1, décidé par Hugo le 2026-10-21). Le serveur ne garde plus le
 # fichier reçu — le master d'archive vit où le projet le met (ShareDocs, un disque, des
 # disques durs) — mais une copie JPEG à 300 dpi EFFECTIFS : un scan au-dessus est réduit

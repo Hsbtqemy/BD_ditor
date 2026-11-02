@@ -3116,6 +3116,17 @@ def sql_projet_d_album(alias: str = "a") -> str:
     return f"COALESCE({alias}.projet_id, ({_sql_projet_des_collections(alias)}))"
 
 
+def sql_couverture_d_album(alias: str = "a") -> str:
+    """Sous-requête SQL de la COUVERTURE d'un album : l'identifiant d'une planche, NULL pour
+    un album sans planche. La règle (Hugo, sur maquette, 2026-11-02), dérivée et sans geste :
+    la première planche marquée paratexte, sinon la première planche. Le paratexte se lit
+    `role <> 'recit'`, le vocabulaire des rôles étant extensible (`config.ROLES_PLANCHE`).
+
+    `alias` est un morceau de SQL écrit par le code appelant, jamais une valeur du client."""
+    return (f"(SELECT _cv.id FROM planches _cv WHERE _cv.album_id = {alias}.id "
+            "ORDER BY _cv.role = 'recit', _cv.numero, _cv.id LIMIT 1)")
+
+
 def projet_d_album(conn: sqlite3.Connection, album_id: int) -> int | None:
     """Id du projet de cette copie, par la règle de `sql_projet_d_album`. None si elle
     n'existe pas, ou n'a jamais eu de projet."""
