@@ -291,6 +291,7 @@ PANNEAU qui distingue, et le test est paramétré sur les deux depuis.
 ### Idée de Hugo, le 2026-10-31 — la navigation en bas sur écran étroit
 
 - [ ] La navigation entre les six surfaces passe en bas de l'écran sur téléphone, ou reste en haut — attendu : tranché par Hugo sur maquette, à la séance. Le gain : à portée du pouce, et de la hauteur rendue en haut. À y regarder : sur la page Annotation, elle s'empile avec la barre « Poser… ▴ » (fondre les deux ?) ; le clavier virtuel la couvre ou la pousse ; la zone du geste système en bas d'un iPhone ; ce qui reste en haut (Retour, « Aa », le compte, le projet). Sur tablette, l'argument du pouce est plus faible
+- [ ] Sur téléphone et tablette, les MODES de l'Atelier passent en bas (Navigation, Édition, Transcription), avec un raccourci Annotation ↗ vers la page Annotation — attendu : tranché par Hugo sur maquette, à la séance. Idée de Hugo du 2026-11-02, qui peut remplacer celle du dessus : chaque surface aurait en bas SES gestes, et les six surfaces resteraient en haut. Le raccourci reprend `Nav.lienAnnotation` (album, planche, zone). À y regarder : la barre d'état, déjà en bas ; les libellés des modes, clipés sous 1023 px, qu'on retrouverait en bas ; si le raccourci remplace le mode Annotation à l'étroit dès maintenant, ou au basculement ; le téléphone couché ; le clavier virtuel en Transcription
 
 ### Rouvert le 2026-10-22 — le zoom d'interface fait déborder les tiroirs et le menu « Aa »
 - [x] **À 320 px et à tout zoom d'interface de 100 à 200 %, le tiroir des planches se referme** —
