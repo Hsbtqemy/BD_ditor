@@ -5,7 +5,15 @@ statut: interrompu
 
 # ANN-6 — le relevé : annoter des mots et des passages, pas seulement des bulles
 
-**Arrêté sur** — 2026-10-13, `2ab7911` : **deux retours d'usage sont corrigés, avec ce que leur
+**Arrêté sur** — 2026-11-02, `d071a3b` : **la page Annotation (ANN-7, tranche 2) est en
+production depuis le 2026-11-02 et Hugo l'a jouée sur un vrai appareil** (Galaxy sous Firefox,
+iPad sous Safari) ; ses trois correctifs sont codés sur `dev` (`0217df8` : la grille téléphone
+couché, la feuille en `svh`, la consigne du lien hors de la planche ; `d071a3b` : CLAUDE.md),
+à pousser puis à rejouer sur les appareils. Le relevé est désormais la page Annotation : ce
+qui reste ici, ce sont les retours d'usage, les questions aux linguistes et le registre (une
+zone qui nomme plusieurs locuteurs, à cadrer).
+
+**Plus tôt, le 2026-10-13** — `2ab7911` : **deux retours d'usage sont corrigés, avec ce que leur
 relecture avait trouvé dans les mêmes champs ; le relevé n'est pas commencé.** Le 12 : un cartouche et une zone de texte reçoivent un locuteur (`7a21dc1`), le
 champ « Situation » dit sa syntaxe (`35e9b62`). Le 13, sur le mot de Hugo : dans les champs
 « dimension : valeur », Entrée agit sur ce qui est tapé et répond quand elle ne fait rien
@@ -523,20 +531,38 @@ semaines » (Hugo, le même jour).
   la liste de ce qui est posé défile, rien d'autre ne répond. La cause, lue dans
   `static/style.css` : sous 47,5em la feuille fait `88 * --vh-visible` et `.an-bas` garde
   15,4rem fixes. Proposé : sous 47,5em ET dans une fenêtre basse, la feuille en deux
-  colonnes, la grille à gauche, ce qui est posé et le guide à droite
+  colonnes, la grille à gauche, ce qui est posé et le guide à droite. **Codé le 2026-11-02,
+  `0217df8`** (accepté par Hugo) : deux colonnes sous 47,5em, au-dessus de 30em de large et
+  sous 34em de haut ; en émulation à 740 × 340, 169 px d'entrées (8 avant), une entrée se
+  coche au toucher ; vert aussi dans l'image (police DejaVu). À rejouer sur le Galaxy une fois
+  en production. Angle mort écrit : sous 30em de large ET 34em de haut — un téléphone debout
+  dont le clavier raccourcirait la fenêtre — la feuille reste empilée, et les résultats du
+  filtre pourraient ne pas se voir
 - [ ] **La feuille tient dans ce qui se voit** — attendu : barre d'adresse du navigateur
   affichée, « Fermer ✕ » se voit en entier en haut de la feuille et le guide en entier
   au-dessus de la barre ; le clavier sorti, « Chercher dans la grille… » et le bas de la
   feuille restent visibles (conforme téléphone debout le 2026-11-02 : le correctif ne doit
   pas le défaire). Constaté le 2026-11-02 sur le Galaxy couché : « Fermer ✕ » coupé
   sous la barre d'état, la définition du guide sous la barre de Firefox. Hypothèse : `1vh` se
-  calcule sur la fenêtre barres repliées, et `--vh-visible` en dérive ; proposé, `dvh`
+  calcule sur la fenêtre barres repliées, et `--vh-visible` en dérive ; proposé, `dvh`.
+  **Codé le 2026-11-02, `0217df8`, en `svh`** et non en `dvh` : la plus petite fenêtre,
+  barres affichées, qui ne bouge pas quand la barre se replie (`dvh` la suivrait, la hauteur
+  changerait en plein travail) ; bornée à la feuille (`--vh-feuille`), `--vh-visible` intact.
+  L'hypothèse n'est ni confirmée ni réfutée : l'émulation n'a pas de barre qui se replie. Si
+  le guide passe encore sous la barre de Firefox, la cause serait l'ancrage `bottom: 0` et
+  non la hauteur (piste : `visualViewport`). À rejouer sur le Galaxy, clavier compris. Les
+  autres boîtes à 100 % de la hauteur auraient le même défaut sans l'avoir montré : `.lf.bi`
+  (Bibliothèque), `.preview` (Recherche), `#tr-mini img` (Transcription de l'Atelier)
 - [ ] **L'étiquette du lien ne couvre pas la planche** — attendu : pendant « Désigner sur la
   planche », aucune consigne ne recouvre la minicarte ; elle ne dit pas « Cliquez » au doigt,
   et s'annule au doigt comme par Échap. Relevé par Hugo le 2026-11-02 sur l'iPad : sur
   *Bibi Fricotin* elle tombe sur la marge et le texte, mais une planche sans marge aurait une
   bulle dessous. Proposé : la consigne à la place de la ligne du titre au-dessus de la
-  minicarte, à la même hauteur, avec un bouton « Annuler »
+  minicarte, à la même hauteur, avec un bouton « Annuler ». **Codé le 2026-11-02,
+  `0217df8`** : « Désignez la zone liée » et « Annuler » dans la cellule du titre (la
+  minicarte ne bouge pas ; la ligne a pris environ 10 px, une fois pour toutes) ; plus aucun
+  « Cliquez » ; « Annuler » et Échap rendent le focus au bouton du lien, et Échap ne referme
+  plus la feuille au téléphone. À rejouer sur l'iPad
 - [ ] **Safari sur iPhone, avant le produit final** — attendu : sur un iPhone, « ✎ Tracer une
   zone » trace sans que la page défile. Vu sur iPad sous Safari le 2026-11-02 (le même moteur,
   conforme) ; aucun iPhone sous la main, Hugo le garde pour les dernières vérifications
