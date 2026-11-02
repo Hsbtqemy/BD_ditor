@@ -359,7 +359,11 @@ semaines » (Hugo, le même jour).
   amorcées (`COUCHES_RECOPIEES`). Ce qui marche déjà, et que le changement doit garder : un
   même personnage désigné depuis une bulle, un cartouche, un texte hors bulle (locuteur,
   `config.TYPES_LOCUTEUR`) et une boîte personnage (personnage montré) — une seule fiche,
-  comptée une fois
+  comptée une fois. **Cadré le 2026-11-02** : `docs/plusieurs-locuteurs-cadrage.md`, lu dans
+  le code à `55da317` — la v39, cinq commits, environ sept journées plus la maquette ; trois
+  écritures tombent en panne dès la migration, six lecteurs deviendraient faux en silence
+  (Ctrl+Z, le dépôt, l'empreinte, la concordance, le croisement locuteur × profil) ; treize
+  questions à Hugo, L1 à L13, chacune avec sa proposition
 - [x] **Le champ « Situation » dit la syntaxe qu'il attend** — attendu : une phrase sous le
   champ, lue aussi par un lecteur d'écran. Retour d'usage : « j'ai l'impression que je peux,
   au niveau de la case, ajouter une situation qui correspondrait au lieu. Mais finalement ça
