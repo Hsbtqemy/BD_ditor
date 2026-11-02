@@ -475,7 +475,7 @@ semaines » (Hugo, le même jour).
   lecture change (cf. « Avant que les stagiaires commencent »)
 - [ ] **Le décompte dans la vue, l'aperçu de l'Exploration, ou les deux** — attendu : tranché.
   Hugo, le 2026-10-14 : « à voir ce qui semble le plus utile » ; la maquette montre les deux
-- [ ] **Au doigt, la tablette et le téléphone se jouent sur un vrai appareil** — attendu : les
+- [x] **Au doigt, la tablette et le téléphone se jouent sur un vrai appareil** — attendu : les
   gestes de la maquette essayés sur une tablette et un téléphone, et ce qui gêne écrit. Ce
   que la maquette propose : toucher un mot, puis « Étendre » et toucher le dernier pour un
   passage ; « Un détail » à choisir avant de glisser, pour ne pas bloquer le défilement ;
@@ -493,7 +493,36 @@ semaines » (Hugo, le même jour).
   hors des cases : un appareil neuf ouvre le « Projet principal », où la page Annotation est
   vide ; au téléphone, la fin d'une longue bulle passe sous le bord du bloc des mots ;
   l'étiquette « Cliquez la zone liée » (qui dit « Cliquez » au doigt) couvre le haut de la
-  minicarte ; la hauteur de la feuille, en `vh`, ne rapetisse pas quand le clavier sort
+  minicarte ; la hauteur de la feuille, en `vh`, ne rapetisse pas quand le clavier sort.
+  **Jouée par Hugo le 2026-11-02, en production (`51d70d1`), sur un Samsung Galaxy sous
+  Firefox et un iPad sous Safari** : le tracé au doigt marche sur les deux — le toucher
+  perdu après un tracé rapide n'arrive pas sur le Galaxy, c'était l'émulation —, la
+  désignation d'un lien sur tablette aussi ; le téléphone couché ne sert pas, et l'étiquette
+  du lien gêne (les quatre cases suivantes). Le détail case par case est dans la passe
+- [ ] **Téléphone couché, la grille se sert** — attendu : sur un téléphone couché (Galaxy,
+  Firefox), « Poser… ▴ » montre les entrées de la grille, qui défilent et se cochent, et ce
+  qui est posé reste visible. Constaté le 2026-11-02 (photo de Hugo) : les entrées ont une
+  hauteur NULLE — entre « Chercher dans la grille… » et « Dans le détail d1 », rien —, seule
+  la liste de ce qui est posé défile, rien d'autre ne répond. La cause, lue dans
+  `static/style.css` : sous 47,5em la feuille fait `88 * --vh-visible` et `.an-bas` garde
+  15,4rem fixes. Proposé : sous 47,5em ET dans une fenêtre basse, la feuille en deux
+  colonnes, la grille à gauche, ce qui est posé et le guide à droite
+- [ ] **La feuille tient dans ce qui se voit** — attendu : barre d'adresse du navigateur
+  affichée, « Fermer ✕ » se voit en entier en haut de la feuille et le guide en entier
+  au-dessus de la barre ; le clavier sorti, « Chercher dans la grille… » et le bas de la
+  feuille restent visibles (conforme téléphone debout le 2026-11-02 : le correctif ne doit
+  pas le défaire). Constaté le 2026-11-02 sur le Galaxy couché : « Fermer ✕ » coupé
+  sous la barre d'état, la définition du guide sous la barre de Firefox. Hypothèse : `1vh` se
+  calcule sur la fenêtre barres repliées, et `--vh-visible` en dérive ; proposé, `dvh`
+- [ ] **L'étiquette du lien ne couvre pas la planche** — attendu : pendant « Désigner sur la
+  planche », aucune consigne ne recouvre la minicarte ; elle ne dit pas « Cliquez » au doigt,
+  et s'annule au doigt comme par Échap. Relevé par Hugo le 2026-11-02 sur l'iPad : sur
+  *Bibi Fricotin* elle tombe sur la marge et le texte, mais une planche sans marge aurait une
+  bulle dessous. Proposé : la consigne à la place de la ligne du titre au-dessus de la
+  minicarte, à la même hauteur, avec un bouton « Annuler »
+- [ ] **Safari sur iPhone, avant le produit final** — attendu : sur un iPhone, « ✎ Tracer une
+  zone » trace sans que la page défile. Vu sur iPad sous Safari le 2026-11-02 (le même moteur,
+  conforme) ; aucun iPhone sous la main, Hugo le garde pour les dernières vérifications
 
 ### Le modèle — à cadrer avant tout code
 
