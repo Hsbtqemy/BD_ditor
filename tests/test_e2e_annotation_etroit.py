@@ -553,9 +553,65 @@ def _la_feuille_tient_dans_la_fenetre(pg):
         assert b["haut"] >= 0 and b["bas"] <= hauteur + .5, (s, b, hauteur)
     expect(pg.locator("#an-grille-fermer")).to_be_in_viewport(ratio=1)
     # Mesurée sur la plus PETITE fenêtre, barres affichées. Chromium n'a pas de barre qui se
-    # replie (`svh` y vaut `vh`) : ce qu'on peut vérifier ici, c'est l'unité.
+    # replie (`svh` y vaut `vh`) : ce qu'on peut vérifier ici, c'est l'unité, et que `vh` ne la
+    # fait pas bouger.
     assert "svh" in pg.evaluate("""() => getComputedStyle(document.querySelector('#an-grille'))
-      .getPropertyValue('--vh-feuille')""")
+      .getPropertyValue('--svh-visible')""")
+    avant = _boite(pg, "#an-grille")["h"]
+    pg.evaluate("""() => document.documentElement.style.setProperty('--vh-visible', '2px')""")
+    assert _boite(pg, "#an-grille")["h"] == avant
+    pg.evaluate("""() => document.documentElement.style.removeProperty('--vh-visible')""")
+
+
+def _hauteur_de_la_case(page, repliee=None):
+    """La hauteur de la case, `vh` posée au besoin sur une fenêtre plus grande que la vraie."""
+    if repliee:
+        page.evaluate("""(h) => document.documentElement.style.setProperty(
+          '--vh-visible', `calc(${h / 100}px / var(--ui-zoom, 1))`)""", repliee)
+    return page.evaluate("""() => new Promise((rendre) => requestAnimationFrame(() => rendre(
+      document.querySelector('#an-vue-case').getBoundingClientRect().height)))""")
+
+
+def test_tablette_couchee_suivante_tient_barres_affichees(page, decor):
+    """« Suivante » reste dans la fenêtre au repos, barres du navigateur affichées.
+
+    Chromium n'a pas de barre qui se replie : `vh` y vaut `svh`. La barre se SIMULE comme au
+    banc du 2026-11-02 : une fenêtre de 700 (800 sous 100 px de barres) et `--vh-visible` posée
+    sur 800, ce que `vh` donnerait sous une vraie barre. En `vh`, la case gardait 288 px et
+    « Suivante » tombait à 728 : hors de la fenêtre, sans qu'on ait rien touché.
+    """
+    page.set_viewport_size({"width": 1280, "height": 700})
+    _ouvrir(page, decor, decor["bulle"])
+    _hauteur_de_la_case(page, repliee=800)
+    suivante = page.evaluate("""() => { const c = document.querySelector('#an-zone');
+      return {bas: document.querySelector('#an-suiv').getBoundingClientRect().bottom,
+              defile: c.scrollTop}; }""")
+    assert suivante["defile"] == 0 and suivante["bas"] <= 700, suivante
+
+
+@pytest.mark.parametrize("largeur, hauteur, part", [(1400, 900, .44), (1280, 700, .36),
+                                                    (412, 800, .40)])
+def test_la_case_se_mesure_sur_ce_qui_se_voit_et_ne_bouge_pas(page, decor, largeur, hauteur, part):
+    """Les trois hauteurs de la case suivent la plus petite fenêtre, jamais `vh`.
+
+    Stable : la barre qui se replie ne déplace rien pendant le travail, et c'est pourquoi
+    `svh` et non `dvh`, qui la suivrait.
+    """
+    page.set_viewport_size({"width": largeur, "height": hauteur})
+    _ouvrir(page, decor, decor["bulle"])
+    h = _hauteur_de_la_case(page, repliee=hauteur + 100)
+    assert abs(h - part * hauteur) <= 2, h
+    assert _hauteur_de_la_case(page, repliee=hauteur + 200) == h
+
+
+@pytest.mark.parametrize("largeur, hauteur, part", [(1280, 800, .36), (1400, 1000, .44)])
+def test_la_case_garde_sa_part_de_la_fenetre_sous_le_zoom(page, decor, largeur, hauteur, part):
+    """`--svh-visible` retire le zoom d'interface, comme `--vh-visible`, que `zoom` multiplierait."""
+    page.set_viewport_size({"width": largeur, "height": hauteur})
+    page.add_init_script("try { localStorage.setItem('bd-zoom', '1.25') } catch (e) {}")
+    _ouvrir(page, decor, decor["bulle"])
+    assert page.evaluate("document.documentElement.style.zoom") == "1.25"
+    assert abs(_hauteur_de_la_case(page) - part * hauteur) <= 2
 
 
 @pytest.mark.parametrize("viewport", COUCHE, ids=lambda v: f"{v['width']}x{v['height']}")

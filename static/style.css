@@ -65,6 +65,20 @@
      absent, il vaut 1, et ces unités sont exactement `1vw` et `1vh`. */
   --vw-visible: calc(1vw / var(--ui-zoom, 1));
   --vh-visible: calc(1vh / var(--ui-zoom, 1));
+  /* La même, sur ce qui SE VOIT au téléphone et à la tablette (ANN-6, passe sur un vrai
+     appareil, 2026-11-02 : sur un Galaxy couché, sous Firefox, « Fermer ✕ » de la feuille
+     passait sous la barre d'état et le guide sous la barre d'adresse). `vh` se calcule sur la
+     plus GRANDE fenêtre, barres du navigateur repliées ; `svh` sur la plus PETITE, barres
+     affichées : ce qui s'y mesure tient quelle que soit la barre, et ne change pas de hauteur
+     quand celle-ci se replie — ce que ferait `dvh`, qui la suit, au milieu du travail. Le
+     clavier virtuel ne joue sur l'une comme sur l'autre que s'il raccourcit la fenêtre
+     elle-même : sous lui, `svh` se conduit comme `vh`. Elle ne remplace pas `--vh-visible`,
+     qui sert les six surfaces : elle sert la feuille et la case d'Annotation, et l'aperçu de
+     la Recherche là où la page défile. Un navigateur qui ne connaît pas `svh` garde `vh`. */
+  --svh-visible: var(--vh-visible);
+}
+@supports (height: 1svh) {
+  :root { --svh-visible: calc(1svh / var(--ui-zoom, 1)); }
 }
 
 /* Thème clair — redéfinit les mêmes tokens ; accents assombris pour rester
@@ -1688,8 +1702,14 @@ h3.collapsible:hover { color: var(--text); }
      un réglage en amont. */
   flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
   padding: 1.3846rem 1.8462rem; gap: 1.0769rem;
+  /* La colonne DÉFILE quand elle n'a plus la place (UX-7, 2026-11-02). La bulle reste bornée
+     par son cadre, et ce réglage ne rouvre pas ce que `min-height: 0` a fermé : `#transcription`
+     tient toujours sa rangée, c'est le contenu de CETTE colonne qui passe sous le pli. Sans
+     lui, sur un téléphone couché (740 × 360), les boutons tombaient coupés à 316-362 px, sous
+     la barre d'état et sans aucun défilement. */
+  overflow-y: auto;
 }
-#tr-head { display: flex; align-items: center; gap: 1.0769rem; }
+#tr-head { display: flex; flex-wrap: wrap; align-items: center; gap: .6154rem 1.0769rem; }
 #tr-progress { font-weight: 700; font-size: 1.2308rem; color: var(--accent-violet); }
 .tr-toggle {
   display: inline-flex; align-items: center; gap: .4615rem; margin-left: auto;
@@ -1698,7 +1718,10 @@ h3.collapsible:hover { color: var(--text); }
 #tr-exit { white-space: nowrap; }
 
 #tr-crop-wrap {
-  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  /* Un plancher, parce que la colonne défile : à `min-height: 0`, elle céderait toute la
+     hauteur qui lui manque sur la bulle, réduite à ses 26 px de rembourrage avant que rien ne
+     défile. On transcrirait alors une bulle qu'on ne voit plus. */
+  flex: 1; min-height: 8.4615rem; display: flex; align-items: center; justify-content: center;
   background:
     repeating-conic-gradient(var(--stage-a) 0% 25%, var(--stage-b) 0% 50%) 50% / 22px 22px;
   border: 1px solid var(--border); border-radius: 6px; overflow: auto; padding: .9231rem;
@@ -1723,10 +1746,14 @@ h3.collapsible:hover { color: var(--text); }
   resize: vertical; min-height: 6.9231rem;
 }
 #tr-text:focus { outline: 1px solid var(--accent-violet); }
-#tr-controls { display: flex; align-items: center; gap: .9231rem; }
+#tr-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .6154rem .9231rem; }
 #tr-controls #tr-next { margin-left: auto; color: var(--accent-violet); border-color: var(--accent-violet); }
 #tr-save { min-width: 6.9231rem; }
-.tr-hint { font-size: .8462rem; }
+.tr-hint { font-size: .8462rem; overflow-wrap: anywhere; }
+/* À l'étroit ou à ras de fenêtre, la colonne rend ses marges au contenu. */
+@media (max-width: 47.5em), (max-height: 30em) {
+  #tr-right { padding: .6154rem .9231rem; gap: .6154rem; }
+}
 
 /* ---------- Bouton primaire ---------- */
 .primary {
@@ -1893,6 +1920,19 @@ h3.collapsible:hover { color: var(--text); }
   max-height: calc(100 * var(--vh-visible) - 6.9231rem); overflow: auto;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: 8px; padding: .7692rem;
+}
+/* L'aperçu se mesure sur le CADRE qui le fait coller, et non sur la fenêtre (UX-7,
+   2026-11-02). La formule du dessus retire 90 px à une fenêtre dont les bandes prennent ce
+   qu'elles veulent : à 1280 × 800, le cadre commence à 130 px, l'aperçu collait à 142 et
+   descendait à 825, 25 px hors de la fenêtre et sans barre pour aller les chercher. `100cqh`
+   est la hauteur du CONTENU de `#search-body`, son rembourrage déduit, et aucun chiffre n'a
+   à tenir d'accord avec les bandes. Le retrait de 6 px vient du collage : Chromium cale
+   `top` sous le rembourrage du cadre (18 + 12 px), et c'est le bas le plus serré. Sous le
+   seuil étroit, où `#search-body` cesse d'être un cadre, ce n'est plus lui qui compte (cf.
+   « Quand les bandes du haut mangent l'écran »). */
+@supports (height: 1cqh) {
+  #search-body { container-type: size; }
+  .preview { max-height: calc(100cqh - .4615rem); }
 }
 .preview-head { display: flex; align-items: center; gap: .6154rem; margin-bottom: .6154rem; }
 .preview-title { flex: 1; font-weight: 600; font-size: .88rem; }
@@ -2705,6 +2745,12 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
     html:has(#admin-app, #corpus-app, #search-app, #explo-app) > body { overflow: visible; }
     #admin-app, #corpus-app, #search-app, #explo-app { height: auto; min-height: 100%; }
     #admin-body, #corpus-body, #search-body, #explo-body { flex: 1 0 auto; overflow: visible; }
+    /* Plus de cadre : `#search-body` prend la hauteur de son contenu, ce qu'un conteneur de
+       taille lui interdit (il se réduirait à rien), et l'aperçu colle à la FENÊTRE. Mesuré
+       sur `svh` : en `vh`, sur un téléphone couché, son bas passait sous la fenêtre dès
+       qu'une barre du navigateur dépassait 78 px. */
+    #search-body { container-type: normal; }
+    .preview { max-height: calc(100 * var(--svh-visible) - 1.8462rem); }
   }
 }
 
@@ -3917,7 +3963,7 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .an-atelier { white-space: nowrap; text-decoration: none; }
 
 .annot {
-  --h-case: calc(44 * var(--vh-visible));
+  --h-case: calc(44 * var(--svh-visible));
   flex: 1 1 auto; min-height: 0; display: grid;
   grid-template-columns: minmax(15rem, 22%) minmax(0, 1fr) minmax(18rem, 27%);
   grid-template-rows: auto minmax(0, 1fr);
@@ -4404,7 +4450,7 @@ body.an-designer .an-mz-enfant.t-texte {
 
 /* Fenêtre basse : la page se resserre une fois pour toutes, rien ne bouge ensuite (la v3). */
 @media (max-height: 50em) {
-  .annot { --h-case: calc(36 * var(--vh-visible)); }
+  .annot { --h-case: calc(36 * var(--svh-visible)); }
   .an-guide { height: 9.2308rem; }
   .an-bas { height: 18.4615rem; }
   .an-gr-tete { padding-top: .6154rem; gap: .4615rem; }
@@ -4445,7 +4491,7 @@ body.an-designer .an-mz-enfant.t-texte {
    FEUILLE qui monte du bas, modale le temps qu'elle est là (`inert` sur le reste). */
 @media (max-width: 47.5em) {
   #annot-app { display: block; overflow-y: auto; }
-  .annot { display: block; overflow: visible; --h-case: calc(40 * var(--vh-visible));
+  .annot { display: block; overflow: visible; --h-case: calc(40 * var(--svh-visible));
            padding-bottom: 4.5rem; }
   .an-zone { padding: .9231rem; overflow: visible; }
   .an-champ select { max-width: 100%; }
@@ -4454,8 +4500,7 @@ body.an-designer .an-mz-enfant.t-texte {
   .an-grille {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; border-left: none;
     border-top: 1px solid var(--border); border-radius: 12px 12px 0 0;
-    --vh-feuille: var(--vh-visible);
-    height: calc(88 * var(--vh-feuille)); overflow: hidden;
+    height: calc(88 * var(--svh-visible)); overflow: hidden;
     box-shadow: 0 -8px 28px var(--shadow); transform: translateY(105%); visibility: hidden;
     transition: transform .2s ease, visibility 0s linear .2s;
   }
@@ -4474,17 +4519,6 @@ body.an-designer .an-mz-enfant.t-texte {
   }
   .an-barre-sel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
                   white-space: nowrap; color: var(--text-muted); }
-}
-/* La feuille se mesure sur ce qui SE VOIT (ANN-6, passe sur un vrai appareil, 2026-11-02 : sur
-   un Galaxy couché, sous Firefox, « Fermer ✕ » passait sous la barre d'état et le guide sous la
-   barre d'adresse). `vh` se calcule sur la plus GRANDE fenêtre, barres du navigateur repliées ;
-   `svh` sur la plus PETITE, barres affichées : la feuille tient donc quelle que soit la barre,
-   et ne change pas de hauteur quand celle-ci se replie — ce que ferait `dvh`, qui la suit, au
-   milieu du travail. Le clavier virtuel ne joue sur l'une comme sur l'autre que s'il raccourcit
-   la fenêtre elle-même : sous lui, `svh` se conduit comme `vh`. Bornée à la feuille : `--vh-visible` sert les six surfaces. Un navigateur
-   qui ne connaît pas `svh` garde `vh`. */
-@supports (height: 1svh) {
-  .an-grille { --vh-feuille: calc(1svh / var(--ui-zoom, 1)); }
 }
 /* Une feuille étroite ET basse — un téléphone couché — en DEUX colonnes : la grille à gauche, ce
    qui est posé et le guide à droite, sur toute la hauteur (Hugo, 2026-11-02). Empilée, la

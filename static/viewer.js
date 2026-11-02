@@ -1907,6 +1907,9 @@ function renderTranscription() {
     if (cur) el.scrollIntoView({ block: "center", inline: "center" });
   });
 
+  // La colonne défile sur un écran bas : la bulle suivante se lit en haut, puis le focus ramène
+  // la zone de saisie. Sans cela on restait sur les boutons, la nouvelle bulle hors de vue.
+  $("#tr-right").scrollTop = 0;
   if (r) ta.focus();
 }
 

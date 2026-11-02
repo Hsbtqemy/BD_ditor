@@ -212,6 +212,128 @@ def test_aucune_surface_ne_perd_de_contenu(page, decor, surface, largeur):
         f"{surface} à {largeur} px — contenu INATTEIGNABLE (1.4.10) :\n{_decrire(perdus)}")
 
 
+
+# ── Le mode Transcription (UX-7, 2026-11-02) ───────────────────────────────────────────
+#
+# `_sonder` charge une page et ne clique sur rien : le mode Transcription, qui s'ouvre sur
+# l'Atelier par un bouton, n'a jamais eu de rectangle pour cet audit. Il y a vécu ceci, relevé
+# par une mesure en simulation : à 412 et à 360 px, « Valider + Suivant » à droite de la
+# fenêtre (466-531 pour 412) et « Quitter (Échap) » coupé ; sur un téléphone couché, les
+# boutons tronqués à 316-362 px, sans rien qui défile.
+#
+# Atteindre se mesure en faisant défiler LA COLONNE, à la main, et pas par `scrollIntoView` ni
+# `click()` de Playwright : les deux font aussi défiler la racine malgré `overflow: hidden`, ce
+# qu'aucun doigt ne peut faire, et rendraient ces deux défauts verts. La largeur ne suffit pas
+# à le dire : `elementFromPoint` vérifie que rien n'est posé dessus, la barre d'état d'abord.
+#
+# Une barre du navigateur se joue ici par une fenêtre plus basse : le mode n'a qu'une rangée de
+# grille, et aucune unité de fenêtre dans cette colonne.
+FENETRES_TRANSCRIPTION = [(320, 900), (360, 684), (412, 859), (412, 805),
+                          (740, 360), (740, 304), (740, 250), (915, 356)]
+CONTROLES_TRANSCRIPTION = ["#tr-exit", "#tr-auto", "#tr-text", "#tr-prev", "#tr-casse",
+                           "#tr-next"]
+
+_ATTEINDRE_DANS_LA_COLONNE = """(s) => {
+  const c = document.querySelector('#tr-right'), e = document.querySelector(s);
+  const boite = c.getBoundingClientRect();
+  const haut = boite.top + c.clientTop, bas = haut + c.clientHeight;
+  let r = e.getBoundingClientRect();
+  if (r.bottom > bas) c.scrollTop += r.bottom - bas;
+  r = e.getBoundingClientRect();
+  if (r.top < haut) c.scrollTop -= haut - r.top;
+  r = e.getBoundingClientRect();
+  const dessus = document.elementFromPoint((r.left + r.right) / 2,
+                                           (Math.max(r.top, haut) + Math.min(r.bottom, bas)) / 2);
+  return {gauche: Math.round(r.left), droite: Math.round(r.right),
+          haut: Math.round(r.top), bas: Math.round(r.bottom),
+          colonne: [Math.round(boite.left), Math.round(boite.right),
+                    Math.round(haut), Math.round(bas)],
+          fenetre: [innerWidth, innerHeight],
+          touche: !!dessus && (dessus === e || e.contains(dessus)),
+          sous: dessus ? (dessus.id || dessus.tagName) : null};
+}"""
+
+
+def _ouvrir_en_transcription(page, decor):
+    page.goto(decor["base"] + SURFACES_AUDITEES["/"](decor), wait_until="networkidle")
+    page.locator('button[data-mode="transcription"]').click()
+    page.wait_for_selector("#transcription:not([hidden])")
+    # Le crop CHARGÉ : une image vide n'occupe aucune place, et tout tiendrait.
+    page.wait_for_function("""() => { const c = document.querySelector('#tr-crop');
+      return c.complete && c.naturalWidth > 0 && c.getBoundingClientRect().height > 0; }""")
+
+
+@pytest.mark.parametrize("largeur, hauteur", FENETRES_TRANSCRIPTION,
+                         ids=[f"{la}x{ha}" for la, ha in FENETRES_TRANSCRIPTION])
+def test_tout_le_mode_transcription_s_atteint(page, decor, largeur, hauteur):
+    """Chaque contrôle s'atteint en entier, et la bulle reste à voir.
+
+    Sous les trois préférences de police : à 320 px sous 24, une seule colonne de 169 px
+    porte le mode, et c'est là qu'un mot sans coupure sortirait du cadre.
+    """
+    page.set_viewport_size({"width": largeur, "height": hauteur})
+    echecs = []
+    for police in POLICES:
+        _preference_police(page, police)
+        _ouvrir_en_transcription(page, decor)
+        r = page.evaluate(SONDE)
+        perdus = [c for c in r["coupables"] if not c["cadre"] and c["id"] not in EXEMPTIONS]
+        if perdus:
+            echecs.append(f"police {police}, perdus :\n{_decrire(perdus)}")
+        # La sonde tiendrait une colonne qui défile de côté pour une issue : ici, le contenu
+        # passe à la ligne, et rien ne doit y déborder, même clippé.
+        debord = page.evaluate("""() => [...document.querySelectorAll('#tr-right, #tr-right *')]
+          .filter((e) => e.scrollWidth > e.clientWidth + 1 && e.clientWidth > 0
+                         && getComputedStyle(e).display !== 'inline')
+          .map((e) => [e.id || e.className || e.tagName, e.clientWidth, e.scrollWidth])""")
+        if debord:
+            echecs.append(f"police {police}, déborde de côté : {debord}")
+        for s in CONTROLES_TRANSCRIPTION:
+            m = page.evaluate(_ATTEINDRE_DANS_LA_COLONNE, s)
+            col = m["colonne"]
+            # Plus haut que la colonne (sous 24, couché, les bandes ne lui laissent que 43 px :
+            # la « fenêtre plus basse que le chrome », qui attend sa décision de forme), un
+            # contrôle ne peut que la remplir. Il s'atteint alors par ce qui s'en voit.
+            remplit = m["bas"] - m["haut"] >= col[3] - col[2]
+            en_hauteur = (m["haut"] >= col[2] - 1 and m["bas"] <= col[3] + 1) or remplit
+            entier = (m["gauche"] >= col[0] - 1 and m["droite"] <= col[1] + 1 and en_hauteur
+                      and min(m["droite"], col[1]) <= m["fenetre"][0]
+                      and min(m["bas"], col[3]) <= m["fenetre"][1])
+            if not (entier and m["touche"]):
+                echecs.append(f"police {police}, {s} hors d'atteinte : {m}")
+        # La bulle ne paie pas la place : la colonne défile avant de la réduire à rien.
+        cadre = page.evaluate("""() => document.querySelector('#tr-crop-wrap')
+          .getBoundingClientRect().height""")
+        if cadre < 100:
+            echecs.append(f"police {police}, le cadre de la bulle tombe à {cadre} px")
+    assert not echecs, f"{largeur}×{hauteur} :\n" + "\n".join(echecs)
+
+
+def test_sur_un_ecran_bas_la_bulle_suivante_se_lit_avec_sa_saisie(page, decor):
+    """La colonne défile : « Suivant » se touche en bas, et la bulle d'après s'écrit en haut.
+
+    On restait sur les boutons, la nouvelle bulle hors de vue, à remonter à chaque bulle.
+    """
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30,
+                      headers=ECRITURE) as c:
+        assert c.post(f"/api/planches/{decor['planche']}/regions",
+                      json={"type": "bulle", "x": 10, "y": 100, "w": 120, "h": 80,
+                            "ocr_texte": "SECONDE"}).status_code in (200, 201)
+    page.set_viewport_size({"width": 740, "height": 304})
+    _ouvrir_en_transcription(page, decor)
+    assert page.evaluate(_ATTEINDRE_DANS_LA_COLONNE, "#tr-next")["touche"]
+    assert page.evaluate("() => document.querySelector('#tr-right').scrollTop") > 0
+    page.evaluate("() => document.querySelector('#tr-next').click()")
+    page.wait_for_function("""() => document.querySelector('#tr-progress').textContent
+      .startsWith('Bulle 2') && document.activeElement.id === 'tr-text'""")
+    m = page.evaluate("""() => { const b = (s) => document.querySelector(s).getBoundingClientRect();
+      const c = b('#tr-right'), cadre = b('#tr-crop-wrap'), saisie = b('#tr-text');
+      return {vue: Math.min(cadre.bottom, c.bottom) - Math.max(cadre.top, c.top),
+              saisie_haut: saisie.top - c.top, reste: c.bottom - saisie.top}; }""")
+    # La bulle se voit, et la première ligne de la saisie aussi.
+    assert m["vue"] >= 60 and m["saisie_haut"] >= 0 and m["reste"] >= 30, m
+
+
 # ── Ce qui est replié n'existe pas pour la sonde (UX-14, 2026-09-13) ───────────────────
 #
 # `_sonder` redimensionne, charge et attend : aucun clic, donc aucun panneau ouvert, et un

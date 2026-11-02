@@ -277,6 +277,117 @@ _MESURE_BANDES = """(cadre) => {
 }"""
 
 
+
+# ── L'aperçu de la Recherche se mesure sur son cadre (UX-7, 2026-11-02) ────────────────
+#
+# Une planche HAUTE : un aperçu qui tient de toute façon dirait vert sans rien mesurer, et ce
+# test commence par l'exiger plus haut que ce qu'on lui donne.
+#
+# Chromium n'a pas de barre qui se replie : `vh` y vaut `svh`. La barre se SIMULE donc comme au
+# banc du 2026-11-02 — une fenêtre plus petite, et `--vh-visible` posée sur la plus grande,
+# celle que `vh` donnerait sous une vraie barre. Ce que cela tient : l'aperçu ne suit pas `vh`.
+@pytest.fixture
+def corpus_apercu(live_server):
+    """Assez de bulles pour que la liste défile, sur une planche plus haute que tout écran."""
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=180,
+                      headers=ECRITURE) as c:
+        aid = c.post("/api/albums", json={"titre": "Aperçu"}).json()["id"]
+        pid = c.post(f"/api/albums/{aid}/import",
+                     files={"file": ("p.png", make_png(600, 1800), "image/png")}).json()["id"]
+        for i in range(30):
+            r = c.post(f"/api/planches/{pid}/regions",
+                       json={"type": "bulle", "x": 10, "y": 10 + 50 * i, "w": 200, "h": 40,
+                             "ocr_texte": f"MILLE SABORDS {i}"})
+            assert r.status_code in (200, 201), r.text
+    return live_server
+
+
+def _apercu_colle(page):
+    """L'aperçu ouvert, la liste défilée : rend sa boîte, et celle de son dernier mot."""
+    page.fill("#q", "sabords")
+    with page.expect_response(lambda r: "/api/recherche" in r.url):
+        page.press("#q", "Enter")
+    page.wait_for_selector(".result")
+    page.locator(".result").first.click()
+    page.wait_for_function("""() => { const i = document.querySelector('#preview-img');
+      return !document.querySelector('#preview').hidden && i.complete && i.naturalWidth > 0
+        && i.getBoundingClientRect().height > 0; }""")
+    return page.evaluate("""() => new Promise((rendre) => {
+      const p = document.querySelector('#preview'), corps = document.querySelector('#search-body');
+      const cadre = getComputedStyle(corps).overflowY === 'visible'
+        ? document.scrollingElement : corps;
+      cadre.scrollTop = 600;      // au milieu : en fin de liste, l'aperçu remonte avec elle
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const r = p.getBoundingClientRect();
+        const avant = {haut: r.top, bas: r.bottom, h: r.height, fenetre: innerHeight,
+                       contenu: p.scrollHeight, client: p.clientHeight,
+                       corps: corps.getBoundingClientRect().height,
+                       defile: cadre === corps ? 'cadre' : 'page', descendu: cadre.scrollTop};
+        p.scrollTop = p.scrollHeight;
+        const d = document.querySelector('#preview-meta').getBoundingClientRect();
+        rendre({...avant, dernier: d.bottom});
+      }));
+    })""")
+
+
+# (largeur, hauteur, hauteur barres repliées, zoom)
+FENETRES_APERCU = [(1600, 1000, None, "1"),    # le bureau : même défaut, sur une planche assez haute
+                   (1280, 800, None, "1"),     # la tablette couchée : 25 px cachés, sans barre
+                   (1280, 744, 800, "1"),
+                   (1280, 800, None, "1.25"),
+                   (740, 250, 360, "1"),       # le téléphone couché, barre au-delà de 78 px
+                   (915, 356, 412, "1"),
+                   (915, 356, None, "1.25")]
+
+
+@pytest.mark.parametrize("largeur, hauteur, repliee, zoom", FENETRES_APERCU,
+                         ids=[f"{la}x{ha}-{re or 'sans-barre'}-z{zo}"
+                              for la, ha, re, zo in FENETRES_APERCU])
+def test_le_bas_de_l_apercu_colle_reste_dans_la_fenetre(page, corpus_apercu, largeur, hauteur,
+                                                        repliee, zoom):
+    """Collé, l'aperçu tient dans ce qui se voit, et son bas se lit en le faisant défiler.
+
+    Son `max-height` retirait 90 px à la fenêtre, quelles que soient les bandes : à 1280 × 800
+    la boîte collait à 142 et descendait à 825, sans barre, et ce qui était caché ne
+    s'atteignait qu'en fin de liste. Le même `calc()`, en `vh`, passait sous la fenêtre sur un
+    téléphone couché dès qu'une barre dépassait 78 px.
+    """
+    page.set_viewport_size({"width": largeur, "height": hauteur})
+    page.add_init_script(f"try {{ localStorage.setItem('bd-zoom', '{zoom}') }} catch (e) {{}}")
+    page.goto(corpus_apercu + "/recherche", wait_until="networkidle")
+    assert page.evaluate("document.documentElement.style.zoom") == ("" if zoom == "1" else zoom)
+    if repliee:
+        page.evaluate("""(h) => document.documentElement.style.setProperty(
+          '--vh-visible', `calc(${h / 100}px / var(--ui-zoom, 1))`)""", repliee)
+    m = _apercu_colle(page)
+    assert m["descendu"] > 0, m                     # la liste a bien défilé : il colle
+    # La planche est plus haute que tout : c'est bien le plafond qu'on mesure.
+    assert m["contenu"] > m["client"] + 20, m
+    assert m["corps"] > 200, m                      # le conteneur de taille n'a rien écrasé
+    assert m["haut"] >= 0 and m["bas"] <= m["fenetre"], m
+    assert m["dernier"] <= m["fenetre"], m
+    # Pas écrasé non plus : il prend ce qu'on lui laisse.
+    assert m["h"] >= 200, m
+
+
+def test_sans_cadre_le_corps_de_la_recherche_garde_sa_hauteur(page, corpus_apercu):
+    """Sous le seuil étroit, la page défile : un conteneur de taille réduirait le corps à rien."""
+    page.set_viewport_size({"width": 412, "height": 860})
+    page.goto(corpus_apercu + "/recherche?q=sabords", wait_until="networkidle")
+    page.wait_for_selector(".result")
+    m = page.evaluate("""() => { const b = document.querySelector('#search-body');
+      const dernier = [...document.querySelectorAll('.result')].pop();
+      return {h: b.getBoundingClientRect().height, sh: b.scrollHeight,
+              type: getComputedStyle(b).containerType,
+              page: document.scrollingElement.scrollHeight,
+              bas: dernier.getBoundingClientRect().bottom
+                   + document.scrollingElement.scrollTop}; }""")
+    assert m["type"] == "normal", m
+    assert m["h"] >= m["sh"] - 1, m
+    assert m["page"] >= m["bas"], m
+
+
+
 @pytest.fixture
 def corpus_derriere_proxy(live_server):
     """Assez de contenu pour remplir plusieurs fenêtres, et un SECOND projet : avec un seul,
