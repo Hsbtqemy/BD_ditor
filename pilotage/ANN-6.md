@@ -7,9 +7,9 @@ statut: interrompu
 
 **Arrêté sur** — 2026-11-02, `d071a3b` : **la page Annotation (ANN-7, tranche 2) est en
 production depuis le 2026-11-02 et Hugo l'a jouée sur un vrai appareil** (Galaxy sous Firefox,
-iPad sous Safari) ; ses trois correctifs sont codés sur `dev` (`0217df8` : la grille téléphone
-couché, la feuille en `svh`, la consigne du lien hors de la planche ; `d071a3b` : CLAUDE.md),
-à pousser puis à rejouer sur les appareils. Le relevé est désormais la page Annotation : ce
+iPad sous Safari) ; ses trois correctifs (`0217df8` : la grille téléphone couché, la feuille
+en `svh`, la consigne du lien hors de la planche ; `d071a3b` : CLAUDE.md) sont en production
+et Hugo les y a rejoués (`55da317`). Reste Safari sur iPhone, avant le produit final. Le relevé est désormais la page Annotation : ce
 qui reste ici, ce sont les retours d'usage, les questions aux linguistes et le registre (une
 zone qui nomme plusieurs locuteurs, à cadrer).
 
