@@ -334,7 +334,24 @@ semaines » (Hugo, le même jour).
   cartouche se choisit dans le registre des personnages, où l'on peut créer une entrée pour
   un narrateur ; rien ne dédoublonne, deux homonymes sont possibles, et sous cloisonnement
   une étude ne voit pas celui de l'autre. Le gazetteer d'`ANN-3` n'y change rien : il
-  SUGGÈRE un locuteur là où l'entrée existe
+  SUGGÈRE un locuteur là où l'entrée existe. **Proposé aux linguistes le 2026-11-02**
+  (question 3 du document de relecture de la grille) : un narrateur qui est un personnage de
+  l'histoire pointe vers SA fiche du registre — la grille dit « narrateur·ice » sur le
+  cartouche, « personnage identifié » sur ses bulles, et le registre relie les deux ; un
+  narrateur anonyme laisse le champ « Locuteur » vide, la variante suffit
+- [ ] **Une zone nomme plusieurs locuteurs** — attendu : deux personnages qui parlent dans la
+  même bulle (ou le même cartouche, le même texte) se désignent tous deux dans le registre, et
+  la grille y pose deux relevés « personnage identifié ». **Hugo, 2026-11-02**, en répondant à
+  la question 2 de la grille des linguistes : « une zone peut avoir plusieurs locuteurs » (la
+  cardinalité du locuteur passe à `plusieurs` dans le brouillon). Aujourd'hui le registre
+  n'en tient qu'UN : `bulle_locuteur` a `region_id` pour clé primaire. Un changement de modèle,
+  à cadrer avant que les linguistes annotent en nombre : la migration, le champ « Locuteur »
+  de l'Atelier et du Contexte de la page Annotation, les analyses par locuteur de
+  l'Exploration, les exports, la garde de CONC-4 (`personnage_vu`), Ctrl+Z, les copies
+  amorcées (`COUCHES_RECOPIEES`). Ce qui marche déjà, et que le changement doit garder : un
+  même personnage désigné depuis une bulle, un cartouche, un texte hors bulle (locuteur,
+  `config.TYPES_LOCUTEUR`) et une boîte personnage (personnage montré) — une seule fiche,
+  comptée une fois
 - [x] **Le champ « Situation » dit la syntaxe qu'il attend** — attendu : une phrase sous le
   champ, lue aussi par un lecteur d'écran. Retour d'usage : « j'ai l'impression que je peux,
   au niveau de la case, ajouter une situation qui correspondrait au lieu. Mais finalement ça
