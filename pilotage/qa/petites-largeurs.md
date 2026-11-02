@@ -37,22 +37,22 @@ les citent sont mises à jour ci-dessous : les libellés des modes tombent sous 
 (et non 899), la légende de la barre d'état sous **995 px** (et non 659), et la barre
 d'état s'enroule désormais à TOUTES les largeurs dès qu'elle manque de place.
 
+**Relue contre le code le 2026-11-02**, sans qu'aucune case ait été jouée. La Bibliothèque et l'Administration sont passées au gabarit liste-et-fiche (UX-18, AUTH-12) : leurs tableaux qui défilaient sont des cartes ou des fiches, et les cases qui les visaient sont réécrites. L'annotation au doigt a sa page et sa passe jouée (`page-annotation-appareils.md`), et le mode Annotation de l'Atelier disparaîtra au basculement : la zone qui la jugeait porte désormais sur la Transcription, qui reste dans l'Atelier.
+
 ## Ce que les tests couvrent déjà — ne pas le refaire ici
 
-- `test_e2e_reflow.py` : à 320 et 768 px, sur les **cinq** surfaces — `/administration` en
-  fait partie depuis UX-10 —, aucun élément n'est hors champ sans cadre défilant ni bascule
-  qui le ramène. Plus la démonstration que la garde naïve sur `scrollWidth` aurait été
-  vacante, et les deux contrôles de l'exemption.
-- `test_e2e_reflow.test_la_table_des_comptes_ne_perd_pas_de_contenu` : la table des comptes
-  d'`/administration` est RENDUE à 320 px — trois identités semées, et l'assertion porte sur
-  le NOMBRE DE LIGNES, pas sur la présence du sélecteur. La différence est tout le test :
-  jusqu'au 2026-09-07 la table se rendait vide pendant la mesure, et un contrôle de présence
-  l'aurait déclarée conforme sans jamais la voir.
+- `test_e2e_reflow.py` : à 320 et 768 px, sur les **six** surfaces, aucun élément n'est hors
+  champ sans cadre défilant ni bascule qui le ramène. Plus la démonstration que la garde
+  naïve sur `scrollWidth` aurait été vacante, et les deux contrôles de l'exemption.
+- `test_e2e_reflow.test_comptes_et_groupes_ne_perdent_pas_de_contenu` et
+  `test_l_administration_et_qui_entre_ne_defilent_pas_de_cote` : « 👥 Comptes et groupes » et
+  « Qui entre » tiennent à petite largeur. La table des comptes qu'on testait ici n'existe
+  plus : AUTH-12 l'a remplacée par une liste et une fiche.
 - `test_e2e_tiroirs.py` : le focus ne sort pas d'un tiroir ouvert, dans les deux sens et
   sur les deux tiroirs ; Échap referme et rend le focus à la bascule ; le piège se désarme
   quand la fenêtre s'élargit.
 - `test_e2e_a11y.py` : aucune violation axe sérieuse ou critique — **à la largeur par
-  défaut seulement**. C'est le trou que la zone *Ce qu'axe ne regarde pas* vient combler.
+  défaut, sauf une vue de la Bibliothèque à 375 px**. C'est le trou que la zone *Ce qu'axe ne regarde pas* vient combler.
 - `tools/mesurer_reflow.py` : sept largeurs balayées à la demande, pour explorer. Il a
   ignoré `/administration` jusqu'au 2026-09-07, alors que `test_e2e_reflow.py` l'avait :
   deux listes voisines dont rien ne confrontait l'une à l'autre. Corrigé.
@@ -72,17 +72,16 @@ d'état s'enroule désormais à TOUTES les largeurs dès qu'elle manque de place
 - [ ] Refermer un tiroir se devine : la personne essaie au moins un des trois gestes prévus (retoucher la bascule, toucher hors du tiroir, Échap) sans qu'on l'oriente
 - [ ] Un tiroir ouvert ne laisse pas croire que l'application est bloquée : le voile assombrit sans faire disparaître le canevas
 
-### Annoter, et pas seulement consulter
+### Transcrire, et pas seulement consulter
 
-L'arbitrage du 2026-09-05 a tranché « annotation tactile » : l'Atelier n'est pas une
-surface de consultation qu'on rendrait lisible faute de mieux. Ces cases jugent ce choix,
-et peuvent le condamner.
+L'arbitrage du 2026-09-05 a tranché « annotation tactile ». L'annotation est jugée par sa
+passe sur appareil ; ces cases jugent ce qui reste à l'Atelier, et peuvent le condamner.
 
 - [ ] Sur la tablette nommée, les deux tiroirs fermés, une planche entière tient à l'écran et ses bulles se distinguent les unes des autres sans zoomer
-- [ ] Sélectionner une bulle existante au doigt réussit du premier coup, trois fois de suite, sur trois bulles de tailles différentes
-- [ ] Ouvrir le panneau d'annotation, saisir une note et la valider se fait sans que le clavier logiciel masque le champ qu'on remplit
-- [ ] Après avoir refermé le panneau, la sélection est toujours la même — ouvrir un tiroir ne perd pas le travail en cours
-- [ ] Le va-et-vient « je sélectionne une bulle, j'ouvre le panneau, j'annote, je referme, je passe à la suivante » s'enchaîne dix fois sans qu'on ait envie d'aller chercher une souris
+- [ ] En mode Transcription, sélectionner une bulle existante au doigt réussit du premier coup, trois fois de suite, sur trois bulles de tailles différentes
+- [ ] En mode Transcription, corriger le texte d'une bulle se fait sans que le clavier logiciel masque le champ qu'on remplit
+- [ ] Ouvrir puis refermer le panneau ▤ garde la même bulle sélectionnée, et le texte corrigé y est toujours
+- [ ] En mode Transcription, corriger dix bulles à la suite s'enchaîne sans qu'on ait envie d'aller chercher une souris
 
 ### Ce qui a été retiré sous les seuils
 
@@ -95,16 +94,13 @@ mesurée ; reste à savoir si son absence se paie.
 
 ### Les cadres de défilement se laissent trouver
 
-SIX zones défilent maintenant dans leur propre cadre — les deux tableaux de la
-Bibliothèque, le croisement, les tableaux des panneaux Accord et Inter, et depuis le
-2026-09-07 celui des comptes. Les tests prouvent qu'on PEUT y accéder ; ils ne disent rien
-de savoir qu'on le peut.
+TROIS zones défilent encore : le croisement, et les tableaux des panneaux Accord et Inter. Les tests prouvent qu'on PEUT y accéder ; ils ne disent rien de savoir qu'on le peut. Les tableaux de la Bibliothèque et des comptes ne défilent plus : sur téléphone, ce sont des cartes et des fiches.
 
-- [ ] Les deux tableaux de la Bibliothèque — celui des albums et celui des planches d'un album : on comprend qu'ils se prolongent à droite sans avoir à le deviner en tâtonnant, et les DEUX sont éprouvés (celui des planches vit dans `corpus.js` et se fait oublier)
+- [ ] Bibliothèque sur téléphone, onglet Albums d'une collection, puis fiche d'un album : albums et planches se lisent en cartes, sans défilement de côté, et chaque carte montre ses gestes sans qu'on les cherche
 - [ ] Le **tableau de croisement** défile maintenant dans un cadre borné à 70vh : sur un croisement d'au moins 40 lignes, les en-têtes de colonnes restent visibles pendant le défilement, et la molette ne donne pas l'impression de se battre entre deux barres
 - [ ] Sur ce même croisement, atteindre la dernière colonne ET la dernière ligne se fait sans jamais perdre de vue à quelle ligne on est — le collage des deux axes tient ensemble
 - [ ] Le tableau des panneaux 🎯 Accord et 👥 Inter déborde de 38 px à 320 px : vérifier sur un corpus AYANT des tokens relus que ce débordement se voit et se franchit, et qu'il ne fait pas défiler le titre de la modale avec lui
-- [ ] Le **tableau des comptes** d'`/administration` (six colonnes) défile dans son cadre depuis le 2026-09-07. Sa géométrie est désormais mesurée automatiquement, donc ce n'est PAS ce qu'on vient chercher ici : la question est celle des cinq autres zones — sur une instance ayant de vrais comptes, comprend-on que le tableau se prolonge à droite sans l'avoir deviné en tâtonnant, et la colonne « Signal » se laisse-t-elle atteindre ?
+- [ ] Administration, vue « Comptes et groupes », sur téléphone : toucher un compte ouvre sa fiche à la place de la liste, « ← Liste » y ramène à la même place, et les signaux d'« À regarder » s'y lisent sans défiler de côté
 
 ### Ce que la mesure a déclaré conforme sans le juger
 
@@ -135,7 +131,7 @@ angles morts CONNUS de cette passe, pas des vérifications.
 
 ### Après `9eec56e` — la bande du haut porte le projet ; 320 et 375 px, police par défaut, un compte qui voit DEUX projets
 
-- [ ] À 320 px puis à 375 px, sur les cinq surfaces : le nom du projet choisi est entier dans sa liste ; « Aa », la pastille du compte et « ← » sont dans la bande et se touchent au doigt sans toucher le voisin
+- [ ] À 320 px puis à 375 px, sur les six surfaces : le nom du projet choisi est entier dans sa liste ; « Aa », la pastille du compte et « ← » sont dans la bande et se touchent au doigt sans toucher le voisin
 - [ ] Compter les rangées que prend la bande du haut à 320 px (une de plus qu'avant `9eec56e`) et dire si la hauteur qu'elle mange laisse encore travailler sur l'Atelier, téléphone tenu en paysage compris
 - [ ] La liste des projets s'ouvre au doigt et se referme sur un choix ; dans la Bibliothèque, la liste des collections change aussitôt, sans rechargement
-- [ ] Administration, bloc « 🗂️ Projets », à 320 px : la liste des projets passe AU-DESSUS de la fiche ; chaque ligne de « Qui y entre » se replie sans faire défiler la page de côté, et son ✕ reste au bout de sa rangée
+- [ ] Administration, vue « Projets », à 320 px : toucher un projet ouvre sa fiche à la place de la liste, « ← Liste » y ramène ; chaque ligne de « Qui y entre » se replie sans faire défiler la page de côté, et son ✕ reste au bout de sa rangée
