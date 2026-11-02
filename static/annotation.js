@@ -2530,7 +2530,7 @@ function itemReleve(r) {
     const designe = S.designer === r.id;
     actes.append(el("button", { type: "button", classe: "ghost small an-lien-btn",
                                 "data-lien": r.id, "aria-pressed": String(designe),
-                                title: designe ? "Cliquez l'autre zone, sur la minicarte ou dans la case · Échap annule" : null,
+                                title: designe ? "Désignez l'autre zone, sur la minicarte ou dans la case · Échap annule" : null,
                                 texte: r.lien && r.lien.existe ? "Changer le lien" : "Désigner sur la planche" }));
   }
   if (gestes) {
@@ -2669,15 +2669,40 @@ function brancherPose() {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); envoyerDoute(); }
     else if (e.key === "Escape" && !e.target.value.trim()) { e.preventDefault(); fermerFormDoute(); }
   });
+  // Échap et « Annuler » renoncent de la même façon. Échap ne referme pas en plus la feuille
+  // que la désignation vient de rendre (`brancherEtroit` lit `defaultPrevented`).
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && S.designer !== null) {
-      S.designer = null;
-      marquerDesignation();
-      apresDesignation();
-      rendreListe();
-      rendreSynthese();
+      e.preventDefault();
+      renoncerALaDesignation(false);
     }
   });
+  $("#an-mini-annuler").addEventListener("click", () => renoncerALaDesignation(true));
+}
+
+/* Renoncer à désigner un lien : tout revient comme avant (`apresDesignation`), et le focus va au
+   bouton qui avait lancé le geste — celui de la liste de ce qui est posé, sinon celui de la
+   Synthèse s'il est à l'écran —, sinon à la zone courante ; jamais à `body`. « Annuler » le
+   déplace toujours ; Échap seulement s'il est perdu : tombé, resté sur la consigne cachée (que
+   `visibility` garde dans la mise en page, donc hors de `focusTombe`), dans le tiroir qui se
+   referme, ou sous la feuille qui revient. */
+function renoncerALaDesignation(toujours) {
+  const id = S.designer;
+  S.designer = null;
+  marquerDesignation();
+  apresDesignation();
+  rendreListe();
+  rendreSynthese();
+  const a = document.activeElement;
+  const perdu = focusTombe() || !!a.closest("#an-mini-mode, [inert]")
+    || (!!a.closest("#an-gauche") && enTiroir() && !tiroirOuvert());
+  if (!toujours && !perdu) return;
+  const synthese = !enTiroir() || tiroirOuvert();
+  const cible = [$(`#an-poses-liste [data-lien="${id}"]`),
+                 synthese ? $(`#an-syn-corps [data-lien="${id}"]`) : null]
+    .find((x) => x && x.getClientRects().length && !x.closest("[inert]")
+                 && getComputedStyle(x).visibility === "visible");
+  if (cible) remettreLeFocus(cible); else focusSurLaZone();
 }
 
 /* ── Les gestes d'une ligne, partagés par la liste et par la Synthèse ── */
@@ -2704,19 +2729,21 @@ function basculerDesignation(id) {
   if (conflitOuvert()) return;
   S.designer = S.designer === id ? null : id;
   marquerDesignation();
-  if (S.designer !== null) annoncer("Désignez l'autre zone de texte, sur la planche ou dans la case. Échap annule.");
+  if (S.designer !== null) annoncer("Désignez l'autre zone de texte, sur la planche ou dans la case. « Annuler » ou Échap y renonce.");
   if (S.designer !== null) avantDesignation(); else apresDesignation();
   rendreListe();
   rendreSynthese();
 }
 
 /* Désigner un lien change le rôle de la minicarte — elle désigne une ZONE au lieu de choisir
-   une case — et l'écran le dit, sur elle (passe du jalon 1). */
+   une case — et l'écran le dit (passe du jalon 1) : à la place du titre, au-dessus d'elle, et
+   non plus sur elle, où la consigne pouvait cacher une bulle (passe sur un vrai appareil). Des
+   mots qui valent au doigt comme à la souris. */
 function marquerDesignation() {
   const actif = S.designer !== null;
   document.body.classList.toggle("an-designer", actif);
-  $("#an-mini-mode").hidden = !actif;
-  $("#an-mini").title = actif ? "Cliquez la zone liée · Échap annule" : "Choisir une case";
+  $("#an-mini-tete").classList.toggle("designation", actif);
+  $("#an-mini").title = actif ? "Désignez la zone liée" : "Choisir une case";
 }
 
 /* La précision attendue : Entrée ou la sortie du champ l'enregistrent, avec `vu` — dans la
@@ -3198,7 +3225,7 @@ function itemACompleter(r) {
   if ((r.causes || []).includes("lien_manquant") && e.lien) {
     gestes.append(el("button", { type: "button", classe: "ghost small an-lien-btn",
                                  "data-lien": r.id, "aria-pressed": String(S.designer === r.id),
-                                 title: S.designer === r.id ? "Cliquez l'autre bulle · Échap annule" : null,
+                                 title: S.designer === r.id ? "Désignez l'autre zone, sur la minicarte ou dans la case · Échap annule" : null,
                                  texte: "Désigner sur la planche" }));
   }
   if (gestes.childNodes.length) li.append(gestes);

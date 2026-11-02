@@ -504,3 +504,204 @@ def test_ouvrir_un_releve_depuis_le_tiroir_rend_le_focus_a_sa_bascule(page, deco
     page.keyboard.press("Enter")
     expect(bascule).to_have_attribute("aria-expanded", "false")
     expect(bascule).to_be_focused()
+
+
+# --------------------------------------------------------------------------- #
+# Sur un vrai appareil (ANN-6, passe du 2026-11-02) : le téléphone couché, la feuille dans ce
+# qui se voit, la consigne du lien hors de la planche
+# --------------------------------------------------------------------------- #
+COUCHE = [{"width": 740, "height": 340}, {"width": 667, "height": 375}]
+TABLETTE_COUCHEE = {"width": 1024, "height": 768}
+
+
+@pytest.fixture
+def appareil(page):
+    """Un écran tactile, à la taille qu'on lui donne (`appareil(viewport)`)."""
+    ouverts = []
+
+    def ouvrir(viewport):
+        ctx = page.context.browser.new_context(viewport=viewport, has_touch=True,
+                                               is_mobile=True, device_scale_factor=2)
+        ouverts.append(ctx)
+        return ctx.new_page()
+
+    yield ouvrir
+    for ctx in ouverts:
+        ctx.close()
+
+
+def _boite(page, selecteur):
+    return page.evaluate("""(s) => { const r = document.querySelector(s).getBoundingClientRect();
+      return {haut: r.top, bas: r.bottom, gauche: r.left, droite: r.right, h: r.height}; }""",
+                         selecteur)
+
+
+def _ouvrir_la_feuille(pg):
+    pg.locator("#an-poser").tap()
+    expect(pg.locator("#an-poser")).to_have_attribute("aria-expanded", "true")
+    pg.wait_for_function("""() => {
+      const r = document.querySelector('#an-grille').getBoundingClientRect();
+      return Math.abs(r.bottom - innerHeight) < 1
+        && !document.getAnimations().some((a) => a.playState === 'running'); }""")
+
+
+def _la_feuille_tient_dans_la_fenetre(pg):
+    """« Fermer ✕ » en entier en haut, le guide en entier en bas : tout dans la fenêtre."""
+    hauteur = pg.evaluate("() => innerHeight")
+    for s in ("#an-grille", "#an-grille-fermer", "#an-guide", "#an-guide-replier"):
+        b = _boite(pg, s)
+        assert b["haut"] >= 0 and b["bas"] <= hauteur + .5, (s, b, hauteur)
+    expect(pg.locator("#an-grille-fermer")).to_be_in_viewport(ratio=1)
+    # Mesurée sur la plus PETITE fenêtre, barres affichées. Chromium n'a pas de barre qui se
+    # replie (`svh` y vaut `vh`) : ce qu'on peut vérifier ici, c'est l'unité.
+    assert "svh" in pg.evaluate("""() => getComputedStyle(document.querySelector('#an-grille'))
+      .getPropertyValue('--vh-feuille')""")
+
+
+@pytest.mark.parametrize("viewport", COUCHE, ids=lambda v: f"{v['width']}x{v['height']}")
+def test_telephone_couche_la_grille_se_sert(appareil, decor, viewport):
+    """Constaté par Hugo sur un Galaxy couché : la liste des entrées avait une hauteur NULLE (8 px
+    à 340 et à 375 de haut, la marge seule), l'en-tête de la grille et ce qui est posé prenant
+    tout. Couchée, la feuille passe en deux colonnes : la grille à gauche, ce qui est posé et le
+    guide à droite, sur toute la hauteur."""
+    pg = appareil(viewport)
+    _ouvrir(pg, decor, decor["bulle"])
+    pg.locator("#an-mot-1").tap()
+    _ouvrir_la_feuille(pg)
+    corps, poses, bas = (_boite(pg, s) for s in ("#an-grille-corps", "#an-poses", ".an-bas"))
+    tete, fermer = _boite(pg, ".an-gr-tete"), _boite(pg, ".an-gr-fermer-l")
+    # Deux colonnes : la grille à gauche, ce qui est posé à droite, côte à côte.
+    assert corps["droite"] <= poses["gauche"] + .5, (corps, poses)
+    assert tete["droite"] <= fermer["gauche"] + .5, (tete, fermer)
+    # La liste des entrées a une hauteur UTILE, et elle défile.
+    assert pg.evaluate("() => document.querySelector('#an-grille-corps').clientHeight") >= 96
+    assert pg.evaluate("""() => { const c = document.querySelector('#an-grille-corps');
+      const avant = c.scrollTop; c.scrollTop = 60; return c.scrollTop > avant; }""")
+    pg.evaluate("() => { document.querySelector('#an-grille-corps').scrollTop = 0; }")
+    # Ce qui est posé tient toute la hauteur que le guide lui laisse.
+    assert poses["h"] >= 96, poses
+    assert abs(bas["bas"] - _boite(pg, "#an-grille")["bas"]) <= 1.5, bas
+    _la_feuille_tient_dans_la_fenetre(pg)
+    # Une entrée se coche au toucher.
+    entree = pg.locator("#an-plan [role=checkbox]", has_text="cri").first
+    expect(entree).to_be_in_viewport(ratio=1)
+    with pg.expect_response(lambda r: r.url.endswith("/api/releves")
+                            and r.request.method == "POST") as rep:
+        entree.tap()
+    assert rep.value.status == 201, rep.value.text()
+    expect(entree).to_have_attribute("aria-checked", "true")
+    # Et ce qu'on vient de poser se lit à côté, sans rien fermer.
+    pose = pg.locator("#an-poses-liste .an-pose-btn", has_text="cri")
+    expect(pose).to_be_visible()
+    expect(pose).to_be_in_viewport(ratio=1)
+
+
+def test_telephone_debout_la_feuille_reste_empilee(appareil, decor):
+    """Debout, rien ne change : une colonne, ce qui est posé et le guide à hauteur fixe en bas,
+    la liste des entrées entre les deux — et la feuille dans ce qui se voit."""
+    pg = appareil(TELEPHONE)
+    _ouvrir(pg, decor, decor["bulle"])
+    _ouvrir_la_feuille(pg)
+    corps, poses, bas = (_boite(pg, s) for s in ("#an-grille-corps", "#an-poses", ".an-bas"))
+    assert abs(corps["gauche"] - poses["gauche"]) <= 1 and corps["bas"] <= poses["haut"] + .5
+    assert abs(bas["h"] - pg.evaluate("""() => 15.3846 * parseFloat(
+      getComputedStyle(document.documentElement).fontSize)""")) <= 1, bas
+    assert abs(_boite(pg, "#an-grille")["h"] - .88 * TELEPHONE["height"]) <= 1.5
+    assert pg.evaluate("() => document.querySelector('#an-grille-corps').clientHeight") >= 300
+    _la_feuille_tient_dans_la_fenetre(pg)
+
+
+def _commencer_la_designation(pg):
+    pg.locator("#an-plan [role=checkbox]", has_text="réponse à une autre bulle").tap()
+    lien = pg.locator("#an-poses-liste .an-lien-btn")
+    expect(lien).to_be_visible()
+    lien.tap()
+    expect(lien).to_have_attribute("aria-pressed", "true")
+    return lien
+
+
+def test_tablette_la_consigne_du_lien_ne_couvre_pas_la_planche(appareil, decor):
+    """Relevé par Hugo sur l'iPad : posée SUR la minicarte, « Cliquez la zone liée · Échap
+    annule » pouvait cacher une bulle, disait « Cliquez » au doigt, et ne s'annulait qu'au
+    clavier. Elle prend la place du titre, à la même hauteur, avec « Annuler »."""
+    pg = appareil(TABLETTE_COUCHEE)
+    _ouvrir(pg, decor, decor["bulle"])
+    pg.locator("#an-tiroir-planche").tap()
+    pg.wait_for_function("""() => document.querySelector('#an-gauche').getBoundingClientRect().left === 0
+      && !document.getAnimations().some((a) => a.playState === 'running')""")
+    expect(pg.locator("#an-mini-titre")).to_be_visible()
+    mini_avant = _boite(pg, "#an-mini")
+    pg.locator("#an-gauche-fermer").tap()
+    expect(pg.locator("#an-tiroir-planche")).to_have_attribute("aria-expanded", "false")
+
+    lien = _commencer_la_designation(pg)
+    expect(pg.locator("#an-tiroir-planche")).to_have_attribute("aria-expanded", "true")
+    pg.wait_for_function("""() => document.querySelector('#an-gauche').getBoundingClientRect().left === 0
+      && !document.getAnimations().some((a) => a.playState === 'running')""")
+    mode, annuler = pg.locator("#an-mini-mode"), pg.locator("#an-mini-annuler")
+    expect(mode).to_be_visible()
+    expect(annuler).to_be_visible()
+    expect(pg.locator("#an-mini-titre")).to_be_hidden()
+    # Des mots qui valent au doigt comme à la souris.
+    expect(mode).to_have_text(re.compile(r"Désignez la zone liée\s*Annuler"))
+    assert "Cliquez" not in mode.inner_text()
+    assert "Cliquez" not in (pg.locator("#an-mini").get_attribute("title") or "")
+    # Rien ne recouvre la minicarte, et elle n'a pas bougé.
+    m, b = _boite(pg, "#an-mini"), _boite(pg, "#an-mini-mode")
+    assert b["bas"] <= m["haut"] + .5, (b, m)
+    assert abs(m["haut"] - mini_avant["haut"]) <= .5 and abs(m["h"] - mini_avant["h"]) <= .5
+    if _AXE.is_file():
+        viol = _audit(pg)
+        assert not viol, _fmt(viol)
+    # « Annuler » renonce, sans rien écrire, et rend le focus au bouton qui avait lancé le geste.
+    ecrits = []
+    pg.on("request", lambda r: ecrits.append(r.url) if r.method == "PUT" else None)
+    annuler.tap()
+    expect(lien).to_have_attribute("aria-pressed", "false")
+    expect(pg.locator("#an-tiroir-planche")).to_have_attribute("aria-expanded", "false")
+    expect(mode).to_be_hidden()
+    expect(lien).to_be_focused()
+    assert pg.evaluate("() => !document.body.classList.contains('an-designer')")
+    assert not ecrits
+    # Après quoi la minicarte rechoisit des cases, et le titre revient à sa place.
+    pg.locator("#an-tiroir-planche").tap()
+    expect(pg.locator("#an-mini-titre")).to_be_visible()
+    expect(pg.locator("#an-mini-titre")).to_have_text(re.compile("E2E annotation"))
+    pg.locator('#an-mini .an-mz[data-case="1"]').tap()
+    expect(pg.locator("#an-tete-case")).to_have_text("Case c2")
+
+
+def test_telephone_annuler_le_lien_rend_la_feuille_et_le_focus(appareil, decor):
+    """Au téléphone, la feuille s'efface le temps de désigner ; « Annuler » la rend, le focus
+    sur « Désigner sur la planche », et Échap fait de même sans refermer la feuille rendue."""
+    pg = appareil(TELEPHONE)
+    _ouvrir(pg, decor, decor["bulle"])
+    _ouvrir_la_feuille(pg)
+    lien = _commencer_la_designation(pg)
+    expect(pg.locator("#an-poser")).to_have_attribute("aria-expanded", "false")
+    expect(pg.locator("#an-mini-annuler")).to_be_visible()
+    pg.locator("#an-mini-annuler").tap()
+    expect(pg.locator("#an-poser")).to_have_attribute("aria-expanded", "true")
+    expect(pg.locator("#an-tiroir-planche")).to_have_attribute("aria-expanded", "false")
+    expect(lien).to_have_attribute("aria-pressed", "false")
+    expect(lien).to_be_focused()
+    # Échap : la même chose.
+    lien.tap()
+    expect(pg.locator("#an-mini-annuler")).to_be_visible()
+    pg.keyboard.press("Escape")
+    expect(pg.locator("#an-poser")).to_have_attribute("aria-expanded", "true")
+    expect(lien).to_have_attribute("aria-pressed", "false")
+    expect(lien).to_be_focused()
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_feuille_couchee(appareil, decor, theme):
+    """La feuille en deux colonnes, auditée ouverte."""
+    if not _AXE.is_file():
+        pytest.skip("axe absent (tests/js/vendor/axe.min.js)")
+    pg = appareil(COUCHE[0])
+    pg.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
+    _ouvrir(pg, decor, decor["bulle"])
+    _ouvrir_la_feuille(pg)
+    viol = _audit(pg)
+    assert not viol, _fmt(viol)

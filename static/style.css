@@ -4076,13 +4076,20 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 body.an-designer .an-mz-enfant.t-bulle, body.an-designer .an-mz-enfant.t-cartouche,
 body.an-designer .an-mz-enfant.t-texte {
   pointer-events: all; cursor: crosshair; stroke: var(--accent-amber); opacity: 1; }
-.an-mini-boite { position: relative; }
-.an-mini-mode { position: absolute; top: .3077rem; left: 50%; transform: translateX(-50%);
-                margin: 0; max-width: calc(100% - .6154rem); padding: .1538rem .6154rem;
-                border-radius: 10px; background: var(--bg-panel); color: var(--text);
-                border: 1px solid var(--accent-amber); font-size: .8462rem; text-align: center;
-                pointer-events: none; }
-.an-mini-mode[hidden] { display: none; }
+/* La consigne de la désignation et le titre de la planche se partagent UNE cellule de grille :
+   la ligne prend la hauteur du plus haut des deux, dans les deux états, et la minicarte ne
+   bouge pas quand l'un remplace l'autre. Le caché l'est par `visibility` — hors de l'arbre
+   d'accessibilité et de la tabulation, mais gardant sa place —, jamais par `hidden`, dont le
+   `display: none` rendrait sa hauteur à la ligne (ANN-6, passe sur un vrai appareil). */
+.an-mini-tete { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; }
+.an-mini-tete > * { grid-area: 1 / 1; min-width: 0; }
+.an-mini-tete .an-titre { overflow-wrap: anywhere; }
+.an-mini-mode { margin: 0; display: flex; flex-wrap: wrap; align-items: center;
+                gap: .1538rem .4615rem; padding-left: .4615rem;
+                border-left: 3px solid var(--accent-amber); visibility: hidden; }
+.an-mini-consigne { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.an-mini-tete.designation .an-mini-mode { visibility: visible; }
+.an-mini-tete.designation .an-titre { visibility: hidden; }
 /* Une grille qu'on ne fait que LIRE se voit éteinte : ni curseur main, ni survol (passe du
    jalon 1). Le texte reste en encre lisible : éteint n'est pas illisible. */
 #an-plan [aria-disabled="true"] { cursor: default; color: var(--text-muted); }
@@ -4301,7 +4308,8 @@ body.an-designer .an-mz-enfant.t-texte {
   .an-grille {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; border-left: none;
     border-top: 1px solid var(--border); border-radius: 12px 12px 0 0;
-    height: calc(88 * var(--vh-visible)); overflow: hidden;
+    --vh-feuille: var(--vh-visible);
+    height: calc(88 * var(--vh-feuille)); overflow: hidden;
     box-shadow: 0 -8px 28px var(--shadow); transform: translateY(105%); visibility: hidden;
     transition: transform .2s ease, visibility 0s linear .2s;
   }
@@ -4320,6 +4328,38 @@ body.an-designer .an-mz-enfant.t-texte {
   }
   .an-barre-sel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
                   white-space: nowrap; color: var(--text-muted); }
+}
+/* La feuille se mesure sur ce qui SE VOIT (ANN-6, passe sur un vrai appareil, 2026-11-02 : sur
+   un Galaxy couché, sous Firefox, « Fermer ✕ » passait sous la barre d'état et le guide sous la
+   barre d'adresse). `vh` se calcule sur la plus GRANDE fenêtre, barres du navigateur repliées ;
+   `svh` sur la plus PETITE, barres affichées : la feuille tient donc quelle que soit la barre,
+   et ne change pas de hauteur quand celle-ci se replie — ce que ferait `dvh`, qui la suit, au
+   milieu du travail. Le clavier virtuel ne joue sur l'une comme sur l'autre que s'il raccourcit
+   la fenêtre elle-même : sous lui, `svh` se conduit comme `vh`. Bornée à la feuille : `--vh-visible` sert les six surfaces. Un navigateur
+   qui ne connaît pas `svh` garde `vh`. */
+@supports (height: 1svh) {
+  .an-grille { --vh-feuille: calc(1svh / var(--ui-zoom, 1)); }
+}
+/* Une feuille étroite ET basse — un téléphone couché — en DEUX colonnes : la grille à gauche, ce
+   qui est posé et le guide à droite, sur toute la hauteur (Hugo, 2026-11-02). Empilée, la
+   feuille donne 371 px à ce qui ne défile pas (mesuré : « Fermer » 34, l'en-tête de la grille
+   129, ce qui est posé et le guide 200, une marge de 8) et le reste aux entrées : rien sous
+   34em (544 px) de haut, où il n'en reste que 108 px, quatre entrées ; 8 px à 340 et à 375 de
+   haut, rien que la marge. Le plancher de largeur (30em, 480 px) garde l'empilement au
+   téléphone debout, au plus 430 px de large, même quand le clavier virtuel raccourcit sa
+   fenêtre : la disposition ne bascule pas pendant qu'on tape dans le filtre. Le téléphone
+   couché le plus étroit (568 px) y entre. « Fermer » reste en haut à droite : sa rangée est
+   celle de la colonne de droite, que l'en-tête de la grille, à gauche, déborde. */
+@media (max-width: 47.5em) and (min-width: 30em) and (max-height: 34em) {
+  .an-grille { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+               grid-template-rows: auto auto minmax(0, 1fr);
+               grid-template-areas: "tete fermer" "tete bas" "corps bas"; }
+  .an-gr-tete { grid-area: tete; min-width: 0; }
+  .an-gr-fermer-l { grid-area: fermer; min-width: 0; border-left: 1px solid var(--border); }
+  .an-grille-corps { grid-area: corps; min-width: 0; }
+  .an-bas { grid-area: bas; height: auto; min-height: 0; min-width: 0;
+            border-left: 1px solid var(--border); }
+  .an-bas .an-poses { border-top: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .an-gauche, .an-grille { transition: none !important; }

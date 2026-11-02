@@ -60,11 +60,22 @@
                 title="Échap">Fermer ✕</button>
       </div>
       <div id="an-p-planche" class="an-panneau" role="tabpanel" aria-labelledby="an-ong-planche">
-        <h2 class="an-titre" id="an-mini-titre">Planche</h2>
+        <!-- Désigner un lien (commit 7) : la minicarte change de rôle, et le dit. La consigne
+             prend la place du titre, dans la MÊME cellule : la ligne a toujours la hauteur du
+             plus haut des deux, et rien ne bouge quand on entre dans la désignation ou qu'on
+             en sort (ANN-6, passe sur un vrai appareil : posée SUR la minicarte, elle pouvait
+             cacher une bulle). -->
+        <div id="an-mini-tete" class="an-mini-tete">
+          <h2 class="an-titre" id="an-mini-titre">Planche</h2>
+          <p id="an-mini-mode" class="an-mini-mode">
+            <span class="an-mini-consigne"
+                  title="Sur la planche ou dans la case ; Échap annule aussi">Désignez la zone liée</span>
+            <button id="an-mini-annuler" class="ghost small" type="button" title="Échap"
+                    aria-label="Annuler la désignation du lien">Annuler</button>
+          </p>
+        </div>
         <div class="an-mini-boite">
           <div id="an-mini" class="an-mini" title="Choisir une case"></div>
-          <!-- Désigner un lien (commit 7) : la minicarte change de rôle, et le dit sur elle. -->
-          <p id="an-mini-mode" class="an-mini-mode" hidden>Cliquez la zone liée · Échap annule</p>
         </div>
         <!-- Le Contexte (commit 8) : ce qui n'est pas du vocabulaire. Sur un album où l'on
              écrit, le locuteur et la note s'écrivent ICI ; le personnage d'une boîte reste en
