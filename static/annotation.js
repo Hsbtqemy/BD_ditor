@@ -205,6 +205,9 @@ async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
   // les gardes ont déjà refusé d'y aller avec un brouillon (`gardesDeSortie`).
   const meme = !!S.planche && id !== null && S.planche.id === id;
   if (!meme) annulerTrace();                     // un tracé n'a de sens que sur SA planche
+  // Une désignation de lien non plus : elle se termine comme « Annuler » ou Échap, sans
+  // prendre le focus à ce qui a fait changer de planche (le clic suivant ne faisait rien).
+  if (!meme && S.designer !== null) renoncerALaDesignation(false);
   S.planche = id === null ? null : S.planches.find((p) => p.id === id) || null;
   S.regions = [];
   // La MÊME planche relue garde ses relevés jusqu'à la réponse : un champ de précision qu'on
@@ -251,6 +254,10 @@ async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
       toast(`Ce doute a été levé ailleurs ; votre réponse n'est pas envoyée : « ${t.trim()} »`, "error", 12000);
     }
     S.reponses.delete(d);
+  }
+  // La même planche relue (« Actualiser », Ctrl+Z) sans le relevé qu'on désignait : idem.
+  if (meme && S.designer !== null && !S.releves.some((r) => r.id === S.designer)) {
+    renoncerALaDesignation(false);
   }
   $("#an-preparee").textContent = S.planche
     ? A.preparation(S.regions, S.planche.relecture_statut) : "";

@@ -3938,3 +3938,135 @@ def test_retirer_une_entree_de_la_zone_ne_bascule_pas(page, decor):
         page.locator("#an-plan .an-var", has_text="crié").click()
     expect(page.locator("#an-plan .an-var", has_text="crié")).to_have_attribute("aria-pressed", "false")
     expect(_porte(page, "des mots")).to_have_attribute("aria-pressed", "true")
+
+
+# --------------------------------------------------------------------------- #
+# « Désigner sur la planche » ne survit pas à sa planche (case de la fiche ANN-7, 2026-11-02)
+# --------------------------------------------------------------------------- #
+# Lu dans le code, puis mesuré : la page changeait de planche en gardant la consigne, et le clic
+# suivant sur une zone ne faisait rien — il cherchait un relevé que la planche n'a pas.
+def _ecritures_de_releves(page):
+    envois = []
+    page.on("request", lambda r: envois.append((r.method, r.url))
+            if "/api/releves" in r.url and r.method != "GET" else None)
+    return envois
+
+
+def _consigne_partie(page):
+    expect(page.locator("#an-mini-mode")).to_be_hidden()
+    expect(page.locator("#an-mini-titre")).to_be_visible()
+    expect(page.locator("#an-mini")).to_have_attribute("title", "Choisir une case")
+    assert not page.evaluate("() => document.body.classList.contains('an-designer')")
+
+
+def _armer(page):
+    page.locator("#an-poses-liste .an-lien-btn").click()
+    expect(page.locator("#an-mini-mode")).to_be_visible()
+
+
+@pytest.mark.parametrize("sorte", ["planche", "album", "collection", "ctrl-z"])
+def test_quitter_la_planche_pendant_la_designation_y_renonce(page, decor, sorte):
+    lien = _poser(decor, region_id=decor["bulle"], entree_cle="reponse-a")
+    p2, b2 = _deux_planches(decor)
+    if sorte in ("album", "collection"):
+        with _http(decor) as c:
+            corps = {"titre": "Second album"}
+            if sorte == "collection":            # un album seul dans une autre collection
+                col = c.post("/api/collections",
+                             json={"nom": "Étude", "projet_id": decor["projet"]}).json()["id"]
+                corps["collection_id"] = col
+            a2 = c.post("/api/albums", json=corps).json()["id"]
+            p2 = c.post(f"/api/albums/{a2}/import",
+                        files={"file": ("q.png", make_png(800, 1000), "image/png")}).json()["id"]
+            r = c.post(f"/api/planches/{p2}/regions",
+                       json={"type": "bulle", "x": 60, "y": 60, "w": 200, "h": 120})
+            assert r.status_code in (200, 201), r.text
+    if sorte == "ctrl-z":
+        # Le dernier geste de l'agent est sur la seconde planche : Ctrl+Z y mène.
+        page.goto(f"{decor['base']}/annotation?album={decor['album']}&planche={p2}&region={b2}",
+                  wait_until="networkidle")
+        note = page.locator("#an-note")
+        expect(note).to_be_visible()
+        note.fill("une note de la seconde planche")
+        with _reponse_de(page, "/annotation"):
+            note.blur()
+    _ouvrir(page, decor, decor["bulle"])
+    _armer(page)
+    envois = _ecritures_de_releves(page)
+    if sorte == "planche":
+        choix = page.locator("#an-planche-choix")
+        choix.focus()
+        choix.select_option(str(p2))
+    elif sorte == "album":
+        choix = page.locator("#an-album")
+        choix.focus()
+        choix.select_option(str(a2))
+    elif sorte == "collection":
+        choix = page.locator("#an-collection")
+        choix.focus()
+        choix.select_option(str(col))
+    else:
+        choix = page.locator("#an-mini .an-mz").first
+        choix.focus()                                  # Ctrl+Z hors d'un champ
+        with _reponse_de(page, "/api/undo", "POST"):
+            page.keyboard.press("Control+z")
+    expect(page.locator("#an-planche-choix")).to_have_value(str(p2))
+    _consigne_partie(page)
+    if sorte != "ctrl-z":
+        expect(choix).to_be_focused()                 # le changement venait d'ailleurs
+    # Le clic suivant fait ce qu'il fait d'ordinaire : il choisit la zone (depuis la case, où
+    # Ctrl+Z, qui ouvre la planche sur la bulle de son geste, ne laisse pas).
+    page.locator("#an-vue-case rect.an-fond").click(position={"x": 5, "y": 5})
+    expect(page.locator("#an-tete-zone")).to_have_text("")
+    _zone(page, "bulle")
+    assert envois == []
+    assert next(r for r in _releves(decor) if r["id"] == lien["id"])["lien"] is None
+
+
+@pytest.mark.parametrize("sorte", ["ctrl-z", "actualiser"])
+def test_le_releve_qui_disparait_met_fin_a_sa_designation(page, decor, sorte):
+    """La même planche relue sans le relevé qu'on désignait : Ctrl+Z qui défait sa pose,
+    « Actualiser » après son retrait ailleurs."""
+    if sorte == "actualiser":
+        lien = _poser(decor, region_id=decor["bulle"], entree_cle="reponse-a")
+    _ouvrir(page, decor, decor["bulle"])
+    if sorte == "ctrl-z":
+        with _reponse_de(page, "/api/releves", "POST"):
+            page.locator("#an-plan [role=checkbox]", has_text="réponse à une autre bulle").click()
+    _armer(page)
+    if sorte == "ctrl-z":
+        page.locator("#an-mini .an-mz").first.focus()
+        with _reponse_de(page, "/api/undo", "POST"):
+            page.keyboard.press("Control+z")
+        expect(page.locator("#toasts")).to_contain_text("Annulé :")
+    else:
+        with _http(decor) as c:
+            assert c.request("DELETE", f"/api/releves/{lien['id']}").status_code == 204
+        _retour_sur_l_onglet(page)
+        page.locator("#an-actualiser").click()
+    expect(page.locator("#an-poses-liste .an-lien-btn")).to_have_count(0)
+    _consigne_partie(page)
+    page.locator('#an-mini .an-mz[data-case="1"]').click()
+    page.locator(f'#an-vue-case rect[data-zone="{decor["cartouche"]}"]').click()
+    expect(page.locator("#an-tete-zone")).to_have_text("cartouche b1")
+
+
+def test_actualiser_et_changer_de_case_gardent_la_designation(page, decor):
+    """Le témoin : sur la même planche, le relevé encore là, la désignation tient — on peut
+    aller chercher la zone liée dans une autre case, par la case agrandie."""
+    lien = _poser(decor, region_id=decor["bulle"], entree_cle="reponse-a")
+    _ouvrir(page, decor, decor["bulle"])
+    _armer(page)
+    _poser(decor, region_id=decor["c1"], entree_cle="regard-camera")
+    _retour_sur_l_onglet(page)
+    page.locator("#an-actualiser").click()
+    expect(page.locator("#an-actualiser")).to_be_hidden()
+    expect(page.locator("#an-mini-mode")).to_be_visible()
+    page.locator('#an-mini .an-mz[data-case="1"]').click()
+    expect(page.locator("#an-tete-case")).to_have_text("Case c2")
+    expect(page.locator("#an-mini-mode")).to_be_visible()
+    with _reponse_de(page, RELEVE):
+        page.locator(f'#an-vue-case rect[data-zone="{decor["cartouche"]}"]').click()
+    expect(page.locator("#an-mini-mode")).to_be_hidden()
+    assert next(r for r in _releves(decor) if r["id"] == lien["id"])["lien"]["region_id"] \
+        == decor["cartouche"]
