@@ -441,6 +441,9 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   IdRef… : A5, `GET/POST/DELETE /api/personnages/{id}/alignements`), comme dans l'Atelier, où
   il est seul aujourd'hui. Condition du retrait du mode
 
+### Au basculement — le texte du wizard
+- [ ] **Le wizard dit trois modes de l'Atelier le jour du basculement** — attendu : à la sortie d'`UX-6`, il dit quatre modes, dont « Annotation pour poser des tags et une note (les grilles sont dans la page Annotation) » ; le commit du basculement retire cette étape de son texte, et `UX-3` suit
+
 ### L'ordre
 
 *La file des lots, tranchée par Hugo le 2026-10-21 : lot 1 (imports, copie de travail, sélecteur
