@@ -36,7 +36,7 @@ duree: 30 min
 - [x] Toucher « ✎ Tracer une zone » (il reste enfoncé), glisser le doigt lentement dans la case, l'arrêter, le lever : un rectangle suit le doigt, la page ne défile pas (sur un iPhone, dire si Safari défile quand même), puis « Détail d'image », « Texte hors bulle », « Annuler » paraissent ; toucher « Annuler »
 - [x] Toucher « ✎ Tracer une zone », tracer VITE, le doigt levé en pleine course, puis toucher UNE fois « Détail d'image » : le détail naît à ce premier toucher, et le tiroir s'ouvre. Mesuré en émulation : ce toucher est perdu, il en faut un second ; dire ce que fait le vrai appareil
 - [x] Le tiroir ouvert, le curseur dans Nom : le clavier virtuel laisse le champ visible ; taper un nom, valider, « Fermer ✕ » : le nom s'écrit sur l'image
-- [ ] Téléphone couché, s'il fait moins de 760 px de large : « Poser… ▴ » : la grille se lit et ses entrées se cochent. Mesuré en émulation à 667 × 375 : la grille n'y reçoit que 8 px, la boîte de bas gardant sa hauteur ; dire ce que fait le vrai appareil (au-delà de 760 px, il n'y a pas de feuille : la grille reste en colonne à droite, et on regarde si elle se sert)
+- [x] Téléphone couché, s'il fait moins de 760 px de large : « Poser… ▴ » : la grille se lit et ses entrées se cochent. Mesuré en émulation à 667 × 375 : la grille n'y reçoit que 8 px, la boîte de bas gardant sa hauteur ; dire ce que fait le vrai appareil (au-delà de 760 px, il n'y a pas de feuille : la grille reste en colonne à droite, et on regarde si elle se sert)
 
 ### Tablette — 5 min, moins de 1 200 px de large (en portrait si besoin)
 

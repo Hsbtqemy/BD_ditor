@@ -528,7 +528,7 @@ semaines » (Hugo, le même jour).
   perdu après un tracé rapide n'arrive pas sur le Galaxy, c'était l'émulation —, la
   désignation d'un lien sur tablette aussi ; le téléphone couché ne sert pas, et l'étiquette
   du lien gêne (les quatre cases suivantes). Le détail case par case est dans la passe
-- [ ] **Téléphone couché, la grille se sert** — attendu : sur un téléphone couché (Galaxy,
+- [x] **Téléphone couché, la grille se sert** — attendu : sur un téléphone couché (Galaxy,
   Firefox), « Poser… ▴ » montre les entrées de la grille, qui défilent et se cochent, et ce
   qui est posé reste visible. Constaté le 2026-11-02 (photo de Hugo) : les entrées ont une
   hauteur NULLE — entre « Chercher dans la grille… » et « Dans le détail d1 », rien —, seule
@@ -541,8 +541,8 @@ semaines » (Hugo, le même jour).
   coche au toucher ; vert aussi dans l'image (police DejaVu). À rejouer sur le Galaxy une fois
   en production. Angle mort écrit : sous 30em de large ET 34em de haut — un téléphone debout
   dont le clavier raccourcirait la fenêtre — la feuille reste empilée, et les résultats du
-  filtre pourraient ne pas se voir
-- [ ] **La feuille tient dans ce qui se voit** — attendu : barre d'adresse du navigateur
+  filtre pourraient ne pas se voir. **Rejoué par Hugo le 2026-11-02, en production (`55da317`) : « c'est bon »**
+- [x] **La feuille tient dans ce qui se voit** — attendu : barre d'adresse du navigateur
   affichée, « Fermer ✕ » se voit en entier en haut de la feuille et le guide en entier
   au-dessus de la barre ; le clavier sorti, « Chercher dans la grille… » et le bas de la
   feuille restent visibles (conforme téléphone debout le 2026-11-02 : le correctif ne doit
@@ -556,8 +556,8 @@ semaines » (Hugo, le même jour).
   le guide passe encore sous la barre de Firefox, la cause serait l'ancrage `bottom: 0` et
   non la hauteur (piste : `visualViewport`). À rejouer sur le Galaxy, clavier compris. Les
   autres boîtes à 100 % de la hauteur auraient le même défaut sans l'avoir montré : `.lf.bi`
-  (Bibliothèque), `.preview` (Recherche), `#tr-mini img` (Transcription de l'Atelier)
-- [ ] **L'étiquette du lien ne couvre pas la planche** — attendu : pendant « Désigner sur la
+  (Bibliothèque), `.preview` (Recherche), `#tr-mini img` (Transcription de l'Atelier). **Rejoué par Hugo le 2026-11-02, en production (`55da317`) : « c'est bon »**
+- [x] **L'étiquette du lien ne couvre pas la planche** — attendu : pendant « Désigner sur la
   planche », aucune consigne ne recouvre la minicarte ; elle ne dit pas « Cliquez » au doigt,
   et s'annule au doigt comme par Échap. Relevé par Hugo le 2026-11-02 sur l'iPad : sur
   *Bibi Fricotin* elle tombe sur la marge et le texte, mais une planche sans marge aurait une
@@ -566,7 +566,7 @@ semaines » (Hugo, le même jour).
   `0217df8`** : « Désignez la zone liée » et « Annuler » dans la cellule du titre (la
   minicarte ne bouge pas ; la ligne a pris environ 10 px, une fois pour toutes) ; plus aucun
   « Cliquez » ; « Annuler » et Échap rendent le focus au bouton du lien, et Échap ne referme
-  plus la feuille au téléphone. À rejouer sur l'iPad
+  plus la feuille au téléphone. **Rejoué par Hugo le 2026-11-02, en production (`55da317`) : « c'est bon »**
 - [ ] **Safari sur iPhone, avant le produit final** — attendu : sur un iPhone, « ✎ Tracer une
   zone » trace sans que la page défile. Vu sur iPad sous Safari le 2026-11-02 (le même moteur,
   conforme) ; aucun iPhone sous la main, Hugo le garde pour les dernières vérifications
