@@ -426,6 +426,20 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   stable « #123 », et un lien que l'outil tient vient avec les grilles
   **Tranché par Hugo le 2026-10-22** : un champ `lien` du relevé désigne la région ; si elle
   disparaît, le relevé passe « à revoir » (cf. « Tranché par Hugo — 2026-10-22 »)
+- [x] **Le mode Annotation de l'Atelier disparaît au basculement** — attendu : tranché. H2
+  (2026-10-27) le gardait tel quel pendant la tranche 2, avec « Annoter ↗ » et « Ouvrir dans
+  l'Atelier ↗ », et laissait son sort au basculement. **Hugo, 2026-11-02 : il disparaît, le
+  bouton du mode avec lui ; on annote dans la page Annotation.** D'ici là il reste, faute que
+  la page fasse tout ce qu'il fait (les deux cases suivantes) ; les tags, la situation et le
+  profil, qu'il est seul à écrire, deviennent des grilles au basculement même (Q3)
+- [ ] **L'identité d'une boîte personnage s'écrit dans la page Annotation** — attendu : dans
+  le Contexte d'une boîte, on choisit ou crée le personnage, comme le locuteur (le champ de
+  `lib/champ-personnage.js`, sous la garde de CONC-4). Aujourd'hui la page le montre en
+  lecture seule ; seul le mode Annotation de l'Atelier l'écrit. Condition du retrait du mode
+- [ ] **Le panneau Personnage s'ouvre depuis la page Annotation** — attendu : depuis le
+  locuteur ou une boîte, on ouvre la fiche du personnage et ses alignements (Wikidata, VIAF,
+  IdRef… : A5, `GET/POST/DELETE /api/personnages/{id}/alignements`), comme dans l'Atelier, où
+  il est seul aujourd'hui. Condition du retrait du mode
 
 ### L'ordre
 
