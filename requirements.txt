@@ -15,6 +15,11 @@ uvicorn[standard]>=0.27
 pillow>=10.0
 python-multipart>=0.0.9
 httpx>=0.27          # client WebDAV ShareDocs (pipeline/sharedocs.py)
+# Le tableur d'une grille (ANN-7, gabarit tranché le 2026-11-03) : le classeur .xlsx se
+# PRODUIT et se RELIT dans l'application (`grille_tableur.py`). `defusedxml` est ce par quoi
+# openpyxl lit son XML sans résoudre d'entité : sans lui, l'import refuse tout classeur.
+openpyxl>=3.1
+defusedxml>=0.7
 # Segmentation automatique — Kumiko, cloné séparément dans lib/kumiko.
 # Il n'expose pas de requirements.txt ; ses dépendances sont dans requirements-kumiko.txt :
 #   git clone https://github.com/njean42/kumiko.git lib/kumiko

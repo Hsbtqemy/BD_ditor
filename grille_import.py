@@ -3,14 +3,15 @@ cadrage R3, tranché par Hugo le 2026-10-14 et le 2026-10-25 ; le gabarit et le 
 sur maquette le 2026-11-03).
 
 Cœur partagé, sans I/O propre — le patron de `lexique_import` : il reçoit des FLUX de texte
-et une CONNEXION, l'appelant ouvre les fichiers et tient la transaction. Deux enveloppes : `tools/importer_grille.py` et
+(ou les octets d'un classeur) et une CONNEXION, l'appelant ouvre les fichiers et tient la
+transaction. Deux enveloppes : `tools/importer_grille.py` et
 `POST /api/projets/{id}/grilles/import`.
 
-Le FORMAT — deux CSV point-virgule, UTF-8 avec ou sans BOM, en-tête obligatoire, lus par NOM
-de colonne — a deux sortes de mots, que `grille_tableur` décrit et que ce module lit toutes
-deux : des colonnes MACHINE (`cle`, `forme`, `libelle`…), ou les titres du gabarit, qui sont
-des QUESTIONS (« 4. Ce qu'on choisit »), aux réponses EN MOTS (« une variante », « la case »).
-Les deux se mêlent : un titre ou une valeur se lit d'un côté ou de l'autre. `docs/import-grille.md` le dit pour qui remplit le tableur.
+Le FORMAT a deux formes, que `grille_tableur` décrit et que ce module lit toutes deux : deux
+CSV point-virgule aux colonnes MACHINE (`cle`, `forme`, `libelle`…), ou un classeur `.xlsx`
+dont les titres sont les QUESTIONS du gabarit (« 4. Ce qu'on choisit ») et les cellules des
+réponses EN MOTS (« une variante », « la case »). Les deux se mêlent : un titre ou une valeur
+se lit d'un côté ou de l'autre. `docs/import-grille.md` le dit pour qui remplit le tableur.
 
 1. Les entrées : une ligne par ENTRÉE, et une ligne par VARIANTE. Une ligne de variante
    répète la `cle` de son entrée — ou la laisse vide, et appartient alors à l'entrée du
@@ -18,7 +19,7 @@ Les deux se mêlent : un titre ou une valeur se lit d'un côté ou de l'autre. `
    l'entrée, ou y recopie exactement celles de l'entrée.
 2. Les listes de qualificatifs, facultatives : une ligne par qualificatif.
 3. La DÉCLARATION (nom, ouverte ou fermée, « Porte sur », note) : en arguments de l'outil, en
-   champs du formulaire de la route.
+   champs du formulaire de la route, ou dans la feuille « 1. La grille » du classeur.
 
 Les IDENTIFIANTS sont facultatifs à la création (`_Identifiants`) : une entrée, une
 variante, une rubrique, une liste ou un qualificatif sans le sien le reçoit de son NOM —
@@ -45,7 +46,7 @@ import zipfile
 
 import grille_tableur
 import grilles
-from grille_tableur import FormatInvalide  # noqa: F401 — ré-exportée
+from grille_tableur import FormatInvalide, TropGros  # noqa: F401 — ré-exportées
 from grilles import CARDINALITES, FORMES, propre
 
 COLONNES = ("cle", "rubrique", "rubrique_cle", "forme", "libelle", "variante_cle",
@@ -84,16 +85,17 @@ def _faute(code: str, probleme: str, a_faire=None, *, fichier=None, ligne=None, 
            colonne=None, listes: bool = False) -> dict:
     """Une anomalie (ou un avertissement) : `code` (stable, pour l'écran et les tests), où —
     `fichier` (la feuille ou le fichier), `ligne` —, l'entrée (`cle`), la `colonne` machine
-    et la `question` telle que le gabarit la pose, ce qui ne va pas (`probleme`) et ce qu'il
+    et la `question` telle que le classeur la pose, ce qui ne va pas (`probleme`) et ce qu'il
     faut faire (`a_faire`), en mots."""
-    titres = grille_tableur.TITRES_LISTES if listes else grille_tableur.TITRES
+    titres = {**(grille_tableur.TITRES_LISTES if listes else grille_tableur.TITRES),
+              **grille_tableur.TITRES_GRILLE}
     return {"code": code, "fichier": fichier, "ligne": ligne, "cle": cle, "colonne": colonne,
             "question": titres.get(colonne) if colonne else None, "probleme": probleme,
             "a_faire": a_faire}
 
 
 def _complete(f: dict) -> dict:
-    """Une faute venue du lecteur d'une feuille : toutes ses clés."""
+    """Une faute venue du classeur (une formule, une date) : toutes ses clés."""
     return {**{c: None for c in CHAMPS_FAUTE}, **f}
 
 
@@ -184,7 +186,7 @@ def _par_colonne(nom, entete, lignes, attendues, *, listes, obligatoires, anomal
 
 class _Identifiants:
     """Les identifiants qui MANQUENT, reçus du NOM (ANN-7, tranché le 2026-11-03 : la colonne
-    grise du gabarit peut être vide). Règle, dans cet ordre :
+    grise du classeur peut être vide). Règle, dans cet ordre :
 
     1. un identifiant écrit dans le fichier est gardé tel quel, et aucun autre ne le prend ;
     2. sans identifiant, l'objet REPREND celui de l'objet de même NOM dans la version à
@@ -259,7 +261,8 @@ def lire(flux_entrees, flux_listes=None, *, porte_sur=None, reference=None,
 
 def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
                  ou_porte_sur=None) -> dict:
-    """Valide un tableur déjà découpé en feuilles (`lire` pour les CSV) — cf. `lire`."""
+    """Valide un tableur déjà découpé en feuilles (`lire` pour les CSV,
+    `grille_tableur.lire_classeur` pour un classeur) — cf. `lire`."""
     anomalies = [_complete(f) for f in tableur.get("fautes", [])]
     avert = [_complete(f) for f in tableur.get("notes", [])]
     ref = reference or {"cible": None, "rubriques": {}, "entrees": {}, "listes": {}}
@@ -333,7 +336,7 @@ def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
     elif not cible_version:
         anomalies.append(_faute(
             "porte_sur_manque", "« Porte sur » manque : sur quoi la grille se pose-t-elle ?",
-            "déclarez-le à l'import ("
+            "dites-le dans la feuille « 1. La grille », ou en déclarant l'import ("
             + " · ".join(grilles.CIBLES) + ")", colonne="porte_sur", **ou_porte_sur))
 
     # -- Les entrées.
@@ -592,13 +595,94 @@ def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
             "identifiants_deduits",
             "des identifiants manquaient : ils sont pris du nom (" + ", ".join(
                 f"{n} {q}" for q, n in sorted(par_quoi.items())) + ")",
-            "réexportez la grille après l'import : le tableur portera ses identifiants"))
+            "réexportez la grille après l'import : le classeur portera ses identifiants"))
     resultat = {"anomalies": anomalies, "avertissements": avert,
                 "identifiants_deduits": deduits}
     if anomalies:
         return {"contenu": None, **resultat}
     return {"contenu": {"cible": grilles.ecrire_cibles(cible_version), "rubriques": rubriques,
                         "entrees": entrees, "listes": listes}, **resultat}
+
+
+# --------------------------------------------------------------------------- #
+# La déclaration : les arguments, ou la feuille « 1. La grille »
+# --------------------------------------------------------------------------- #
+def declarer(tableur: dict, *, nom=None, ouverte=None, porte_sur=None, note=None,
+             grille=None) -> tuple[dict, list, list]:
+    """Ce que l'import déclare — `nom`, `ouverte`, `porte_sur`, `note` —, des ARGUMENTS
+    (l'outil, le formulaire) et de la feuille « 1. La grille » quand le classeur la porte.
+    La feuille remplit ce que les arguments laissent vide ; un argument DONNÉ l'emporte sur
+    elle — on réimporte le classeur d'une grille sous un autre nom pour la dériver —, et le
+    bilan le dit (« À savoir ») : rien ne change en silence. `grille` : la grille existante
+    d'une version suivante — son nom et sa nature ne changent pas par l'import, et une
+    feuille qui dit une autre NATURE est une anomalie. Rend (déclaration, anomalies,
+    avertissements) ; la déclaration dit ce qui vient de la feuille (`lus`)."""
+    feuille = tableur.get("grille") or {}
+    nom_feuille = tableur.get("nom_grille") or grille_tableur.FEUILLE_GRILLE
+    anomalies, avert = [], []
+    if grille is not None:              # sa nature est la sienne : l'argument ne la change pas
+        ouverte = bool(grille["ouverte"])
+    decl = {"nom": propre(nom), "ouverte": ouverte, "porte_sur": propre(porte_sur),
+            "note": propre(note), "lus": [], "ou": {}}
+
+    def lu(champ):
+        valeur, ligne = feuille.get(champ, (None, None))
+        return propre(valeur), {"fichier": nom_feuille, "ligne": ligne}
+
+    for champ in ("nom", "porte_sur", "note"):
+        valeur, ou = lu(champ)
+        if valeur is None:
+            continue
+        decl["ou"][champ] = ou
+        if champ == "porte_sur":
+            comparable = grilles.lire_cibles(grille_tableur.cibles_lues(valeur))[0]
+            donne = grilles.lire_cibles(grille_tableur.cibles_lues(decl[champ]))[0] \
+                if decl[champ] else None
+            differe = donne is not None and comparable != donne
+        else:
+            differe = decl[champ] is not None and decl[champ] != valeur
+        if grille is not None and champ == "nom":
+            if valeur != grille["nom"]:
+                avert.append(_faute(
+                    "nom_de_la_feuille", f"le classeur nomme la grille « {valeur} », elle "
+                    f"s'appelle « {grille['nom']} » : son nom ne change pas par l'import",
+                    colonne="nom", **ou))
+            continue
+        if differe:
+            avert.append(_faute(
+                "declaration_remplacee", f"la feuille dit « {valeur} », l'import déclare "
+                f"« {decl[champ]} » : la déclaration de l'import est retenue",
+                colonne=champ, **ou))
+            continue
+        if decl[champ] is None:
+            decl[champ] = valeur
+            decl["lus"].append(champ)
+    valeur, ou = lu("ouverte")
+    if valeur is not None:
+        decl["ou"]["ouverte"] = ou
+        lue = grille_tableur.ouverte_lue(valeur)
+        attendue = bool(grille["ouverte"]) if grille is not None else ouverte
+        if not isinstance(lue, bool):
+            anomalies.append(_faute(
+                "nature_inconnue", f"la réponse « {valeur} » n'est ni « fermée » ni "
+                "« ouverte »", "répondez « fermée » ou « ouverte »", colonne="ouverte", **ou))
+        elif grille is not None and lue != attendue:
+            anomalies.append(_faute(
+                "nature_contredite", f"la feuille dit « {valeur} », la grille est "
+                f"« {grille_tableur.OUVERTE_MOTS[attendue]} »",
+                "une grille ne change pas de nature : accordez la feuille, ou importez-la "
+                "comme une grille neuve", colonne="ouverte", **ou))
+        elif attendue is not None and lue != attendue:
+            avert.append(_faute(
+                "declaration_remplacee", f"la feuille dit « {valeur} », l'import déclare "
+                f"« {grille_tableur.OUVERTE_MOTS[attendue]} » : la déclaration de l'import "
+                "est retenue", colonne="ouverte", **ou))
+        elif decl["ouverte"] is None:
+            decl["ouverte"] = lue
+            decl["lus"].append("ouverte")
+    if decl["ouverte"] is None:
+        decl["ouverte"] = bool(grille["ouverte"]) if grille is not None else False
+    return decl, anomalies, avert
 
 
 # --------------------------------------------------------------------------- #
@@ -817,21 +901,28 @@ def nom_pris(conn: sqlite3.Connection, projet_id: int, nom: str, *, sauf=None) -
         "AND id IS NOT ?", (projet_id, nom, sauf)).fetchone() is not None
 
 
-def tableur_de(flux_entrees, flux_listes=None, *, noms=NOMS_PAR_DEFAUT) -> dict:
-    """Le tableur à lire, découpé en feuilles : les deux CSV."""
+def tableur_de(flux_entrees=None, flux_listes=None, *, classeur: bytes | None = None,
+               noms=NOMS_PAR_DEFAUT) -> dict:
+    """Le tableur à lire, découpé en feuilles : un classeur (ses octets), ou les deux CSV."""
+    if classeur is not None:
+        return grille_tableur.lire_classeur(classeur)
     return {"entrees": (noms[0], *grille_tableur.feuille_csv(flux_entrees)),
             "listes": (noms[1], *grille_tableur.feuille_csv(flux_listes))
             if flux_listes is not None else None}
 
 
-def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_listes=None,
-             grille_id: int | None = None, nom: str | None = None, ouverte: bool = False,
+def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flux_listes=None,
+             classeur: bytes | None = None, grille_id: int | None = None,
+             nom: str | None = None, ouverte: bool | None = None,
              porte_sur: str | None = None, note: str | None = None, par=None,
              a_blanc: bool = False, noms=NOMS_PAR_DEFAUT) -> dict:
-    """Importe un tableur comme version d'une grille — neuve (`nom`), ou suivante d'une grille
-    existante de ce projet (`grille_id`). Le droit de l'appelant est vérifié AVANT (gérer le
-    projet) ; ici, les règles du modèle :
+    """Importe un tableur — deux CSV (`flux_entrees`, `flux_listes`) ou un classeur
+    (`classeur`, ses octets) — comme version d'une grille, neuve (`nom`) ou suivante d'une
+    grille existante de ce projet (`grille_id`). Le droit de l'appelant est vérifié AVANT
+    (gérer le projet) ; ici, les règles du modèle :
 
+    - la déclaration (`nom`, `ouverte`, `porte_sur`, `note`) vient des arguments, ou de la
+      feuille « 1. La grille » du classeur (`declarer`) ;
     - une grille FERMÉE a au plus un brouillon : réimporter le REMPLACE ; si la dernière
       version est publiée, un brouillon neuf naît, au numéro suivant — sauf si son empreinte
       est celle de la version publiée, ou du brouillon en place : « aucun changement » ;
@@ -840,12 +931,12 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_lis
       option la plus fermée, à trancher : remplacer écraserait les entrées nées en posant).
 
     `a_blanc` : rend le bilan sans rien écrire. Lève `Refus` (statut, message, anomalies,
-    bilan), `FormatInvalide` sur un en-tête. Ne commite pas ; écrit au journal
+    bilan), `FormatInvalide` sur un fichier ou un en-tête. Ne commite pas ; écrit au journal
     sous `grille` (sauf à blanc). Rend `{grille_id, version: {numero, etat} | None, ecrit,
     aucun_changement, verdict, a_savoir, va_naitre, bilan, compare_a, declaration,
     identifiants_deduits}`."""
     import journal                               # import paresseux : le cœur reste léger
-    tableur = tableur_de(flux_entrees, flux_listes, noms=noms)
+    tableur = tableur_de(flux_entrees, flux_listes, classeur=classeur, noms=noms)
     g = None
     if grille_id is not None:
         g = conn.execute("SELECT * FROM grille WHERE id = ? AND projet_id = ?",
@@ -854,15 +945,18 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_lis
             raise Refus(404, f"Grille {grille_id} introuvable dans ce projet.")
         if g["retiree_le"]:
             raise Refus(409, "Cette grille est retirée : on ne lui importe plus de version.")
-        ouverte = bool(g["ouverte"])
-    else:
-        nom = propre(nom)
-        if not nom:
-            raise Refus(422, "Une grille neuve a besoin d'un nom.")
-        if nom_pris(conn, projet_id, nom):
+    decl, fautes_decl, notes_decl = declarer(tableur, nom=nom, ouverte=ouverte,
+                                             porte_sur=porte_sur, note=note, grille=g)
+    ouverte, nom, note = decl["ouverte"], decl["nom"], decl["note"]
+    if g is None:
+        if not nom and not fautes_decl:
+            raise Refus(422, "Une grille neuve a besoin d'un nom (déclaré, ou dans la "
+                             f"feuille « {grille_tableur.FEUILLE_GRILLE} »).")
+        if nom and nom_pris(conn, projet_id, nom):
             raise Refus(409, f"Une grille de ce projet s'appelle déjà « {nom} » : importez "
                              "une version suivante de celle-ci, ou choisissez un autre nom.")
     reference = None                          # la version à laquelle on compare
+    porte_sur = decl["porte_sur"]
     if g is not None:
         reference = grilles.derniere_version(conn, g["id"], grilles.ETAT_PUBLIEE,
                                              grilles.ETAT_VIVANTE)
@@ -875,11 +969,12 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_lis
     if g is not None and reference is None:
         brouillon_ = grilles.derniere_version(conn, g["id"], grilles.ETAT_BROUILLON)
         reference_ids = grilles.contenu(conn, brouillon_["id"]) if brouillon_ else None
-    lu = lire_tableur(tableur, porte_sur=porte_sur, reference=reference_ids)
-    anomalies = lu["anomalies"]
-    a_savoir = lu["avertissements"]
-    commun = {"declaration": {"nom": nom, "ouverte": bool(ouverte), "note": note,
-                              "porte_sur": porte_sur},
+    lu = lire_tableur(tableur, porte_sur=porte_sur, reference=reference_ids,
+                      ou_porte_sur=decl["ou"].get("porte_sur"))
+    anomalies = fautes_decl + lu["anomalies"]
+    a_savoir = notes_decl + lu["avertissements"]
+    commun = {"declaration": {k: decl[k] for k in ("nom", "ouverte", "note", "lus")}
+              | {"porte_sur": porte_sur},
               "identifiants_deduits": lu["identifiants_deduits"]}
     if anomalies:
         raise Refus(422, f"Le tableur est refusé : {len(anomalies)} anomalie(s). Rien n'est "
@@ -1108,3 +1203,29 @@ def archive(conn: sqlite3.Connection, version_id: int) -> bytes:
         z.writestr(NOMS_FICHIERS[0], "﻿" + entrees)
         z.writestr(NOMS_FICHIERS[1], "﻿" + listes)
     return tampon.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+# Le classeur — le tableur EN MOTS, identifiants compris (gabarit du 2026-11-03)
+# --------------------------------------------------------------------------- #
+def contenu_d_exemple() -> dict | None:
+    """Le contenu du modèle FICTIF (`config.GRILLE_DU_BAC`), pour la feuille d'exemple du
+    classeur ; None s'il ne se lit pas — le classeur se produit sans exemple."""
+    import config
+    try:
+        with open(config.GRILLE_DU_BAC, encoding="utf-8-sig", newline="") as e,                 open(config.GRILLE_DU_BAC_LISTES, encoding="utf-8-sig", newline="") as li:
+            return lire(e, li, porte_sur=config.GRILLE_DU_BAC_PORTE_SUR)["contenu"]
+    except (OSError, ValueError, csv.Error):
+        return None
+
+
+def classeur(conn: sqlite3.Connection, version_id: int) -> bytes:
+    """Le classeur `.xlsx` d'une version (`grille_tableur.ecrire_classeur`) : sa
+    déclaration, ses entrées et ses listes EN MOTS, identifiants compris, et l'exemple.
+    Relu par l'import, il rend la même empreinte."""
+    v = grilles.version_par_id(conn, version_id)
+    g = conn.execute("SELECT nom, ouverte FROM grille WHERE id = ?",
+                     (v["grille_id"],)).fetchone()
+    return grille_tableur.ecrire_classeur(
+        grilles.contenu(conn, version_id), nom=g["nom"], ouverte=bool(g["ouverte"]),
+        porte_sur=v["cible"], note=v["note"], exemple=contenu_d_exemple())

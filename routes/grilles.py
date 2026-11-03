@@ -8,12 +8,12 @@ version ; une collection du projet peut la MASQUER — un filtre d'écran, pas u
 
 Qui fait quoi (R8) — les décisions d'accès d'une grille sont celles de SON projet :
 - importer, publier, supprimer un brouillon, retirer, supprimer une grille, corriger une
-  coquille, réexporter, activer, désactiver : qui GÈRE le projet (`peut_gerer_projet` —
+  coquille, activer, désactiver : qui GÈRE le projet (`peut_gerer_projet` —
   son responsable, l'administrateur qui passe outre). 404 sur une grille ou un projet qu'on
   ne voit pas, 403 nommé sur ce qu'on voit sans le gérer ;
 - masquer dans une collection : qui l'ADMINISTRE (`peut_administrer`, G7) ;
-- lire le plan publié (ou vivant) : `Portee.clause_grille`, la seule question neuve ;
-  lire un brouillon : qui gère le projet — « le brouillon reste chez ses auteurs ».
+- lire le plan publié (ou vivant), et son tableur : `Portee.clause_grille`, la seule question
+  neuve ; lire un brouillon : qui gère le projet — « le brouillon reste chez ses auteurs ».
 
 Le journal : tout s'écrit sous `grille` (`cible_id` = la grille), retenu de toute sortie et
 sans rang (`tools/_commun.py`) — administrer un vocabulaire n'est pas annoter.
@@ -24,13 +24,14 @@ import io
 import sqlite3
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 import autorisation
 import conflit
 import grille_import
+import grille_tableur
 import grilles
 import journal
 from socle import (_disposition, _get_collection, _get_projet, _refuser_le_jeu, _row, db,
@@ -151,16 +152,29 @@ def plan_de_version(grille_id: int, numero: int, conn: sqlite3.Connection = Depe
 # --------------------------------------------------------------------------- #
 # Importer, publier, retirer
 # --------------------------------------------------------------------------- #
-def _texte_de(fichier: UploadFile | None, quoi: str) -> io.StringIO | None:
+def _octets(fichier: UploadFile | None, quoi: str) -> bytes | None:
+    """Les octets d'un fichier reçu, BORNÉS : on n'en lit jamais plus que le plafond (413
+    au-delà), CSV comme classeur."""
     if fichier is None:
         return None
-    data = fichier.file.read()
+    data = fichier.file.read(grille_tableur.TAILLE_MAX_RECUE + 1)
+    if len(data) > grille_tableur.TAILLE_MAX_RECUE:
+        raise HTTPException(413, f"Le fichier des {quoi} pèse plus de "
+                                 f"{grille_tableur.TAILLE_MAX_RECUE // (1024 * 1024)} Mo : "
+                                 "ce n'est pas une grille.")
     if not data:
         raise HTTPException(400, f"Le fichier des {quoi} est vide.")
+    return data
+
+
+def _texte_de(data: bytes | None, quoi: str) -> io.StringIO | None:
+    if data is None:
+        return None
     try:
         return io.StringIO(data.decode("utf-8-sig"), newline="")
     except UnicodeDecodeError:
-        raise HTTPException(400, f"Le fichier des {quoi} doit être encodé en UTF-8.")
+        raise HTTPException(400, f"Le fichier des {quoi} doit être encodé en UTF-8, ou être "
+                                 "un classeur .xlsx.")
 
 
 def _nom_de(fichier: UploadFile | None, defaut: str) -> str:
@@ -180,32 +194,43 @@ def _refus_http(exc: grille_import.Refus) -> HTTPException:
 def importer_grille(projet_id: int, fichier: UploadFile = File(...),
                     listes: Optional[UploadFile] = File(None),
                     grille_id: Optional[int] = Form(None, ge=1),
-                    nom: Optional[str] = Form(None), ouverte: bool = Form(False),
+                    nom: Optional[str] = Form(None), ouverte: Optional[bool] = Form(None),
                     porte_sur: Optional[str] = Form(None), note: Optional[str] = Form(None),
                     a_blanc: bool = Form(False),
                     conn: sqlite3.Connection = Depends(db),
                     portee: autorisation.Portee = Depends(portee_courante)):
-    """Importe un tableur (R3) : une grille NEUVE (`nom`, `ouverte`, `porte_sur`) ou la
-    version suivante d'une grille du projet (`grille_id`). Le fichier est vérifié ENTIER :
-    une anomalie de structure le refuse (422, toutes les anomalies dites en DONNÉES, le
-    verdict et « À savoir », rien d'écrit, G12). `a_blanc` rend le BILAN — verdict, « À
-    savoir », « Ce qui va naître », ce qui change depuis la dernière version publiée — sans
-    rien écrire. Réimporter le même fichier ne change rien.
+    """Importe un tableur (R3) — deux CSV (`fichier`, `listes`), ou un classeur `.xlsx`
+    (`fichier` seul, reconnu à ses octets) : une grille NEUVE (`nom`, `ouverte`,
+    `porte_sur`, ou la feuille « 1. La grille » du classeur) ou la version suivante d'une
+    grille du projet (`grille_id`). Le fichier est vérifié ENTIER : une anomalie de structure
+    le refuse (422, toutes les anomalies dites en DONNÉES, le verdict et « À savoir », rien
+    d'écrit, G12). `a_blanc` rend le BILAN — verdict, « À savoir », « Ce qui va naître », ce
+    qui change depuis la dernière version publiée — sans rien écrire. Réimporter le même
+    fichier ne change rien. Le fichier est borné (413) ; un classeur l'est aussi une fois déplié.
 
     À qui gère le projet (404 / 403 nommé) ; jamais dans le projet de jeu. Dans un bac à
     sable, oui (G6) : la grille n'existe que là, et part avec lui."""
     _get_projet(conn, portee, projet_id, gerer=True, motif=_MOTIF_GERER)
     _refuser_le_jeu(conn, projet_id=projet_id)
-    flux = _texte_de(fichier, "entrées")
-    flux_listes = _texte_de(listes, "listes")
+    data = _octets(fichier, "entrées")
+    classeur = data if grille_tableur.est_un_classeur(data) else None
+    if classeur is not None and listes is not None:
+        raise HTTPException(422, "Un classeur porte ses listes dans sa feuille « "
+                                 f"{grille_tableur.FEUILLE_LISTES} » : n'envoyez pas de "
+                                 "second fichier.")
+    flux = None if classeur is not None else _texte_de(data, "entrées")
+    flux_listes = _texte_de(_octets(listes, "listes"), "listes")
     noms = (_nom_de(fichier, grille_import.NOMS_PAR_DEFAUT[0]),
             _nom_de(listes, grille_import.NOMS_PAR_DEFAUT[1]))
     conflit.verrouiller(conn)            # le nom unique et le brouillon se lisent sous le verrou
     try:
         res = grille_import.importer(conn, projet_id=projet_id, flux_entrees=flux,
-                                     flux_listes=flux_listes, grille_id=grille_id, nom=nom,
-                                     ouverte=ouverte, porte_sur=porte_sur, note=note,
-                                     par=portee.utilisateur, a_blanc=a_blanc, noms=noms)
+                                     flux_listes=flux_listes, classeur=classeur,
+                                     grille_id=grille_id, nom=nom, ouverte=ouverte,
+                                     porte_sur=porte_sur, note=note, par=portee.utilisateur,
+                                     a_blanc=a_blanc, noms=noms)
+    except grille_import.TropGros as e:
+        raise HTTPException(413, str(e))
     except grille_import.FormatInvalide as e:
         raise HTTPException(400, str(e))
     except grille_import.Refus as e:
@@ -377,18 +402,34 @@ def corriger_coquille(grille_id: int, numero: int, payload: CoquilleIn,
     return grilles.plan(conn, v["id"])
 
 
+_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
 @router.get("/api/grilles/{grille_id}/versions/{numero}/tableur")
-def reexporter_tableur(grille_id: int, numero: int, conn: sqlite3.Connection = Depends(db),
+def reexporter_tableur(grille_id: int, numero: int,
+                       forme: str = Query("xlsx", alias="format", pattern="^(xlsx|csv)$"),
+                       conn: sqlite3.Connection = Depends(db),
                        portee: autorisation.Portee = Depends(portee_courante)):
-    """Le RÉEXPORT d'une version au format du tableur, identifiants compris (G16) : un zip,
-    les deux CSV. À qui gère le projet. Une porte DÉCLARÉE hors du droit d'export (DROIT-2
-    borne le CORPUS ; une grille est un vocabulaire, son plan ne porte aucune transcription,
+    """Le TABLEUR d'une version, identifiants compris (G16) : le CLASSEUR `.xlsx` en mots
+    (gabarit tranché par Hugo le 2026-11-03 — listes déroulantes, aide sur les titres, la
+    case fautive en rouge, une feuille d'exemple), ou, `?format=csv`, les deux CSV machine
+    dans un zip. Réimporté tel quel, l'un comme l'autre rend la même empreinte.
+
+    À qui LIT le plan de la version — la règle de `GET …/versions/{numero}` : `clause_grille`,
+    et un brouillon à qui gère le projet seulement (404 sinon). Le classeur ne porte que le
+    plan, qui se lit déjà en JSON : ni login, ni relevé, ni transcription. Une porte DÉCLARÉE
+    hors du droit d'export (DROIT-2 borne le CORPUS ; une grille est un vocabulaire,
     `tests/test_droit_export.py`)."""
-    g = _get_grille(conn, portee, grille_id, gerer=True)
+    g = _get_grille(conn, portee, grille_id)
     v = _get_version(conn, g, numero)
-    return Response(content=grille_import.archive(conn, v["id"]), media_type="application/zip",
+    if forme == "csv":
+        return Response(content=grille_import.archive(conn, v["id"]),
+                        media_type="application/zip",
+                        headers={"Content-Disposition":
+                                 _disposition(f"grille-{grille_id}-v{numero}.zip")})
+    return Response(content=grille_import.classeur(conn, v["id"]), media_type=_XLSX,
                     headers={"Content-Disposition":
-                             _disposition(f"grille-{grille_id}-v{numero}.zip")})
+                             _disposition(f"grille-{grille_id}-v{numero}.xlsx")})
 
 
 # --------------------------------------------------------------------------- #

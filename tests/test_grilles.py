@@ -449,9 +449,13 @@ def test_une_coquille_se_corrige_sans_nouvelle_version(client, decor, db_path):
 
 
 def test_le_reexport_rend_le_tableur_qui_se_reimporte_a_l_identique(client, decor, db_path):
+    """Les deux CSV machine (`?format=csv`), identifiants compris. Le tableur se lit avec le
+    plan depuis le gabarit du 2026-11-03 : un membre qui lit la version publiée le reçoit
+    (il recevait un 403 quand le réexport était réservé à qui gère le projet)."""
     g = grille_active(client, decor["p"])
-    url = f"/api/grilles/{g['grille_id']}/versions/1/tableur"
-    ok(client.get(url, headers=SAM), 403)
+    url = f"/api/grilles/{g['grille_id']}/versions/1/tableur?format=csv"
+    ok(client.get(url, headers=ZOE), 404)                     # ne lit pas la grille
+    assert ok(client.get(url, headers=SAM)).headers["content-type"] == "application/zip"
     r = client.get(url, headers=LEA)
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
@@ -467,7 +471,7 @@ def test_le_reexport_rend_le_tableur_qui_se_reimporte_a_l_identique(client, deco
 def test_le_reexport_neutralise_une_formule_et_la_reimporte(client, decor, db_path):
     formule = MODELE.replace("AAAH ! | OUILLE", "=SOMME(A1) | -t-il")
     gid = importer(client, decor["p"], LEA, entrees=formule)["grille_id"]
-    r = client.get(f"/api/grilles/{gid}/versions/1/tableur", headers=LEA)
+    r = client.get(f"/api/grilles/{gid}/versions/1/tableur?format=csv", headers=LEA)
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
         entrees = z.read("grille-rubriques-entrees.csv").decode("utf-8-sig")
     assert ";'=SOMME(A1) | -t-il;" in entrees

@@ -446,8 +446,8 @@ HORS_CONTROLE = {
     ("POST", "/api/sharedocs/deposer-sauvegarde"): _BASE_ENTIERE
         + " Même artefact que `GET /api/sauvegarde`, envoyé sur ShareDocs.",
     ("GET", "/api/grilles/{grille_id}/versions/{numero}/tableur"):
-        "ANN-7, G16 : le réexport d'une GRILLE d'annotation au format de son tableur — un "
-        "vocabulaire d'étude, à son projet, réservé à qui le gère. Ce n'est la sortie "
+        "ANN-7, G16 : le tableur d'une GRILLE d'annotation (classeur ou CSV) — un "
+        "vocabulaire d'étude, à son projet, lisible par qui lit son plan. Ce n'est la sortie "
         "d'aucune collection : la grille ne porte ni album, ni transcription, ni terme du "
         "vocabulaire d'aujourd'hui (tags, attributs), et son plan est le même quelle que "
         "soit la collection d'où l'on vient.",

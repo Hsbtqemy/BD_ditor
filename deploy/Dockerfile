@@ -153,9 +153,10 @@ RUN git init -q lib/kumiko \
 # « TROIS » lui a survécu jusqu'au soir.
 FROM base AS test
 
-# `openpyxl` et `iiif-prezi3` sont épinglés dans `requirements-dev.lock` (outils de test)
-# et n'entrent donc pas dans `runtime` : l'application ne les importe jamais, seuls les
-# scripts `tools/` s'en servent. Sans eux, des tests d'export se skippent.
+# `iiif-prezi3` est épinglé dans `requirements-dev.lock` (outil de test) et n'entre donc
+# pas dans `runtime` : l'application ne l'importe jamais, seuls les scripts `tools/` s'en
+# servent. `openpyxl` y était aussi ; il est passé dans `verrou-image.lock` avec ANN-7 (le
+# classeur d'une grille, 2026-11-03), l'application l'important.
 #
 # `iiif-prezi3` n'a PAS TOUJOURS PU y entrer, et la raison mérite d'être gardée :
 # `iiif-prezi3==3.1.1` exige `Pillow<=12.0.0` (dépendance OBLIGATOIRE, pas un extra) quand

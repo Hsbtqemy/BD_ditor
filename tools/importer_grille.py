@@ -30,9 +30,11 @@ répéter) : la masque ensuite dans ces collections de son projet, où elle doit
 Mêmes règles que les routes (`grille_import.activer`, `grille_import.masquer`) ; tout se
 fait dans UNE transaction, et un refus n'écrit rien. Ni l'un ni l'autre à blanc.
 
-Les titres et les valeurs se lisent en mots machine comme en mots du gabarit (« 4. Ce qu'on
-choisit », « une variante »), et l'identifiant d'une entrée peut manquer : il se reçoit de
-son nom.
+Le FICHIER est un classeur `.xlsx` (le gabarit en mots, que rend
+`GET /api/grilles/{id}/versions/{n}/tableur`) ou le CSV des entrées, accompagné alors de
+`--listes`. Un classeur porte sa déclaration dans sa feuille « 1. La grille » : les options
+qui suivent la remplacent quand elle est vide, et une option qui la CONTREDIT est une
+anomalie.
 
 `--ouverte` : une grille OUVERTE (une seule version, vivante, qui s'enrichit en posant).
 `--porte-sur` : la cible des entrées qui ne déclarent pas la leur (« mots », « case »,
@@ -63,6 +65,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import database  # noqa: E402
 import grille_import  # noqa: E402
+import grille_tableur  # noqa: E402
 import grilles  # noqa: E402
 
 CODE_REFUS = 1
@@ -171,6 +174,13 @@ def cmd_importer(args) -> int:
         if chemin and not os.path.isfile(chemin):
             _err(f"Fichier introuvable : {chemin}")
             return CODE_REFUS
+    with open(args.fichier, "rb") as f:
+        donnees = f.read(grille_tableur.TAILLE_MAX_RECUE + 1)
+    classeur = donnees if grille_tableur.est_un_classeur(donnees) else None
+    if classeur is not None and args.listes:
+        _err("Un classeur porte ses listes dans sa feuille « "
+             f"{grille_tableur.FEUILLE_LISTES} » : --listes ne s'y ajoute pas.")
+        return CODE_REFUS
     noms = (os.path.basename(args.fichier),
             os.path.basename(args.listes) if args.listes else "listes")
     conn = database.get_connection()
@@ -179,18 +189,20 @@ def cmd_importer(args) -> int:
             _err(f"Projet {args.projet} introuvable.")
             return CODE_REFUS
         conn.execute("BEGIN IMMEDIATE")
-        with open(args.fichier, encoding="utf-8-sig", newline="") as f:
-            listes = (open(args.listes, encoding="utf-8-sig", newline="")
-                      if args.listes else None)
-            try:
-                res = grille_import.importer(
-                    conn, projet_id=args.projet, flux_entrees=f, flux_listes=listes,
-                    grille_id=args.grille, nom=args.nom, ouverte=args.ouverte,
-                    porte_sur=args.porte_sur, note=args.note, par=None,
-                    a_blanc=args.a_blanc, noms=noms)
-            finally:
-                if listes is not None:
-                    listes.close()
+        f = None if classeur is not None else open(args.fichier, encoding="utf-8-sig",
+                                                   newline="")
+        listes = (open(args.listes, encoding="utf-8-sig", newline="")
+                  if args.listes else None)
+        try:
+            res = grille_import.importer(
+                conn, projet_id=args.projet, flux_entrees=f, flux_listes=listes,
+                classeur=classeur, grille_id=args.grille, nom=args.nom, ouverte=args.ouverte,
+                porte_sur=args.porte_sur, note=args.note, par=None, a_blanc=args.a_blanc,
+                noms=noms)
+        finally:
+            for x in (f, listes):
+                if x is not None:
+                    x.close()
         dit = []
         if args.a_blanc:
             conn.rollback()
@@ -257,17 +269,19 @@ def main(argv=None) -> int:
     from _commun import forcer_utf8
     forcer_utf8()
     ap = argparse.ArgumentParser(
-        description="Importe une grille d'annotation depuis son tableur (deux CSV "
-                    "point-virgule), ou publie son brouillon.",
+        description="Importe une grille d'annotation depuis son tableur (un classeur "
+                    ".xlsx, ou deux CSV point-virgule), ou publie son brouillon.",
         epilog="Code de retour : 0 si l'import s'est fait ou n'avait rien à changer ; 1 si "
                "le tableur est refusé (anomalies dites) ou si le projet, la grille ou un "
                "fichier sont introuvables ; 2 pour une erreur d'usage.")
-    ap.add_argument("fichier", nargs="?", help="le CSV des rubriques et entrées")
+    ap.add_argument("fichier", nargs="?",
+                    help="le classeur .xlsx, ou le CSV des rubriques et entrées")
     ap.add_argument("--listes", help="le CSV des listes de qualificatifs (facultatif)")
     ap.add_argument("--projet", type=int, help="le projet de la grille")
     ap.add_argument("--grille", type=int, help="une grille existante : sa version suivante")
     ap.add_argument("--nom", help="le nom d'une grille neuve")
-    ap.add_argument("--ouverte", action="store_true", help="une grille OUVERTE")
+    ap.add_argument("--ouverte", action="store_true", default=None,
+                    help="une grille OUVERTE (sinon : la feuille « 1. La grille », ou fermée)")
     ap.add_argument("--porte-sur", dest="porte_sur",
                     help="« Porte sur » : mots, case, planche, « bulle | cartouche | texte »…")
     ap.add_argument("--note", help="la note de version")

@@ -15,8 +15,9 @@
 # transitifs sur des wheels Windows casserait un déploiement Linux. On épingle au niveau
 # VERSION (cross-plateforme), pas au niveau wheel.
 #
-# NON couvert ici : requirements-export.txt (openpyxl, iiif-prezi3) — utilisé par les
-# scripts `tools/`, jamais importé par l'application. Ces paquets CONTRAIGNENT néanmoins
+# NON couvert ici : requirements-export.txt (iiif-prezi3 ; openpyxl, que l'application importe
+# depuis ANN-7 et qui est donc épinglé plus bas) — utilisé par les scripts `tools/`. Ces
+# paquets CONTRAIGNENT néanmoins
 # ce fichier : la suite les installe pour éprouver les sorties, donc leurs exigences
 # doivent rester compatibles avec les pins ci-dessous (cf. `pillow`).
 # `tests/test_verrou_dependances.py` le vérifie sur les paquets INSTALLÉS.
@@ -44,6 +45,12 @@ uvicorn[standard]==0.41.0
 pillow==12.0.0
 python-multipart==0.0.22
 httpx==0.28.1
+# Le classeur d'une grille (ANN-7, 2026-11-03) : produit par
+# `GET /api/grilles/{id}/versions/{n}/tableur`, relu par l'import. `openpyxl` était un outil
+# de TEST et d'export (`requirements-dev.lock`, `requirements-export.txt`) ; il entre ici,
+# dans l'image servie, avec `defusedxml`, que openpyxl prend de lui-même pour lire son XML.
+openpyxl==3.1.5
+defusedxml==0.7.1
 
 # Passe 2 (bulles, ogkalu YOLOv8) + passe 3 (OCR EasyOCR)
 ultralytics==8.4.65
