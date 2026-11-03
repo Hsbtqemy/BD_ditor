@@ -219,8 +219,14 @@ def contenu(conn: sqlite3.Connection, version_id: int) -> dict:
 
 
 def _sans_rangs(objet):
+    """Le contenu sans ce qui ne fait pas une version : les rangs, et le drapeau `retiree`
+    quand il est FAUX. Vrai, il compte (ANN-7, 2026-11-03) : retirer une entrée d'une grille
+    ouverte change la version, et la remettre aussi — sans quoi la même empreinte dirait
+    « aucun changement » et laisserait l'entrée retirée. Faux, il est absent, ce qui garde
+    intactes les empreintes écrites avant lui."""
     if isinstance(objet, dict):
-        return {k: _sans_rangs(v) for k, v in objet.items() if k not in ("rang", "retiree")}
+        return {k: _sans_rangs(v) for k, v in objet.items()
+                if k != "rang" and not (k == "retiree" and not v)}
     if isinstance(objet, list):
         return [_sans_rangs(v) for v in objet]
     return objet

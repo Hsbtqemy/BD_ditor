@@ -1019,11 +1019,14 @@ def _activation_du_releve(conn, snap) -> bool:
     return act is not None and act[0] == snap["version_id"]
 
 
-def _entree_existe(conn, snap) -> bool:
+def _entree_existe(conn, snap, *, posable: bool = False) -> bool:
     """L'entrée du relevé existe-t-elle encore dans sa version ? Ctrl+Z rétablit un relevé
     par la `cle` de son entrée, jamais par un libellé (ANN-8) ; une entrée remaniée depuis
-    (une grille ouverte) rend l'acte irrétablissable."""
-    return conn.execute("SELECT 1 FROM grille_entree WHERE version_id = ? AND cle = ?",
+    (une grille ouverte) rend l'acte irrétablissable. `posable` : et peut-on encore la
+    POSER — une entrée RETIRÉE d'une grille ouverte garde ses relevés, mais Ctrl+Z n'en
+    rétablit pas un qu'on avait retiré (ANN-7, 2026-11-03)."""
+    return conn.execute("SELECT 1 FROM grille_entree WHERE version_id = ? AND cle = ?"
+                        + (" AND retiree = 0" if posable else ""),
                         (snap["version_id"], snap["entree_cle"])).fetchone() is not None
 
 
@@ -1040,7 +1043,8 @@ def _inverser_releve(conn, e, avant, apres) -> None:
     if t == "suppression":
         if actuel:
             raise UndoImpossible("le relevé existe déjà")
-        if not (_activation_du_releve(conn, snap) and _entree_existe(conn, snap)):
+        if not (_activation_du_releve(conn, snap) and _entree_existe(conn, snap,
+                                                                     posable=True)):
             raise Irretablissable()
         if snap.get("une"):
             autre = conn.execute(

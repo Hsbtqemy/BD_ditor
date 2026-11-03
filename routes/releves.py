@@ -423,6 +423,9 @@ def _entree_neuve(conn, grille_id: int, version, libelle: str):
         raise HTTPException(422, "Une entrée neuve a besoin d'un libellé.")
     cle = cle_tag(libelle)
     e = grilles.entree(conn, version["id"], cle)
+    if e is not None and e["retiree"]:
+        raise HTTPException(422, f"« {libelle} » est retirée de la grille : elle ne se pose "
+                                 "plus.")
     if e is not None:
         return e
     rang = conn.execute("SELECT COALESCE(MAX(rang), -1) + 1 FROM grille_entree "

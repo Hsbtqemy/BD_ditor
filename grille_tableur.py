@@ -504,14 +504,18 @@ def _poser(ws, ligne: int, colonne: int, valeur):
 
 def rangees(contenu: dict) -> list[dict]:
     """Les lignes de la feuille des entrées, au format EN MOTS, dans l'ordre des entrées :
-    une ligne par entrée, puis une par variante, la colonne « Entrée » vide. Une liste est
-    nommée par son libellé, sauf si deux listes le partagent (alors par son identifiant)."""
+    une ligne par entrée, puis une par variante, la colonne « Entrée » vide. Une entrée
+    RETIRÉE n'y est pas : elle ne se pose plus, et une grille ouverte qu'on réimporte la
+    garde retirée sans qu'on la récrive. Une liste est nommée par son libellé, sauf si deux
+    listes le partagent (alors par son identifiant)."""
     import grilles
     libelles = [l["libelle"] for l in contenu["listes"].values() if l["libelle"]]
     nom_de_liste = {lc: (l["libelle"] if l["libelle"] and libelles.count(l["libelle"]) == 1
                          else lc) for lc, l in contenu["listes"].items()}
     sortie = []
     for cle, e in sorted(contenu["entrees"].items(), key=lambda kv: kv[1]["rang"]):
+        if e.get("retiree"):
+            continue
         chemin = grilles.chemin_de_rubrique(contenu["rubriques"], e["rubrique_cle"])
         sortie.append({
             "rubrique": " > ".join(contenu["rubriques"][r]["libelle"] for r in chemin),

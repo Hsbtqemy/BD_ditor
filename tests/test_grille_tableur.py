@@ -2,7 +2,8 @@
 
 Le bilan en DONNÉES ; les titres et les valeurs EN MOTS lus à côté des mots machine ;
 l'identifiant d'une entrée FACULTATIF à la création ; la déclaration lue dans la feuille
-« 1. La grille » ; le CLASSEUR `.xlsx` produit et relu sans danger.
+« 1. La grille » ; le CLASSEUR `.xlsx` produit et relu sans danger ; et la grille OUVERTE qui
+se réimporte, une entrée employée qui disparaît attendant « retirer » ou « fusionner dans… ».
 
 La grille est FICTIVE (`tools/grille-modele.csv`), comme dans `test_grilles`. Chaque garde se
 joue sous l'identité qu'elle concerne.
@@ -18,8 +19,8 @@ import pytest
 import grille_import
 import grille_tableur
 import grilles
-from grilles_decor import (LEA, MODELE, MODELE_LISTES, SAM, ZOE, flux, importer, monter,
-                           ok)
+from grilles_decor import (LEA, MODELE, MODELE_LISTES, SAM, STAG, ZOE, csv_de, flux, importer,
+                           monter, ok)
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -117,7 +118,7 @@ def test_le_bilan_a_blanc_dit_son_verdict_et_ce_qui_va_naitre(client, decor):
     assert res["verdict"]["etat"] == "importable"
     assert res["va_naitre"] == {"rubriques": 8, "entrees": 10, "variantes": 5, "listes": 2,
                                 "qualificatifs": 6}
-    assert res["a_savoir"] == []
+    assert res["a_savoir"] == [] and res["a_repondre"] == []
     assert res["declaration"]["nom"] == "Signaux" and res["declaration"]["porte_sur"] == "mots"
 
 
@@ -431,3 +432,206 @@ def test_ni_ods_ni_classeur_avec_un_second_fichier(client, decor):
                     files={"fichier": ("g.xlsx", _classeur(), XLSX),
                            "listes": ("l.csv", MODELE_LISTES.encode(), "text/csv")})
     assert r.status_code == 422 and "classeur" in r.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# 6. Réimporter une grille OUVERTE montre ce qui disparaît
+# --------------------------------------------------------------------------- #
+SANS_CRI = MODELE.replace(
+    "cri;A. Sons > Voix;sons > voix;simple;cri;;;;un cri poussé par un personnage, écrit en "
+    "toutes lettres;AAAH ! | OUILLE;un cri n'est pas une onomatopée de choc : on le pose sur "
+    "le cri, pas sur le bruit;;;;;\r\n", "")
+HURLEMENT = "hurlement;A. Sons > Voix;sons > voix;simple;hurlement;;;;un cri long;;;;;;;\r\n"
+
+
+@pytest.fixture
+def ouverte(client, decor):
+    """Une grille OUVERTE, active, et un relevé de STAG sur « cri »."""
+    gid = importer(client, decor["p"], LEA, ouverte=True, nom="Libre")["grille_id"]
+    ok(client.put(f"/api/projets/{decor['p']}/grilles/{gid}/activation", headers=LEA,
+                  json={"version": 1}))
+    rel = ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": gid, "version": 1, "region_id": decor["zones"]["bulle"],
+        "entree_cle": "cri", "mots": [8]}), 201)
+    return {**decor, "grille_id": gid, "releve": rel["id"]}
+
+
+def test_une_entree_employee_qui_disparait_attend_sa_reponse(client, ouverte, db_path):
+    d = ouverte
+    res = importer(client, d["p"], LEA, grille_id=d["grille_id"], entrees=SANS_CRI,
+                   a_blanc=True)
+    assert res["verdict"]["etat"] == "a_repondre"
+    assert res["a_repondre"] == [{"cle": "cri", "libelle": "cri", "releves": 1,
+                                  "choix": ["retirer", "fusionner"], "fusionner_dans": []}]
+    assert [x["decision"] for x in res["bilan"]["disparus"] if x["quoi"] == "entree"] == [
+        "a_repondre"]
+    refus = importer(client, d["p"], LEA, grille_id=d["grille_id"], entrees=SANS_CRI,
+                     attendu=(409,))["detail"]
+    assert refus["verdict"]["etat"] == "a_repondre" and refus["a_repondre"][0]["cle"] == "cri"
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_entree WHERE cle = 'cri'")[0]["n"] == 1
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM evenement WHERE cible_table = 'grille' "
+                       "AND type = 'modification'")[0]["n"] == 1      # l'import d'origine
+
+
+def _importer_avec(client, d, entrees, reponses, attendu=(200,)):
+    files = {"fichier": ("e.csv", entrees.encode("utf-8-sig"), "text/csv"),
+             "listes": ("l.csv", MODELE_LISTES.encode("utf-8-sig"), "text/csv")}
+    r = client.post(f"/api/projets/{d['p']}/grilles/import", headers=LEA, files=files,
+                    data={"grille_id": str(d["grille_id"]), "reponses": json.dumps(reponses)})
+    assert r.status_code in attendu, (r.status_code, r.text[:800])
+    return r.json()
+
+
+def test_retirer_garde_l_entree_et_ses_releves_a_revoir(client, ouverte, db_path):
+    d = ouverte
+    res = _importer_avec(client, d, SANS_CRI, {"cri": "retirer"})
+    assert res["version"] == {"numero": 1, "etat": "vivante", "remplace": True}
+    (e,) = _q(db_path, "SELECT retiree FROM grille_entree WHERE cle = 'cri'")
+    assert e["retiree"] == 1
+    (r,) = _q(db_path, "SELECT etat, entree_absente FROM releves_effectifs WHERE id = ?",
+              (d["releve"],))
+    assert r == {"etat": "a_revoir", "entree_absente": 1}
+    # Elle ne se pose plus.
+    ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": d["grille_id"], "version": 1, "region_id": d["zones"]["bulle"],
+        "entree_cle": "cri", "mots": [7]}), 422)
+    # Le même fichier ne redemande rien : l'entrée retirée le reste.
+    assert importer(client, d["p"], LEA, grille_id=d["grille_id"], entrees=SANS_CRI)[
+        "aucun_changement"]
+    # Le classeur ne la porte plus ; réimporté, il la garde retirée.
+    data = client.get(f"/api/grilles/{d['grille_id']}/versions/1/tableur", headers=LEA).content
+    ws = openpyxl.load_workbook(io.BytesIO(data))["2. Les entrées"]
+    assert "cri" not in {c.value for ligne in ws.iter_rows(min_row=2) for c in ligne}
+    assert _importer_classeur(client, d["p"], LEA, data, grille_id=d["grille_id"])[
+        "aucun_changement"]
+    # La remettre dans le fichier la remet en usage : retirée, elle comptait dans l'empreinte.
+    res = importer(client, d["p"], LEA, grille_id=d["grille_id"])
+    assert res["ecrit"]
+    assert _q(db_path, "SELECT retiree FROM grille_entree WHERE cle = 'cri'")[0]["retiree"] == 0
+
+
+def test_fusionner_reporte_les_releves_et_se_trace(client, ouverte, db_path):
+    d = ouverte
+    avec = SANS_CRI + HURLEMENT
+    res = _importer_avec(client, d, avec, {"cri": "regard-camera"}, attendu=(422,))
+    assert "fusionner" in res["detail"]
+    res = importer(client, d["p"], LEA, grille_id=d["grille_id"], entrees=avec, a_blanc=True)
+    assert res["a_repondre"][0]["fusionner_dans"] == ["hurlement"]   # même forme, mêmes mots
+    refus = _importer_avec(client, d, avec, {"cri": "fusionner:regard-camera"},
+                           attendu=(409,))["detail"]
+    assert [a["code"] for a in refus["anomalies"]] == ["fusion_impossible"]
+    res = _importer_avec(client, d, avec, {"cri": "fusionner:hurlement"})
+    assert res["ecrit"]
+    assert [x["decision"] for x in res["bilan"]["disparus"] if x["quoi"] == "entree"] == [
+        "fusionner:hurlement"]
+    assert _q(db_path, "SELECT entree_cle FROM releve WHERE id = ?", (d["releve"],))[0][
+        "entree_cle"] == "hurlement"
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_entree WHERE cle = 'cri'")[0]["n"] == 0
+    (ev,) = _q(db_path, "SELECT apres FROM evenement WHERE cible_table = 'grille' "
+                        "ORDER BY id DESC LIMIT 1")
+    assert json.loads(ev["apres"])["import"]["fusions"] == [
+        {"de": "cri", "dans": "hurlement", "releve_ids": [d["releve"]]}]
+    (r,) = _q(db_path, "SELECT etat FROM releves_effectifs WHERE id = ?", (d["releve"],))
+    assert r["etat"] == "normal"
+
+
+def test_une_entree_que_personne_n_emploie_part_sans_question(client, ouverte, db_path):
+    d = ouverte
+    sans = MODELE.replace("ambiance;D. Échanges;echanges;simple;ambiance sonore de la planche;"
+                          ";;;le fond sonore de toute la planche;;;;;;planche;\r\n", "")
+    res = importer(client, d["p"], LEA, grille_id=d["grille_id"], entrees=sans)
+    assert res["ecrit"] and res["a_repondre"] == []
+    assert [(x["cle"], x["decision"]) for x in res["bilan"]["disparus"]
+            if x["quoi"] == "entree"] == [("ambiance", "part")]
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_entree WHERE cle = 'ambiance'")[0][
+        "n"] == 0
+
+
+def test_ce_qui_changerait_sous_des_releves_est_refuse(client, ouverte, db_path):
+    d = ouverte
+    forme = MODELE.replace(";sons > voix;simple;cri;", ";sons > voix;qualificatifs;cri;").replace(
+        "pas sur le bruit;;", "pas sur le bruit;sources;")
+    refus = importer(client, d["p"], LEA, grille_id=d["grille_id"], entrees=forme,
+                     attendu=(409,))["detail"]
+    assert [a["code"] for a in refus["anomalies"]] == ["change_sous_des_releves"] * 2
+    reponse = _importer_avec(client, d, MODELE, {"echo": "retirer"}, attendu=(409,))
+    assert [a["code"] for a in reponse["detail"]["anomalies"]] == ["reponse_sans_objet"]
+
+
+def test_l_outil_demande_puis_retire(client, ouverte, db_path, data_dir, tmp_path):
+    import os
+    import subprocess
+    import sys
+    from grilles_decor import RACINE
+    d = ouverte
+    fichier = tmp_path / "sans-cri.csv"
+    fichier.write_text(SANS_CRI, encoding="utf-8-sig", newline="")
+    listes = tmp_path / "listes.csv"
+    listes.write_text(MODELE_LISTES, encoding="utf-8-sig", newline="")
+    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir),
+           "PYTHONIOENCODING": "utf-8"}
+    base = [sys.executable, str(RACINE / "tools" / "importer_grille.py"), str(fichier),
+            "--listes", str(listes), "--projet", str(d["p"]), "--grille", str(d["grille_id"])]
+    p = subprocess.run(base, env=env, capture_output=True, text=True, encoding="utf-8")
+    assert p.returncode == 1 and "--retirer cri" in p.stderr, p.stderr
+    p = subprocess.run(base + ["--retirer", "cri"], env=env, capture_output=True, text=True,
+                       encoding="utf-8")
+    assert p.returncode == 0, p.stderr
+    assert _q(db_path, "SELECT retiree FROM grille_entree WHERE cle = 'cri'")[0]["retiree"] == 1
+
+
+def test_une_fusion_qui_doublerait_une_entree_posee_une_fois_est_refusee(client, ouverte,
+                                                                          db_path):
+    """« ton de voix » ne se pose qu'une fois par zone. Fusionner ses relevés dans une autre
+    entrée « une seule fois » déjà posée sur la même zone en ferait deux : le bilan le dit,
+    avant d'écrire, au lieu de tomber sur l'index de la cardinalité."""
+    d = ouverte
+    lignes = [l for l in MODELE.split("\r\n") if l.startswith("ton-de-voix;")]
+    autre = "\r\n".join(l.replace("ton-de-voix;", "ton2;", 1).replace(
+        ";ton de voix;", ";ton, autre;") for l in lignes) + "\r\n"
+    sans = "\r\n".join(l for l in MODELE.split("\r\n")
+                       if not l.startswith("ton-de-voix;")) + autre
+    vid = _q(db_path, "SELECT id FROM grille_version")[0]["id"]
+    c = sqlite3.connect(db_path)
+    for cle_, v in (("ton-de-voix", "crie"), ("ton2", "chuchote")):
+        c.execute("INSERT INTO releve (region_id, grille_id, version_id, entree_cle, "
+                  "variante_cle, une) VALUES (?, ?, ?, ?, ?, 1)",
+                  (d["zones"]["bulle"], d["grille_id"], vid, cle_, v))
+    c.commit()
+    c.close()
+    refus = _importer_avec(client, d, sans, {"ton-de-voix": "fusionner:ton2"},
+                           attendu=(409,))["detail"]
+    assert [a["code"] for a in refus["anomalies"]] == ["fusion_en_double"]
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM releve WHERE entree_cle = 'ton-de-voix'")[
+        0]["n"] == 1
+
+
+def test_ctrl_z_ne_repose_pas_un_releve_sur_une_entree_retiree(client, ouverte, db_path):
+    """Une entrée retirée ne se pose plus — pas même par Ctrl+Z : rétablir un relevé qu'on
+    avait retiré la reposerait. L'acte est passé ; les relevés qui restent, restent."""
+    d = ouverte
+    second = ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": d["grille_id"], "version": 1, "region_id": d["zones"]["bulle"],
+        "entree_cle": "cri", "mots": [7]}), 201)
+    ok(client.delete(f"/api/releves/{second['id']}", headers=STAG), 204)
+    _importer_avec(client, d, SANS_CRI, {"cri": "retirer"})
+    refus = client.post("/api/undo", headers=STAG)
+    assert refus.status_code == 409, refus.text[:300]
+    assert "ne peut plus être rétabli" in refus.json()["detail"]["message"]
+    assert [r["id"] for r in _q(db_path, "SELECT id FROM releve")] == [d["releve"]]
+
+
+def test_une_entree_nee_en_posant_puis_retiree_ne_renait_pas_en_posant(client, ouverte,
+                                                                        db_path):
+    """Une entrée née EN POSANT que le fichier ne porte pas est une entrée employée qui
+    disparaît : retirée, la reposer par son nom est refusé, au lieu de la rendre en silence."""
+    d = ouverte
+    corps = {"grille_id": d["grille_id"], "version": 1, "region_id": d["zones"]["bulle"],
+             "mots": [0],
+             "nouvelle_entree": {"libelle": "souffle"}}
+    ok(client.post("/api/releves", headers=STAG, json=corps), 201)
+    res = importer(client, d["p"], LEA, grille_id=d["grille_id"], a_blanc=True)
+    assert [a["cle"] for a in res["a_repondre"]] == ["souffle"]
+    _importer_avec(client, d, MODELE, {"souffle": "retirer"})
+    r = client.post("/api/releves", headers=STAG, json=corps)
+    assert r.status_code == 422 and "retirée" in r.json()["detail"], r.text[:300]

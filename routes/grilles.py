@@ -21,6 +21,7 @@ sans rang (`tools/_commun.py`) — administrer un vocabulaire n'est pas annoter.
 from __future__ import annotations
 
 import io
+import json
 import sqlite3
 from typing import Optional
 
@@ -190,13 +191,27 @@ def _refus_http(exc: grille_import.Refus) -> HTTPException:
     return HTTPException(exc.statut, exc.message)
 
 
+def _reponses(texte: str | None) -> dict | None:
+    """Les réponses aux entrées employées qui disparaissent d'une grille ouverte : un objet
+    JSON, `{"cle": "retirer"}` ou `{"cle": "fusionner:autre"}`."""
+    if not texte:
+        return None
+    try:
+        valeur = json.loads(texte)
+    except ValueError:
+        raise HTTPException(422, "`reponses` doit être un objet JSON.")
+    if not isinstance(valeur, dict):
+        raise HTTPException(422, "`reponses` doit être un objet JSON.")
+    return valeur
+
+
 @router.post("/api/projets/{projet_id}/grilles/import")
 def importer_grille(projet_id: int, fichier: UploadFile = File(...),
                     listes: Optional[UploadFile] = File(None),
                     grille_id: Optional[int] = Form(None, ge=1),
                     nom: Optional[str] = Form(None), ouverte: Optional[bool] = Form(None),
                     porte_sur: Optional[str] = Form(None), note: Optional[str] = Form(None),
-                    a_blanc: bool = Form(False),
+                    a_blanc: bool = Form(False), reponses: Optional[str] = Form(None),
                     conn: sqlite3.Connection = Depends(db),
                     portee: autorisation.Portee = Depends(portee_courante)):
     """Importe un tableur (R3) — deux CSV (`fichier`, `listes`), ou un classeur `.xlsx`
@@ -206,7 +221,10 @@ def importer_grille(projet_id: int, fichier: UploadFile = File(...),
     le refuse (422, toutes les anomalies dites en DONNÉES, le verdict et « À savoir », rien
     d'écrit, G12). `a_blanc` rend le BILAN — verdict, « À savoir », « Ce qui va naître », ce
     qui change depuis la dernière version publiée — sans rien écrire. Réimporter le même
-    fichier ne change rien. Le fichier est borné (413) ; un classeur l'est aussi une fois déplié.
+    fichier ne change rien. Une grille OUVERTE se réimporte (tranché par Hugo le
+    2026-11-03) : une entrée employée qui disparaît attend sa réponse (`reponses`, un objet
+    JSON — « retirer » ou « fusionner:<cle> ») ; sans elle, 409 avec le bilan qui la demande.
+    Le fichier est borné (413) ; un classeur l'est aussi une fois déplié.
 
     À qui gère le projet (404 / 403 nommé) ; jamais dans le projet de jeu. Dans un bac à
     sable, oui (G6) : la grille n'existe que là, et part avec lui."""
@@ -222,13 +240,14 @@ def importer_grille(projet_id: int, fichier: UploadFile = File(...),
     flux_listes = _texte_de(_octets(listes, "listes"), "listes")
     noms = (_nom_de(fichier, grille_import.NOMS_PAR_DEFAUT[0]),
             _nom_de(listes, grille_import.NOMS_PAR_DEFAUT[1]))
+    reps = _reponses(reponses)
     conflit.verrouiller(conn)            # le nom unique et le brouillon se lisent sous le verrou
     try:
         res = grille_import.importer(conn, projet_id=projet_id, flux_entrees=flux,
                                      flux_listes=flux_listes, classeur=classeur,
                                      grille_id=grille_id, nom=nom, ouverte=ouverte,
                                      porte_sur=porte_sur, note=note, par=portee.utilisateur,
-                                     a_blanc=a_blanc, noms=noms)
+                                     a_blanc=a_blanc, reponses=reps, noms=noms)
     except grille_import.TropGros as e:
         raise HTTPException(413, str(e))
     except grille_import.FormatInvalide as e:

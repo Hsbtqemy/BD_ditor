@@ -41,6 +41,11 @@ anomalie.
 « bulle | cartouche | texte ») ; pour une version suivante, celle de la version précédente
 si on ne la dit pas. `--note` : la note de version.
 
+Réimporter une grille OUVERTE la récrit en place. Une entrée EMPLOYÉE que le fichier ne
+porte plus ne se supprime jamais : le bilan la dit, et l'import attend sa réponse —
+`--retirer CLE` (elle ne se pose plus, ses relevés restent, « à revoir ») ou
+`--fusionner CLE=AUTRE` (ses relevés passent à une autre entrée compatible), à répéter.
+
 Le bilan s'imprime lisible : le verdict, ce qu'il faut corriger (où, quelle entrée, quelle
 question, quoi faire), « À savoir », « Ce qui va naître », ce qui change ; `--json` rend les
 mêmes DONNÉES que la route.
@@ -49,7 +54,8 @@ L'outil passe une portée TOTALE et aucun agent au journal (« un shell n'a pas 
 le patron de `gerer_collections.py`) : qui le lance tient la base entre ses mains.
 
 Code de retour : 0 si l'import s'est fait (ou n'avait rien à changer) ; 1 si le tableur est
-refusé, si le projet, la grille ou un fichier sont introuvables, ou si l'activation ou le masque sont refusés — rien n'est écrit ; 2
+refusé, si une entrée employée attend sa réponse, si le projet, la grille ou un fichier sont
+introuvables, ou si l'activation ou le masque sont refusés — rien n'est écrit ; 2
 pour une erreur d'usage (argparse). `--a-blanc` sort avec le code de l'import qu'il annonce.
 
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
@@ -81,7 +87,7 @@ _QUOI = {"rubriques": "rubrique(s)", "entrees": "entrée(s)", "variantes": "vari
 
 def _bilan(res, *, fautes=()) -> None:
     """Le bilan, lisible : le verdict en tête, ce qu'il faut corriger, « À savoir », « Ce
-    qui va naître », et ce qui change."""
+    qui va naître », ce qui change, et ce qui attend une réponse."""
     v = res.get("verdict")
     if v:
         _err(f"  {v['phrase']}")
@@ -109,9 +115,23 @@ def _bilan(res, *, fautes=()) -> None:
             for l in lignes[:12]:
                 detail = l.get("libelle") or l.get("champ") or ", ".join(l.get("champs", []))
                 extra = f" — {l['releves']} relevé(s)" if l.get("releves") else ""
-                _err(f"      · {l['quoi']} « {l['cle']} » {detail or ''}{extra}")
+                decision = f" [{l['decision']}]" if l.get("decision") else ""
+                _err(f"      · {l['quoi']} « {l['cle']} » {detail or ''}{extra}{decision}")
             if len(lignes) > 12:
                 _err(f"      … et {len(lignes) - 12} autre(s)")
+    for a in res.get("a_repondre") or []:
+        vers = ", ".join(a["fusionner_dans"]) or "aucune entrée compatible"
+        _err(f"  ? « {a['cle']} » ({a['libelle']}) disparaît, {a['releves']} relevé(s) : "
+             f"--retirer {a['cle']}, ou --fusionner {a['cle']}=… (possibles : {vers})")
+
+
+def _reponses(args) -> dict:
+    """`--retirer CLE` et `--fusionner CLE=AUTRE` → les réponses de l'import."""
+    reponses = {c: grille_import.RETIRER for c in args.retirer or []}
+    for x in args.fusionner or []:
+        cle, _, vers = x.partition("=")
+        reponses[cle] = f"{grille_import.FUSIONNER}:{vers}"
+    return reponses
 
 
 def _activer_et_masquer(conn, args, grille_id: int, numero=None) -> list:
@@ -198,7 +218,7 @@ def cmd_importer(args) -> int:
                 conn, projet_id=args.projet, flux_entrees=f, flux_listes=listes,
                 classeur=classeur, grille_id=args.grille, nom=args.nom, ouverte=args.ouverte,
                 porte_sur=args.porte_sur, note=args.note, par=None, a_blanc=args.a_blanc,
-                noms=noms)
+                reponses=_reponses(args), noms=noms)
         finally:
             for x in (f, listes):
                 if x is not None:
@@ -231,7 +251,7 @@ def cmd_importer(args) -> int:
         _err("— À BLANC : aucune écriture. Ce que l'import ferait :")
     else:
         _err(f"Grille {res['grille_id']} : version {v.get('numero')} ({v.get('etat')})"
-             + (" — le brouillon est remplacé" if v.get("remplace") else "") + ".")
+             + (" — la version est récrite" if v.get("remplace") else "") + ".")
     _bilan(res)
     for ligne in dit:
         _err(ligne)
@@ -288,6 +308,12 @@ def main(argv=None) -> int:
     ap.add_argument("--a-blanc", dest="a_blanc", action="store_true",
                     help="le bilan, sans rien écrire")
     ap.add_argument("--json", action="store_true", help="le résultat complet en JSON")
+    ap.add_argument("--retirer", action="append", metavar="CLE",
+                    help="grille ouverte : RETIRE cette entrée employée que le fichier ne "
+                         "porte plus (à répéter)")
+    ap.add_argument("--fusionner", action="append", metavar="CLE=AUTRE",
+                    help="grille ouverte : FUSIONNE les relevés de cette entrée employée dans "
+                         "une autre (à répéter)")
     ap.add_argument("--publier", type=int, metavar="GRILLE",
                     help="publie le brouillon de cette grille")
     ap.add_argument("--activer", action="store_true",

@@ -35,10 +35,13 @@ l'écran dessine et que `en_mots` rend lisibles à l'outil.
 Le BILAN compare au plus récent état publié de la grille (ou à sa version vivante), par
 `cle` : ce qui naît, ce qui est renommé, retouché, déplacé, changé, ce qui disparaît — avec le
 nombre de relevés posés sur chaque disparu. Il porte en tête un VERDICT, « À savoir » (les
-avertissements) et « Ce qui va naître ».
+avertissements) et « Ce qui va naître ». Pour une grille OUVERTE qu'on réimporte (tranché par
+Hugo le 2026-11-03), une entrée EMPLOYÉE qui disparaît ne se supprime jamais : le bilan
+demande « retirer » ou « fusionner dans… », et l'import attend la réponse.
 """
 from __future__ import annotations
 
+import copy
 import csv
 import io
 import sqlite3
@@ -62,11 +65,14 @@ SEP_EXEMPLES = "|"
 NOMS_FICHIERS = ("grille-rubriques-entrees.csv", "grille-listes-qualificatifs.csv")
 NOMS_PAR_DEFAUT = ("entrées", "listes")
 
+# Les réponses à une entrée employée qui disparaît d'une grille ouverte.
+RETIRER, FUSIONNER = "retirer", "fusionner"
+
 
 class Refus(Exception):
     """L'import ne se fait pas : `statut` (le code HTTP qu'une route rendrait), un message,
     les anomalies quand c'est le tableur qui est refusé, et le `bilan` quand il y en a un —
-    le verdict, « À savoir »."""
+    le verdict, « À savoir », ce qui attend une réponse."""
 
     def __init__(self, statut: int, message: str, anomalies=None, bilan=None):
         super().__init__(message)
@@ -715,7 +721,7 @@ def _releves_sur_qualificatif(conn, grille_id, qualificatif_cle) -> int:
 def bilan(conn: sqlite3.Connection, grille_id, avant: dict | None, apres: dict) -> dict:
     """Ce qui change de `avant` (le contenu d'une version, ou None) à `apres`, par `cle` —
     « Ce qui change ». Les disparus comptent les relevés posés sur eux (`grille_id` : la
-    grille d'`avant`)."""
+    grille d'`avant`). Une entrée RETIRÉE qu'on garde retirée n'est pas un disparu."""
     b = {"nes": [], "renommes": [], "retouches": [], "deplaces": [], "changes": [],
          "disparus": []}
     avant = avant or {"cible": None, "rubriques": {}, "entrees": {}, "listes": {}}
@@ -744,6 +750,9 @@ def bilan(conn: sqlite3.Connection, grille_id, avant: dict | None, apres: dict) 
                               "releves": _releves_sur(conn, grille_id, cle_)})
     for cle_ in sorted(ea.keys() & eb.keys(), key=lambda k: eb[k]["rang"]):
         a, n = ea[cle_], eb[cle_]
+        if n.get("retiree") and not a.get("retiree"):
+            b["changes"].append({"quoi": "entree", "cle": cle_, "champ": "retiree",
+                                 "avant": False, "apres": True})
         if a["libelle"] != n["libelle"]:
             b["renommes"].append({"quoi": "entree", "cle": cle_, "avant": a["libelle"],
                                   "apres": n["libelle"]})
@@ -816,18 +825,198 @@ def va_naitre(avant: dict | None, apres: dict) -> dict:
 
 
 def verdict(etat: str, **compte) -> dict:
-    """Le VERDICT en tête du bilan : un état stable (`refuse`, `aucun_changement`,
-    `importable`, `importe`) et sa phrase."""
+    """Le VERDICT en tête du bilan : un état stable (`refuse`, `a_repondre`,
+    `aucun_changement`, `importable`, `importe`) et sa phrase."""
     n = compte.get("n", 0)
     phrases = {
         "refuse": f"{n} faute{'s' if n > 1 else ''} à corriger : rien n'est importé tant "
                   "qu'il en reste une.",
+        "a_repondre": f"Le fichier est juste. {n} entrée{'s' if n > 1 else ''} employée"
+                      f"{'s' if n > 1 else ''} disparai{'ssent' if n > 1 else 't'} : "
+                      "dites pour chacune « retirer » ou « fusionner dans… » avant "
+                      "d'importer.",
         "aucun_changement": "Le fichier est juste, et la version en place porte déjà ce "
                             "contenu : rien n'est écrit.",
         "importable": "Le fichier est juste : l'import peut se faire.",
         "importe": "Le fichier est juste, et la grille est importée.",
     }
     return {"etat": etat, **compte, "phrase": phrases[etat]}
+
+
+# --------------------------------------------------------------------------- #
+# Réimporter une grille OUVERTE : ce qui disparaît (tranché par Hugo le 2026-11-03)
+# --------------------------------------------------------------------------- #
+def lire_reponses(reponses) -> dict:
+    """Les réponses aux entrées employées qui disparaissent : `{cle: "retirer"}` ou
+    `{cle: "fusionner:<cle d'arrivée>"}` (ou `{"fusionner": cle}`). Lève `Refus` (422) sur
+    une réponse qui n'est ni l'une ni l'autre."""
+    sortie = {}
+    for cle_, r in (reponses or {}).items():
+        if isinstance(r, dict) and set(r) == {FUSIONNER}:
+            sortie[cle_] = (FUSIONNER, str(r[FUSIONNER]))
+        elif isinstance(r, str) and r == RETIRER:
+            sortie[cle_] = (RETIRER, None)
+        elif isinstance(r, str) and r.startswith(FUSIONNER + ":") and r[len(FUSIONNER) + 1:]:
+            sortie[cle_] = (FUSIONNER, r[len(FUSIONNER) + 1:])
+        else:
+            raise Refus(422, f"La réponse pour « {cle_} » n'est ni « retirer » ni "
+                             "« fusionner:<identifiant> ».")
+    return sortie
+
+
+def _vers_possibles(avant: dict, apres: dict, cle_: str, employees: set) -> list:
+    """Les entrées où les relevés de `cle_` peuvent être FUSIONNÉS sans rien perdre : du
+    fichier, non retirées, de la même forme, posées de la même manière, à la même liste —
+    et, pour une entrée à variantes, qui portent toutes les variantes employées."""
+    e = avant["entrees"][cle_]
+    vers = []
+    for k, x in sorted(apres["entrees"].items(), key=lambda kv: kv[1]["rang"]):
+        if k == cle_ or x.get("retiree"):
+            continue
+        if x["forme"] != e["forme"] or x.get("liste_cle") != e.get("liste_cle"):
+            continue
+        cibles_e = grilles.cibles_de(e["cible"]) or grilles.cibles_de(avant["cible"])
+        cibles_x = grilles.cibles_de(x["cible"]) or grilles.cibles_de(apres["cible"])
+        if grilles.sorte_de_pose(cibles_e) != grilles.sorte_de_pose(cibles_x):
+            continue
+        if e["forme"] == "variantes" and not employees <= set(x["variantes"]):
+            continue
+        vers.append(k)
+    return vers
+
+
+def reconcilier_ouverte(conn, grille_id: int, version_id: int, avant: dict, apres: dict,
+                        reponses: dict) -> tuple[dict, list, list, list]:
+    """Le contenu à ÉCRIRE pour une grille ouverte qu'on réimporte, et ce qui attend.
+
+    - une entrée déjà RETIRÉE que le fichier ne porte pas reste retirée, sans question ;
+    - une entrée que personne n'emploie et que le fichier ne porte pas part ;
+    - une entrée EMPLOYÉE que le fichier ne porte pas ne se supprime jamais : on la RETIRE
+      (elle reste dans la version, ne se pose plus, et ses relevés passent « à revoir ») ou
+      on FUSIONNE ses relevés dans une autre entrée. Sans réponse, elle est « à répondre ».
+
+    Rend (contenu, à répondre, fusions, fautes). Les fautes refusent l'import : une réponse
+    qui ne vaut pas (une fusion impossible), une variante ou une case employée qui
+    disparaîtrait, la forme ou la liste d'une entrée employée qui changerait sous ses
+    relevés — la version est VIVANTE, ses relevés la lisent telle qu'elle sera."""
+    apres = copy.deepcopy(apres)
+    a_repondre, fusions, fautes = [], [], []
+    rang = max([e["rang"] for e in apres["entrees"].values()] + [-1])
+
+    def garder(cle_, retiree):
+        nonlocal rang
+        rang += 1
+        apres["entrees"][cle_] = {**copy.deepcopy(avant["entrees"][cle_]), "rang": rang,
+                                  "retiree": retiree}
+        lc = apres["entrees"][cle_].get("liste_cle")
+        if lc and lc not in apres["listes"] and lc in avant["listes"]:
+            apres["listes"][lc] = copy.deepcopy(avant["listes"][lc])
+
+    employees_v = {}
+    for r in conn.execute("SELECT entree_cle, variante_cle, COUNT(*) AS n FROM releve "
+                          "WHERE grille_id = ? AND version_id = ? GROUP BY entree_cle, "
+                          "variante_cle", (grille_id, version_id)):
+        employees_v.setdefault(r["entree_cle"], {})[r["variante_cle"]] = r["n"]
+    for cle_ in sorted(avant["entrees"].keys() - apres["entrees"].keys(),
+                       key=lambda k: avant["entrees"][k]["rang"]):
+        e = avant["entrees"][cle_]
+        n = sum(employees_v.get(cle_, {}).values())
+        if e.get("retiree"):
+            garder(cle_, True)
+            continue
+        if n == 0:
+            continue
+        vers = _vers_possibles(avant, apres, cle_, {v for v in employees_v.get(cle_, {})
+                                                    if v is not None})
+        reponse = reponses.get(cle_)
+        if reponse is None:
+            a_repondre.append({"cle": cle_, "libelle": e["libelle"], "releves": n,
+                               "choix": [RETIRER, FUSIONNER], "fusionner_dans": vers})
+        elif reponse[0] == RETIRER:
+            garder(cle_, True)
+        elif reponse[1] not in vers:
+            fautes.append(_faute(
+                "fusion_impossible", f"les relevés de « {e['libelle']} » ne peuvent pas être "
+                f"fusionnés dans « {reponse[1]} »",
+                "fusionnez dans une entrée du fichier de même forme, posée de la même façon "
+                "(et qui porte ses variantes) : " + (", ".join(vers) or "aucune ici")
+                + " ; ou retirez-la", cle=cle_))
+        elif _fusion_en_double(conn, grille_id, version_id, cle_, reponse[1]):
+            fautes.append(_faute(
+                "fusion_en_double", f"fusionner « {e['libelle']} » dans « {reponse[1]} » "
+                "poserait deux fois, sur une même cible, une entrée qui ne s'y pose qu'une fois",
+                "retirez-la plutôt, ou retirez d'abord l'un des deux relevés", cle=cle_))
+        else:
+            fusions.append({"de": cle_, "dans": reponse[1], "releves": n})
+    # Ce qui change SOUS des relevés posés, dans une version vivante.
+    for cle_, x in apres["entrees"].items():
+        e = avant["entrees"].get(cle_)
+        employes = employees_v.get(cle_, {})
+        if e is None or not employes or x.get("retiree"):
+            continue
+        for champ in ("forme", "liste_cle"):
+            if e.get(champ) != x.get(champ):
+                fautes.append(_faute(
+                    "change_sous_des_releves",
+                    f"« {e['libelle']} » change de {'forme' if champ == 'forme' else 'liste'} "
+                    f"alors que {sum(employes.values())} relevé(s) la portent",
+                    "gardez sa forme et sa liste ; pour changer, écrivez une autre entrée "
+                    "et fusionnez-y celle-ci", cle=cle_,
+                    colonne="forme" if champ == "forme" else "liste"))
+        for vc, n in employes.items():
+            if vc is not None and vc not in x["variantes"]:
+                fautes.append(_faute(
+                    "variante_employee_disparait",
+                    f"la variante « {e['variantes'].get(vc, {}).get('libelle', vc)} » de "
+                    f"« {e['libelle']} » disparaît alors que {n} relevé(s) la portent",
+                    "gardez sa ligne", cle=cle_, colonne="variante"))
+    for lc, liste in avant["listes"].items():
+        for qc, q in liste["qualificatifs"].items():
+            if qc in (apres["listes"].get(lc) or {}).get("qualificatifs", {}):
+                continue
+            n = _releves_sur_qualificatif(conn, grille_id, qc)
+            if n:
+                fautes.append(_faute(
+                    "case_employee_disparait",
+                    f"la case « {q['libelle']} » de la liste « {liste['libelle'] or lc} » "
+                    f"disparaît alors que {n} relevé(s) la cochent", "gardez sa ligne",
+                    fichier=NOMS_PAR_DEFAUT[1], colonne="libelle", listes=True))
+    for cle_ in reponses.keys() - {a["cle"] for a in a_repondre} - {
+            f["de"] for f in fusions} - {k for k, x in apres["entrees"].items()
+                                         if x.get("retiree")}:
+        if cle_ in apres["entrees"] or cle_ not in avant["entrees"]:
+            fautes.append(_faute(
+                "reponse_sans_objet", f"une réponse est donnée pour « {cle_} », qui ne "
+                "disparaît pas", "retirez cette réponse", cle=cle_))
+    return apres, a_repondre, fusions, fautes
+
+
+def _fusion_en_double(conn, grille_id: int, version_id: int, de: str, dans: str) -> bool:
+    """Reporter les relevés de `de` sur `dans` poserait-il deux relevés « une seule fois »
+    de la même entrée sur la même cible ? L'index de la cardinalité le refuserait."""
+    return conn.execute(
+        "SELECT 1 FROM releve a JOIN releve b ON COALESCE(a.region_id, 0) = "
+        "COALESCE(b.region_id, 0) AND COALESCE(a.planche_id, 0) = COALESCE(b.planche_id, 0) "
+        "AND b.grille_id = a.grille_id AND b.entree_cle = ? AND b.une = 1 "
+        "WHERE a.grille_id = ? AND a.version_id = ? AND a.entree_cle = ? AND a.une = 1 "
+        "LIMIT 1", (dans, grille_id, version_id, de)).fetchone() is not None
+
+
+def _fusionner(conn, grille_id: int, version_id: int, fusion: dict) -> list:
+    """Reporte les relevés d'une entrée sur une autre (« fusionner dans… »), et rend leurs
+    identifiants. `reconcilier_ouverte` a dit le doublon d'une cardinalité `une` ; relu ici
+    sous le verrou de l'appelant, il refuse encore, au lieu de tomber sur l'index."""
+    ids = [r[0] for r in conn.execute(
+        "SELECT id FROM releve WHERE grille_id = ? AND version_id = ? AND entree_cle = ? "
+        "ORDER BY id", (grille_id, version_id, fusion["de"]))]
+    if _fusion_en_double(conn, grille_id, version_id, fusion["de"], fusion["dans"]):
+        raise Refus(409, f"Fusionner « {fusion['de']} » dans « {fusion['dans']} » poserait "
+                         "deux fois une entrée qui ne se pose qu'une fois sur la même cible. "
+                         "Retirez-la plutôt, ou retirez d'abord l'un des deux relevés. Rien "
+                         "n'est importé.")
+    conn.execute("UPDATE releve SET entree_cle = ? WHERE grille_id = ? AND version_id = ? "
+                 "AND entree_cle = ?", (fusion["dans"], grille_id, version_id, fusion["de"]))
+    return ids
 
 
 # --------------------------------------------------------------------------- #
@@ -883,7 +1072,8 @@ def ecrire_plan(conn: sqlite3.Connection, vid: int, c: dict) -> None:
 
 
 def effacer_plan(conn: sqlite3.Connection, vid: int) -> None:
-    """Retire les lignes du plan d'une version (un brouillon qu'on remplace)."""
+    """Retire les lignes du plan d'une version (un brouillon qu'on remplace, la version
+    vivante d'une grille ouverte qu'on réimporte)."""
     for t in ("grille_rubrique", "grille_entree", "grille_variante", "grille_liste",
               "grille_qualificatif", "grille_exemple"):
         conn.execute(f"DELETE FROM {t} WHERE version_id = ?", (vid,))
@@ -915,7 +1105,7 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
              classeur: bytes | None = None, grille_id: int | None = None,
              nom: str | None = None, ouverte: bool | None = None,
              porte_sur: str | None = None, note: str | None = None, par=None,
-             a_blanc: bool = False, noms=NOMS_PAR_DEFAUT) -> dict:
+             a_blanc: bool = False, reponses=None, noms=NOMS_PAR_DEFAUT) -> dict:
     """Importe un tableur — deux CSV (`flux_entrees`, `flux_listes`) ou un classeur
     (`classeur`, ses octets) — comme version d'une grille, neuve (`nom`) ou suivante d'une
     grille existante de ce projet (`grille_id`). Le droit de l'appelant est vérifié AVANT
@@ -926,15 +1116,17 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
     - une grille FERMÉE a au plus un brouillon : réimporter le REMPLACE ; si la dernière
       version est publiée, un brouillon neuf naît, au numéro suivant — sauf si son empreinte
       est celle de la version publiée, ou du brouillon en place : « aucun changement » ;
-    - une grille OUVERTE n'a qu'une version, `vivante`, née au premier import ; elle
-      s'enrichit EN POSANT (G14) — la réimporter avec un autre contenu est refusé (409,
-      option la plus fermée, à trancher : remplacer écraserait les entrées nées en posant).
+    - une grille OUVERTE n'a qu'une version, `vivante`, née au premier import, qui s'enrichit
+      EN POSANT (G14) ; la réimporter la récrit EN PLACE (tranché par Hugo le 2026-11-03,
+      renversant le 409 d'avant), et une entrée employée que le fichier ne porte pas attend
+      sa réponse (`reponses` : « retirer » ou « fusionner:<cle> », `reconcilier_ouverte`) —
+      sans elle, l'import est refusé (409) avec le bilan qui la demande.
 
     `a_blanc` : rend le bilan sans rien écrire. Lève `Refus` (statut, message, anomalies,
     bilan), `FormatInvalide` sur un fichier ou un en-tête. Ne commite pas ; écrit au journal
     sous `grille` (sauf à blanc). Rend `{grille_id, version: {numero, etat} | None, ecrit,
-    aucun_changement, verdict, a_savoir, va_naitre, bilan, compare_a, declaration,
-    identifiants_deduits}`."""
+    aucun_changement, verdict, a_savoir, va_naitre, bilan, a_repondre, compare_a,
+    declaration, identifiants_deduits}`."""
     import journal                               # import paresseux : le cœur reste léger
     tableur = tableur_de(flux_entrees, flux_listes, classeur=classeur, noms=noms)
     g = None
@@ -982,25 +1174,47 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
                     {"verdict": verdict("refuse", n=len(anomalies)), "a_savoir": a_savoir,
                      **commun})
     c = lu["contenu"]
+    vivante = ouverte and g is not None and reference is not None
+    a_repondre, fusions = [], []
+    if vivante:
+        c, a_repondre, fusions, fautes = reconcilier_ouverte(
+            conn, g["id"], reference["id"], avant, c, lire_reponses(reponses))
+        if fautes:
+            raise Refus(409, f"La grille ouverte ne peut pas être réimportée ainsi : "
+                             f"{len(fautes)} point(s) à régler. Rien n'est importé.", fautes,
+                        {"verdict": verdict("refuse", n=len(fautes)), "a_savoir": a_savoir,
+                         **commun})
     b = bilan(conn, g["id"] if g is not None else None, avant, c)
+    for d in b["disparus"] if vivante else ():
+        if d["quoi"] == "entree":
+            fusion = next((f for f in fusions if f["de"] == d["cle"]), None)
+            d["decision"] = (f"{FUSIONNER}:{fusion['dans']}" if fusion
+                             else "a_repondre" if any(a["cle"] == d["cle"] for a in a_repondre)
+                             else "part")
+    for ch in b["changes"]:
+        if ch["champ"] == "retiree":
+            ch["decision"] = RETIRER
     emp = grilles.empreinte(c)
     brouillon = (grilles.derniere_version(conn, g["id"], grilles.ETAT_BROUILLON)
                  if g is not None else None)
     resultat = {"grille_id": g["id"] if g is not None else None, "version": None,
                 "ecrit": False, "aucun_changement": False, "bilan": b,
-                "va_naitre": va_naitre(avant, c),
+                "va_naitre": va_naitre(avant, c), "a_repondre": a_repondre,
                 "compare_a": reference["numero"] if reference is not None else None,
                 "a_savoir": a_savoir, **commun}
     deja = [v for v in (reference, brouillon) if v is not None and v["empreinte"] == emp]
-    if deja:
+    if deja and not fusions:
         resultat["aucun_changement"] = True
         resultat["version"] = {"numero": deja[0]["numero"], "etat": deja[0]["etat"]}
         resultat["verdict"] = verdict("aucun_changement")
         return resultat
-    if ouverte and g is not None and reference is not None:
-        raise Refus(409, "Une grille ouverte s'enrichit en posant : la réimporter avec un "
-                         "autre contenu remplacerait les entrées nées en posant. Rien n'est "
-                         "importé.")
+    if a_repondre:
+        resultat["verdict"] = verdict("a_repondre", n=len(a_repondre))
+        if a_blanc:
+            return resultat
+        raise Refus(409, f"{len(a_repondre)} entrée(s) employée(s) disparaissent de la grille "
+                         "ouverte : dites pour chacune « retirer » ou « fusionner dans… ». "
+                         "Rien n'est importé.", [], resultat)
     if a_blanc:
         resultat["verdict"] = verdict("importable")
         if brouillon is not None:
@@ -1018,8 +1232,16 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
     else:
         gid = g["id"]
     etat = grilles.ETAT_VIVANTE if ouverte else grilles.ETAT_BROUILLON
-    en_place = brouillon
+    trace = {}
+    en_place = reference if vivante else brouillon
     if en_place is not None:
+        if vivante:
+            for f in fusions:
+                f["releve_ids"] = _fusionner(conn, gid, reference["id"], f)
+            trace = {"retirees": [k for k, x in c["entrees"].items()
+                                  if x.get("retiree") and not avant["entrees"][k].get("retiree")],
+                     "fusions": [{k: f[k] for k in ("de", "dans", "releve_ids")}
+                                 for f in fusions]}
         effacer_plan(conn, en_place["id"])
         conn.execute("UPDATE grille_version SET cible = ?, note = ?, empreinte = ?, "
                      "importee_par = ?, importee_le = datetime('now') WHERE id = ?",
@@ -1032,7 +1254,7 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
         ecrire_version(conn, gid, c, numero=numero, etat=etat, note=note, par=par)
     journal.journaliser(conn, "modification", "grille", gid,
                         apres={"import": {"numero": numero, "etat": etat, "empreinte": emp,
-                                          "remplace": en_place is not None}})
+                                          "remplace": en_place is not None, **trace}})
     resultat.update(ecrit=True, verdict=verdict("importe"),
                     version={"numero": numero, "etat": etat,
                              **({"remplace": True} if en_place is not None else {})})
@@ -1163,7 +1385,8 @@ def exporter(conn: sqlite3.Connection, version_id: int) -> tuple[str, str]:
     """Les deux CSV d'une version, au format MACHINE de l'import, identifiants compris : le
     chemin de la DÉRIVATION allégée (réexporter, réimporter comme grille de son projet,
     tranché le 2026-10-22), et la seule façon de vérifier les `cle` par aller-retour.
-    Réimporté tel quel, il rend la même empreinte (`tests/test_grilles.py`)."""
+    Réimporté tel quel, il rend la même empreinte (`tests/test_grilles.py`). Une entrée
+    RETIRÉE n'y est pas (cf. `grille_tableur.rangees`)."""
     c = grilles.contenu(conn, version_id)
 
     def ligne(**valeurs):
@@ -1172,6 +1395,8 @@ def exporter(conn: sqlite3.Connection, version_id: int) -> tuple[str, str]:
     w = csv.writer(sortie, delimiter=";", lineterminator="\r\n")
     w.writerow(COLONNES)
     for cle_, e in sorted(c["entrees"].items(), key=lambda kv: kv[1]["rang"]):
+        if e.get("retiree"):            # ne se pose plus ; un réimport la garde retirée
+            continue
         chemin = grilles.chemin_de_rubrique(c["rubriques"], e["rubrique_cle"])
         w.writerow(ligne(
             cle=cle_, rubrique=" > ".join(c["rubriques"][r]["libelle"] for r in chemin),

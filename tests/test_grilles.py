@@ -513,13 +513,20 @@ def test_une_grille_employee_ne_se_supprime_pas(client, decor, db_path):
 # --------------------------------------------------------------------------- #
 # Une grille ouverte ; le bac à sable ; le jeu
 # --------------------------------------------------------------------------- #
-def test_une_grille_ouverte_n_a_qu_une_version_vivante(client, decor):
+def test_une_grille_ouverte_n_a_qu_une_version_vivante(client, decor, db_path):
+    """Une grille ouverte n'a qu'une version, vivante. La réimporter avec un autre contenu
+    était refusé (409, « remplacer écraserait les entrées nées en posant ») ; Hugo l'a
+    RENVERSÉ le 2026-11-03 : elle se récrit EN PLACE, à son numéro, et ce qui disparaît se
+    lit dans le bilan — une entrée employée y attend sa réponse (`test_grille_tableur`)."""
     res = importer(client, decor["p"], LEA, ouverte=True, nom="Libre")
     assert res["version"] == {"numero": 1, "etat": "vivante"}
     gid = res["grille_id"]
     assert importer(client, decor["p"], LEA, grille_id=gid)["aucun_changement"]
-    importer(client, decor["p"], LEA, grille_id=gid,
-             entrees=MODELE.replace("cri poussé", "cri lancé"), attendu=(409,))
+    res = importer(client, decor["p"], LEA, grille_id=gid,
+                   entrees=MODELE.replace("cri poussé", "cri lancé"))
+    assert res["version"] == {"numero": 1, "etat": "vivante", "remplace": True}
+    assert [r["cle"] for r in res["bilan"]["retouches"]] == ["cri"]
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_version")[0]["n"] == 1
     ok(client.put(f"/api/projets/{decor['p']}/grilles/{gid}/activation", headers=LEA,
                   json={"version": 1}))
 

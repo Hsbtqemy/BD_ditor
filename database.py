@@ -1237,7 +1237,9 @@ LEFT JOIN token_correction c
 --   « à revoir » — un mot du passage perdu (`releve_mot.rang` NULL) ; le texte de la zone
 --   qui n'est plus celui de l'ancrage (`texte_ancre`, une réindexation manquée ou un mot
 --   que le ré-ancrage n'a pas retrouvé) ; la région liée qui n'existe plus ; un type de
---   région qui ne convient plus à l'entrée (G8) ; une entrée absente de sa version ;
+--   région qui ne convient plus à l'entrée (G8) ; une entrée absente de sa version, ou
+--   RETIRÉE (une grille ouverte qu'on réimporte : elle ne se pose plus, ses relevés restent,
+--   ANN-7, tranché par Hugo le 2026-11-03) ;
 --   « à compléter » — une précision ou un lien que l'entrée attend, et que le relevé ne
 --   porte pas ;
 --   « normal » sinon.
@@ -1265,7 +1267,7 @@ FROM (
                    WHEN COALESCE(e.cible, v.cible) IN ('planche', 'entite') THEN 0
                    ELSE instr('|' || COALESCE(e.cible, v.cible) || '|',
                               '|' || g.type || '|') > 0 END)) AS type_change,
-         (e.cle IS NULL) AS entree_absente,
+         (e.cle IS NULL OR e.retiree = 1) AS entree_absente,
          (e.precision IS NOT NULL AND TRIM(COALESCE(r.precision, '')) = '')
              AS precision_manquante,
          (e.lien = 1 AND r.lien_region_id IS NULL) AS lien_manquant
