@@ -58,6 +58,16 @@ Le texte des pages de l'album est celui que Hugo a réécrit, dans la maquette, 
 - [ ] **L'Accord accorde au pluriel** — attendu : « 1 album », « 1 planche »
 - [ ] **La citation d'une bulle suit le rang de sa case** — attendu : sur le vrai jeu, la nouvelle planche comprise, la bulle de la case du milieu se cite `c2 · b1` ; une instance jetable a donné `c3 · b1` sur *Chez les Chinois*, cases d'identifiants 1, 3 et 6, cause non cherchée
 
+### Tranché par Hugo le 2026-11-03 — les choix de la première tranche
+Proposés par l'agent qui code la première tranche (copie `ux6-wizard`, pas encore sur `dev`), confirmés tous les sept par Hugo, sans maquette : chacun se revoit sur l'écran codé.
+- [x] **« Fermer ✕ » sans cocher « Ne plus afficher » ne vaut pas renoncement** — attendu : tranché, l'album revient au chargement suivant (le contrat de la section « Écran par où commencer » est gardé)
+- [x] **Le wizard ne s'ouvre que dans SON bac à sable** — attendu : tranché, jamais chez un invité, ni hors d'un bac à sable
+- [x] **L'album s'ouvre seul sur les six surfaces** — attendu : tranché, pas seulement dans l'Atelier
+- [x] **« Ne plus afficher » vaut pour CE bac à sable** — attendu : tranché, l'album revient après l'effacement du lundi ou une remise à neuf
+- [x] **L'étape « Exporter » ne promet rien** — attendu : tranché, sa phrase commence par « Ailleurs que dans un bac à sable… » ; la case « Exporter dit ce qui sort vraiment » reste ouverte jusqu'à l'écran codé
+- [x] **Choisir un parcours ouvre la carte des étapes** — attendu : tranché, en attendant la fenêtre posée sur la zone
+- [x] **L'album se lit une page à la fois** — attendu : tranché, sans glissé au doigt ; ses illustrations sont les miniatures du jeu servies par l'instance, les pages 6 et 7 sans illustration
+
 ### Arbitrages
 - [x] La liste des étapes et leur ordre sont figés AVANT la première ligne de code, chaque étape nommant une surface et un geste : c'est le contrat commun de l'écran et du guide, et le laisser flotter ferait diverger les deux
 - [x] Le rang vis-à-vis de UX-3 est tranché et écrit dans les deux fiches : UX-3 veut rendre les quatre modes de la Visionneuse compréhensibles *sans* documentation, UX-6 les explique — décider lequel passe d'abord, ou acter qu'ils sont indépendants **Tranché le 2026-11-02 : ils ne sont pas indépendants, le wizard dit les modes et son texte change au basculement d'`ANN-7` ; le wizard passe d'abord.**
