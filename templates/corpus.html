@@ -15,7 +15,7 @@
   <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
   <div id="site-nav">
     <span class="brand"><span class="brand-long">BéDéditeur</span><span class="brand-court" aria-hidden="true">BDé</span></span>
-    <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
+    <nav class="surf-nav" data-parcours="bande-pages"></nav><!-- liens injectés par theme.js (source unique) -->
     <span class="nav-spacer"></span>
     <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
     <button class="ghost btn-theme" title="Changer de thème">🌙</button>
@@ -30,7 +30,7 @@
     <h1 class="sr-only">Bibliothèque</h1>
     <nav class="fil-nav" aria-label="Où vous êtes"><ol id="bi-fil" class="fil"></ol></nav>
     <span id="bi-rappels" class="bi-rappels" hidden></span>
-    <button id="btn-new" class="primary small" type="button">+ Nouvel album</button>
+    <button id="btn-new" class="primary small" data-parcours="bibliotheque-nouvel-album" type="button">+ Nouvel album</button>
   </header>
 
   <main id="corpus-body">
@@ -63,7 +63,7 @@
                 aria-controls="cat-rail">Collections…</button>
       </div>
 
-      <nav class="cat-rail" id="cat-rail" aria-label="Collections">
+      <nav class="cat-rail" id="cat-rail" data-parcours="bibliotheque-collections" aria-label="Collections">
         <button id="calques-tout" class="cat-tout" type="button"></button>
         <!-- COL-3, tranche 3c (Hugo, sur maquette, 2026-11-02) — « À répondre », sous « Tout
              le projet » : les demandes d'effacement et d'en partir que le responsable reçoit,
@@ -110,8 +110,8 @@
       <!-- Le centre : ce qu'on regarde, et l'album ouvert. Deux surfaces qui défilent chacune
            seule ; le catalogue se resserre, ses cartes gardent leur taille. -->
       <div class="cat-centre" id="biblio-fiche">
-        <div class="cat-vue" id="cat-vue"></div>
-        <aside class="cat-volet" id="biblio-volet" aria-label="Fiche de l'album" hidden></aside>
+        <div class="cat-vue" id="cat-vue" data-parcours="bibliotheque-catalogue"></div>
+        <aside class="cat-volet" id="biblio-volet" data-parcours="bibliotheque-fiche" aria-label="Fiche de l'album" hidden></aside>
       </div>
     </div>
     <!-- UX-11 — le sélecteur de l'import en lot, ouvert par « ⤓ Importer des planches… » de

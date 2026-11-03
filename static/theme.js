@@ -232,6 +232,7 @@
   // Transforme un bouton .btn-theme existant en déclencheur du menu « Affichage ».
   function buildMenu(btn) {
     var wrap = el("span", "display-menu");
+    wrap.dataset.parcours = "bande-affichage";   // UX-6 : une zone de la visite
     btn.parentNode.insertBefore(wrap, btn);
     btn.textContent = "Aa";
     btn.title = "Affichage (thème, contraste, zoom)";
@@ -623,6 +624,7 @@
                                                    // qu'il faut expliquer.
         if (!d.utilisateur) return;                // pas d'auth (local) → pas de pastille
         var wrap = el("span", "user-chip");
+        wrap.dataset.parcours = "bande-compte";     // UX-6 : une zone de la visite
         var nom = d.nom || d.utilisateur;
         // Les groupes dans l'infobulle (AUTH-1) : ils gouvernent ce qu'on voit, et
         // personne ne pouvait les consulter — pas même pour vérifier une faute de frappe
@@ -716,6 +718,7 @@
     if (!projets || !projets.length) return;
     var id = lib.courant(projets, lib.lire());
     var wrap = el("span", "projet-courant");
+    wrap.dataset.parcours = "bande-projet";     // UX-6 : une zone de la visite
     if (projets.length === 1) {
       wrap.appendChild(el("span", "projet-lbl", "Projet"));
       var nom = el("span", "projet-nom", projets[0].nom);

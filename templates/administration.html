@@ -15,7 +15,7 @@
   <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
   <div id="site-nav">
     <span class="brand"><span class="brand-long">BéDéditeur</span><span class="brand-court" aria-hidden="true">BDé</span></span>
-    <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
+    <nav class="surf-nav" data-parcours="bande-pages"></nav><!-- liens injectés par theme.js (source unique) -->
     <span class="nav-spacer"></span>
     <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
     <button class="ghost btn-theme" title="Changer de thème">🌙</button>
@@ -28,7 +28,7 @@
        « Instance » est ouverte à tous : les moteurs le sont. -->
   <header id="header">
     <h1>Administration</h1>
-    <nav class="admin-vues" id="admin-vues" aria-label="Vues de l'administration">
+    <nav class="admin-vues" id="admin-vues" data-parcours="administration-vues" aria-label="Vues de l'administration">
       <a id="vue-lien-afaire" href="/administration?vue=afaire" data-vue="afaire" hidden>À faire<span class="admin-vue-compte" id="vue-compte-afaire"></span></a>
       <a id="vue-lien-fonds" href="/administration?vue=fonds" data-vue="fonds" hidden>Fonds<span class="admin-vue-compte" id="vue-compte-fonds"></span></a>
       <a id="vue-lien-projets" href="/administration?vue=projets" data-vue="projets" hidden>Projets</a>
@@ -267,7 +267,7 @@
     <!-- ───────── Moteurs (SANTE-1) — la présence n'est pas le fonctionnement ─────────
          Ouvert à tous, délibérément : savoir si l'OCR fonctionne n'est pas un pouvoir,
          et c'est la question que se pose quiconque voit une passe ne rien produire. -->
-    <section class="admin-bloc" id="sante-bloc" data-dans-vue="instance" aria-labelledby="sante-title">
+    <section class="admin-bloc" id="sante-bloc" data-parcours="administration-instance" data-dans-vue="instance" aria-labelledby="sante-title">
       <h2 id="sante-title">🩺 Moteurs de reconnaissance</h2>
       <p class="muted small">Les moteurs sont <b>optionnels</b> : absent, un moteur ne casse
         rien — sa passe répond 503 et le reste de l'outil vit sa vie. Le cas grave est

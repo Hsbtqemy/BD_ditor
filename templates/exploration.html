@@ -15,7 +15,7 @@
   <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
   <div id="site-nav">
     <span class="brand"><span class="brand-long">BéDéditeur</span><span class="brand-court" aria-hidden="true">BDé</span></span>
-    <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
+    <nav class="surf-nav" data-parcours="bande-pages"></nav><!-- liens injectés par theme.js (source unique) -->
     <span class="nav-spacer"></span>
     <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
     <button class="ghost btn-theme" title="Changer de thème">🌙</button>
@@ -30,7 +30,7 @@
   <main id="explo-body">
 
     <div class="explo-top">
-      <label class="muted small">Vue
+      <label class="muted small" data-parcours="exploration-vues">Vue
         <select id="f-vue">
           <option value="distribution">Distribution</option>
           <option value="concordance">Concordance (KWIC)</option>
@@ -38,7 +38,7 @@
           <option value="comparaison">Comparaison A / B</option>
         </select>
       </label>
-      <label class="muted small" id="wrap-champ">Distribuer par
+      <label class="muted small" id="wrap-champ" data-parcours="exploration-vues">Distribuer par
         <select id="f-champ">
           <option value="lemme">lemme</option>
           <option value="pos">catégorie (POS)</option>
@@ -68,16 +68,16 @@
       </span>
       <label class="muted small" title="Inclure les tags posés sur la case parente (sinon, seul le tag propre à la région compte)"><input type="checkbox" id="f-tagscope" checked> tag hérité de la case</label>
       <span class="nav-spacer"></span>
-      <button id="btn-lexique" class="ghost small" type="button"
+      <button id="btn-lexique" class="ghost small" type="button" data-parcours="exploration-lexique"
               title="Documenter le vocabulaire : définitions, notes de portée, état (lexique situé SKOS)">📖 Lexique</button>
-      <button id="btn-accord" class="ghost small" type="button"
+      <button id="btn-accord" class="ghost small" type="button" data-parcours="exploration-lexique"
               title="Rapport d'accord modèle↔humain : part des corrections que le modèle NLP retrouve seul">🎯 Accord</button>
-      <button id="btn-accord-inter" class="ghost small" type="button"
+      <button id="btn-accord-inter" class="ghost small" type="button" data-parcours="exploration-lexique"
               title="Accord inter-annotateurs : quand un relecteur re-touche le token d'un autre, garde-t-il ou change-t-il sa valeur ?">👥 Inter</button>
     </div>
 
     <div class="explo-grid">
-      <div class="subcorpus" id="sub-a">
+      <div class="subcorpus" id="sub-a" data-parcours="exploration-sous-corpus">
         <div class="sub-title muted small" hidden>Sous-corpus A</div>
         <div class="explo-controls">
           <select id="f-album" aria-label="Filtrer par album"><option value="">Tous les albums</option></select>
@@ -142,7 +142,7 @@
     </div>
     <p class="muted small">Le fichier rend le jeu TROUVÉ, pas l'aperçu affiché ci-dessous ;
       s'il a fallu le couper, son nom porte <code>-tronque-</code>.</p>
-    <div id="dist" class="dist"></div>
+    <div id="dist" class="dist" data-parcours="exploration-resultat"></div>
     <div id="comparaison" class="comparaison" hidden></div>
     <div id="kwic" class="kwic" hidden></div>
     <div id="croise" class="croise" hidden

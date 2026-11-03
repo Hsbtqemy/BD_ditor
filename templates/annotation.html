@@ -15,7 +15,7 @@
   <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
   <div id="site-nav">
     <span class="brand"><span class="brand-long">BéDéditeur</span><span class="brand-court" aria-hidden="true">BDé</span></span>
-    <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
+    <nav class="surf-nav" data-parcours="bande-pages"></nav><!-- liens injectés par theme.js (source unique) -->
     <span class="nav-spacer"></span>
     <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
     <button class="ghost btn-theme" title="Changer de thème">🌙</button>
@@ -25,7 +25,7 @@
        Les listes du PROJET COURANT ; la collection est le filtre de l'Atelier, partagé avec
        lui. « Préparée » dit ce que la planche porte ; « Ouvrir dans l'Atelier ↗ » y mène sur
        la même zone. -->
-  <header id="header" class="an-header">
+  <header id="header" class="an-header" data-parcours="annotation-lieu">
     <h1 class="sr-only">Annotation</h1>
     <span class="an-champ"><label for="an-collection">Collection</label><select id="an-collection"></select></span>
     <span class="an-champ"><label for="an-album">Album</label><select id="an-album"></select></span>
@@ -44,7 +44,7 @@
     <!-- Deux vues de la colonne de gauche (ANN-6, 2026-10-14 : « Vue planche et vue synthèse
          du travail effectué ») : la planche et son Contexte ; la Synthèse (commit 5) — les
          relevés de la planche par case, ce qui est à revoir, le décompte. -->
-    <aside id="an-gauche" class="an-col an-gauche" aria-label="Planche et synthèse">
+    <aside id="an-gauche" class="an-col an-gauche" data-parcours="annotation-contexte" aria-label="Planche et synthèse">
       <div class="an-gauche-tete">
         <div class="an-gauche-onglets" role="tablist" aria-label="Planche ou synthèse">
           <button type="button" role="tab" id="an-ong-planche" class="ghost an-onglet"
@@ -150,7 +150,7 @@
       </div>
       <!-- Tracer une zone (commit 9) : un glissé dans la case, puis sa sorte, proposée
            par-dessus la case (`#an-trace`, que le dessin de la case garde). -->
-      <div id="an-vue-case" class="an-vue-case"
+      <div id="an-vue-case" class="an-vue-case" data-parcours="annotation-case"
            title="Cliquez une zone pour la choisir, ou le fond pour la case ; à la souris, glissez pour tracer un détail ou un texte hors bulle"><div
            id="an-trace" class="an-trace" role="group" aria-label="La zone tracée est" hidden>
           <button type="button" class="ghost small" data-trace="detail"
@@ -170,7 +170,7 @@
       </div>
       <!-- Les MOTS de la zone, à désigner : clic, glissé, Maj+clic, Ctrl+clic, clavier.
            Sous chacun, les traits des relevés, un couloir par relevé. -->
-      <section class="an-texte-bloc" aria-labelledby="an-texte-titre">
+      <section class="an-texte-bloc" data-parcours="annotation-mots" aria-labelledby="an-texte-titre">
         <div class="an-mots-tete">
           <h3 class="an-sous-titre" id="an-texte-titre">Texte</h3>
           <span id="an-legende" class="an-legende" aria-hidden="true"></span>
@@ -188,7 +188,7 @@
       </section>
       <!-- Le PIED à deux lignes fixes (commit 4) : « terminée » pour la grille ouverte (ou la
            rubrique qu'« Afficher » montre), et le parcours de ses zones. -->
-      <div id="an-pied" class="an-pied" role="group" aria-label="Terminée et parcours">
+      <div id="an-pied" class="an-pied" data-parcours="annotation-parcours" role="group" aria-label="Terminée et parcours">
         <div class="an-pied-ligne">
           <span id="an-passe-etat" class="an-passe-etat"></span>
           <button id="an-rouvrir" class="ghost small" type="button" hidden
@@ -214,7 +214,7 @@
     <!-- La GRILLE (commit 2), en lecture : les onglets des grilles actives que la collection
          ne masque pas, « Afficher », le filtre (« / »), le plan, la ligne du guide à hauteur
          fixe et le guide complet. -->
-    <aside id="an-grille" class="an-col an-grille" aria-labelledby="an-grille-titre">
+    <aside id="an-grille" class="an-col an-grille" data-parcours="annotation-grille" aria-labelledby="an-grille-titre">
       <!-- Sous 47,5em, la grille monte du bas par « Poser… ▴ » (commit 12). -->
       <div class="an-gr-fermer-l an-etroit-feuille">
         <span class="nav-spacer"></span>

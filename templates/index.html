@@ -15,7 +15,7 @@
   <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
   <div id="site-nav">
     <span class="brand"><span class="brand-long">BéDéditeur</span><span class="brand-court" aria-hidden="true">BDé</span></span>
-    <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
+    <nav class="surf-nav" data-parcours="bande-pages"></nav><!-- liens injectés par theme.js (source unique) -->
     <span class="nav-spacer"></span>
     <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
     <button class="ghost btn-theme" title="Changer de thème">🌙</button>
@@ -33,7 +33,7 @@
          et pendant la Transcription la promesse S'ÉTEINT (cf. `.sans-raccourcis`
          dans style.css), le focus y vivant dans la zone de saisie. Le `title` sert
          alors de nom lisible sous 63.9375em, où `.mode-label` est clipé. -->
-    <div class="modes" role="group" aria-label="Mode d'interaction">
+    <div class="modes" data-parcours="atelier-modes" role="group" aria-label="Mode d'interaction">
       <button class="mode-btn" data-mode="navigation" title="Navigation" aria-pressed="true">
         <span class="dot"></span> <span class="mode-label">Navigation</span> <kbd aria-hidden="true">N</kbd>
       </button>
@@ -47,7 +47,7 @@
         <span class="dot"></span> <span class="mode-label">Transcription</span> <kbd aria-hidden="true">T</kbd>
       </button>
     </div>
-    <div class="header-actions">
+    <div class="header-actions" data-parcours="atelier-actions">
       <div class="dropdown">
         <button class="ghost" id="btn-traitement" title="Traitements automatiques sur l'album">⚙<span class="mode-label"> Traitement </span>▾</button>
         <div class="dropdown-menu" id="traitement-menu">
@@ -86,7 +86,7 @@
   <main id="body">
 
     <!-- Sidebar : navigation planches -->
-    <aside id="sidebar">
+    <aside id="sidebar" data-parcours="atelier-planches">
       <!-- UX-19 : la collection d'abord, puis l'album — la liste *Album* ne montre que les
            albums rangés dans la collection choisie (lib/atelier.js). -->
       <div class="sidebar-head">
@@ -106,7 +106,7 @@
     </aside>
 
     <!-- Visionneuse -->
-    <section id="viewer">
+    <section id="viewer" data-parcours="atelier-planche">
       <div id="toolbar">
         <!-- Bascules de tiroirs (UX-7). Invisibles au-dessus des seuils, où les deux
              panneaux sont des colonnes ; c'est le CSS seul qui décide, cf. style.css. -->
@@ -139,7 +139,7 @@
          derrière est hors service. Jamais visible au-dessus des seuils. -->
     <div id="tiroir-voile"></div>
 
-    <aside id="panel">
+    <aside id="panel" data-parcours="atelier-structure">
       <div id="panel-empty" class="empty-hint">Sélectionnez une planche.</div>
 
       <!-- Arborescence de la planche : planche → cases → bulles (toujours

@@ -157,6 +157,7 @@
     if (!l) return;
     const box = el("div", "bac-ligne");
     box.id = "bac-ligne";
+    box.dataset.parcours = "bande-bac";          // UX-6 : une zone de la visite
     box.setAttribute("role", "region");
     box.setAttribute("aria-label", "Bac à sable");
     // Le nom porte l'aide en infobulle (« un écran stable, sans phrases ») ; au clavier et

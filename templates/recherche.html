@@ -15,7 +15,7 @@
   <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
   <div id="site-nav">
     <span class="brand"><span class="brand-long">BéDéditeur</span><span class="brand-court" aria-hidden="true">BDé</span></span>
-    <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
+    <nav class="surf-nav" data-parcours="bande-pages"></nav><!-- liens injectés par theme.js (source unique) -->
     <span class="nav-spacer"></span>
     <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
     <button class="ghost btn-theme" title="Changer de thème">🌙</button>
@@ -23,13 +23,13 @@
 
   <!-- ───────────── Bande 2 — Outils de la page ───────────── -->
   <header id="header">
-    <div id="corpus-stats" class="corpus-stats"></div>
+    <div id="corpus-stats" class="corpus-stats" data-parcours="recherche-corpus"></div>
   </header>
 
   <!-- ───────────────── Corps ───────────────── -->
   <main id="search-body">
 
-    <div class="search-bar">
+    <div class="search-bar" data-parcours="recherche-champ">
       <input type="search" id="q" autocomplete="off"
              aria-label="Rechercher dans les dialogues, notes et tags"
              placeholder="Rechercher dans les dialogues, notes, tags…">
@@ -44,7 +44,7 @@
       </select>
     </div>
 
-    <details id="gram-facets" class="gram-facets">
+    <details id="gram-facets" class="gram-facets" data-parcours="recherche-facettes">
       <summary class="muted small">Facettes grammaticales</summary>
       <div class="facet-row">
         <select id="f-pos" title="Catégorie grammaticale (UPOS)"
@@ -64,7 +64,7 @@
     </details>
 
     <div id="active-tags" class="active-tags"></div>
-    <details id="tag-cloud-wrap" open>
+    <details id="tag-cloud-wrap" data-parcours="recherche-tags" open>
       <summary class="muted small">Nuage de tags (cliquer pour filtrer)</summary>
       <div id="tag-cloud" class="tag-cloud"></div>
     </details>
@@ -78,7 +78,7 @@
       <span id="export-note" class="muted small" hidden></span>
     </div>
     <div id="results-pane">
-      <div id="results" class="results"></div>
+      <div id="results" class="results" data-parcours="recherche-resultats"></div>
       <aside id="preview" class="preview" hidden>
         <div class="preview-head">
           <span id="preview-title" class="preview-title"></span>
