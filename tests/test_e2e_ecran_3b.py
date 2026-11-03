@@ -553,6 +553,65 @@ def test_une_planche_se_supprime_par_son_panneau_ou_se_demande(page, decor):
     expect(page.locator("#pm-perd .perd-titre")).to_contain_text("sur tout l'album")
 
 
+def test_copie_depuis_la_fiche_dit_ou_va_la_copie(page, decor):
+    """Tranche 3c (Hugo, sur maquette, 2026-11-02) — « Copie… » s'ouvre aussi depuis la fiche
+    d'un album : « Copier dans » au-dessus de l'échelle, la collection ouverte présélectionnée,
+    « Une nouvelle collection à vous… » qui éteint le bouton tant qu'elle n'a pas de nom, puis
+    deux appels — créer, prendre — et le volet ouvert sur la copie."""
+    d = decor
+    vues = _requetes(page, "/api/collections", ("POST",))
+    fiche = _fiche_album(page, d, "paule", "QRN", "Corpus")
+    fiche.locator("#vc-ouvrir").click()
+    dest = page.locator("#vc-dest")
+    expect(dest).to_be_focused()
+    expect(dest).to_have_value(str(d["cols"]["Corpus"]))
+    expect(dest.locator("option")).to_contain_text(["(base)", "Corpus (ouverte)", "Exercices",
+                                                    "Une nouvelle collection à vous…"])
+    expect(page.locator("#vc-quoi")).to_have_text(
+        "Votre copie ira dans « Corpus », rangée sous l'original.", timeout=5000)
+    expect(page.locator("#vc-ok")).to_have_text("Copier les images")
+    dest.select_option("nouvelle")
+    expect(page.locator("#vc-nom")).to_be_focused()
+    expect(page.locator("#vc-ok")).to_be_disabled()
+    expect(page.locator("#vc-quoi")).to_have_text("Donnez un nom à votre collection.")
+    page.locator("#vc-nom").fill("Mes copies")
+    expect(page.locator("#vc-ok")).to_be_enabled(timeout=5000)
+    expect(page.locator("#vc-quoi")).to_have_text(
+        "Votre copie ira dans « Mes copies », rangée sous l'original.")
+    page.locator("#vc-ok").click()
+    expect(page.locator("#album-detail .genre")).to_have_text("Album · copie de travail",
+                                                              timeout=5000)
+    expect(page.locator("#album-titre")).to_contain_text("QRN")
+    expect(page.locator(".toast", has_text="« Mes copies »")).to_be_visible()
+    cree = [json.loads(x) for (_, u, x) in vues if u.endswith("/api/collections")]
+    pris = [json.loads(x) for (_, u, x) in vues if u.endswith("/prendre")]
+    assert cree == [{"nom": "Mes copies", "projet_id": d["projet"]}], cree
+    assert pris == [{"documents": [{"document_id": d["docs"]["QRN"], "reponse": "zero",
+                                    "album_id": d["albums"]["QRN"]}]}], pris
+
+
+def test_copie_depuis_la_fiche_se_demande_a_la_proprietaire(page, decor):
+    """Noé écrit dans Exercices sans la tenir : en partir de « Pirates » au découpage se
+    demande, et la fiche le dit avant et après."""
+    d = decor
+    vues = _requetes(page, "/prendre", ("POST",))
+    fiche = _fiche_album(page, d, "noe", "Pirates", "Exercices")
+    fiche.locator("#vc-ouvrir").click()
+    expect(page.locator("#vc-dest")).to_have_value(str(d["cols"]["Exercices"]))
+    page.locator('#vc-zone input[data-vc-cran][value="decoupage"]').check()
+    expect(page.locator("#vc-quoi")).to_have_text(
+        "Son propriétaire doit l'accepter. La copie ira ensuite dans « Exercices ».", timeout=5000)
+    ok = page.locator("#vc-ok")
+    expect(ok).to_have_text("Demander")
+    ok.click()
+    expect(page.locator("#detail-valider-msg")).to_contain_text(
+        "Demandé à son propriétaire : votre copie de « Pirates »", timeout=5000)
+    expect(page.locator("#vc-zone")).to_have_count(0)
+    assert [json.loads(x) for (_, _, x) in vues] == [{"documents": [{
+        "document_id": d["docs"]["Pirates"], "reponse": "amorcer",
+        "album_id": d["albums"]["Pirates"], "cran": "decoupage"}]}]
+
+
 # =========================================================================== #
 # Supprimer et retirer
 # =========================================================================== #

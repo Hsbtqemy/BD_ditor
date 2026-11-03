@@ -197,6 +197,19 @@
              bouton: "Demander" };
   }
 
+  /* La même réponse, dite depuis la FICHE d'un album, où l'on choisit la destination
+     (tranche 3c ; mots du relevé de la séance du 2026-11-02) : « Votre copie ira dans « X »,
+     rangée sous l'original. », ou « Son propriétaire doit l'accepter. La copie ira ensuite
+     dans « X ». ». `dest` : le nom de la collection d'arrivée, vide tant qu'une nouvelle
+     n'est pas nommée. Rend { direct, texte, bouton }. */
+  function reponseCopieVers({ cran, etat, repondra, total, dest }) {
+    const r = reponseCopie({ cran, etat, repondra, total, arrivee: dest });
+    if (!dest) return { ...r, texte: "Donnez un nom à votre collection." };
+    if (r.direct) return { ...r, texte: `Votre copie ira dans ${g(dest)}, rangée sous l'original.` };
+    const qui = repondra === "administrateur" ? "Un administrateur" : "Son propriétaire";
+    return { ...r, texte: `${qui} doit l'accepter. La copie ira ensuite dans ${g(dest)}.` };
+  }
+
   /* ── Repartir de zéro ───────────────────────────────────────────────────────────── */
 
   /* Les radios « Revenir… » : les quatre crans d'arrivée, ceux au niveau du travail de la
@@ -628,7 +641,7 @@
     htmlQuiPerdQuoi, htmlApercuDemande, htmlSourcesE7, nomCopieChoisie,
     rang, jusqua, vers, boutonRepartir, repartieDe, compte, lignesEchelle, sousLEchelle,
     apercuDemande, reponseCopie, cransRepartir, cranParDefaut, part, restent, panneauRepartir,
-    pouvoir, destinataire, partA, repondraA, lecteurDuMotif, REGLE_EFFACER, REGLE_REPARTIR, colonnesConcernees, quiPerdQuoi, nomCopie, detailCopie,
+    reponseCopieVers, pouvoir, destinataire, partA, repondraA, lecteurDuMotif, REGLE_EFFACER, REGLE_REPARTIR, colonnesConcernees, quiPerdQuoi, nomCopie, detailCopie,
     copieParDefaut, accepterDepuis, texteEnPartir, attend, responsablesDesSources,
     puceRepartie, puceCopie,
     ligneRetrait, proprietairesQuiVerront, texteRetirer, raisonCreerEteint, et,

@@ -364,3 +364,15 @@ test("« + Créer une collection » éteint nomme les responsables, ou dit que s
   assert.equal(E.raisonCreerEteint("Repli", []),
                "Dans « Repli », seuls les administrateurs de l'instance créent des collections.");
 });
+
+test("« Copie… » depuis la fiche dit où ira la copie, et qui doit l'accepter", () => {
+  assert.equal(E.reponseCopieVers({ cran: "images", dest: "Corpus" }).texte,
+               "Votre copie ira dans « Corpus », rangée sous l'original.");
+  const dem = E.reponseCopieVers({ cran: "transcription", etat: "demande", repondra: "proprietaire",
+                                   dest: "Exercices" });
+  assert.deepEqual([dem.direct, dem.bouton, dem.texte],
+                   [false, "Demander", "Son propriétaire doit l'accepter. La copie ira ensuite dans « Exercices »."]);
+  assert.ok(E.reponseCopieVers({ cran: "decoupage", etat: "demande", repondra: "administrateur",
+                                 dest: "X" }).texte.startsWith("Un administrateur doit l'accepter."));
+  assert.equal(E.reponseCopieVers({ cran: "images", dest: "" }).texte, "Donnez un nom à votre collection.");
+});

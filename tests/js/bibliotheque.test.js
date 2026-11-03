@@ -555,3 +555,23 @@ test("le fil nomme l'original lu d'une copie, et ne le suppose jamais", () => {
   assert.deepEqual(B.filDePosition({ album: lue, tous: [lue] }).map((m) => m.texte),
                    ["Bibliothèque", "Seule"]);
 });
+
+/* ── COL-3, tranche 3c — « Copie… » depuis la fiche : où va la copie ─────────────────── */
+
+test("les destinations d'une copie : le projet de l'album, où l'on écrit, la base d'abord", () => {
+  const album = { id: 9, projet_id: 1, document_id: 4 };
+  const cols = [
+    { id: 3, nom: "Témoins", projet_id: 1, ecrivable: true },
+    { id: 2, nom: "Base", projet_id: 1, ecrivable: true, base: true },
+    { id: 5, nom: "Archives", projet_id: 1, ecrivable: false },
+    { id: 7, nom: "Ailleurs", projet_id: 2, ecrivable: true },
+  ];
+  const d = B.destinationsCopie(album, cols, 3);
+  assert.deepEqual(d.map((x) => [x.id, x.base, x.ouverte]), [[2, true, false], [3, false, true]]);
+  assert.equal(B.destinationDeCopie(d, true), 3, "celle qu'on regarde, si l'on y écrit");
+  assert.equal(B.destinationDeCopie(B.destinationsCopie(album, cols, 5), true), 2, "sinon la base");
+  assert.equal(B.destinationDeCopie([], true), "nouvelle");
+  assert.equal(B.destinationDeCopie([], false), null);
+  assert.deepEqual(B.destinationsCopie({ ...album, au_fonds: true }, cols, 3), []);
+  assert.deepEqual(B.destinationsCopie({ ...album, document_id: null }, cols, 3), []);
+});

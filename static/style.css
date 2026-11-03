@@ -3829,6 +3829,13 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 
 /* L'échelle de « Copie… », dépliée sous la ligne d'un album : un tableau d'abord. */
 .bi-dp-liste > li > .echelle-zone { flex-basis: 100%; }
+/* « Copie… » depuis la fiche d'un album (COL-3, tranche 3c) : OÙ va la copie, au-dessus de
+   l'échelle. La liste et le nom d'une collection à créer passent à la ligne à l'étroit. */
+.vc-zone h4 { margin: 0 0 .4rem; }
+.vc-dest { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center;
+           margin-bottom: .4rem; min-width: 0; }
+.vc-dest select, .vc-dest input { min-width: 0; max-width: 100%; }
+.vc-dest input { flex: 1 1 12rem; }
 .echelle-zone { display: grid; gap: .45rem; min-width: 0; margin: .3rem 0 .2rem;
                 padding: .55rem .7rem; border: 1px solid var(--accent-blue); border-radius: 7px; }
 .tab-echelle { border-collapse: collapse; width: 100%; font-size: .95rem; }

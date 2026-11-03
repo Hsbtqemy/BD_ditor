@@ -1528,6 +1528,7 @@ function renderDetail() {
     a.format_physique && esc(a.format_physique),
   ].filter(Boolean).join(" · ");
   const offrir = BDSuppression.offrir({ ...a, ecrivable: ecrire });
+  const vc = copieVoletOfferte(a);
   const coches = state.checkedPlanches.size;
   const copie = BDBiblio.estCopie(a);
   const auteurNomme = a.copie_par_nom || a.copie_par;
@@ -1562,14 +1563,17 @@ function renderDetail() {
         ${htmlActesAlbum(a)}
         </div>
       </div>
-      ${ecrire || rares ? `<div class="lf-gestes-tete">
+      ${ecrire || rares || vc ? `<div class="lf-gestes-tete">
         ${ecrire ? `<button class="ghost small" type="button" id="detail-edit">✎ Modifier</button>
         <button class="ghost small" type="button" id="detail-validate-all">✔ Tout valider</button>` : ""}
+        ${vc ? `<button class="ghost small" type="button" id="vc-ouvrir" aria-expanded="${VCOP.album === a.id}"
+                 aria-controls="vc-zone" title="Une copie à vous de cet album : les images seules, ou avec son travail jusqu'au cran choisi. Ce qui se fera dans l'une n'arrivera pas dans l'autre.">Copie…</button>` : ""}
         ${rares ? `<details class="autres"${AUTRES.ouvert === a.id ? " open" : ""}><summary class="ghost small">Autres gestes ▾</summary>
           <div class="autres-menu">${rares}</div></details>` : ""}
       </div>` : ""}
       </div>
       <p id="detail-valider-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+      ${VCOP.album === a.id ? htmlCopieVolet(a) : ""}
       ${htmlRangement()}
       ${htmlCeDocument(a)}
       <section class="cat-bloc" aria-labelledby="planches-titre">
@@ -3057,6 +3061,229 @@ async function validateAllAlbum() {
   colMsg($("#detail-valider-msg"), `${n} planche${n > 1 ? "s" : ""} validée${n > 1 ? "s" : ""}.`);
 }
 
+/* ── « Copie… » depuis la fiche d'un album (COL-3, tranche 3c ; Hugo, sur maquette,
+   2026-11-02) ────────────────────────────────────────────────────────────────────────────
+   La même échelle que « Prendre dans le projet », avec, au-dessus, OÙ va la copie :
+   « Copier dans », les collections du projet de l'album où l'on écrit, celle qu'on regarde
+   présélectionnée, sinon la base ; et « Une nouvelle collection à vous… » à qui peut en
+   créer, le bouton éteint tant que le nom est vide. L'aperçu dépend de la collection
+   d'arrivée (les termes qu'elle voit) : il se relit quand elle change. Une collection à
+   créer n'a pas encore d'aperçu à elle : l'échelle se compte pour la première destination,
+   et ce qui resterait hors d'elle ne se dit pas. Créer puis prendre font deux appels : si le
+   second échoue, la collection existe, et le panneau le dit. La copie faite, le volet
+   s'ouvre sur elle. */
+const VCOP = { album: null, cran: "images", dest: null, nom: "", apercus: new Map(),
+               erreur: null, msg: null, msgErreur: false, jeton: 0 };
+
+function projetDeLAlbum(a) {
+  return PROJETS.find((p) => p.id === a.projet_id) || null;
+}
+
+function destinationsVolet(a) {
+  return BDBiblio.destinationsCopie(a, COLS.toutes, collectionMontree());
+}
+
+function copieVoletOfferte(a) {
+  if (!a || a.au_fonds || a.document_id == null) return false;
+  const p = projetDeLAlbum(a);
+  return destinationsVolet(a).length > 0 || !!(p && p.collection_creable === true);
+}
+
+/* La collection dont l'aperçu compte l'échelle : la destination, ou, pour une nouvelle, la
+   première où l'on écrit. */
+function vcCollectionDApercu(a) {
+  if (VCOP.dest !== "nouvelle") return VCOP.dest;
+  const d = destinationsVolet(a);
+  return d.length ? d[0].id : null;
+}
+
+async function vcLireApercu(a) {
+  const cid = vcCollectionDApercu(a);
+  if (cid == null || VCOP.apercus.has(cid)) return;
+  const jeton = VCOP.jeton;
+  try {
+    const r = await apiGet(`/api/albums/${a.id}/amorcer/apercu?`
+      + new URLSearchParams({ collection: String(cid), cran: "annotations" }));
+    if (VCOP.jeton !== jeton) return;
+    VCOP.apercus.set(cid, r);
+    VCOP.erreur = null;
+  } catch (e) {
+    if (VCOP.jeton !== jeton) return;
+    VCOP.erreur = e.message;
+  }
+  rendreCopieVolet(false);
+}
+
+function basculerCopieVolet() {
+  const a = state.albums.find((x) => x.id === state.openId);
+  if (!a) return;
+  VCOP.jeton++;
+  if (VCOP.album === a.id) {
+    VCOP.album = null;
+    renderDetail();
+    const b = $("#vc-ouvrir");
+    if (b) b.focus();
+    return;
+  }
+  const p = projetDeLAlbum(a);
+  Object.assign(VCOP, { album: a.id, cran: "images", nom: "", apercus: new Map(), erreur: null,
+                        msg: null, msgErreur: false,
+                        dest: BDBiblio.destinationDeCopie(destinationsVolet(a),
+                                                            !!(p && p.collection_creable === true)) });
+  renderDetail();
+  const s = $("#vc-dest");
+  if (s) s.focus();
+  vcLireApercu(a);
+}
+
+function htmlCopieVolet(a) {
+  const dests = destinationsVolet(a);
+  const p = projetDeLAlbum(a);
+  const creable = !!(p && p.collection_creable === true);
+  const nouvelle = VCOP.dest === "nouvelle";
+  const dest = nouvelle ? VCOP.nom.trim() : ((dests.find((d) => d.id === VCOP.dest) || {}).nom || "");
+  const cid = vcCollectionDApercu(a);
+  const apercu = cid != null ? VCOP.apercus.get(cid) || null : null;
+  const lignes = BDEchelle.lignesEchelle(apercu);
+  const sous = nouvelle ? { restent: "", personnages: "" } : BDEchelle.sousLEchelle(apercu, VCOP.cran, dest);
+  const sansApercu = VCOP.cran !== "images" && !apercu;
+  const rep = BDEchelle.reponseCopieVers({ cran: VCOP.cran, etat: apercu && apercu.etat,
+                                          repondra: apercu && apercu.repondra, total: B.total,
+                                          dest });
+  const texte = sansApercu
+    ? (VCOP.erreur ? `L'aperçu n'a pas pu être lu : ${VCOP.erreur}` : "Lecture du travail de cette copie…")
+    : rep.texte;
+  const eteint = sansApercu || !dest;
+  return `<section id="vc-zone" class="cat-bloc vc-zone" aria-labelledby="vc-titre">
+    <h4 id="vc-titre">Copie de « ${esc(a.titre)} »</h4>
+    <div class="vc-dest">
+      <label for="vc-dest"><b>Copier dans</b></label>
+      <select id="vc-dest">${dests.map((d) => `<option value="${d.id}"${VCOP.dest === d.id ? " selected" : ""}>${esc(d.nom)}${d.base ? " (base)" : ""}${d.ouverte ? " (ouverte)" : ""}</option>`).join("")}${creable
+        ? `<option value="nouvelle"${nouvelle ? " selected" : ""}>Une nouvelle collection à vous…</option>` : ""}</select>
+      ${nouvelle ? `<input type="text" id="vc-nom" maxlength="200" aria-label="Nom de votre collection" placeholder="Nom de la collection" value="${esc(VCOP.nom)}">` : ""}
+    </div>
+    <div class="echelle-zone" id="vc-echelle">
+      <table class="tab-echelle">
+        <caption class="sr-only">Jusqu'où copier « ${esc(a.titre)} »</caption>
+        <thead><tr><th scope="col">Jusqu'où</th><th scope="col">Ce que ce cran ajoute</th></tr></thead>
+        <tbody>${lignes.map((l, i) => `<tr class="${[l.valeur === VCOP.cran ? "choisi" : "", l.vide ? "vide" : ""].filter(Boolean).join(" ")}">
+          <td><label class="echelle-cran"><input type="radio" name="vc-cran" value="${l.valeur}"
+              data-vc-cran id="vc-cran-${i}" ${l.valeur === VCOP.cran ? "checked" : ""}>
+            <span>${esc(l.court)}</span></label></td>
+          <td>${esc(l.texte)}</td></tr>`).join("")}</tbody>
+      </table>
+      ${sous.restent || sous.personnages ? `<p class="small echelle-sous">${sous.restent
+        ? `<span class="echelle-reste">${esc(sous.restent)}</span> <span class="muted" title="${esc(sous.aide)}" aria-hidden="true">ⓘ</span><span class="sr-only"> — ${esc(sous.aide)}</span>` : ""}${sous.restent && sous.personnages ? " · " : ""}${esc(sous.personnages)}</p>` : ""}
+      <div class="reponse-attendue"><span class="small" id="vc-quoi">${esc(texte)}</span>
+        <span class="bi-boutons"><button type="button" class="primary small" id="vc-ok" ${eteint ? "disabled" : ""}>${esc(rep.bouton)}</button>
+        <button type="button" class="ghost small" id="vc-annuler">Annuler</button></span></div>
+    </div>
+    <p id="vc-msg" class="col-msg muted small${VCOP.msgErreur ? " erreur" : ""}" role="status" aria-live="polite">${esc(VCOP.msg || "")}</p>
+  </section>`;
+}
+
+/* Redessine le panneau seul : la fiche et ses planches gardent leur état, et le focus revient
+   sur le contrôle touché, reconnu à son identifiant ou à sa valeur. */
+function rendreCopieVolet(focus) {
+  const a = state.albums.find((x) => x.id === VCOP.album);
+  const zone = $("#vc-zone");
+  if (!a || !zone) return;
+  const actif = document.activeElement;
+  const id = actif && zone.contains(actif) ? actif.id : null;
+  const nomPos = actif && actif.id === "vc-nom" ? actif.selectionStart : null;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = htmlCopieVolet(a);
+  zone.replaceWith(tmp.firstElementChild);
+  if (focus && id) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.focus();
+      if (nomPos != null && el.setSelectionRange) el.setSelectionRange(nomPos, nomPos);
+    }
+  }
+}
+
+function vcChanger(t) {
+  const a = state.albums.find((x) => x.id === VCOP.album);
+  if (!a) return;
+  if (t.id === "vc-dest") {
+    VCOP.dest = t.value === "nouvelle" ? "nouvelle" : Number(t.value);
+    VCOP.msg = null;
+    rendreCopieVolet(true);
+    if (VCOP.dest === "nouvelle") { const n = $("#vc-nom"); if (n) n.focus(); }
+    vcLireApercu(a);
+  } else if (t.matches("[data-vc-cran]")) {
+    VCOP.cran = t.value;
+    rendreCopieVolet(true);
+  }
+}
+
+async function vcCopier() {
+  const a = state.albums.find((x) => x.id === VCOP.album);
+  const ok = $("#vc-ok");
+  if (!a || !ok || ok.disabled) return;
+  const cran = VCOP.cran;
+  const ligne = cran === "images"
+    ? { document_id: a.document_id, reponse: "zero", album_id: a.id }
+    : { document_id: a.document_id, reponse: "amorcer", album_id: a.id, cran };
+  let dest = VCOP.dest, nomDest;
+  const dire = (texte, erreur) => {
+    VCOP.msg = texte; VCOP.msgErreur = !!erreur;
+    const m = $("#vc-msg");
+    if (m) { m.textContent = texte; m.classList.toggle("erreur", !!erreur); }
+  };
+  let r;
+  try {
+    r = await pendantEnvoi(ok, async () => {
+      if (dest === "nouvelle") {
+        nomDest = VCOP.nom.trim();
+        const c = await apiSend("POST", "/api/collections", { nom: nomDest, projet_id: a.projet_id });
+        dest = c.id;
+        VCOP.dest = dest;
+        // La collection existe désormais : la relire, pour qu'elle soit dans le rail et dans
+        // « Copier dans » même si la prise échoue.
+        await chargerCollections().catch(() => {});
+        try {
+          return await apiSend("POST", `/api/collections/${dest}/prendre`, { documents: [ligne] });
+        } catch (e) {
+          throw new Error(`La collection « ${nomDest} » est créée, mais la copie n'a pas pu s'y `
+            + `faire : ${e.message} Elle est désormais proposée dans « Copier dans ».`);
+        }
+      }
+      nomDest = (destinationsVolet(a).find((d) => d.id === dest) || {}).nom || "";
+      return apiSend("POST", `/api/collections/${dest}/prendre`, { documents: [ligne] });
+    });
+  } catch (e) {
+    VCOP.apercus.clear();
+    if (VCOP.album === a.id && $("#vc-zone")) rendreCopieVolet(false);
+    dire(e.message, true);
+    vcLireApercu(a);
+    return;
+  }
+  const l = (r.documents || [])[0] || {};
+  if (l.etat === "fait" && l.copie_id) {
+    VCOP.album = null;
+    await loadAlbums().catch(() => {});
+    toast(cran === "images"
+      ? `Fait : votre copie vierge de « ${a.titre} » est dans « ${nomDest} ».`
+      : `Fait : votre copie de « ${a.titre} » est dans « ${nomDest} », ${BDEchelle.jusqua(cran)}.`,
+      "success");
+    await ouvrirAlbumDepuis(l.copie_id);
+    return;
+  }
+  if (l.etat === "demande") {
+    VCOP.album = null;
+    renderDetail();
+    colMsg($("#detail-valider-msg"), `Demandé à ${BDBiblio.quiRepondra(l.repondra)} : votre copie de `
+      + `« ${a.titre} », ${BDEchelle.jusqua(cran)}, naîtra dans « ${nomDest} » si la réponse `
+      + "est oui. Rien ne change d'ici là.");
+    const b = $("#vc-ouvrir");
+    if (b) b.focus();
+    return;
+  }
+  dire(l.motif || "Refusé.", true);
+}
+
 /* ── « Supprimer la planche… » (COL-3, tranche 3c, F5) ─────────────────────────────────
    Le panneau d'une planche, sur le patron de « Supprimer définitivement » : ce que le geste
    efface, qui en décide (court, la règle en infobulle), « qui perd quoi » à qui tient
@@ -4323,6 +4550,8 @@ function brancherFiche() {
       if (a && act.dataset.act === "retirer") ouvrirRetirer(a);
       return;
     }
+    if (t.closest("#vc-ouvrir") || t.closest("#vc-annuler")) { basculerCopieVolet(); return; }
+    if (t.closest("#vc-ok")) { vcCopier(); return; }
     const rpl = t.closest("button[data-repartir-planche]");
     if (rpl) {
       const a = state.albums.find((x) => x.id === state.openId);
@@ -4423,6 +4652,7 @@ function brancherFiche() {
       if (r) r.focus();
       return;
     }
+    if (t.id === "vc-dest" || t.matches("[data-vc-cran]")) { vcChanger(t); return; }
     if (t.matches("[data-dp-cran]") && P3A.dansProjet && P3A.dansProjet.copie) {
       P3A.dansProjet.copie.cran = t.value;
       rendreEchelleCopie(true);
@@ -4455,6 +4685,18 @@ function brancherFiche() {
     }
     if (t.matches("#bi-prise-motif") && P3A.prise) { P3A.prise.motif = t.value; return; }
     if (t.matches("#bi-dp-q") && P3A.dansProjet) { P3A.dansProjet.q = t.value; rendreDansProjet(); }
+    // « Copie… » vers une nouvelle collection : le nom allume le bouton et la phrase, sans
+    // redessiner le champ qu'on tape.
+    if (t.matches("#vc-nom") && VCOP.album !== null) {
+      VCOP.nom = t.value;
+      const a = state.albums.find((x) => x.id === VCOP.album);
+      const tmp = document.createElement("div");
+      if (!a) return;
+      tmp.innerHTML = htmlCopieVolet(a);
+      const ok = $("#vc-ok"), quoi = $("#vc-quoi");
+      if (ok) ok.disabled = tmp.querySelector("#vc-ok").disabled;
+      if (quoi) quoi.textContent = tmp.querySelector("#vc-quoi").textContent;
+    }
   });
   // Le motif ARIA des onglets : les flèches passent d'un onglet à l'autre, Début et Fin vont
   // au premier et au dernier.

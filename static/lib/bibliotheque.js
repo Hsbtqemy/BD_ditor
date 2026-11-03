@@ -385,6 +385,29 @@
     return !!(album && (ecrire || album.effacable) && !album.au_fonds);
   }
 
+  /* « Copie… » depuis la fiche d'un album (COL-3, tranche 3c ; Hugo, sur maquette,
+     2026-11-02) : OÙ va la copie. Les collections du projet de l'album où l'on ÉCRIT, la base
+     d'abord puis A → Z, chacune marquée `base` et `ouverte` (celle qu'on regarde) ; vide pour
+     une copie gardée au fonds ou sans document. La copie ne quitte pas le projet de l'album :
+     entre deux projets, en partir se demande par le responsable, sans nommer la source. */
+  function destinationsCopie(album, collections, montree) {
+    if (!album || album.au_fonds || album.document_id == null) return [];
+    const dans = (Array.isArray(collections) ? collections : []).filter((c) =>
+      c && c.ecrivable === true && c.projet_id === album.projet_id);
+    return trierCollections(dans, "nom").map((c) => ({
+      id: c.id, nom: c.nom, base: !!c.base, ouverte: c.id === montree }));
+  }
+
+  /* La destination présélectionnée : celle qu'on regarde si l'on y écrit, sinon la première
+     (la base) ; « nouvelle » quand il n'y en a aucune et qu'on peut en créer. */
+  function destinationDeCopie(destinations, creable) {
+    const l = Array.isArray(destinations) ? destinations : [];
+    const o = l.find((d) => d.ouverte);
+    if (o) return o.id;
+    if (l.length) return l[0].id;
+    return creable ? "nouvelle" : null;
+  }
+
   /* « Retirer du projet… » s'offre au RESPONSABLE du projet de l'album et à l'administrateur
      (`gerable` du projet, `GET /api/projets`), sur un album rangé dans ce projet — jamais
      dans un bac à sable, où rien ne part au fonds. */
@@ -577,5 +600,6 @@
            droitsAlbum, actesCollection, libelleAlbums, comparer, libelleCommuns, lireAdresse,
            ecrireAdresse, offrirPrendreDuFonds, destinationsPrise, destinationParDefaut,
            quiRepondra, reponsePrise, messageRejoindre, demandesARepondre, quiRecocherait,
-           sujetDuLot, offrirCreerCollection, offrirRepartir, offrirRetirer, tientToutes };
+           sujetDuLot, offrirCreerCollection, offrirRepartir, offrirRetirer, tientToutes,
+           destinationsCopie, destinationDeCopie };
 });
