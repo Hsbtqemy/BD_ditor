@@ -1,7 +1,7 @@
 ---
 passe: Le catalogue de la Bibliothèque
 chantier: UX-20
-duree: 70 min
+duree: 85 min
 ---
 
 # QA — la Bibliothèque en catalogue : le rail, la grille, le volet, sous cinq comptes
@@ -90,6 +90,12 @@ passant, pas en entier. La police de 24 et 320 px : `petites-largeurs`.
 - [ ] Fenêtre à 900 px de large (moins de 60em), « Tout ce que vous lisez », ouvrir un album : le volet PREND LA PLACE du catalogue au lieu de le resserrer ; « Fermer ✕ » rend le catalogue
 - [ ] Outils de développement à 700 px (moins de 46em) : le rail laisse place à une liste *Collection* et à un bouton « Collections… », qui rouvre le rail
 - [ ] À pleine largeur, au clavier seul : Tab atteint « Tout ce que vous lisez », la case puis le nom de chaque collection, le filtre, « ☰ Liste / ▦ Grille », puis les cartes ; Entrée sur une carte ouvre le volet et met le focus sur le titre de la fiche ; « Fermer ✕ » au clavier rend le focus à la carte
+
+### À trancher par Hugo, sur l'écran codé
+- [ ] **« Autres gestes ▾ »**, sous `proprio`, fiche de « Votre copie » d'« Annee_lievre-1 » : « Repartir de zéro… », « Retirer du projet… » et « Supprimer… » sont à un clic de plus que « ✎ Modifier » et « ✔ Tout valider ». Trancher : les garder repliés, ou les remettre à plat dans la tête de la fiche ; la réponse est écrite dans la fiche `UX-20`, case « Les gestes rares quittent les lignes »
+- [ ] **Le téléphone**, sous `proprio`, outils de développement à 390 px : la liste *Collection* et « Collections… » à la place du rail ; ouvrir un album, sa fiche prend toute la largeur, « Fermer ✕ » rend le catalogue. Trancher : garder cette forme, ou en demander une autre sur maquette ; la réponse est écrite dans la case « Le téléphone se tranche sur l'écran codé »
+- [ ] **La densité**, sous `proprio`, à 1 280 px : la grille de « Tout ce que vous lisez » (couvertures réduites, une planche pâle, « Base QA » sur son aplat), puis la fiche d'un album aux nombreuses planches dans le volet à 52 %. Trancher : les cartes de 10rem et la largeur du volet tiennent-elles, ou sont-elles à revoir ; la réponse est écrite dans la case « La densité se regarde sur un corpus réel »
+- [ ] **Les mots des chemins**, lus sans rien confirmer — sous `proprio`, « Supprimer… » de « Votre copie » : « Vous êtes responsable du projet : rien à demander. » ; sous `proprio`, « Supprimer… » de « Base QA », seule copie de son document : « C'est la dernière copie de ce document. », puis « c'est un administrateur qui décide » ; sous `stagiaire` (plus haut) : « La demande part à … responsable du projet, qui décide. Rien n'est effacé d'ici là. » Trancher : les garder, ou dire lesquels réécrire ; la réponse est écrite dans la case « Les mots des chemins sont courts »
 
 ### Remise en état
 - [ ] **Sous `proprio`**, ouvrir « Votre copie » d'« Annee_lievre-1 », « Autres gestes ▾ », « Supprimer… », « Supprimer définitivement » : la copie part sans demande, et « Annee_lievre-1 » n'est plus une pile
