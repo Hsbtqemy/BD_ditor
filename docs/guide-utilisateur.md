@@ -690,8 +690,16 @@ albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit o
   la collection d'arrivée, le motif, ce qui partirait en nombres — *Accepter : copier dans
   « … »* ou *Refuser*. Rien n'apparaît dans la bande du haut. Un administrateur les lit dans
   *À faire*, en recours.
+- **À répondre**, comme responsable du projet : une entrée du rail, sous *Tout le projet*,
+  marquée *⚑ n* quand des demandes attendent votre réponse, ouvre deux blocs. *Demandes
+  d'effacement · n* : ce que d'autres demandent de supprimer — un document, une planche — ou
+  de ramener à un cran, chaque ligne dans la couleur de son genre, avec qui la demande,
+  quand, le motif et ce que d'autres y perdraient ; *Détruire* (ou *Supprimer la planche n*,
+  *Repartir de …*) et *Garder*. Une demande sur la dernière copie d'un document se lit
+  éteinte : un administrateur y répond. Les mêmes demandes se répondent dans
+  l'Administration, en tête de la fiche du projet.
 - **Les demandes d'en partir venues d'un autre projet**, comme responsable du projet qui tient
-  ce travail : en tête de la fiche du projet — *Demandes d'en partir · n* —, où mène le
+  ce travail : dans *À répondre* — *Demandes d'en partir · n* —, où mène aussi le
   rappel *n demandes d'en partir* de la bande d'outils. Chacune dit quel projet la fait, et
   qui, le document, le cran, le motif ; *Depuis quelle copie* propose les copies de votre
   projet que vous lisez, celles qui ne sont pas assez travaillées éteintes, et montre ce que
