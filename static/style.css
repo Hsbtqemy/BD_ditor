@@ -3808,6 +3808,12 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
    zéro, ROSE (variante A de la maquette). Les cinq de la 3a gardent les leurs. */
 .af-ligne.af-genre-amorcer { border-left-color: var(--accent-green); }
 .af-ligne.af-genre-repartir { border-left-color: var(--accent-pink); }
+/* COL-3, tranche 3c — supprimer une planche : AMBRE (Hugo, sur maquette, 2026-11-02). */
+.af-ligne.af-genre-planche { border-left-color: var(--accent-amber); }
+/* « À répondre », dans la Bibliothèque : une demande sur une dernière copie reste lue,
+   éteinte ; un administrateur y répond. */
+.recue.eteinte { opacity: .75; }
+.recues-eff .recue { margin-bottom: .6rem; }
 
 /* « + Créer une collection » ÉTEINT : à sa place, focalisable, et qui le dit. Le dessin de
    la corbeille éteinte — un contour pointillé, l'encre atténuée — plutôt qu'une opacité,

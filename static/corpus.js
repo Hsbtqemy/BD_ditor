@@ -43,6 +43,7 @@ const B = {
   filtre: "",               // ce qu'on cherche dans les albums
   tri: "alpha",             // l'ordre des collections : « alpha » ou « recents »
   ouverte: null,            // la collection ouverte par son NOM ou par l'adresse
+  aRepondre: false,         // le centre montre « À répondre » (COL-3, tranche 3c)
   onglet: BDBiblio.ONGLET_PAR_LE_NOM,
   depuis: null,             // la collection d'où l'album ouvert a été ouvert : le retour
   espace: "tout",           // le filtre du bloc Collections (`BDBiblio.ESPACES`)
@@ -449,8 +450,9 @@ function rendreListeCollections() {
   const tout = $("#calques-tout");
   tout.innerHTML = `<span>${B.total ? "Tout le projet" : "Tout ce que vous lisez"}</span>
     <span class="col-nb">${nbAlbumsCourt(state.albums.length)}</span>`;
-  if (montree === null && !B.calques.size) tout.setAttribute("aria-current", "true");
+  if (montree === null && !B.calques.size && !B.aRepondre) tout.setAttribute("aria-current", "true");
   else tout.removeAttribute("aria-current");
+  rendreEntreeARepondre();
   const mode = $("#calques-mode");
   mode.hidden = B.calques.size < 2;
   mode.querySelectorAll("[data-mode]").forEach((b) =>
@@ -541,6 +543,7 @@ async function chargerCollections(opts = {}) {
   chargerDemandesRecues();
   chargerMesDemandes();
   chargerRecuesE7();
+  chargerEffacements();
   return true;
 }
 
@@ -578,6 +581,7 @@ function centreCourant() {
   const c = collectionMontree();
   if (c !== null) return { genre: "collection", id: c };
   if (B.calques.size > 1) return { genre: "comparaison" };
+  if (B.aRepondre) return { genre: "arepondre" };
   return { genre: "accueil" };
 }
 
@@ -629,6 +633,7 @@ function rendreCentre(msg) {
     B.calques.delete(f.id);
   }
   if (centreCourant().genre === "comparaison") rendreComparaison();
+  else if (centreCourant().genre === "arepondre") rendreARepondre();
   else rendreAccueil();
   if (msg) $("#cat-vue").appendChild(colTrace(msg.texte, msg.erreur));
   rendreFil();
@@ -674,7 +679,6 @@ function rendreAccueil() {
       <button type="button" class="primary small" id="bi-prendre-fonds" data-prendre-fonds="tete"
               aria-expanded="${!!(P3A.prise && P3A.prise.ou === "tete")}" aria-controls="bi-prise-zone">+ Prendre du fonds…</button>
     </div>` : ""}</div>
-    <div id="bi-e7-zone"></div>
     <div id="bi-prise-zone" class="bi-prise-zone"></div>
     <div id="bi-bac-carte"></div>
     <details id="bi-avancement" class="bi-avancement" hidden><summary>Avancement</summary>
@@ -685,7 +689,6 @@ function rendreAccueil() {
   if (!fonds || (P3A.prise && P3A.prise.ou !== "tete")) P3A.prise = null;
   P3A.dansProjet = null;
   rendreZonePrise();
-  rendreE7();
   loadSynthese();
   carteBacASable();
   rendreListeAlbums();
@@ -3460,6 +3463,9 @@ const P3A = {
   e7: [],
   e7Choix: new Map(),       // demande → copie source cochée
   e7Msg: null,              // { texte, erreur } : la ligne du dernier geste
+  // COL-3, tranche 3c — les demandes d'EFFACEMENT qui vont au responsable du projet courant.
+  eff: [],
+  effMsg: null,
 };
 const NOTICES_PAR_PAGE = 25;
 
@@ -3520,7 +3526,156 @@ async function chargerRecuesE7() {
   if (projetCourant() !== p) return;
   P3A.e7 = Array.isArray(l) ? l : [];
   rendreRappels();
+  rendreEntreeARepondre();
   rendreE7();
+}
+
+/* ── « À répondre » (COL-3, tranche 3c ; Hugo, sur maquette, 2026-11-02) ────────────────
+   Ce que le RESPONSABLE du projet courant reçoit, en DEUX blocs : les demandes
+   d'EFFACEMENT — supprimer un album ou une planche, repartir de zéro —, qui lui vont depuis
+   la tranche 3c (`GET /api/projets/{id}/demandes-d-effacement`), et les demandes d'EN
+   PARTIR venues d'un autre projet (`…/demandes-recues`, l'écran de la 3b). Une entrée du
+   rail, sous « Tout le projet », les ouvre au centre ; elle n'existe que dans la
+   Bibliothèque. Chaque ligne porte la couleur de son genre, comme « À faire », et « qui perd
+   quoi » DÉPLIÉ (Hugo, contre la proposition de la séance) ; le nombre de personnes se lit
+   aussi sur la ligne. Une demande sur une DERNIÈRE copie reste lue, éteinte : un
+   administrateur y répond (`repondable` faux). Les compteurs — le rail et la bande d'outils —
+   ne comptent que ce à quoi l'on peut répondre. Une portée totale n'en lit aucune ici :
+   l'administrateur les trouve dans « À faire ». */
+async function chargerEffacements() {
+  const p = projetCourant();
+  let l = [];
+  if (p && p.gerable && !B.total && !p.bac_a_sable) {
+    l = await apiGet(`/api/projets/${p.id}/demandes-d-effacement`).catch(() => []);
+  }
+  if (projetCourant() !== p) return;
+  P3A.eff = Array.isArray(l) ? l : [];
+  rendreRappels();
+  rendreEntreeARepondre();
+  if (B.aRepondre) rendreEffacements();
+}
+
+function nbARepondre() {
+  return (P3A.eff || []).filter((d) => d.repondable).length
+    + (P3A.e7 || []).filter((d) => d.repondable).length;
+}
+
+function rendreEntreeARepondre() {
+  const b = $("#cat-arepondre");
+  if (!b) return;
+  const lues = (P3A.eff || []).length + (P3A.e7 || []).length;
+  b.hidden = !lues && !B.aRepondre;
+  const n = nbARepondre();
+  b.innerHTML = `<span>À répondre</span><span class="col-nb">${n ? `⚑ ${n}` : "0"}</span>`;
+  b.setAttribute("aria-label", n ? `À répondre : ${pluriel(n, "demande")}` : "À répondre : aucune demande");
+  if (B.aRepondre) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
+}
+
+function ouvrirARepondre() {
+  B.aRepondre = true;
+  B.calques.clear();
+  B.mode = "une";
+  B.ouverte = null;
+  B.edition = null;
+  viderAlbum();
+  fermerRail();
+  rendreListeCollections();
+  rendreCentre();
+  const t = $("#bi-arepondre-titre");
+  if (t) t.focus();
+}
+
+function rendreARepondre() {
+  const fiche = $("#cat-vue");
+  const p = projetCourant();
+  fiche.innerHTML = `<div class="lf-tete"><div>
+      <p class="genre">Projet${p ? ` · ${esc(p.nom)}` : ""}</p>
+      <h3 id="bi-arepondre-titre" tabindex="-1">À répondre</h3>
+    </div></div>
+    <div id="bi-eff-zone"></div>
+    <div id="bi-e7-zone"></div>
+    <p id="bi-arepondre-vide" class="muted small" hidden>Aucune demande n'attend votre réponse.</p>`;
+  rendreEffacements();
+  rendreE7();
+  majARepondreVide();
+}
+
+function majARepondreVide() {
+  const v = $("#bi-arepondre-vide");
+  if (v) v.hidden = !!((P3A.eff || []).length || (P3A.e7 || []).length);
+}
+
+/* Ce que dit une ligne de demande d'effacement : quoi, en mots. */
+function quoiEffacement(d) {
+  return `« ${d.titre || ""} »`
+    + (d.planche_numero != null ? `, planche ${d.planche_numero}` : "")
+    + (d.genre === BDSuppression.GENRE_REPARTIR && d.cran ? `, revenir ${BDEchelle.vers(d.cran)}` : "");
+}
+
+function rendreEffacements() {
+  const zone = $("#bi-eff-zone");
+  if (!zone) return;
+  const l = P3A.eff || [];
+  const msg = P3A.effMsg;
+  if (!l.length) {
+    zone.innerHTML = msg ? `<p id="bi-eff-msg" class="col-msg muted small${msg.erreur ? " erreur" : ""}" role="status">${esc(msg.texte)}</p>` : "";
+    majARepondreVide();
+    return;
+  }
+  zone.innerHTML = `<section id="bi-eff-bloc" class="recues recues-eff" aria-labelledby="bi-eff-titre">
+    <h4 id="bi-eff-titre" tabindex="-1">Demandes d'effacement · ${l.length}</h4>
+    ${l.map((d) => {
+      const g = BDSuppression.genreDemande(d);
+      const autres = (d.travail_des_autres || []).length;
+      const perd = BDEchelle.quiPerdQuoi(d.travail_des_autres, {
+        geste: d.genre === BDSuppression.GENRE_REPARTIR ? "repartir" : "supprimer", cran: d.cran,
+        dateLue: BDSuppression.dateLue });
+      const qui = d.demandeur_nom || d.demandeur || "";
+      const eteinte = !d.repondable;
+      return `<div class="recue af-ligne af-genre-${esc(g.classe)}${eteinte ? " eteinte" : ""}" data-eff="${d.id}">
+        <p class="eff-quoi"><span class="af-genre-nom">${esc(g.libelle)}</span> · <b>${esc(quoiEffacement(d))}</b></p>
+        <p class="muted small">Demandée${qui ? ` par ${esc(qui)}` : ""} le ${esc(BDSuppression.dateLue(d.date_creation))}${autres
+          ? ` · ${pluriel(autres, "personne")} y ${autres > 1 ? "ont" : "a"} travaillé` : ""}${d.certifie_le
+          ? ` · certifiée sans importance` : ""}</p>
+        ${d.motif ? `<p class="recue-motif small">${esc(d.motif)}</p>` : ""}
+        ${BDEchelle.htmlQuiPerdQuoi(perd)}
+        ${eteinte
+          ? `<p class="muted small eff-admin">${d.derniere_copie ? "Dernière copie : un administrateur répond."
+              : "Un administrateur répond."}</p>`
+          : `<span class="bi-boutons">
+              <button type="button" class="danger small" data-eff-accepter="${d.id}">${esc(g.accepter)}</button>
+              <button type="button" class="ghost small" data-eff-refuser="${d.id}">${esc(g.refuser)}</button>
+            </span>`}
+      </div>`;
+    }).join("")}
+    <p id="bi-eff-msg" class="col-msg muted small${msg && msg.erreur ? " erreur" : ""}" role="status" aria-live="polite">${msg ? esc(msg.texte) : ""}</p>
+  </section>`;
+  majARepondreVide();
+}
+
+async function repondreEffacement(id, accepter, bouton) {
+  const d = (P3A.eff || []).find((x) => x.id === id);
+  if (!d) return;
+  try {
+    await pendantEnvoi(bouton, () => apiSend("POST", `/api/demandes/${id}/reponse`,
+      { reponse: accepter ? BDSuppression.ACCEPTER : BDSuppression.REFUSER }));
+  } catch (e) {
+    P3A.effMsg = { texte: e.message, erreur: true };
+    rendreEffacements();
+    return;
+  }
+  const quoi = quoiEffacement(d);
+  P3A.effMsg = { erreur: false, texte: accepter
+    ? (d.genre === BDSuppression.GENRE_REPARTIR ? `Fait : ${quoi}. La demande est close.`
+      : `Fait : ${quoi} est supprimé${d.planche_numero != null ? "e" : ""}. La demande est close.`)
+    : `Gardé : ${quoi}. La demande est close, et peut être redéposée.` };
+  P3A.eff = P3A.eff.filter((x) => x.id !== id);
+  rendreRappels();
+  rendreEntreeARepondre();
+  rendreEffacements();
+  if (accepter) loadAlbums().catch(() => {});
+  const t = $("#bi-eff-titre") || $("#bi-arepondre-titre");
+  if (t) t.focus();
 }
 
 function rendreE7() {
@@ -3573,8 +3728,10 @@ async function repondreE7(id, accepter, bouton) {
     erreur: false };
   P3A.e7 = P3A.e7.filter((x) => x.id !== id);
   rendreRappels();
+  rendreEntreeARepondre();
   rendreE7();
-  const t = $("#bi-e7-titre") || $("#bi-accueil-titre");
+  majARepondreVide();
+  const t = $("#bi-e7-titre") || $("#bi-arepondre-titre");
   if (t) t.focus();
 }
 
@@ -3590,11 +3747,14 @@ function rendreRappels() {
   if (!zone) return;
   const n = nbRecues();
   const p = projetCourant();
-  const e7 = P3A.e7.length;
-  zone.innerHTML = (n ? `<button type="button" class="rappel" id="bi-recues-compteur"
+  const e7 = P3A.e7.filter((d) => d.repondable).length;
+  const eff = (P3A.eff || []).filter((d) => d.repondable).length;
+  zone.innerHTML = (eff ? `<button type="button" class="rappel" id="bi-eff-compteur"
+        title="Des demandes d'effacement attendent votre réponse : « À répondre », dans le rail">${pluriel(eff, "demande")} d'effacement</button>` : "")
+    + (n ? `<button type="button" class="rappel" id="bi-recues-compteur"
         title="Des demandes attendent votre réponse">${pluriel(n, "demande")} à répondre</button>` : "")
     + (e7 ? `<button type="button" class="rappel" id="bi-e7-compteur"
-        title="Un autre projet demande d'en partir d'un travail de ce projet : elles se lisent en tête de la fiche du projet">${pluriel(e7, "demande")} d'en partir</button>` : "")
+        title="Un autre projet demande d'en partir d'un travail de ce projet : « À répondre », dans le rail">${pluriel(e7, "demande")} d'en partir</button>` : "")
     + (P3A.mesDemandes && p ? `<a class="rappel calme" id="bi-mes-demandes"
         href="/administration?vue=projets&projet=${p.id}"
         title="Vos demandes au fonds, en attente d'un administrateur : suivez-les dans la fiche du projet">${pluriel(P3A.mesDemandes, "demande")} au fonds, en attente</a>` : "");
@@ -4138,6 +4298,7 @@ function fermerRail() {
 }
 
 function ouvrirCollection(id, onglet, depuisListe) {
+  B.aRepondre = false;
   viderAlbum();
   B.ouverte = id;
   B.onglet = onglet || BDBiblio.ONGLET_DU_RAIL;
@@ -4166,6 +4327,7 @@ async function ouvrirAlbumDepuis(id) {
 /* Cocher une collection FILTRE le catalogue ; le centre suit ce que le calque montre — la
    collection seule cochée, la comparaison de deux ou plus, le projet. */
 function basculerCalque(id, coche) {
+  B.aRepondre = false;
   if (coche) B.calques.add(id); else B.calques.delete(id);
   if (B.calques.size < 2) B.mode = "une";
   B.ouverte = null;
@@ -4179,6 +4341,7 @@ function basculerCalque(id, coche) {
 }
 
 function toutLeProjet() {
+  B.aRepondre = false;
   B.calques.clear();
   B.mode = "une";
   B.ouverte = null;
@@ -4404,6 +4567,7 @@ function brancherListe() {
     rendreListeCollections();
   };
   $("#calques-tout").onclick = toutLeProjet;
+  $("#cat-arepondre").onclick = ouvrirARepondre;
   $("#cat-select").addEventListener("change", (e) => {
     if (e.target.value) ouvrirCollection(Number(e.target.value), BDBiblio.ONGLET_DU_RAIL, false);
     else toutLeProjet();
@@ -4498,6 +4662,10 @@ function brancherFiche() {
     if (rp) { repondreDemande(rp); return; }
     // COL-3, écran de la 3b — en tête de la fiche du projet : les demandes d'en partir venues
     // d'un autre projet ; en tête de l'onglet Albums : les retraits, jusqu'à « Vu ».
+    const effa = t.closest("button[data-eff-accepter]");
+    if (effa) { repondreEffacement(Number(effa.dataset.effAccepter), true, effa); return; }
+    const effr = t.closest("button[data-eff-refuser]");
+    if (effr) { repondreEffacement(Number(effr.dataset.effRefuser), false, effr); return; }
     const e7a = t.closest("button[data-e7-accepter]");
     if (e7a) { repondreE7(Number(e7a.dataset.e7Accepter), true, e7a); return; }
     const e7r = t.closest("button[data-e7-refuser]");
@@ -4778,10 +4946,8 @@ function setup() {
   $("#bi-rappels").addEventListener("click", (e) => {
     // COL-3, écran de la 3b — le rappel des demandes d'en partir mène en tête de la fiche du
     // projet, où elles se répondent.
-    if (e.target.closest("#bi-e7-compteur")) {
-      toutLeProjet();
-      const t = $("#bi-e7-titre") || $("#bi-accueil-titre");
-      if (t) t.focus();
+    if (e.target.closest("#bi-e7-compteur") || e.target.closest("#bi-eff-compteur")) {
+      ouvrirARepondre();
       return;
     }
     if (!e.target.closest("#bi-recues-compteur")) return;
@@ -4830,6 +4996,7 @@ function setup() {
     colTaireSauf(null);
     P3A.prise = null; P3A.dansProjet = null;
     P3A.e7 = []; P3A.e7Choix.clear(); P3A.e7Msg = null;
+    P3A.eff = []; P3A.effMsg = null; B.aRepondre = false;
     RETRAITS.collection = null; RETRAITS.lignes = [];
     B.calques.clear(); B.mode = "une"; B.ouverte = null; B.edition = null; B.filtre = "";
     viderAlbum();

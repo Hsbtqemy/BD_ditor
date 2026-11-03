@@ -403,6 +403,12 @@
     [GENRE_REPARTIR]: { libelle: "Repartir de zéro", classe: "repartir",
                         accepter: (d) => E().boutonRepartir(d.cran),
                         refuser: () => "Garder" },
+    /* COL-3, tranche 3c (F5 ; Hugo, sur maquette, 2026-11-02) — supprimer UNE planche, une
+       tranche AMBRE. Accepter supprime la planche, et elle seule. */
+    [GENRE_PLANCHE]: { libelle: "Supprimer une planche", classe: "planche",
+                       accepter: (d) => (d.planche_numero != null
+                         ? `Supprimer la planche ${d.planche_numero}` : "Supprimer la planche"),
+                       refuser: () => "Garder" },
   };
 
   /* Ce qu'un écran sait d'un genre : { connu, libelle, classe, accepter, refuser } —

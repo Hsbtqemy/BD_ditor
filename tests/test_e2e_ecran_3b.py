@@ -612,6 +612,62 @@ def test_copie_depuis_la_fiche_se_demande_a_la_proprietaire(page, decor):
         "album_id": d["albums"]["Pirates"], "cran": "decoupage"}]}]
 
 
+def test_a_repondre_les_demandes_d_effacement_au_responsable(page, decor):
+    """Tranche 3c (Q9 ; Hugo, sur maquette, 2026-11-02) — « À répondre », sous « Tout le
+    projet » : les demandes d'effacement que Noé a déposées, une couleur par genre, « qui perd
+    quoi » déplié ; la demande sur une DERNIÈRE copie reste lue, éteinte, et ne compte pas.
+    Paule garde l'une et accepte l'autre."""
+    d = decor
+    with _client(d["base"], _comme("noe")) as c:
+        _ok(c.post("/api/demandes", json={"genre": "suppression_document", "album_id": d["soeur"],
+                                          "motif": "Copie de trop.", "certifie": True}), 201)
+        _ok(c.post("/api/demandes", json={"genre": "repartir", "album_id": d["albums"]["Pirates"],
+                                          "cran": "images", "motif": "Découpé de travers.",
+                                          "certifie": True}), 201)
+        _ok(c.post("/api/demandes", json={"genre": "suppression_planche",
+                                          "album_id": d["albums"]["Pirates"],
+                                          "planche_id": d["planches"]["Pirates"],
+                                          "motif": "Page de garde.", "certifie": True}), 201)
+    reponses = _requetes(page, "/reponse")
+    _ouvrir(page, d, "paule", projet=d["projet"])
+    entree = page.locator("#cat-arepondre")
+    expect(entree).to_be_visible(timeout=5000)
+    expect(entree).to_contain_text("⚑ 2")
+    expect(page.locator("#bi-eff-compteur")).to_have_text("2 demandes d'effacement")
+    entree.click()
+    expect(page.locator("#bi-arepondre-titre")).to_be_focused()
+    bloc = page.locator("#bi-eff-bloc")
+    expect(bloc.locator("h4")).to_have_text("Demandes d'effacement · 3")
+    lignes = bloc.locator(".recue")
+    expect(lignes).to_have_count(3)
+    doc = bloc.locator(".af-genre-document")
+    expect(doc.locator(".af-genre-nom")).to_have_text("Supprimer un document")
+    expect(doc).to_contain_text("Demandée par Noe Stagiaire")
+    expect(doc.locator(".recue-motif")).to_have_text("Copie de trop.")
+    rep = bloc.locator(".af-genre-repartir")
+    expect(rep).to_contain_text("« Pirates », revenir aux images seules")
+    pl = bloc.locator(".af-genre-planche")
+    expect(pl).to_have_class(re.compile("eteinte"))
+    expect(pl).to_contain_text("« Pirates », planche 1")
+    expect(pl.locator(".eff-admin")).to_have_text("Dernière copie : un administrateur répond.")
+    expect(pl.locator("button")).to_have_count(0)
+    # Garder : la demande se clôt, le compteur baisse.
+    rep.locator("[data-eff-refuser]").click()
+    expect(page.locator("#bi-eff-msg")).to_contain_text("Gardé : « Pirates »", timeout=5000)
+    expect(entree).to_contain_text("⚑ 1")
+    # Accepter : la copie sœur est détruite.
+    doc = page.locator("#bi-eff-bloc .af-genre-document")
+    expect(doc.locator("[data-eff-accepter]")).to_have_text("Détruire")
+    doc.locator("[data-eff-accepter]").click()
+    expect(page.locator("#bi-eff-msg")).to_contain_text("Fait : « QRN » est supprimé", timeout=5000)
+    expect(entree).to_contain_text("0")
+    corps = [json.loads(x) for (_, _, x) in reponses]
+    assert corps == [{"reponse": "refusee"}, {"reponse": "acceptee"}], corps
+    # « Tout le projet » rend la fiche du projet.
+    page.locator("#calques-tout").click()
+    expect(page.locator("#bi-accueil-titre")).to_be_visible()
+
+
 # =========================================================================== #
 # Supprimer et retirer
 # =========================================================================== #
