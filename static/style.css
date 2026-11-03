@@ -2349,6 +2349,9 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .cat-tout[hidden] { display: none; }
 .cat-tout:hover { background: var(--hover); }
 .cat-tout[aria-current] { background: color-mix(in srgb, var(--accent-blue) 16%, transparent); }
+/* Le compte d'une entrée du rail (« ⚑ n » de « À répondre ») a l'encre du texte : en encre
+   atténuée, sur le fond de l'entrée courante, il tombait sous le 4,5:1 (axe, 2026-11-03). */
+.cat-tout .col-nb { color: inherit; }
 .cat-centre { display: flex; min-width: 0; min-height: 0; border: 1px solid var(--border);
               border-radius: 9px; background: var(--bg-panel); overflow: hidden; }
 .cat-vue { flex: 1 1 0; min-width: 0; overflow-y: auto; padding: .9rem 1.1rem 1.2rem;
@@ -3801,8 +3804,10 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 /* COL-3, tranche 3c — supprimer une planche : AMBRE (Hugo, sur maquette, 2026-11-02). */
 .af-ligne.af-genre-planche { border-left-color: var(--accent-amber); }
 /* « À répondre », dans la Bibliothèque : une demande sur une dernière copie reste lue,
-   éteinte ; un administrateur y répond. */
-.recue.eteinte { opacity: .75; }
+   éteinte ; un administrateur y répond. Éteinte par un contour POINTILLÉ, comme « + Créer
+   une collection » éteint, et non par une opacité : à .75, son petit texte tombait sous le
+   4,5:1 dans les deux thèmes (axe, UX-20, 2026-11-03). */
+.recue.eteinte { border-style: dashed; }
 .recues-eff .recue { margin-bottom: .6rem; }
 
 /* « + Créer une collection » ÉTEINT : à sa place, focalisable, et qui le dit. Le dessin de

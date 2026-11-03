@@ -1008,3 +1008,75 @@ def test_a11y_de_l_ecran_de_la_3b(page, decor, theme):
     expect(page.locator(".af-ligne.af-genre-repartir .rp-part-liste")).to_be_visible(timeout=5000)
     viol = _audit(page)
     assert not viol, f"À faire, deux tranches neuves [{theme}] :\n{_fmt(viol)}"
+
+
+# ── « À répondre » et le panneau d'une planche, mesurés (UX-20, 2026-11-03) ──────────────
+# La tranche 3c a ajouté deux états que les mesures ci-dessus ne rendaient pas : « À
+# répondre », chez un responsable qui reçoit des demandes d'effacement (Paule) et une demande
+# d'en partir venue d'un autre projet (Marion), et le panneau d'une planche.
+def _semer_a_repondre(d):
+    with _client(d["base"], _comme("noe")) as c:
+        _ok(c.post("/api/demandes", json={"genre": "suppression_document", "album_id": d["soeur"],
+                                          "motif": "Copie de trop.", "certifie": True}), 201)
+        _ok(c.post("/api/demandes", json={"genre": "repartir", "album_id": d["albums"]["Pirates"],
+                                          "cran": "images", "motif": "Découpé de travers.",
+                                          "certifie": True}), 201)
+        _ok(c.post("/api/demandes", json={"genre": "suppression_planche",
+                                          "album_id": d["albums"]["Pirates"],
+                                          "planche_id": d["planches"]["Pirates"],
+                                          "motif": "Page de garde.", "certifie": True}), 201)
+    with _client(d["base"], _comme("paule")) as c:
+        _ok(c.post(f"/api/projets/{d['projet']}/prendre", json={
+            "documents": [{"document_id": d["docs"]["Voyageur"], "reponse": "amorcer",
+                           "cran": "decoupage"}], "motif": "Comparer."}))
+
+
+def _a_repondre(page, d, login, projet):
+    _ouvrir(page, d, login, projet=projet)
+    if page.locator("#cat-rail-ouvrir").is_visible():
+        page.locator("#cat-rail-ouvrir").click()
+    page.locator("#cat-arepondre").click()
+    expect(page.locator("#bi-arepondre-titre")).to_be_focused()
+
+
+def _panneau_d_une_planche(page, d):
+    fiche = _fiche_album(page, d, "paule", "QRN", "Corpus")
+    fiche.locator(f'[data-delp="{d["planches"]["QRN"]}"]').click()
+    expect(page.locator("#planche-modal")).to_be_visible()
+    expect(page.locator("#pm-raison")).not_to_be_empty(timeout=5000)
+
+
+@pytest.mark.parametrize("police", [16, 24])
+def test_a_320_px_a_repondre_et_le_panneau_d_une_planche(page, decor, police):
+    d = decor
+    _semer_a_repondre(d)
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Page.setFontSizes", {"fontSizes": {"standard": police, "fixed": police}})
+    page.set_viewport_size({"width": 320, "height": 900})
+    _a_repondre(page, d, "paule", d["projet"])
+    expect(page.locator("#bi-eff-bloc .recue")).to_have_count(3, timeout=5000)
+    assert not page.evaluate(_SONDE), page.evaluate(_SONDE)
+    _a_repondre(page, d, "marion", d["ono"])
+    expect(page.locator("#bi-e7-zone")).to_be_visible(timeout=5000)
+    assert not page.evaluate(_SONDE), page.evaluate(_SONDE)
+    _panneau_d_une_planche(page, d)
+    assert not page.evaluate(_SONDE), page.evaluate(_SONDE)
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_a_repondre_et_le_panneau_d_une_planche(page, decor, theme):
+    from test_e2e_a11y import _audit, _fmt, _theme
+    d = decor
+    _semer_a_repondre(d)
+    _theme(page, theme)
+    _a_repondre(page, d, "paule", d["projet"])
+    expect(page.locator("#bi-eff-bloc .recue")).to_have_count(3, timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"À répondre, demandes d'effacement [{theme}] :\n{_fmt(viol)}"
+    _a_repondre(page, d, "marion", d["ono"])
+    expect(page.locator("#bi-e7-zone")).to_be_visible(timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"À répondre, demandes d'en partir [{theme}] :\n{_fmt(viol)}"
+    _panneau_d_une_planche(page, d)
+    viol = _audit(page)
+    assert not viol, f"le panneau d'une planche [{theme}] :\n{_fmt(viol)}"

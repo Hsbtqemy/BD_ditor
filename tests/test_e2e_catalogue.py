@@ -334,3 +334,153 @@ def test_au_telephone_une_liste_remplace_le_rail(page, decor):
     page.locator("#cat-rail-ouvrir").click()
     expect(page.locator("#col-creer-zone").locator("..")).to_be_visible()
     expect(page.locator("#cat-rail")).to_be_visible()
+
+
+# ── Ce qui n'avait pas été mesuré (UX-20, 2026-11-03) ────────────────────────────────
+# `test_e2e_reflow.py` mesure déjà la page, l'onglet Albums et la fiche d'un album à 320 et
+# 768 px sous trois polices ; `test_e2e_ecran_3b.py`, ses panneaux. Restaient les états que
+# seul le catalogue a : le rail rouvert à l'étroit, une copie dépliée sous son original, le
+# volet avec « Autres gestes » ouvert — puis le clavier, les repliables, un rail de
+# nombreuses collections et axe dans les deux thèmes.
+
+# Recopiée de `test_e2e_reflow._CORPS_QUI_DEFILE` (cf. sa docstring : ce qu'on ne duplique
+# pas est la RÈGLE, et l'instrument tient en quelques lignes) ; les boîtes de dialogue en plus.
+_CORPS_QUI_DEFILE = """() => [document.documentElement, document.body,
+    ...document.querySelectorAll('main, .modal-box')]
+  .filter(Boolean).filter((el) => el.scrollWidth > el.clientWidth + 1)
+  .map((el) => `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''} : `
+             + `${el.clientWidth} px visibles pour ${el.scrollWidth} px`)"""
+
+
+def _rien_ne_defile(page, quoi):
+    debordants = page.evaluate(_CORPS_QUI_DEFILE)
+    assert not debordants, f"{quoi} — le corps de la page défile de côté : {debordants}"
+
+
+@pytest.mark.parametrize("police", [16, 24])
+def test_a_320_px_le_catalogue_ne_defile_pas_de_cote(page, decor, police):
+    """Critère Reflow (WCAG 1.4.10) à 320 px, la préférence de police posée par CDP comme
+    dans `test_e2e_reflow` : le rail rouvert, une copie dépliée, le volet avec ses gestes
+    rares ouverts."""
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Page.setFontSizes", {"fontSizes": {"standard": police, "fixed": police}})
+    cas = f"320 px, police {police}"
+    _ouvrir(page, decor["base"], "lea", largeur=320)
+    _rien_ne_defile(page, f"le catalogue, {cas}")
+    page.locator("#cat-rail-ouvrir").click()
+    expect(page.locator("#cat-rail")).to_be_visible()
+    page.locator('[data-espace="tout"]').click()
+    _rien_ne_defile(page, f"le rail rouvert, sur « Tout », {cas}")
+    page.locator(f'[data-pli="{decor["original"]}"]').click()
+    expect(_carte(page, decor["copie"])).to_be_visible()
+    _rien_ne_defile(page, f"une copie dépliée, {cas}")
+    _carte(page, decor["copie"]).click()
+    page.wait_for_selector("#album-detail")
+    page.locator(".autres > summary").click()
+    expect(page.locator('#album-detail [data-act="supprimer"]')).to_be_visible()
+    _rien_ne_defile(page, f"le volet, « Autres gestes » ouvert, {cas}")
+
+
+def test_au_clavier_le_catalogue_s_ouvre_se_deplie_et_se_referme(page, decor):
+    """Tout au clavier (WCAG 2.1.1) : filtrer le rail, déplier une copie, ouvrir un album,
+    atteindre « Fermer ✕ » par Tab et revenir sur sa carte, ouvrir une collection par son
+    nom. Les repliables disent leur état (`aria-expanded`, `aria-pressed`) à chaque pas."""
+    _ouvrir(page, decor["base"], "lea")
+    # Le filtre du rail : « Tout » se presse au clavier, et le dit.
+    page.locator('[data-espace="tout"]').focus()
+    page.keyboard.press("Enter")
+    expect(page.locator('[data-espace="tout"]')).to_have_attribute("aria-pressed", "true")
+    # Une copie se déplie à la barre d'espace, et le pli garde le focus.
+    pli = page.locator(f'[data-pli="{decor["original"]}"]')
+    pli.focus()
+    page.keyboard.press(" ")
+    expect(pli).to_have_attribute("aria-expanded", "true")
+    expect(pli).to_be_focused()
+    expect(_carte(page, decor["copie"])).to_be_visible()
+    page.keyboard.press("Enter")
+    expect(pli).to_have_attribute("aria-expanded", "false")
+    # Un album s'ouvre à Entrée ; « Fermer ✕ » s'atteint par Tab et rend la carte.
+    _carte(page, decor["seul"]).focus()
+    page.keyboard.press("Enter")
+    expect(page.locator("#album-detail")).to_be_visible()
+    fermer = page.locator("[data-retour-album]")
+    for _ in range(60):
+        if fermer.evaluate("(b) => b === document.activeElement"):
+            break
+        page.keyboard.press("Tab")
+    expect(fermer).to_be_focused()
+    page.keyboard.press("Enter")
+    expect(page.locator("#album-detail")).to_have_count(0)
+    expect(_carte(page, decor["seul"])).to_be_focused()
+    # Le nom d'une collection l'ouvre au clavier.
+    page.locator("#col-body .col-item", has_text="Étude").locator("button").first.focus()
+    page.keyboard.press("Enter")
+    expect(page.locator("#col-fiche-titre")).to_have_text("Étude")
+    # À l'étroit, « Collections… » dit s'il a rouvert le rail, et ce qu'il commande existe.
+    page.set_viewport_size({"width": 390, "height": 800})
+    ouvrir = page.locator("#cat-rail-ouvrir")
+    expect(ouvrir).to_have_attribute("aria-expanded", "false")
+    assert page.locator(f'#{ouvrir.get_attribute("aria-controls")}').count() == 1
+    ouvrir.focus()
+    page.keyboard.press("Enter")
+    expect(ouvrir).to_have_attribute("aria-expanded", "true")
+    expect(page.locator("#cat-rail")).to_be_visible()
+
+
+def test_un_rail_de_nombreuses_collections_defile_dans_le_rail(page, decor):
+    """Quarante collections de plus : le rail défile en lui-même, borné par la fenêtre, et sa
+    dernière collection comme « + Créer une collection » s'atteignent en le faisant défiler.
+    À 320 px, où le rail rouvert prend la page, rien ne défile de côté."""
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=60, headers=ADMIN) as c:
+        for i in range(40):
+            cid = _ok(c.post("/api/collections",
+                             json={"nom": f"Une collection au nom assez long {i:02d}"}))["id"]
+            _ok(c.put(f"/api/collections/{cid}/acces", json={
+                "genre": "utilisateur", "principal": "lea", "niveau": "lecture"}))
+    _ouvrir(page, decor["base"], "lea")
+    page.locator('[data-espace="tout"]').click()
+    rail = page.locator("#cat-rail")
+    expect(page.locator("#col-body .col-item")).to_have_count(42)
+    mesure = rail.evaluate("(r) => ({sh: r.scrollHeight, ch: r.clientHeight, "
+                           "bas: r.getBoundingClientRect().bottom, h: innerHeight})")
+    assert mesure["sh"] > mesure["ch"] + 10, f"le rail ne défile pas en lui-même : {mesure}"
+    assert mesure["bas"] <= mesure["h"] + 1, f"le rail passe sous la fenêtre : {mesure}"
+    boite = rail.bounding_box()
+    for cible in (page.locator("#col-body .col-item").last, page.locator("#col-creer")):
+        cible.scroll_into_view_if_needed()
+        b = cible.bounding_box()
+        assert b and boite["y"] - 1 <= b["y"] <= b["y"] + b["height"] <= boite["y"] + boite["height"] + 1, (
+            f"hors du rail une fois défilé : {b} dans {boite}")
+    page.set_viewport_size({"width": 320, "height": 800})
+    page.locator("#cat-rail-ouvrir").click()
+    expect(rail).to_be_visible()
+    _rien_ne_defile(page, "le rail rouvert, quarante-deux collections, 320 px")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_du_catalogue(page, decor, theme):
+    """Les états du catalogue que l'audit générique ne voit pas, dans les deux thèmes : le
+    rail sur « Tout », une copie dépliée, le volet d'une copie avec « Autres gestes » ouvert,
+    la lectrice devant une copie seule, et à 390 px le rail rouvert au-dessus des cartes."""
+    from test_e2e_a11y import _audit, _fmt, _theme
+    _theme(page, theme)
+    _ouvrir(page, decor["base"], "lea")
+    page.locator('[data-espace="tout"]').click()
+    page.locator(f'[data-pli="{decor["original"]}"]').click()
+    expect(_carte(page, decor["copie"])).to_be_visible()
+    viol = _audit(page)
+    assert not viol, f"le rail sur « Tout », une copie dépliée [{theme}] :\n{_fmt(viol)}"
+    _carte(page, decor["copie"]).click()
+    page.wait_for_selector("#album-detail")
+    page.locator(".autres > summary").click()
+    expect(page.locator('#album-detail [data-act="supprimer"]')).to_be_visible()
+    viol = _audit(page)
+    assert not viol, f"le volet d'une copie, « Autres gestes » ouvert [{theme}] :\n{_fmt(viol)}"
+    _ouvrir(page, decor["base"], "lou", suffixe=f"?collection={decor['etude']}&onglet=albums")
+    viol = _audit(page)
+    assert not viol, f"la lectrice, une copie seule [{theme}] :\n{_fmt(viol)}"
+    _ouvrir(page, decor["base"], "lea", largeur=390)
+    page.locator("#cat-rail-ouvrir").click()
+    expect(page.locator("#cat-rail")).to_be_visible()
+    viol = _audit(page)
+    assert not viol, f"390 px, le rail rouvert [{theme}] :\n{_fmt(viol)}"
