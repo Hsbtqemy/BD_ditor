@@ -587,13 +587,16 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
             attente.setdefault(d["album_id"], dict(d))
     # COL-3, tranche 3b (E8) — la demande de REPARTIR DE ZÉRO qui attend sur cette copie :
     # son cran et sa date, pour que l'écran n'offre pas de la redéposer (409) ; ni qui, ni
-    # pourquoi, qui se lisent dans le fonds.
+    # pourquoi, qui se lisent dans le fonds. Sur l'album ENTIER seulement : depuis la tranche
+    # 3c (F5), une planche se demande aussi, sa demande se lit sur sa ligne
+    # (`GET /api/albums/{id}/planches`), et elle n'empêche pas de demander l'album — le 409
+    # de la route ne compte que celles-là.
     repartir = {}
     if ids:
         for d in conn.execute(
                 "SELECT dd.album_id, d.id, d.date_creation, d.cran FROM demande d "
                 "JOIN demande_document dd ON dd.demande_id = d.id "
-                "WHERE d.genre = ? AND d.reponse IS NULL "
+                "WHERE d.genre = ? AND d.reponse IS NULL AND d.planche_id IS NULL "
                 f"AND dd.album_id IN ({', '.join('?' * len(ids))}) ORDER BY d.id",
                 (DEMANDE_REPARTIR, *ids)):
             repartir.setdefault(d["album_id"], {"id": d["id"],

@@ -16,7 +16,7 @@ l'ÉCRAN en fait :
   répond dans la fiche du projet (Administration) et le lit dans la Bibliothèque ; le
   demandeur lit l'état, jamais le projet source ;
 - « Repartir de zéro… » et ↺, leur panneau, « qui perd quoi », la puce de la copie remise à
-  zéro ; une planche ne se demande pas ;
+  zéro ; une planche se demande comme l'album, au responsable (tranche 3c) ;
 - « Supprimer… » dit le chemin réel (le responsable n'est jamais dit créateur), la dernière
   copie se demande ; « Retirer du projet… » et l'avis chez la propriétaire, jusqu'à « Vu » ;
 - « À faire » : les deux tranches neuves, « attend … » ;
@@ -410,7 +410,11 @@ def test_repartir_de_zero_sur_un_album_dit_qui_perd_quoi(page, decor):
     expect(table).to_be_visible()
     expect(table.locator(".perd-titre")).to_have_text("Ce qu'une autre personne perd")
     expect(table.locator("tbody th")).to_have_text(["Helene Brunet (helene)"])
-    expect(page.locator("#rp-raison")).to_have_text("Vous êtes responsable du projet : rien à demander.")
+    expect(page.locator("#rp-raison")).to_contain_text("Vous êtes responsable du projet : rien à demander.")
+    # La règle, en infobulle (Hugo, sur maquette, 2026-11-02).
+    expect(page.locator("#rp-raison [title]")).to_have_attribute(
+        "title", "Sans demander : le responsable du projet, et qui tient toutes les collections "
+                 "de l'album.")
     expect(page.locator("#rp-irreversible")).to_have_text("Ne s'annule pas, Ctrl+Z compris.")
     page.locator('#rp-crans input[value="images"]').check()
     expect(page.locator("#rp-part-liste")).to_contain_text("2 régions")
@@ -429,20 +433,32 @@ def test_repartir_de_zero_sur_un_album_dit_qui_perd_quoi(page, decor):
     expect(puce).to_have_attribute("title", "Par Paule Prop. Ce qui était au-dessus a été effacé ; le journal garde l'acte.")
 
 
-def test_une_planche_ne_se_demande_pas_et_un_album_se_demande(page, decor):
+def test_une_planche_se_demande_comme_l_album_au_responsable(page, decor):
+    """Tranche 3c (F4, F5) : Noé ne tient pas l'espace — il demande, et la demande part à
+    Paule, responsable d'« Oralité », qui est nommée ; une planche se demande comme l'album."""
     d = decor
     vues = _requetes(page, "/api/demandes", ("POST",))
     fiche = _fiche_album(page, d, "noe", "Pirates", "Exercices")
-    # ↺ sur la planche : Noé n'a pas créé cet album — une planche n'a pas de demande à elle.
-    fiche.locator(f'[data-repartir-planche="{d["planches"]["Pirates"]}"]').click()
+    pl = d["planches"]["Pirates"]
+    fiche.locator(f'[data-repartir-planche="{pl}"]').click()
     expect(page.locator("#repartir-modal")).to_be_visible()
-    expect(page.locator("#rp-raison")).to_contain_text("ne se demande pas", timeout=5000)
     expect(page.locator("#rp-raison")).to_contain_text(
-        "Demandez-le pour l'album entier, ou adressez-vous à un administrateur de l'instance.")
-    expect(page.locator("#rp-ok")).to_be_hidden()
-    expect(page.locator("#rp-motif-wrap")).to_be_hidden()
-    page.keyboard.press("Escape")
-    expect(page.locator("#repartir-modal")).to_be_hidden()
+        "La demande part à Paule Prop, responsable du projet, qui décide. Rien n'est effacé "
+        "d'ici là.", timeout=5000)
+    expect(page.locator("#rp-motif-wrap")).to_contain_text("(obligatoire : le responsable le lira)")
+    page.locator("#rp-motif").fill("Planche découpée à l'envers.")
+    page.locator("#rp-certif").check()
+    ok = page.locator("#rp-ok")
+    expect(ok).to_have_text("Envoyer la demande")
+    ok.click()
+    expect(page.locator("#repartir-modal")).to_be_hidden(timeout=5000)
+    expect(page.locator(".toast", has_text="Votre demande est partie à Paule Prop, responsable "
+                                           "du projet.")).to_be_visible()
+    corps = json.loads(vues[0][2])
+    assert corps == {"genre": "repartir", "album_id": d["albums"]["Pirates"], "cran": "images",
+                     "motif": "Planche découpée à l'envers.", "certifie": True,
+                     "planche_id": pl}, corps
+    vues.clear()
     # L'album entier : motif et certification exigés, puis la demande.
     autres_gestes(page)
     fiche.locator('[data-act="repartir"]').click()
@@ -462,10 +478,11 @@ def test_une_planche_ne_se_demande_pas_et_un_album_se_demande(page, decor):
     corps = json.loads(vues[0][2])
     assert corps == {"genre": "repartir", "album_id": d["albums"]["Pirates"], "cran": "images",
                      "motif": "Découpé à l'envers.", "certifie": True}, corps
-    # « À faire », chez l'administratrice : la tranche rose, ce qui part, « Garder ».
+    # « À faire », chez l'administratrice : la tranche rose, ce qui part, « Garder ». Deux
+    # lignes, la planche d'abord (la plus ancienne) ; on répond à celle de l'album.
     _ouvrir(page, d, "admin", "/administration?vue=afaire")
-    ligne = page.locator(".af-ligne.af-genre-repartir")
-    expect(ligne).to_have_count(1, timeout=5000)
+    expect(page.locator(".af-ligne.af-genre-repartir")).to_have_count(2, timeout=5000)
+    ligne = page.locator(".af-ligne.af-genre-repartir").last
     expect(ligne.locator(".af-genre-nom")).to_have_text("Repartir de zéro")
     ligne.locator("[data-af-deplier]").click()
     expect(ligne.locator(".rp-part-liste")).to_contain_text("1 région", timeout=5000)
@@ -474,6 +491,66 @@ def test_une_planche_ne_se_demande_pas_et_un_album_se_demande(page, decor):
     expect(ligne.locator(".irreversible")).to_have_text("Ne s'annule pas.")
     ligne.locator("[data-fd-refuser]").click()
     expect(page.locator("#af-msg")).to_contain_text("gardé", timeout=5000)
+
+
+def test_une_planche_se_supprime_par_son_panneau_ou_se_demande(page, decor):
+    """Tranche 3c (F5 ; Hugo, sur maquette, 2026-11-02) — la corbeille d'une planche ouvre son
+    panneau. « Pirates » est la DERNIÈRE copie de son document : Noé demande, et la demande
+    va à un administrateur (Q5) ; la ligne le dit. Sur « QRN », qui a une sœur, Paule tient
+    l'espace : elle supprime sans rien demander, et le panneau dit pourquoi."""
+    d = decor
+    vues = _requetes(page, "/api/demandes", ("POST",))
+    fiche = _fiche_album(page, d, "noe", "Pirates", "Exercices")
+    pl = d["planches"]["Pirates"]
+    fiche.locator(f'[data-delp="{pl}"]').click()
+    panneau = page.locator("#planche-modal")
+    expect(panneau).to_be_visible()
+    expect(page.locator("#pm-texte")).to_contain_text("son image et le travail posé dessus. "
+                                                      "Irréversible.")
+    expect(page.locator("#pm-raison")).to_contain_text(
+        "C'est la dernière copie de ce document. C'est un administrateur qui décide.",
+        timeout=5000)
+    expect(page.locator("#pm-motif-wrap")).to_contain_text("(obligatoire : l'administrateur le lira)")
+    expect(page.locator("#pm-raison [title]")).to_have_attribute(
+        "title", "Sans demander : le responsable du projet, et qui tient toutes les collections "
+                 "de l'album. Pour la dernière copie d'un document, un administrateur seul.")
+    expect(page.locator("#pm-perd .perd")).to_have_count(0)      # Noé ne tient pas l'espace
+    ok = page.locator("#pm-ok")
+    expect(ok).to_have_text("Envoyer la demande")
+    ok.click()
+    expect(page.locator("#pm-msg")).to_contain_text("Dites pourquoi : c'est ce que "
+                                                    "l'administrateur lira")
+    page.locator("#pm-motif").fill("Une page de garde, scannée deux fois.")
+    ok.click()
+    expect(page.locator("#pm-msg")).to_contain_text("Cochez la certification")
+    assert vues == []
+    page.locator("#pm-certif").check()
+    ok.click()
+    expect(panneau).to_be_hidden(timeout=5000)
+    corps = json.loads(vues[0][2])
+    assert corps == {"genre": "suppression_planche", "album_id": d["albums"]["Pirates"],
+                     "planche_id": pl, "motif": "Une page de garde, scannée deux fois.",
+                     "certifie": True}, corps
+    ligne = page.locator(f'#album-detail tr[data-ligne-planche="{pl}"]')
+    expect(ligne.locator(".sp-pastille")).to_have_text("suppression demandée par vous",
+                                                       timeout=5000)
+    # Rouvert, le panneau dit que la demande attend, et n'offre rien à envoyer.
+    page.locator(f'#album-detail [data-delp="{pl}"]').click()
+    expect(page.locator("#pm-raison")).to_contain_text(
+        "Sa suppression est déjà demandée par vous", timeout=5000)
+    expect(ok).to_be_hidden()
+    page.keyboard.press("Escape")
+    # Paule, responsable, tient l'espace sur « QRN », qui a une sœur : rien à demander.
+    fiche = _fiche_album(page, d, "paule", "QRN", "Corpus")
+    fiche.locator(f'[data-delp="{d["planches"]["QRN"]}"]').click()
+    expect(page.locator("#pm-raison")).to_contain_text(
+        "Vous êtes responsable du projet : rien à demander.", timeout=5000)
+    expect(page.locator("#pm-texte")).to_contain_text("Son image reste")
+    expect(ok).to_have_text("Supprimer la planche 1")
+    expect(page.locator("#pm-motif-wrap")).to_be_hidden()
+    # « Qui perd quoi » : Nico y a travaillé ; compté sur tout l'album, et le titre le dit.
+    expect(page.locator("#pm-perd .perd tbody th")).to_have_text(["Nico Gauthier (nico)"])
+    expect(page.locator("#pm-perd .perd-titre")).to_contain_text("sur tout l'album")
 
 
 # =========================================================================== #

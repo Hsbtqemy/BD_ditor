@@ -2676,7 +2676,6 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
   table.bi-table td[data-l]::before { content: attr(data-l) " : "; }
   table.bi-table td.vide-carte { display: none; }
   table.bi-table td.empty-cell { flex: 1 1 100%; }
-  .pl-refus-msg { max-width: none; }
 }
 
 /* ---------- Quand les bandes du haut mangent l'écran, elles défilent avec la page (A11Y-2) ----------
@@ -2886,31 +2885,17 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
    elle se coupait sur trois lignes, et ses coins en gélule (999px) faisaient de sa bordure
    une ellipse autour d'un bloc de texte — un trait de feutre, pas un état (relevé par Hugo
    le 2026-10-16). Des coins à peine arrondis restent un cadre net quand elle se coupe. */
-.c-titre .sp-pastille { display: block; width: fit-content; max-width: 100%;
-                        margin: .25rem 0 0; }
-/* La corbeille d'une planche qu'on ne supprime pas d'ici : à sa place, éteinte, et qui dit
-   pourquoi quand on la touche. `aria-disabled` et non `disabled` : elle garde le focus et
-   son infobulle.
-
-   ÉTEINTE sans s'EFFACER. Une opacité de .45 sur tout le bouton la rendait, en thème clair,
-   indiscernable d'un bouton absent (relevé sur capture). Le CONTOUR porte donc sa présence —
-   un trait pointillé à l'encre atténuée, au moins 3:1 sur le panneau dans les deux thèmes
-   (mesuré par `test_supprimer_a_deux_reponses…`) — et l'ICÔNE seule dit qu'elle est
-   inactive : grisée, atténuée, sur un fond transparent. */
-.icon-btn.corbeille-eteinte { background: transparent; border: 1px dashed var(--text-muted);
-                              cursor: not-allowed; }
-.icon-btn.corbeille-eteinte:hover { background: transparent; color: var(--text); }
-.icon-btn.corbeille-eteinte > span { filter: grayscale(1); opacity: .6; }
-/* ↑ ↓ éteints par la fiche (un filtre, un import — UX-11) : le même dessin que la corbeille
-   éteinte, et pour la même raison : focalisables, ils disent pourquoi quand on les touche. */
+.c-titre .sp-pastille, .c-pl .sp-pastille { display: block; width: fit-content; max-width: 100%;
+                                          margin: .25rem 0 0; }
+/* ↑ ↓ éteints par la fiche (un filtre, un import — UX-11) : ÉTEINTS sans s'EFFACER. Une
+   opacité sur tout le bouton le rendait, en thème clair, indiscernable d'un bouton absent :
+   le CONTOUR porte sa présence, l'icône seule dit qu'il est inactif. Focalisables, ils
+   disent pourquoi quand on les touche. (La corbeille éteinte, qui portait ce dessin la
+   première, n'existe plus depuis la tranche 3c de COL-3 : une planche se demande.) */
 .icon-btn.ordre-eteint { background: transparent; border: 1px dashed var(--text-muted);
                          cursor: not-allowed; }
 .icon-btn.ordre-eteint:hover { background: transparent; color: var(--text); }
 .icon-btn.ordre-eteint > span { opacity: .6; }
-/* Ce que dit la corbeille éteinte, sous elle, dans la cellule d'actions : la cellule ne
-   passe pas à la ligne (`white-space: nowrap`), le message si. */
-.pl-refus-msg { display: block; white-space: normal; text-align: left; max-width: 18rem;
-                min-width: 10rem; margin: .2rem 0 0; overflow-wrap: anywhere; }
 .modal-box {
   width: min(43.0769rem, 92%); background: var(--bg-panel);
   border: 1px solid var(--border); border-radius: 10px; padding: 1.3846rem;
@@ -3898,12 +3883,13 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .perd-table tbody th { font-weight: 600; overflow-wrap: anywhere; }
 .perd-note { margin: 0; }
 
-/* Les panneaux « Repartir de zéro » et « Retirer du projet » : la boîte de « Supprimer… ». */
-#repartir-modal, #retirer-modal {
+/* Les panneaux « Repartir de zéro », « Retirer du projet » et, depuis la tranche 3c,
+   « Supprimer la planche… » : la boîte de « Supprimer… ». */
+#repartir-modal, #retirer-modal, #planche-modal {
   position: fixed; inset: 0; z-index: 100; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
 }
-#repartir-modal[hidden], #retirer-modal[hidden] { display: none; }
+#repartir-modal[hidden], #retirer-modal[hidden], #planche-modal[hidden] { display: none; }
 .rp-zone { display: grid; gap: .6rem 1.2rem; min-width: 0;
            grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
 .rp-crans { margin: 0; padding: 0; border: 0; display: grid; gap: .2rem; min-width: 0; }

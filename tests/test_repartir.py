@@ -284,6 +284,21 @@ def _demander(client, album_id, qui, cran="grammaire", certifie=True, motif="Fau
                              "motif": motif, "certifie": certifie})
 
 
+def test_la_demande_d_une_planche_n_est_pas_celle_de_l_album(client, source):
+    """Tranche 3c (F5) : une planche se demande ; `demande_repartir` d'un album ne dit que
+    celle de l'album ENTIER — sinon l'écran tenait l'album pour déjà demandé, alors que la
+    route accepte la demande de l'album."""
+    r = client.post("/api/demandes", headers=SAM, json={
+        "genre": "repartir", "album_id": source["a"], "planche_id": source["pl"],
+        "cran": "grammaire", "motif": "Une page", "certifie": True})
+    assert r.status_code == 201, r.text
+    a = next(x for x in client.get("/api/albums", headers=SAM).json() if x["id"] == source["a"])
+    assert a["demande_repartir"] is None
+    _ok(_demander(client, source["a"], SAM), 201)
+    a = next(x for x in client.get("/api/albums", headers=SAM).json() if x["id"] == source["a"])
+    assert a["demande_repartir"]["cran"] == "grammaire"
+
+
 def test_repartir_se_demande_et_un_administrateur_repond(client, source, db_path):
     assert _demander(client, source["a"], SAM, certifie=False).status_code == 422
     assert _demander(client, source["a"], SAM, motif="").status_code == 422

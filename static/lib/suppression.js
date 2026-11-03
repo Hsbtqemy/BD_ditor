@@ -50,6 +50,8 @@
   const GENRE_AMORCER = "amorcer";
   const GENRE_AMORCER_ENTRE_PROJETS = "amorcer_entre_projets";
   const GENRE_REPARTIR = "repartir";
+  /* COL-3, tranche 3c (F5) — supprimer UNE planche se demande comme l'album. */
+  const GENRE_PLANCHE = "suppression_planche";
   const ACCEPTER = "acceptee";
   const REFUSER = "refusee";
   /* L'état d'une demande dont les documents ont reçu des réponses mêlées (D9) : jamais une
@@ -97,6 +99,16 @@
     return demande.demandeur_nom || demande.demandeur || "";
   }
 
+  /* La pastille d'une ligne de PLANCHE (tranche 3c, F5) : une demande d'effacement l'attend
+     — la supprimer, ou repartir de zéro dessus. Le nom de qui l'a déposée, seulement quand
+     le serveur le rend. */
+  function pastillePlanche(demande, moi) {
+    if (!demande) return "";
+    const quoi = demande.genre === GENRE_REPARTIR ? "repartir demandé" : "suppression demandée";
+    const qui = demandeur(demande, moi);
+    return qui ? `${quoi} par ${qui}` : quoi;
+  }
+
   /* La pastille d'une ligne d'album : une demande de suppression l'attend. */
   function pastille(demande, moi) {
     if (!demande) return "";
@@ -104,11 +116,12 @@
     return qui ? `suppression demandée par ${qui}` : "suppression demandée";
   }
 
-  /* « Supprimer… » ne s'offre qu'à qui ÉCRIT dans l'album : à qui ne fait que le lire,
-     aucune des deux réponses n'aboutirait. Une copie gardée au fonds n'est pas un album de
-     travail : elle se règle dans l'Administration. */
+  /* « Supprimer… » ne s'offre qu'à qui ÉCRIT dans l'album, ou peut l'effacer sans y écrire
+     (`effacable`, tranche 3c : le responsable de son projet, qui le LIT seulement) : à qui ne
+     fait que le lire, aucune des deux réponses n'aboutirait. Une copie gardée au fonds n'est
+     pas un album de travail : elle se règle dans l'Administration. */
   function offrir(album) {
-    return !!(album && album.ecrivable && !album.au_fonds);
+    return !!(album && (album.ecrivable || album.effacable) && !album.au_fonds);
   }
 
   /* Supprimer DE la collection `collectionId` : ce que devient le travail, et ce qu'on y perd.
@@ -185,50 +198,103 @@
 
   /* `soeur` : le document a une autre copie — les images restent, et la phrase le dit.
 
-     COL-3, tranche 3b (Hugo, 2026-10-21 ; écran du 2026-10-25) — TROIS chemins effacent sans
-     rien demander : le créateur d'une copie que personne d'autre n'a touchée, le propriétaire
-     de toutes ses collections, le responsable du projet. La phrase d'avant (« vous l'avez
-     créée, et personne d'autre n'y a travaillé ») disait FAUX aux deux derniers, que
-     `destructible` inclut désormais. Le chemin se dit à part (`raison`), par `pouvoir` — une
-     clé de `BDEchelle.POUVOIRS`, que l'écran lit dans ce que le serveur a rendu ; sans elle,
-     rien n'est supposé. `derniere` (`derniere_copie`) : la DERNIÈRE copie du document ne se
-     supprime que sur demande, sauf par son créateur seul ; quand l'appelant a un chemin
-     (`pouvoir`) que seule cette règle arrête, le panneau dit pourquoi il demande. */
-  function definitif({ destructible, demande, moi, soeur, derniere, pouvoir }) {
+     COL-3, tranche 3c (F3, Hugo, 2026-10-26 ; mots tranchés sur maquette le 2026-11-02) —
+     QUI TIENT L'ESPACE efface sans rien demander : le responsable du projet, le propriétaire
+     de toutes les collections de l'album, l'administrateur, et dans son bac à sable son
+     propriétaire. Le chemin se dit à part (`raison`), court, par `pouvoir` — une clé de
+     `BDEchelle.POUVOIRS`, que l'écran lit dans ce que le serveur a rendu ; sans elle, rien
+     n'est supposé —, et la règle se lit en infobulle (`regle`). Les autres DEMANDENT, et la
+     demande part au RESPONSABLE du projet (`responsables`, cf. `BDEchelle.destinataire`).
+     `derniere` (`derniere_copie`) : la DERNIÈRE copie d'un document ne se supprime que par un
+     administrateur (Q5) ; quand l'appelant a un chemin que seule cette règle arrête, la
+     phrase le dit. */
+  function definitif({ destructible, demande, moi, soeur, derniere, pouvoir, responsables }) {
     const raison = pouvoir && E().POUVOIRS[pouvoir] ? E().POUVOIRS[pouvoir] : "";
+    const regle = E().REGLE_EFFACER;
     if (destructible) {
       const efface = soeur ? "cette copie et" : "cette copie, ses images et";
       const reste = soeur ? ` ${IMAGES_RESTENT}` : "";
       return {
-        mode: "direct", bouton: "Supprimer définitivement",
+        mode: "direct", bouton: "Supprimer définitivement", regle,
         texte: `Efface tout de suite ${efface} le travail fait dessus.${reste} Irréversible.`,
         raison: raison ? `${raison} : rien à demander.` : "",
       };
     }
+    const adminSeul = !!derniere;
     if (demande) {
       const qui = demandeur(demande, moi), quand = dateLue(demande.date_creation);
       return {
-        mode: "attente", bouton: "",
+        mode: "attente", bouton: "", regle,
         texte: "Sa suppression est déjà demandée" + (qui ? ` par ${qui}` : "")
           + (quand ? `, le ${quand}` : "")
-          + " : un administrateur y répondra. Rien n'est effacé d'ici là.",
+          + ` : ${E().repondraA(responsables, adminSeul)}. Rien n'est effacé d'ici là.`,
       };
     }
-    if (derniere && raison) {
+    const lecteur = E().lecteurDuMotif(responsables, adminSeul);
+    if (derniere) {
       return {
-        mode: "demande", bouton: "Envoyer la demande", derniere: true, raison: "",
-        texte: "C'est la dernière copie de ce document : la supprimer le fait sortir du fonds"
-          + `${soeur ? "" : ", images comprises"}. ${raison}, mais c'est un administrateur qui `
-          + "décide. Rien n'est effacé d'ici là.",
+        mode: "demande", bouton: "Envoyer la demande", derniere: true, raison: "", regle, lecteur,
+        texte: "C'est la dernière copie de ce document. "
+          + (raison ? `${raison}, mais c'est un administrateur qui décide.`
+                    : "C'est un administrateur qui décide.")
+          + " Rien n'est effacé d'ici là.",
       };
     }
     return {
-      mode: "demande", bouton: "Envoyer la demande", raison: "",
-      texte: "D'autres s'en servent, ou ce n'est pas vous qui avez créé cette copie : la "
-        + `demande part à un administrateur, qui décide.${soeur ? ` ${IMAGES_RESTENT}` : ""} `
+      mode: "demande", bouton: "Envoyer la demande", raison: "", regle, lecteur,
+      texte: `${E().partA(responsables, false)}${soeur ? ` ${IMAGES_RESTENT}` : ""} `
         + "Rien n'est effacé d'ici là.",
     };
   }
+
+  /* Supprimer UNE PLANCHE (tranche 3c, F5 ; Hugo, sur maquette, 2026-11-02 : « une fenêtre,
+     comme l'album ») : la règle est celle de l'album (Q5, complétée le 2026-10-27) — qui
+     supprime l'album sans demander supprime sa planche (`destructible`), la dernière copie
+     d'un document va à l'administrateur, les autres demandent au responsable. `nom` : le
+     libellé lu de la planche (« la planche 3 (i.003) ») ; `demande` : celle qui attend DÉJÀ
+     sur la planche, de ce genre. Rend { mode, texte, chemin, regle, bouton, lecteur } :
+     `texte` dit ce que le geste efface, `chemin` qui en décide. */
+  function supprPlanche({ destructible, demande, moi, derniere, pouvoir, responsables, nom,
+                          soeur }) {
+    const raison = pouvoir && E().POUVOIRS[pouvoir] ? E().POUVOIRS[pouvoir] : "";
+    const regle = E().REGLE_EFFACER;
+    const quoi = nom || "cette planche";
+    const court = quoi.replace(/ \(.*\)$/, "");
+    const texte = soeur
+      ? `Efface ${quoi} et le travail posé dessus. Son image reste : une autre copie de ce `
+        + "document l'emploie. Irréversible."
+      : `Efface ${quoi}, son image et le travail posé dessus. Irréversible.`;
+    if (destructible) {
+      return { mode: "direct", texte, regle, bouton: `Supprimer ${court}`,
+               chemin: raison ? `${raison} : rien à demander.` : "Rien à demander." };
+    }
+    const adminSeul = !!derniere;
+    if (demande) {
+      const qui = demandeur(demande, moi), quand = dateLue(demande.date_creation);
+      return { mode: "attente", texte, regle, bouton: "",
+               chemin: "Sa suppression est déjà demandée" + (qui ? ` par ${qui}` : "")
+                 + (quand ? `, le ${quand}` : "")
+                 + ` : ${E().repondraA(responsables, adminSeul)}. Rien n'est effacé d'ici là.` };
+    }
+    return {
+      mode: "demande", texte, regle, bouton: "Envoyer la demande",
+      lecteur: E().lecteurDuMotif(responsables, adminSeul),
+      chemin: derniere
+        ? "C'est la dernière copie de ce document. "
+          + (raison ? `${raison}, mais c'est un administrateur qui décide.`
+                    : "C'est un administrateur qui décide.") + " Rien n'est effacé d'ici là."
+        : `${E().partA(responsables, false)} Rien n'est effacé d'ici là.`,
+    };
+  }
+
+  /* La certification d'une demande sur UNE planche : les mots de l'album, adaptés. */
+  const CERTIFICATION_PLANCHE = {
+    texte: "Supprimer cette planche détruit ce qui a été posé dessus — découpage, "
+      + "transcription, annotations —, que d'autres utilisent peut-être dans le projet ou dans "
+      + "ses collections. Pouvez-vous certifier que ces données ne sont pas importantes ?",
+    caseACocher: "Je certifie que ces données ne sont pas importantes.",
+    manque: "Cochez la certification : la demande ne part pas sans elle.",
+  };
 
   /* La CERTIFICATION qui accompagne une demande de suppression définitive (Hugo,
      2026-10-15) : ce que la suppression détruit, la question, et la case. Le serveur exige
@@ -251,9 +317,11 @@
 
   /* `soeur` : comme pour `definitif` — une autre copie du document emploie ses images, qui
      restent. Le panneau venait de le dire ; le message de fin ne le contredit pas. */
-  function apresDefinitif(titre, mode, soeur) {
+  function apresDefinitif(titre, mode, soeur, responsables, adminSeul) {
     if (mode !== "direct") {
-      return "Votre demande est partie à un administrateur. Rien n'est effacé d'ici sa réponse.";
+      const d = E().destinataire(responsables, adminSeul);
+      return `Votre demande est partie ${/^le /.test(d.qui) ? d.qui.replace(/^le /, "au ") : `à ${d.qui}`}. `
+        + "Rien n'est effacé d'ici sa réponse.";
     }
     return soeur
       ? `${g(titre)} : cette copie est supprimée définitivement, avec le travail fait dessus. `
@@ -581,10 +649,11 @@
 
   return {
     GENRE_DOCUMENT, GENRE_PROJET, GENRE_ENTREE, GENRE_REJOINDRE, GENRE_RENDRE, GENRE_AMORCER,
-    GENRE_AMORCER_ENTRE_PROJETS, GENRE_REPARTIR, GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
+    GENRE_AMORCER_ENTRE_PROJETS, GENRE_REPARTIR, GENRE_PLANCHE, GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
     toutAccepter, REFUSER_LE_RESTE, explicationDemande, IMAGES_RESTENT, quoiEnPartir,
     ACCEPTER, REFUSER, PARTIELLE, CERTIFICATION, SORTES,
-    RECOCHER_SUR_DEMANDE, dateLue, demandeur, pastille, offrir, retrait, definitif, apresRetrait, apresDefinitif,
+    RECOCHER_SUR_DEMANDE, dateLue, demandeur, pastille, pastillePlanche, supprPlanche,
+    CERTIFICATION_PLANCHE, offrir, retrait, definitif, apresRetrait, apresDefinitif,
     origine, emplois, titreDocument, texteDemande, contexteDemande, confirmationDetruire,
     confirmationDetruireDocument, rendreA, certifiee, gestes, travailDesAutres,
   };

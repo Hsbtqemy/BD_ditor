@@ -140,28 +140,45 @@ test("ce qui reste, pour un album et pour une planche", () => {
   assert.ok(E.restent("le paratexte i.001").startsWith("Seul le paratexte"));
 });
 
-test("le panneau : faire, demander, attendre — et une planche ne se demande pas (B4)", () => {
+test("le panneau : faire, demander au responsable, attendre (tranche 3c)", () => {
   const d = E.panneauRepartir({ direct: true, pouvoir: "responsable" });
   assert.deepEqual([d.mode, d.texte], ["direct", "Vous êtes responsable du projet : rien à demander."]);
+  assert.equal(d.regle, E.REGLE_REPARTIR);
   assert.equal(E.panneauRepartir({ direct: true }).texte, "Rien à demander.");
-  const dem = E.panneauRepartir({ direct: false });
+  const dem = E.panneauRepartir({ direct: false, responsables: ["Paule Propriétaire"] });
   assert.equal(dem.mode, "demande");
-  assert.ok(dem.texte.includes("la demande part à un administrateur"));
-  const pl = E.panneauRepartir({ direct: false, planche: true });
-  assert.equal(pl.mode, "planche");
-  assert.ok(pl.texte.includes("ne se demande pas"));
-  // Hugo, 2026-10-25 : il renvoie à la demande sur l'album entier, ou à un administrateur.
-  assert.ok(pl.texte.includes("Demandez-le pour l'album entier"), pl.texte);
-  assert.ok(pl.texte.includes("adressez-vous à un administrateur"), pl.texte);
+  assert.equal(dem.texte, "La demande part à Paule Propriétaire, responsable du projet, qui décide. "
+    + "Rien n'est effacé d'ici là.");
+  // Sans les noms : le responsable, sans nommer ; sans responsable : un administrateur.
+  assert.ok(E.panneauRepartir({ direct: false }).texte
+    .startsWith("La demande part au responsable du projet, qui décide."));
+  assert.ok(E.panneauRepartir({ direct: false, responsables: [] }).texte
+    .startsWith("La demande part à un administrateur, qui décide."));
+  // La planche n'est plus un cas à part (F5) : elle se demande comme l'album.
+  assert.equal(E.panneauRepartir({ direct: false, planche: true }).mode, "demande");
   const att = E.panneauRepartir({ direct: false, attente: { cran: "decoupage",
-                                                            date_creation: "2026-10-24" }, dateLue: date });
+                                                            date_creation: "2026-10-24" }, dateLue: date,
+                                  responsables: ["Paule Propriétaire"] });
   assert.equal(att.mode, "attente");
-  assert.ok(att.texte.startsWith("Repartir du découpage est déjà demandé, le le-2026-10-24"));
-  // Une planche qu'on PEUT ramener soi-même : le geste, pas le refus de B4.
-  assert.equal(E.panneauRepartir({ direct: true, planche: true, pouvoir: "proprietaire" }).mode,
-               "direct");
+  assert.equal(att.texte, "Repartir du découpage est déjà demandé, le le-2026-10-24 : Paule "
+    + "Propriétaire, responsable du projet, y répondra. Rien n'est effacé d'ici là.");
   // Qui peut le faire soi-même ne lit jamais « demandé » : `direct` l'emporte.
   assert.equal(E.panneauRepartir({ direct: true, attente: { cran: "images" } }).mode, "direct");
+  // Repartir ne connaît pas la dernière copie : sa règle n'en dit rien.
+  assert.ok(!/dernière copie/.test(E.REGLE_REPARTIR));
+  assert.ok(/dernière copie/.test(E.REGLE_EFFACER));
+});
+
+test("à qui part la demande : nommé, plusieurs, aucun, inconnu, ou la dernière copie", () => {
+  assert.equal(E.partA(["Paule Propriétaire", "Rémi"]),
+               "La demande part à Paule Propriétaire et Rémi, responsables du projet, qui décident.");
+  assert.equal(E.partA(["Paule Propriétaire"], true),
+               "La demande part à un administrateur, qui décide.");
+  assert.equal(E.repondraA(undefined), "le responsable du projet y répondra");
+  assert.equal(E.repondraA([]), "un administrateur y répondra");
+  assert.equal(E.lecteurDuMotif(["Paule"]), "le responsable");
+  assert.equal(E.lecteurDuMotif(["Paule"], true), "l'administrateur");
+  assert.equal(E.lecteurDuMotif([]), "l'administrateur");
 });
 
 test("la certification de repartir reprend les mots de la suppression, adaptés", () => {
@@ -173,23 +190,16 @@ test("la certification de repartir reprend les mots de la suppression, adaptés"
 
 test("le chemin le plus précis d'abord ; aucun, rien n'est supposé", () => {
   assert.equal(E.pouvoir({ total: true, responsable: true }), "admin");
-  assert.equal(E.pouvoir({ bac: true, createur: true }), "bac");
-  assert.equal(E.pouvoir({ createur: true, responsable: true }), "createur");
+  assert.equal(E.pouvoir({ bac: true, responsable: true }), "bac");
   assert.equal(E.pouvoir({ responsable: true, proprietaire: true }), "responsable");
   assert.equal(E.pouvoir({ proprietaire: true }), "proprietaire");
   assert.equal(E.pouvoir({}), null);
 });
 
-test("le créateur seul : sa copie, et personne d'autre — le travail recopié compris", () => {
-  const vue = { creee_par: "lea", travail_des_autres: [], travail_recopie: null };
-  assert.equal(E.createurIntact(vue, "lea"), true);
-  assert.equal(E.createurIntact(vue, "sam"), false);
-  assert.equal(E.createurIntact({ ...vue, travail_des_autres: [{ agent: "sam" }] }, "lea"), false);
-  assert.equal(E.createurIntact({ ...vue, travail_recopie: { gestes: { regions: 1 } } }, "lea"), false);
-  assert.equal(E.createurIntact(null, "lea"), false);
-  assert.equal(E.createurIntact(vue, null), false, "sans login, personne n'est le créateur");
-  // Un créateur inconnu (avant le fonds) sur un poste sans login : pas « vous l'avez créée ».
-  assert.equal(E.createurIntact({ creee_par: null, travail_des_autres: [] }, null), false);
+test("le chemin du créateur est retiré (tranche 3c, F3)", () => {
+  assert.equal(E.pouvoir({ createur: true }), null);
+  assert.equal(E.POUVOIRS.createur, undefined);
+  assert.equal(E.createurIntact, undefined);
 });
 
 /* ── Qui perd quoi ─────────────────────────────────────────────────────────────── */

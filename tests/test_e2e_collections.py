@@ -800,24 +800,6 @@ def _ouvrir_suppression(page, titre):
         timeout=5000)
 
 
-# Le contraste du CONTOUR d'un élément sur le premier fond opaque qui le porte (WCAG 1.4.11).
-_CONTRASTE_CONTOUR = r"""(el) => {
-  const rgb = (c) => (c.match(/[\d.]+/g) || []).map(Number);
-  const lum = ([r, g, b]) => {
-    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-  };
-  let fond = el.parentElement;
-  while (fond && (rgb(getComputedStyle(fond).backgroundColor)[3] === 0
-                  || getComputedStyle(fond).backgroundColor === "transparent")) {
-    fond = fond.parentElement;
-  }
-  const a = lum(rgb(getComputedStyle(el).borderTopColor));
-  const b = lum(rgb(getComputedStyle(fond || document.body).backgroundColor));
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-}"""
-
-
 def _comme(page, live_server, login):
     page.set_extra_http_headers({"Remote-User": login})
     page.goto(live_server + "/corpus", wait_until="networkidle")
@@ -866,8 +848,7 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
         expect(page.locator("#album-range-cases input[data-ranger]").first).to_be_visible()
         expect(page.locator("#album-range-cases input[data-ranger]:enabled"), titre
                ).to_have_count(0)
-    expect(page.locator("#album-detail [data-delp], #album-detail [data-delp-refus]")
-           ).to_have_count(0)
+    expect(page.locator("#album-detail [data-delp]")).to_have_count(0)
     expect(page.locator("#album-detail button[data-val]"),
            "un bouton de validation offert à qui ne fait que lire").to_have_count(0)
 
@@ -985,36 +966,18 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
     _comme(page, live_server, "sam")
     _ligne(page, "Erreur").wait_for(timeout=5000)
 
-    # Les planches suivent la règle de repartir de zéro (tranche 3c, Q5) : Sam ne tient pas
-    # « Incubateur », sa corbeille est éteinte même sur ce qu'il a importé.
-    _ouvrir_detail(page, "Erreur")
-    expect(page.locator("#album-detail button[data-delp]")).to_have_count(0)
+    # Les planches suivent la règle de l'album (tranche 3c, Q5, F5) : Sam ne tient pas
+    # « Incubateur » — sa corbeille ouvre le panneau d'une planche, qui DEMANDE.
     _ouvrir_detail(page, "Seul")
-    expect(page.locator("#album-detail button[data-delp]")).to_have_count(0)
-    eteinte = page.locator("#album-detail button[data-delp-refus]")
-    expect(eteinte).to_have_count(1)
-    assert eteinte.get_attribute("aria-disabled") == "true"
-    # Éteinte mais atteignable : au clavier, elle dit à qui s'adresser. (Playwright tient un
-    # `aria-disabled` pour non cliquable ; le clavier, lui, l'atteint.)
-    eteinte.focus()
-    page.keyboard.press("Enter")
-    # Le message se lit CONTRE elle, dans la ligne de sa planche — pas dans un toast, qui
-    # tombait sur la colonne d'actions et couvrait le bouton touché.
-    message = page.locator("#album-detail .pl-refus-msg")
-    expect(message).to_be_visible()
-    expect(message).to_contain_text("Adressez-vous à un administrateur")
-    expect(page.locator(".toast", has_text="Adressez-vous")).to_have_count(0)
-    b, m = eteinte.bounding_box(), message.bounding_box()
-    assert 0 <= m["y"] - (b["y"] + b["height"]) <= 12, (b, m)
-    assert m["x"] < b["x"] + b["width"] and m["x"] + m["width"] > b["x"], (b, m)
-    # Éteinte, elle se distingue d'un bouton ABSENT : son contour tient 3:1 sur le fond où
-    # elle repose, dans les deux thèmes.
-    for theme in ("light", "dark"):
-        page.evaluate("t => localStorage.setItem('bd-theme', t)", theme)
-        page.reload(wait_until="networkidle")
-        _ouvrir_detail(page, "Seul")
-        rapport = page.locator("#album-detail button[data-delp-refus]").evaluate(_CONTRASTE_CONTOUR)
-        assert rapport >= 3, f"contour de la corbeille éteinte, thème {theme} : {rapport:.2f}:1"
+    corbeille = page.locator("#album-detail button[data-delp]")
+    expect(corbeille).to_have_count(1)
+    corbeille.click()
+    expect(page.locator("#planche-modal")).to_be_visible(timeout=5000)
+    expect(page.locator("#pm-raison")).to_contain_text("qui décide")
+    expect(page.locator("#pm-ok")).to_have_text("Envoyer la demande")
+    expect(page.locator("#pm-motif-wrap")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator("#planche-modal")).to_be_hidden()
 
     # ── « Seul » : au fonds, ou par demande ──────────────────────────────────────────────
     _ouvrir_suppression(page, "Seul")
@@ -1023,7 +986,7 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
                                   "gardée au fonds")
     expect(texte).to_contain_text("Un administrateur peut la rendre.")
     expect(texte).to_contain_text("Vous ne le verrez plus")
-    expect(page.locator("#sp-def-texte")).to_contain_text("ce n'est pas vous qui avez créé cette copie")
+    expect(page.locator("#sp-def-texte")).to_contain_text("C'est un administrateur qui décide")
     envoyees = []
     page.on("request", lambda r: envoyees.append(r) if r.url.endswith("/api/demandes")
             and r.method == "POST" else None)

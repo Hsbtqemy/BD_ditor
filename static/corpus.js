@@ -1501,7 +1501,7 @@ function renderDetail() {
         <tr data-ligne-planche="${p.id}"${p.nom_fichier_origine ? ` title="${esc("Fichier : " + p.nom_fichier_origine)}"` : ""}>
           <td class="c-chk"><input type="checkbox" aria-label="Sélectionner ${esc(plancheNomLu(p))}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
           <td class="c-vig"><img class="pl-thumb" loading="lazy" src="/api/planches/${p.id}/miniature" data-repli="${esc(p.url_web || "")}" alt=""></td>
-          <td class="c-pl">${plancheNum(p)}${materielInfo(p)}</td>
+          <td class="c-pl">${plancheNum(p)}${materielInfo(p)}${pastillePlanche(p)}</td>
           <td class="c-act c-gestes">${boutonsOrdre(a, p)}${roleToggle(p)} ${lockToggle(p)} <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}${versAtelier}" title="Ouvrir dans l'Atelier" aria-label="Ouvrir ${esc(plancheNomLu(p))} dans l'Atelier">↗</a> ${repartir ? `<button class="icon-btn" type="button" data-repartir-planche="${p.id}" title="Repartir de zéro sur cette planche…" aria-label="Repartir de zéro sur ${esc(plancheNomLu(p))}…">↺</button> ` : ""}${corbeillePlanche(a, p, droits)}</td>
           <td data-l="Statut"><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
           <td class="c-num" data-l="Régions">${p.nb_regions} rég.</td>
@@ -1870,37 +1870,22 @@ function validLu(p) {
                    : `<span class="muted" aria-hidden="true">—</span><span class="sr-only">non validée</span>`;
 }
 
-/* COL-3, tranche 2 (décision B4) — une planche suit la règle du DOCUMENT, sans demande à
-   elle : on la supprime là où l'on pourrait supprimer l'album sans rien demander
-   (`destructible`). Ailleurs, à qui écrit dans l'album, la corbeille reste à sa place mais
-   ÉTEINTE, et dit à qui s'adresser — un bouton qui manquerait sans un mot ferait chercher
-   un droit. À qui ne fait que lire : rien. Les gestes suivent le NOM de la planche (Hugo,
-   2026-10-16) : la corbeille ne tombe plus hors du cadre, dernière d'un tableau qui défile.
-
-   Ce qu'elle dit se lit CONTRE elle, dans la ligne de sa planche — l'idiome de « Ce
-   projet » (« le message d'un geste se lit contre son contrôle ») : un toast, en bas à
-   droite, couvrait le bouton qu'on venait de toucher. Une seule parle à la fois. */
-const PLANCHE_A_DEMANDER = "Cette planche ne se supprime pas d'ici : d'autres y ont travaillé, "
-  + "ce n'est pas vous qui avez créé cette copie, ou c'est la dernière copie de son document. "
-  + "Adressez-vous à un administrateur de l'instance.";
-
+/* COL-3, tranche 3c (F5 ; Hugo, sur maquette, 2026-11-02 : « une fenêtre, comme l'album ») —
+   la corbeille d'une planche ouvre SON panneau : supprimer tout de suite, là où l'on
+   supprimerait l'album sans rien demander (`destructible`), ou DEMANDER au responsable du
+   projet — l'administrateur pour la dernière copie d'un document. Offerte à qui écrit dans
+   l'album ou peut l'effacer (`effacable`) ; à qui ne fait que lire : rien. Les gestes
+   suivent le NOM de la planche (Hugo, 2026-10-16). */
 function corbeillePlanche(a, p, droits) {
-  if (a.destructible) {
-    return `<button class="icon-btn danger" type="button" data-delp="${p.id}" title="Supprimer la planche"
-              aria-label="Supprimer ${esc(plancheNomLu(p))}">🗑</button>`;
-  }
-  if (!droits.ecrire) return "";
-  return `<button class="icon-btn corbeille-eteinte" type="button" data-delp-refus="${p.id}" aria-disabled="true" `
-    + `title="${esc(PLANCHE_A_DEMANDER)}" aria-label="Supprimer la planche : `
-    + `à demander à un administrateur" aria-describedby="pl-refus-msg-${p.id}">`
-    + `<span aria-hidden="true">🗑</span></button>`
-    + `<span class="col-msg pl-refus-msg muted small" id="pl-refus-msg-${p.id}" `
-    + `role="status" aria-live="polite"></span>`;
+  if (a.au_fonds || !(a.destructible || droits.ecrire || a.effacable)) return "";
+  return `<button class="icon-btn danger" type="button" data-delp="${p.id}" title="Supprimer la planche…"
+            aria-label="Supprimer ${esc(plancheNomLu(p))}…">🗑</button>`;
 }
 
-function direPlancheADemander(bouton) {
-  const ligne = $(`#pl-refus-msg-${bouton.dataset.delpRefus}`);
-  colMsg(ligne, PLANCHE_A_DEMANDER);
+/* La ligne d'une planche dit la demande d'effacement qui l'attend (F5). */
+function pastillePlanche(p) {
+  const texte = BDSuppression.pastillePlanche(p.demande, MOI.login);
+  return texte ? ` <span class="sp-pastille">${esc(texte)}</span>` : "";
 }
 
 /* ── « Sur les collections » : où l'album est rangé, et le geste qui le range ─────────────
@@ -2523,30 +2508,46 @@ async function ouvrirSuppression(a) {
 }
 
 /* Le chemin par lequel on efface sans demander (`BDEchelle.pouvoir`), lu dans ce que le
-   serveur a rendu : la portée totale, son bac à sable, la copie qu'on a créée et que
-   personne d'autre n'a touchée (`vue`, `GET /api/albums/{id}/travail-des-autres`), le
-   projet qu'on gère, les collections qu'on administre toutes. Pour le DIRE seulement. */
-function pouvoirSur(a, total, vue) {
+   serveur a rendu : la portée totale, son bac à sable, le projet qu'on gère, les
+   collections qu'on administre toutes. Pour le DIRE seulement. */
+function pouvoirSur(a, total) {
   const p = PROJETS.find((x) => x.id === a.projet_id) || null;
   return BDEchelle.pouvoir({
     total,
     bac: !!(p && p.bac_a_sable && p.bac_a_sable.mien),
-    createur: BDEchelle.createurIntact(vue, MOI.login),
     responsable: !!(p && p.gerable),
     proprietaire: BDBiblio.tientToutes(a, COLS.toutes),
   });
+}
+
+/* Les responsables du projet de l'album, tels que `GET /api/projets` les nomme à un membre :
+   à qui part une demande d'effacement (tranche 3c, F4). `undefined` quand l'écran ne les a
+   pas : la phrase dit alors « le responsable du projet », sans nommer. */
+function responsablesDe(a) {
+  const p = PROJETS.find((x) => x.id === a.projet_id) || null;
+  return p && Array.isArray(p.responsables) ? p.responsables : undefined;
+}
+
+/* Une phrase courte, et la règle en infobulle ⓘ (Hugo, sur maquette, 2026-11-02). */
+function avecRegle(texte, regle) {
+  return regle
+    ? `${esc(texte)} <span class="muted" title="${esc(regle)}" aria-hidden="true">ⓘ</span>`
+      + `<span class="sr-only"> — ${esc(regle)}</span>`
+    : esc(texte);
 }
 
 /* La carte « Supprimer définitivement » : ses mots, sa raison, « qui perd quoi » quand on
    efface sans demander un travail où d'autres ont travaillé — et, pour la dernière copie,
    le même tableau avant la demande. `vue` : ce que le serveur a compté, ou null. */
 function rendreDefinitif(a, total, vue) {
-  const pouvoir = vue || total ? pouvoirSur(a, total, vue) : null;
+  const pouvoir = vue || total ? pouvoirSur(a, total) : null;
   const d = BDSuppression.definitif({ destructible: a.destructible, demande: a.demande,
                                       moi: MOI.login, soeur: !!a.soeur,
-                                      derniere: !!a.derniere_copie, pouvoir });
+                                      derniere: !!a.derniere_copie, pouvoir,
+                                      responsables: responsablesDe(a) });
   SUPPR.definitif = d;
-  $("#sp-def-texte").textContent = d.texte;
+  $("#sp-def-texte").innerHTML = avecRegle(d.texte, d.regle);
+  $("#sp-motif-lecteur").textContent = `(obligatoire : ${d.lecteur || "le responsable"} le lira)`;
   const raison = $("#sp-def-raison");
   raison.textContent = d.raison || "";
   raison.hidden = !d.raison;
@@ -2588,7 +2589,7 @@ async function spDefinitif() {
   if (d.mode === "demande") {
     motif = $("#sp-motif").value.trim();
     if (!motif) {
-      spMsg("Dites pourquoi : c'est ce que l'administrateur lira pour décider.", true);
+      spMsg(`Dites pourquoi : c'est ce que ${d.lecteur || "le responsable"} lira pour décider.`, true);
       $("#sp-motif").focus();
       return;
     }
@@ -2614,7 +2615,8 @@ async function spDefinitif() {
   fermerSuppression();
   if (d.mode === "direct") state.checkedAlbums.delete(a.id);
   await loadAlbums();
-  toast(BDSuppression.apresDefinitif(a.titre, d.mode, !!a.soeur), "success");
+  toast(BDSuppression.apresDefinitif(a.titre, d.mode, !!a.soeur, responsablesDe(a),
+                                     !!a.derniere_copie), "success");
 }
 
 
@@ -2626,9 +2628,8 @@ async function spDefinitif() {
    `direct`) ; qui y a travaillé, par `…/travail-des-autres`. Les mots viennent de
    `lib/echelle.js`. UN acte au journal, non annulable : le panneau le dit avant.
 
-   Une PLANCHE n'a pas de demande à elle (décision B4, que le serveur tient pour « repartir »
-   comme pour « supprimer ») : sans le droit de le faire soi-même, le panneau le dit et
-   n'offre rien. */
+   Une PLANCHE se demande comme l'album depuis la tranche 3c (F5, `planche_id`) : la demande
+   part au responsable du projet, et la ligne de la planche dit « repartir demandé ». */
 const REP = { album: null, planche: null, cran: null, niveau: null, direct: false,
               apercus: new Map(), vue: null, total: false, jeton: 0 };
 
@@ -2710,10 +2711,14 @@ async function rendreRepartir(jeton, focus) {
   $("#rp-part-liste").innerHTML = part.length
     ? part.map((x) => `<li>${esc(x)}</li>`).join("")
     : `<li class="muted">Rien n'est posé au-dessus de ce cran.</li>`;
-  const pouvoir = REP.direct ? pouvoirSur(a, REP.total, REP.vue) : null;
-  const m = BDEchelle.panneauRepartir({ direct: REP.direct, pouvoir, planche: !!REP.planche,
-                                        attente: a.demande_repartir,
-                                        dateLue: BDSuppression.dateLue });
+  const pouvoir = REP.direct ? pouvoirSur(a, REP.total) : null;
+  const attente = REP.planche
+    ? (REP.planche.demande && REP.planche.demande.genre === BDSuppression.GENRE_REPARTIR
+        ? REP.planche.demande : null)
+    : a.demande_repartir;
+  const m = BDEchelle.panneauRepartir({ direct: REP.direct, pouvoir, attente,
+                                        dateLue: BDSuppression.dateLue,
+                                        responsables: responsablesDe(a) });
   REP.mode = m.mode;
   // « Qui perd quoi » : ce que d'autres y ont fait, AVANT d'effacer sans demander. Sur une
   // planche, le serveur ne compte le travail que de l'album entier : le titre le dit.
@@ -2726,7 +2731,7 @@ async function rendreRepartir(jeton, focus) {
       + "n'est pas comptée à part" };
   }
   $("#rp-perd").innerHTML = BDEchelle.htmlQuiPerdQuoi(perd);
-  $("#rp-raison").textContent = m.texte;
+  $("#rp-raison").innerHTML = avecRegle(m.texte, m.regle);
   const demande = m.mode === "demande";
   $("#rp-motif-wrap").hidden = !demande;
   $("#rp-certif-wrap").hidden = !demande;
@@ -2749,7 +2754,7 @@ async function rpValider() {
   if (REP.mode === "demande") {
     motif = $("#rp-motif").value.trim();
     if (!motif) {
-      rpMsg("Dites pourquoi : c'est ce que l'administrateur lira pour décider.", true);
+      rpMsg("Dites pourquoi : c'est ce que le responsable lira pour décider.", true);
       $("#rp-motif").focus();
       return;
     }
@@ -2765,7 +2770,8 @@ async function rpValider() {
       ? apiSend("POST", planche ? `/api/planches/${planche.id}/repartir`
                                 : `/api/albums/${a.id}/repartir`, { cran })
       : apiSend("POST", "/api/demandes", { genre: BDSuppression.GENRE_REPARTIR,
-                                           album_id: a.id, cran, motif, certifie: true }));
+                                           album_id: a.id, cran, motif, certifie: true,
+                                           ...(planche ? { planche_id: planche.id } : {}) }));
   } catch (e) {
     rpMsg(e.message, true);
     return;
@@ -2774,7 +2780,7 @@ async function rpValider() {
   const ou = planche ? `, ${plancheNomLu(planche).replace(/^la /, "")},` : "";
   toast(mode === "direct"
     ? `« ${a.titre} »${ou} repart ${BDEchelle.vers(cran)}. Un acte au journal ; il ne s'annule pas.`
-    : "Votre demande est partie à un administrateur. Rien n'est effacé d'ici là.", "success");
+    : BDSuppression.apresDefinitif(a.titre, "demande", false, responsablesDe(a), false), "success");
   await loadAlbums().catch(() => {});
 }
 
@@ -3051,14 +3057,110 @@ async function validateAllAlbum() {
   colMsg($("#detail-valider-msg"), `${n} planche${n > 1 ? "s" : ""} validée${n > 1 ? "s" : ""}.`);
 }
 
-async function deletePlanche(pid) {
-  if (!confirm("Supprimer cette planche et ses régions ? Irréversible.")) return;
+/* ── « Supprimer la planche… » (COL-3, tranche 3c, F5) ─────────────────────────────────
+   Le panneau d'une planche, sur le patron de « Supprimer définitivement » : ce que le geste
+   efface, qui en décide (court, la règle en infobulle), « qui perd quoi » à qui tient
+   l'espace — le serveur ne le compte que pour l'album entier, et le titre le dit —, puis
+   faire, ou demander avec motif et certification. */
+const SPL = { album: null, planche: null, d: null, jeton: 0 };
+
+function plMsg(texte, erreur) {
+  const el = $("#pm-msg");
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+async function ouvrirSupprPlanche(a, p) {
+  const jeton = ++SPL.jeton;
+  Object.assign(SPL, { album: a, planche: p, d: null });
+  const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+  const total = !!(moi && moi.acces && moi.acces.total);
+  if (SPL.jeton !== jeton) return;
+  const nom = plancheNomLu(p);
+  $("#pm-titre").textContent = `Supprimer ${nom.replace(/ \(.*\)$/, "")}`;
+  $("#pm-motif").value = "";
+  $("#pm-certif").checked = false;
+  $("#pm-certif-texte").textContent = BDSuppression.CERTIFICATION_PLANCHE.texte;
+  $("#pm-certif-libelle").textContent = BDSuppression.CERTIFICATION_PLANCHE.caseACocher;
+  $("#pm-perd").innerHTML = "";
+  plMsg("");
+  rendreSupprPlanche(total, null);
+  $("#planche-modal").hidden = false;
+  $("#pm-annuler").focus();
+  // « Qui perd quoi », à qui TIENT l'espace seulement : la route est bornée par
+  // `clause_repartir_directe`, et un 403 dit seulement qu'on n'en a pas le chemin.
+  if (a.destructible || a.effacable) {
+    const vue = await apiGet(`/api/albums/${a.id}/travail-des-autres`).catch(() => null);
+    if (SPL.jeton !== jeton) return;
+    if (vue) rendreSupprPlanche(total, vue);
+  }
+}
+
+function rendreSupprPlanche(total, vue) {
+  const a = SPL.album, p = SPL.planche;
+  const demande = p.demande && p.demande.genre === BDSuppression.GENRE_PLANCHE ? p.demande : null;
+  const d = BDSuppression.supprPlanche({
+    destructible: a.destructible, demande, moi: MOI.login, derniere: !!a.derniere_copie,
+    pouvoir: a.destructible || a.derniere_copie ? pouvoirSur(a, total) : null,
+    responsables: responsablesDe(a), nom: plancheNomLu(p), soeur: !!a.soeur });
+  SPL.d = d;
+  $("#pm-texte").textContent = d.texte;
+  $("#pm-raison").innerHTML = avecRegle(d.chemin, d.regle);
+  let perd = vue ? BDEchelle.quiPerdQuoi(vue.travail_des_autres, { geste: "supprimer",
+                                                                  dateLue: BDSuppression.dateLue })
+    : null;
+  if (perd) {
+    perd = { ...perd, titre: `${perd.titre} — sur tout l'album : la part de cette planche `
+      + "n'est pas comptée à part" };
+  }
+  $("#pm-perd").innerHTML = BDEchelle.htmlQuiPerdQuoi(perd);
+  const demander = d.mode === "demande";
+  $("#pm-motif-lecteur").textContent = `(obligatoire : ${d.lecteur || "le responsable"} le lira)`;
+  $("#pm-motif-wrap").hidden = !demander;
+  $("#pm-certif-wrap").hidden = !demander;
+  const ok = $("#pm-ok");
+  ok.hidden = !d.bouton;
+  ok.textContent = d.bouton;
+}
+
+function fermerSupprPlanche() {
+  SPL.jeton++;
+  SPL.album = null;
+  $("#planche-modal").hidden = true;
+}
+
+async function plValider() {
+  const a = SPL.album, p = SPL.planche, d = SPL.d, ok = $("#pm-ok");
+  if (!a || !d || ok.disabled) return;
+  let motif = "";
+  if (d.mode === "demande") {
+    motif = $("#pm-motif").value.trim();
+    if (!motif) {
+      plMsg(`Dites pourquoi : c'est ce que ${d.lecteur || "le responsable"} lira pour décider.`, true);
+      $("#pm-motif").focus();
+      return;
+    }
+    if (!$("#pm-certif").checked) {
+      plMsg(BDSuppression.CERTIFICATION_PLANCHE.manque, true);
+      $("#pm-certif").focus();
+      return;
+    }
+  }
   try {
-    await apiSend("DELETE", `/api/planches/${pid}`);
-    state.checkedPlanches.delete(pid);
-    await loadAlbums();          // les compteurs, et la fiche de l'album, rouverte
-    toast("Planche supprimée");
-  } catch (e) { toast("Suppression : " + e.message, "error"); }
+    await pendantEnvoi(ok, () => d.mode === "direct"
+      ? apiSend("DELETE", `/api/planches/${p.id}`)
+      : apiSend("POST", "/api/demandes", { genre: BDSuppression.GENRE_PLANCHE, album_id: a.id,
+                                           planche_id: p.id, motif, certifie: true }));
+  } catch (e) {
+    plMsg(e.message, true);
+    return;
+  }
+  fermerSupprPlanche();
+  if (d.mode === "direct") state.checkedPlanches.delete(p.id);
+  await loadAlbums().catch(() => {});      // les compteurs, et la fiche de l'album, rouverte
+  toast(d.mode === "direct" ? "Planche supprimée."
+    : BDSuppression.apresDefinitif(a.titre, "demande", false, responsablesDe(a),
+                                   !!a.derniere_copie), "success");
 }
 
 
@@ -4273,9 +4375,12 @@ function brancherFiche() {
     const role = t.closest("button[data-role]");
     if (role) { setRole(Number(role.dataset.role), role.dataset.to); return; }
     const delp = t.closest("button[data-delp]");
-    if (delp) { deletePlanche(Number(delp.dataset.delp)); return; }
-    const refus = t.closest("button[data-delp-refus]");
-    if (refus) { direPlancheADemander(refus); return; }
+    if (delp) {
+      const a = state.albums.find((x) => x.id === state.openId);
+      const p = state.planches.find((x) => x.id === Number(delp.dataset.delp));
+      if (a && p) ouvrirSupprPlanche(a, p);
+      return;
+    }
   });
   fiche.addEventListener("change", (e) => {
     const t = e.target;
@@ -4454,6 +4559,12 @@ function setup() {
   $("#repartir-modal").addEventListener("mousedown", (e) => {
     if (e.target.id === "repartir-modal") fermerRepartir();
   });
+  // COL-3, tranche 3c (F5) — « Supprimer la planche… », son panneau.
+  $("#pm-annuler").onclick = fermerSupprPlanche;
+  $("#pm-ok").onclick = plValider;
+  $("#planche-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "planche-modal") fermerSupprPlanche();
+  });
   $("#rt-annuler").onclick = fermerRetirer;
   $("#rt-ok").onclick = rtValider;
   $("#retirer-modal").addEventListener("mousedown", (e) => {
@@ -4464,6 +4575,9 @@ function setup() {
       { box: ".modal-box", labelledby: "rp-titre", onClose: fermerRepartir, retour: titreDeFiche });
     BDDialog.register($("#retirer-modal"),
       { box: ".modal-box", labelledby: "rt-titre", onClose: fermerRetirer, retour: titreDeFiche });
+    BDDialog.register($("#planche-modal"),
+      { box: ".modal-box", labelledby: "pm-titre", onClose: fermerSupprPlanche,
+        retour: titreDeFiche });
   }
   // COL-3 — on a changé de projet, par le sélecteur de la bande ou dans un autre onglet :
   // la liste est celle du nouveau, et ce qui était ouvert dans l'ancien se referme.

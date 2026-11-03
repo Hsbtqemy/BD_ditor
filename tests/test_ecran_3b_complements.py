@@ -3,7 +3,8 @@
 
 - « + Créer une collection » éteint dit au survol que seuls les responsables créent dans ce
   projet, EN LES NOMMANT : `responsables` dans `GET /api/projets`, au seul MEMBRE que le
-  réglage n'autorise pas — ni à qui crée, ni à qui ne voit le projet que par une collection ;
+  réglage n'autorise pas — depuis la tranche 3c (F4), à tout membre du projet : une demande
+  d'effacement part au responsable ; ni à qui ne voit le projet que par une collection ;
 - l'administrateur lit dans « À faire » qui ATTEND une demande consentie (« attend … »),
   pour un rejoindre comme pour en partir dans un projet : `attend`, dans `GET /api/demandes`
   (réservée à qui tient le fonds), les principaux qui tiennent toutes les collections de la
@@ -54,12 +55,14 @@ def test_le_membre_qui_ne_cree_pas_lit_les_noms_des_responsables(client, prise):
     assert _vue(client, MEMBRE, p)["responsables"] == ["Remi Responsable", "groupe pilotes"]
 
 
-def test_les_responsables_ne_se_nomment_qu_a_lui(client, prise):
+def test_les_responsables_ne_se_nomment_qu_aux_gens_du_projet(client, prise):
+    """Tranche 3c (F4) : une demande d'effacement part au responsable, et qui la dépose lit
+    son nom — tout membre du projet, le responsable compris. Pas une portée totale sans rôle,
+    ni qui ne voit le projet que par une collection."""
     p = prise["projet"]
     client.get("/api/moi", headers={**RESP, "Remote-Name": "Remi Responsable"})
-    # Qui crée (le responsable, l'administrateur) n'a pas de bouton éteint : rien.
-    for qui in (RESP, ADMIN):
-        assert "responsables" not in _vue(client, qui, p), qui
+    assert _vue(client, RESP, p)["responsables"] == ["Remi Responsable"]
+    assert "responsables" not in _vue(client, ADMIN, p)
     # Qui ne voit le projet que par une collection qu'il lit (il n'en est pas) : rien.
     # Depuis la tranche 3c (F2), seule une base retouchée porte un tel accès — posé en SQL.
     from test_projets import _sql
@@ -70,11 +73,12 @@ def test_les_responsables_ne_se_nomment_qu_a_lui(client, prise):
     assert v is not None and v["mon_role"] is None and "responsables" not in v
     # Qui ne voit pas le projet ne le reçoit pas du tout.
     assert _vue(client, PERSONNE, p) is None
-    # Le réglage ouvert, le membre crée : son bouton s'allume, les noms partent.
+    # Le réglage ouvert, le membre crée : son bouton s'allume, et il lit toujours les noms,
+    # pour une demande d'effacement.
     _ok(client.put(f"/api/projets/{p}/creation-de-collections", headers=RESP,
                    json={"membres": True}))
     v = _vue(client, MEMBRE, p)
-    assert v["collection_creable"] is True and "responsables" not in v
+    assert v["collection_creable"] is True and v["responsables"] == ["Remi Responsable"]
 
 
 def test_sans_responsable_la_liste_est_vide(client, prise):

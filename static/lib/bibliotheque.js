@@ -377,10 +377,12 @@
   }
 
   /* « Repartir de zéro… » s'offre à qui ÉCRIT dans l'album (écran de la 3b, à côté de
-     « Supprimer… », et ↺ sur chaque planche) ; le panneau dit ensuite, d'après le serveur,
-     si l'on repart soi-même ou si l'on demande. Jamais sur une copie gardée au fonds. */
+     « Supprimer… », et ↺ sur chaque planche) et, depuis la tranche 3c, à qui peut l'effacer
+     sans y écrire (`effacable` : le responsable, qui ne fait que LIRE les collections de son
+     projet, F1) ; le panneau dit ensuite, d'après le serveur, si l'on repart soi-même ou si
+     l'on demande. Jamais sur une copie gardée au fonds. */
   function offrirRepartir(album, ecrire) {
-    return !!(album && ecrire && !album.au_fonds);
+    return !!(album && (ecrire || album.effacable) && !album.au_fonds);
   }
 
   /* « Retirer du projet… » s'offre au RESPONSABLE du projet de l'album et à l'administrateur

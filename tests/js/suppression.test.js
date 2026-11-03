@@ -86,19 +86,25 @@ const DEMANDE = { id: 9, demandeur: "sam", demandeur_nom: "Sam Diallo",
                   date_creation: "2026-10-14 12:00:00" };
 
 const DEFINITIFS = [
-  ["le créateur seul efface", { destructible: true, demande: null, pouvoir: "createur" },
+  ["le propriétaire de toutes les collections efface",
+   { destructible: true, demande: null, pouvoir: "proprietaire" },
    "direct", "Supprimer définitivement", ["cette copie, ses images", "Irréversible"]],
   ["la portée totale efface partout", { destructible: true, demande: null, pouvoir: "admin" },
    "direct", "Supprimer définitivement", ["cette copie, ses images et le travail", "Irréversible"]],
   ["la portée totale efface même si une demande attend",
    { destructible: true, demande: DEMANDE, total: true },
    "direct", "Supprimer définitivement", ["Efface tout de suite cette copie"]],
-  ["sinon on demande", { destructible: false, demande: null, total: false },
-   "demande", "Envoyer la demande", ["la demande part à un administrateur",
-                                     "Rien n'est effacé d'ici là"]],
+  ["sinon on demande, au responsable du projet",
+   { destructible: false, demande: null, total: false, responsables: ["Paule Propriétaire"] },
+   "demande", "Envoyer la demande", ["La demande part à Paule Propriétaire, responsable du "
+                                     + "projet, qui décide.", "Rien n'est effacé d'ici là"]],
+  ["un projet sans responsable : la demande part à un administrateur",
+   { destructible: false, demande: null, responsables: [] },
+   "demande", "Envoyer la demande", ["La demande part à un administrateur, qui décide."]],
   ["une demande attend déjà : rien à envoyer, et on dit qui",
-   { destructible: false, demande: DEMANDE, total: false },
-   "attente", "", ["déjà demandée par Sam Diallo, le 14/10/2026", "un administrateur y répondra"]],
+   { destructible: false, demande: DEMANDE, total: false, responsables: ["Paule Propriétaire"] },
+   "attente", "", ["déjà demandée par Sam Diallo, le 14/10/2026",
+                   "Paule Propriétaire, responsable du projet, y répondra"]],
   ["une demande attend, sans nom rendu : on ne suppose rien",
    { destructible: false, demande: { id: 9, date_creation: "2026-10-14 12:00:00" } },
    "attente", "", ["Sa suppression est déjà demandée, le 14/10/2026"]],
@@ -472,7 +478,6 @@ test("effacer sans demander dit PAR QUEL CHEMIN, et jamais « vous l'avez créé
   const cas = [
     ["responsable", "Vous êtes responsable du projet : rien à demander."],
     ["proprietaire", "Vous tenez toutes ses collections : rien à demander."],
-    ["createur", "Vous avez créé cette copie, et personne d'autre n'y a travaillé : rien à demander."],
     ["admin", "Vous administrez l'instance : rien à demander."],
     ["bac", "C'est votre bac à sable : rien à demander."],
   ];
@@ -482,7 +487,8 @@ test("effacer sans demander dit PAR QUEL CHEMIN, et jamais « vous l'avez créé
     assert.equal(r.raison, raison, pouvoir);
     // La phrase d'avant disait au propriétaire et au responsable qu'ils l'avaient créée.
     assert.ok(!/l'avez créée/.test(r.texte), `${pouvoir} : ${r.texte}`);
-    if (pouvoir !== "createur") assert.ok(!/créé/.test(r.texte + r.raison), pouvoir);
+    assert.ok(!/créé/.test(r.texte + r.raison), pouvoir);
+    assert.equal(r.regle, require("../../static/lib/echelle.js").REGLE_EFFACER, pouvoir);
   }
   // Sans chemin connu, rien n'est supposé.
   assert.equal(S.definitif({ destructible: true, demande: null }).raison, "");
@@ -493,15 +499,18 @@ test("la DERNIÈRE copie se demande — et le panneau dit pourquoi à qui aurait
   assert.equal(r.mode, "demande");
   assert.equal(r.derniere, true);
   assert.equal(r.bouton, "Envoyer la demande");
-  for (const m of ["C'est la dernière copie de ce document", "sortir du fonds, images comprises",
-                   "Vous êtes responsable du projet, mais c'est un administrateur qui décide",
-                   "Rien n'est effacé d'ici là"]) {
-    assert.ok(r.texte.includes(m), `« ${m} » absent de : ${r.texte}`);
-  }
-  // Sans chemin (ni propriétaire, ni responsable, ni créateur seul) : la demande ordinaire.
-  const sans = S.definitif({ destructible: false, demande: null, derniere: true, pouvoir: null });
-  assert.notEqual(sans.derniere, true);
-  assert.ok(sans.texte.startsWith("D'autres s'en servent"), sans.texte);
+  // Les mots retenus sur maquette (Hugo, 2026-11-02).
+  assert.equal(r.texte, "C'est la dernière copie de ce document. Vous êtes responsable du projet, "
+    + "mais c'est un administrateur qui décide. Rien n'est effacé d'ici là.");
+  assert.equal(r.lecteur, "l'administrateur");
+  // Sans chemin : la même dernière copie, et l'administrateur, sans « vous êtes … ».
+  const sans = S.definitif({ destructible: false, demande: null, derniere: true, pouvoir: null,
+                             responsables: ["Paule Propriétaire"] });
+  assert.equal(sans.derniere, true);
+  assert.equal(sans.texte, "C'est la dernière copie de ce document. C'est un administrateur qui "
+    + "décide. Rien n'est effacé d'ici là.");
+  // La phrase d'avant la 3c a disparu.
+  assert.ok(!/D'autres s'en servent/.test(sans.texte));
   // Un chemin sans la dernière copie (un compte partagé, que la règle arrête) : la demande
   // ordinaire — jamais « dernière copie » d'un document qui en a d'autres.
   const pasDerniere = S.definitif({ destructible: false, demande: null, derniere: false,
@@ -511,10 +520,9 @@ test("la DERNIÈRE copie se demande — et le panneau dit pourquoi à qui aurait
   // Une demande qui attend l'emporte : rien ne se redépose.
   assert.equal(S.definitif({ destructible: false, demande: DEMANDE, derniere: true,
                              pouvoir: "responsable" }).mode, "attente");
-  // Une sœur dans un projet isolé : les images restent, la phrase ne dit pas « images comprises ».
-  const soeur = S.definitif({ destructible: false, demande: null, derniere: true,
-                              pouvoir: "proprietaire", soeur: true });
-  assert.ok(!soeur.texte.includes("images comprises"), soeur.texte);
+  // Une demande qui attend sur une dernière copie : un administrateur y répondra.
+  assert.ok(S.definitif({ destructible: false, demande: DEMANDE, derniere: true,
+                          responsables: ["Paule"] }).texte.includes("un administrateur y répondra"));
 });
 
 test("les trois genres de la 3b : leurs noms, leurs tranches, leurs réponses", () => {
@@ -555,4 +563,41 @@ test("ce que lit le demandeur d'une demande entre deux projets : le document, le
   assert.equal(S.quoiEnPartir(d), "En partir : « Le Voyageur », jusqu'aux annotations → « Base »");
   assert.ok(!/projet/.test(S.quoiEnPartir({ ...d, projet_nom: "Onomatopées" })),
             "jamais le projet qui tient le travail");
+});
+
+/* ── COL-3, tranche 3c (F5) — le panneau d'une planche ──────────────────────────────── */
+
+test("supprimer une planche : faire, demander au responsable, la dernière copie, attendre", () => {
+  const nom = "la planche 3 (i.003)";
+  const f = S.supprPlanche({ destructible: true, pouvoir: "responsable", nom });
+  assert.deepEqual([f.mode, f.bouton, f.chemin],
+                   ["direct", "Supprimer la planche 3", "Vous êtes responsable du projet : rien à demander."]);
+  assert.equal(f.texte, "Efface la planche 3 (i.003), son image et le travail posé dessus. Irréversible.");
+  const d = S.supprPlanche({ destructible: false, nom, responsables: ["Paule Prop"] });
+  assert.deepEqual([d.mode, d.bouton, d.lecteur], ["demande", "Envoyer la demande", "le responsable"]);
+  assert.equal(d.chemin, "La demande part à Paule Prop, responsable du projet, qui décide. "
+    + "Rien n'est effacé d'ici là.");
+  const der = S.supprPlanche({ destructible: false, nom, derniere: true, pouvoir: "responsable",
+                               responsables: ["Paule Prop"] });
+  assert.equal(der.lecteur, "l'administrateur");
+  assert.ok(der.chemin.startsWith("C'est la dernière copie de ce document. Vous êtes responsable "
+    + "du projet, mais c'est un administrateur qui décide."), der.chemin);
+  const att = S.supprPlanche({ destructible: false, nom, demande: DEMANDE, moi: "sam",
+                               responsables: ["Paule Prop"] });
+  assert.equal(att.mode, "attente");
+  assert.equal(att.bouton, "");
+  assert.ok(att.chemin.startsWith("Sa suppression est déjà demandée par vous, le 14/10/2026 : "
+    + "Paule Prop, responsable du projet, y répondra."), att.chemin);
+  // Une sœur emploie l'image : elle reste, et la phrase le dit.
+  assert.ok(S.supprPlanche({ destructible: true, nom, soeur: true }).texte
+    .includes("Son image reste"));
+});
+
+test("la pastille d'une planche dit la demande qui l'attend, et qui l'a déposée", () => {
+  assert.equal(S.pastillePlanche(null), "");
+  assert.equal(S.pastillePlanche({ genre: S.GENRE_PLANCHE }), "suppression demandée");
+  assert.equal(S.pastillePlanche({ genre: S.GENRE_REPARTIR, demandeur: "sam" }, "sam"),
+               "repartir demandé par vous");
+  assert.equal(S.pastillePlanche({ genre: S.GENRE_PLANCHE, demandeur: "sam",
+                                   demandeur_nom: "Sam Diallo" }), "suppression demandée par Sam Diallo");
 });

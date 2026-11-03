@@ -107,14 +107,16 @@ def _vue(conn, portee: autorisation.Portee, p: dict) -> dict:
                bac_a_sable=p.get("bac_a_sable_de") is not None)}
     if p.get("bac_a_sable_de") is not None:
         vue.update(_vue_du_bac(portee, p))
-    elif not vue["collection_creable"] and vue["mon_role"] == autorisation.MEMBRE:
-        # Écran de la 3b (Hugo, sur maquette, 2026-10-25) — « + Créer une collection » reste
-        # à sa place, ÉTEINT, et dit au survol que seuls les responsables en créent dans ce
-        # projet, EN LES NOMMANT. Les noms des RESPONSABLES, donc, au seul MEMBRE que le
-        # réglage n'autorise pas — celui qui lit le bouton éteint : ni à qui crée, ni à qui ne
-        # voit le projet que par une collection. Le nom lisible d'un login (le miroir
-        # `utilisateur`), le login sinon ; un groupe responsable par son nom. Rien d'autre :
-        # ni les membres, ni les rôles.
+    elif vue["mon_role"]:
+        # Les noms des RESPONSABLES, à qui EST du projet (membre ou responsable). Deux phrases
+        # les lisent : « + Créer une collection » éteint, qui dit au survol que seuls les
+        # responsables en créent (écran de la 3b, Hugo, 2026-10-25) ; et, depuis la tranche
+        # 3c (F4, mots tranchés sur maquette le 2026-11-02), « La demande part à <nom>,
+        # responsable du projet » — une demande d'effacement va au responsable, et qui la
+        # dépose doit savoir à qui. Ni à qui ne voit le projet que par une collection, ni à
+        # une portée totale sans rôle. Le nom lisible d'un login (le miroir `utilisateur`),
+        # le login sinon ; un groupe responsable par son nom. Rien d'autre : ni les membres,
+        # ni les rôles.
         vue["responsables"] = _noms_des_responsables(conn, p["id"])
     if gerable:
         vue["justification"] = p["justification"]

@@ -253,64 +253,89 @@
     manque: "Cochez la certification : la demande ne part pas sans elle.",
   };
 
+  /* ── À qui part une demande d'EFFACEMENT (COL-3, tranche 3c ; F3, F4, Hugo, 2026-10-26) ──
+     Au RESPONSABLE du projet de la copie ; à un administrateur seul pour la DERNIÈRE copie
+     d'un document (une suppression, Q5), et pour un projet sans responsable. `responsables`
+     : les noms que `GET /api/projets` rend à un membre du projet (`responsables`), une liste
+     vide pour un projet qui n'en a pas ; `undefined` quand l'écran ne les a pas — il dit
+     alors « le responsable du projet », sans nommer. `adminSeul` : la dernière copie. */
+  function destinataire(responsables, adminSeul) {
+    if (adminSeul || (Array.isArray(responsables) && !responsables.filter(Boolean).length)) {
+      return { qui: "un administrateur", pluriel: false, admin: true };
+    }
+    const l = Array.isArray(responsables) ? responsables.filter(Boolean) : [];
+    if (!l.length) return { qui: "le responsable du projet", pluriel: false, admin: false };
+    return { qui: `${et(l)}, ${l.length > 1 ? "responsables" : "responsable"} du projet`,
+             pluriel: l.length > 1, admin: false };
+  }
+
+  /* « La demande part à …, qui décide. » */
+  function partA(responsables, adminSeul) {
+    const d = destinataire(responsables, adminSeul);
+    const a = /^le /.test(d.qui) ? d.qui.replace(/^le /, "au ") : `à ${d.qui}`;
+    return `La demande part ${a}, ${d.pluriel ? "qui décident" : "qui décide"}.`;
+  }
+
+  /* « … y répondra. », sous une demande qui attend déjà. */
+  function repondraA(responsables, adminSeul) {
+    const d = destinataire(responsables, adminSeul);
+    return `${d.qui}${d.admin || !Array.isArray(responsables) ? "" : ","} ${d.pluriel ? "y répondront" : "y répondra"}`;
+  }
+
+  /* Qui lira le motif : l'étiquette du champ, et le message quand il manque. */
+  function lecteurDuMotif(responsables, adminSeul) {
+    return destinataire(responsables, adminSeul).admin ? "l'administrateur" : "le responsable";
+  }
+
+  /* La RÈGLE, en infobulle ⓘ à côté de la phrase courte (Hugo, sur maquette, 2026-11-02 :
+     « courts, la règle en infobulle »). Repartir de zéro ne connaît pas la dernière copie. */
+  const REGLE_EFFACER = "Sans demander : le responsable du projet, et qui tient toutes les "
+    + "collections de l'album. Pour la dernière copie d'un document, un administrateur seul.";
+  const REGLE_REPARTIR = "Sans demander : le responsable du projet, et qui tient toutes les "
+    + "collections de l'album.";
+
   /* Ce que dit le panneau « Repartir de zéro » après le choix du cran : faire tout de
-     suite, demander, ou attendre une demande déjà partie. Une PLANCHE n'a pas de demande à
-     elle (décision B4, que le serveur tient pour « repartir » comme pour « supprimer ») :
-     sans le droit de le faire soi-même, le panneau le dit et n'offre rien.
+     suite, demander, ou attendre une demande déjà partie — pour l'album entier comme pour
+     UNE planche, qui se demande aussi depuis la tranche 3c (F5).
      `direct` : la réponse du serveur ; `pouvoir` : la clé de `POUVOIRS` (ou null) ;
-     `attente` : la demande qui attend déjà sur la copie (`demande_repartir`), ou null.
-     Rend { mode: "direct" | "demande" | "attente" | "planche", texte }. */
-  function panneauRepartir({ direct, pouvoir, planche, attente, dateLue }) {
+     `attente` : la demande qui attend déjà (`demande_repartir` de l'album, ou la `demande`
+     d'une planche quand c'est un repartir), ou null ; `responsables` : cf. `destinataire`.
+     Rend { mode: "direct" | "demande" | "attente", texte, regle }. */
+  function panneauRepartir({ direct, pouvoir, attente, dateLue, responsables }) {
+    const regle = REGLE_REPARTIR;
     if (direct) {
-      return { mode: "direct",
+      return { mode: "direct", regle,
                texte: pouvoir && POUVOIRS[pouvoir] ? `${POUVOIRS[pouvoir]} : rien à demander.`
                  : "Rien à demander." };
     }
-    if (planche) {
-      return { mode: "planche",
-               texte: "D'autres se servent de cet album, ou ce n'est pas vous qui avez créé cette "
-                 + "copie : repartir de zéro sur une planche ne se demande pas. Demandez-le pour "
-                 + "l'album entier, ou adressez-vous à un administrateur de l'instance." };
-    }
     if (attente) {
       const quand = attente.date_creation && dateLue ? `, le ${dateLue(attente.date_creation)}` : "";
-      return { mode: "attente",
-               texte: `Repartir ${DEPUIS[attente.cran] || "de zéro"} est déjà demandé${quand} : un `
-                 + "administrateur y répondra. Rien n'est effacé d'ici là." };
+      return { mode: "attente", regle,
+               texte: `Repartir ${DEPUIS[attente.cran] || "de zéro"} est déjà demandé${quand} : `
+                 + `${repondraA(responsables, false)}. Rien n'est effacé d'ici là.` };
     }
-    return { mode: "demande",
-             texte: "D'autres y ont travaillé, ou ce n'est pas vous qui avez créé cette copie : "
-               + "la demande part à un administrateur, qui décide. Rien n'est effacé d'ici là." };
+    return { mode: "demande", regle,
+             texte: `${partA(responsables, false)} Rien n'est effacé d'ici là.` };
   }
 
-  /* ── Pourquoi l'on efface sans demander : une phrase par chemin (Hugo, 2026-10-21) ────── */
+  /* ── Pourquoi l'on efface sans demander : une phrase par chemin (Hugo, 2026-10-21 ;
+     la tranche 3c, F3, a retiré le chemin du créateur) ─────────────────────────────── */
 
   const POUVOIRS = {
     admin: "Vous administrez l'instance",
     bac: "C'est votre bac à sable",
-    createur: "Vous avez créé cette copie, et personne d'autre n'y a travaillé",
     responsable: "Vous êtes responsable du projet",
     proprietaire: "Vous tenez toutes ses collections",
   };
 
-  /* Le CRÉATEUR d'une copie que personne d'autre n'a touchée, lu dans ce que rend
-     `GET /api/albums/{id}/travail-des-autres` : `creee_par` est l'appelant, et personne
-     d'autre n'y a laissé de geste — le travail RECOPIÉ d'une autre copie compris, que la
-     règle compte comme les autres. */
-  function createurIntact(vue, moi) {
-    return !!(vue && moi && vue.creee_par === moi
-              && !(vue.travail_des_autres || []).length && !vue.travail_recopie);
-  }
-
   /* LE CHEMIN par lequel on efface sans demander, pour le dire — jamais pour décider : le
      serveur a déjà dit si on le peut. Le plus précis d'abord : la portée totale, son bac à
-     sable, le créateur seul, le responsable du projet, le propriétaire de toutes les
-     collections de l'album (qu'on ADMINISTRE toutes, et qui ne vit nulle part ailleurs).
-     `null` : aucun — l'écran ne suppose rien. */
-  function pouvoir({ total, bac, createur, responsable, proprietaire }) {
+     sable, le responsable du projet, le propriétaire de toutes les collections de l'album
+     (qu'on ADMINISTRE toutes, et qui ne vit nulle part ailleurs). `null` : aucun — l'écran
+     ne suppose rien. */
+  function pouvoir({ total, bac, responsable, proprietaire }) {
     if (total) return "admin";
     if (bac) return "bac";
-    if (createur) return "createur";
     if (responsable) return "responsable";
     if (proprietaire) return "proprietaire";
     return null;
@@ -603,7 +628,7 @@
     htmlQuiPerdQuoi, htmlApercuDemande, htmlSourcesE7, nomCopieChoisie,
     rang, jusqua, vers, boutonRepartir, repartieDe, compte, lignesEchelle, sousLEchelle,
     apercuDemande, reponseCopie, cransRepartir, cranParDefaut, part, restent, panneauRepartir,
-    createurIntact, pouvoir, colonnesConcernees, quiPerdQuoi, nomCopie, detailCopie,
+    pouvoir, destinataire, partA, repondraA, lecteurDuMotif, REGLE_EFFACER, REGLE_REPARTIR, colonnesConcernees, quiPerdQuoi, nomCopie, detailCopie,
     copieParDefaut, accepterDepuis, texteEnPartir, attend, responsablesDesSources,
     puceRepartie, puceCopie,
     ligneRetrait, proprietairesQuiVerront, texteRetirer, raisonCreerEteint, et,

@@ -215,6 +215,7 @@
           <p id="sp-def-raison" class="small muted" hidden></p>
           <div id="sp-perd"></div>
           <label id="sp-motif-wrap" hidden>Pourquoi ce document n'a pas sa place ici
+            <span class="muted small" id="sp-motif-lecteur">(obligatoire : le responsable le lira)</span>
             <textarea id="sp-motif" rows="2"></textarea></label>
           <div id="sp-certif-wrap" class="sp-certif" hidden>
             <p id="sp-certif-texte" class="sp-texte"></p>
@@ -250,7 +251,7 @@
       <div id="rp-perd"></div>
       <p id="rp-raison" class="sp-texte small"></p>
       <label id="rp-motif-wrap" hidden>Pourquoi
-        <span class="muted small">(obligatoire : l'administrateur le lira)</span>
+        <span class="muted small">(obligatoire : le responsable le lira)</span>
         <textarea id="rp-motif" rows="2"></textarea></label>
       <div id="rp-certif-wrap" class="sp-certif" hidden>
         <p id="rp-certif-texte" class="sp-texte"></p>
@@ -262,6 +263,33 @@
         <span id="rp-irreversible" class="irreversible small" hidden>Ne s'annule pas, Ctrl+Z compris.</span>
       </div>
       <p id="rp-msg" class="muted small" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <!-- COL-3, tranche 3c (F5 ; Hugo, sur maquette, 2026-11-02) — « Supprimer la planche… »,
+       ouvert par la corbeille d'une planche : ce que le geste efface, qui en décide, « qui
+       perd quoi » à qui tient l'espace, puis faire — ou demander, motif et certification. -->
+  <div id="planche-modal" hidden>
+    <div class="modal-box sp-boite rp-boite">
+      <div class="sp-tete">
+        <h3 id="pm-titre">Supprimer la planche</h3>
+        <button id="pm-annuler" class="ghost small" type="button">Annuler</button>
+      </div>
+      <p id="pm-texte" class="sp-texte"></p>
+      <div id="pm-perd"></div>
+      <p id="pm-raison" class="sp-texte small"></p>
+      <label id="pm-motif-wrap" hidden>Pourquoi
+        <span class="muted small" id="pm-motif-lecteur">(obligatoire : le responsable le lira)</span>
+        <textarea id="pm-motif" rows="2"></textarea></label>
+      <div id="pm-certif-wrap" class="sp-certif" hidden>
+        <p id="pm-certif-texte" class="sp-texte"></p>
+        <label class="sp-certif-case"><input type="checkbox" id="pm-certif"
+          aria-describedby="pm-certif-texte"> <span id="pm-certif-libelle"></span></label>
+      </div>
+      <div class="rp-actions">
+        <button id="pm-ok" class="danger" type="button" hidden></button>
+      </div>
+      <p id="pm-msg" class="muted small" role="status" aria-live="polite"></p>
     </div>
   </div>
 
