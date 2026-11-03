@@ -79,9 +79,10 @@ pour chaque planche son statut, sa validation et son avancement de relecture.
 
 **L'album se crée dans la Bibliothèque, et seulement là.** C'est elle qui vous demande dans
 quelle collection il entre — donc dans quel projet —, et l'application retient qui l'a
-créé, quand et dans quel projet : c'est son **origine**, et c'est elle qui vous laissera le
-supprimer vous-même si vous l'avez importé par erreur (§4, *Bibliothèque*, « Supprimer un
-album »).
+créé, quand et dans quel projet : c'est son **origine**. Elle ne suffit plus à le supprimer
+vous-même (depuis le 2026-10-26) : un album importé par erreur s'efface tout de suite si vous
+tenez l'espace — responsable du projet, propriétaire de toutes ses collections —, et se
+demande sinon (§4, *Bibliothèque*, « Supprimer un album »).
 L'Atelier ne crée plus d'albums : le bouton `＋` de sa barre latérale a disparu.
 
 **Les images d'un album entrent EN LOT depuis sa fiche, dans la Bibliothèque**, si vous
@@ -557,11 +558,13 @@ albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit o
   la phrase le dit (*Pas rangé : … La demande est partie.*), et la case reste **indéterminée**,
   marquée *demandé*, jusqu'à la réponse. **Décocher, c'est supprimer de la collection**
   (ci-dessous).
-- **Supprimer un album : deux réponses.** Dans la fiche d'un album où vous **écrivez** — et
-  sur sa ligne, dans l'onglet *Albums* d'une collection —, le bouton *Supprimer…* ouvre un
-  panneau qui propose deux gestes, et dit pour chacun ce qui arrivera avant que vous le
+- **Supprimer un album : deux réponses.** Dans la fiche d'un album où vous **écrivez**, ou
+  que vous pouvez effacer sans y écrire (le responsable du projet, qui lit toutes ses
+  collections), *Supprimer…*, sous *Autres gestes*, ouvre un panneau — une carte du catalogue
+  ne porte aucun geste. Il propose deux gestes, et dit pour chacun ce qui arrivera avant que vous le
   choisissiez — le panneau est la confirmation. *Annuler* le referme sans rien faire. Si
-  vous ne faites que **lire** un album, il n'a pas de bouton *Supprimer…*.
+  vous ne faites que **lire** un album sans pouvoir l'effacer, il n'a pas de bouton
+  *Supprimer…*.
   - **Supprimer de la collection** ne détruit rien. Il y a un bouton par collection de
     l'album où vous écrivez, *Supprimer de « … »*, et le texte au-dessus dit ce que devient
     le travail : il **reste** dans les autres collections que vous lisez, nommées ; ou il

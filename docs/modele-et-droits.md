@@ -255,40 +255,30 @@ pas écrit non plus — il n'y a personne à nommer.
   collection ne peut pas reprendre l'album lui-même : le responsable du projet le demande à
   un administrateur, depuis la fiche du projet (cf. plus bas, *se reprend*).
 - **Supprimer définitivement** efface les images et tout le travail fait dessus, pour tout
-  le monde, dans tous les projets. Il efface **sans rien demander** à quatre conditions,
-  toutes nécessaires : écrire dans **toutes** les collections de l'album ; l'avoir
-  **importé** vous-même — plus exactement, avoir créé cette copie de travail, ce qui
-  revient au même tant qu'un document n'en a qu'une ; ne pas travailler sous un **compte
-  partagé** (un login commun à
-  plusieurs personnes : « celui qui l'a importé » n'y désigne personne) ; et que **personne
-  d'autre n'y ait travaillé**. C'est le cas de l'import par erreur, qui n'a à attendre
-  personne. Hors de ce cas, la suppression **se demande** à un administrateur.
+  le monde, dans tous les projets. Il efface **sans rien demander** par qui **tient
+  l'espace** (ci-dessous) ; tout autre le **demande**, même s'il a importé l'album.
 
-**Depuis le 2026-10-21, trois personnes effacent sans rien demander** (décision de Hugo, qui
-remplace les quatre conditions ci-dessus comme seul chemin). Effacer, c'est supprimer
-définitivement une copie, ou la ramener à un cran (*repartir de zéro*, plus bas) :
+**Depuis le 2026-10-26 (tranche 3c), qui TIENT l'espace efface sans rien demander** —
+décision de Hugo, qui remplace les « trois personnes » du 2026-10-21 et, avant elles, les
+quatre conditions du 2026-10-16. Effacer, c'est supprimer définitivement une copie, la
+ramener à un cran (*repartir de zéro*, plus bas) ou en supprimer une planche :
 
-1. **qui a créé la copie**, si personne d'autre n'y a travaillé — les quatre conditions
-   ci-dessus, inchangées ;
-2. **le propriétaire de toutes les collections** où vit l'album, même si d'autres y ont
+1. **le propriétaire de toutes les collections** où vit l'album, même si d'autres y ont
    travaillé ;
-3. **le responsable du projet** de l'album, aux mêmes conditions que le propriétaire.
+2. **le responsable du projet** de l'album, sur un album rangé dans les collections de son
+   projet — il les lit toutes, et efface un album qu'il ne fait que lire ;
+3. **un administrateur**.
 
-Jamais sous un compte partagé, hors de son bac à sable. Et la **dernière copie** d'un
-document — quand aucune autre copie ne le porte hors d'un bac à sable ou du jeu — ne se
-**supprime** que **sur demande** à un administrateur, gardien du fonds : la supprimer fait
-sortir le document du fonds commun, images comprises. Une seule exception : la copie
-d'**origine** — celle de l'import —, que son créateur supprime seul si personne d'autre n'y
-a **jamais** fait le moindre geste (l'import par erreur, qui n'a à attendre personne) : pour
-la dernière copie, un geste défait, effacé depuis ou emporté par une remise à zéro compte
-encore (décision du 2026-10-25). Ailleurs, on lit ce qui existe encore. Dans un bac à sable
-ou le jeu, la règle de la dernière copie n'a pas cours : rien n'en sort vers le fonds
-commun. Une copie prise du fonds ne
-profite pas de l'exception, même devenue la dernière (décision du 2026-10-25 : prendre une
-copie vierge, effacer l'originale travaillée par d'autres, puis effacer la copie vierge,
-aurait fait sortir le document du fonds sans administrateur). **Repartir de zéro** n'a pas
-cette règle : les images restent, et la dernière copie se ramène à un cran par les trois
-personnes ci-dessus.
+**Qui a créé la copie n'a plus de chemin à lui** : l'importateur, comme tout annotateur, le
+**demande** — au responsable du projet, ou à un administrateur quand le projet n'en a pas.
+L'import par erreur se demande donc aussi. Jamais sous un compte partagé, hors de son bac à
+sable. Et la **dernière copie** d'un document — quand aucune autre copie ne le porte hors
+d'un bac à sable ou du jeu —, ni elle ni l'une de ses planches ne se **supprime** que **sur
+demande** à un administrateur, gardien du fonds : la supprimer fait sortir le document du
+fonds commun, images comprises. Une copie gardée au fonds reste à l'administrateur. Dans un
+bac à sable, son propriétaire et quiconque y écrit effacent tout, et rien ne s'y demande.
+**Repartir de zéro** n'a pas la règle de la dernière copie : les images restent, et la
+dernière copie se ramène à un cran par les trois personnes ci-dessus.
 
 La protection du travail des membres passe ainsi de la **permission** à la **visibilité** :
 avant d'effacer, qui peut le faire lit ce que d'autres y ont fait — qui, combien de gestes de
@@ -296,10 +286,8 @@ chaque sorte, la date du dernier ; le travail recopié d'une autre copie y est c
 nom, ses auteurs pouvant être d'un autre projet —, et le journal garde qui a effacé. Le nom
 d'une personne qui travaille dans l'album par une collection que vous ne lisez pas s'y lit
 aussi : c'est voulu, sans quoi vous effaceriez son travail sans savoir qu'il existe ; la
-collection, elle, n'est jamais nommée. Le
-responsable atteint un album comme tout le monde : il doit y écrire quelque part, dans sa
-collection de base le plus souvent ; un album qui ne vit que dans des collections qu'il ne
-lit pas lui reste hors de portée.
+collection, elle, n'est jamais nommée. Le responsable atteint un album comme tout le monde,
+par ce qu'il lit — et il lit toutes les collections de son projet.
 
 **Retirer du projet** est le geste du responsable — et de l'administrateur — sur la
 composition : l'album quitte **toutes** les collections du projet, quels qu'en soient les
@@ -312,7 +300,7 @@ au moment du retrait : un propriétaire nommé ensuite ne lit pas les anciens. R
 demandes de repartir de zéro qui attendaient sur l'album ; celles de le supprimer restent, et
 l'administrateur en décide au fonds. Pas dans un bac à sable, où rien ne part au fonds.
 
-**« Personne d'autre n'y a travaillé »** se lit dans le journal de l'instance, sur ce qui
+**Ce que d'autres y ont fait** — ce que l'on lit avant d'effacer ; jusqu'au 2026-10-26, la règle exigeait que ce soit rien — se lit dans le journal de l'instance, sur ce qui
 existe encore. Compte comme travail tout geste d'une autre personne sur l'album : dessiner
 ou modifier une case ou une bulle, transcrire, annoter (note, tags), poser un locuteur, une
 présence ou un attribut de case, corriger la grammaire, valider une planche, ajouter ou
@@ -324,22 +312,24 @@ du 2026-10-22 : déplacer une page n'est pas y travailler) ; **repartir de zéro
 ou le **retirer du projet** (décision du 2026-10-25 : l'un efface, l'autre range) ; déposer
 une demande. Le travail recopié d'une autre copie compte comme celui de ses auteurs, tant
 qu'il vit sur la copie : une couche effacée par une remise à zéro ne compte plus. Un geste dont l'auteur n'est pas écrit compte comme celui
-d'un autre : on ne sait pas que c'est vous. Et un album d'avant le fonds, dont
-l'importateur n'est pas écrit, **se demande toujours** — seul un administrateur le détruit.
+d'un autre : on ne sait pas que c'est vous.
 
-**Une demande dit pourquoi, et se certifie.** On la dépose depuis un album où l'on écrit, par
-*Supprimer…* puis *Supprimer définitivement*. Le motif est obligatoire — c'est ce que
-l'administrateur lira pour décider. Et une case l'est aussi : supprimer définitivement
+**Une demande dit pourquoi, et se certifie.** On la dépose depuis un album où l'on écrit, ou dont
+on gère le projet, par *Supprimer…* puis *Supprimer définitivement*. Elle part au
+**responsable du projet** de la copie — à un administrateur pour la dernière copie d'un
+document, une copie gardée au fonds ou un projet sans responsable (depuis le 2026-10-26) ;
+l'écran dit à qui. Le motif est obligatoire — c'est ce que lira qui décide. Et une case l'est aussi : supprimer définitivement
 détruit tout ce qui a été posé sur les planches — découpage, transcription, annotations,
 métadonnées —, que d'autres utilisent peut-être dans le projet ou dans ses collections ; on
 certifie que ces données ne sont pas importantes, et la date de cette certification est
 gardée. La même suppression ne se demande pas deux fois tant qu'elle attend, et ne se demande
 pas quand on peut la faire soi-même : les deux refus le disent.
 
-**L'administrateur répond** *Détruire* — l'album, ses images et son travail disparaissent —
-ou *Garder* : rien n'est effacé, la demande est close, et l'on peut la redéposer ;
+**Qui la reçoit répond** — le responsable du projet dans *À répondre*, dans la
+Bibliothèque ; l'administrateur, toujours en recours, dans *À faire* — *Détruire* : l'album,
+ses images et son travail disparaissent ; ou *Garder* : rien n'est effacé, la demande est close, et l'on peut la redéposer ;
 l'administrateur verra alors qu'elle a déjà été refusée. *Garder* répond à une demande : il
-ne protège pas l'album de qui l'a importé, si les quatre conditions tiennent toujours. Une
+ne protège pas l'album de qui tient l'espace, qui l'efface toujours sans rien demander. Une
 demande ne se retire pas. Il n'y a pas de messagerie : la demande est un état, qui se lit
 sur la ligne de l'album et dans l'Administration.
 
@@ -612,8 +602,7 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 | **Fusionner un tag, ou renommer ou supprimer un tag encore posé** — tag local à la collection ; retirer ou fusionner seulement s'il n'est posé que dans des albums où l'on écrit | — | — | ✅ | ✅ |
 | … un tag **global** | — | — | — | ✅ |
 | **Supprimer un album de la collection** — même la dernière : il est alors gardé au fonds | — | ✅ | ✅ | ✅ |
-| **Effacer** sans rien demander — supprimer définitivement un album ou une planche, ou repartir de zéro — en l'ayant créé, si personne d'autre n'y a travaillé et qu'on écrit dans *toutes* ses collections (§2, *Le fonds*) | — | ✅ | ✅ | ✅ |
-| … même si d'autres y ont travaillé, en possédant *toutes* ses collections — sauf supprimer la dernière copie d'un document, qui se demande (depuis le 2026-10-21 ; repartir de zéro s'y fait) | — | — | ✅ | ✅ |
+| **Effacer** sans rien demander — supprimer définitivement un album ou une planche, ou repartir de zéro —, même si d'autres y ont travaillé, en possédant *toutes* ses collections — sauf supprimer la dernière copie d'un document, ou l'une de ses planches, qui se demande ; repartir de zéro s'y fait (depuis le 2026-10-26 : l'avoir créé ne suffit plus, §2, *Le fonds*) | — | — | ✅ | ✅ |
 | Lire, avant d'effacer, ce que d'autres ont fait sur l'album (qui, combien de gestes, quand) | — | si l'on peut effacer | si l'on peut effacer | ✅ |
 | **Demander** la suppression définitive d'un album, ou de repartir de zéro, motif et certification à l'appui | — | ✅ | ✅ | — (il la fait) |
 | **Rejoindre** le travail d'une autre collection du projet (cocher dans « Sur les collections ») sans rien demander — à condition de posséder *chacune* des collections où il vit ; sinon le demander | — | demander | ✅ (les siennes) | ✅ |
@@ -692,7 +681,7 @@ Un projet (§2) a deux **rôles**, et l'instance deux **pouvoirs** qui ne se con
 | Lire le nom du projet, en haut de chaque page | ✅ | ✅ | ✅ |
 | **Créer une collection** dans le projet (depuis le 2026-10-21) | si le projet l'ouvre à ses membres | ✅ | ✅ |
 | **Régler** si les membres créent des collections | — | ✅ | ✅ |
-| **Effacer** sans rien demander un album du projet — supprimer définitivement, repartir de zéro — sauf supprimer la dernière copie d'un document (§2, *Le fonds*) | — | ✅ (s'il y écrit quelque part) | ✅ |
+| **Effacer** sans rien demander un album du projet — supprimer définitivement, une planche comprise, repartir de zéro — sauf supprimer la dernière copie d'un document ou l'une de ses planches (§2, *Le fonds*) | — | ✅ (il lit toutes les collections du projet) | ✅ |
 | **Retirer du projet** un album : il quitte toutes les collections du projet, gardé au fonds avec son travail | — | ✅ | ✅ |
 | **Consentir** à ce qu'un autre projet parte du travail de celui-ci, et choisir la copie — parmi celles qu'on lit | — | ✅ | ✅ |
 | Lire ou annoter la **collection de base** du projet | selon le choix du projet (écriture, lecture, ou rien) | ✅ (propriétaire) | ✅ |
@@ -1258,9 +1247,11 @@ existence : cela revient aux administrateurs de l'instance (§3), et la fiche du
 vous le dit. Sa suppression, vous pouvez la **demander**, depuis la même fiche.
 
 **J'ai importé un album par erreur. Comment l'effacer ?**
-Dans la Bibliothèque, *Supprimer…* dans la fiche de l'album, puis *Supprimer définitivement* : si vous
-l'avez importé vous-même et que personne d'autre n'y a travaillé, il est effacé tout de
-suite. Sinon, la même réponse envoie une demande à un administrateur (§2, *Le fonds*).
+Dans la Bibliothèque, *Supprimer…* dans la fiche de l'album, puis *Supprimer définitivement* : l'avoir
+importé ne suffit plus à l'effacer vous-même (depuis le 2026-10-26). La réponse dit le chemin :
+effacé tout de suite si vous tenez l'espace — propriétaire de toutes ses collections,
+responsable du projet, administrateur —, sinon une demande, qui part au responsable du
+projet, ou à un administrateur pour la dernière copie d'un document (§2, *Le fonds*).
 
 **J'ai supprimé un album de ma collection. Est-il perdu ?**
 Non. S'il vit dans d'autres collections, il y reste entier. Si c'était sa dernière, il est
