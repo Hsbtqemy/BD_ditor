@@ -33,7 +33,7 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
-| **Bibliothèque** | `/corpus` | une **liste** et une **fiche** : à gauche les collections du **projet** où vous travaillez — la case d'une collection filtre les albums, son nom ouvre sa fiche — puis ses albums ; à droite la fiche ouverte. Créer et décrire les albums et les collections, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, **importer les planches d'un album en lot**, lancer les traitements par lot, suivre l'avancement planche par planche |
+| **Bibliothèque** | `/corpus` | un **catalogue** : à gauche les collections du **projet** où vous travaillez — la case d'une collection filtre les albums, son nom l'ouvre —, au centre ses albums et leurs couvertures, à droite la fiche de l'album ouvert. Créer et décrire les albums et les collections, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, **importer les planches d'un album en lot**, lancer les traitements par lot, suivre l'avancement planche par planche |
 | **Atelier** | `/` | tout ce qui se fait sur une planche : ajouter une image à l'album affiché, corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
 | **Annotation** | `/annotation` | poser les **relevés** d'une grille sur une planche, case par case : désigner des mots ou une zone, choisir l'entrée, douter, marquer *terminée*, relire la planche dans la Synthèse |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
@@ -172,9 +172,9 @@ le prend parmi les notices du fonds, et quiconque écrit dans une collection peu
 album que le projet a déjà (§4, *Bibliothèque*, « Prendre un document »).
 
 ### Étape 2 — Décrire l'album
-**Bibliothèque · fiche de l'album, puis `✎ Modifier l'album`**
+**Bibliothèque · fiche de l'album, puis `✎ Modifier`**
 
-La fiche s'ouvre à droite quand on choisit l'album dans la liste. *✎ Modifier l'album* ouvre
+La fiche s'ouvre à droite quand on choisit l'album dans le catalogue. *✎ Modifier* ouvre
 le formulaire où se saisissent la **paternité** (contributions : un nom, un rôle —
 scénariste, dessinateur, coloriste…), les champs d'**édition** (date, éditeur, lieu, ISBN,
 format), la **source de numérisation** (l'appareil et les conditions du scan) et **où
@@ -473,44 +473,62 @@ n'entre dans aucun : pour aider quelqu'un, il se fait inviter. Aucun bouton n'ef
 
 ### Bibliothèque (`/corpus`)
 
-L'inventaire et le poste de commande, en **une liste et une fiche** côte à côte.
+L'inventaire et le poste de commande, en **un catalogue** : les collections à gauche, les
+albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit où vous êtes —
+*Bibliothèque › Collection › Album › Copie* — et chaque maillon y ramène.
 
-- **La liste, à gauche.** En tête, le bloc *Collections* : les collections du projet que
-  vous lisez, la collection de base d'abord, puis par nom ou *Récentes d'abord*. **La case**
-  d'une collection **filtre** les albums sur les siens — c'est un calque posé sur le corpus :
-  une collection cochée ouvre sa fiche sur ses albums, deux cochées ouvrent leur
-  **comparaison** (albums, planches, validées, et ce qu'elles ont en commun), et *Dans l'une* /
-  *Dans toutes* choisit l'union ou l'intersection ; *Tout ce que vous lisez* défait le calque.
-  **Le nom** d'une collection **ouvre sa fiche**, sans rien filtrer. Dessous, les albums du
-  projet — ceux que vous lisez —, chacun nommant ses collections, et un champ pour chercher
-  par titre, série ou auteur. *+ Créer une collection*, sous la liste des collections, ouvre son champ au geste — à qui le
-  projet le permet (ci-dessous, *Collections*) ; pour un membre qu'il ne le permet pas, le
-  bouton reste à sa place, **éteint**, et dit au survol (et au clavier, quand on l'active) que
-  *seuls les responsables créent des collections* dans ce projet, en les nommant ; qui n'est
-  pas du projet ne le voit pas. Le compte
-  ne dit le total du projet qu'à un administrateur : pour les autres, c'est *… albums que
-  vous lisez*. Sous une largeur de téléphone, la liste et la fiche se montrent l'une après
-  l'autre, et *← Liste* ramène à la liste.
-- **La fiche d'une collection** dit vos droits **en actes** — *lire*, *annoter et
-  organiser*, *exporter*, *décider qui entre*, chacun coché ou barré — et a **quatre
-  onglets** : *Albums* (ses albums, et dans quelles autres collections ils sont aussi
-  rangés), *Qui entre*, *Description* (lue d'abord ; *Modifier* ouvre le formulaire) et
-  *Diffusion et dépôt* (le régime, puis les exports et ShareDocs). Tous s'ouvrent à tous :
-  ce que vous ne pouvez pas faire, le bloc concerné le dit — *Exporter : droit manquant*.
-  *Supprimer la collection…* est à part, en bas de *Description*. L'adresse de la page dit
-  la fiche et l'onglet ouverts : un lien les rouvre.
-- **La fiche d'un album** s'ouvre à la place de celle de la collection, avec *← la
-  collection* pour y revenir ; elle dit où l'album est **rangé**, et ce que vous pouvez y
-  faire vaut pour l'album entier : il suffit d'écrire dans **une** de ses collections, quelle
-  que soit celle par laquelle vous l'avez ouvert.
+- **Le rail, à gauche.** *Tout ce que vous lisez* montre tous les albums du projet. Dessous, le
+  bloc *Collections* : les collections du projet que vous lisez, la collection de base d'abord,
+  puis par nom ou par date (*A → Z* change l'ordre). Chacune dit votre niveau : *propriétaire*,
+  *écriture*, *lecture*, ou *lecture · par le projet* quand vous la lisez parce que vous êtes
+  responsable du projet. *Les miennes*, *Où j'écris* et *Tout* la filtrent ; sur *Tout*, elles se
+  rangent en *Les vôtres*, *Où vous écrivez* et *Où vous lisez*. Un administrateur, qui les lit
+  toutes, n'a ni filtre ni sections. **La case** d'une collection **filtre** les albums sur les
+  siens — c'est un calque posé sur le corpus : deux cochées ouvrent leur **comparaison** (albums,
+  planches, validées, et ce qu'elles ont en commun), et *Dans l'une* / *Dans toutes* choisit
+  l'union ou l'intersection. **Le nom** d'une collection **l'ouvre**, sans rien filtrer.
+  *+ Créer une collection*, sous la liste, ouvre son champ au geste — à qui le projet le permet
+  (ci-dessous, *Collections*) ; pour un membre qu'il ne le permet pas, le bouton reste à sa
+  place, **éteint**, et dit au survol (et au clavier, quand on l'active) que *seuls les
+  responsables créent des collections* dans ce projet, en les nommant ; qui n'est pas du projet
+  ne le voit pas.
+- **Le catalogue, au centre.** Les albums s'ouvrent en **grille**, avec leurs couvertures ; *☰
+  Liste* montre plutôt un tableau, et votre poste retient ce choix. La **couverture** est la
+  première planche marquée paratexte, sinon la première planche ; un album sans planche montre
+  son titre. Il n'y a rien à choisir : marquer une planche *paratexte* suffit. Deux marques disent
+  ce que vous pouvez : **lecture** quand vous n'écrivez pas dans l'album, **à vous** quand vous
+  l'avez importé ou que vous en avez fait la copie. Le tableau ajoute *Vit dans*, toutes les
+  collections que vous lisez, celle que vous regardez en gras. Un champ cherche par titre, série
+  ou auteur. Le compte ne dit le total du projet qu'à un administrateur : pour les autres, c'est
+  *… albums que vous lisez*.
+- **Une copie est repliée sous son original** : une pile et *▸ 1 copie*, qui se déplie. Elle
+  s'appelle *Votre copie* ou *Copie de …* ; si vous ne faites que la lire, *Copie de travail*.
+  Quand l'original est hors de ce que vous regardez mais que vous le lisez, il reste là, grisé,
+  *hors de cette collection*. Si vous ne le lisez pas, la copie est seule, et rien ne dit où il
+  vit.
+- **Une collection ouverte** dit vos droits **en actes** — *lire*, *annoter et organiser*,
+  *exporter*, *décider qui entre*, chacun coché ou barré — et a **quatre onglets** : *Albums*, qui
+  est son catalogue, *Qui entre*, *Description* (lue d'abord ; *Modifier* ouvre le formulaire) et
+  *Diffusion et dépôt* (le régime, puis les exports et ShareDocs). Tous s'ouvrent à tous : ce que
+  vous ne pouvez pas faire, le bloc concerné le dit — *Exporter : droit manquant*. *Supprimer la
+  collection…* est à part, en bas de *Description*. L'adresse de la page dit ce qui est ouvert :
+  un lien le rouvre.
+- **La fiche d'un album** s'ouvre **à droite du catalogue**, qui se resserre sans disparaître :
+  vous gardez la grille sous les yeux, et *Fermer ✕* vous ramène à la carte de l'album. Elle dit
+  où l'album est **rangé**, et ce que vous pouvez y faire vaut pour l'album entier : il suffit
+  d'écrire dans **une** de ses collections, quelle que soit celle par laquelle vous l'avez ouvert.
+  *Ce document* liste l'original et ses copies que vous lisez. *✎ Modifier* et *✔ Tout valider*
+  sont à portée de main ; *Repartir de zéro…*, *Retirer du projet…* et *Supprimer…* sous *Autres
+  gestes*.
+- **À l'étroit**, la fiche d'un album prend la place du catalogue, et sous une largeur de
+  téléphone une liste *Collection* remplace le rail, que *Collections…* rouvre.
 
 - **Le projet, en haut de la page.** La bande du haut porte le mot *Projet* et le nom de
   celui où vous travaillez ; si vous en voyez plusieurs, c'est une liste déroulante, et
   vous y **choisissez**. Le choix est retenu par votre navigateur : il vous suit d'une page
   à l'autre et d'un onglet à l'autre, pas d'un poste à l'autre, et un lien que vous envoyez
-  ne le porte pas. **Dans la Bibliothèque, il borne la liste des collections** : une ligne
-  au-dessus du bloc *📚 Collections* dit *Dans le projet « … »*, la liste est celle de ce
-  projet, et *+ Créer* y crée. Ouvrir un lien vers une collection d'un autre projet vous y
+  ne le porte pas. **Dans la Bibliothèque, il borne la liste des collections** : la liste
+  est celle de ce projet, et *+ Créer* y crée. Ouvrir un lien vers une collection d'un autre projet vous y
   fait basculer. Un projet où rien ne vous est ouvert le dit — *Aucune collection ouverte
   pour vous dans le projet « … »* —, ce qui n'est pas avoir tout perdu : changez de projet.
   **La liste des albums le suit aussi**, et donc les lots ; la Recherche et l'Exploration
@@ -528,7 +546,7 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   sont proposées, un album ne se rangeant pas d'un projet à l'autre.* Ce qu'est un projet,
   et ce qu'il n'ouvre pas : [`modele-et-droits.md`](modele-et-droits.md) §2.
 - **Albums** : créer (*+ Nouvel album*, en haut de la page), éditer les métadonnées (*✎
-  Modifier l'album*, dans sa fiche), supprimer (ci-dessous). La fiche porte la description,
+  Modifier*, dans sa fiche), supprimer (ci-dessous). La fiche porte la description,
   les contributions, les champs d'édition, la source de numérisation et *Sur les
   collections* : une case par collection du projet de l'album que vous lisez, cochée là où
   il est rangé. Seules les cases des collections où vous **écrivez** s'offrent ; les autres
@@ -1149,8 +1167,7 @@ son propriétaire le remet à neuf ou vous fait sortir ; la ligne disait de qui 
 
 **Une collection que je lisais n'est plus dans la Bibliothèque.**
 Elle est probablement d'un autre **projet** que celui choisi en haut de la page : la liste
-des collections suit le projet. Changez-le dans la liste déroulante *Projet* — la ligne
-*Dans le projet « … »*, au-dessus des collections, dit lequel est affiché. Rien ne vous a
+des collections suit le projet. Changez-le dans la liste déroulante *Projet*. Rien ne vous a
 été retiré : la Recherche et l'Exploration, qui ne suivent pas le projet, la lisent encore.
 
 **J'ai supprimé un album de ma collection : il a disparu de la Bibliothèque.**
