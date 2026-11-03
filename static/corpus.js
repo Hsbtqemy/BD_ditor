@@ -3605,13 +3605,6 @@ function majARepondreVide() {
   if (v) v.hidden = !!((P3A.eff || []).length || (P3A.e7 || []).length);
 }
 
-/* Ce que dit une ligne de demande d'effacement : quoi, en mots. */
-function quoiEffacement(d) {
-  return `« ${d.titre || ""} »`
-    + (d.planche_numero != null ? `, planche ${d.planche_numero}` : "")
-    + (d.genre === BDSuppression.GENRE_REPARTIR && d.cran ? `, revenir ${BDEchelle.vers(d.cran)}` : "");
-}
-
 function rendreEffacements() {
   const zone = $("#bi-eff-zone");
   if (!zone) return;
@@ -3624,30 +3617,9 @@ function rendreEffacements() {
   }
   zone.innerHTML = `<section id="bi-eff-bloc" class="recues recues-eff" aria-labelledby="bi-eff-titre">
     <h4 id="bi-eff-titre" tabindex="-1">Demandes d'effacement · ${l.length}</h4>
-    ${l.map((d) => {
-      const g = BDSuppression.genreDemande(d);
-      const autres = (d.travail_des_autres || []).length;
-      const perd = BDEchelle.quiPerdQuoi(d.travail_des_autres, {
-        geste: d.genre === BDSuppression.GENRE_REPARTIR ? "repartir" : "supprimer", cran: d.cran,
-        dateLue: BDSuppression.dateLue });
-      const qui = d.demandeur_nom || d.demandeur || "";
-      const eteinte = !d.repondable;
-      return `<div class="recue af-ligne af-genre-${esc(g.classe)}${eteinte ? " eteinte" : ""}" data-eff="${d.id}">
-        <p class="eff-quoi"><span class="af-genre-nom">${esc(g.libelle)}</span> · <b>${esc(quoiEffacement(d))}</b></p>
-        <p class="muted small">Demandée${qui ? ` par ${esc(qui)}` : ""} le ${esc(BDSuppression.dateLue(d.date_creation))}${autres
-          ? ` · ${pluriel(autres, "personne")} y ${autres > 1 ? "ont" : "a"} travaillé` : ""}${d.certifie_le
-          ? ` · certifiée sans importance` : ""}</p>
-        ${d.motif ? `<p class="recue-motif small">${esc(d.motif)}</p>` : ""}
-        ${BDEchelle.htmlQuiPerdQuoi(perd)}
-        ${eteinte
-          ? `<p class="muted small eff-admin">${d.derniere_copie ? "Dernière copie : un administrateur répond."
-              : "Un administrateur répond."}</p>`
-          : `<span class="bi-boutons">
-              <button type="button" class="danger small" data-eff-accepter="${d.id}">${esc(g.accepter)}</button>
-              <button type="button" class="ghost small" data-eff-refuser="${d.id}">${esc(g.refuser)}</button>
-            </span>`}
-      </div>`;
-    }).join("")}
+    ${l.map((d) => BDEchelle.htmlDemandeEffacement(d, {
+      genre: BDSuppression.genreDemande(d), dateLue: BDSuppression.dateLue,
+      attrs: { accepter: "data-eff-accepter", refuser: "data-eff-refuser" } })).join("")}
     <p id="bi-eff-msg" class="col-msg muted small${msg && msg.erreur ? " erreur" : ""}" role="status" aria-live="polite">${msg ? esc(msg.texte) : ""}</p>
   </section>`;
   majARepondreVide();
@@ -3664,7 +3636,7 @@ async function repondreEffacement(id, accepter, bouton) {
     rendreEffacements();
     return;
   }
-  const quoi = quoiEffacement(d);
+  const quoi = BDEchelle.quoiEffacement(d);
   P3A.effMsg = { erreur: false, texte: accepter
     ? (d.genre === BDSuppression.GENRE_REPARTIR ? `Fait : ${quoi}. La demande est close.`
       : `Fait : ${quoi} est supprimé${d.planche_numero != null ? "e" : ""}. La demande est close.`)

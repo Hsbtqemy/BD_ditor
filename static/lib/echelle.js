@@ -636,12 +636,51 @@
     return { id, nom: nomCopie(c, a) };
   }
 
+
+  /* ── Une demande d'EFFACEMENT, telle que le responsable la lit (COL-3, tranche 3c ; Hugo,
+     sur maquette, 2026-11-02) — un quatrième fragment que les deux écrans dessinent pareil :
+     « À répondre » dans la Bibliothèque, et la tête de la fiche du projet dans
+     l'Administration. Le genre en tête, dans sa couleur ; quoi ; qui l'a demandée et quand,
+     combien de personnes y ont travaillé ; le motif ; « qui perd quoi » DÉPLIÉ ; puis les
+     deux réponses, ou, quand on ne peut pas répondre, qui le fera. `genre` :
+     `BDSuppression.genreDemande(d)` ; `attrs` : les attributs des deux boutons, propres à
+     chaque écran ; `dateLue` : `BDSuppression.dateLue`. */
+  function quoiEffacement(d) {
+    return `« ${d.titre || ""} »`
+      + (d.planche_numero != null ? `, planche ${d.planche_numero}` : "")
+      + (d.genre === "repartir" && d.cran ? `, revenir ${vers(d.cran)}` : "");
+  }
+
+  function htmlDemandeEffacement(d, { genre, attrs, dateLue }) {
+    const autres = (d.travail_des_autres || []).length;
+    const perd = quiPerdQuoi(d.travail_des_autres, {
+      geste: d.genre === "repartir" ? "repartir" : "supprimer", cran: d.cran, dateLue });
+    const qui = d.demandeur_nom || d.demandeur || "";
+    const eteinte = !d.repondable;
+    const quand = dateLue ? dateLue(d.date_creation) : d.date_creation;
+    return `<div class="recue af-ligne af-genre-${esc(genre.classe)}${eteinte ? " eteinte" : ""}" data-eff="${d.id}">
+      <p class="eff-quoi"><span class="af-genre-nom">${esc(genre.libelle)}</span> · <b>${esc(quoiEffacement(d))}</b></p>
+      <p class="muted small">Demandée${qui ? ` par ${esc(qui)}` : ""} le ${esc(quand)}${autres
+        ? ` · ${nf(autres)} personne${autres > 1 ? "s y ont" : " y a"} travaillé` : ""}${d.certifie_le
+        ? " · certifiée sans importance" : ""}</p>
+      ${d.motif ? `<p class="recue-motif small">${esc(d.motif)}</p>` : ""}
+      ${htmlQuiPerdQuoi(perd)}
+      ${eteinte
+        ? `<p class="muted small eff-admin">${d.derniere_copie ? "Dernière copie : un administrateur répond."
+            : "Un administrateur répond."}</p>`
+        : `<span class="bi-boutons">
+            <button type="button" class="danger small" ${attrs.accepter}="${d.id}">${esc(genre.accepter)}</button>
+            <button type="button" class="ghost small" ${attrs.refuser}="${d.id}">${esc(genre.refuser)}</button>
+          </span>`}
+    </div>`;
+  }
+
   return {
     CRANS, VALEURS, CRANS_DE_REPARTIR, POUVOIRS, COLONNES, CERTIFICATION_REPARTIR, AIDE_GESTES,
     htmlQuiPerdQuoi, htmlApercuDemande, htmlSourcesE7, nomCopieChoisie,
     rang, jusqua, vers, boutonRepartir, repartieDe, compte, lignesEchelle, sousLEchelle,
     apercuDemande, reponseCopie, cransRepartir, cranParDefaut, part, restent, panneauRepartir,
-    reponseCopieVers, pouvoir, destinataire, partA, repondraA, lecteurDuMotif, REGLE_EFFACER, REGLE_REPARTIR, colonnesConcernees, quiPerdQuoi, nomCopie, detailCopie,
+    reponseCopieVers, quoiEffacement, htmlDemandeEffacement, pouvoir, destinataire, partA, repondraA, lecteurDuMotif, REGLE_EFFACER, REGLE_REPARTIR, colonnesConcernees, quiPerdQuoi, nomCopie, detailCopie,
     copieParDefaut, accepterDepuis, texteEnPartir, attend, responsablesDesSources,
     puceRepartie, puceCopie,
     ligneRetrait, proprietairesQuiVerront, texteRetirer, raisonCreerEteint, et,

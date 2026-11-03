@@ -668,6 +668,30 @@ def test_a_repondre_les_demandes_d_effacement_au_responsable(page, decor):
     expect(page.locator("#bi-accueil-titre")).to_be_visible()
 
 
+def test_a_repondre_dans_la_fiche_du_projet_de_l_administration(page, decor):
+    """Les mêmes demandes d'effacement, en tête de la fiche du projet dans l'Administration,
+    avec ⚑ sur la ligne du projet (Hugo, sur maquette, 2026-11-02)."""
+    d = decor
+    with _client(d["base"], _comme("noe")) as c:
+        _ok(c.post("/api/demandes", json={"genre": "repartir", "album_id": d["albums"]["Pirates"],
+                                          "cran": "images", "motif": "Découpé de travers.",
+                                          "certifie": True}), 201)
+    reponses = _requetes(page, "/reponse")
+    _ouvrir(page, d, "paule", f"/administration?vue=projets&projet={d['projet']}")
+    ligne = page.locator(f'#pj-objets [data-pj="{d["projet"]}"]')
+    expect(ligne.locator(".pj-alerte-eff")).to_have_text("⚑ 1 demande d'effacement", timeout=5000)
+    zone = page.locator("#pj-eff-zone")
+    expect(zone.locator("h4")).to_have_text("Demandes d'effacement · 1")
+    rep = zone.locator(".af-genre-repartir")
+    expect(rep).to_contain_text("« Pirates », revenir aux images seules")
+    expect(rep).to_contain_text("Demandée par Noe Stagiaire")
+    rep.locator("[data-pj-eff-refuser]").click()
+    expect(page.locator("#pj-eff-msg, #pj-msg").first).to_contain_text("Gardé : « Pirates »",
+                                                                        timeout=5000)
+    expect(ligne.locator(".pj-alerte-eff")).to_have_count(0)
+    assert [json.loads(x) for (_, _, x) in reponses] == [{"reponse": "refusee"}]
+
+
 # =========================================================================== #
 # Supprimer et retirer
 # =========================================================================== #

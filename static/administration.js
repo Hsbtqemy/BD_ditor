@@ -1017,6 +1017,9 @@ const PJ = {
   // liste porte leur ⚑, la fiche les montre en tête.
   e7: new Map(),         // projet → demandes reçues
   e7Choix: new Map(),    // demande → copie source cochée
+  // COL-3, tranche 3c — les demandes d'EFFACEMENT qui vont au responsable de chaque projet
+  // qu'on règle (`GET /api/projets/{id}/demandes-d-effacement`) : la même tête de fiche.
+  eff: new Map(),        // projet → demandes d'effacement
   albums: null,          // `GET /api/albums`, pour nommer une copie par ses collections
 };
 
@@ -1121,6 +1124,7 @@ async function pjCharger() {
   $("#pj-creer-ouvrir").hidden = !PJ.decide || PJ.axe === "bacs";
   pjRendre();
   pjChargerE7();
+  pjChargerEff();
 }
 
 /* COL-3, tranche 3b (E7 ; écran tranché par Hugo le 2026-10-25) — « Le responsable source
@@ -1141,6 +1145,68 @@ async function pjChargerE7() {
   if (PJ.axe !== "projets") return;
   pjRendreListe();
   pjE7Redessiner();
+}
+
+/* COL-3, tranche 3c (Q9 ; Hugo, sur maquette, 2026-11-02) — « À répondre » dans
+   l'Administration : en tête de la fiche du projet, les MÊMES deux blocs que la
+   Bibliothèque — les demandes d'effacement, puis celles d'en partir —, et ⚑ n sur la ligne
+   du projet. Une ligne se dessine comme là-bas (`BDEchelle.htmlDemandeEffacement`). Lues
+   pour chaque projet qu'on règle, non bloquantes ; un compte partagé n'en reçoit aucune
+   (403), une lecture ratée ne compte rien. */
+async function pjChargerEff() {
+  const projets = PJ.projets.filter((p) => !p.bac_a_sable);
+  const lus = await Promise.all(projets.map((p) =>
+    apiGet(`/api/projets/${p.id}/demandes-d-effacement`).then((l) => [p.id, l])
+      .catch(() => [p.id, []])));
+  PJ.eff = new Map(lus.filter(([, l]) => Array.isArray(l) && l.length));
+  if (PJ.axe !== "projets") return;
+  pjRendreListe();
+  pjEffRedessiner();
+}
+
+function pjEffRedessiner(focus) {
+  const zone = $("#pj-eff-zone"), p = pjProjet();
+  if (!zone || !p) return;
+  zone.innerHTML = pjEff(p);
+  zone.hidden = !zone.innerHTML;
+  if (focus) {
+    const el = zone.querySelector(focus);
+    if (el) el.focus();
+  }
+}
+
+function pjEff(p) {
+  const l = PJ.eff.get(p.id) || [];
+  if (!l.length) return "";
+  return `<h4 id="pj-eff-titre" tabindex="-1">Demandes d'effacement · ${l.length}</h4>
+    ${l.map((d) => BDEchelle.htmlDemandeEffacement(d, {
+      genre: BDSuppression.genreDemande(d), dateLue: BDSuppression.dateLue,
+      attrs: { accepter: "data-pj-eff-accepter", refuser: "data-pj-eff-refuser" } })).join("")}
+    ${pjLigneDeGeste("eff", "p")}`;
+}
+
+async function pjRepondreEff(id, accepter, bouton) {
+  const p = pjProjet();
+  const d = p && (PJ.eff.get(p.id) || []).find((x) => x.id === id);
+  if (!d) return;
+  try {
+    await pendantEnvoi(bouton, () => apiSend("POST", `/api/demandes/${id}/reponse`,
+      { reponse: accepter ? BDSuppression.ACCEPTER : BDSuppression.REFUSER }));
+  } catch (e) { pjMsg($("#pj-eff-msg"), e.message || "Échec", true); return; }
+  const reste = (PJ.eff.get(p.id) || []).filter((x) => x.id !== id);
+  if (reste.length) PJ.eff.set(p.id, reste); else PJ.eff.delete(p.id);
+  pjRendreListe();
+  pjEffRedessiner();
+  const quoi = BDEchelle.quoiEffacement(d);
+  const texte = accepter
+    ? (d.genre === BDSuppression.GENRE_REPARTIR ? `Fait : ${quoi}. La demande est close.`
+      : `Fait : ${quoi} est supprimé${d.planche_numero != null ? "e" : ""}. La demande est close.`)
+    : `Gardé : ${quoi}. La demande est close, et peut être redéposée.`;
+  pjMsg($("#pj-eff-msg") || $("#pj-msg"), texte);
+  const t = $("#pj-eff-titre") || $("#pj-fiche-titre");
+  if (t) t.focus();
+  // L'administrateur lit aussi ces demandes dans « À faire » : elles s'y relisent.
+  if (FD.lu) fdCharger();
 }
 
 function pjE7Redessiner(focus) {
@@ -1378,11 +1444,14 @@ function pjRendreListe() {
       const alerte = pjAlerte(p);
       // COL-3, écran de la 3b (E7) — ⚑ sur la ligne : des demandes d'en partir attendent.
       const e7 = (PJ.e7.get(p.id) || []).length;
+      // COL-3, tranche 3c — et des demandes d'effacement auxquelles on peut répondre.
+      const eff = (PJ.eff.get(p.id) || []).filter((d) => d.repondable).length;
       return `<li><button type="button" class="lf-objet pj-objet" data-pj="${p.id}"`
         + `${p.id === PJ.sel && !PJ.creer ? ' aria-current="true"' : ""}>`
         + `<span class="lf-nom pj-nom">${esc(p.nom)}</span>`
         + `<span class="lf-etat pj-etat">${esc(pjPluriel(p.nb_collections, "collection"))}</span>`
         + (alerte ? `<span class="lf-detail pj-alerte">⚠ ${esc(alerte)}</span>` : "")
+        + (eff ? `<span class="lf-detail pj-alerte pj-alerte-eff">⚑ ${esc(pjPluriel(eff, "demande"))} d'effacement</span>` : "")
         + (e7 ? `<span class="lf-detail pj-alerte pj-alerte-e7">⚑ ${esc(pjPluriel(e7, "demande"))} d'en partir</span>` : "")
         + `</button></li>`;
     }).join("")
@@ -1852,6 +1921,7 @@ function pjRendreFiche() {
       <h3 id="pj-fiche-titre" tabindex="-1">${esc(p.nom)}</h3>
       <p class="pj-sous">${pjSous(p)}</p>
     </div>
+    <div class="pj-section pj-eff recues recues-eff" id="pj-eff-zone" ${pjEff(p) ? "" : "hidden"}>${pjEff(p)}</div>
     <div class="pj-section pj-e7 recues recues-e7" id="pj-e7-zone" ${pjE7(p) ? "" : "hidden"}>${pjE7(p)}</div>
     ${p.description ? `<p class="pj-description">${esc(p.description)}</p>` : ""}
     ${justification}
@@ -2137,6 +2207,8 @@ function pjDemarrer() {
     } else if (b.dataset.pjRendreOk) pjRendreCopie(Number(b.dataset.pjRendreOk));
     else if (b.dataset.pjE7Accepter) pjRepondreE7(Number(b.dataset.pjE7Accepter), true, b);
     else if (b.dataset.pjE7Refuser) pjRepondreE7(Number(b.dataset.pjE7Refuser), false, b);
+    else if (b.dataset.pjEffAccepter) pjRepondreEff(Number(b.dataset.pjEffAccepter), true, b);
+    else if (b.dataset.pjEffRefuser) pjRepondreEff(Number(b.dataset.pjEffRefuser), false, b);
   });
   // Une radio de « Ce que la base ouvre aux membres » : rien ne s'applique, la phrase et
   // « Appliquer » paraissent sous elles. Celles du formulaire de création ne font rien ici.
