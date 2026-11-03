@@ -150,7 +150,8 @@
      Une rangée sous la bande, sur toutes les surfaces, quand le projet courant est un bac
      à sable : le nom (et l'aide en infobulle), la date, au propriétaire le compte des
      planches importées, puis les gestes — « Inviter… (n) » et « Remettre à neuf… » au
-     propriétaire, « Quitter… » à l'invité. Rien pour « Par où commencer » avant le lot 4.
+     propriétaire, « Quitter… » à l'invité. « Par où commencer » (UX-6) n'est pas d'ici :
+     `static/wizard.js` le pose en tête des gestes, dans son bac à sable.
 
      `projet` : sa ligne de `GET /api/projets` ; `vue` : `GET /api/bac-a-sable` (le sien
      seulement, null sinon). `null` hors d'un bac à sable. */

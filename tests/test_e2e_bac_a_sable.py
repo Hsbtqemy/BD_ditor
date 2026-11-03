@@ -375,7 +375,8 @@ def test_la_ligne_du_proprietaire_sur_les_cinq_surfaces(page, jeu):
         expect(ligne.locator("#bac-inviter")).to_have_text("Inviter… (1)")
         expect(ligne.locator("#bac-remettre")).to_have_text("Remettre à neuf…")
         expect(ligne.locator("#bac-quitter")).to_have_count(0)
-        expect(ligne.locator("text=Par où commencer")).to_have_count(0)
+        # UX-6 : « Par où commencer » est le premier geste de la ligne, dans son bac à sable.
+        expect(ligne.locator(".bac-gestes > button").first).to_have_text("Par où commencer")
         assert "chaque lundi à 4 h" in ligne.locator(".bac-nom").get_attribute("title")
         # Le bandeau « Aucune collection » n'y paraît pas — il existe, masqué.
         expect(page.locator("#portee-vide")).to_be_hidden()

@@ -148,9 +148,9 @@
       phrase: "Ces deux pages portent sur le vrai corpus : votre bac à sable n'y paraît pas." },
     { k: "exporter", titre: "Exporter", ou: "Bibliothèque, Atelier", surface: "/corpus",
       album: true, dite: true,
-      // À trancher par Hugo : la phrase de la maquette promettait des sorties qu'un bac à
-      // sable refuse (le jeu de production est en part serveur) ; celle-ci ne promet rien
-      // du bac à sable.
+      // La phrase de la maquette promettait des sorties qu'un bac à sable refuse (le jeu de
+      // production est en part serveur) ; celle-ci ne promet rien du bac à sable (Hugo,
+      // 2026-11-03).
       phrase: "Ailleurs que dans un bac à sable, une collection sort en fiche, en "
         + "enregistrements et en manifeste IIIF, et un album en JSON, CSV ou TEI." },
   ];
@@ -379,7 +379,7 @@
 
   /* Le bac à sable courant, s'il est LE SIEN : `{ id, efface_le }`, `null` sinon. Le wizard
      vit dans le bac à sable de chacun ; chez un autre, où l'on est invité, il ne s'ouvre pas
-     (à trancher par Hugo). */
+     (Hugo, 2026-11-03). */
   function bacASoi(projet) {
     const b = projet && projet.bac_a_sable;
     if (!b || !b.mien || !Number.isInteger(projet.id)) return null;
@@ -389,8 +389,8 @@
   /* L'album s'ouvre SEUL au chargement d'une page (décision E du 2026-11-02) : dans son
      propre bac à sable, sous une identité, tant que l'album n'a pas été vu — un parcours
      choisi, ou « Ne plus afficher » coché. Fermer sans cocher ne vaut pas renoncement :
-     l'album revient au chargement suivant (le contrat écrit le 2026-08-27, à confirmer
-     par Hugo sur l'écran codé). */
+     l'album revient au chargement suivant (le contrat écrit le 2026-08-27, confirmé par
+     Hugo le 2026-11-03), sur les six surfaces. */
   function ouvreSeul(login, projet, souvenir) {
     if (!login || !bacASoi(projet)) return false;
     return !normaliser(souvenir).album_vu;

@@ -659,6 +659,88 @@ kbd {
 .bac-membres .mp-role-fixe { font-size: .9231rem; }
 .bac-msg.erreur { color: var(--ink-red); }
 
+/* « Par où commencer » (UX-6) — l'album de présentation et la carte des étapes, dans un
+   voile à eux (`static/wizard.js`, bâti sur `dialog.js`). La boîte partagée
+   (`.modal-box`) ; l'album plus large, une page à la fois : l'illustration à gauche et le
+   texte à droite tant qu'ils tiennent, l'un sous l'autre sinon — `min(100%, …)`, sans quoi
+   la piste dépasserait la boîte à 320 px sous une grande police. Aucun petit texte en
+   accent brut : le numéro de page est en `--text-muted`, la marque d'une étape aussi. */
+.wizard-modal {
+  position: fixed; inset: 0; z-index: 100; background: var(--scrim);
+  display: flex; align-items: center; justify-content: center;
+}
+.wizard-modal[hidden] { display: none; }
+.wizard-boite { width: min(40rem, 92%); }
+.wizard-boite.wizard-album { width: min(52rem, 92%); }
+/* La boîte défile ; ses parties ne se tassent pas. MESURÉ : à 320 px, l'illustration de la
+   première page interceptait le clic sur « Passer » (`tests/test_e2e_wizard.py`, 2026-11-03).
+   SUPPOSÉ, non rejoué : `.modal-box` est une colonne flexible, et la page de l'album, bornée
+   par sa seule hauteur minimale, s'y tassait et débordait. */
+.wizard-boite > * { flex-shrink: 0; }
+.wizard-tete { display: flex; flex-wrap: wrap; align-items: center; gap: .4615rem .9231rem; }
+.wizard-tete h2 { margin: 0; font-size: 1.2308rem; flex: 1 1 12rem; min-width: 0; }
+.wizard-haut { display: inline-flex; flex-wrap: wrap; gap: .4615rem; margin-left: auto; }
+.wizard-haut button { white-space: nowrap; }
+.wizard-page { display: grid; gap: 1.2308rem; align-items: center; min-height: 18rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
+.wizard-page.sans-ill, .wizard-page.wizard-fin { grid-template-columns: minmax(0, 1fr); }
+.wizard-ill { min-width: 0; display: grid; place-items: center; overflow: hidden;
+              padding: .4615rem .2308rem; }
+.wizard-txt { display: grid; gap: .3846rem; align-content: center; min-width: 0; }
+.wizard-num { font-size: 2rem; font-weight: 800; line-height: 1; color: var(--text-muted);
+              font-variant-numeric: tabular-nums; }
+.wizard-page h3 { margin: 0; font-size: 1.3077rem; line-height: 1.2; overflow-wrap: anywhere; }
+.wizard-page p { margin: 0; max-width: 62ch; overflow-wrap: anywhere; }
+.wizard-eventail { display: flex; justify-content: center; padding: .4615rem 0; }
+.wizard-eventail img { flex: none; width: 23%; aspect-ratio: 3 / 4; object-fit: cover;
+  object-position: top; border-radius: 3px; background: var(--media-bg);
+  box-shadow: 0 4px 12px var(--shadow); margin-left: -4%; }
+.wizard-eventail img:first-child { margin-left: 0; transform: rotate(-6deg); }
+.wizard-eventail img:last-child { transform: rotate(6deg); }
+.wizard-vignettes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap;
+                    gap: .6154rem; justify-content: center; }
+.wizard-vignettes li { display: grid; gap: .2308rem; width: 5.5rem; min-width: 0; }
+.wizard-vignettes img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; object-position: top;
+  border-radius: 3px; background: var(--media-bg); box-shadow: 0 1px 3px var(--shadow); }
+.wizard-vignette-titre { font-size: .8462rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.wizard-planche img { max-width: min(100%, 14rem); max-height: 16rem; object-fit: contain;
+  border-radius: 3px; background: var(--media-bg); box-shadow: 0 4px 12px var(--shadow); }
+.wizard-fin { align-content: center; }
+.wizard-choix { display: grid; gap: .6154rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
+.wizard-choix-btn { display: grid; gap: .2308rem; text-align: left; padding: .7692rem .9231rem;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input);
+  color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
+.wizard-choix-btn:hover { background: var(--hover); }
+.wizard-choix-btn strong { font-size: 1.0769rem; }
+.wizard-choix-btn span { color: var(--text-muted); overflow-wrap: anywhere; }
+/* `.modal-box label` pose une colonne : la case et son libellé restent sur une rangée. */
+.modal-box label.wizard-jamais { flex-direction: row; align-items: center; gap: .4615rem; }
+.wizard-bas { display: flex; flex-wrap: wrap; align-items: center; gap: .6154rem; }
+.wizard-points { display: inline-flex; gap: .3077rem; margin: 0 auto; }
+.wizard-points i { width: .5385rem; height: .5385rem; border-radius: 50%;
+                   border: 1px solid var(--text-muted); }
+.wizard-points i.ici { background: var(--text); border-color: var(--text); }
+.wizard-compte { color: var(--text-muted); font-size: .9231rem;
+                 font-variant-numeric: tabular-nums; }
+.wizard-avertissement { margin: 0; }
+.wizard-etapes { list-style: none; margin: 0; padding: 0; display: grid; gap: .6154rem; }
+.wizard-etapes li { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: .6154rem;
+  align-items: start; padding: .4615rem .6154rem; border-left: 3px solid transparent;
+  border-radius: 4px; }
+/* L'étape où l'on est : un filet et un fond ; le mot vient du lecteur d'écran
+   (`aria-current="step"`), le gras le porte aussi à l'œil. */
+.wizard-etapes li[aria-current="step"] { border-left-color: var(--focus); background: var(--hover); }
+.wizard-etapes li[aria-current="step"] .wizard-lien { font-weight: 700; }
+.wizard-n { display: grid; place-items: center; width: 1.6923rem; height: 1.6923rem;
+  border-radius: 50%; border: 1px solid var(--border); font-size: .9231rem;
+  font-variant-numeric: tabular-nums; }
+.wizard-etape { min-width: 0; overflow-wrap: anywhere; }
+.wizard-phrase { margin: .2308rem 0 0; }
+.wizard-marque { margin-left: .4615rem; padding: 0 .3846rem; border: 1px solid var(--border);
+  border-radius: 4px; font-size: .8462rem; color: var(--text-muted); white-space: nowrap; }
+.wizard-actions { justify-content: flex-end; }
+
 /* La page vide : sous « Sélectionnez ou importez une planche pour commencer » (Atelier), et
    en carte dans la fiche de la Bibliothèque. */
 #stage-empty:has(> .bac-vide-geste) { flex-direction: column; gap: .3077rem; }

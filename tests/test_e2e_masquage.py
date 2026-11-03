@@ -81,6 +81,7 @@ MODULES_MONTES = {
 # `SURFACES_AUDITEES` ; lu ici comme un module monté, et joué sur l'Atelier par la sonde.
 SCRIPTS_PARTAGES = {
     "bac-a-sable.js": "chargé par les cinq gabarits, avant le script de la surface (COL-4)",
+    "wizard.js": "chargé par les six gabarits, après `bac-a-sable.js` (UX-6)",
 }
 
 DIRECT =re.compile(r'\$\(\s*"#([a-z0-9-]+)"\s*\)\.hidden\s*=')
@@ -110,6 +111,13 @@ NON_RESOLUS = {
         "d'où le garde `.bac-modal[hidden] { display: none; }` dans la feuille — vérifié le "
         "2026-10-24 par `tests/test_e2e_bac_a_sable.py`, qui exige le dialogue VISIBLE à "
         "l'ouverture et CACHÉ après « Annuler »."),
+    ("wizard.js", "voile"): (
+        "Le voile de l'album et de la carte de « Par où commencer » (UX-6), créé à la "
+        "première ouverture par `el(\"div\", \"wizard-modal\")` : la cible a un identifiant "
+        "(`#wizard-modal`) mais naît d'un `createElement`, que la résolution ne remonte pas. "
+        "Elle pose `display: flex`, d'où le garde `.wizard-modal[hidden] { display: none; }` "
+        "dans la feuille — vérifié le 2026-11-03 par `tests/test_e2e_wizard.py`, qui exige "
+        "l'album VISIBLE à l'ouverture et CACHÉ après « Fermer ✕ »."),
     ("lib/champ-personnage.js", "sug"): (
         "La liste des propositions du champ « personnage », que l'hôte CONFIE au montage "
         "(`#loc-suggest` et `#perso-suggest` dans l'Atelier, `#an-loc-liste` sur la page "

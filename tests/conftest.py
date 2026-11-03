@@ -360,3 +360,28 @@ def autres_gestes(page):
     page.wait_for_selector("#album-detail", timeout=5000)
     page.evaluate("""() => document.querySelectorAll('#album-detail details.autres')
                              .forEach((d) => { d.open = true; })""")
+
+
+# ── UX-6 : l'album du wizard, neutralisé par le harnais en UN seul endroit ─────────────────
+#
+# Dans SON bac à sable, l'album « Par où commencer » s'ouvre seul au chargement de chaque
+# page tant qu'il n'a pas été vu (`static/wizard.js`). La fixture `page` de pytest-playwright
+# ouvre un contexte neuf par test, donc un stockage local vide : sans précaution, l'album se
+# poserait devant le premier clic de chaque test qui entre dans un bac à sable, et la
+# tentation serait d'ajouter une fermeture par test (`pilotage/UX-6.md`, « Vérifications »).
+# Le contexte de chaque test reçoit donc, avant tout script, `window.BD_SANS_WIZARD = true` :
+# l'album ne s'ouvre plus SEUL — « Par où commencer » l'ouvre toujours. Un test qui joue
+# l'ouverture seule demande `wizard_actif`. Les contextes créés à la main
+# (`browser.new_context()`) ne passent pas par ici : aucun n'entre dans un bac à sable
+# aujourd'hui, et celui qui le fera devra poser le même script.
+@pytest.fixture
+def context(context, request):
+    if "wizard_actif" not in request.fixturenames:
+        context.add_init_script("window.BD_SANS_WIZARD = true;")
+    return context
+
+
+@pytest.fixture
+def wizard_actif():
+    """Demandée par un test navigateur, elle laisse l'album du wizard s'ouvrir seul."""
+    return True
