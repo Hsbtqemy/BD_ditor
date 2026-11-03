@@ -1934,8 +1934,10 @@ h3.collapsible:hover { color: var(--text); }
   #search-body { container-type: size; }
   .preview { max-height: calc(100cqh - .4615rem); }
 }
-.preview-head { display: flex; align-items: center; gap: .6154rem; margin-bottom: .6154rem; }
+.preview-head { display: flex; flex-wrap: wrap; align-items: center; gap: .6154rem; margin-bottom: .6154rem; }
 .preview-title { flex: 1; font-weight: 600; font-size: .88rem; }
+/* Passé à la ligne, le bouton reste à droite, là où on le cherche pour fermer. */
+#preview-close { margin-left: auto; }
 .preview-stage { position: relative; background: var(--bg-deep); border-radius: 6px; overflow: hidden; }
 .preview-stage img { display: block; width: 100%; height: auto; }
 #preview-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }

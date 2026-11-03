@@ -1907,10 +1907,18 @@ function renderTranscription() {
     if (cur) el.scrollIntoView({ block: "center", inline: "center" });
   });
 
-  // La colonne défile sur un écran bas : la bulle suivante se lit en haut, puis le focus ramène
-  // la zone de saisie. Sans cela on restait sur les boutons, la nouvelle bulle hors de vue.
-  $("#tr-right").scrollTop = 0;
-  if (r) ta.focus();
+  // La colonne défile sur un écran bas : la bulle suivante se lit en haut. Sans cela on restait
+  // sur les boutons, la nouvelle bulle hors de vue. Le focus ne suffit pas à ramener la saisie :
+  // il tient pour vue une boîte dont dépassent 5 px, et le titre passé sur deux rangées, selon
+  // la police, la pousse jusque-là. On descend donc de ce qu'il faut pour sa première ligne.
+  const colonne = $("#tr-right");
+  colonne.scrollTop = 0;
+  if (!r) return;
+  ta.focus();
+  const s = getComputedStyle(ta);
+  const ligne = ta.getBoundingClientRect().top + parseFloat(s.paddingTop) + parseFloat(s.lineHeight);
+  const manque = ligne - colonne.getBoundingClientRect().bottom;
+  if (manque > 0) colonne.scrollTop += Math.ceil(manque);
 }
 
 function trCurrent() { return state.trRegions[state.trIndex]; }

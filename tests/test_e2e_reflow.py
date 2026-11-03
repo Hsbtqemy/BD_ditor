@@ -309,7 +309,10 @@ def test_tout_le_mode_transcription_s_atteint(page, decor, largeur, hauteur):
     assert not echecs, f"{largeur}×{hauteur} :\n" + "\n".join(echecs)
 
 
-def test_sur_un_ecran_bas_la_bulle_suivante_se_lit_avec_sa_saisie(page, decor):
+# 304 a trouvé le défaut dans l'image, dont la police passe le titre sur deux rangées ; 270 le
+# fait mordre aussi sur le poste, où ce titre tient sur une.
+@pytest.mark.parametrize("hauteur", [304, 270])
+def test_sur_un_ecran_bas_la_bulle_suivante_se_lit_avec_sa_saisie(page, decor, hauteur):
     """La colonne défile : « Suivant » se touche en bas, et la bulle d'après s'écrit en haut.
 
     On restait sur les boutons, la nouvelle bulle hors de vue, à remonter à chaque bulle.
@@ -319,7 +322,7 @@ def test_sur_un_ecran_bas_la_bulle_suivante_se_lit_avec_sa_saisie(page, decor):
         assert c.post(f"/api/planches/{decor['planche']}/regions",
                       json={"type": "bulle", "x": 10, "y": 100, "w": 120, "h": 80,
                             "ocr_texte": "SECONDE"}).status_code in (200, 201)
-    page.set_viewport_size({"width": 740, "height": 304})
+    page.set_viewport_size({"width": 740, "height": hauteur})
     _ouvrir_en_transcription(page, decor)
     assert page.evaluate(_ATTEINDRE_DANS_LA_COLONNE, "#tr-next")["touche"]
     assert page.evaluate("() => document.querySelector('#tr-right').scrollTop") > 0

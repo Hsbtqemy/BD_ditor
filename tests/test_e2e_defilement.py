@@ -387,6 +387,28 @@ def test_sans_cadre_le_corps_de_la_recherche_garde_sa_hauteur(page, corpus_aperc
     assert m["page"] >= m["bas"], m
 
 
+@pytest.mark.parametrize("largeur, hauteur", [(320, 700), (412, 860), (740, 340)])
+def test_le_bouton_qui_ferme_l_apercu_reste_dans_son_cadre(page, corpus_apercu, largeur, hauteur):
+    """Mesuré à 412 px : ✕ s'étendait jusqu'à 406 pour un aperçu qui finit à 392.
+
+    La tête de l'aperçu ne passait pas à la ligne, et on ne fermait qu'après avoir fait défiler
+    l'aperçu de côté, sans rien pour le dire.
+    """
+    page.set_viewport_size({"width": largeur, "height": hauteur})
+    page.goto(corpus_apercu + "/recherche", wait_until="networkidle")
+    _apercu_colle(page)
+    m = page.evaluate("""() => { const p = document.querySelector('#preview');
+      const t = document.querySelector('.preview-head');
+      const b = document.querySelector('#preview-close').getBoundingClientRect();
+      const r = p.getBoundingClientRect();
+      return {droite: b.right, cadre: r.right, tete: t.scrollWidth, place: t.clientWidth,
+              fenetre: innerWidth}; }""")
+    assert m["tete"] <= m["place"], m
+    assert m["droite"] <= min(m["cadre"], m["fenetre"]), m
+    page.locator("#preview-close").click(timeout=2000)
+    page.wait_for_function("document.querySelector('#preview').hidden")
+
+
 
 @pytest.fixture
 def corpus_derriere_proxy(live_server):
