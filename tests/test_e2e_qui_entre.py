@@ -653,3 +653,24 @@ def test_quelqu_un_manque_et_la_preselection_d_un_groupe(page, collection):
     item = _ouvrir(page, base, cid, "&groupe=inconnus")
     expect(item.locator(".qe-hors-projet")).to_contain_text("Le groupe inconnus n'est pas du projet")
     expect(item.locator(".qe-choix")).to_have_value("")
+
+
+def test_un_membre_sorti_du_projet_entre_la_liste_et_le_geste_est_refuse_dans_la_ligne(
+        page, collection):
+    """La liste vaut pour l'instant où elle a été lue : un membre qu'on fait sortir du projet
+    ENSUITE y figure encore. Le serveur refuse alors par le 409 de F2, et l'écran le DIT dans
+    la ligne de « Qui entre », sans rien accorder."""
+    base, cid = collection["base"], collection["id"]
+    with _client(base) as c:
+        pid = du_projet(c, cid, "groupe", "sortant", headers=ECRITURE)
+    item = _ouvrir(page, base, cid)
+    item.locator(".qe-choix").select_option("groupe:sortant")
+    with _client(base) as c:
+        r = c.delete(f"/api/projets/{pid}/membres/groupe/sortant")
+        assert r.status_code == 204, r.text
+    with page.expect_response(lambda r: r.request.method == "PUT" and "/acces" in r.url) as rep:
+        item.locator(".qe-faire-entrer").click()
+    assert rep.value.status == 409
+    expect(item.locator(".qe-msg.erreur")).to_contain_text(
+        "Le groupe « sortant » n'est pas du projet")
+    assert ("groupe", "sortant") not in _acces(base, cid)
