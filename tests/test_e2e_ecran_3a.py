@@ -14,6 +14,8 @@ mesure ce que l'ÉCRAN en fait, et que rien d'autre ne verrait :
 - la fiche d'un document dit ses copies de travail, la notice divergente, et « Prendre
   dans… » fait la prise ; le filtre « Plusieurs copies » ;
 - « Qui entre » d'une collection de base se lit en deux groupes, dans ses DEUX montages ;
+  hors de la base, deux groupes aussi quand un responsable du projet la lit sans y être
+  entré (UX-20), un seul sinon ;
 - tout cela tient à 320 px sous une grande police.
 
 Chaque geste est mesuré sur la requête PARTIE, pas seulement sur l'état final : le serveur
@@ -391,11 +393,39 @@ def test_qui_entre_dans_la_base_en_deux_groupes_dans_la_bibliotheque(page, decor
     expect(item.locator("tr.qe-groupe-ligne th")).to_have_text(
         ["Par le projet · 4", "Entrés ici · 0"])     # rui, mia, ana, sam (F2)
     expect(item.locator("tr.qe-derive input")).to_have_count(0)
-    # Une collection ordinaire : un seul groupe, sans titre — le rendu d'avant.
+    # UX-20 (Hugo, sur maquette, 2026-11-03) — une collection ordinaire se lit AUSSI en deux
+    # groupes : `rui`, responsable du projet, lit « Lot A » sans y être entré (F1). `ana`, qui
+    # la possède sans gérer le projet, lit « se règle dans le projet », sans lien.
     _ouvrir(page, d["base"], _comme("ana"), f"/corpus?collection={d['lot_a']}")
     item = page.locator(f'#col-fiche[data-id="{d["lot_a"]}"]')
     item.locator(".qe-choix").wait_for(timeout=5000)
+    expect(item.locator("tr.qe-groupe-ligne th")).to_have_text(
+        ["Par le projet · 1", "Entrés ici · 2"])            # rui ; ana, sam
+    derive = item.locator("tr.qe-derive")
+    expect(derive).to_contain_text("rui")
+    expect(derive).to_contain_text("responsable du projet")
+    expect(derive.locator(".qe-derive-actes")).to_have_text("lire")
+    expect(derive.locator("input, .qe-retirer, a.qe-regler")).to_have_count(0)
+    expect(derive).to_contain_text("se règle dans le projet")
+    expect(item.locator(".qe-note-projet")).to_contain_text(
+        "Les responsables du projet « Séminaire » lisent toutes ses collections.")
+
+
+def test_un_responsable_entre_ici_n_est_pas_redit_par_le_projet(page, decor):
+    """UX-20 (Hugo, 2026-11-03 : « rien de plus ») — un responsable qui est AUSSI entré dans la
+    collection n'y figure pas une seconde fois : sa ligne d'« Entrés ici » dit déjà davantage
+    que « lire ». Sans autre lecture à dire, un seul groupe, sans titre — le rendu d'avant."""
+    d = decor
+    with _client(d["base"]) as c:
+        _ok(c.put(f"/api/collections/{d['lot_b']}/acces",
+                  json={"genre": "utilisateur", "principal": "rui", "niveau": "proprietaire"}))
+    _ouvrir(page, d["base"], _comme("rui"), f"/corpus?collection={d['lot_b']}")
+    item = page.locator(f'#col-fiche[data-id="{d["lot_b"]}"]')
+    item.locator(".qe-choix").wait_for(timeout=5000)
+    expect(item.locator(".qe-retirer")).to_have_count(2)          # rui et sam, entrés ici
     expect(item.locator("tr.qe-groupe-ligne")).to_have_count(0)
+    expect(item.locator("tr.qe-derive")).to_have_count(0)
+    expect(item.locator(".qe-note-projet")).to_have_count(0)
 
 
 # ── À l'étroit ──────────────────────────────────────────────────────────────────────────

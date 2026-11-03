@@ -120,17 +120,30 @@ test("un suffixe rendu par celui qui le tient redevient libre", () => {
 });
 
 /* COL-3, écran de la 3a — « Qui entre » d'une collection de BASE en deux groupes (Hugo, sur
-   maquette, 2026-10-17) ; hors d'une base, un seul groupe, le rendu d'avant. */
-test("une base se lit en deux groupes, toute autre collection en un seul", () => {
+   maquette, 2026-10-17) ; hors d'une base, deux groupes aussi dès que le projet y tient une
+   lecture (UX-20, Hugo, sur maquette, 2026-11-03), sans un responsable déjà entré ici. */
+test("une base se lit en deux groupes, toute autre collection selon ce que le projet y tient", () => {
   const Q = require("../../static/lib/qui-entre.js");
   const lignes = [{ genre: "utilisateur", principal: "resp", niveau: "proprietaire",
                     role: "responsable" }];
   const ici = [{ genre: "groupe", principal: "equipe", niveau: "lecture" }];
   const base = Q.parGroupes({ base: true, lignes }, ici);
   assert.deepEqual([base.enDeux, base.derives, base.explicites], [true, lignes, ici]);
-  // Une collection ordinaire : rien de dérivé, même si la route en rendait par erreur.
-  const autre = Q.parGroupes({ base: false, lignes }, ici);
-  assert.deepEqual([autre.enDeux, autre.derives, autre.explicites], [false, [], ici]);
+  // Une collection ordinaire : la lecture du responsable (F1) se lit en deux groupes…
+  const lecture = [{ genre: "utilisateur", principal: "resp", niveau: "lecture", role: "responsable" },
+                   { genre: "utilisateur", principal: "autre", niveau: "lecture", role: "responsable" }];
+  const autre = Q.parGroupes({ base: false, lignes: lecture }, ici);
+  assert.deepEqual([autre.enDeux, autre.derives, autre.explicites], [true, lecture, ici]);
+  // … sans le responsable déjà entré ici (« rien de plus »), par la même référence seulement :
+  // un login entré ne cache pas un groupe homonyme, ni l'inverse.
+  const entre = [{ genre: "utilisateur", principal: "resp", niveau: "proprietaire" },
+                 { genre: "groupe", principal: "autre", niveau: "lecture" }];
+  assert.deepEqual(Q.parGroupes({ base: false, lignes: lecture }, entre).derives, [lecture[1]]);
+  // … et, sans rien de dérivé à dire, un seul groupe : le rendu d'avant.
+  assert.deepEqual(Q.parGroupes({ base: false, lignes: [] }, ici),
+                   { enDeux: false, derives: [], explicites: ici });
+  assert.deepEqual(Q.parGroupes({ base: false, lignes: [lecture[0]] }, [entre[0]]),
+                   { enDeux: false, derives: [], explicites: [entre[0]] });
   // La route illisible : le panneau garde ses lignes, sans groupe.
   const illisible = Q.parGroupes(null, ici);
   assert.deepEqual([illisible.enDeux, illisible.derives], [false, []]);

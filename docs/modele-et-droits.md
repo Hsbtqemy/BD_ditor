@@ -182,7 +182,9 @@ pas, et ne change pas de projet : elle part avec lui, s'il est supprimé vide.
   base se lit en deux groupes : *Par le projet* — ses responsables, propriétaires, et ses
   membres selon le choix du projet —, puis *Entrés ici*, ceux qu'on y a fait entrer à la
   main. Les premiers ne se règlent pas ligne à ligne : *Régler dans le projet ↗* mène à la
-  fiche du projet. Ils comptent comme propriétaires : la dernière personne entrée ici comme
+  fiche du projet. Toute autre collection du projet se lit de même dès qu'un responsable la
+  lit sans y être entré : *Par le projet* dit sa lecture, qui vient de son rôle. Sur la
+  base, les responsables comptent comme propriétaires : la dernière personne entrée ici comme
   propriétaire peut sortir tant que le projet a un responsable. *Comptes et groupes* les
   montre aussi, « par le projet ».
 - **Qui sort du projet sort de sa base** — qu'il soit un compte ou un groupe —, et ne

@@ -863,7 +863,11 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   séparée de `…/acces` parce que celle-ci est aussi la réponse du `PUT` et du `DELETE`
   d'un accès, avec `gerable` (`peut_gerer_projet`). « Qui entre » d'une base se lit en DEUX
   GROUPES, « Par le projet · n » puis « Entrés ici · n », sans teinte, dans ses deux
-  montages ; les lignes dérivées n'ont ni case, ni ✕, mais « Régler dans le projet ↗ ». Le
+  montages ; les lignes dérivées n'ont ni case, ni ✕, mais « Régler dans le projet ↗ ».
+  Toute AUTRE collection aussi, dès qu'un responsable du projet la lit sans y être entré
+  (UX-20, Hugo, sur maquette, 2026-11-03) : sa lecture dérivée (F1) se lit « Par le
+  projet », une note dit que les responsables lisent toutes les collections du projet, et un
+  responsable entré ici n'y figure pas une seconde fois (`parGroupes`). Le
   409 « dernier propriétaire » compte les responsables du projet (`_compte_proprietaires`) :
   la dernière ligne explicite d'une base dont le projet a un responsable se retire. Et « 👥
   Comptes et groupes » montre ces accès, marqués `par_projet` (`par: "projet"` dans la fiche

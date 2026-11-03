@@ -765,7 +765,9 @@ albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit o
   chose ; les autres lisent. Pour la **collection de base** d'un projet, la liste a deux
   groupes : *Par le projet* — ses responsables, propriétaires, et ses membres selon ce que
   le projet a choisi —, sans case ni ✕, avec *Régler dans le projet ↗* ; puis *Entrés ici*,
-  ceux qu'on y fait entrer à la main.
+  ceux qu'on y fait entrer à la main. Une **autre collection** du projet a les mêmes deux
+  groupes quand un responsable du projet la lit sans y être entré : il lit toutes les
+  collections de son projet, et *Par le projet* le dit.
   **Le même panneau se trouve à un second endroit**, pour un second public : un
   administrateur, qui part d'une personne ou d'un groupe plutôt que d'un corpus, le retrouve
   dans l'Administration, dans la fiche de chaque collection de *👥 Comptes et groupes*

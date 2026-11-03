@@ -201,12 +201,22 @@
      maquette le 2026-10-17) : « Par le projet » — ses responsables, propriétaires, et ses
      membres au niveau que le projet a choisi, que le serveur DÉRIVE sans aucune ligne
      d'accès —, puis « Entrés ici », les lignes de la collection. Sans teinte : la règle se
-     lit à la structure. Hors d'une base, un seul groupe, sans titre — le rendu d'avant, à
-     l'identique. Pure : `projet` est ce que rend `…/acces-du-projet` (ou null s'il n'a pas
-     pu être lu), `acces` la liste de `…/acces`. */
+     lit à la structure.
+
+     HORS D'UNE BASE, les mêmes deux groupes dès que le projet y tient une lecture (UX-20,
+     tranché par Hugo sur maquette le 2026-11-03) : depuis la tranche 3c (F1), chaque
+     responsable du projet LIT toutes ses collections, et le serveur le rend ligne par ligne.
+     Un responsable déjà entré ici n'y figure pas une seconde fois — sa ligne d'« Entrés ici »
+     dit déjà davantage que « lire » (Hugo : « rien de plus »). Sans lecture à dire, un seul
+     groupe, sans titre — le rendu d'avant. Pure : `projet` est ce que rend
+     `…/acces-du-projet` (ou null s'il n'a pas pu être lu), `acces` la liste de `…/acces`. */
   function parGroupes(projet, acces) {
-    const enDeux = !!(projet && projet.base);
-    return { enDeux, derives: enDeux ? (projet.lignes || []) : [], explicites: acces || [] };
+    const explicites = acces || [];
+    if (!projet) return { enDeux: false, derives: [], explicites };
+    if (projet.base) return { enDeux: true, derives: projet.lignes || [], explicites };
+    const entres = new Set(explicites.map((a) => `${a.genre}:${a.principal}`));
+    const derives = (projet.lignes || []).filter((l) => !entres.has(`${l.genre}:${l.principal}`));
+    return { enDeux: derives.length > 0, derives, explicites };
   }
 
   /* Ce qu'une ligne dérivée est dans le projet, en clair. */
@@ -645,6 +655,12 @@
       ${etat.projet.projet_nom ? `« ${esc(etat.projet.projet_nom)} »` : ""} : ses responsables
       en sont propriétaires, et ses membres y entrent selon ce que le projet a choisi. Ces
       accès se règlent dans le projet ; « Faire entrer » ajoute quelqu'un ici seulement.</p>`);
+    } else if (etat.projet && parGroupes(etat.projet, etat.acces).enDeux) {
+      // Hors de la base (UX-20, Hugo, 2026-11-03) : ce que « Par le projet » veut dire ici.
+      notes.push(`<p class="col-note qe-note-projet">Les responsables du projet
+      ${etat.projet.projet_nom ? `« ${esc(etat.projet.projet_nom)} » ` : ""}lisent toutes ses
+      collections. Cette lecture se règle dans le projet ; « Faire entrer » ajoute quelqu'un
+      ici seulement.</p>`);
     } else if (etat.projetErreur) {
       notes.push(`<p class="col-note">Les accès tenus par le projet n'ont pas pu être lus
       (${esc(etat.projetErreur)}) : s'il s'agit de la collection de base d'un projet, ses
