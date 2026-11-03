@@ -155,6 +155,9 @@ de ses mots est aujourd'hui, et un Ctrl+Z du texte le rend normal sans rien écr
 
 - **Chaque objet de grille porte un identifiant stable et invisible** (`cle`), fourni par le
   tableur. Sans lui, un libellé renommé se lirait comme une suppression suivie d'un ajout.
+  **Il est facultatif à la création** (tranché le 2026-11-03) : l'import le reprend d'un
+  objet de même nom dans la version à laquelle il compare, ou le dérive du libellé, et le
+  réexport le rend (`docs/import-grille.md`, « Les identifiants »).
 - **Une version publiée est figée.** On prépare la suivante (brouillon), on la publie. Une
   version est un INSTANTANÉ COMPLET (rubriques, entrées, variantes, listes) : une lecture faite
   en v1 se relit en v1 quand la grille en est à la v5, sans reconstituer un état passé.
@@ -169,14 +172,20 @@ de ses mots est aujourd'hui, et un Ctrl+Z du texte le rend normal sans rien écr
   responsable, au journal (tranché le 2026-10-22 ; sa route dès la tranche 1, G15) : elle ne
   touche aucun relevé.
 - **Une grille ouverte** (les tags libres) n'a qu'une version, vivante, qui s'enrichit en
-  posant (G14) ; elle n'est pas partageable tant qu'on ne la fige pas en grille fermée.
+  posant (G14) ; elle n'est pas partageable tant qu'on ne la fige pas en grille fermée. **Elle
+  se réimporte** (Hugo, 2026-11-03, qui renverse le refus d'avant) : la version est récrite en
+  place, et **une entrée employée ne se supprime jamais** — le bilan demande « retirer » (elle
+  ne se pose plus, ses relevés restent, « à revoir ») ou « fusionner dans… » (ses relevés
+  passent à une autre entrée compatible), et l'import attend la réponse. Une entrée que
+  personne n'emploie part.
 
 ## 7. Le tableur
 
 Une grille s'écrit dans un tableur, BéDéditeur la vérifie et la garde (`ANN-7`). Le format
-de la tranche 1 — deux CSV point-virgule, et ce que chaque colonne dit — est écrit pour qui
-remplit le tableur dans `docs/import-grille.md` ; le résumé, une ligne par entrée ou par
-variante :
+— un classeur `.xlsx` en mots ou deux CSV point-virgule, et ce que chaque colonne dit — est
+écrit pour qui remplit le tableur dans `docs/import-grille.md` ; le résumé, une ligne par
+entrée ou par variante, en colonnes machine (le classeur pose les mêmes en questions, « 4. Ce
+qu'on choisit ») :
 
 | Colonne | Rôle |
 |---|---|
@@ -195,12 +204,17 @@ variante :
 | `cardinalite` | facultative : `une` · `plusieurs` (Q6, 2026-10-22) |
 
 Les listes de qualificatifs tiennent dans un second fichier (`grille-listes-qualificatifs.csv`)
-; la déclaration (nom, ouverte ou fermée, « Porte sur », note de version) passe en arguments de
-l'outil (G13 : deux CSV, pas de classeur). Une anomalie de structure refuse le fichier ENTIER
-(G12). **L'import rend un bilan avant de publier** — ajouts, renommages, et pour chaque
-entrée disparue qui a des relevés : « retirer, ou fusionner dans… ». BéDéditeur réexporte la
-grille au même format, identifiants compris, et en produit le guide (§ « Le guide découle de la
-grille », `ANN-7`). L'exemple du dépôt est une grille fictive ; la grille des linguistes reste
+ou dans la feuille « 3. Listes à cocher » du classeur ; la déclaration (nom, ouverte ou fermée,
+« Porte sur », note de version) passe en arguments de l'outil, ou dans la feuille « 1. La
+grille ». **G13 est rouvert** (Hugo, 2026-11-03) : il disait « deux CSV, pas de classeur » ; le
+classeur, produit et relu par BéDéditeur, porte ce qu'un CSV ne garde pas — listes déroulantes,
+aide sur les titres, la case fautive en rouge —, et les deux CSV restent le format machine.
+Une anomalie de structure refuse le fichier ENTIER (G12). **L'import rend un bilan avant de
+publier**, en DONNÉES — un verdict, chaque faute (où, quelle entrée, quelle question, ce qui ne
+va pas, ce qu'il faut faire), « À savoir », « Ce qui va naître », ce qui change —, et pour
+chaque entrée employée qui disparaît d'une grille ouverte : « retirer, ou fusionner dans… ».
+BéDéditeur réexporte la grille dans les deux formes, identifiants compris, et en produit le
+guide (§ « Le guide découle de la grille », `ANN-7`). L'exemple du dépôt est une grille fictive ; la grille des linguistes reste
 sur le poste et en production.
 
 ## 8. Le doute

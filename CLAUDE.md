@@ -400,9 +400,14 @@ d'une coquille — définition, exemple, piège —, `PATCH …/coquille`), port
 variantes, listes de qualificatifs et exemples, et s'ACTIVE dans son projet à UNE version
 (`projet_grille`) ; une collection peut la MASQUER (`collection_grille_masquee`), un filtre
 d'écran et non une garde. **Rien d'une grille n'est dans le code** : elle entre par un
-tableur, deux CSV point-virgule (`grille_import.py`, `tools/importer_grille.py`,
-`POST /api/projets/{id}/grilles/import`), refusé ENTIER à la première anomalie de structure,
-avec un bilan ; le modèle de `tools/` est FICTIF, et aucune vraie grille ne vit dans le dépôt.
+tableur — un classeur `.xlsx` en mots (le gabarit du 2026-11-03, que rend
+`GET /api/grilles/{id}/versions/{n}/tableur`, lu borné et par `defusedxml`, sans évaluer de
+formule) ou deux CSV point-virgule (`grille_import.py`, `grille_tableur.py`,
+`tools/importer_grille.py`, `POST /api/projets/{id}/grilles/import`) —, refusé ENTIER à la
+première anomalie de structure, avec un bilan en DONNÉES (un verdict, chaque faute où et
+quoi faire, « À savoir », « Ce qui va naître ») ; l'identifiant d'une entrée y est facultatif,
+et une grille ouverte s'y réimporte, une entrée employée qui disparaît attendant « retirer » ou
+« fusionner dans… » ; le modèle de `tools/` est FICTIF, et aucune vraie grille ne vit dans le dépôt.
 **Chaque bac à sable reçoit ce modèle à sa naissance** (H4, Hugo, 2026-10-27 ;
 `config.GRILLE_DU_BAC`, `socle._poser_la_grille_du_bac`, `grille_import.installer`) : une
 grille à lui, publiée et active, qui n'est à personne (aucun `par`), part avec lui et revient
