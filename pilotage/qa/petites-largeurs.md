@@ -37,7 +37,7 @@ les citent sont mises à jour ci-dessous : les libellés des modes tombent sous 
 (et non 899), la légende de la barre d'état sous **995 px** (et non 659), et la barre
 d'état s'enroule désormais à TOUTES les largeurs dès qu'elle manque de place.
 
-**Relue contre le code le 2026-11-02**, sans qu'aucune case ait été jouée. La Bibliothèque et l'Administration sont passées au gabarit liste-et-fiche (UX-18, AUTH-12) : leurs tableaux qui défilaient sont des cartes ou des fiches, et les cases qui les visaient sont réécrites. L'annotation au doigt a sa page et sa passe jouée (`page-annotation-appareils.md`), et le mode Annotation de l'Atelier disparaîtra au basculement : la zone qui la jugeait porte désormais sur la Transcription, qui reste dans l'Atelier.
+**Relue contre le code le 2026-11-02**, sans qu'aucune case ait été jouée. La Bibliothèque et l'Administration sont passées au gabarit liste-et-fiche (UX-18, AUTH-12) : leurs tableaux qui défilaient sont des cartes ou des fiches, et les cases qui les visaient sont réécrites. L'annotation au doigt a sa page et sa passe jouée (`page-annotation-appareils.md`), et le mode Annotation de l'Atelier disparaîtra au basculement : la zone qui la jugeait porte désormais sur la Transcription, qui reste dans l'Atelier. **Relue de nouveau le 2026-11-03 pour la Bibliothèque en catalogue (`UX-20`)** : sur téléphone le rail laisse place à une liste *Collection*, et l'album s'ouvre dans un volet qui prend toute la place ; les deux cases qui la visent sont réécrites.
 
 ## Ce que les tests couvrent déjà — ne pas le refaire ici
 
@@ -96,7 +96,7 @@ mesurée ; reste à savoir si son absence se paie.
 
 TROIS zones défilent encore : le croisement, et les tableaux des panneaux Accord et Inter. Les tests prouvent qu'on PEUT y accéder ; ils ne disent rien de savoir qu'on le peut. Les tableaux de la Bibliothèque et des comptes ne défilent plus : sur téléphone, ce sont des cartes et des fiches.
 
-- [ ] Bibliothèque sur téléphone, onglet Albums d'une collection, puis fiche d'un album : albums et planches se lisent en cartes, sans défilement de côté, et chaque carte montre ses gestes sans qu'on les cherche
+- [ ] Bibliothèque sur téléphone : le rail laisse place à une liste *Collection* ; une collection choisie, son catalogue en « ☰ Liste » se lit en cartes ; un album où l'on écrit ouvert, son volet prend toute la place, ses planches se lisent en cartes, chacune avec ses gestes (↑ ↓, ↗, ↺, la corbeille) visibles sans qu'on les cherche, et rien ne défile de côté ; « Fermer ✕ » rend le catalogue
 - [ ] Le **tableau de croisement** défile maintenant dans un cadre borné à 70vh : sur un croisement d'au moins 40 lignes, les en-têtes de colonnes restent visibles pendant le défilement, et la molette ne donne pas l'impression de se battre entre deux barres
 - [ ] Sur ce même croisement, atteindre la dernière colonne ET la dernière ligne se fait sans jamais perdre de vue à quelle ligne on est — le collage des deux axes tient ensemble
 - [ ] Le tableau des panneaux 🎯 Accord et 👥 Inter déborde de 38 px à 320 px : vérifier sur un corpus AYANT des tokens relus que ce débordement se voit et se franchit, et qu'il ne fait pas défiler le titre de la modale avec lui
@@ -133,5 +133,5 @@ angles morts CONNUS de cette passe, pas des vérifications.
 
 - [ ] À 320 px puis à 375 px, sur les six surfaces : le nom du projet choisi est entier dans sa liste ; « Aa », la pastille du compte et « ← » sont dans la bande et se touchent au doigt sans toucher le voisin
 - [ ] Compter les rangées que prend la bande du haut à 320 px (une de plus qu'avant `9eec56e`) et dire si la hauteur qu'elle mange laisse encore travailler sur l'Atelier, téléphone tenu en paysage compris
-- [ ] La liste des projets s'ouvre au doigt et se referme sur un choix ; dans la Bibliothèque, la liste des collections change aussitôt, sans rechargement
+- [ ] La liste des projets s'ouvre au doigt et se referme sur un choix ; dans la Bibliothèque, la liste *Collection* qui remplace le rail change aussitôt, sans rechargement
 - [ ] Administration, vue « Projets », à 320 px : toucher un projet ouvre sa fiche à la place de la liste, « ← Liste » y ramène ; chaque ligne de « Qui y entre » se replie sans faire défiler la page de côté, et son ✕ reste au bout de sa rangée
