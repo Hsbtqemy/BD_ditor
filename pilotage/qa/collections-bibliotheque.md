@@ -7,6 +7,9 @@ derniere: 2026-09-22
 
 # QA — ce que la collection EST se gère dans la Bibliothèque, et qui y entre aussi
 
+> **Remplacée le 2026-11-03 par [`catalogue.md`](catalogue.md)** (Hugo) : cette passe décrit la
+> Bibliothèque d'avant le catalogue d'`UX-20`. Elle reste comme trace datée ; ne pas la rejouer.
+
 > **Chemins et libellés remis à l'écran du 2026-09-18 (`6ea6b60`), sans toucher aux cases.**
 > Le titre de cette passe disait « qui entre dans l'Administration » : c'était vrai quand
 > elle a été écrite, et le panneau « 👥 Accès aux collections » a depuis DÉMÉNAGÉ dans la

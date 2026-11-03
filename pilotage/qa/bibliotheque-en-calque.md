@@ -7,6 +7,9 @@ derniere: —
 
 # QA — la Bibliothèque en liste et fiche : la collection en calque, la fiche à quatre onglets, la fiche d'un album
 
+> **Remplacée le 2026-11-03 par [`catalogue.md`](catalogue.md)** (Hugo) : cette passe décrit la
+> Bibliothèque d'avant le catalogue d'`UX-20`. Elle reste comme trace datée ; ne pas la rejouer.
+
 **Écrite le 2026-10-18 sur `53a4b6a`, non jouée.** Elle porte sur `555de64` (la Bibliothèque
 en liste et fiche, la collection en calque) et `58b2d4f` (valider une planche est un bouton qui
 porte son état), et sert la case d'`UX-18` « Les passes de QA disent le nouvel écran ».
