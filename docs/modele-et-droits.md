@@ -1215,10 +1215,11 @@ portail** : revenu au portail sans destination, Authelia propose d'enrôler un s
 (cf. [`exploitation.md`](exploitation.md), étape 7 de *Basculer vers l'annuaire LLDAP*). Dans
 le fichier de repli, il n'y a rien à créer : un groupe existe dès qu'un compte le porte. Dans
 les deux cas, l'application le découvre en le lisant dans les en-têtes. Côté application, il
-suffit de le nommer dans *Qui entre* — dans la Bibliothèque, ou dans l'Administration pour
-un administrateur —, en répondant **groupe** à « Compte ou groupe ? » — la question est posée explicitement parce qu'un login et un groupe
-peuvent porter le même nom, et qu'une ambiguïté silencieuse sur un contrôle d'accès n'est pas
-une hypothèse qu'on se permet.
+suffit de le faire entrer dans le PROJET (*Qui y entre*, dans la fiche du projet), puis de le
+choisir sous **Groupes** dans *Qui entre* — dans la Bibliothèque, ou dans l'Administration
+pour un administrateur. Comptes et groupes y sont rangés à part parce qu'un login et un
+groupe peuvent porter le même nom, et qu'une ambiguïté silencieuse sur un contrôle d'accès
+n'est pas une hypothèse qu'on se permet.
 
 ---
 
@@ -1235,9 +1236,10 @@ donne accès à votre nom ; si cela ne suffit pas, montrez à l'administrateur l
 technique du bandeau (§3), qui départage.
 
 **J'ai donné un accès et la personne ne voit toujours rien.**
-Vérifiez l'orthographe du login ou du nom de groupe, dans *Qui entre*. L'application y
-confronte désormais le nom que vous tapez à l'annuaire, et le marque : **inconnu de
-l'annuaire** s'il n'y existe pas, **non vérifié** si l'annuaire n'a pas répondu. La marque
+Vérifiez l'orthographe du login ou du nom de groupe, dans *Qui y entre* du projet : c'est
+là qu'il est tapé, et *Qui entre* ne propose que les membres du projet. L'application
+confronte le nom à l'annuaire, et le marque : **inconnu de l'annuaire** s'il n'y existe pas,
+**non vérifié** si l'annuaire n'a pas répondu. La marque
 avertit, elle ne bloque pas — l'accès est accordé tel quel dans les deux cas, et un nom
 marqué « inconnu de l'annuaire » n'ouvre rien. C'est la première chose à regarder.
 Vérifiez aussi qu'il a été déclaré **compte** ou **groupe** selon ce qu'il est : un accès

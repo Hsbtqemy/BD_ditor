@@ -751,8 +751,11 @@ albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit o
 - **Qui entre** : l'onglet de la fiche d'une collection — celui qu'ouvre son nom —, qui entre dans cette collection et ce
   qu'il peut y faire. Les accès s'y règlent en **actes** — *lire*, *annoter*, *décider qui
   entre* — plutôt qu'en niveaux à deviner : *Faire entrer* admet en lecture, puis on coche.
-  On désigne un **compte** ou un **groupe**, la question étant posée explicitement parce
-  qu'un login et un groupe peuvent porter le même nom ; le nom tapé est confronté à
+  On choisit un **membre du projet** qui n'entre pas encore — la liste range à part les
+  *Comptes* et les *Groupes*, parce qu'un login et un groupe peuvent porter le même nom.
+  **On n'entre dans une collection que si l'on est du projet** : *Quelqu'un manque ?*, sous
+  la liste, dit qui l'y fait entrer — un lien vers la fiche du projet si vous le gérez, ses
+  responsables sinon, l'invitation dans un bac à sable. Le nom choisi est confronté à
   l'annuaire et marqué **inconnu de l'annuaire** s'il n'y existe pas, **non vérifié** si
   l'annuaire n'a pas répondu — la marque avertit, elle ne bloque pas. **Exporter est un acte
   à part**, en dehors de ces trois : sortir le contenu en fichier ne découle pas du droit
@@ -961,7 +964,8 @@ règle d'accès (cf. §2).
   tableau mène à la fiche de ce compte ou de ce groupe. Depuis la fiche d'un **groupe**,
   *Ouvrir une collection à ce groupe* puis *Régler qui entre…* ouvre la fiche de la
   collection choisie, ce groupe déjà choisi dans *Faire entrer* : il reste à cliquer
-  *+ Faire entrer*. Ce que la collection **est** — sa description, sa diffusion, son
+  *+ Faire entrer*. S'il n'est pas du projet de la collection, la ligne le dit : faites-le
+  d'abord entrer dans le projet. Ce que la collection **est** — sa description, sa diffusion, son
   référent, ses exports — ne se règle pas ici : *Décrire dans la Bibliothèque*, sous le
   panneau, y mène dans le même onglet (Précédent ramène). Si l'annuaire ne répond pas, le bloc s'affiche
   quand même avec ce que l'application sait seule, et le dit — il n'annonce jamais qu'un
