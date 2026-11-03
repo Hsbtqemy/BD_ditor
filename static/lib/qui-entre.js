@@ -354,7 +354,8 @@
         <td class="qe-derive-geste">${regler(m)}</td></tr>`;
       }).join("");
       const vide = gr.explicites.length ? "" : `<tr><td class="col-note" colspan="${nCols}">
-        Personne encore : « Faire entrer » ajoute ici, hors du projet.</td></tr>`;
+        Personne encore : « Faire entrer » y règle l'accès d'un membre du projet, à part de ce
+        que le projet ouvre.</td></tr>`;
       corps = `<tbody class="qe-groupe-projet"><tr class="qe-groupe-ligne"><th scope="rowgroup"
           colspan="${nCols}">${titreGroupe("Par le projet", gr.derives.length)}</th></tr>${derives}</tbody>
         <tbody class="qe-groupe-ici"><tr class="qe-groupe-ligne"><th scope="rowgroup"
@@ -385,8 +386,8 @@
         <p class="small qe-derive-actes">${actesDerives(m, a)}</p>
         <p class="small qe-derive-geste">${regler(m)}</p></li>`).join("")}</ul>
       <p class="qe-groupe-titre">${titreGroupe("Entrés ici", gr.explicites.length)}</p>
-      ${gr.explicites.length ? "" : `<p class="col-note">Personne encore : « Faire entrer »
-        ajoute ici, hors du projet.</p>`}`;
+      ${gr.explicites.length ? "" : `<p class="col-note">Personne encore : « Faire entrer » y
+        règle l'accès d'un membre du projet, à part de ce que le projet ouvre.</p>`}`;
     if (gr.enDeux && !gr.explicites.length) return avant;
     return `${avant}<ul class="qe-cartes">${etat.acces.map((a, i) => {
       const ligne = `qe-${id}-r${i}`;
