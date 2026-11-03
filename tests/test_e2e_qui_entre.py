@@ -208,14 +208,13 @@ def test_les_actes_lies_sont_chapeautes_et_l_avertissement_nomme_son_acte(page, 
     assert porteur["libelle"] in texte and porteur["avertissement"] in texte, texte
 
 
-def test_un_nom_tape_inconnu_de_l_annuaire_est_accorde_et_signale(page, collection):
-    """Décision 4 (2) : une saisie libre est SIGNALÉE, jamais refusée. Le texte est celui que
-    Hugo a retenu, et la ligne porte « inconnu de l'annuaire »."""
+def test_un_membre_inconnu_de_l_annuaire_est_accorde_et_signale(page, collection):
+    """Décision 4 (2) : un nom que l'annuaire ne connaît pas est SIGNALÉ, jamais refusé. Depuis
+    la tranche 3c (F2), on ne le tape plus : c'est un membre du projet, choisi dans la liste.
+    Le texte est celui que Hugo a retenu, et la ligne porte « inconnu de l'annuaire »."""
     base, cid = collection["base"], collection["id"]
     item = _ouvrir(page, base, cid)
-    item.locator(".qe-choix").select_option("autre")
-    item.locator(".qe-nom").fill("ancien-cours")
-    item.locator(".qe-genre").select_option("groupe")
+    item.locator(".qe-choix").select_option("groupe:ancien-cours")
     item.locator(".qe-faire-entrer").click()
     expect(item.locator(".qe-msg.alerte")).to_have_text(
         "Le groupe ancien-cours n'est pas dans l'annuaire : l'accès est accordé, en lecture, "
@@ -227,24 +226,17 @@ def test_un_nom_tape_inconnu_de_l_annuaire_est_accorde_et_signale(page, collecti
 
 def test_faire_entrer_un_nom_deja_present_ne_le_retrograde_pas(page, collection):
     """Le `PUT` d'un accès RE-POSE un niveau : « faire entrer » un nom déjà présent le
-    rétrograderait en lecture. L'écran le refuse sans rien envoyer — sur le COUPLE (compte ou
-    groupe, nom exact) : un compte qui porte le nom d'un groupe est un autre accès, et passe.
-    Limite écrite dans AUTH-12 : un autre onglet peut encore rétrograder."""
+    rétrograderait en lecture. Depuis la tranche 3c (F2), la liste ne propose que les membres
+    qui n'entrent pas encore — sur le COUPLE (compte ou groupe, nom exact) : un compte qui
+    porte le nom d'un groupe est un autre accès, et reste proposé. Limite écrite dans AUTH-12 :
+    un autre onglet peut encore rétrograder."""
     base, cid = collection["base"], collection["id"]
     _accorder(base, cid, "groupe", "annotateurs", "ecriture")
     item = _ouvrir(page, base, cid)
-    envois = []
-    page.on("request", lambda r: envois.append(r.url)
-            if r.method == "PUT" and "/acces" in r.url else None)
-    item.locator(".qe-choix").select_option("groupe:annotateurs")
-    item.locator(".qe-faire-entrer").click()
-    expect(item.locator(".qe-msg.erreur")).to_contain_text("entre déjà")
-    assert envois == [], f"le PUT est parti, et aurait rétrogradé : {envois}"
+    expect(item.locator('.qe-choix option[value="groupe:annotateurs"]')).to_have_count(0)
     assert _acces(base, cid)[("groupe", "annotateurs")]["niveau"] == "ecriture"
 
-    item.locator(".qe-choix").select_option("autre")
-    item.locator(".qe-nom").fill("annotateurs")
-    item.locator(".qe-genre").select_option("utilisateur")
+    item.locator(".qe-choix").select_option("utilisateur:annotateurs")
     with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/acces")):
         item.locator(".qe-faire-entrer").click()
     acces = _acces(base, cid)
@@ -253,9 +245,9 @@ def test_faire_entrer_un_nom_deja_present_ne_le_retrograde_pas(page, collection)
 
 
 def test_un_annuaire_en_panne_n_empeche_rien(page, collection):
-    """L'annuaire ne répond pas : la liste des groupes manque, la note le dit (texte de Hugo,
-    sans « et ses comptes »), et le geste passe quand même, marqué « non vérifié ». Le
-    tableau, lui, n'a pas attendu l'annuaire. La réponse de `…/annuaire` est interceptée :
+    """L'annuaire ne répond pas : la note le dit, et le geste passe quand même, marqué « non
+    vérifié ». Le tableau, lui, n'a pas attendu l'annuaire, et la liste des membres du projet
+    ne dépend pas de lui (tranche 3c, F2). La réponse de `…/annuaire` est interceptée :
     `live_server` charge une doublure qui répond."""
     base, cid = collection["base"], collection["id"]
 
@@ -269,13 +261,9 @@ def test_un_annuaire_en_panne_n_empeche_rien(page, collection):
     # Une chaîne et non une expression : Playwright normalise alors les blancs, et le texte
     # du gabarit passe à la ligne.
     expect(item.locator(".qe-annuaire-note")).to_have_text(
-        "L'annuaire ne répond pas : impossible de proposer ses groupes, ni de vérifier le nom "
-        "que vous tapez. L'accès sera accordé tel quel, et marqué « non vérifié ».")
-    expect(item.locator(".qe-choix optgroup")).to_have_count(0)
-    # Sans liste, la saisie libre s'offre d'emblée.
-    expect(item.locator(".qe-libre")).to_be_visible()
-    item.locator(".qe-nom").fill("nouveau-cours")
-    item.locator(".qe-genre").select_option("groupe")
+        "L'annuaire ne répond pas : les accès ne peuvent pas être vérifiés, et celui que vous "
+        "accordez sera marqué « non vérifié ».")
+    item.locator(".qe-choix").select_option("groupe:nouveau-cours")
     item.locator(".qe-faire-entrer").click()
     expect(item.locator(".qe-msg.alerte")).to_contain_text("non vérifié")
     expect(_ligne(item, "nouveau-cours").locator(".qe-signal")).to_contain_text("non vérifié")
@@ -410,13 +398,12 @@ def test_aucun_texte_d_ecran_ne_dit_principal_genre_ni_utilisateur(page, collect
     """AUTH-12, décision 7 : compte, personne, groupe, accès, propriétaire, administrateur —
     jamais « principal », « genre » ni « utilisateur ». Mesuré sur ce que l'écran MONTRE, texte
     et attributs lisibles compris, et non sur le source, où ces mots restent des valeurs
-    d'API. Les deux blocs qui parlent d'accès : « Qui entre », saisie libre ouverte, et les
-    trois fiches de « 👥 Comptes et groupes »."""
+    d'API. Les deux blocs qui parlent d'accès : « Qui entre », sa ligne d'ajout et « Quelqu'un
+    manque ? » compris, et les trois fiches de « 👥 Comptes et groupes »."""
     base, cid = collection["base"], collection["id"]
     _accorder(base, cid, "groupe", "annotateurs", "ecriture")
     _accorder(base, cid, "utilisateur", "arrivant", "lecture")
     item = _ouvrir(page, base, cid)
-    item.locator(".qe-choix").select_option("autre")
     item.locator(".qe-faire-entrer").click()          # un refus affiché, lui aussi relu
     item.locator(".qe-msg.erreur").wait_for(timeout=3000)
     texte = page.evaluate(_TEXTES_D_UN_BLOC, "#biblio")
@@ -505,6 +492,8 @@ def test_deux_montages_vivants_ne_se_marchent_pas_dessus(page, live_server):
         b = c.post("/api/collections", json={"nom": "Étude B montée"}).json()["id"]
     for cid in (a, b):
         _accorder(live_server, cid, "groupe", "annotateurs", "lecture")
+    with _client(live_server) as c:            # un membre du projet qui n'entre pas encore
+        du_projet(c, a, "groupe", "stagiaires", headers=ECRITURE)
 
     item_a = _ouvrir(page, live_server, a)
     page.evaluate("""(id) => {
@@ -528,7 +517,7 @@ def test_deux_montages_vivants_ne_se_marchent_pas_dessus(page, live_server):
 
     # Un refus dans A, pour qu'il y ait quelque chose à faire taire.
     item_a.locator(".qe-faire-entrer").click()
-    expect(item_a.locator(".qe-msg.erreur")).to_contain_text("Choisissez un groupe")
+    expect(item_a.locator(".qe-msg.erreur")).to_contain_text("Choisissez un membre du projet")
 
     envois = []
     page.on("request", lambda r: envois.append((r.method, r.url))
@@ -615,7 +604,7 @@ def test_un_panneau_demonte_pendant_un_geste_ne_leve_rien(page, collection):
     assert _acces(base, cid)[("groupe", "annotateurs")]["niveau"] == "lecture"
     # Le panneau REMONTÉ, lui, est vivant et répond.
     remonte.locator(".qe-faire-entrer").click()
-    expect(remonte.locator(".qe-msg.erreur")).to_contain_text("Choisissez un groupe")
+    expect(remonte.locator(".qe-msg.erreur")).to_contain_text("Choisissez un membre du projet")
 
 
 def test_le_contrat_du_montage_se_dit_au_lieu_de_se_taire(page, collection):
@@ -644,3 +633,23 @@ def test_le_contrat_du_montage_se_dit_au_lieu_de_se_taire(page, collection):
     banc = page.locator("#banc-montage")
     expect(banc).to_contain_text("La description des droits n'a pas pu être lue")
     expect(banc.locator(".qe-faire-entrer")).to_have_count(0)
+
+
+# ── Tranche 3c (F2) : les membres du projet seuls ─────────────────────────────────────
+
+
+def test_quelqu_un_manque_et_la_preselection_d_un_groupe(page, collection):
+    """La ligne d'ajout ne propose que les membres du projet ; dessous, qui fait entrer
+    quelqu'un d'autre — ici le lien vers la fiche du projet, à qui le gère (Hugo, sur
+    maquette, 2026-11-02). `&groupe=` présélectionne un groupe MEMBRE ; un groupe hors du
+    projet se DIT dans la ligne, sans rien présélectionner (Hugo, 2026-11-03)."""
+    base, cid = collection["base"], collection["id"]
+    item = _ouvrir(page, base, cid, "&groupe=annotateurs")
+    expect(item.locator(".qe-choix")).to_have_value("groupe:annotateurs")
+    expect(item.locator(".qe-choix optgroup")).to_have_count(2)        # comptes, groupes
+    expect(item.locator(".qe-manque")).to_contain_text("Quelqu'un manque ?")
+    expect(item.locator(".qe-manque a")).to_have_attribute(
+        "href", re.compile(r"^/administration\?vue=projets&projet=\d+$"))
+    item = _ouvrir(page, base, cid, "&groupe=inconnus")
+    expect(item.locator(".qe-hors-projet")).to_contain_text("Le groupe inconnus n'est pas du projet")
+    expect(item.locator(".qe-choix")).to_have_value("")

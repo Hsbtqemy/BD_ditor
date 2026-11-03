@@ -404,16 +404,14 @@ def test_un_refus_d_acces_survit_au_rechargement_de_la_collection(page, decor):
     assert ("pilote", "proprietaire") in {(a["principal"], a["niveau"]) for a in acces}
 
 
-def test_faire_entrer_demande_de_dire_compte_ou_groupe(page, decor):
-    """AUCUN défaut pour un nom tapé — tranché le 2026-09-16, gardé par l'étape 3 d'AUTH-12.
-
-    « Utilisateur » était présélectionné, et la passe de recette a accordé `annotateurs` et
-    `etudiants` comme des logins : deux fois sur deux. Un groupe accordé comme compte n'ouvre
-    rien à personne. « + Faire entrer » refuse donc tant que « Compte ou groupe ? » n'est pas
-    choisi, et le dit dans la collection. Et rien n'est présélectionné dans la liste non plus :
-    « + Faire entrer » sans choix accorderait sinon le premier groupe par inertie."""
+def test_faire_entrer_ne_presélectionne_aucun_membre(page, decor):
+    """Rien n'est présélectionné dans la liste : « + Faire entrer » sans choix accorderait
+    sinon le premier membre par inertie (AUTH-12, étape 3). Depuis la tranche 3c (F2), la
+    liste ne propose que les membres du projet — un compte et un groupe y sont deux options
+    distinctes, ce que la saisie libre demandait de dire."""
     with _client(decor["base"]) as c:
         cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
+        du_projet(c, cid, "groupe", "annotateurs", headers=ECRITURE)
 
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     item = _ouvrir(page, cid, "qui")
@@ -426,18 +424,10 @@ def test_faire_entrer_demande_de_dire_compte_ou_groupe(page, decor):
     choix.wait_for(timeout=5000)
     assert choix.input_value() == "", "un choix est présélectionné : l'inertie accorderait"
     item.locator(".qe-faire-entrer").click()
-    _message_du_geste(page, item, "Choisissez un groupe")
+    _message_du_geste(page, item, "Choisissez un membre du projet")
+    assert envois == [], f"la demande est partie au serveur sans choix : {envois}"
 
-    choix.select_option("autre")
-    item.locator(".qe-nom").fill("annotateurs")
-    assert item.locator(".qe-genre").input_value() == "", (
-        "un genre est présélectionné : l'erreur de la recette redevient possible par inertie")
-    item.locator(".qe-faire-entrer").click()
-    message = _message_du_geste(page, item, "compte ou un groupe")
-    assert "annotateurs" in message, message
-    assert envois == [], f"la demande est partie au serveur sans genre choisi : {envois}"
-
-    item.locator(".qe-genre").select_option("groupe")
+    choix.select_option("groupe:annotateurs")
     item.locator(".qe-faire-entrer").click()
     message = _message_du_geste(page, item, "entre dans")
     assert "Cochez les autres actes" in message, message
@@ -549,12 +539,11 @@ def test_un_geste_d_acces_efface_le_refus_d_une_autre_collection(page, decor):
     with _client(decor["base"]) as c:
         a = c.post("/api/collections", json={"nom": "Espace A"}).json()["id"]
         b = c.post("/api/collections", json={"nom": "Espace B"}).json()["id"]
+        du_projet(c, b, "groupe", "annotateurs", headers=ECRITURE)
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     item_a = _ouvrir(page, a, "qui")
-    item_a.locator(".qe-choix").select_option("autre")
-    item_a.locator(".qe-nom").fill("annotateurs")
     item_a.locator(".qe-faire-entrer").click()
-    _message_du_geste(page, item_a, "compte ou un groupe")
+    _message_du_geste(page, item_a, "Choisissez un membre du projet")
 
     item_b = _ouvrir(page, b, "qui")
     item_b.locator(".qe-choix").select_option("groupe:annotateurs")
@@ -562,7 +551,7 @@ def test_un_geste_d_acces_efface_le_refus_d_une_autre_collection(page, decor):
     item_b.locator(".qe-qui, .qe-table th[scope=row]", has_text="annotateurs").first.wait_for(
         timeout=5000)
     item_b.locator(".qe-msg", has_text="entre dans").wait_for(timeout=5000)
-    expect(page.locator("#biblio .col-msg", has_text="compte ou un groupe"),
+    expect(page.locator("#biblio .col-msg", has_text="Choisissez un membre du projet"),
            "le refus d'« Espace A » est resté affiché après un accès accordé dans « Espace B »"
            ).to_have_count(0)
 

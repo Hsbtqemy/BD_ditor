@@ -65,10 +65,10 @@ SURFACES_HORS_PERIMETRE = {}
 # quittait donc le périmètre SANS QUE RIEN NE TOMBE, et sa déclaration dans `NON_RESOLUS`
 # restait là, à désigner un fichier qui ne contenait plus la ligne. Les modules qui touchent
 # `hidden` sont donc lus eux aussi — par la garde de périmètre, qui ne demande aucun
-# navigateur. Une clé par module, sa valeur dit qui le monte.
+# navigateur. Une clé par module, sa valeur dit qui le monte. `lib/qui-entre.js` en est
+# sorti avec sa saisie libre (COL-3, tranche 3c, F2) : il ne masque plus rien, et s'il y
+# revenait, `test_tout_module_qui_masque_est_lu` le dirait.
 MODULES_MONTES = {
-    "lib/qui-entre.js": "monté par la Bibliothèque, dans chaque collection dépliée, et par "
-                        "l'Administration, dans la fiche d'une collection (UX-16)",
     "lib/membres-projet.js": "monté par l'Administration, dans la fiche d'un projet (COL-3), "
                              "et par la ligne du bac à sable, dans « Inviter… » (COL-4)",
     "lib/champ-personnage.js": "monté par l'Atelier, pour le locuteur et l'identité d'une "
@@ -103,13 +103,6 @@ NON_RESOLUS = {
         "`$(\"#…\")`. `.bi-panneau` ne pose aucun `display`, l'attribut agit ; vérifié le "
         "2026-10-17 par `test_e2e_bibliotheque.test_la_fiche_d_une_collection_a_quatre_onglets`, "
         "qui exige un seul panneau VISIBLE à la fois."),
-    ("lib/qui-entre.js", "libre"): (
-        "La saisie libre de « Qui entre » (AUTH-12, étape 3), une par panneau monté : "
-        "la cible est la CLASSE `.qe-libre`, cherchée dans sa section, pas un identifiant. "
-        "Elle pose `display: inline-flex`, d'où le garde `.qe-libre[hidden] { display: none; }` "
-        "dans la feuille — vérifié le 2026-09-17 dans les deux sens par deux tests e2e : "
-        "`test_ouvrir_une_collection_a_ce_groupe_le_preselectionne` l'exige CACHÉE, "
-        "`test_un_annuaire_en_panne_n_empeche_rien` VISIBLE."),
     ("bac-a-sable.js", "voile"): (
         "Le voile des dialogues de la ligne du bac à sable (COL-4), créé au premier dialogue "
         "par `el(\"div\", \"bac-modal\")` : la cible a un identifiant (`#bac-modal`) mais naît "

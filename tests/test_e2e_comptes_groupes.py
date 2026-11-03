@@ -611,9 +611,8 @@ def test_ouvrir_une_collection_a_ce_groupe_le_preselectionne(page, live_server):
     expect(page.locator('#cg [data-axe="collections"]')).to_have_attribute(
         "aria-pressed", "true")
     qui = page.locator("#cg-fiche section[data-qui-entre]")
-    # `annotateurs` est dans la doublure de l'annuaire : il est CHOISI dans la liste, pas tapé.
+    # `annotateurs` est membre du projet : il est CHOISI dans la liste.
     expect(qui.locator(".qe-choix")).to_have_value("groupe:annotateurs")
-    expect(qui.locator(".qe-libre")).to_be_hidden()
     # Le focus sur le titre de « Qui entre », comme il y arrivait dans la Bibliothèque.
     expect(qui.locator(".qe-titre")).to_be_focused()
     assert envois == [], f"une écriture est partie sans geste : {envois}"
@@ -650,6 +649,9 @@ def test_le_message_d_un_geste_fait_taire_celui_que_la_fiche_d_un_compte_gardait
     donc à l'écran APRÈS un geste de « Qui entre » qui n'avait rien à voir avec lui."""
     cid = _creer_collection(live_server, "Collection Test")
     _accorder(live_server, cid, "utilisateur", "stagiaire", "lecture")
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE) as c:
+        # Un membre du projet qui n'entre pas encore : sans lui, la ligne d'ajout est éteinte.
+        du_projet(c, cid, "groupe", "annotateurs", headers=ECRITURE)
     _ouvrir(page, live_server, decor(cid=cid, cid2=cid + 1000),
             f"/administration?axe=collections&collection={cid}")
     qui = page.locator("#cg-fiche section[data-qui-entre]")
@@ -677,7 +679,7 @@ def test_le_message_d_un_geste_fait_taire_celui_que_la_fiche_d_un_compte_gardait
     qui.locator(".qe-choix").wait_for(timeout=5000)
     qui.locator(".qe-faire-entrer").click()
     expect(qui.locator(".qe-msg.erreur")).to_be_visible()
-    expect(qui.locator(".qe-msg.erreur")).to_contain_text("Choisissez un groupe")
+    expect(qui.locator(".qe-msg.erreur")).to_contain_text("Choisissez un membre du projet")
     page.go_forward()
     expect(page.locator("#cg-fiche-titre")).to_have_text("Théo Marchand")
     expect(page.locator("#cg-nature")).to_be_visible()

@@ -598,7 +598,8 @@ def list_acces_du_projet(collection_id: int, conn: sqlite3.Connection = Depends(
     jamais voulu dire qu'on les taise (relecture croisée de la 3c, remarque 7)."""
     c = _get_collection(conn, portee, collection_id, administrer=True)
     projet_id = projet_de_collection(conn, collection_id)
-    p = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
+    p = conn.execute("SELECT nom, bac_a_sable_de FROM projet WHERE id = ?",
+                     (projet_id,)).fetchone()
     base = bool(c["base"])
     membres = _rows(conn.execute(
         "SELECT genre, principal FROM projet_acces WHERE projet_id = ? "
@@ -611,6 +612,9 @@ def list_acces_du_projet(collection_id: int, conn: sqlite3.Connection = Depends(
     return {"base": base, "projet_id": projet_id, "projet_nom": p["nom"] if p else None,
             "acces_membres": c["acces_membres"] if base else None,
             "gerable": portee.peut_gerer_projet(projet_id),
+            # Tranche 3c (F2) — « Quelqu'un manque ? » ne dit pas la même chose dans un bac à
+            # sable, où l'on INVITE, et le bac n'a pas de fiche dans l'Administration.
+            "bac_a_sable": bool(p and p["bac_a_sable_de"] is not None),
             "lignes": autorisation.acces_derives(conn, collection_id),
             "membres": membres}
 

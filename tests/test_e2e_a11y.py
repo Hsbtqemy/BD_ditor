@@ -1077,9 +1077,7 @@ def test_a11y_qui_entre(page, seeded, theme):
     viol = _audit(page)
     assert not viol, f"Qui entre/refus affiché [{theme}] :\n{_fmt(viol)}"
 
-    item.locator(".qe-choix").select_option("autre")
-    item.locator(".qe-nom").fill("bd-lettrage")
-    item.locator(".qe-genre").select_option("groupe")
+    item.locator(".qe-choix").select_option("groupe:bd-lettrage")
     item.locator(".qe-faire-entrer").click()
     item.locator(".qe-marque", has_text="inconnu de l'annuaire").wait_for(timeout=5000)
     item.locator(".qe-msg.alerte").wait_for(timeout=5000)

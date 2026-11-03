@@ -2346,6 +2346,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .cat-tout { display: flex; justify-content: space-between; gap: .5rem; width: 100%; background: none;
             border: 0; color: var(--text); font: inherit; font-weight: 600; text-align: left;
             padding: .28rem .35rem; border-radius: 5px; cursor: pointer; }
+.cat-tout[hidden] { display: none; }
 .cat-tout:hover { background: var(--hover); }
 .cat-tout[aria-current] { background: color-mix(in srgb, var(--accent-blue) 16%, transparent); }
 .cat-centre { display: flex; min-width: 0; min-height: 0; border: 1px solid var(--border);
@@ -3179,21 +3180,10 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .qe-signal { font-size: .82rem; }
 .qe-marque { color: var(--accent-amber); font-weight: 600; }
 .qe-ajout-ligne { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .6rem; }
-/* Une liste déroulante prend la largeur de sa plus longue option : à 320 px, « Un compte, ou
-   un groupe absent de la liste… » emportait le corps de la page. Elle rétrécit donc. */
+/* Une liste déroulante prend la largeur de sa plus longue option : à 320 px, une option
+   longue emportait le corps de la page. Elle rétrécit donc. (La saisie libre qui la suivait
+   est partie avec la tranche 3c de COL-3, F2 : on ne choisit plus qu'un membre du projet.) */
 .qe-choix { max-width: 100%; min-width: 0; }
-/* La saisie libre RÉTRÉCIT elle aussi, et son champ avec elle — la règle du module frère
-   (`.mp-libre`, plus bas), posée ici le 2026-10-11. Un champ de texte garde sinon sa largeur
-   de vingt caractères : 274 px sous une préférence de police de 24, pour 260 de place dans
-   la Bibliothèque à 320 px et 215 dans la fiche d'une collection de l'Administration, dont
-   le corps de page défilait alors de côté. Repliée, la saisie libre n'a pas de rectangle :
-   aucune mesure ne l'avait vue. Le plancher de 8rem reste, il tient dans les deux hôtes. */
-.qe-libre { display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: center;
-            min-width: 0; max-width: 100%; }
-/* `display: inline-flex` ci-dessus l'emporterait sur la règle UA `[hidden]`. */
-.qe-libre[hidden] { display: none; }
-.qe-nom { min-width: 8rem; max-width: 100%; }
-.qe-genre { min-width: 0; max-width: 100%; }
 .qe-noms { margin: .3rem 0; padding-left: 1.2rem; }
 .qe-cartes { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 .qe-carte { border: 1px solid var(--border); border-radius: 6px; padding: .5rem .6rem; }

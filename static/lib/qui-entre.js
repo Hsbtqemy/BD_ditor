@@ -26,7 +26,8 @@
                          si elle est illisible ; une promesse est acceptée.
    `options.groupesAdmin` `acces.groupes_admin` de `GET /api/moi` (AUTH-4).
    `options.preselection` un nom de groupe à présélectionner dans la ligne d'ajout, consommé
-                         une fois l'annuaire connu.
+                         une fois les membres du projet connus : membre, il est choisi ;
+                         sinon la ligne dit qu'il n'est pas du projet.
    `options.surMessage(ligne)`  appelé chaque fois que le module écrit sa ligne de message.
    `options.surChangement()`    appelé après un geste que le serveur a accepté.
    `options.surOuvrir({ genre, principal })`  si l'hôte a une FICHE à ouvrir pour un compte
@@ -58,8 +59,16 @@
    des actes que le serveur accorde ensemble ne se cochent pas séparément.
 
    DEUX LECTURES, ET LA SECONDE N'ATTEND PAS. `…/acces` dessine le tableau tout de suite ;
-   `…/annuaire` arrive après et remplit « Signal » et la liste des groupes. Un annuaire en
-   panne ne retarde donc aucun geste (c'est la raison même des deux routes).
+   `…/annuaire` arrive après et remplit « Signal ». Un annuaire en panne ne retarde donc
+   aucun geste (c'est la raison même des deux routes).
+
+   QUI PEUT ENTRER : LES MEMBRES DU PROJET, ET EUX SEULS (COL-3, tranche 3c, F2 ; Hugo, sur
+   maquette, 2026-11-02). On n'entre dans une collection que si l'on est du projet ; la ligne
+   d'ajout ne propose donc que les membres que `…/acces-du-projet` nomme (`membres`), sans
+   saisie libre ni groupes de l'annuaire, qui ne sert plus qu'à « Signal ». Dessous, qui fait
+   entrer quelqu'un d'autre dans le projet — ses responsables, nommés —, ou le lien vers la
+   fiche du projet pour qui le gère. Le 409 du serveur reste, pour un membre sorti entre
+   l'affichage et le geste, et se lit dans la ligne de message, sous la ligne d'ajout.
 
    CE QUE LE REFUS D'ÉCRAN NE FERME PAS. Le `PUT` d'un accès RE-POSE un niveau : « faire
    entrer » un nom déjà présent le rétrograderait en lecture. L'écran le refuse avant
@@ -494,67 +503,120 @@
     if (suite) suite.focus();
   }
 
-  /* Ce que la ligne d'ajout contenait, relevé avant de la redessiner : l'annuaire arrive
-     APRÈS l'ouverture, et le nom qu'on a commencé à taper ne doit pas partir avec. */
+  /* Ce que la ligne d'ajout contenait, relevé avant de la redessiner : l'annuaire et les
+     membres arrivent APRÈS l'ouverture, et le choix fait ne doit pas partir avec. */
   function releveAjout(sec) {
     const choix = sec.querySelector(".qe-choix");
     if (!choix) return null;
-    return { choix: choix.value, touche: choix.dataset.touche === "1",
-             nom: sec.querySelector(".qe-nom").value,
-             genre: sec.querySelector(".qe-genre").value };
+    return { choix: choix.value, touche: choix.dataset.touche === "1" };
   }
 
-  /* La ligne d'ajout, dans l'ordre de la décision 4 (2) : les GROUPES de l'annuaire (leurs
-     noms seuls — le propriétaire ne voit ni les comptes ni les membres), puis la saisie
-     libre, qui exige de dire « Compte » ou « Groupe » SANS valeur par défaut (COL-2, tranché
-     le 2026-09-16 : un groupe accordé comme compte n'ouvre rien à personne). Et aucune
-     présélection d'un groupe non plus : « Choisir… » en tête, sans quoi « + Faire entrer »
-     accorderait le premier de la liste par inertie. */
+  const valeurMembre = (x) => `${x.genre}:${x.principal}`;
+
+  /* Le nom d'un membre, tel qu'on le choisit : un compte par son nom lisible et son login,
+     un groupe par « groupe <nom> ». */
+  function nomMembre(x) {
+    if (x.genre === "groupe") return `groupe ${x.principal}`;
+    return x.nom && x.nom !== x.principal ? `${x.nom} (${x.principal})` : x.principal;
+  }
+
+  /* Les membres du projet qui n'entrent pas encore ICI : ce que la ligne propose. `null`
+     quand les membres n'ont pas pu être lus. */
+  function candidats(m) {
+    const p = m.etat.projet;
+    if (!p || !Array.isArray(p.membres)) return null;
+    const deja = new Set((m.etat.acces || []).map((a) => `${a.genre}:${a.principal}`));
+    return p.membres.filter((x) => !deja.has(valeurMembre(x)));
+  }
+
+  /* Les responsables du projet, nommés : les lignes dérivées les désignent par leur rôle, et
+     `membres` porte le nom lisible d'un compte. */
+  function responsablesDuProjet(p) {
+    const noms = new Map((p.membres || []).map((x) => [valeurMembre(x), nomMembre(x)]));
+    const vus = new Set();
+    return (p.lignes || []).filter((l) => l.role === "responsable").map((l) => {
+      const k = `${l.genre}:${l.principal}`;
+      if (vus.has(k)) return null;
+      vus.add(k);
+      return (noms.get(k) || (l.genre === "groupe" ? `groupe ${l.principal}` : l.principal))
+        .replace(/ \([^)]*\)$/, "");
+    }).filter(Boolean);
+  }
+
+  function enumeration(l) {
+    return l.length < 2 ? (l[0] || "") : `${l.slice(0, -1).join(", ")} et ${l[l.length - 1]}`;
+  }
+
+  /* « Quelqu'un manque ? » : qui fait entrer quelqu'un dans le projet. Un lien vers la fiche
+     du projet pour qui le GÈRE ; dans un bac à sable, l'invitation ; sinon ses responsables,
+     nommés, ou un administrateur. */
+  function quelquUnManque(m) {
+    const p = m.etat.projet;
+    if (!p) return "";
+    if (p.bac_a_sable) {
+      return p.gerable
+        ? "Quelqu'un manque ? Invitez-le d'abord : « Inviter… », sur la ligne du bac à sable."
+        : "Quelqu'un manque ? Le propriétaire du bac à sable l'y invite.";
+    }
+    if (p.gerable && p.projet_id != null) {
+      return `Quelqu'un manque ? <a href="/administration?vue=projets&amp;projet=${esc(String(p.projet_id))}">`
+        + "Faites-le d'abord entrer dans le projet ↗</a>";
+    }
+    const r = responsablesDuProjet(p);
+    return r.length
+      ? `Quelqu'un manque ? ${esc(enumeration(r))}, ${r.length > 1 ? "responsables du projet, le font" : "responsable du projet, le fait"} entrer.`
+      : "Quelqu'un manque ? Un administrateur le fait entrer dans le projet.";
+  }
+
+  /* La ligne d'ajout : les MEMBRES du projet qui n'entrent pas encore ici, et rien d'autre.
+     Aucune présélection par inertie : « Choisir… » en tête, sans quoi « + Faire entrer »
+     accorderait le premier de la liste. */
   function ajoutHtml(m, garde) {
     const etat = m.etat;
     if (!m.droits || etat.erreur || !etat.acces) return "";
     const id = m.sfx;
-    const an = etat.annuaire;
-    const groupes = an && Array.isArray(an.groupes) ? an.groupes : [];
-    const connues = new Set(["", "autre", ...groupes.map((g) => `groupe:${g}`)]);
-    let choix, nom = "", genre = "", touche = false;
-    if (garde && garde.touche && connues.has(garde.choix)) {
-      ({ choix, nom, genre, touche } = garde);
-    } else if (garde && garde.choix === "autre" && (garde.nom || garde.genre)) {
-      ({ choix, nom, genre } = garde);
-    } else {
-      choix = groupes.length ? "" : "autre";
+    if (etat.projetErreur) {
+      return `<p class="col-note qe-membres-erreur">Les membres du projet n'ont pas pu être lus
+        (${esc(etat.projetErreur)}) : on n'entre ici que si l'on est du projet, et la liste ne
+        peut pas les proposer.</p>`;
     }
+    const l = candidats(m);
+    if (l === null) return "";
+    const connues = new Set(["", ...l.map(valeurMembre)]);
+    let choix = "", touche = false;
+    if (garde && garde.touche && connues.has(garde.choix)) ({ choix, touche } = garde);
     // La présélection passée par l'hôte (« Ouvrir une collection à ce groupe… »), consommée
-    // une fois l'annuaire connu : listé, le groupe est choisi ; absent, il est tapé.
-    if (an && m.preselection) {
+    // une fois les membres connus : membre, le groupe est choisi ; sinon la ligne le dit, et
+    // le redit à chaque rendu (l'annuaire arrive après les membres et redessine la ligne).
+    if (m.preselection) {
       const g = m.preselection;
       m.preselection = null;
-      if (groupes.includes(g)) { choix = `groupe:${g}`; }
-      else { choix = "autre"; nom = g; genre = "groupe"; }
-      touche = true;
+      const v = `groupe:${g}`;
+      if (connues.has(v)) { choix = v; touche = true; }
+      else m.horsProjet = g;
+    }
+    let horsProjet = "";
+    const g = m.horsProjet;
+    if (g && !connues.has(`groupe:${g}`)
+        && !(etat.acces || []).some((a) => a.genre === "groupe" && a.principal === g)) {
+      const p = etat.projet;
+      horsProjet = `<p class="col-note qe-hors-projet">Le groupe ${esc(g)} n'est pas du projet`
+        + `${p && p.projet_nom ? ` « ${esc(p.projet_nom)} »` : ""} : faites-le d'abord entrer `
+        + "dans le projet.</p>";
     }
     const opt = (v, lib) => `<option value="${esc(v)}"${v === choix ? " selected" : ""}>${esc(lib)}</option>`;
-    return `<div class="qe-ajout-ligne">
+    const comptes = l.filter((x) => x.genre !== "groupe");
+    const groupes = l.filter((x) => x.genre === "groupe");
+    return `${horsProjet}<div class="qe-ajout-ligne">
       <label for="qe-choix-${id}">Faire entrer</label>
-      <select id="qe-choix-${id}" class="qe-choix"${touche ? ' data-touche="1"' : ""}>
-        ${opt("", "Choisir…")}
-        ${groupes.length ? `<optgroup label="Groupes de l'annuaire">${groupes.map((g) =>
-          opt(`groupe:${g}`, g)).join("")}</optgroup>` : ""}
-        ${opt("autre", "Un compte, ou un groupe absent de la liste…")}
+      <select id="qe-choix-${id}" class="qe-choix"${touche ? ' data-touche="1"' : ""}${l.length ? "" : " disabled"}>
+        ${opt("", l.length ? "Choisir un membre du projet…" : "Tous les membres du projet entrent déjà")}
+        ${comptes.length ? `<optgroup label="Comptes">${comptes.map((x) => opt(valeurMembre(x), nomMembre(x))).join("")}</optgroup>` : ""}
+        ${groupes.length ? `<optgroup label="Groupes">${groupes.map((x) => opt(valeurMembre(x), nomMembre(x))).join("")}</optgroup>` : ""}
       </select>
-      <span class="qe-libre"${choix === "autre" ? "" : " hidden"}>
-        <input id="qe-nom-${id}" class="qe-nom" placeholder="nom exact"
-               autocomplete="off" aria-label="Nom exact du compte ou du groupe"
-               value="${esc(nom)}">
-        <select id="qe-genre-${id}" class="qe-genre" aria-label="Compte ou groupe">
-          <option value=""${genre ? "" : " selected"}>Compte ou groupe ?</option>
-          <option value="utilisateur"${genre === "utilisateur" ? " selected" : ""}>Compte</option>
-          <option value="groupe"${genre === "groupe" ? " selected" : ""}>Groupe</option>
-        </select>
-      </span>
-      <button class="primary small qe-faire-entrer" type="button">+ Faire entrer</button>
-    </div>`;
+      <button class="primary small qe-faire-entrer" type="button"${l.length ? "" : " disabled"}>+ Faire entrer</button>
+    </div>
+    <p class="col-note qe-manque">${quelquUnManque(m)}</p>`;
   }
 
   /* Ce qui vaut TOUJOURS, sous la ligne de message, et d'un seul tenant : l'avertissement d'un
@@ -588,20 +650,18 @@
       responsables et ses membres y entrent sans figurer ci-dessus.</p>`);
     }
     const an = etat.annuaire && etat.annuaire.annuaire;
+    // Depuis la tranche 3c (F2), l'annuaire ne sert plus qu'à « Signal » : la ligne d'ajout
+    // propose les membres du projet, qu'il ne fournit pas.
     if (an && an.etat === "non_verifie") {
-      // Le texte retenu par Hugo le 2026-09-17, sans « et ses comptes » : le propriétaire
-      // ne se voit proposer aucun compte, il n'y a donc rien à ne pas pouvoir proposer.
-      notes.push(`<p class="col-note qe-annuaire-note">L'annuaire ne répond pas : impossible de
-      proposer ses groupes, ni de vérifier le nom que vous tapez. L'accès sera accordé tel
-      quel, et marqué « non vérifié ».</p>`);
+      notes.push(`<p class="col-note qe-annuaire-note">L'annuaire ne répond pas : les accès ne
+      peuvent pas être vérifiés, et celui que vous accordez sera marqué « non vérifié ».</p>`);
     } else if (an && an.etat === "sans_annuaire") {
-      notes.push(`<p class="col-note">Aucun annuaire n'est configuré : un accès se déclare par
-      un nom, que l'application ne peut pas vérifier. Un compte qui n'a pas encore ouvert
-      l'application est signalé ; un nom de groupe ne peut pas l'être.</p>`);
+      notes.push(`<p class="col-note">Aucun annuaire n'est configuré : l'application ne peut pas
+      vérifier les comptes et les groupes. Un compte qui n'a pas encore ouvert l'application
+      est signalé ; un groupe ne peut pas l'être.</p>`);
     } else if (an && an.etat === "erreur") {
-      notes.push(`<p class="col-note">La lecture de l'annuaire a échoué (${esc(an.motif)}) : la
-      liste des groupes et les vérifications manquent. L'accès se déclare quand même par un
-      nom.</p>`);
+      notes.push(`<p class="col-note">La lecture de l'annuaire a échoué (${esc(an.motif)}) : les
+      vérifications manquent.</p>`);
     }
     notes.push(noteAdmin(m.options.groupesAdmin));
     const corps = notes.filter(Boolean).join("");
@@ -769,25 +829,12 @@
     const BDDroits = droitsLib();
     const sec = m.sec, c = m.c;
     const choix = sec.querySelector(".qe-choix").value;
-    let genre, principal;
     if (!choix) {
-      dire(m, "Choisissez un groupe dans la liste, ou « Un compte, ou un groupe absent de "
-              + "la liste… ».", true);
+      dire(m, "Choisissez un membre du projet dans la liste.", true);
       return;
     }
-    if (choix === "autre") {
-      principal = sec.querySelector(".qe-nom").value.trim();
-      genre = sec.querySelector(".qe-genre").value;
-      if (!principal) { dire(m, "Tapez le nom exact du compte ou du groupe.", true); return; }
-      if (!genre) {
-        dire(m, `Dites si « ${principal} » est un compte ou un groupe : un groupe accordé `
-             + "comme compte n'ouvrirait rien à personne.", true);
-        return;
-      }
-    } else {
-      genre = "groupe";
-      principal = choix.slice("groupe:".length);
-    }
+    const deux = choix.indexOf(":");
+    const genre = choix.slice(0, deux), principal = choix.slice(deux + 1);
     const nomme = genre === "groupe" ? "Le groupe" : "Le compte";
     // Le couple, et non le nom seul : un compte et un groupe de même nom sont deux accès.
     if ((m.etat.acces || []).some((a) => a.genre === genre && a.principal === principal)) {
@@ -804,12 +851,10 @@
     // VIDE la cible, ce que le panneau d'avant l'extraction ne faisait pas : sans cette
     // garde, la ligne suivante lèverait sur une section vide (passe de revue, 2026-10-07).
     if (!vivant(m)) { changement(m, true); return; }
-    // La ligne d'ajout repart à vide : le nom est entré, le garder inviterait à le renvoyer.
+    // La ligne d'ajout repart à vide : le membre est entré, et quitte la liste.
     const choixEl = sec.querySelector(".qe-choix");
     choixEl.value = "";
     delete choixEl.dataset.touche;
-    sec.querySelector(".qe-nom").value = "";
-    sec.querySelector(".qe-genre").value = "";
     await apres(m, ".qe-choix");
     const an = await lireAnnuaire(m);
     rendre(m);
@@ -864,12 +909,7 @@
       if (!t.matches) return;
       if (t.matches(".qe-case[data-cran]")) gesteCran(m, t);
       else if (t.matches(".qe-case[data-hors-rang]")) gesteHorsRang(m, t);
-      else if (t.matches(".qe-choix")) {
-        t.dataset.touche = "1";
-        const libre = sec.querySelector(".qe-libre");
-        libre.hidden = t.value !== "autre";
-        if (!libre.hidden) libre.querySelector(".qe-nom").focus();
-      }
+      else if (t.matches(".qe-choix")) t.dataset.touche = "1";
     });
     ecouter("click", (ev) => {
       const b = ev.target.closest && ev.target.closest("button");
@@ -880,12 +920,6 @@
         // L'hôte reçoit le couple tel que le serveur le nomme, et choisit sa fiche : le
         // module ne sait pas ce qu'est une fiche, ni s'il y en a une.
         m.options.surOuvrir({ genre: b.dataset.genre, principal: b.dataset.principal });
-      }
-    });
-    ecouter("keydown", (ev) => {
-      if (ev.key === "Enter" && ev.target.matches && ev.target.matches(".qe-nom")) {
-        ev.preventDefault();
-        faireEntrer(m);
       }
     });
     m.auSeuil = () => { if (vivant(m)) rendre(m); else demonter(m); };
@@ -938,7 +972,7 @@
     const m = { cible, options: o, c, droits: null, monte: true, sec: null, sfx: null,
                 etroit: null, auSeuil: null, ecouteurs: [],
                 sansPlace: false, besoin: 0, observateur: null,
-                preselection: o.preselection || null,
+                preselection: o.preselection || null, horsProjet: null,
                 etat: { acces: null, erreur: null, annuaire: null, projet: null,
                         projetErreur: null } };
     OCCUPANTS.set(cible, m);

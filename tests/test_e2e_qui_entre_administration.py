@@ -359,13 +359,12 @@ def test_quitter_une_fiche_pendant_un_geste_ne_fait_taire_ni_ne_leve_rien(page, 
     qui_b = page.locator("#cg-fiche section[data-qui-entre]")
     qui_b.locator(".qe-choix").wait_for(timeout=5000)
     expect(qui_b).to_have_attribute("data-qe", str(b))
-    # L'annuaire vient APRÈS le tableau : avant lui, la ligne d'ajout offre la saisie libre, et
-    # son refus n'est pas celui-ci.
+    # Les membres du projet viennent APRÈS le tableau : la ligne d'ajout les attend.
     expect(qui_b.locator('.qe-choix option[value="groupe:annotateurs"]')).to_have_count(1)
     qui_b.locator(".qe-faire-entrer").click()
     refus = qui_b.locator(".qe-msg.erreur")
     expect(refus).to_be_visible()
-    expect(refus).to_contain_text("Choisissez un groupe")
+    expect(refus).to_contain_text("Choisissez un membre du projet")
 
     # La réponse de A revient : le geste a abouti, l'hôte relit la vue.
     with _vue_relue(page):
@@ -374,7 +373,7 @@ def test_quitter_une_fiche_pendant_un_geste_ne_fait_taire_ni_ne_leve_rien(page, 
     assert exceptions == [] and console == [], (exceptions, console)
     assert _acces(live_server, a)[("groupe", "annotateurs")]["niveau"] == "lecture"
     expect(refus).to_be_visible()
-    expect(refus).to_contain_text("Choisissez un groupe")
+    expect(refus).to_contain_text("Choisissez un membre du projet")
 
     assert page.locator(".qe").count() == 1, "deux panneaux « Qui entre » dans la page"
     assert page.evaluate(_DOUBLONS) == []
@@ -429,7 +428,7 @@ def test_un_message_de_qui_entre_ne_touche_pas_la_fiche_du_projet_voisin(page, e
 
     qui.locator(".qe-faire-entrer").click()                    # un refus d'écran
     expect(qui.locator(".qe-msg.erreur")).to_be_visible()
-    expect(qui.locator(".qe-msg.erreur")).to_contain_text("Choisissez un groupe")
+    expect(qui.locator(".qe-msg.erreur")).to_contain_text("Choisissez un membre du projet")
     expect(voisin).to_have_text("Rien n'a changé.")
 
     qui.locator(".qe-choix").select_option("groupe:annotateurs")
@@ -546,8 +545,9 @@ def test_l_adresse_de_la_bibliotheque_preselectionne_toujours_un_groupe(page, et
     vient de changer de destination : sans celui-ci, elle pourrait casser sans que rien ne
     tombe.
 
-    Un groupe de l'annuaire est CHOISI dans la liste ; un nom que l'annuaire ne connaît pas
-    est tapé, déclaré groupe. Rien n'est accordé par l'adresse."""
+    Un groupe MEMBRE du projet est CHOISI dans la liste ; depuis la tranche 3c (F2, Hugo,
+    2026-11-03), un groupe hors du projet n'y a pas de place : la ligne le dit. Rien n'est
+    accordé par l'adresse."""
     base, cid = etude["base"], etude["id"]
     envois = []
     page.on("request", lambda r: envois.append((r.method, r.url)) if r.method != "GET" else None)
@@ -557,14 +557,12 @@ def test_l_adresse_de_la_bibliotheque_preselectionne_toujours_un_groupe(page, et
     expect(item.locator('[role="tab"][data-onglet="qui"]')).to_have_attribute(
         "aria-selected", "true")
     expect(item.locator(".qe-choix")).to_have_value("groupe:annotateurs")
-    expect(item.locator(".qe-libre")).to_be_hidden()
 
     page.goto(base + f"/corpus?collection={cid}&groupe=cours-inconnu", wait_until="networkidle")
     item = page.locator(f'#col-fiche[data-id="{cid}"]')
-    expect(item.locator(".qe-choix")).to_have_value("autre")
-    expect(item.locator(".qe-libre")).to_be_visible()
-    expect(item.locator(".qe-nom")).to_have_value("cours-inconnu")
-    expect(item.locator(".qe-genre")).to_have_value("groupe")
+    expect(item.locator(".qe-hors-projet")).to_contain_text(
+        "Le groupe cours-inconnu n'est pas du projet")
+    expect(item.locator(".qe-choix")).to_have_value("")
     assert envois == [], f"une écriture est partie sans geste : {envois}"
 
 
@@ -748,15 +746,17 @@ def test_la_place_se_lit_sur_la_fiche_et_sur_le_tableau_jamais_sur_la_fenetre(
 
 
 def test_redimensionner_en_cours_de_saisie_ne_perd_ni_la_saisie_ni_le_focus(page, trois_acces):
-    """On tape un nom dans la ligne d'ajout, et la fenêtre change de largeur : le tableau
-    devient des cartes, puis redevient un tableau. La ligne d'ajout n'est PAS redessinée —
-    c'est le même champ, avec ce qu'on y a tapé et le focus qu'il portait —, et « + Faire
-    entrer » envoie bien ce nom-là.
+    """On choisit un membre dans la ligne d'ajout, et la fenêtre change de largeur : le
+    tableau devient des cartes, puis redevient un tableau. La ligne d'ajout n'est PAS
+    redessinée — c'est le même champ, avec le choix fait et le focus qu'il portait —, et
+    « + Faire entrer » envoie bien ce membre-là.
 
     Un focus posé dans le tableau, lui, perd son nœud au basculement : il retrouve la même
     case dans l'autre rendu, pas la page. Et tant que le rendu qui convient ne change pas,
     rien n'est redessiné du tout."""
     base, cid = trois_acces["base"], trois_acces["id"]
+    with _client(base) as c:               # un membre du projet qui n'entre pas encore
+        du_projet(c, cid, "groupe", "cours-en-saisie", headers=ECRITURE)
     exceptions, console = _ecouter(page)
     page.set_viewport_size({"width": 1280, "height": 900})
     qui = _fiche(page, base, cid)
@@ -764,30 +764,24 @@ def test_redimensionner_en_cours_de_saisie_ne_perd_ni_la_saisie_ni_le_focus(page
     expect(qui.locator(".qe-table tbody tr")).to_have_count(3)
     parties = _ecritures(page)
 
-    qui.locator(".qe-choix").select_option("autre")
-    qui.locator(".qe-genre").select_option("groupe")
-    nom = qui.locator(".qe-nom")
-    nom.click()
-    page.keyboard.type("cours-en-sai")
-    nom.evaluate("el => { el.dataset.temoin = 'pose'; }")
+    choix = qui.locator(".qe-choix")
+    choix.select_option("groupe:cours-en-saisie")
+    choix.focus()
+    choix.evaluate("el => { el.dataset.temoin = 'pose'; }")
 
-    def la_saisie_est_intacte(suite=""):
-        expect(nom).to_have_value("cours-en-sai" + suite)
-        expect(nom).to_be_focused()
-        expect(nom).to_have_attribute("data-temoin", "pose")
-        expect(qui.locator(".qe-genre")).to_have_value("groupe")
-        expect(qui.locator(".qe-choix")).to_have_value("autre")
+    def la_saisie_est_intacte():
+        expect(choix).to_have_value("groupe:cours-en-saisie")
+        expect(choix).to_be_focused()
+        expect(choix).to_have_attribute("data-temoin", "pose")
 
     page.set_viewport_size({"width": 1024, "height": 900})
     expect(qui.locator(".qe-carte")).to_have_count(3)
     expect(qui.locator(".qe-table")).to_have_count(0)
     la_saisie_est_intacte()
-    page.keyboard.type("sie")                      # on continue de taper, sans recliquer
-    la_saisie_est_intacte("sie")
 
     page.set_viewport_size({"width": 1280, "height": 900})
     expect(qui.locator(".qe-table tbody tr")).to_have_count(3)
-    la_saisie_est_intacte("sie")
+    la_saisie_est_intacte()
 
     # Un focus DANS le tableau suit le contrôle d'un rendu à l'autre.
     case = '.qe-case[data-cran="ecriture"][data-principal="annotateurs"]'

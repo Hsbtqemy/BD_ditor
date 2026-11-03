@@ -705,24 +705,23 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
         f"la fiche défile de côté à {largeur} px : le panneau n'a pas tenu dans sa section")
 
 
-# ── La saisie libre de « Qui entre », OUVERTE ──────────────────────────────────────────
+# ── La ligne d'ajout de « Qui entre » ──────────────────────────────────────────────────
 #
-# Le test ci-dessus mesure le panneau tel qu'il naît : la liste déroulante, et la saisie
-# libre repliée. « Un compte, ou un groupe absent de la liste… » déplie un champ de texte,
-# et un champ de texte a une largeur propre de vingt caractères — 274 px sous une
-# préférence de 24, pour 260 de place à 320 px. Rien ne sort alors de la fenêtre : c'est le
-# champ qui dépasse de sa ligne, donc la sonde d'ÉCRASEMENT qui le voit, pas celle de
-# reflow. Le même défaut avait été fermé dans le module frère (les membres d'un projet) ;
-# ici, ce qui est replié n'existait pas pour l'instrument.
+# Un contrôle qui dépasse de sa ligne sans sortir de la fenêtre ne se voit qu'à la sonde
+# d'ÉCRASEMENT, pas à celle de reflow. Ce test est né pour la saisie libre (un champ de
+# texte de vingt caractères, 274 px sous une préférence de 24 pour 260 de place à 320 px) ;
+# elle est partie avec la tranche 3c de COL-3 (F2), et il mesure désormais la liste des
+# membres du projet et « Quelqu'un manque ? », qui porte un lien.
 #
 # Les DEUX hôtes du module : l'onglet « Qui entre » de la fiche d'une collection, dans la
 # Bibliothèque comme dans l'Administration (UX-18 : les deux le logent dans une colonne).
 # Une règle sur `.qe-…` vaut pour les deux.
 @pytest.mark.parametrize("police", POLICES)
-def test_la_saisie_libre_de_qui_entre_tient_dans_son_bloc(page, decor, police):
-    """À 320 px, la saisie libre ouverte, rien ne dépasse de sa boîte dans « Qui entre »,
-    et le corps de la page ne défile pas de côté — dans la Bibliothèque comme dans la fiche
-    d'une collection de l'Administration."""
+def test_la_ligne_d_ajout_de_qui_entre_tient_dans_son_bloc(page, decor, police):
+    """À 320 px, la ligne d'ajout et « Quelqu'un manque ? » ne dépassent pas de leur boîte
+    dans « Qui entre », et le corps de la page ne défile pas de côté — dans la Bibliothèque
+    comme dans la fiche d'une collection de l'Administration. (La saisie libre que ce test
+    mesurait a laissé la place à la liste des membres du projet : COL-3, tranche 3c, F2.)"""
     c = httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
         cid = c.get("/api/collections").json()[0]["id"]
@@ -742,8 +741,7 @@ def test_la_saisie_libre_de_qui_entre_tient_dans_son_bloc(page, decor, police):
         page.goto(decor["base"] + adresse, wait_until="networkidle")
         choix = page.locator(f"{panneau} .qe-choix")
         choix.wait_for(timeout=5000)
-        choix.select_option("autre")
-        page.locator(f"{panneau} .qe-nom").wait_for(state="visible", timeout=3000)
+        page.locator(f"{panneau} .qe-manque").wait_for(timeout=3000)
         page.wait_for_timeout(300)
         cas = f"{hote}, police {police} px"
         ecrase = decrire_ecrasement(page.evaluate(ECRASEMENT, panneau))
@@ -751,13 +749,12 @@ def test_la_saisie_libre_de_qui_entre_tient_dans_son_bloc(page, decor, police):
             echecs.append(f"{cas}, ÉCRASÉ :\n" + "\n".join(ecrase))
         echecs += [f"{cas} : {d['nom']} défile de côté — {d['clientW']} px visibles pour "
                    f"{d['scrollW']}" for d in page.evaluate(_CORPS_QUI_DEFILE)]
-        # Le plancher : le champ est là, et il garde de quoi taper un nom.
-        largeur = page.locator(f"{panneau} .qe-nom").evaluate(
-            "e => Math.round(e.getBoundingClientRect().width)")
+        # Le plancher : la liste des membres est là, et garde de quoi lire un nom.
+        largeur = choix.evaluate("e => Math.round(e.getBoundingClientRect().width)")
         if largeur < 100:
-            echecs.append(f"{cas} : le champ du nom ne fait plus que {largeur} px")
+            echecs.append(f"{cas} : la liste des membres ne fait plus que {largeur} px")
     assert not echecs, (
-        "« Qui entre », saisie libre ouverte, à 320 px :\n" + "\n".join(echecs))
+        "« Qui entre », ligne d'ajout, à 320 px :\n" + "\n".join(echecs))
 
 
 # ── COL-2 puis UX-18 : la fiche d'une collection, et celle d'un album ─────────────────
