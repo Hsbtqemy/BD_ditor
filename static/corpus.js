@@ -1,14 +1,13 @@
 /* ===================================================================
    BéDéditeur — page Bibliothèque (vanilla JS)
 
-   UX-18 — UNE LISTE ET UNE FICHE, côte à côte, le gabarit `lf-` de l'Administration. La
-   liste porte les deux usages de la page (tranché par Hugo le 2026-10-16) : CHERCHER un
-   album — les albums du projet courant, chacun nommant ses collections — et RÉGLER une
-   collection — le bloc « Collections », où la case FILTRE le corpus (la collection est un
-   calque posé sur lui) et le nom OUVRE la fiche. La fiche est celle du projet, d'une
-   collection (quatre onglets : Albums · Qui entre · Description · Diffusion et dépôt),
-   d'une comparaison quand deux calques sont cochés, ou d'un album, qui s'ouvre À LA PLACE
-   de la collection d'où l'on vient. L'objet ouvert est dans l'adresse.
+   UX-20 — LE CATALOGUE (Hugo, sur maquette, 2026-11-02) : les collections en rail, les
+   albums au centre, la fiche d'un album en volet, qui resserre le catalogue sans le
+   recouvrir. Le centre est le projet, une collection (quatre onglets : Albums · Qui entre ·
+   Description · Diffusion et dépôt, et « Albums » EST son catalogue), ou une comparaison
+   quand deux calques sont cochés. D'UX-18 restent le calque — la case d'une collection
+   FILTRE le corpus, son nom OUVRE — et les quatre onglets. L'objet ouvert est dans
+   l'adresse.
 
    La logique pure — le calque, le tri, les droits d'un album (l'union de ses collections),
    les actes d'une collection, la comparaison, l'adresse — vit dans `lib/bibliotheque.js`,
@@ -20,6 +19,10 @@
 // $, apiGet, apiSend, esc, toast : lib/common.js (chargé avant ce script).
 const PASSES = ["segmenter", "bulles", "ocr"];
 const PASSES_LBL = { segmenter: "Segmenter", bulles: "Bulles", ocr: "OCR" };
+
+/* La vue du catalogue, retenue sur le poste : une commodité, sous try/catch, et l'écran
+   tient sans elle. */
+const CLE_VUE_ALBUMS = "bd-biblio-vue";
 
 const state = {
   albums: [],               // les albums de TRAVAIL du projet courant (lib/projet.js)
@@ -42,15 +45,23 @@ const B = {
   ouverte: null,            // la collection ouverte par son NOM ou par l'adresse
   onglet: BDBiblio.ONGLET_PAR_LE_NOM,
   depuis: null,             // la collection d'où l'album ouvert a été ouvert : le retour
-  vueFiche: false,          // sous le seuil étroit, la fiche REMPLACE la liste
+  espace: "tout",           // le filtre du bloc Collections (`BDBiblio.ESPACES`)
+  vueAlbums: lireVueAlbums(), // le catalogue : « grille » ou « liste »
+  ouverts: new Set(),       // les originaux dont les copies sont dépliées
   edition: null,            // l'onglet dont le formulaire est ouvert : « description » | « diffusion »
   total: false,             // portée totale (`acces.total`) : le total du projet se dit
   perdues: null,            // { n, titre } : la sélection de planches vidée en changeant d'album
 };
 
-/* 40em : le seuil de « Comptes et groupes » (`CG_ETROIT`, administration.js) et de la
-   feuille (`.lf` sous 40em). Au-dessous, une colonne à la fois. */
-const ETROIT = window.matchMedia("(max-width: 40em)");
+function lireVueAlbums() {
+  try {
+    const v = localStorage.getItem(CLE_VUE_ALBUMS);
+    return BDBiblio.VUES_ALBUMS.includes(v) ? v : "grille";
+  } catch (e) { return "grille"; }
+}
+function retenirVueAlbums(v) {
+  try { localStorage.setItem(CLE_VUE_ALBUMS, v); } catch (e) { /* retenu pour la page */ }
+}
 
 // Libellés du statut de relecture (ANN-4). Clés = valeurs backend.
 const RELECTURE_LBL = { a_faire: "à faire", en_cours: "en cours", faite: "faite" };
@@ -69,15 +80,19 @@ function routeCorpus() {
   return p && p.bac_a_sable ? `/api/corpus?bac_a_sable=${p.id}` : "/api/corpus";
 }
 
-/* Stats de corpus en bande 2 (mêmes chips que Recherche / Exploration — source
-   /api/corpus). Aperçu non bloquant. */
+/* Les chiffres du corpus, en tête de la fiche du projet (UX-20 : ils ne servent à aucun
+   geste, et le fil a pris leur place dans la bande d'outils). Gardés ici pour que la fiche
+   redessinée les retrouve sans relire. Aperçu non bloquant. */
+let CHIFFRES = "";
 async function loadCorpus() {
   try {
     const c = await apiGet(routeCorpus());
-    $("#corpus-stats").innerHTML = [
+    CHIFFRES = [
       ["albums", "albums"], ["planches", "planches"], ["regions", "régions"],
       ["transcrites", "transcrites"], ["annotees", "annotées"], ["tags", "tags"],
     ].map(([k, lbl]) => `<span class="stat"><b>${c[k]}</b> ${lbl}</span>`).join("");
+    const ici = $("#corpus-stats");
+    if (ici) ici.innerHTML = CHIFFRES;
   } catch (e) { /* non bloquant */ }
 }
 
@@ -101,8 +116,10 @@ async function loadAlbums(compter = true) {
   state.checkedAlbums.forEach((id) => { if (!ids.has(id)) state.checkedAlbums.delete(id); });
   rendreListeAlbums();
   if (state.openId !== null && ids.has(state.openId)) await openAlbum(state.openId, { garder: true });
-  else if (state.openId !== null) fermerAlbum();
-  else rafraichirFicheApresAlbums();
+  else {
+    if (state.openId !== null) fermerAlbum();
+    rafraichirFicheApresAlbums();
+  }
   loadSynthese();
   // COL-2 : le décompte d'albums bouge. Pas quand le projet vient de changer (`compter`
   // faux) : la liste des collections se redessine déjà.
@@ -117,38 +134,196 @@ function validBadge(n, total) {
        + `${n}/${total}<i class="val-mini"><i style="width:${pct}%"></i></i></span>`;
 }
 
-/* La liste des albums, filtrée par le calque et la recherche. Chaque album nomme ses
-   collections — celles qu'on lit, et celles qui sont cochées ressortent. Une demande de
-   suppression qui attend se lit sur la ligne. Le compte ne dit le total du projet qu'à une
-   portée totale (« 404, jamais 403 »). */
+/* Ce que le catalogue montre : la collection montrée, sinon ce que le calque laisse, et la
+   recherche dans les deux cas. */
+function albumsDuCatalogue() {
+  const id = collectionMontree();
+  const c = id !== null ? collection(id) : null;
+  return c ? BDBiblio.filtrerAlbums(albumsDe(c), { texte: B.filtre })
+           : BDBiblio.filtrerAlbums(state.albums, { calques: B.calques, mode: B.mode,
+                                                    texte: B.filtre });
+}
+
+/* La couverture d'un album : sa miniature (`couverture`, `GET /api/albums`) posée sur un aplat
+   qui porte son titre. L'aplat reste seul pour un album sans planche, et pour une miniature
+   qui manque : le gestionnaire d'`error` de la page retire l'image (`setup`). */
+function htmlCouverture(a, classe) {
+  return `<span class="couv ${classe || ""}" aria-hidden="true">
+    <span class="couv-aplat">${a.serie ? `<span class="couv-serie">${esc(a.serie)}</span>` : ""}
+      <span class="couv-titre">${esc(a.titre)}</span></span>
+    ${a.couverture ? `<img class="couv-img" loading="lazy" alt="" src="/api/planches/${a.couverture}/miniature">` : ""}
+    ${BDBiblio.estCopie(a) ? `<span class="couv-copie">copie</span>` : ""}</span>`;
+}
+
+/* Ce que l'on peut sur un album, en deux marques et en mots (Hugo, 2026-11-02) : « lecture »
+   quand on n'y écrit pas, « à vous » quand on l'a importé ou qu'on en a fait la copie. */
+function htmlMarques(a) {
+  const m = [];
+  if (!BDBiblio.droitsAlbum(a, COLS.toutes).ecrire) {
+    m.push(`<span class="marque-e" title="Vous lisez cet album ; vous n'y écrivez pas">lecture</span>`);
+  }
+  if (a.a_moi) {
+    const titre = BDBiblio.estCopie(a) ? "Vous avez fait cette copie" : "Vous avez importé cet album";
+    m.push(`<span class="marque-e soi" title="${titre}">à vous</span>`);
+  }
+  return m.length ? `<span class="marques">${m.join("")}</span>` : "";
+}
+
+/* « Vit dans » : toutes les collections lues, celle qu'on regarde en gras. */
+function vitDans(a, ici) {
+  const l = (a.collections || []).map((c) => (c.id === ici || B.calques.has(c.id)
+    ? `<b class="sur-actif">${esc(c.nom)}</b>` : esc(c.nom)));
+  return l.length ? l.join(" · ") : `<span class="muted">—</span>`;
+}
+
+const depliee = (g) => B.ouverts.has(g.album.id) || g.eteint
+  || g.copies.some((c) => c.id === state.openId);
+
+function htmlPli(g) {
+  if (!g.copies.length || g.eteint) return "";
+  const o = depliee(g);
+  return `<button type="button" class="carte-pli" data-pli="${g.album.id}" aria-expanded="${o}"
+      >${o ? "▾" : "▸"} ${pluriel(g.copies.length, "copie")}</button>`;
+}
+
+function htmlCoche(a, nom) {
+  return `<input type="checkbox" data-coche-album="${a.id}"
+      aria-label="Sélectionner ${nom ? esc(nom) : `l'album ${esc(a.titre)}`}" ${state.checkedAlbums.has(a.id) ? "checked" : ""}>`;
+}
+
+function htmlBoutonCarte(a, titre, detail, marques) {
+  return `<button type="button" class="carte-b album-row" data-id="${a.id}" data-ouvrir-album="${a.id}"
+      ${a.id === state.openId ? 'aria-current="true"' : ""}>
+    <span class="couv-wrap">${htmlCouverture(a)}</span>
+    <span class="titre">${esc(titre)}</span>
+    ${detail ? `<span class="det">${esc(detail)}</span>` : ""}
+    ${marques ? `${htmlMarques(a)}${pastilleDemande(a)}` : ""}
+  </button>`;
+}
+
+function htmlCarte(g, horsDe) {
+  const a = g.album, o = depliee(g);
+  const tome = [a.tome ? `T${a.tome}` : null, `${a.nb_planches} pl.`].filter(Boolean).join(" · ");
+  const detail = g.eteint ? `hors de ${horsDe}`
+    : g.seule ? [BDBiblio.nomCopie(a), BDEchelle.puceCopie(a.copie_cran)].filter(Boolean).join(" · ")
+    : tome;
+  const classes = ["carte-a", g.copies.length && !o ? "pile" : "", g.eteint ? "eteinte" : ""];
+  return `<li class="${classes.filter(Boolean).join(" ")}" data-carte="${a.id}">
+      ${g.eteint ? "" : htmlCoche(a)}
+      ${htmlBoutonCarte(a, a.titre, detail, !g.eteint)}
+      ${htmlPli(g)}
+    </li>${g.copies.length && o ? g.copies.map((c) => `<li class="carte-a copie" data-carte="${c.id}">
+      ${htmlCoche(c, BDBiblio.nomCopie(c))}
+      ${htmlBoutonCarte(c, BDBiblio.nomCopie(c), BDEchelle.puceCopie(c.copie_cran), true)}
+    </li>`).join("") : ""}`;
+}
+
+function htmlLigne(a, ici, opts) {
+  const o = opts || {};
+  const titre = o.copie ? BDBiblio.nomCopie(a) : a.titre;
+  const sous = o.eteint ? `hors de ${o.horsDe}`
+    : o.seule ? [BDBiblio.nomCopie(a), BDEchelle.puceCopie(a.copie_cran)].filter(Boolean).join(" · ")
+    : o.copie ? BDEchelle.puceCopie(a.copie_cran) : serieTome(a);
+  return `<tr class="col-album${o.copie ? " ligne-copie" : ""}${o.eteint ? " ligne-eteinte" : ""}" data-id="${a.id}">
+    <td class="c-chk">${o.eteint ? "" : htmlCoche(a, o.copie ? titre : null)}</td>
+    <td class="c-couv">${o.copie ? "" : htmlCouverture(a, "couv-m")}</td>
+    <td class="c-titre"><button type="button" class="lf-lien bi-titre album-row" data-id="${a.id}"
+        data-ouvrir-album="${a.id}" ${a.id === state.openId ? 'aria-current="true"' : ""}>${esc(titre)}</button>
+      ${o.eteint ? "" : htmlMarques(a)}${o.eteint ? "" : pastilleDemande(a)}
+      ${sous ? `<span class="sous-t">${esc(sous)}</span>` : ""}${o.pli || ""}</td>
+    <td class="c-num" data-l="Planches">${a.nb_planches}</td>
+    <td class="c-num c-val-album" data-l="Validées">${o.eteint ? `<span class="muted">—</span>` : validBadge(a.nb_validees, a.nb_planches)}</td>
+    <td class="c-vit" data-l="Vit dans">${vitDans(a, ici)}</td>
+  </tr>`;
+}
+
+function htmlLignes(g, ici, horsDe) {
+  const tete = htmlLigne(g.album, ici, { eteint: g.eteint, seule: g.seule, horsDe, pli: htmlPli(g) });
+  return tete + (g.copies.length && depliee(g)
+    ? g.copies.map((c) => htmlLigne(c, ici, { copie: true })).join("") : "");
+}
+
+/* LE CATALOGUE : les albums de ce qu'on regarde, en grille ou en liste, chaque copie repliée
+   sous son original (`BDBiblio.grouperCopies`). Seul le contenu de `#albums-body` se redessine :
+   la recherche, au-dessus, garde sa saisie et son focus. Le compte ne dit le total du projet
+   qu'à une portée totale (« 404, jamais 403 »). Une demande de suppression qui attend se lit
+   sur l'album. */
 function rendreListeAlbums() {
   const corps = $("#albums-body");
-  const vus = BDBiblio.filtrerAlbums(state.albums, { calques: B.calques, mode: B.mode,
-                                                     texte: B.filtre });
-  const filtre = B.calques.size > 0 || B.filtre.trim() !== "";
-  $("#bi-compte").textContent = BDBiblio.libelleAlbums(vus.length, {
-    total: B.total, sur: filtre ? state.albums.length : undefined });
-  if (!state.albums.length) {
-    corps.innerHTML = `<li class="lf-vide muted small">Aucun album dans ce projet.</li>`;
-    return;
-  }
+  if (!corps) return;
+  const id = collectionMontree();
+  const c = id !== null ? collection(id) : null;
+  const vus = albumsDuCatalogue();
+  const sur = c ? albumsDe(c).length : state.albums.length;
+  // Une collection COCHÉE est un calque sur le corpus : son compte se lit contre lui. Ouverte
+  // par son nom, c'est son catalogue, et seule la recherche y fait un « sur ».
+  const calque = B.calques.size > 0;
+  const filtre = B.filtre.trim() !== "" || calque;
+  const compte = $("#bi-compte");
+  if (compte) compte.textContent = BDBiblio.libelleAlbums(vus.length, {
+    total: B.total, sur: filtre ? (calque ? state.albums.length : sur) : undefined });
+  document.querySelectorAll("[data-vue-albums]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.vueAlbums === B.vueAlbums)));
   if (!vus.length) {
-    corps.innerHTML = `<li class="lf-vide muted small">Aucun album ne répond.</li>`;
+    const rien = sur ? "Aucun album ne répond."
+      : c ? `Aucun album dans cette collection${c.base ? " : ce que le projet prendra au fonds arrivera ici" : ""}.`
+      : "Aucun album dans ce projet.";
+    corps.innerHTML = `<p class="cat-vide muted">${rien}</p>`;
     return;
   }
-  corps.innerHTML = vus.map((a) => {
-    const cols = (a.collections || []).map((c) =>
-      `<span class="${B.calques.has(c.id) ? "sur-actif" : ""}">${esc(c.nom)}</span>`).join(" · ");
-    const pastille = BDSuppression.pastille(a.demande, MOI.login);
-    return `<li><button type="button" class="lf-objet album-row" data-id="${a.id}"
-        ${a.id === state.openId ? 'aria-current="true"' : ""}>
-      ${serieTome(a) ? `<span class="lf-serie">${esc(serieTome(a))}</span>` : ""}
-      <span class="lf-nom c-titre">${esc(a.titre)}</span>
-      <span class="lf-etat${a.demande ? " alerte" : ""}">${a.demande ? "⚠ " : ""}${pluriel(a.nb_planches, "pl.", "pl.")}</span>
-      ${cols ? `<span class="lf-detail">${cols}</span>` : ""}
-      ${pastille ? `<span class="sp-pastille">${esc(pastille)}</span>` : ""}
-    </button></li>`;
-  }).join("");
+  const groupes = BDBiblio.grouperCopies(vus, state.albums);
+  const horsDe = c ? "cette collection" : "ce filtre";
+  if (B.vueAlbums === "grille") {
+    corps.innerHTML = `<ul class="grille">${groupes.map((g) => htmlCarte(g, horsDe)).join("")}</ul>`;
+    return;
+  }
+  const ici = c ? c.id : null;
+  corps.innerHTML = `<div class="table-cadre bi-cadre" tabindex="0" role="region" aria-label="Albums">
+    <table class="corpus-table bi-table bi-table-albums">
+      <thead><tr><th class="c-chk"><span class="sr-only">Sélection</span></th>
+        <th class="c-couv"><span class="sr-only">Couverture</span></th><th>Titre</th>
+        <th class="c-num">Planches</th><th class="c-num">Validées</th><th>Vit dans</th></tr></thead>
+      <tbody>${groupes.map((g) => htmlLignes(g, ici, horsDe)).join("")}</tbody>
+    </table></div>`;
+}
+
+/* Marque l'album ouvert dans le catalogue sans le redessiner : ni les images ni le défilement
+   ne bougent. Une copie repliée n'y est pas encore : là, on redessine. L'album est ramené en
+   vue : le volet resserre le catalogue, et le nombre de colonnes change. */
+function marquerAlbumOuvert() {
+  document.querySelectorAll("#albums-body .album-row[aria-current]").forEach((b) =>
+    b.removeAttribute("aria-current"));
+  if (state.openId === null) return;
+  const chercher = () => document.querySelector(`#albums-body .album-row[data-id="${state.openId}"]`);
+  if (!chercher()) rendreListeAlbums();
+  const b = chercher();
+  if (!b) return;
+  b.setAttribute("aria-current", "true");
+  ramenerDansLeCatalogue(b);
+}
+
+/* Ramène l'album en vue dans le cadre du catalogue SEUL. `scrollIntoView` ferait défiler
+   aussi la page, et dans une fenêtre basse la bande du haut sortait du champ : on ouvrait un
+   album, on perdait la navigation. Un cadre qui ne défile pas (à l'étroit) n'est pas touché. */
+function ramenerDansLeCatalogue(b) {
+  const cadre = $("#cat-vue");
+  if (!cadre || !/(auto|scroll)/.test(getComputedStyle(cadre).overflowY)) return;
+  const c = cadre.getBoundingClientRect(), r = b.getBoundingClientRect();
+  if (r.top < c.top) cadre.scrollTop -= c.top - r.top;
+  else if (r.bottom > c.bottom) cadre.scrollTop += Math.min(r.bottom - c.bottom, r.top - c.top);
+}
+
+/* La barre au-dessus du catalogue. */
+function htmlBarreCatalogue() {
+  return `<div class="barre-cat">
+    <label class="sr-only" for="albums-filtre">Chercher un album</label>
+    <input type="search" id="albums-filtre" class="lf-filtre cat-recherche"
+           placeholder="Titre, série, auteur…" autocomplete="off" value="${esc(B.filtre)}">
+    <span class="lf-compte" id="bi-compte" role="status" aria-live="polite"></span>
+    <span class="seg-mini" role="group" aria-label="Montrer les albums">
+      <button type="button" data-vue-albums="liste" aria-pressed="${B.vueAlbums === "liste"}">☰ Liste</button>
+      <button type="button" data-vue-albums="grille" aria-pressed="${B.vueAlbums === "grille"}">▦ Grille</button>
+    </span></div>`;
 }
 
 /* La demande de suppression qui attend, sur une ligne d'album — un état marqué là où l'on
@@ -229,27 +404,33 @@ async function collectionsLues() {
   return COLS.toutes;
 }
 
-/* La pastille de rôle, déménagée de l'Administration avec les accès. « propriétaire » au
-   DERNIER cran de l'échelle, lu dans la description et non écrit ici ; « administrateur »
-   pour qui administre sans figurer dans les accès — un pouvoir qu'on déclare (AUTH-4), et
-   jamais en mono-poste, où il n'y a qu'un rôle. Le libellé porte le sens (WCAG 1.4.1). */
+/* Le niveau d'une collection, en mots (`BDBiblio.motNiveau`). « administrateur » pour qui
+   administre sans figurer dans les accès — un pouvoir qu'on déclare (AUTH-4), et jamais en
+   mono-poste, où il n'y a qu'un rôle. Le libellé porte le sens (WCAG 1.4.1). */
 function colBadge(c) {
-  if (DROITS && c.mon_niveau
-      && BDDroits.rang(DROITS, c.mon_niveau) === DROITS.echelle.length - 1) {
-    return `<span class="col-niveau est-proprietaire">propriétaire</span>`;
-  }
-  if (c.administrable && !c.mon_niveau && (MOI.groupes_admin || []).length) {
-    return `<span class="col-niveau">administrateur</span>`;
-  }
-  return "";
+  const mot = BDBiblio.motNiveau(c, (MOI.groupes_admin || []).length > 0);
+  if (!mot) return "";
+  return `<span class="col-niveau${c.mon_niveau === "proprietaire" ? " est-proprietaire" : ""}"
+      ${c.niveau_par_le_projet ? 'title="Vous la lisez parce que vous êtes responsable du projet"' : ""}>${esc(mot)}</span>`;
 }
 
-/* La collection dont la fiche est montrée : par son nom, par l'adresse, ou parce qu'elle
-   est le SEUL calque coché. */
+/* La collection que le centre montre : par son nom, par l'adresse, ou parce qu'elle est le
+   SEUL calque coché. Un album ouvert ne la remplace plus : il s'ouvre à côté d'elle. */
 function collectionMontree() {
-  if (state.openId !== null) return null;
   if (B.ouverte !== null) return B.ouverte;
   return B.calques.size === 1 ? [...B.calques][0] : null;
+}
+
+function htmlCollection(c, montree) {
+  const courante = c.id === montree;
+  return `<li class="col-item${courante ? " courante" : ""}" data-id="${c.id}">
+    <input type="checkbox" class="col-calque" data-calque="${c.id}" ${B.calques.has(c.id) ? "checked" : ""}
+           aria-label="Filtrer les albums sur « ${esc(c.nom)} »" title="Filtrer les albums sur cette collection">
+    <button type="button" class="col-nom col-ouvrir" data-ouvrir-col="${c.id}"
+            ${courante ? 'aria-current="true"' : ""} title="Ouvrir la collection">${esc(c.nom)}</button>
+    <span class="col-nb">${nbAlbumsCourt(c.nb_albums)}</span>
+    <span class="col-niv">${c.base ? `<span class="col-base" title="La collection de base du projet">base</span>` : ""}${colBadge(c)}${marqueRecues(c)}</span>
+  </li>`;
 }
 
 function rendreListeCollections() {
@@ -258,16 +439,24 @@ function rendreListeCollections() {
   COLS.projet = BDBiblio.trierCollections(BDProjet.duProjet(COLS.toutes, PROJET), B.tri);
   const nomProjet = colNomProjet();
   $("#collections-titre").textContent = `Collections · ${COLS.projet.length}`;
-  document.querySelectorAll("#collections-bloc [data-tri]").forEach((b) =>
-    b.setAttribute("aria-pressed", String(b.dataset.tri === B.tri)));
+  const tri = $("#col-tri");
+  tri.textContent = B.tri === "alpha" ? "A → Z" : "Récentes";
+  tri.dataset.tri = B.tri;
+  const espaces = $("#col-espaces");
+  espaces.hidden = B.total || !COLS.projet.length;
+  espaces.innerHTML = BDBiblio.ESPACES.map((e) => `<button type="button" data-espace="${e.cle}"
+      aria-pressed="${e.cle === B.espace}">${esc(e.libelle)}</button>`).join("");
   const tout = $("#calques-tout");
-  tout.hidden = !B.calques.size;
-  tout.textContent = B.total ? "Tout le projet" : "Tout ce que vous lisez";
+  tout.innerHTML = `<span>${B.total ? "Tout le projet" : "Tout ce que vous lisez"}</span>
+    <span class="col-nb">${nbAlbumsCourt(state.albums.length)}</span>`;
+  if (montree === null && !B.calques.size) tout.setAttribute("aria-current", "true");
+  else tout.removeAttribute("aria-current");
   const mode = $("#calques-mode");
   mode.hidden = B.calques.size < 2;
   mode.querySelectorAll("[data-mode]").forEach((b) =>
     b.setAttribute("aria-pressed", String(b.dataset.mode === B.mode)));
   majCreer();
+  rendreChoixEtroit(montree);
   if (!COLS.projet.length) {
     // Une portée VIDE a déjà son bandeau (`theme.js`), qui dit à qui s'adresser : la liste
     // ne le double pas d'un second « rien », elle dit seulement ce qu'on peut faire. Qui lit
@@ -283,19 +472,20 @@ function rendreListeCollections() {
           ? ` Créez-en une${promesse}.` : ""}</li>`;
     return;
   }
-  corps.innerHTML = COLS.projet.map((c) => {
-    const courante = c.id === montree;
-    return `<li class="col-item${courante ? " courante" : ""}" data-id="${c.id}">
-      <input type="checkbox" class="col-calque" data-calque="${c.id}" ${B.calques.has(c.id) ? "checked" : ""}
-             aria-label="Filtrer les albums sur « ${esc(c.nom)} »" title="Filtrer les albums sur cette collection">
-      <button type="button" class="col-nom col-ouvrir" data-ouvrir-col="${c.id}"
-              ${courante ? 'aria-current="true"' : ""} title="Ouvrir la fiche de la collection">${esc(c.nom)}</button>
-      ${c.base ? `<span class="col-base" title="La collection de base du projet">base</span>` : ""}
-      ${colBadge(c)}
-      ${marqueRecues(c)}
-      <span class="col-nb">${nbAlbumsCourt(c.nb_albums)}</span>
-    </li>`;
-  }).join("");
+  const sections = BDBiblio.sectionsCollections(COLS.projet, B.espace, B.total);
+  const lignes = sections.map((s) => `${s.titre
+    ? `<li class="col-sec">${esc(s.titre)} · ${s.collections.length}</li>` : ""}${s.collections.map((c) =>
+      htmlCollection(c, montree)).join("")}`).join("");
+  corps.innerHTML = lignes.trim() ? lignes : `<li class="col-note">Aucune ici.</li>`;
+}
+
+/* À l'étroit, le rail laisse place à une liste native : mêmes collections, même geste que
+   leur nom. */
+function rendreChoixEtroit(montree) {
+  const s = $("#cat-select");
+  s.innerHTML = `<option value="">${B.total ? "Tout le projet" : "Tout ce que vous lisez"}</option>${COLS.projet.map((c) =>
+    `<option value="${c.id}">${esc(c.nom)}</option>`).join("")}`;
+  s.value = montree === null ? "" : String(montree);
 }
 
 /* Le décompte d'une ligne de collection : le nombre seul à l'écran, la phrase entière pour
@@ -382,10 +572,9 @@ async function rafraichirCollections() {
    La fiche — ce qu'elle montre, et l'adresse qui le dit
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Ce que la fiche montre : l'album ouvert, sinon la collection ouverte (ou le seul calque
-   coché), sinon la comparaison de deux calques ou plus, sinon le projet. */
-function ficheCourante() {
-  if (state.openId !== null) return { genre: "album", id: state.openId };
+/* Ce que le CENTRE montre : la collection ouverte (ou le seul calque coché), sinon la
+   comparaison de deux calques ou plus, sinon le projet. */
+function centreCourant() {
   const c = collectionMontree();
   if (c !== null) return { genre: "collection", id: c };
   if (B.calques.size > 1) return { genre: "comparaison" };
@@ -395,12 +584,12 @@ function ficheCourante() {
 /* L'adresse de ce qui est ouvert. Un geste qui ouvre quelque chose POUSSE une entrée, pour
    que « Retour » le défasse ; changer d'onglet la remplace. */
 function ecrireAdresse(pousser) {
-  const f = ficheCourante();
+  const c = collectionMontree();
   const etat = {
-    collection: f.genre === "collection" ? f.id : (f.genre === "album" ? B.depuis : null),
-    album: f.genre === "album" ? f.id : null,
+    collection: c,
+    album: state.openId,
     onglet: B.onglet,
-    groupe: PRESELECTION && f.genre === "collection" && PRESELECTION.id === f.id
+    groupe: PRESELECTION && c !== null && state.openId === null && PRESELECTION.id === c
       ? PRESELECTION.groupe : null,
   };
   const s = BDBiblio.ecrireAdresse(etat, location.search);
@@ -409,44 +598,53 @@ function ecrireAdresse(pousser) {
   history[pousser ? "pushState" : "replaceState"](null, "", url);
 }
 
-/* Sous le seuil étroit, la fiche remplace la liste (`.lf--fiche`) ; « ← Liste » y ramène.
-   Tant que rien n'est choisi — la fiche du projet, ou la comparaison que les cases de la
-   liste viennent d'ouvrir —, la fiche se lit SOUS la liste (`.lf--empile`) : cachée, elle
-   ferait des deux cases cochées un geste sans effet visible, et du résumé du projet un
-   contenu perdu au premier rétrécissement. */
+/* Le volet ouvert se lit sur le cadre : c'est lui qui resserre le catalogue, et qui, à
+   l'étroit, le remplace. */
 function rendreVue() {
-  const biblio = $("#biblio");
-  biblio.classList.toggle("lf--fiche", B.vueFiche);
-  biblio.classList.toggle("lf--empile",
-    !B.vueFiche && ["accueil", "comparaison"].includes(ficheCourante().genre));
+  $("#biblio").classList.toggle("cat--volet", state.openId !== null);
 }
 
-const RETOUR_LISTE = `<button type="button" class="ghost small lf-retour" data-bi-retour="1">← Liste</button>`;
+/* Le fil de position, dans la bande d'outils. */
+function rendreFil() {
+  const id = collectionMontree();
+  const c = id !== null ? collection(id) : null;
+  const album = state.albums.find((a) => a.id === state.openId) || null;
+  const fil = BDBiblio.filDePosition({ collection: c, filtres: c ? 0 : B.calques.size, album,
+                                       tous: state.albums });
+  $("#bi-fil").innerHTML = fil.map((m) => `<li>${m.cible
+    ? `<button type="button" data-fil="${m.cible.genre}" data-id="${m.cible.id ?? ""}">${esc(m.texte)}</button>`
+    : `<span aria-current="page">${esc(m.texte)}</span>`}</li>`).join("");
+}
 
-/* Dessine la fiche courante. `msg` : une ligne à reposer dans la fiche redessinée — la
-   confirmation d'un enregistrement, qui ne doit pas partir avec la fiche qu'elle confirme. */
-function rendreFiche(msg) {
-  const f = ficheCourante();
+/* Dessine le centre. `msg` : une ligne à reposer dans ce qui est redessiné — la confirmation
+   d'un enregistrement, qui ne doit pas partir avec la fiche qu'elle confirme. */
+function rendreCentre(msg) {
+  const f = centreCourant();
   if (f.genre !== "collection") demonterQuiEntre();
-  if (f.genre === "album") { renderDetail(); rendreVue(); return; }
   if (f.genre === "collection") {
     const c = collection(f.id);
-    if (c) { rendreFicheCollection(c, msg); rendreVue(); return; }
+    if (c) { rendreFicheCollection(c, msg); rendreFil(); return; }
     // Ouverte puis disparue (supprimée, ou plus lisible) : la fiche du projet, qui le dit.
     B.ouverte = null;
     B.calques.delete(f.id);
   }
-  if (ficheCourante().genre === "comparaison") rendreComparaison();
+  if (centreCourant().genre === "comparaison") rendreComparaison();
   else rendreAccueil();
-  if (msg) $("#biblio-fiche").appendChild(colTrace(msg.texte, msg.erreur));
-  rendreVue();
+  if (msg) $("#cat-vue").appendChild(colTrace(msg.texte, msg.erreur));
+  rendreFil();
 }
 
-/* Ce qui suit un geste sur les albums, quand aucun album n'est ouvert : l'onglet Albums de
-   la collection montrée — et lui seul, sans toucher aux formulaires des autres onglets —, ou
-   la fiche du projet et la comparaison, qui comptent des albums. */
+/* Dessine ce qu'on regarde : le volet s'il est ouvert, qui suit le geste, sinon le centre. */
+function rendreFiche(msg) {
+  if (state.openId !== null) { renderDetail(); rendreFil(); return; }
+  rendreCentre(msg);
+}
+
+/* Ce qui suit un geste sur les albums : l'onglet Albums de la collection montrée — et lui
+   seul, sans toucher aux formulaires des autres onglets —, ou le centre, qui compte des
+   albums. */
 function rafraichirFicheApresAlbums() {
-  const f = ficheCourante();
+  const f = centreCourant();
   if (f.genre === "collection") {
     const c = collection(f.id);
     const panneau = document.getElementById("panneau-albums");
@@ -455,31 +653,22 @@ function rafraichirFicheApresAlbums() {
       return;
     }
   }
-  if (f.genre !== "album") rendreFiche();
+  rendreCentre();
 }
 
 /* ── La fiche du PROJET : ce que la Bibliothèque montre quand rien n'est choisi ───────── */
 function rendreAccueil() {
-  const fiche = $("#biblio-fiche");
+  const fiche = $("#cat-vue");
   const p = PROJETS.find((x) => x.id === PROJET);
-  const cols = COLS.projet;
-  const n = state.albums.length;
-  const plusieurs = state.albums.filter((a) => (a.collections || []).length > 1).length;
-  const lignes = cols.map((c) => {
-    const k = state.albums.filter((a) => (a.collections || []).some((x) => x.id === c.id)).length;
-    const pct = n ? Math.round(100 * k / n) : 0;
-    return `<li><button type="button" class="lf-lien" data-ouvrir-col="${c.id}">${esc(c.nom)}</button>
-      <span class="muted small bi-part"><span>${k} / ${n}</span>
-        <i class="val-mini bi-part-barre" aria-hidden="true"><i style="width:${pct}%"></i></i></span></li>`;
-  }).join("");
   // COL-3, tranche 3a — « + Prendre du fonds… » EN TÊTE DU CORPUS, vers la base (D10), au
   // responsable du projet et à l'administrateur seulement (D3).
   const fonds = BDBiblio.offrirPrendreDuFonds(p);
-  fiche.innerHTML = `${RETOUR_LISTE}
-    <div class="lf-tete"><div>
+  const coches = albumsDuCatalogue().filter((a) => state.checkedAlbums.has(a.id));
+  fiche.innerHTML = `<div class="lf-tete"><div>
+      <p class="genre">Projet</p>
       <h3 id="bi-accueil-titre" tabindex="-1">${esc(p ? p.nom : "Bibliothèque")}</h3>
-      <p class="lf-sous"><span>${esc(BDBiblio.libelleAlbums(n, { total: B.total }))}</span>
-        <span>${pluriel(cols.length, "collection")}${B.total ? "" : " que vous lisez"}</span></p>
+      ${p && p.description ? `<p class="bi-projet-description">${esc(p.description)}</p>` : ""}
+      <div id="corpus-stats" class="corpus-stats">${CHIFFRES}</div>
     </div>
     ${fonds ? `<div class="lf-gestes-tete">
       <button type="button" class="primary small" id="bi-prendre-fonds" data-prendre-fonds="tete"
@@ -488,20 +677,18 @@ function rendreAccueil() {
     <div id="bi-e7-zone"></div>
     <div id="bi-prise-zone" class="bi-prise-zone"></div>
     <div id="bi-bac-carte"></div>
-    ${p && p.description ? `<p class="bi-projet-description">${esc(p.description)}</p>` : ""}
-    <section id="corpus-synthese" class="corpus-synthese" hidden></section>
-    ${cols.length ? `<section class="lf-section">
-      <h4>${B.total ? "Les collections, posées sur le corpus" : "Les collections, posées sur ce que vous lisez"}</h4>
-      <ul class="lf-lignes bi-parts">${lignes}</ul>
-      <p class="col-note">${pluriel(plusieurs, "album")} sur plusieurs collections.
-        Cochez une collection pour filtrer les albums ; son nom ouvre sa fiche.</p>
-    </section>` : ""}`;
+    <details id="bi-avancement" class="bi-avancement" hidden><summary>Avancement</summary>
+      <section id="corpus-synthese" class="corpus-synthese" hidden></section></details>
+    ${htmlBarreCatalogue()}
+    ${barreLot("albums", coches.length)}
+    <div id="albums-body"></div>`;
   if (!fonds || (P3A.prise && P3A.prise.ou !== "tete")) P3A.prise = null;
   P3A.dansProjet = null;
   rendreZonePrise();
   rendreE7();
   loadSynthese();
   carteBacASable();
+  rendreListeAlbums();
 }
 
 /* COL-4 — « Mon bac à sable » en carte dans la fiche, à qui n'a encore aucun projet (le
@@ -535,6 +722,7 @@ async function loadSynthese() {
   }).join("") : "";
   const pct = total ? Math.round(100 * c.validees / total) : 0;
   ici.hidden = false;
+  $("#bi-avancement").hidden = false;
   ici.innerHTML =
     `<div class="synth-line"><b>Tout ce que vous lisez</b> · ${c.albums} album(s) · ${total} planche(s)`
     + ` · <span class="synth-val">✔ ${c.validees} validée(s) (${pct} %)</span></div>`
@@ -546,7 +734,7 @@ async function loadSynthese() {
 
 /* ── La COMPARAISON : deux calques cochés ou plus (orientation de Hugo, 2026-10-16) ────── */
 function rendreComparaison() {
-  const fiche = $("#biblio-fiche");
+  const fiche = $("#cat-vue");
   const cols = COLS.projet.filter((c) => B.calques.has(c.id));
   const r = BDBiblio.comparer(cols, state.albums);
   const pct = (a, b) => (b ? `${Math.round(100 * a / b)} %` : "—");
@@ -554,8 +742,9 @@ function rendreComparaison() {
   const ligne = (titre, f) => `<tr><th scope="row">${titre}</th>${r.lignes.map((l) =>
     `<td class="c-num">${f(l)}</td>`).join("")}</tr>`;
   const rec = r.recoupement;
-  fiche.innerHTML = `${RETOUR_LISTE}
-    <div class="lf-tete"><div>
+  const coches = albumsDuCatalogue().filter((a) => state.checkedAlbums.has(a.id));
+  fiche.innerHTML = `<div class="lf-tete"><div>
+      <p class="genre">Filtre</p>
       <h3 id="bi-comparaison-titre" tabindex="-1">Comparer ${pluriel(cols.length, "collection")}</h3>
       <p class="lf-sous">${cols.map((c) => `<span>${esc(c.nom)}</span>`).join("")}</p>
     </div></div>
@@ -578,7 +767,11 @@ function rendreComparaison() {
         <span class="lf-puce ok">dans les deux : ${rec.communs}</span>
         <span class="lf-puce">seulement ${esc(r.lignes[1].nom)} : ${rec.seulB}</span></p>
       ${B.mode !== "toutes" && BDBiblio.libelleCommuns(rec.communs) ? `<p><button type="button" class="ghost small" data-mode-fiche="toutes">${esc(BDBiblio.libelleCommuns(rec.communs))}</button></p>` : ""}
-    </section>` : ""}`;
+    </section>` : ""}
+    ${htmlBarreCatalogue()}
+    ${barreLot("albums", coches.length)}
+    <div id="albums-body"></div>`;
+  rendreListeAlbums();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -594,7 +787,7 @@ function htmlDroits(c) {
 }
 
 function rendreFicheCollection(c, msg) {
-  const fiche = $("#biblio-fiche");
+  const fiche = $("#cat-vue");
   const emb = colEmbargo(c);
   const onglets = BDBiblio.ONGLETS.map((o) => `<button type="button" role="tab"
       id="onglet-${o.cle}" aria-controls="panneau-${o.cle}" data-onglet="${o.cle}"
@@ -603,9 +796,9 @@ function rendreFicheCollection(c, msg) {
       id="panneau-${o.cle}" aria-labelledby="onglet-${o.cle}" tabindex="0"
       ${o.cle === B.onglet ? "" : "hidden"}></div>`).join("");
   demonterQuiEntre();
-  fiche.innerHTML = `${RETOUR_LISTE}
-    <section id="col-fiche" class="col-fiche" data-id="${c.id}" aria-labelledby="col-fiche-titre">
+  fiche.innerHTML = `<section id="col-fiche" class="col-fiche" data-id="${c.id}" aria-labelledby="col-fiche-titre">
       <div class="lf-tete"><div>
+        <p class="genre">Collection</p>
         <h3 id="col-fiche-titre" tabindex="-1">${esc(c.nom)}</h3>
         <p class="lf-sous">
           <span class="col-fiche-nb">${pluriel(c.nb_albums, "album")}</span>
@@ -649,31 +842,13 @@ function choisirOnglet(cle, focaliser) {
   ecrireAdresse(false);
 }
 
-/* ── Onglet ALBUMS : le tableau des albums DE cette collection, et le lot sur sa sélection ── */
+/* ── Onglet ALBUMS : le catalogue de cette collection, et le lot sur sa sélection ─────── */
 function albumsDe(c) {
   return state.albums.filter((a) => (a.collections || []).some((x) => x.id === c.id));
 }
 
 function rendreAlbumsDeLaCollection(panneau, c) {
-  const albums = albumsDe(c);
-  const coches = albums.filter((a) => state.checkedAlbums.has(a.id));
-  const lignes = albums.map((a) => {
-    const droits = BDBiblio.droitsAlbum(a, COLS.toutes);
-    const aussi = BDBiblio.aussiDans(a, c.id);
-    const offrir = BDSuppression.offrir({ ...a, ecrivable: droits.ecrire });
-    return `<tr class="col-album" data-id="${a.id}">
-      <td class="c-chk"><input type="checkbox" data-coche-album="${a.id}"
-          aria-label="Sélectionner l'album ${esc(a.titre)}" ${state.checkedAlbums.has(a.id) ? "checked" : ""}></td>
-      <td class="c-titre"><button type="button" class="lf-lien bi-titre" data-ouvrir-album="${a.id}">${esc(a.titre)}</button>${puceCopie(a)}${pastilleDemande(a)}</td>
-      <td class="c-act">${droits.ecrire ? `<button class="icon-btn" type="button" data-act="edit" data-id="${a.id}"
-          title="Éditer les métadonnées" aria-label="Éditer les métadonnées de ${esc(a.titre)}">✎</button>` : ""}
-        ${offrir ? `<button class="ghost small sp-ouvrir" type="button" data-act="supprimer" data-id="${a.id}"
-          aria-label="Supprimer ${esc(a.titre)}…">Supprimer…</button>` : ""}</td>
-      <td class="c-num" data-l="Planches">${a.nb_planches}</td>
-      <td class="c-num c-val-album" data-l="Validées">${validBadge(a.nb_validees, a.nb_planches)}</td>
-      <td class="c-aussi${aussi.length ? "" : " vide-carte"}" data-l="Aussi dans">${aussi.length ? aussi.map(esc).join(", ") : `<span class="muted">—</span>`}</td>
-    </tr>`;
-  }).join("");
+  const coches = albumsDuCatalogue().filter((a) => state.checkedAlbums.has(a.id));
   // COL-3, tranche 3a — le bloc ⚑ des demandes reçues en tête de l'onglet (D11), puis les
   // deux gestes de la prise, à droite au-dessus du tableau, avant le lot. « + Prendre du
   // fonds… » au responsable et à l'administrateur (D3) ; « + Prendre dans le projet… » à
@@ -692,15 +867,10 @@ function rendreAlbumsDeLaCollection(panneau, c) {
           title="Ranger ici un album que le projet a déjà : rejoindre son travail, ou en prendre une copie, vierge ou avec son travail jusqu'au cran choisi">+ Prendre dans le projet…</button>
     </div>
     <div id="bi-prise-zone" class="bi-prise-zone"></div>` : ""}
+    ${htmlBarreCatalogue()}
     ${barreLot("albums", coches.length)}
-    <div class="table-cadre bi-cadre" tabindex="0" role="region" aria-label="Albums de « ${esc(c.nom)} »">
-      <table class="corpus-table bi-table bi-table-albums">
-        <thead><tr><th class="c-chk"><span class="sr-only">Sélection</span></th><th>Titre</th>
-          <th class="c-act"><span class="sr-only">Gestes</span></th><th class="c-num">Planches</th>
-          <th class="c-num">Validées</th><th>Aussi dans</th></tr></thead>
-        <tbody>${lignes || `<tr><td colspan="6" class="empty-cell">Aucun album dans cette collection${c.base ? " : ce que le projet prendra au fonds arrivera ici" : ""}.</td></tr>`}</tbody>
-      </table>
-    </div>`;
+    <div id="albums-body"></div>`;
+  rendreListeAlbums();
   rendreBlocRecues(c);
   rendreZonePrise();
   rendreRetraits(c);
@@ -1214,7 +1384,7 @@ async function loadEtatSharedocs() {
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   La fiche d'un ALBUM — à la place de celle de la collection, avec le retour vers elle
+   La fiche d'un ALBUM — en VOLET, à côté de ce qu'on regarde
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Ouvre la fiche d'un album. `garder` : la fiche se redessine sur le même album (après un
@@ -1244,29 +1414,64 @@ async function openAlbum(id, opts = {}) {
   MOI = await identite();
   await collectionsLues();
   if (state.openId !== id) return;
-  rendreListeAlbums();
-  rendreListeCollections();
+  rendreVue();
   renderDetail();
+  rendreFil();
+  // Un album ouvert ne redessine pas le catalogue : ses images et son défilement restent.
+  if (opts.garder) rendreListeAlbums();
+  marquerAlbumOuvert();
 }
 
-/* Revient de la fiche d'un album à ce qu'on regardait avant : la collection d'où on l'a
-   ouvert, ou la fiche du projet. */
-function fermerAlbum() {
-  const depuis = B.depuis;
+/* Vide l'album ouvert et ferme son volet ; le centre ne bouge pas. */
+function viderAlbum() {
   state.openId = null;
   state.planches = [];
   state.checkedPlanches.clear();
   B.depuis = null;
   B.perdues = null;
-  if (depuis !== null && collection(depuis) && collectionMontree() !== depuis) B.ouverte = depuis;
-  rendreListeAlbums();
-  rendreListeCollections();
-  rendreFiche();
+  const v = $("#biblio-volet");
+  v.hidden = true;
+  v.innerHTML = "";
+  rendreVue();
 }
+
+function fermerAlbum() {
+  viderAlbum();
+  marquerAlbumOuvert();
+  rendreFil();
+}
+
+/* Le bloc « Ce document » : l'original et ses copies qu'on lit. Rien pour une version seule ;
+   rien non plus ne nomme ni ne situe un original qu'on ne lit pas, qui n'est pas dans la
+   liste (`copie_de`, `GET /api/albums`). */
+function htmlCeDocument(a) {
+  const v = BDBiblio.versionsDuDocument(a, state.albums);
+  if (!v.length) return "";
+  const nomDe = (x) => (BDBiblio.estCopie(x) ? BDBiblio.nomCopie(x) : "L'original");
+  const qui = (x) => (BDBiblio.estCopie(x) ? BDEchelle.puceCopie(x.copie_cran)
+    : (x.copie_par_nom || x.copie_par ? `importé par ${x.copie_par_nom || x.copie_par}` : ""));
+  return `<section class="cat-bloc" aria-labelledby="ce-document-titre">
+    <h4 id="ce-document-titre">Ce document <span class="n">${pluriel(v.length, "version lue", "versions lues")}</span></h4>
+    <ul class="copies-l">${v.map((x) => `<li class="${x.id === a.id ? "ici" : ""}">
+      ${x.id === a.id ? `<span>${esc(nomDe(x))} (ici)</span>`
+        : `<button type="button" class="lf-lien" data-ouvrir-album="${x.id}">${esc(nomDe(x))}</button>`}
+      <span class="muted small">${[esc(qui(x)), vitDans(x, null)].filter(Boolean).join(" · ")}</span>
+    </li>`).join("")}</ul></section>`;
+}
+
+/* « Vos droits ici », sur un album : l'union de ses collections, en actes. */
+function htmlActesAlbum(a) {
+  return `<ul class="droits" aria-label="Ce que vous pouvez sur cet album">${BDBiblio.actesAlbum(a, COLS.toutes).map((x) =>
+    `<li class="${x.oui ? "oui" : "non"}" data-acte="${x.cle}">${esc(x.libelle)}<span class="sr-only">${x.oui ? " : oui" : " : non"}</span></li>`).join("")}</ul>`;
+}
+
+/* « Autres gestes » reste ouvert quand la fiche se redessine, ce que fait chaque geste et la
+   lecture des planches : un menu qui se replie seul retire le bouton sous le doigt. */
+const AUTRES = { ouvert: null };
 
 function renderDetail() {
   const a = state.albums.find((x) => x.id === state.openId);
-  const fiche = $("#biblio-fiche");
+  const fiche = $("#biblio-volet");
   if (!a) { fermerAlbum(); return; }
   const droits = BDBiblio.droitsAlbum(a, COLS.toutes);
   const ecrire = droits.ecrire;
@@ -1278,8 +1483,8 @@ function renderDetail() {
     ? "Aucune planche pour ce filtre de relecture."
     : (a.ecrivable ? "Aucune planche : « ⤓ Importer des planches… » les fait entrer."
                    : "Aucune planche.");
-  // UX-19 — l'Atelier s'ouvre sur la collection d'où l'on a ouvert l'album (son retour),
-  // même si l'album vit aussi ailleurs : l'Atelier la pose par l'adresse, et la retient.
+  // UX-19 — l'Atelier s'ouvre sur la collection d'où l'on a ouvert l'album, même si l'album
+  // vit aussi ailleurs : l'Atelier la pose par l'adresse, et la retient.
   const versAtelier = B.depuis !== null ? `&collection=${B.depuis}` : "";
   // COL-3, écran de la 3b (Hugo, 2026-10-25) — « Repartir de zéro… » dans la tête, à qui écrit
   // dans l'album, et ↺ sur chaque planche, avant la corbeille : le même panneau. « Retirer du
@@ -1295,7 +1500,7 @@ function renderDetail() {
     ? planches.map((p) => `
         <tr data-ligne-planche="${p.id}"${p.nom_fichier_origine ? ` title="${esc("Fichier : " + p.nom_fichier_origine)}"` : ""}>
           <td class="c-chk"><input type="checkbox" aria-label="Sélectionner ${esc(plancheNomLu(p))}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
-          <td class="c-vig"><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
+          <td class="c-vig"><img class="pl-thumb" loading="lazy" src="/api/planches/${p.id}/miniature" data-repli="${esc(p.url_web || "")}" alt=""></td>
           <td class="c-pl">${plancheNum(p)}${materielInfo(p)}</td>
           <td class="c-act c-gestes">${boutonsOrdre(a, p)}${roleToggle(p)} ${lockToggle(p)} <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}${versAtelier}" title="Ouvrir dans l'Atelier" aria-label="Ouvrir ${esc(plancheNomLu(p))} dans l'Atelier">↗</a> ${repartir ? `<button class="icon-btn" type="button" data-repartir-planche="${p.id}" title="Repartir de zéro sur cette planche…" aria-label="Repartir de zéro sur ${esc(plancheNomLu(p))}…">↺</button> ` : ""}${corbeillePlanche(a, p, droits)}</td>
           <td data-l="Statut"><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
@@ -1322,17 +1527,29 @@ function renderDetail() {
     a.isbn && "ISBN " + esc(a.isbn),
     a.format_physique && esc(a.format_physique),
   ].filter(Boolean).join(" · ");
-  const depuis = B.depuis !== null ? collection(B.depuis) : null;
-  const retour = depuis ? `← ${esc(depuis.nom)}` : "← Le projet";
   const offrir = BDSuppression.offrir({ ...a, ecrivable: ecrire });
   const coches = state.checkedPlanches.size;
-  demonterQuiEntre();
-  fiche.innerHTML = `${RETOUR_LISTE}
+  const copie = BDBiblio.estCopie(a);
+  const auteurNomme = a.copie_par_nom || a.copie_par;
+  const quiCopie = copie ? BDBiblio.nomCopie(a)
+    : (a.a_moi ? "Importé par vous" : (auteurNomme ? `Importé par ${auteurNomme}` : ""));
+  // UX-20 — ✎ et ✓ à portée de main ; les gestes rares sous « Autres gestes ▾ », à revoir avec
+  // Hugo sur l'écran codé : c'est un clic de plus.
+  const rares = [
+    repartir ? `<button class="ghost small" type="button" data-act="repartir" data-id="${a.id}" aria-label="Repartir de zéro sur ${esc(a.titre)}…">Repartir de zéro…</button>` : "",
+    retirer ? `<button class="ghost small" type="button" data-act="retirer" data-id="${a.id}" aria-label="Retirer ${esc(a.titre)} du projet…">Retirer du projet…</button>` : "",
+    offrir ? `<button class="ghost small sp-ouvrir" type="button" data-act="supprimer" data-id="${a.id}" aria-label="Supprimer ${esc(a.titre)}…">Supprimer…</button>` : "",
+  ].filter(Boolean).join("");
+  fiche.hidden = false;
+  fiche.innerHTML = `<p class="cat-fermer"><button type="button" class="ghost small" data-retour-album="1">Fermer ✕</button></p>
     <section id="album-detail" aria-labelledby="album-titre">
-      <p class="bi-retour-collection"><button type="button" class="lf-lien small" data-retour-album="1">${retour}</button></p>
-      <div class="lf-tete detail-head"><div>
+      <div class="lf-tete detail-head"><div class="cat-tete-album">
+        ${a.couverture ? `<img class="couv-fiche" alt="" src="/api/planches/${a.couverture}/miniature">` : ""}
+        <div class="cat-tete-texte">
+        <p class="genre">${copie ? "Album · copie de travail" : "Album"}</p>
         ${serieTome(a) ? `<p class="lf-serie">${esc(serieTome(a))}</p>` : ""}
         <h3 id="album-titre" tabindex="-1">${esc(a.titre)} ${a.annee ? `<span class="muted">(${a.annee})</span>` : ""}</h3>
+        <p class="lf-sous"><span>${pluriel(a.nb_planches, "planche")}</span>${quiCopie ? `<span>${esc(quiCopie)}</span>` : ""}${htmlMarques(a)}</p>
         ${idParts ? `<div class="detail-meta muted small">${idParts}</div>` : ""}
         ${puceC || puceR ? `<p class="detail-puces">${puceC ? `<span class="cran-puce" title="Née d'une autre copie de ce document">${esc(puceC)}</span>` : ""}${puceR
           ? `<span class="cran-puce puce-repartie" title="${esc(puceR.titre)}">${esc(puceR.texte)}</span>` : ""}</p>` : ""}
@@ -1342,17 +1559,21 @@ function renderDetail() {
         <div id="detail-contribs" class="detail-meta small"></div>
         ${a.description ? `<p class="detail-desc">${esc(a.description)}</p>` : ""}
         ${pastilleDemande(a)}
+        ${htmlActesAlbum(a)}
+        </div>
       </div>
-      ${ecrire ? `<div class="lf-gestes-tete">
-        <button class="ghost small" type="button" id="detail-edit">✎ Modifier l'album</button>
-        <button class="ghost small" type="button" id="detail-validate-all">✔ Tout valider</button>
-        ${repartir ? `<button class="ghost small" type="button" data-act="repartir" data-id="${a.id}" aria-label="Repartir de zéro sur ${esc(a.titre)}…">Repartir de zéro…</button>` : ""}
-        ${retirer ? `<button class="ghost small" type="button" data-act="retirer" data-id="${a.id}" aria-label="Retirer ${esc(a.titre)} du projet…">Retirer du projet…</button>` : ""}
-        ${offrir ? `<button class="ghost small sp-ouvrir" type="button" data-act="supprimer" data-id="${a.id}" aria-label="Supprimer ${esc(a.titre)}…">Supprimer…</button>` : ""}
+      ${ecrire || rares ? `<div class="lf-gestes-tete">
+        ${ecrire ? `<button class="ghost small" type="button" id="detail-edit">✎ Modifier</button>
+        <button class="ghost small" type="button" id="detail-validate-all">✔ Tout valider</button>` : ""}
+        ${rares ? `<details class="autres"${AUTRES.ouvert === a.id ? " open" : ""}><summary class="ghost small">Autres gestes ▾</summary>
+          <div class="autres-menu">${rares}</div></details>` : ""}
       </div>` : ""}
       </div>
       <p id="detail-valider-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
       ${htmlRangement()}
+      ${htmlCeDocument(a)}
+      <section class="cat-bloc" aria-labelledby="planches-titre">
+      <h4 id="planches-titre">Planches <span class="n">${a.nb_planches}</span></h4>
       ${htmlImport(a)}
       ${barreLot("planches", coches)}
       ${B.perdues ? `<p class="muted small bi-perdues">La sélection de ${pluriel(B.perdues.n, "planche")} de « ${esc(B.perdues.titre)} » a été vidée en changeant d'album.</p>` : ""}
@@ -1375,8 +1596,11 @@ function renderDetail() {
           <tbody>${planchesRows}</tbody>
         </table>
       </div>
+      </section>
     </section>`;
   $("#rel-filter").value = state.relFilter;                       // reflète l'état courant
+  const autres = fiche.querySelector("details.autres");
+  if (autres) autres.addEventListener("toggle", () => { AUTRES.ouvert = autres.open ? a.id : null; });
   if (IMPORT.focus) { IMPORT.focus = false; const b = $("#bi-importer"); if (b) b.focus(); }
   rendreFocusOrdre();
   loadDetailContribs(a.id);
@@ -1690,7 +1914,7 @@ function direPlancheADemander(bouton) {
    collection, la première des deux réponses de « Supprimer… », avec ses mots. Une case ne
    s'offre que sur une collection où l'on écrit ; les autres se lisent, éteintes. */
 function htmlRangement() {
-  return `<section id="album-range" class="album-range">
+  return `<section id="album-range" class="album-range cat-bloc">
     <fieldset id="album-range-cases" class="album-cases" aria-describedby="album-range-projet">
       <legend id="album-range-titre">Sur les collections</legend>
       <span class="muted small">Lecture des collections…</span>
@@ -1910,10 +2134,10 @@ function barreLot(sur, n) {
 /* Redessine la barre du lot sans toucher au reste : cocher une case ne redessine pas le
    tableau, qui garderait sinon le focus perdu. */
 function rafraichirLot(sur) {
-  const racine = sur === "albums" ? document.getElementById("panneau-albums") : $("#album-detail");
+  const racine = sur === "albums" ? $("#cat-vue") : $("#album-detail");
   if (!racine) return;
   const n = sur === "albums"
-    ? albumsDe(collection($("#col-fiche").dataset.id)).filter((a) => state.checkedAlbums.has(a.id)).length
+    ? albumsDuCatalogue().filter((a) => state.checkedAlbums.has(a.id)).length
     : state.checkedPlanches.size;
   const ancien = racine.querySelector(".bi-lot, .bi-lot-aide");
   if (!ancien) return;
@@ -1926,8 +2150,7 @@ async function runBatch(sur) {
   const passes = PASSES.filter((p) => state.passes.has(p));
   let corps;
   if (sur === "albums") {
-    const c = collection($("#col-fiche") && $("#col-fiche").dataset.id);
-    const ici = c ? albumsDe(c).filter((a) => state.checkedAlbums.has(a.id)).map((a) => a.id) : [];
+    const ici = albumsDuCatalogue().filter((a) => state.checkedAlbums.has(a.id)).map((a) => a.id);
     corps = { passes, album_ids: ici, planche_ids: [] };
   } else {
     corps = { passes, album_ids: [], planche_ids: [...state.checkedPlanches] };
@@ -3561,74 +3784,68 @@ async function prendreDansProjet(bouton) {
    Ouvrir, revenir — les gestes de la liste
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Le focus suit la FICHE quand la liste disparaît (seuil étroit) ou quand on vient d'ailleurs
-   que la liste ; au large, un choix dans la liste y laisse le clavier, pour parcourir le
-   suivant sans revenir (le motif de « Comptes et groupes »). */
+/* Au clavier, ouvrir un album mène à son titre, dans le volet ; « Fermer » ramène à sa carte.
+   Choisir une collection dans le rail laisse le clavier dans le rail, pour parcourir la
+   suivante sans revenir, sauf à l'étroit, où le rail se referme. */
 function focaliserFiche(depuisListe) {
-  if (depuisListe && !ETROIT.matches) return;
+  if (depuisListe && !railReplie()) return;
   const t = titreDeFiche();
-  if (t) t.focus();
+  if (t) t.focus({ preventScroll: true });
 }
 
-// Le titre de la fiche ouverte : là où le focus revient quand son geste a disparu.
-function titreDeFiche() { return $("#biblio-fiche h3[tabindex]"); }
+/* Le seuil reste au CSS : le script demande si la ligne qui remplace le rail est affichée. */
+function railReplie() {
+  return getComputedStyle($(".cat-choix")).display !== "none";
+}
+
+// Le titre de ce qu'on regarde : là où le focus revient quand son geste a disparu.
+function titreDeFiche() {
+  return $("#biblio-volet:not([hidden]) h3[tabindex]") || $("#cat-vue h3[tabindex]");
+}
+
+function fermerRail() {
+  $("#biblio").classList.remove("cat--rail");
+  $("#cat-rail-ouvrir").setAttribute("aria-expanded", "false");
+}
 
 function ouvrirCollection(id, onglet, depuisListe) {
-  if (state.openId !== null) {
-    state.openId = null; state.planches = []; state.checkedPlanches.clear(); B.depuis = null;
-  }
+  viderAlbum();
   B.ouverte = id;
-  B.onglet = onglet || BDBiblio.ONGLET_PAR_LE_NOM;
+  B.onglet = onglet || BDBiblio.ONGLET_DU_RAIL;
   B.edition = null;
-  B.vueFiche = true;
   colTaireSauf(null);
+  fermerRail();
   rendreListeCollections();
-  rendreListeAlbums();
-  rendreFiche();
-  rendreVue();
+  rendreCentre();
   ecrireAdresse(true);
   focaliserFiche(depuisListe);
 }
 
-async function ouvrirAlbumDepuis(id, depuisListe) {
+async function ouvrirAlbumDepuis(id) {
   const montree = collectionMontree();
   const album = state.albums.find((a) => a.id === id);
-  // Le retour : la collection qu'on regardait, si l'album y est rangé ; sinon la première
-  // de ses collections qu'on lit ; sinon la fiche du projet.
+  // La collection que l'Atelier ouvrira : celle qu'on regarde, si l'album y est rangé ; sinon
+  // la première de ses collections qu'on lit.
   const siennes = album ? (album.collections || []).map((c) => c.id) : [];
-  B.depuis = montree !== null && siennes.includes(montree) ? montree
-    : (state.openId !== null && B.depuis !== null ? B.depuis : (siennes[0] ?? null));
-  B.vueFiche = true;
+  B.depuis = montree !== null && siennes.includes(montree) ? montree : (siennes[0] ?? null);
   colTaireSauf(null);
   await openAlbum(id);
-  rendreVue();
   ecrireAdresse(true);
-  focaliserFiche(depuisListe);
+  focaliserFiche(false);
 }
 
-function revenirALaListe() {
-  B.vueFiche = false;
-  rendreVue();
-  const courant = document.querySelector("#albums-body [aria-current], #col-body [aria-current]");
-  (courant || $("#albums-filtre")).focus();
-}
-
-/* Cocher une collection FILTRE la liste ; la fiche suit ce que le calque montre — la
-   collection seule cochée, la comparaison de deux ou plus, le projet. Sous le seuil étroit,
-   on reste dans la liste qu'on est en train de filtrer. */
+/* Cocher une collection FILTRE le catalogue ; le centre suit ce que le calque montre — la
+   collection seule cochée, la comparaison de deux ou plus, le projet. */
 function basculerCalque(id, coche) {
   if (coche) B.calques.add(id); else B.calques.delete(id);
   if (B.calques.size < 2) B.mode = "une";
   B.ouverte = null;
   B.onglet = "albums";
   B.edition = null;
-  if (state.openId !== null) {
-    state.openId = null; state.planches = []; state.checkedPlanches.clear(); B.depuis = null;
-  }
+  viderAlbum();
   colTaireSauf(null);
   rendreListeCollections();
-  rendreListeAlbums();
-  rendreFiche();
+  rendreCentre();
   ecrireAdresse(false);
 }
 
@@ -3637,12 +3854,10 @@ function toutLeProjet() {
   B.mode = "une";
   B.ouverte = null;
   B.edition = null;
-  if (state.openId !== null) {
-    state.openId = null; state.planches = []; state.checkedPlanches.clear(); B.depuis = null;
-  }
+  viderAlbum();
+  fermerRail();
   rendreListeCollections();
-  rendreListeAlbums();
-  rendreFiche();
+  rendreCentre();
   ecrireAdresse(true);
 }
 
@@ -3650,8 +3865,8 @@ function choisirMode(mode) {
   if (!BDBiblio.MODES.includes(mode)) return;
   B.mode = mode;
   rendreListeCollections();
-  rendreListeAlbums();
-  if (ficheCourante().genre === "comparaison") rendreFiche();
+  if (centreCourant().genre === "comparaison") rendreCentre();
+  else rendreListeAlbums();
 }
 
 /* ── Créer une collection : le champ n'apparaît qu'au geste ───────────────────────────── */
@@ -3778,47 +3993,41 @@ async function ouvrirDepuisAdresse(retourArriere) {
       }
     }
     if (state.albums.some((x) => x.id === a.album)) {
-      B.ouverte = null;
-      B.depuis = a.collection !== null && collection(a.collection) ? a.collection : null;
-      B.vueFiche = true;
+      // Le volet s'ouvre à côté de la collection que l'adresse nomme, sinon du projet.
+      const nommee = a.collection !== null && COLS.projet.some((c) => c.id === a.collection);
+      B.ouverte = nommee ? a.collection : null;
+      B.depuis = nommee ? a.collection : null;
+      rendreListeCollections();
+      rendreCentre();
       await openAlbum(a.album);
-      rendreVue();
       if (!retourArriere) focaliserFiche(false);
       return;
     }
-    state.openId = null;
-    rendreFiche();
-    $("#biblio-fiche").prepend(colTrace("L'album demandé n'est pas dans la liste : il ne vous "
+    viderAlbum();
+    rendreCentre();
+    $("#cat-vue").prepend(colTrace("L'album demandé n'est pas dans la liste : il ne vous "
       + "est pas ouvert, ou il n'existe pas.", true));
     return;
   }
-  if (state.openId !== null) {
-    state.openId = null; state.planches = []; state.checkedPlanches.clear(); B.depuis = null;
-  }
+  viderAlbum();
   if (a.collection === null) {
     B.ouverte = null;
-    B.vueFiche = false;
     rendreListeCollections();
-    rendreListeAlbums();
-    rendreFiche();
-    rendreVue();
+    rendreCentre();
     return;
   }
   if (!collection(a.collection) || !COLS.projet.some((c) => c.id === a.collection)) {
     PRESELECTION = null;
     B.ouverte = null;
     rendreListeCollections();
-    rendreFiche();
-    $("#biblio-fiche").prepend(colTrace("La collection demandée n'est pas dans la liste : elle ne "
+    rendreCentre();
+    $("#cat-vue").prepend(colTrace("La collection demandée n'est pas dans la liste : elle ne "
       + "vous est pas ouverte, ou elle n'existe pas.", true));
     return;
   }
   B.ouverte = a.collection;
-  B.vueFiche = true;
   rendreListeCollections();
-  rendreListeAlbums();
-  rendreFiche();
-  rendreVue();
+  rendreCentre();
   if (retourArriere) return;
   // Le titre de « Qui entre » quand l'onglet est le sien et que le panneau en a un ; sinon
   // le titre de la fiche — un participant non propriétaire n'a pas de panneau à viser.
@@ -3861,29 +4070,47 @@ function brancherListe() {
     if (e.key === "Enter") { e.preventDefault(); creerCollection(); }
     if (e.key === "Escape") { e.preventDefault(); ouvrirCreation(false); $("#col-creer").focus(); }
   });
+  $("#col-tri").onclick = () => {
+    B.tri = B.tri === "alpha" ? "recents" : "alpha";
+    rendreListeCollections();
+  };
+  $("#calques-tout").onclick = toutLeProjet;
+  $("#cat-select").addEventListener("change", (e) => {
+    if (e.target.value) ouvrirCollection(Number(e.target.value), BDBiblio.ONGLET_DU_RAIL, false);
+    else toutLeProjet();
+  });
+  $("#cat-rail-ouvrir").onclick = () => {
+    const ouvert = $("#biblio").classList.toggle("cat--rail");
+    $("#cat-rail-ouvrir").setAttribute("aria-expanded", String(ouvert));
+  };
   $("#collections-bloc").addEventListener("click", (e) => {
-    const t = e.target.closest("[data-tri]");
-    if (t) {
-      if (t.dataset.tri !== B.tri) { B.tri = t.dataset.tri; rendreListeCollections(); }
-      return;
-    }
     const m = e.target.closest("[data-mode]");
     if (m) { choisirMode(m.dataset.mode); return; }
-    if (e.target.closest("#calques-tout")) { toutLeProjet(); return; }
+    const es = e.target.closest("[data-espace]");
+    if (es) {
+      B.espace = es.dataset.espace;
+      rendreListeCollections();
+      const b = document.querySelector(`[data-espace="${B.espace}"]`);
+      if (b) b.focus();
+      return;
+    }
     const o = e.target.closest("[data-ouvrir-col]");
-    if (o) ouvrirCollection(Number(o.dataset.ouvrirCol), BDBiblio.ONGLET_PAR_LE_NOM, true);
+    if (o) ouvrirCollection(Number(o.dataset.ouvrirCol), BDBiblio.ONGLET_DU_RAIL, true);
   });
   $("#collections-bloc").addEventListener("change", (e) => {
     const c = e.target.closest("[data-calque]");
     if (c) basculerCalque(Number(c.dataset.calque), c.checked);
   });
-  $("#albums-filtre").addEventListener("input", (e) => {
-    B.filtre = e.target.value;
-    rendreListeAlbums();
-  });
-  $("#albums-body").addEventListener("click", (e) => {
-    const b = e.target.closest(".album-row[data-id]");
-    if (b) ouvrirAlbumDepuis(Number(b.dataset.id), true);
+  $("#bi-fil").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-fil]");
+    if (!b) return;
+    if (b.dataset.fil === "projet") { toutLeProjet(); focaliserFiche(false); return; }
+    if (b.dataset.fil === "album") { ouvrirAlbumDepuis(Number(b.dataset.id)); return; }
+    const a = state.openId;           // la collection, ou le filtre : on referme l'album
+    fermerAlbum();
+    ecrireAdresse(true);
+    const carte = a !== null && document.querySelector(`#albums-body .album-row[data-id="${a}"]`);
+    if (carte) carte.focus(); else focaliserFiche(false);
   });
 }
 
@@ -3891,7 +4118,22 @@ function brancherFiche() {
   const fiche = $("#biblio-fiche");
   fiche.addEventListener("click", (e) => {
     const t = e.target;
-    if (t.closest("[data-bi-retour]")) { revenirALaListe(); return; }
+    const vue = t.closest("[data-vue-albums]");
+    if (vue) {
+      B.vueAlbums = vue.dataset.vueAlbums;
+      retenirVueAlbums(B.vueAlbums);
+      rendreListeAlbums();
+      return;
+    }
+    const pli = t.closest("[data-pli]");
+    if (pli) {
+      const id = Number(pli.dataset.pli);
+      if (!B.ouverts.delete(id)) B.ouverts.add(id);
+      rendreListeAlbums();
+      const b = document.querySelector(`[data-pli="${id}"]`);
+      if (b) b.focus();
+      return;
+    }
     const onglet = t.closest('[role="tab"][data-onglet]');
     if (onglet) { choisirOnglet(onglet.dataset.onglet, false); return; }
     // COL-3, tranche 3a — la prise, le rejoindre, les réponses.
@@ -3936,11 +4178,13 @@ function brancherFiche() {
     const oc = t.closest("[data-ouvrir-col]");
     if (oc) { ouvrirCollection(Number(oc.dataset.ouvrirCol), "albums", false); return; }
     const oa = t.closest("[data-ouvrir-album]");
-    if (oa) { ouvrirAlbumDepuis(Number(oa.dataset.ouvrirAlbum), false); return; }
+    if (oa) { ouvrirAlbumDepuis(Number(oa.dataset.ouvrirAlbum)); return; }
     if (t.closest("[data-retour-album]")) {
+      const id = state.openId;
       fermerAlbum();
       ecrireAdresse(true);
-      focaliserFiche(false);
+      const carte = document.querySelector(`#albums-body .album-row[data-id="${id}"]`);
+      if (carte) carte.focus(); else focaliserFiche(false);
       return;
     }
     const mf = t.closest("[data-mode-fiche]");
@@ -4096,6 +4340,7 @@ function brancherFiche() {
   // La recherche des deux panneaux de la prise : seule la liste se redessine.
   fiche.addEventListener("input", (e) => {
     const t = e.target;
+    if (t.matches("#albums-filtre")) { B.filtre = t.value; rendreListeAlbums(); return; }
     if (t.matches("#bi-prise-q") && P3A.prise) {
       P3A.prise.q = t.value;
       P3A.prise.offset = 0;
@@ -4132,9 +4377,20 @@ function setup() {
     champ.value = "";
     importerPlanches(albumId, fichiers);
   });
+  // UX-20 — une image qui manque : une miniature d'avant le rattrapage. La couverture laisse
+  // voir son aplat, une vignette de planche reprend le dérivé (`error` ne remonte pas : la
+  // capture seule l'attrape).
+  $("#biblio").addEventListener("error", (e) => {
+    const img = e.target;
+    if (img.matches && img.matches(".couv-img, .couv-fiche")) img.remove();
+    if (img.matches && img.matches(".pl-thumb") && img.dataset.repli) {
+      img.src = img.dataset.repli;
+      delete img.dataset.repli;
+    }
+  }, true);
   // COL-3, tranche 3a — la base présélectionnée, sauf si l'on vient d'une collection ouverte.
   $("#btn-new").onclick = () => {
-    const f = ficheCourante();
+    const f = centreCourant();
     openModal(null, f.genre === "collection" ? f.id : null);
   };
   $("#m-save").onclick = saveAlbum;
@@ -4177,15 +4433,13 @@ function setup() {
     // projet, où elles se répondent.
     if (e.target.closest("#bi-e7-compteur")) {
       toutLeProjet();
-      B.vueFiche = true;
-      rendreVue();
       const t = $("#bi-e7-titre") || $("#bi-accueil-titre");
       if (t) t.focus();
       return;
     }
     if (!e.target.closest("#bi-recues-compteur")) return;
     const premiere = COLS.projet.find((c) => P3A.recues.has(c.id));
-    if (premiere) ouvrirCollection(premiere.id, "albums", false);
+    if (premiere) ouvrirCollection(premiere.id, BDBiblio.ONGLET_DU_RAIL, false);
   });
   // COL-3, écran de la 3b — « Repartir de zéro » et « Retirer du projet », leurs panneaux.
   $("#rp-annuler").onclick = fermerRepartir;
@@ -4221,14 +4475,13 @@ function setup() {
     P3A.prise = null; P3A.dansProjet = null;
     P3A.e7 = []; P3A.e7Choix.clear(); P3A.e7Msg = null;
     RETRAITS.collection = null; RETRAITS.lignes = [];
-    B.calques.clear(); B.mode = "une"; B.ouverte = null; B.edition = null; B.depuis = null;
-    state.openId = null; state.planches = []; state.checkedPlanches.clear();
+    B.calques.clear(); B.mode = "une"; B.ouverte = null; B.edition = null; B.filtre = "";
+    viderAlbum();
     state.checkedAlbums.clear();
-    B.vueFiche = false;
-    rendreVue();
+    B.ouverts.clear();
     await chargerCollections();
     await loadAlbums(false).catch(() => {});
-    rendreFiche();
+    rendreCentre();
     ecrireAdresse(false);
     loadCorpus();
     // Une modale « Nouvel album » restée ouverte propose les collections du projet d'AVANT
@@ -4236,13 +4489,11 @@ function setup() {
     if (!$("#album-modal").hidden && !state.editingId) remplirCollections(false, null);
   });
   window.addEventListener("popstate", () => { ouvrirDepuisAdresse(true); });
-  ETROIT.addEventListener("change", rendreVue);
   // AUTH-1 — amorcé ici : `parQui()` a besoin du login courant pour dire « par vous ».
   identite().then((m) => { MOI = m; });
   // Les albums, puis l'état ShareDocs AVANT le rendu de la fiche (EXP-1), puis l'adresse.
   ALBUMS_PRETS = loadAlbums(false).catch((e) => toast("Albums : " + e.message, "error"));
-  // Stats d'en-tête (bande 2), une fois le projet courant lu : celles d'un bac à sable sont
-  // les siennes (COL-4).
+  // Les chiffres, une fois le projet courant lu : ceux d'un bac à sable sont les siens (COL-4).
   ALBUMS_PRETS.then(loadCorpus);
   // COL-4 — la ligne du bac à sable a lu son état (le compte des planches importées) : la
   // fiche d'un album ouverte éteint ou rallume son import.

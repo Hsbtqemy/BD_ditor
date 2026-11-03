@@ -32,6 +32,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import autres_gestes  # noqa: E402
 from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 
@@ -189,7 +190,8 @@ def test_l_administrateur_prend_du_fonds_depuis_une_collection(page, decor):
            ).to_have_text("fait", timeout=5000)
     assert [u for (m, u, d) in vues] == [decor["base"] + f"/api/collections/{decor['lot_b']}/prendre"]
     # La copie vierge est dans la collection.
-    expect(page.locator("#panneau-albums tr.col-album", has_text="Hors")).to_be_visible(timeout=5000)
+    expect(page.locator("#panneau-albums .album-row", has_text="Hors").first).to_be_visible(
+        timeout=5000)
 
 
 def test_ni_l_ecrivain_ni_la_lectrice_ne_puisent_au_fonds(page, decor):
@@ -208,7 +210,7 @@ def test_ni_l_ecrivain_ni_la_lectrice_ne_puisent_au_fonds(page, decor):
     expect(page.locator("#biblio-fiche h3")).to_be_visible(timeout=5000)
     expect(page.locator("#bi-prendre-fonds")).to_have_count(0)
     _ouvrir(page, decor["base"], _comme("lia"), f"/corpus?collection={decor['lot_a']}&onglet=albums")
-    expect(page.locator("#panneau-albums tr.col-album").first).to_be_visible(timeout=5000)
+    expect(page.locator("#panneau-albums .album-row").first).to_be_visible(timeout=5000)
     expect(page.locator("#bi-prendre-fonds, #bi-dans-projet, #bi-recues-bloc")).to_have_count(0)
     expect(page.locator("#bi-rappels")).to_be_hidden()
     # Dans la fiche d'un album : les cases se lisent ; aucune ne s'offre, hors la base —
@@ -259,9 +261,10 @@ def test_l_ecrivain_prend_dans_le_projet(page, decor):
         {"documents": [{"document_id": decor["docs"]["Lotus"], "reponse": "rejoindre",
                         "album_id": decor["albums"]["Lotus"]}]}], corps
     # Lotus n'est PAS dans Lot B ; une copie vierge d'Oreille, si.
-    lignes = page.locator("#panneau-albums tr.col-album")
+    # (Son original, qu'elle lit, reste éteint à côté : hors de cette collection.)
+    lignes = page.locator("#panneau-albums .carte-a:not(.eteinte) .album-row")
     expect(lignes).to_have_count(1)
-    expect(lignes.first).to_contain_text("Oreille")
+    expect(page.locator("#panneau-albums .carte-a.eteinte")).to_contain_text("Oreille")
 
 
 # =========================================================================== #
@@ -389,6 +392,7 @@ def test_supprimer_une_copie_qui_a_une_soeur_dit_que_ses_images_restent(page, de
         soeur = r["documents"][0]["copie_id"]
     _choisir_projet(page, decor)
     _ouvrir(page, decor["base"], chemin=f"/corpus?album={soeur}")
+    autres_gestes(page)
     page.locator('#album-detail [data-act="supprimer"]').click()
     texte = page.locator("#sp-def-texte")
     expect(texte).to_contain_text("Ses images restent : une autre copie de ce document les emploie.",
@@ -402,6 +406,7 @@ def test_supprimer_une_copie_qui_a_une_soeur_dit_que_ses_images_restent(page, de
                       "emploie.", timeout=5000)
     # Oreille n'a pas de sœur : la phrase ne s'y dit pas.
     _ouvrir(page, decor["base"], chemin=f"/corpus?album={decor['albums']['Oreille']}")
+    autres_gestes(page)
     page.locator('#album-detail [data-act="supprimer"]').click()
     expect(page.locator("#sp-def-texte")).not_to_contain_text("Ses images restent", timeout=5000)
 

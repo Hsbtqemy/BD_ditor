@@ -152,7 +152,7 @@ def test_importer_quatre_fichiers_depuis_la_fiche_d_un_album(page, live_server):
     # La fiche et la liste ont suivi, sans rechargement.
     assert page.evaluate("() => window.__sans_rechargement") == 1
     expect(page.locator("#album-detail input[data-pid]")).to_have_count(3)
-    expect(page.locator(".album-row", has_text="Ecrit").locator(".lf-etat")).to_have_text("3 pl.")
+    expect(page.locator(".album-row", has_text="Ecrit").locator(".det")).to_have_text("3 pl.")
     expect(page.locator("#corpus-stats")).to_contain_text("3 planches")
 
     # Au serveur : trois planches, numérotées dans l'ordre des noms (p1, p3, p10).

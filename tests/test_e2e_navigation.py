@@ -710,6 +710,9 @@ def test_nettoyage_libelles_accessibles(page, live_server):
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30,
                       headers=ECRITURE) as c:
         aid = c.post("/api/albums", json={"titre": "Libellés"}).json()["id"]
+    # Assez large pour que le tableau des planches reste un tableau dans le volet (UX-20) :
+    # à l'étroit il passe en cartes, et son en-tête n'existe plus pour personne.
+    page.set_viewport_size({"width": 1920, "height": 1000})
     page.goto(f"{live_server}/corpus?album={aid}", wait_until="networkidle")
     head = page.locator("#album-detail .corpus-table thead")
     expect(head.locator("th.c-chk")).to_have_accessible_name("Sélection", timeout=15000)

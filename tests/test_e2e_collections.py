@@ -24,6 +24,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
+from conftest import autres_gestes  # noqa: E402
 from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 from playwright.sync_api import expect  # noqa: E402
@@ -89,8 +90,7 @@ def _ouvrir(page, cid, onglet="qui"):
     page.locator(f'#col-body .col-item[data-id="{cid}"] .col-ouvrir').click()
     fiche = _fiche(page, cid)
     fiche.wait_for(timeout=5000)
-    if onglet != "qui":
-        fiche.locator(f'[role="tab"][data-onglet="{onglet}"]').click()
+    fiche.locator(f'[role="tab"][data-onglet="{onglet}"]').click()
     expect(fiche.locator(f"#panneau-{onglet}")).to_be_visible()
     return fiche
 
@@ -764,14 +764,14 @@ OFFERTES = "#album-range-cases label:has(input[data-ranger]:not(:checked):enable
 
 
 def _ligne(page, titre):
-    return page.locator(".album-row", has=page.locator(".c-titre", has_text=titre))
+    return page.locator(".album-row", has=page.locator(".titre", has_text=titre))
 
 
 def _ouvrir_detail(page, titre):
     """La fiche de CET album, et non celle du précédent restée affichée. L'attente est une
     FONCTION : en expression, elle passe par `eval` dès qu'elle doit patienter, et la CSP
     (`script-src 'self'`) la refuse — vert seul, rouge dans la passe entière."""
-    _ligne(page, titre).locator(".c-titre").click()
+    _ligne(page, titre).click()
     page.wait_for_function(
         "t => { const d = document.querySelector('#album-detail');"
         "       return !!d && d.querySelector('#album-titre').textContent.includes(t)"
@@ -784,12 +784,14 @@ def _gestes_de_l_album(page, titre):
     que des boutons qui ouvrent ; les gestes vivent dans la fiche et dans l'onglet Albums
     d'une collection)."""
     _ouvrir_detail(page, titre)
+    autres_gestes(page)
     return page.locator('#album-detail [data-act="supprimer"], #album-detail #detail-edit')
 
 
 def _ouvrir_suppression(page, titre):
     """« Supprimer… » dans la fiche de CET album, puis le panneau, ses collections lues."""
     _ouvrir_detail(page, titre)
+    autres_gestes(page)
     page.locator('#album-detail [data-act="supprimer"]').click()
     expect(page.locator("#suppr-modal")).to_be_visible(timeout=5000)
     expect(page.locator("#sp-titre")).to_have_text(f"Supprimer « {titre} »")

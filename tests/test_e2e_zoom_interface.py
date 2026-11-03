@@ -276,14 +276,15 @@ def test_une_modale_tient_dans_la_fenetre_et_tout_s_y_atteint(
 # non 400 : sous 1,4, le plancher de `.lf.bi` (22rem) donnait 400 px à l'écran, et le test
 # devait dire « tient », pas « tient au pixel près » — ce plancher est borné depuis (cf. plus
 # bas). 768 px de large : sous 33em la page défait le cadre (une colonne, sans hauteur), et
-# la règle ne s'applique plus.
-@pytest.mark.parametrize("surface,cadre,propriete", [
-    ("/corpus", "#biblio", "height"),
-    ("/administration?vue=projets", "#projets-bloc", "minHeight"),
+# la règle ne s'applique plus. 1024 pour la Bibliothèque : son catalogue se défait sous 46em
+# (UX-20), soit 598 px, et 768 px sous 1,4 n'en font que 548.
+@pytest.mark.parametrize("surface,cadre,propriete,largeur", [
+    ("/corpus", "#biblio", "height", 1024),
+    ("/administration?vue=projets", "#projets-bloc", "minHeight", 768),
 ], ids=["bibliotheque", "administration"])
 def test_dans_une_fenetre_basse_le_cadre_se_compte_sur_la_fenetre_visible(
-        live_server, page, album, surface, cadre, propriete):
-    _ouvrir(page, live_server + surface, "1.4", 768, 420)
+        live_server, page, album, surface, cadre, propriete, largeur):
+    _ouvrir(page, live_server + surface, "1.4", largeur, 420)
     page.wait_for_selector(cadre, state="visible")
     m = page.evaluate("""([C, P]) => { const e = document.querySelector(C);
       return {v: parseFloat(getComputedStyle(e)[P]) * (e.currentCSSZoom || 1), h: innerHeight}; }""",
@@ -481,15 +482,21 @@ def test_les_autres_surfaces_gardent_200_quand_l_atelier_plafonne(live_server, p
 # que celui-ci l'emporte) et le plancher calculé lui-même, tous deux à l'écran. 1280 × 500
 # est une fenêtre qui n'est PAS basse : `.lf.bi` y suit sa zone, et le plancher l'emportait.
 # Sous 40em de large le cadre se défait (une colonne, sans hauteur ni plancher) : la règle
-# ne se mesure qu'au-dessus.
-CADRES = [("/corpus", "#biblio"), ("/administration?vue=projets", "#pj")]
+# ne se mesure qu'au-dessus — 46em pour le catalogue de la Bibliothèque (UX-20), que 768 px
+# n'atteignent sous aucun des deux zooms : elle se mesure à 1280 px seulement.
+CADRES = [("/corpus", "#biblio", (1280, 400)), ("/corpus", "#biblio", (1280, 500)),
+          ("/administration?vue=projets", "#pj", (768, 400)),
+          ("/administration?vue=projets", "#pj", (1280, 400)),
+          ("/administration?vue=projets", "#pj", (1280, 500))]
 
 
 @pytest.mark.parametrize("zoom", ["1.4", "2"])
-@pytest.mark.parametrize("largeur,hauteur", [(768, 400), (1280, 400), (1280, 500)])
-@pytest.mark.parametrize("surface,cadre", CADRES, ids=["bibliotheque", "administration"])
+@pytest.mark.parametrize("surface,cadre,taille", CADRES,
+                         ids=[f"{'bibliotheque' if s == '/corpus' else 'administration'}-{l}-{h}"
+                              for s, _, (l, h) in CADRES])
 def test_le_plancher_du_cadre_ne_depasse_jamais_la_fenetre_visible(
-        live_server, page, album, surface, cadre, largeur, hauteur, zoom):
+        live_server, page, album, surface, cadre, taille, zoom):
+    largeur, hauteur = taille
     _ouvrir(page, live_server + surface, zoom, largeur, hauteur)
     page.wait_for_selector(cadre, state="visible")
     m = page.evaluate("""(C) => { const e = document.querySelector(C);

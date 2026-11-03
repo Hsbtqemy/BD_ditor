@@ -155,13 +155,6 @@ test("actes d'une collection — quatre actes, lus dans ce que le serveur a calc
   }
 });
 
-test("aussi dans — les autres collections lues, jamais celle qu'on regarde", () => {
-  assert.deepEqual(B.aussiDans(ALBUMS[1], 1), ["Corpus"]);
-  assert.deepEqual(B.aussiDans(ALBUMS[1], "2"), ["Étude A"]);
-  assert.deepEqual(B.aussiDans(ALBUMS[0], 1), []);
-  assert.deepEqual(B.aussiDans(ALBUMS[4], 1), []);
-});
-
 test("libellés — le total ne se dit qu'à une portée totale", () => {
   assert.equal(B.libelleAlbums(3, { total: true }), "3 albums");
   assert.equal(B.libelleAlbums(1, { total: true }), "1 album");
@@ -202,9 +195,9 @@ const CAS_LIRE = [
    { collection: 5, album: null, onglet: "qui", groupe: "annotateurs" }],
   ["un groupe sans collection ne vaut rien", "?groupe=annotateurs",
    { collection: null, album: null, onglet: "qui", groupe: null }],
-  ["un album", "?album=12", { collection: null, album: 12, onglet: "qui", groupe: null }],
+  ["un album", "?album=12", { collection: null, album: 12, onglet: "albums", groupe: null }],
   ["un album ouvert depuis une collection", "?collection=5&album=12",
-   { collection: 5, album: 12, onglet: "qui", groupe: null }],
+   { collection: 5, album: 12, onglet: "albums", groupe: null }],
   ["des identifiants illisibles valent absents", "?collection=0&album=abc",
    { collection: null, album: null, onglet: "qui", groupe: null }],
 ];
@@ -229,8 +222,8 @@ test("adresse écrite — ce qui est ouvert, et les autres paramètres gardés",
 test("adresse — l'aller-retour rend ce qu'on a ouvert", () => {
   for (const etat of [{ collection: 5, album: null, onglet: "diffusion", groupe: null },
                       { collection: 5, album: null, onglet: "albums", groupe: null },
-                      { collection: 5, album: 12, onglet: "qui", groupe: null },
-                      { collection: null, album: 12, onglet: "qui", groupe: null },
+                      { collection: 5, album: 12, onglet: "albums", groupe: null },
+                      { collection: null, album: 12, onglet: "albums", groupe: null },
                       { collection: 7, album: null, onglet: "qui", groupe: "g" }]) {
     assert.deepEqual(B.lireAdresse(B.ecrireAdresse(etat, "")), etat);
   }
@@ -427,4 +420,138 @@ test("un lot nomme son album, ou ses albums, et le nombre de planches qu'il port
     [undefined, ""],
   ];
   for (const [albums, attendu] of cas) assert.equal(B.sujetDuLot(albums), attendu, JSON.stringify(albums));
+});
+
+
+/* ═══ UX-20 — le catalogue ═══ */
+const CAT_COLS = [
+  { id: 1, nom: "Base", base: 1, mon_niveau: "proprietaire", ecrivable: true },
+  { id: 2, nom: "Atelier", mon_niveau: "ecriture", ecrivable: true },
+  { id: 3, nom: "Fonds lu", mon_niveau: "lecture", ecrivable: false },
+  { id: 4, nom: "Du projet", mon_niveau: "lecture", niveau_par_le_projet: true, ecrivable: false },
+];
+
+test("le niveau d'une collection se dit en mots", () => {
+  assert.equal(B.motNiveau(CAT_COLS[0]), "propriétaire");
+  assert.equal(B.motNiveau(CAT_COLS[1]), "écriture");
+  assert.equal(B.motNiveau(CAT_COLS[2]), "lecture");
+  assert.equal(B.motNiveau(CAT_COLS[3]), "lecture · par le projet");
+  assert.equal(B.motNiveau({ mon_niveau: null, administrable: true }, true), "administrateur");
+  assert.equal(B.motNiveau({ mon_niveau: null, administrable: true }, false), "",
+               "en mono-poste il n'y a qu'un rôle : rien à déclarer");
+  assert.equal(B.motNiveau({ mon_niveau: null, administrable: false }, true), "");
+});
+
+test("sur « Tout », trois sections, celles qui sont vides en moins", () => {
+  const s = B.sectionsCollections(CAT_COLS, "tout", false);
+  assert.deepEqual(s.map((x) => [x.titre, x.collections.map((c) => c.id)]),
+                   [["Les vôtres", [1]], ["Où vous écrivez", [2]], ["Où vous lisez", [3, 4]]]);
+  assert.deepEqual(B.sectionsCollections([CAT_COLS[2]], "tout", false).map((x) => x.titre),
+                   ["Où vous lisez"]);
+});
+
+test("« Les miennes » et « Où j'écris » restent une liste simple", () => {
+  const miennes = B.sectionsCollections(CAT_COLS, "miennes", false);
+  assert.deepEqual(miennes.map((x) => [x.titre, x.collections.map((c) => c.id)]), [[null, [1]]]);
+  const ecris = B.sectionsCollections(CAT_COLS, "ecris", false);
+  assert.deepEqual(ecris.map((x) => [x.titre, x.collections.map((c) => c.id)]), [[null, [1, 2]]],
+                   "un propriétaire écrit aussi");
+});
+
+test("une portée totale n'a ni filtre ni sections", () => {
+  for (const espace of ["miennes", "ecris", "tout"]) {
+    const s = B.sectionsCollections(CAT_COLS, espace, true);
+    assert.deepEqual(s.map((x) => [x.titre, x.collections.length]), [[null, 4]]);
+  }
+});
+
+test("une copie : tout cran sauf `origine`, et un album sans cran n'en est pas une", () => {
+  assert.equal(B.estCopie({ copie_cran: "images" }), true);
+  assert.equal(B.estCopie({ copie_cran: "origine" }), false);
+  assert.equal(B.estCopie({ copie_cran: null }), false);
+  assert.equal(B.estCopie({}), false);
+});
+
+test("le nom d'une copie suit ce que le serveur a rendu", () => {
+  assert.equal(B.nomCopie({ a_moi: true, copie_par: "moi", copie_par_nom: "Moi" }), "Votre copie");
+  assert.equal(B.nomCopie({ a_moi: false, copie_par: "sam", copie_par_nom: "Sam S." }), "Copie de Sam S.");
+  assert.equal(B.nomCopie({ a_moi: false, copie_par: "sam", copie_par_nom: null }), "Copie de sam");
+  assert.equal(B.nomCopie({ a_moi: false }), "Copie de travail", "un lecteur ne lit pas le nom");
+});
+
+const orig = { id: 10, titre: "Original", copie_cran: "origine", copie_de: null };
+const c1 = { id: 11, titre: "Original", copie_cran: "images", copie_de: 10 };
+const c2 = { id: 12, titre: "Original", copie_cran: "images", copie_de: 11 };
+const seule = { id: 20, titre: "Seule", copie_cran: "images", copie_de: null };
+const autre = { id: 30, titre: "Autre", copie_cran: "origine", copie_de: null };
+const forme = (g) => g.map((x) => [x.album.id, x.copies.map((c) => c.id), x.eteint, x.seule]);
+
+test("une copie se range sous son original montré", () => {
+  const tous = [orig, c1, autre];
+  assert.deepEqual(forme(B.grouperCopies(tous, tous)),
+                   [[10, [11], false, false], [30, [], false, false]]);
+});
+
+test("une copie de copie remonte à l'original", () => {
+  const tous = [orig, c1, c2];
+  assert.deepEqual(forme(B.grouperCopies(tous, tous)), [[10, [11, 12], false, false]]);
+});
+
+test("l'original lu mais hors de la vue revient éteint", () => {
+  assert.deepEqual(forme(B.grouperCopies([c1], [orig, c1])), [[10, [11], true, false]]);
+});
+
+test("l'original non lu : la copie reste seule, et rien ne le situe", () => {
+  assert.deepEqual(forme(B.grouperCopies([seule], [seule])), [[20, [], false, true]]);
+});
+
+test("une source non lue arrête la chaîne", () => {
+  const coupee = { ...c2, copie_de: null };
+  assert.deepEqual(forme(B.grouperCopies([coupee], [orig, coupee])), [[12, [], false, true]]);
+});
+
+test("un cycle ne fait pas boucler", () => {
+  const x = { id: 1, copie_cran: "images", copie_de: 2 };
+  const y = { id: 2, copie_cran: "images", copie_de: 1 };
+  assert.ok(B.grouperCopies([x, y], [x, y]).length > 0);
+});
+
+test("les groupes gardent l'ordre de la liste", () => {
+  assert.deepEqual(B.grouperCopies([autre, orig], [orig, autre]).map((g) => g.album.id), [10, 30]);
+});
+
+test("le bloc « Ce document » : l'original d'abord, et rien pour une version seule", () => {
+  const d = (o, document_id) => ({ ...o, document_id });
+  const tous = [d(c1, 7), d(orig, 7), d(autre, 8)];
+  assert.deepEqual(B.versionsDuDocument(tous[0], tous).map((a) => a.id), [10, 11]);
+  assert.deepEqual(B.versionsDuDocument(tous[2], tous), []);
+  assert.deepEqual(B.versionsDuDocument({ document_id: null }, tous), []);
+});
+
+test("les actes d'un album sont l'union de ses collections", () => {
+  const album = { collections: [{ id: 2, nom: "x" }, { id: 3, nom: "y" }] };
+  const cols = [{ id: 2, ecrivable: true, exportable: false }, { id: 3, ecrivable: false, exportable: true }];
+  assert.deepEqual(B.actesAlbum(album, cols).map((a) => [a.cle, a.oui]),
+                   [["lire", true], ["ecrire", true], ["exporter", true]]);
+  assert.deepEqual(B.actesAlbum(album, []).map((a) => a.oui), [true, false, false]);
+});
+
+test("le fil part de « Bibliothèque », et son dernier maillon n'a pas de cible", () => {
+  assert.deepEqual(B.filDePosition({}), [{ texte: "Bibliothèque", cible: null }]);
+  const col = { id: 5, nom: "Étude" };
+  assert.deepEqual(B.filDePosition({ collection: col }).map((m) => [m.texte, !!m.cible]),
+                   [["Bibliothèque", true], ["Étude", false]]);
+  assert.deepEqual(B.filDePosition({ filtres: 2 }).map((m) => m.texte),
+                   ["Bibliothèque", "2 collections filtrées"]);
+  assert.deepEqual(B.filDePosition({ collection: col, album: autre }).map((m) => m.texte),
+                   ["Bibliothèque", "Étude", "Autre"]);
+});
+
+test("le fil nomme l'original lu d'une copie, et ne le suppose jamais", () => {
+  const copie = { ...c1, a_moi: true };
+  assert.deepEqual(B.filDePosition({ album: copie, tous: [orig, copie] }).map((m) => m.texte),
+                   ["Bibliothèque", "Original", "Votre copie"]);
+  const lue = { ...seule, a_moi: true };
+  assert.deepEqual(B.filDePosition({ album: lue, tous: [lue] }).map((m) => m.texte),
+                   ["Bibliothèque", "Seule"]);
 });

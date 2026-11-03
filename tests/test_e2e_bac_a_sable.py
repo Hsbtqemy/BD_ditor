@@ -717,6 +717,7 @@ def test_la_bibliotheque_d_un_bac_compte_ses_albums_et_n_offre_pas_le_fonds(page
     stats = page.locator("#corpus-stats")
     expect(stats).to_contain_text(f"{n_albums} albums")
     expect(stats).to_contain_text(f"{n_planches} planches")
+    page.locator("#bi-avancement summary").click()
     synth = page.locator("#corpus-synthese")
     expect(synth).to_be_visible()
     expect(synth).to_contain_text(f"{n_albums} album(s) · {n_planches} planche(s)")

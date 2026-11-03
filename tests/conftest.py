@@ -350,3 +350,13 @@ def live_server(request, tmp_path):
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+
+def autres_gestes(page):
+    """Déplie « Autres gestes » dans la fiche d'un album (UX-20) : repartir de zéro, retirer du
+    projet et supprimer y vivent. Sans geste à y offrir, il n'y a rien à déplier, et c'est au
+    test de dire ce qu'il attend. La fiche doit être dessinée : un clic sur une carte ne
+    l'ouvre qu'au retour de sa lecture."""
+    page.wait_for_selector("#album-detail", timeout=5000)
+    page.evaluate("""() => document.querySelectorAll('#album-detail details.autres')
+                             .forEach((d) => { d.open = true; })""")

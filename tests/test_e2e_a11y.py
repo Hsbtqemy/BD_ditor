@@ -38,6 +38,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 # AUTH-2 : `ADMIN` monte le décor avec les droits qu'il faut (sans effet hors proxy).
+from conftest import autres_gestes  # noqa: E402
 from conftest import du_projet
 from grilles_decor import grille_active_vivante  # noqa: E402
 from conftest import (ADMIN, ECRITURE, SANTE_PROFOND, SANTE_RAPIDE,  # noqa: E402
@@ -452,16 +453,19 @@ _ABIMER_UN_TEXTE_HORS_CHAMP = r"""async () => {
   return e.textContent.trim().slice(0, 40); }"""
 
 # Les surfaces dont le contenu vit dans un conteneur défilant, MESURÉES le 2026-10-21 sur
-# le décor `seeded` dans une fenêtre de 260 px : la Bibliothèque (ses deux colonnes) et
-# les vues de l'Administration qui en ont une (`#admin-body`, la liste et la fiche). Les
-# autres n'y repoussaient rien : la Recherche et l'Exploration défilent avec la PAGE, ce
-# qu'axe juge seul, et l'Atelier du décor n'a pas assez de contenu pour déborder.
-# DÉRIVÉE de la déclaration et des vues, jamais énumérée à côté d'elles
-# (`tests/test_surfaces.py`, « aucune seconde liste de surfaces »).
+# le décor `seeded` dans une fenêtre de 260 px : les vues de l'Administration qui en ont une
+# (`#admin-body`, la liste et la fiche). Les autres n'y repoussaient rien : la Recherche et
+# l'Exploration défilent avec la PAGE, ce qu'axe juge seul, et l'Atelier du décor n'a pas
+# assez de contenu pour déborder. La Bibliothèque y était jusqu'à son catalogue (UX-20) ;
+# remesurée le 2026-11-03 de 240 à 340 px de haut, catalogue seul ou fiche d'un album
+# ouverte, axe n'y rend plus aucun texte « incomplete » hors de la zone visible, alors même
+# que des textes y sont à cheval sur le bord du catalogue et du volet : la prémisse ne s'y
+# pose plus, et la surface en sort plutôt que de passer pour gardée.
+# DÉRIVÉE des vues, jamais énumérée à côté d'elles (`tests/test_surfaces.py`, « aucune
+# seconde liste de surfaces »).
 _VUES_DEFILANTES = ("comptes", "projets", "fonds")
 SURFACES_DEFILANTES = tuple(
-    [s for s in SURFACES_AUDITEES if s == "/corpus"]
-    + [f"/administration?vue={v}" for v in VUES_ADMINISTRATION if v in _VUES_DEFILANTES])
+    f"/administration?vue={v}" for v in VUES_ADMINISTRATION if v in _VUES_DEFILANTES)
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
@@ -1300,6 +1304,7 @@ def test_a11y_supprimer_deux_reponses(page, live_server, theme):
     page.set_extra_http_headers({"Remote-User": "sam"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
     _ouvrir_album(page, "Doublon")
+    autres_gestes(page)
     page.locator('#album-detail [data-act="supprimer"]').click()
     page.wait_for_selector("#suppr-modal:not([hidden]) #sp-retrait button[data-retirer]",
                            timeout=5000)
@@ -1679,7 +1684,8 @@ def test_qui_entre_declare_les_administrateurs(page, seeded):
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
-    page.locator("#col-body .col-item .col-ouvrir").first.click()    # sur « Qui entre »
+    page.locator("#col-body .col-item .col-ouvrir").first.click()
+    page.locator('#col-fiche [role="tab"][data-onglet="qui"]').click()
     note = page.locator(".col-note-admin")
     # Plus tard qu'avant : la note vit sous « Qui entre », qui attend la description des
     # droits, les accès, puis l'annuaire.

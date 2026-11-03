@@ -22,56 +22,58 @@
   </div>
 
   <!-- ───────────── Bande 2 — Outils de la page ─────────────
-       UX-18 : les chiffres du corpus, puis « + Nouvel album ». Le lot n'y est plus : il vit
-       AU-DESSUS de sa sélection (l'onglet Albums d'une collection, la fiche d'un album).
-       COL-3, tranche 3a : à droite des chiffres, le compteur des demandes de rejoindre à
-       répondre (propriétaire) et le rappel de ses demandes au fonds en attente
-       (responsable) — rien de cela dans la bande du haut (Hugo, 2026-10-17). -->
+       UX-20 : le FIL DE POSITION, qui donne un titre à la page (« Bibliothèque › Collection ›
+       Album › Copie » ; le projet est déjà nommé dans la bande du haut), puis les rappels
+       de ce qui attend, puis « + Nouvel album ». Les chiffres du corpus sont en tête de la
+       fiche du projet : ils ne servent à aucun geste. -->
   <header id="header">
     <h1 class="sr-only">Bibliothèque</h1>
-    <div id="corpus-stats" class="corpus-stats"></div>
+    <nav class="fil-nav" aria-label="Où vous êtes"><ol id="bi-fil" class="fil"></ol></nav>
     <span id="bi-rappels" class="bi-rappels" hidden></span>
-    <span class="nav-spacer"></span>
     <button id="btn-new" class="primary small" type="button">+ Nouvel album</button>
   </header>
 
   <main id="corpus-body">
 
-    <!-- COL-3 — de quel projet sont ces albums et ces collections. AU-DESSUS du cadre, et non
-         dans sa liste : le premier projet naît « Projet principal », et un audit interdit ce
-         mot dans le bloc des collections, où il est aussi un terme du modèle
-         (`test_aucun_texte_d_ecran_ne_dit_principal_genre_ni_utilisateur`). -->
-    <p id="collections-projet" class="collections-projet muted small" hidden></p>
+    <!-- COL-3 — de quel projet sont ces albums et ces collections, pour qui n'a pas la bande
+         du haut sous les yeux. -->
+    <p id="collections-projet" class="sr-only" hidden></p>
 
     <!-- Les lots en cours ou récents, visibles quel que soit l'objet ouvert (UX-18). -->
     <div id="jobs"></div>
 
-    <!-- UX-18 — LA LISTE ET LA FICHE, le gabarit `lf-` de l'Administration (et non un second).
-         La collection est un CALQUE posé sur le corpus du projet (Hugo, 2026-10-16) : la case
-         d'une collection FILTRE les albums, son nom OUVRE sa fiche. La fiche d'un album
-         s'ouvre À LA PLACE de celle d'une collection, avec le retour vers elle. Sous 40em,
-         une colonne à la fois : la liste, ou la fiche avec « ← Liste ».
+    <!-- UX-20 (Hugo, sur maquette, 2026-11-02) — LE CATALOGUE : les collections en rail à
+         gauche, les albums au centre, la fiche d'un album en volet à droite, qui resserre le
+         catalogue sans le recouvrir. Trois surfaces séparées par une gouttière.
+
+         La collection reste un CALQUE posé sur le corpus (UX-18) : sa case FILTRE, son nom
+         OUVRE. Le centre est le projet, une collection (quatre onglets, dont « Albums » EST
+         son catalogue) ou une comparaison.
 
          Aucune garde d'écran : créer une collection demande une identité, la décrire et
          régler ses accès la propriété, exporter la case d'export, lire la seule portée — des
-         questions que le serveur tranche, et que chaque BLOC de la fiche pose pour son geste,
-         jamais l'onglet qui le contient (leçon d'AUTH-4). -->
-    <div class="lf bi" id="biblio">
-      <div class="lf-liste bi-liste">
-        <div class="lf-tete-liste">
-          <span class="lf-compte" id="bi-compte" role="status" aria-live="polite"></span>
-        </div>
+         questions que le serveur tranche, et que chaque BLOC pose pour son geste, jamais
+         l'onglet qui le contient (leçon d'AUTH-4). -->
+    <div class="cat" id="biblio">
+      <!-- À l'étroit, le rail laisse place à cette ligne ; « Collections… » le rouvre. -->
+      <div class="cat-choix">
+        <label class="muted small" for="cat-select">Collection</label>
+        <select id="cat-select"></select>
+        <button id="cat-rail-ouvrir" class="ghost small" type="button" aria-expanded="false"
+                aria-controls="cat-rail">Collections…</button>
+      </div>
+
+      <nav class="cat-rail" id="cat-rail" aria-label="Collections">
+        <button id="calques-tout" class="cat-tout" type="button"></button>
 
         <section id="collections-bloc" class="bi-calques" aria-labelledby="collections-titre">
           <div class="bi-calques-tete">
             <h2 id="collections-titre" class="lf-groupe">Collections</h2>
-            <button id="calques-tout" class="lf-lien small" type="button" hidden>Tout ce que vous lisez</button>
+            <button id="col-tri" class="mini-btn" type="button"
+                    title="Changer l'ordre des collections"></button>
           </div>
-          <div class="lf-tri cg-tri" role="group" aria-label="Trier les collections">
-            <span class="muted small" aria-hidden="true">Trier</span>
-            <button type="button" data-tri="alpha" aria-pressed="true">A → Z</button>
-            <button type="button" data-tri="recents" aria-pressed="false">Récentes d'abord</button>
-          </div>
+          <div id="col-espaces" class="seg-mini" role="group"
+               aria-label="Montrer les collections" hidden></div>
           <ul id="col-body" class="bi-collections"></ul>
           <!-- Deux calques ou plus : montrer ce qui est dans L'UNE, ou dans TOUTES. -->
           <div id="calques-mode" class="lf-tri" role="group" aria-label="Albums montrés" hidden>
@@ -99,16 +101,14 @@
                il n'a aucune hauteur. -->
           <p id="col-creer-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
         </section>
+      </nav>
 
-        <h2 id="albums-titre" class="lf-groupe bi-albums-titre">Albums</h2>
-        <label class="sr-only" for="albums-filtre">Chercher un album</label>
-        <input type="search" id="albums-filtre" class="lf-filtre" placeholder="Titre, série, auteur…"
-               autocomplete="off">
-        <ul id="albums-body" class="lf-objets bi-albums" aria-labelledby="albums-titre"></ul>
+      <!-- Le centre : ce qu'on regarde, et l'album ouvert. Deux surfaces qui défilent chacune
+           seule ; le catalogue se resserre, ses cartes gardent leur taille. -->
+      <div class="cat-centre" id="biblio-fiche">
+        <div class="cat-vue" id="cat-vue"></div>
+        <aside class="cat-volet" id="biblio-volet" aria-label="Fiche de l'album" hidden></aside>
       </div>
-
-      <!-- La fiche : le projet, une collection, une comparaison, ou un album. -->
-      <div class="lf-fiche bi-fiche" id="biblio-fiche"></div>
     </div>
     <!-- UX-11 — le sélecteur de l'import en lot, ouvert par « ⤓ Importer des planches… » de
          la fiche d'un album. HORS de la fiche, que chaque geste redessine. `accept` est la

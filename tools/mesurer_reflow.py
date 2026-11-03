@@ -250,11 +250,14 @@ DEPLIES = {
         "nom": "tiroir des planches", "panneau": "#sidebar", "surfaces": ["/"]},
     "#btn-tiroir-panneau": {
         "nom": "tiroir d'annotation", "panneau": "#panel", "surfaces": ["/"]},
+    # « Collections… » (UX-20) : à l'étroit, une liste remplace le rail, que ce bouton rouvre.
+    "#cat-rail-ouvrir": {
+        "nom": "rail des collections", "panneau": "#cat-rail", "surfaces": ["/corpus"]},
     # « + Créer une collection » (UX-18) : le champ de création n'apparaît qu'au geste, en
     # tête de la liste de la Bibliothèque. Replié, il n'a pas de rectangle.
     "#col-creer": {
         "nom": "création d'une collection", "panneau": "#col-creer-zone",
-        "surfaces": ["/corpus"]},
+        "derriere": "#cat-rail-ouvrir", "surfaces": ["/corpus"]},
     # « + Prendre du fonds… » (COL-3, tranche 3a), en tête de la fiche du projet : offert au
     # responsable et à l'administrateur — donc à la portée totale du mono-poste où se fait la
     # mesure. Replié, le panneau des notices n'existe pas.
@@ -306,6 +309,11 @@ _OUVRIR = """(sel) => {
   return true;
 }"""
 
+_AFFICHE = """(sel) => {
+  const c = document.querySelector(sel);
+  return !!c && c.getClientRects().length > 0;
+}"""
+
 # Ouvert, et FINI de s'ouvrir : les tiroirs glissent (`transform` en transition), et un
 # rectangle pris en plein vol se lirait comme un contenu à moitié hors champ. On n'attend
 # que les animations du PANNEAU — lui, ses ancêtres, ses descendants —, pas celles du
@@ -336,6 +344,10 @@ def deplier(page, controle):
     objet, c'est-à-dire le défaut même que la liste existe pour fermer.
     """
     d = DEPLIES[controle]
+    # Un contrôle qui vit dans un panneau replié à cette largeur : on rouvre celui-là d'abord,
+    # comme le ferait la personne (le rail des collections, à l'étroit).
+    if d.get("derriere") and page.evaluate(_AFFICHE, d["derriere"]):
+        deplier(page, d["derriere"])
     if not page.evaluate(_OUVRIR, controle):
         raise AssertionError(f"{d['nom']} : contrôle `{controle}` absent de la page")
     try:

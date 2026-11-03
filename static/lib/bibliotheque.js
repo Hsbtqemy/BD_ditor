@@ -41,11 +41,21 @@
     { cle: "diffusion", libelle: "Diffusion et dépôt" },
   ];
   const CLES_ONGLETS = ONGLETS.map((o) => o.cle);
-  /* L'onglet qu'ouvre le NOM d'une collection, et une adresse qui n'en nomme aucun ; la case
-     de la collection, elle, ouvre « Albums ». */
+  /* L'onglet qu'ouvre une adresse qui n'en nomme aucun : « Qui entre », la cible des liens de
+     l'Administration depuis AUTH-12. Le rail, lui, ouvre « Albums » (`ONGLET_DU_RAIL`) : le
+     catalogue d'une collection EST son onglet Albums (UX-20, Hugo, 2026-11-02). */
   const ONGLET_PAR_LE_NOM = "qui";
+  const ONGLET_DU_RAIL = "albums";
   const TRIS = ["alpha", "recents"];
   const MODES = ["une", "toutes"];
+  /* Le filtre du bloc Collections (UX-20) : « Tout » range en sections, les deux autres
+     restent une liste simple. */
+  const ESPACES = [
+    { cle: "miennes", libelle: "Les miennes" },
+    { cle: "ecris", libelle: "Où j'écris" },
+    { cle: "tout", libelle: "Tout" },
+  ];
+  const VUES_ALBUMS = ["grille", "liste"];
 
   /* Pour chercher sans tenir compte des accents ni de la casse : « Étude » trouve « etude ».
      La plage U+0300–U+036F est celle des diacritiques combinants que NFD détache. */
@@ -138,13 +148,6 @@
     ];
   }
 
-  /* Les autres collections où l'album est rangé, parmi celles qu'on lit : la colonne
-     « Aussi dans » de l'onglet Albums d'une collection. */
-  function aussiDans(album, collectionId) {
-    return collectionsDe(album).filter((c) => Number(c.id) !== Number(collectionId))
-      .map((c) => c.nom);
-  }
-
   /* Ce que la liste compte, dans des mots qui ne disent pas un total qu'on n'a pas le droit
      de connaître. `total` : la portée totale (`acces.total` de `GET /api/moi`). `sur` : le
      nombre AVANT filtre, quand un filtre est actif. */
@@ -204,18 +207,17 @@
      continuer d'ouvrir la bonne collection, sur l'onglet où le groupe se lit.
 
      Sans onglet nommé, une collection s'ouvre sur « Qui entre » (`ONGLET_PAR_LE_NOM`) :
-     c'est ce que fait son NOM dans la liste — la case, elle, filtre le corpus et montre ses
-     albums —, et c'est ce que l'adresse ouvrait depuis AUTH-12, cible des liens de
-     l'Administration. Un album l'emporte : sa fiche s'ouvre À LA PLACE de celle de la
-     collection, qui reste celle d'où l'on vient (le retour). Toute valeur illisible vaut
-     absente. */
+     c'est ce que l'adresse ouvre depuis AUTH-12, cible des liens de l'Administration. Un
+     album s'ouvre en volet À CÔTÉ de la collection (UX-20) : la collection y montre son
+     catalogue, l'onglet Albums. Toute valeur illisible vaut absente. */
   function lireAdresse(search) {
     const p = new URLSearchParams(search || "");
     const collection = entier(p.get("collection"));
     const album = entier(p.get("album"));
     const groupe = collection !== null ? (p.get("groupe") || null) : null;
     const nomme = CLES_ONGLETS.includes(p.get("onglet")) ? p.get("onglet") : null;
-    return { collection, album, onglet: nomme || ONGLET_PAR_LE_NOM, groupe };
+    const parDefaut = album !== null ? ONGLET_DU_RAIL : ONGLET_PAR_LE_NOM;
+    return { collection, album, onglet: nomme || parDefaut, groupe };
   }
 
   /* L'adresse de ce qui est ouvert, sans toucher aux autres paramètres (`retour`, qui sert
@@ -402,6 +404,150 @@
               && siennes.every((c) => admin.has(Number(c.id))));
   }
 
+  /* ═══ UX-20 — le catalogue (Hugo, sur maquette, 2026-11-02) ═══ */
+
+  /* Le niveau d'une collection, en mots : « propriétaire », « écriture », « lecture »,
+     « lecture · par le projet » pour ce que le responsable ne lit que par la 3c
+     (`niveau_par_le_projet`), « administrateur » pour qui administre sans figurer dans les
+     accès, ce pouvoir qu'on déclare (AUTH-4). `declarer` : vrai s'il y a des groupes
+     d'administration à nommer, jamais en mono-poste, où il n'y a qu'un rôle. */
+  function motNiveau(c, declarer) {
+    const n = c && c.mon_niveau;
+    if (n === "proprietaire") return "propriétaire";
+    if (n === "ecriture") return "écriture";
+    if (n === "lecture") return c.niveau_par_le_projet ? "lecture · par le projet" : "lecture";
+    return c && c.administrable && declarer ? "administrateur" : "";
+  }
+
+  /* LE BLOC COLLECTIONS. Rend des sections `{ titre, collections }` ; `titre` nul pour une
+     liste simple. Sur « Tout », trois sections : « Les vôtres », « Où vous écrivez », « Où
+     vous lisez », celles qui sont vides en moins. « Les miennes » et « Où j'écris » restent
+     une liste simple (`ecrivable` : un propriétaire écrit aussi). Une portée TOTALE n'a ni
+     filtre ni sections : elle lit tout, sans « posséder » rien, et trois sections n'y
+     diraient rien. Garde l'ordre reçu (`trierCollections`). */
+  function sectionsCollections(collections, espace, total) {
+    const l = Array.isArray(collections) ? collections : [];
+    if (total) return [{ titre: null, collections: l }];
+    if (espace === "miennes") {
+      return [{ titre: null, collections: l.filter((c) => c.mon_niveau === "proprietaire") }];
+    }
+    if (espace === "ecris") {
+      return [{ titre: null, collections: l.filter((c) => c.ecrivable === true) }];
+    }
+    return [
+      { titre: "Les vôtres", collections: l.filter((c) => c.mon_niveau === "proprietaire") },
+      { titre: "Où vous écrivez", collections: l.filter((c) => c.mon_niveau === "ecriture") },
+      { titre: "Où vous lisez", collections: l.filter((c) => c.mon_niveau === "lecture") },
+    ].filter((s) => s.collections.length);
+  }
+
+  /* Une COPIE : née d'une autre (`copie_cran`, tout sauf `origine`). Un album d'avant le fonds
+     n'a pas de cran, et n'en est pas une. */
+  function estCopie(a) {
+    return !!(a && a.copie_cran && a.copie_cran !== "origine");
+  }
+
+  /* Le nom d'une copie, à la place de son titre sous son original. « Copie de travail » quand
+     le serveur ne nomme pas son auteur : un simple lecteur ne le lit pas (borne de `repartie`,
+     accepté par Hugo le 2026-11-02, plus strict que la maquette). */
+  function nomCopie(a) {
+    if (a && a.a_moi) return "Votre copie";
+    const nom = a && (a.copie_par_nom || a.copie_par);
+    return nom ? `Copie de ${nom}` : "Copie de travail";
+  }
+
+  /* L'album au bout de la chaîne des `copie_de`, parmi ceux qu'on a. Le serveur ne rend
+     `copie_de` que si la source est lue : une source non lue arrête la chaîne, et rien ne
+     passe par-dessus elle. */
+  function racineDe(album, parId) {
+    let r = album;
+    const vus = new Set([r.id]);
+    while (r.copie_de !== null && r.copie_de !== undefined
+           && parId.has(r.copie_de) && !vus.has(r.copie_de)) {
+      r = parId.get(r.copie_de);
+      vus.add(r.id);
+    }
+    return r;
+  }
+
+  /* RANGER LES COPIES SOUS LEUR ORIGINAL. `vus` : ce que le catalogue montre ; `tous` : les
+     albums du projet qu'on lit. Rend des groupes `{ album, copies, eteint, seule }`, dans
+     l'ordre de `tous` :
+       · une copie dont l'original est montré se range sous lui ;
+       · dont l'original est lu mais hors de la vue : sous lui, ÉTEINT (`eteint`) ;
+       · dont l'original n'est pas lu : seule (`seule`), et rien ne le situe. */
+  function grouperCopies(vus, tous) {
+    const l = Array.isArray(vus) ? vus : [];
+    const parId = new Map((Array.isArray(tous) ? tous : []).map((a) => [a.id, a]));
+    l.forEach((a) => { if (!parId.has(a.id)) parId.set(a.id, a); });
+    const montres = new Set(l.map((a) => a.id));
+    const groupes = new Map();
+    const groupe = (album) => {
+      if (!groupes.has(album.id)) {
+        groupes.set(album.id, { album, copies: [], eteint: !montres.has(album.id),
+                                seule: estCopie(album) });
+      }
+      return groupes.get(album.id);
+    };
+    l.forEach((a) => {
+      const r = racineDe(a, parId);
+      if (r.id === a.id) groupe(a);
+      else groupe(r).copies.push(a);
+    });
+    const rang = new Map([...parId.keys()].map((id, i) => [id, i]));
+    return [...groupes.values()].sort((x, y) => rang.get(x.album.id) - rang.get(y.album.id));
+  }
+
+  /* Les versions d'un document qu'on lit, pour le bloc « Ce document » : l'original d'abord,
+     puis les copies, dans l'ordre de `tous`. Une seule : rien à dire. */
+  function versionsDuDocument(album, tous) {
+    if (!album || album.document_id === null || album.document_id === undefined) return [];
+    const l = (Array.isArray(tous) ? tous : [])
+      .filter((a) => a.document_id === album.document_id);
+    if (l.length < 2) return [];
+    return [...l.filter((a) => !estCopie(a)), ...l.filter(estCopie)];
+  }
+
+  /* Ce que l'on peut sur un album, en ACTES : l'union de ses collections, comme
+     `droitsAlbum`, jamais ceux de la collection d'où on l'a ouvert. */
+  function actesAlbum(album, collections) {
+    const d = droitsAlbum(album, collections);
+    const exportables = new Set((Array.isArray(collections) ? collections : [])
+      .filter((c) => c && c.exportable).map((c) => Number(c.id)));
+    return [
+      { cle: "lire", libelle: "lire", oui: true },
+      { cle: "ecrire", libelle: "annoter", oui: d.ecrire },
+      { cle: "exporter", libelle: "exporter", oui: d.lues.some((c) => exportables.has(c.id)) },
+    ];
+  }
+
+  /* LE FIL DE POSITION : « Bibliothèque › Collection › Album › Copie », du plus large au plus
+     étroit. Chaque maillon `{ texte, cible }` ; le dernier n'a pas de cible, c'est ici qu'on
+     est. `cible` : `{ genre: "projet" | "filtre" | "collection" | "album", id }`. L'original d'une copie
+     n'y paraît que s'il est lu. */
+  function filDePosition(etat) {
+    const e = etat || {};
+    const m = [{ texte: "Bibliothèque", cible: { genre: "projet" } }];
+    if (e.collection) {
+      m.push({ texte: e.collection.nom, cible: { genre: "collection", id: e.collection.id } });
+    } else if (e.filtres > 0) {
+      m.push({ texte: `${e.filtres} collection${e.filtres > 1 ? "s" : ""} filtrée${e.filtres > 1 ? "s" : ""}`,
+               cible: { genre: "filtre" } });
+    }
+    const a = e.album;
+    if (a) {
+      const parId = new Map((e.tous || []).map((x) => [x.id, x]));
+      const r = racineDe(a, parId);
+      if (estCopie(a) && r.id !== a.id) {
+        m.push({ texte: r.titre, cible: { genre: "album", id: r.id } });
+        m.push({ texte: nomCopie(a), cible: { genre: "album", id: a.id } });
+      } else {
+        m.push({ texte: a.titre, cible: { genre: "album", id: a.id } });
+      }
+    }
+    return m.map((x, i) => (i === m.length - 1 ? { texte: x.texte, cible: null } : x));
+  }
+
   /* Ce sur quoi un lot travaille, en une ligne (UX-18) — lu dans `albums`, que
      `GET /api/jobs` rend lot par lot ({id, titre, nb_planches}) et borne déjà à ce qu'on
      lit. Un album : « 3 planches de « Titre » » ; plusieurs : leurs titres, trois au plus,
@@ -422,8 +568,11 @@
     return `${enumeres} — ${planches(total)}`;
   }
 
-  return { ONGLETS, CLES_ONGLETS, ONGLET_PAR_LE_NOM, TRIS, MODES, plier, filtrerAlbums, trierCollections,
-           droitsAlbum, actesCollection, aussiDans, libelleAlbums, comparer, libelleCommuns, lireAdresse,
+  return { ONGLETS, CLES_ONGLETS, ONGLET_PAR_LE_NOM, ONGLET_DU_RAIL, TRIS, MODES, ESPACES,
+           VUES_ALBUMS, plier, filtrerAlbums, trierCollections,
+           motNiveau, sectionsCollections, estCopie, nomCopie, racineDe, grouperCopies,
+           versionsDuDocument, actesAlbum, filDePosition,
+           droitsAlbum, actesCollection, libelleAlbums, comparer, libelleCommuns, lireAdresse,
            ecrireAdresse, offrirPrendreDuFonds, destinationsPrise, destinationParDefaut,
            quiRepondra, reponsePrise, messageRejoindre, demandesARepondre, quiRecocherait,
            sujetDuLot, offrirCreerCollection, offrirRepartir, offrirRetirer, tientToutes };

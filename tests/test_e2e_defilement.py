@@ -382,10 +382,12 @@ def test_au_large_les_bandes_restent_et_le_cadre_defile(playwright, corpus_derri
             m = _defiler_a_la_main(page, corpus_derriere_proxy, chemin, cadre,
                                    largeur, hauteur)
             cas = f"{chemin}, {largeur} × {hauteur}, police {police}"
-            assert m["contenu"] > m["visible"] + 1, (
-                f"{cas} : le contenu tient dans son cadre ({m}) — rien n'aurait défilé")
             assert m["page"] == 0 and m["haut_nav"] == 0, (
                 f"{cas} : la PAGE a défilé ({m}) — au large, les bandes restent")
+            if chemin == "/corpus":
+                continue    # au large, rail, catalogue et volet défilent chacun seuls (UX-20)
+            assert m["contenu"] > m["visible"] + 1, (
+                f"{cas} : le contenu tient dans son cadre ({m}) — rien n'aurait défilé")
             assert m["cadre"] > 0, f"{cas} : le cadre n'a pas défilé sous la molette ({m})"
     finally:
         b.close()

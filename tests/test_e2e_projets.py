@@ -576,7 +576,8 @@ def _un_album(base):
 
 def _bibliotheque(page, base):
     page.goto(base + "/corpus", wait_until="networkidle")
-    page.locator("#col-body .col-item, #col-body .col-note").first.wait_for(timeout=5000)
+    page.locator("#col-body .col-item, #col-body .col-note").first.wait_for(
+        state="attached", timeout=5000)   # à 320 px, une liste remplace le rail (UX-20)
 
 
 def _nouvel_album(page):
@@ -924,7 +925,7 @@ def lectrice_des_deux(live_server):
 
 
 def _albums_bibliotheque(page):
-    return page.locator("#albums-body .album-row .c-titre").all_inner_texts()
+    return page.locator("#albums-body .album-row .titre").all_inner_texts()
 
 
 def _albums_atelier(page):
@@ -949,7 +950,7 @@ def test_la_bibliotheque_ne_liste_que_les_albums_du_projet_courant(page, lectric
     assert page.evaluate("() => [...state.checkedAlbums]") == [d["du_repli"]]
 
     _changer_de_projet(page, d["second"], "Séminaire 2026")
-    expect(page.locator("#albums-body .album-row .c-titre")).to_have_text(
+    expect(page.locator("#albums-body .album-row .titre")).to_have_text(
         ["Album du séminaire"])
     assert page.evaluate("() => [...state.checkedAlbums]") == []
 
@@ -963,7 +964,7 @@ def test_une_collection_d_un_autre_projet_par_l_adresse_bascule_aussi_les_albums
     page.set_extra_http_headers(LECTRICE)
     page.goto(f"{d['base']}/corpus?collection={d['b']}", wait_until="networkidle")
     expect(page.locator("#projet-choix")).to_have_value(str(d["second"]))
-    expect(page.locator("#albums-body .album-row .c-titre")).to_have_text(
+    expect(page.locator("#albums-body .album-row .titre")).to_have_text(
         ["Album du séminaire"])
 
 
@@ -1001,7 +1002,7 @@ def test_un_lien_de_l_atelier_vers_un_autre_projet_fait_basculer(page, lectrice_
 
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
     expect(page.locator("#projet-choix")).to_have_value(str(d["second"]))
-    expect(page.locator("#albums-body .album-row .c-titre")).to_have_text(
+    expect(page.locator("#albums-body .album-row .titre")).to_have_text(
         ["Album du séminaire"])
 
 

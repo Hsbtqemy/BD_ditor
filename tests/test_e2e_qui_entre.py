@@ -80,9 +80,10 @@ def _ouvrir(page, base, cid, suite=""):
 
 
 def _ouvrir_par_le_nom(page, cid):
-    """La fiche d'une collection par son NOM dans la liste — l'onglet « Qui entre »."""
+    """La fiche d'une collection par son NOM dans la liste, puis l'onglet « Qui entre »."""
     page.locator(f'#col-body .col-item[data-id="{cid}"] .col-ouvrir').click()
     item = page.locator(f'#col-fiche[data-id="{cid}"]')
+    item.locator('[role="tab"][data-onglet="qui"]').click()
     item.locator(".qe-choix").wait_for(timeout=5000)
     return item
 
@@ -456,7 +457,7 @@ def test_le_resume_dit_proprietaire_ou_administrateur(page, live_server):
             assert r.status_code == 200, r.text
 
     attendus = (({"Remote-User": "proprio"}, "propriétaire"), (admin, "administrateur"),
-                ({"Remote-User": "lectrice"}, None))
+                ({"Remote-User": "lectrice"}, "lecture"))
     for entetes, pastille in attendus:
         page.set_extra_http_headers(entetes)
         page.goto(live_server + "/corpus", wait_until="networkidle")

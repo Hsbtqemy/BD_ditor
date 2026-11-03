@@ -37,6 +37,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+from conftest import autres_gestes  # noqa: E402
 from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 
@@ -275,8 +276,8 @@ def test_copie_deplie_l_echelle_et_se_demande_au_dessus_des_images(page, decor):
         {"documents": [{"document_id": d["docs"]["Spip"], "reponse": "zero",
                         "album_id": d["albums"]["Spip"]}]}], corps
     # La copie vierge est dans Exercices, et sa ligne le dit.
-    ligne = page.locator("#panneau-albums tr.col-album", has_text="Spip")
-    expect(ligne.locator(".cran-puce")).to_have_text("copie vierge")
+    expect(page.locator("#panneau-albums .album-row", has_text="Votre copie")
+           .filter(has_text="copie vierge")).to_be_visible(timeout=5000)
 
 
 # =========================================================================== #
@@ -312,9 +313,8 @@ def test_la_proprietaire_repond_a_une_demande_d_en_partir(page, decor):
     # Le demandeur : la copie est dans sa collection, et sa ligne dit le cran.
     _ouvrir(page, d, "noe", f"/corpus?collection={d['cols']['Exercices']}&onglet=albums",
             projet=d["projet"])
-    ligne = page.locator("#panneau-albums tr.col-album", has_text="Zorglub")
-    expect(ligne.locator(".cran-puce")).to_have_text("copie · jusqu'à la transcription",
-                                                     timeout=5000)
+    expect(page.locator("#panneau-albums .album-row .det",
+                        has_text="copie · jusqu'à la transcription")).to_be_visible(timeout=5000)
 
 
 # =========================================================================== #
@@ -393,6 +393,7 @@ def test_repartir_de_zero_sur_un_album_dit_qui_perd_quoi(page, decor):
     d = decor
     vues = _requetes(page, "/repartir")
     fiche = _fiche_album(page, d, "paule", "Gorille", "Corpus")
+    autres_gestes(page)
     fiche.locator('[data-act="repartir"]').click()
     panneau = page.locator("#repartir-modal")
     expect(panneau).to_be_visible()
@@ -443,6 +444,7 @@ def test_une_planche_ne_se_demande_pas_et_un_album_se_demande(page, decor):
     page.keyboard.press("Escape")
     expect(page.locator("#repartir-modal")).to_be_hidden()
     # L'album entier : motif et certification exigés, puis la demande.
+    autres_gestes(page)
     fiche.locator('[data-act="repartir"]').click()
     expect(page.locator("#rp-motif-wrap")).to_be_visible(timeout=5000)
     expect(page.locator("#rp-certif-texte")).to_contain_text("Repartir de zéro détruit ce qui a été posé")
@@ -480,6 +482,7 @@ def test_une_planche_ne_se_demande_pas_et_un_album_se_demande(page, decor):
 def test_supprimer_dit_le_chemin_reel_et_la_derniere_copie_se_demande(page, decor):
     d = decor
     fiche = _fiche_album(page, d, "paule", "QRN", "Corpus")
+    autres_gestes(page)
     fiche.locator('[data-act="supprimer"]').click()
     expect(page.locator("#suppr-modal")).to_be_visible()
     expect(page.locator("#sp-def-raison")).to_have_text(
@@ -497,6 +500,7 @@ def test_supprimer_dit_le_chemin_reel_et_la_derniere_copie_se_demande(page, deco
     # La dernière copie : même la responsable la demande.
     page.goto(d["base"] + f"/corpus?collection={d['cols']['Corpus']}&album={d['albums']['Gorille']}",
               wait_until="networkidle")
+    autres_gestes(page)
     page.locator('#album-detail [data-act="supprimer"]').click()
     expect(page.locator("#sp-def-texte")).to_contain_text("C'est la dernière copie de ce document",
                                                           timeout=5000)
@@ -511,6 +515,7 @@ def test_retirer_du_projet_et_l_avis_chez_la_proprietaire(page, decor):
     d = decor
     vues = _requetes(page, "/retirer-du-projet", ("POST",))
     fiche = _fiche_album(page, d, "paule", "Gorille", "Corpus")
+    autres_gestes(page)
     fiche.locator('[data-act="retirer"]').click()
     expect(page.locator("#retirer-modal")).to_be_visible()
     expect(page.locator("#rt-texte")).to_have_text(
@@ -556,6 +561,7 @@ def test_la_lectrice_ne_voit_aucun_geste_de_la_3b(page, decor):
     expect(page.locator("#col-creer")).to_have_attribute("aria-disabled", "true")
     # Le membre qui écrit ne voit pas « Retirer du projet… », le geste du responsable.
     fiche = _fiche_album(page, d, "noe", "Pirates", "Exercices")
+    autres_gestes(page)
     expect(fiche.locator('[data-act="repartir"]')).to_be_visible()
     expect(fiche.locator('[data-act="retirer"]')).to_have_count(0)
 
@@ -634,6 +640,7 @@ def test_un_envoi_se_voit_sur_son_bouton(page, decor):
     d = decor
     # --- La Bibliothèque : « Retirer du projet… », refusé par le serveur.
     fiche = _fiche_album(page, d, "paule", "Gorille", "Corpus")
+    autres_gestes(page)
     fiche.locator('[data-act="retirer"]').click()
     ok = page.locator("#rt-ok")
     expect(ok).to_be_visible(timeout=5000)
@@ -712,16 +719,19 @@ def test_a_320_px_rien_ne_defile_de_cote(page, decor, police):
     assert not page.evaluate(_SONDE), page.evaluate(_SONDE)
     # « Repartir de zéro », avec « qui perd quoi ».
     fiche = _fiche_album(page, d, "paule", "Gorille", "Corpus")
+    autres_gestes(page)
     fiche.locator('[data-act="repartir"]').click()
     expect(page.locator("#rp-perd .perd")).to_be_visible(timeout=5000)
     assert not page.evaluate(_SONDE), page.evaluate(_SONDE)
     page.keyboard.press("Escape")
     # « Retirer du projet ».
+    autres_gestes(page)
     page.locator('#album-detail [data-act="retirer"]').click()
     expect(page.locator("#rt-ok")).to_be_visible(timeout=5000)
     assert not page.evaluate(_SONDE), page.evaluate(_SONDE)
     page.keyboard.press("Escape")
     # « Supprimer… » de la dernière copie, avec son tableau.
+    autres_gestes(page)
     page.locator('#album-detail [data-act="supprimer"]').click()
     expect(page.locator("#sp-perd .perd")).to_be_visible(timeout=5000)
     assert not page.evaluate(_SONDE), page.evaluate(_SONDE)
@@ -764,6 +774,7 @@ def test_a11y_de_l_ecran_de_la_3b(page, decor, theme):
     fiche = _fiche_album(page, d, "paule", "Gorille", "Corpus")
     for geste, attendu in (("repartir", "#rp-perd .perd"), ("retirer", "#rt-ok"),
                            ("supprimer", "#sp-perd .perd")):
+        autres_gestes(page)
         page.locator(f'#album-detail [data-act="{geste}"]').click()
         expect(page.locator(attendu)).to_be_visible(timeout=5000)
         viol = _audit(page)

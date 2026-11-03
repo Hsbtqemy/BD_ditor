@@ -29,6 +29,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 from playwright.sync_api import expect  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from conftest import autres_gestes  # noqa: E402
 from conftest import ECRITURE, make_png         # noqa: E402
 from grilles_decor import grille_active_vivante  # noqa: E402
 
@@ -117,6 +118,7 @@ def _supprimer(page, d):
     """COL-3, tranche 2 — « Supprimer… » et ses deux réponses, collections lues."""
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
     page.locator("#albums-body .album-row").first.click()      # la fiche de l'album (UX-18)
+    autres_gestes(page)
     page.locator('#album-detail [data-act="supprimer"]').click()
     page.wait_for_selector("#suppr-modal:not([hidden]) #sp-retrait button[data-retirer]",
                            timeout=5000)

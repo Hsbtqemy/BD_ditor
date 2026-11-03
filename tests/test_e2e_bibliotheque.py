@@ -14,6 +14,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
+from conftest import autres_gestes  # noqa: E402
 from conftest import du_projet
 from conftest import ECRITURE, make_png  # noqa: E402
 from playwright.sync_api import expect  # noqa: E402
@@ -195,7 +196,7 @@ def calques(live_server):
 
 
 def _albums(page):
-    return page.locator("#albums-body .album-row .c-titre").all_inner_texts()
+    return page.locator("#albums-body .album-row .titre").all_inner_texts()
 
 
 def _noms_des_collections(page):
@@ -210,8 +211,10 @@ def test_cocher_une_collection_filtre_les_albums_sur_les_siens(page, calques):
     d = calques
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
     expect(page.locator("#albums-body .album-row")).to_have_count(3)
-    expect(page.locator("#albums-body .album-row", has_text="Île").locator(".lf-detail")) \
+    page.locator('[data-vue-albums="liste"]').click()
+    expect(page.locator("#albums-body tr.col-album", has_text="Île").locator(".c-vit")) \
         .to_have_text("Étude A · Étude B")
+    page.locator('[data-vue-albums="grille"]').click()
 
     page.locator(f'#col-body [data-calque="{d["a"]}"]').check()
     expect(page.locator("#albums-body .album-row")).to_have_count(2)
@@ -221,8 +224,7 @@ def test_cocher_une_collection_filtre_les_albums_sur_les_siens(page, calques):
     fiche = page.locator(f'#col-fiche[data-id="{d["a"]}"]')
     expect(fiche.locator('[role="tab"][data-onglet="albums"]')).to_have_attribute(
         "aria-selected", "true")
-    expect(fiche.locator("#panneau-albums .col-album")).to_have_count(2)
-    expect(fiche.locator(".col-album", has_text="Île").locator(".c-aussi")).to_have_text("Étude B")
+    expect(fiche.locator("#panneau-albums .album-row")).to_have_count(2)
 
     page.locator(f'#col-body [data-calque="{d["b"]}"]').check()
     expect(page.locator("#albums-body .album-row")).to_have_count(3)
@@ -242,22 +244,20 @@ def test_cocher_une_collection_filtre_les_albums_sur_les_siens(page, calques):
 
 
 def test_le_nom_ouvre_la_fiche_et_le_tri_se_choisit(page, calques):
-    """Le NOM ouvre la fiche, sur « Qui entre », sans filtrer ; le tri est le contrôle de
-    « Comptes et groupes » — par nom, ou la plus récente d'abord, la base du projet en tête."""
+    """Le NOM ouvre la collection sur son catalogue, sans filtrer (UX-20) ; le petit bouton du
+    bloc passe du tri par nom à la plus récente d'abord, la base du projet en tête."""
     d = calques
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
     page.locator("#col-body .col-item").first.wait_for(timeout=5000)
     assert _noms_des_collections(page)[1:] == ["Étude A", "Étude B"], _noms_des_collections(page)
-    page.locator('#collections-bloc [data-tri="recents"]').click()
-    expect(page.locator('#collections-bloc [data-tri="recents"]')).to_have_attribute(
-        "aria-pressed", "true")
+    page.locator("#col-tri").click()
     assert _noms_des_collections(page)[1:] == ["Étude B", "Étude A"], _noms_des_collections(page)
 
     page.locator(f'#col-body .col-item[data-id="{d["b"]}"] .col-ouvrir').click()
     fiche = page.locator(f'#col-fiche[data-id="{d["b"]}"]')
-    expect(fiche.locator('[role="tab"][data-onglet="qui"]')).to_have_attribute(
+    expect(fiche.locator('[role="tab"][data-onglet="albums"]')).to_have_attribute(
         "aria-selected", "true")
-    expect(page.locator("#albums-body .album-row")).to_have_count(3)   # rien n'est filtré
+    expect(page.locator(f'#col-body [data-calque="{d["b"]}"]')).not_to_be_checked()   # sans filtrer
     expect(page.locator(f'#col-body .col-item[data-id="{d["b"]}"] .col-ouvrir')) \
         .to_have_attribute("aria-current", "true")
 
@@ -285,15 +285,15 @@ def test_la_fiche_d_une_collection_a_quatre_onglets(page, calques):
 
 
 def test_l_album_ouvert_vit_dans_l_adresse_et_le_retour_le_defait(page, calques):
-    """La fiche d'un album s'ouvre À LA PLACE de celle de la collection, avec le retour vers
-    elle ; l'adresse le dit, le rechargement le rouvre, « Précédent » revient à la collection."""
+    """La fiche d'un album s'ouvre À CÔTÉ de la collection, qui reste là (UX-20) ; l'adresse le
+    dit, le rechargement le rouvre, « Fermer ✕ » le referme, « Précédent » revient dessus."""
     d = calques
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
     page.locator(f'#col-body [data-calque="{d["b"]}"]').check()
     page.locator(f'#col-fiche [data-ouvrir-album="{d["albums"]["Gaston"]}"]').click()
     expect(page.locator("#album-titre")).to_contain_text("Gaston")
-    expect(page.locator("#col-fiche")).to_have_count(0)
-    expect(page.locator("[data-retour-album]")).to_have_text("← Étude B")
+    expect(page.locator(f'#col-fiche[data-id="{d["b"]}"]')).to_be_visible()
+    expect(page.locator("[data-retour-album]")).to_have_text("Fermer ✕")
     expect(page.locator("#album-range-cases label:has(input[data-ranger]:checked) .col-nom")
            ).to_have_text(["Étude B"])
     assert f"album={d['albums']['Gaston']}" in page.url, page.url
@@ -303,7 +303,8 @@ def test_l_album_ouvert_vit_dans_l_adresse_et_le_retour_le_defait(page, calques)
     page.reload(wait_until="networkidle")
     expect(page.locator("#album-titre")).to_contain_text("Gaston")
     page.locator("[data-retour-album]").click()
-    expect(page.locator(f'#col-fiche[data-id="{d["b"]}"]')).to_be_visible()
+    expect(page.locator("#album-titre")).to_have_count(0)
+    assert "album=" not in page.url, page.url
     page.go_back()
     expect(page.locator("#album-titre")).to_contain_text("Gaston")
 
@@ -331,10 +332,11 @@ def test_les_droits_d_un_album_sont_l_union_de_ses_collections(page, live_server
     page.locator(f'#col-body [data-calque="{lue}"]').check()
     fiche = page.locator(f'#col-fiche[data-id="{lue}"]')
     expect(fiche.locator('.droits [data-acte="ecrire"]')).to_have_class("non")
-    # Dans l'onglet de la collection lue, la ligne de l'album porte quand même ses gestes.
-    expect(fiche.locator(f'.col-album[data-id="{aid}"] [data-act="supprimer"]')).to_be_visible()
+    # Ouvert depuis la collection lue, l'album porte quand même ses gestes (UX-20 : ils vivent
+    # dans sa fiche, une carte n'en porte aucun).
     fiche.locator(f'[data-ouvrir-album="{aid}"]').click()
-    expect(page.locator("[data-retour-album]")).to_have_text("← Lue")
+    expect(page.locator("#album-titre")).to_be_visible()
+    autres_gestes(page)
     expect(page.locator('#album-detail [data-act="supprimer"]')).to_be_visible()
     expect(page.locator("#detail-edit")).to_be_visible()
     expect(page.locator("#album-detail button[data-val]")).to_have_count(1)

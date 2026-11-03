@@ -97,7 +97,7 @@ def test_un_proprietaire_d_une_seule_collection_ne_voit_aucun_bouton(page, decor
         assert [d["repondable"] for d in l] == [False], l
     _choisir_projet(page, decor)
     _ouvrir(page, decor["base"], _comme("ana"), f"/corpus?collection={decor['lot_a']}&onglet=albums")
-    expect(page.locator("#panneau-albums tr.col-album").first).to_be_visible(timeout=5000)
+    expect(page.locator("#panneau-albums .album-row").first).to_be_visible(timeout=5000)
     page.wait_for_timeout(800)
     expect(page.locator("[data-repondre]")).to_have_count(0)
     expect(page.locator("#bi-recues-compteur, .col-marque")).to_have_count(0)

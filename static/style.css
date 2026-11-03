@@ -1835,6 +1835,7 @@ h3.collapsible:hover { color: var(--text); }
 #search-app { display: flex; flex-direction: column; height: 100%; }
 #search-app #header { min-height: var(--header-h); flex: 0 0 auto; }
 #header .corpus-stats { flex: 1; display: flex; gap: 1.0769rem; justify-content: flex-start; flex-wrap: wrap; }
+#cat-vue .corpus-stats { display: flex; flex-wrap: wrap; gap: .15rem 1rem; margin: .45rem 0 0; }
 .corpus-stats .stat { color: var(--text-muted); font-size: 1rem; white-space: nowrap; }
 .corpus-stats .stat b { color: var(--text); }
 
@@ -2265,64 +2266,216 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 #corpus-app #header { min-height: var(--header-h); flex: 0 0 auto; }
 #corpus-body { flex: 1; overflow-y: auto; padding: 1.2308rem 1.5385rem; }
 
-/* ── La Bibliothèque en calque (UX-18) — la liste et la fiche ──────────────────────────
-   Le gabarit `lf-` de « Comptes et groupes » et du fonds, et non un second : ce bloc ne
-   dit que ce que la Bibliothèque AJOUTE — le bloc « Collections » posé sur les albums, les
-   onglets de la fiche d'une collection, le lot au-dessus de sa sélection, les cartes. Les
-   couleurs sont celles de la feuille ; chaque petit texte coloré prend une encre AA-sûre.
+/* ── Le catalogue de la Bibliothèque (UX-20, Hugo, sur maquette, 2026-11-02) ───────────
+   Trois SURFACES séparées par une gouttière : le rail des collections, teinté ; le catalogue
+   des albums ; le volet de l'album, qui prend 52 % de la zone centrale et resserre le
+   catalogue sans le recouvrir. La Bibliothèque a quitté le gabarit `lf-`, que l'Administration
+   garde ; elle lui emprunte ses éléments de fiche (`.lf-tete`, `.lf-sous`…). Les couleurs sont
+   celles de la feuille ; chaque petit texte coloré prend une encre AA-sûre.
 
-   Le cadre a la hauteur de la zone qui défile (`main`), comme le bloc de « Comptes et
-   groupes » : amené en tête de la zone, il y tient entier, la ligne du projet et les lots
-   défilés au-dessus — et liste et fiche défilent chacune SEULE. Sous 40em il n'y a plus
-   qu'une colonne, sans hauteur fixe.
+   Le cadre a la hauteur de la zone qui défile (`main`), et rail, catalogue et volet défilent
+   chacun SEUL.
 
    **Le plancher se borne à la fenêtre VISIBLE** (UX-7, 2026-10-23). Écrit en `rem`, il
    grandit avec le zoom d'interface comme tout le reste : 22rem faisaient 572 px à l'écran
    sous un zoom de 2, dans une fenêtre de 400 — et de 500, alors même que la fenêtre n'y est
    pas basse et que le cadre suit sa zone. Le cadre passait sous le bas de la fenêtre, et ce
-   qu'il porte en bas ne s'atteignait plus qu'en faisant défiler la page, quand liste et
-   fiche devaient défiler chacune seule. La borne est la hauteur que le cadre prend dans une
-   fenêtre basse (ci-dessous) : la fenêtre visible moins un rembourrage de chaque côté.
-   Elle n'est pas réglée sur une police — elle ne lit que la fenêtre — et ne mord que là où
-   22rem ne tiennent plus : à 100 %, sous 318 px de haut. Ailleurs rien ne change. Les
-   cadres de l'Administration ont la même borne, sur leur plancher de 16rem (`.lf`). */
-.lf.bi { height: 100%; min-height: min(22rem, calc(100 * var(--vh-visible) - 2.5rem));
-         margin-top: 0; }
+   qu'il porte en bas ne s'atteignait plus qu'en faisant défiler la page. La borne est la
+   hauteur que le cadre prend dans une fenêtre basse (ci-dessous) : la fenêtre visible moins
+   un rembourrage de chaque côté. Elle ne lit que la fenêtre, et ne mord que là où 22rem ne
+   tiennent plus : à 100 %, sous 318 px de haut. Ailleurs rien ne change. Les cadres de
+   l'Administration ont la même borne, sur leur plancher de 16rem (`.lf`). */
+#corpus-body { container: corps / inline-size; }
+.cat { display: grid; grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
+       grid-template-rows: minmax(0, 1fr); gap: .6rem; height: 100%;
+       min-height: min(22rem, calc(100 * var(--vh-visible) - 2.5rem)); }
 /* Fenêtre BASSE : la page défile entière (cf. plus bas), `100%` n'y désigne plus rien. Le
-   cadre se compte alors sur la fenêtre, comme le bloc de « Comptes et groupes ». */
+   cadre se compte alors sur la fenêtre. */
 @supports selector(html:has(body)) {
   @media (max-height: 26.9375em) {
-    .lf.bi { height: calc(100 * var(--vh-visible) - 2.5rem); }
+    .cat { height: calc(100 * var(--vh-visible) - 2.5rem); }
   }
 }
-@media (max-width: 40em) {
-  .lf.bi { height: auto; min-height: 0; }
-  /* Rien de choisi : la fiche du projet (ou la comparaison) se lit sous la liste. */
-  .lf.bi.lf--empile .lf-fiche { display: block; border-top: 1px solid var(--border); }
-  .lf.bi.lf--empile .lf-retour { display: none; }
+.cat-choix { display: none; }
+.cat-rail { display: flex; flex-direction: column; gap: .3rem; min-width: 0; min-height: 0;
+            overflow-y: auto; padding: .55rem .6rem .5rem; border: 1px solid var(--border);
+            border-radius: 9px;
+            background: color-mix(in srgb, var(--accent-blue) 8%, var(--bg-panel)); }
+.cat-tout { display: flex; justify-content: space-between; gap: .5rem; width: 100%; background: none;
+            border: 0; color: var(--text); font: inherit; font-weight: 600; text-align: left;
+            padding: .28rem .35rem; border-radius: 5px; cursor: pointer; }
+.cat-tout:hover { background: var(--hover); }
+.cat-tout[aria-current] { background: color-mix(in srgb, var(--accent-blue) 16%, transparent); }
+.cat-centre { display: flex; min-width: 0; min-height: 0; border: 1px solid var(--border);
+              border-radius: 9px; background: var(--bg-panel); overflow: hidden; }
+.cat-vue { flex: 1 1 0; min-width: 0; overflow-y: auto; padding: .9rem 1.1rem 1.2rem;
+           container: lf-fiche / inline-size; }
+.cat-volet { flex: 0 0 52%; min-width: 0; overflow-y: auto; padding: .9rem 1rem 1.2rem;
+             border-left: 1px solid var(--border); background: var(--bg-panel);
+             container: lf-fiche / inline-size; }
+.cat-volet[hidden] { display: none; }
+.cat-fermer { margin: 0 0 .3rem; text-align: right; }
+/* À l'étroit, le volet prend la place du catalogue. Le seuil est une largeur SOUPLE : il
+   suit la zone, zoom d'interface compris, et non la taille d'une carte. */
+@container corps (max-width: 60em) {
+  .cat--volet .cat-vue { display: none; }
+  .cat-volet { flex: 1 1 auto; border-left: 0; }
 }
+@container corps (max-width: 46em) {
+  .cat { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; height: auto;
+         min-height: 0; }
+  .cat-choix { display: flex; flex-wrap: wrap; gap: .4rem .5rem; align-items: center;
+               padding: .4rem .5rem; border-radius: 8px;
+               background: color-mix(in srgb, var(--accent-blue) 8%, var(--bg-panel)); }
+  .cat-choix select { flex: 1 1 8rem; min-width: 0; }
+  .cat-rail { display: none; overflow: visible; }
+  .cat--rail .cat-rail { display: flex; }
+  .cat-centre { display: block; overflow: visible; }
+  .cat-vue, .cat-volet { overflow: visible; }
+}
+/* Ce qu'une fiche dit d'elle-même : le genre de l'objet, au-dessus de son nom. */
+.genre { font-size: .82rem; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;
+         color: var(--text-muted); margin: 0 0 .1rem; }
+.cat-vue h3[tabindex], .cat-volet h3[tabindex] { font-size: 1.3rem; }
+/* Le fil de position : le titre de la page. */
+.fil-nav { flex: 1 1 14rem; min-width: 0; }
+.fil { display: flex; flex-wrap: wrap; align-items: baseline; gap: .1rem .35rem; margin: 0;
+       padding: 0; list-style: none; font-size: 1.08rem; }
+.fil li { display: inline-flex; gap: .35rem; align-items: baseline; min-width: 0; }
+.fil li + li::before { content: "›"; color: var(--text-muted); }
+.fil button { background: none; border: 0; padding: 0; font: inherit; color: var(--text);
+              cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+              text-align: left; overflow-wrap: anywhere; }
+.fil [aria-current] { font-weight: 700; overflow-wrap: anywhere; }
+/* Les petits contrôles du rail et de la barre du catalogue. */
+.mini-btn { background: none; border: 1px solid var(--border); border-radius: 5px;
+            color: var(--text); font: inherit; font-size: .88rem; padding: .08rem .45rem;
+            cursor: pointer; white-space: nowrap; }
+.mini-btn:hover { background: var(--hover); }
+.seg-mini { display: inline-flex; flex: none; justify-self: start; max-width: 100%; border: 1px solid var(--border);
+            border-radius: 6px; overflow: hidden; }
+.seg-mini[hidden] { display: none; }
+.seg-mini button { background: none; border: 0; border-right: 1px solid var(--border);
+                   color: var(--text); font: inherit; font-size: .88rem; padding: .1rem .5rem;
+                   cursor: pointer; white-space: nowrap; }
+.seg-mini button:last-child { border-right: 0; }
+.seg-mini button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent-blue) 16%, transparent); font-weight: 600; }
+.barre-cat { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center;
+             margin: .6rem 0 .5rem; }
+.cat-recherche { flex: 1 1 9rem; width: auto; min-width: 0; }
+.cat-vide { margin: .6rem 0; }
+.bi-avancement { margin: .5rem 0 0; }
+.bi-avancement summary { cursor: pointer; color: var(--text-muted); }
+/* Une carte a UNE taille, avec ou sans volet (Hugo, 2026-11-02) : seul leur nombre par rangée
+   change, d'où l'album ouvert ramené en vue. La grille ne partage pas la largeur. */
+.grille { list-style: none; margin: 0; padding: .1rem; display: grid;
+          grid-template-columns: repeat(auto-fill, 10rem); justify-content: start;
+          gap: .9rem .8rem; align-items: start; }
+.carte-a { display: grid; gap: .25rem; min-width: 0; position: relative; }
+.carte-a > input[type="checkbox"] { position: absolute; right: .3rem; top: .3rem; z-index: 2;
+                                    margin: 0; width: 1.05rem; height: 1.05rem; }
+.carte-b { display: grid; gap: .25rem; background: none; border: 0; padding: .2rem; margin: -.2rem;
+           border-radius: 6px; color: var(--text); text-align: left; font: inherit;
+           cursor: pointer; min-width: 0; }
+.carte-b:hover { background: var(--hover); }
+.carte-b[aria-current="true"] { background: color-mix(in srgb, var(--accent-blue) 16%, transparent); }
+.carte-b .titre { font-weight: 600; overflow-wrap: anywhere; line-height: 1.2; }
+.carte-b .det { color: var(--text-muted); font-size: .85rem; overflow-wrap: anywhere; }
+.carte-b:hover .det, .carte-b[aria-current="true"] .det { color: var(--text); }
+.carte-a.copie .titre { font-weight: 400; }
+.carte-a.copie .couv { outline: 2px dashed var(--text-muted); outline-offset: 1px; }
+.carte-a.eteinte .couv, .ligne-eteinte .couv { opacity: .45; }
+.carte-a.eteinte .titre, .ligne-eteinte .bi-titre { font-weight: 400; color: var(--text-muted); }
+.carte-pli { background: none; border: 0; padding: 0; color: var(--text); font: inherit;
+             font-size: .86rem; cursor: pointer; text-align: left; text-decoration: underline;
+             text-underline-offset: 2px; }
+.couv-wrap { display: block; position: relative; margin: 0 0 7px; }
+/* Une pile : ses copies repliées, sous la couverture. */
+.pile .couv-wrap::before, .pile .couv-wrap::after { content: ""; position: absolute; inset: 0;
+  border: 1px solid var(--text-muted); border-radius: 3px; background: var(--bg-input); }
+.pile .couv-wrap::before { transform: translate(7px, 7px); }
+.pile .couv-wrap::after { transform: translate(3.5px, 3.5px); }
+.pile .couv { z-index: 1; }
+/* La couverture : l'image sur un aplat qui porte le titre, seul quand il n'y a pas d'image. Le
+   haut de la planche, une planche ayant rarement le rapport de la carte. */
+.couv { display: block; position: relative; aspect-ratio: 3 / 4; width: 100%; overflow: hidden;
+        border-radius: 3px; background: var(--bg-input); color: var(--text);
+        box-shadow: 0 1px 3px var(--shadow); container-type: inline-size; }
+.couv-aplat { position: absolute; inset: 0; display: grid; align-content: start; gap: .2rem;
+              padding: 7cqw; overflow: hidden; }
+.couv-serie { font-size: 7cqw; font-weight: 600; overflow-wrap: anywhere; }
+.couv-titre { font-size: 11cqw; font-weight: 800; line-height: 1.1; overflow-wrap: anywhere; }
+.couv-img { position: absolute; inset: 0; display: block; width: 100%; height: 100%;
+            object-fit: cover; object-position: top; background: #fff; }
+.couv-copie { position: absolute; left: 0; bottom: 0; z-index: 1; padding: .5cqw 5cqw;
+              font-size: 7cqw; font-weight: 700; color: #fff; background: rgba(0, 0, 0, .72); }
+.couv.couv-m { width: 2.2rem; flex: none; }
+.couv.couv-m .couv-aplat, .couv.couv-m .couv-copie { display: none; }
+.couv-fiche { flex: none; width: 4.5rem; aspect-ratio: 3 / 4; object-fit: cover;
+              object-position: top; border-radius: 3px; background: #fff;
+              box-shadow: 0 1px 3px var(--shadow); }
+/* Deux marques, des mots. */
+.marques { display: inline-flex; flex-wrap: wrap; gap: .15rem .3rem; align-items: center; }
+.marque-e { font-size: .78rem; line-height: 1.35; border: 1px solid var(--border); border-radius: 4px;
+            padding: 0 .3rem; color: var(--text-muted); white-space: nowrap; }
+.marque-e.soi { border-color: var(--accent-blue); color: var(--text); }
+.c-couv { width: 2.8rem; padding-right: .1rem; }
+.sous-t { display: block; color: var(--text-muted); font-size: .85rem; font-weight: 400;
+          overflow-wrap: anywhere; }
+.c-titre .marques { margin-left: .4rem; vertical-align: middle; }
+.ligne-copie .c-titre { padding-left: 1.4rem; }
+.ligne-copie .bi-titre { font-weight: 400; }
+.c-vit { color: var(--text-muted); font-size: .92rem; overflow-wrap: anywhere; }
+.c-vit .sur-actif { color: var(--text); }
+/* La fiche d'un album : chaque bloc dans sa boîte. */
+.cat-tete-album { display: flex; gap: .8rem; align-items: flex-start; min-width: 0; }
+.cat-tete-texte { min-width: 0; }
+.cat-bloc { margin-top: 1rem; display: grid; gap: .45rem; min-width: 0; padding: .6rem .8rem .7rem;
+            border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); }
+.cat-bloc > h4 { margin: 0; font-size: 1.02rem; font-weight: 700; }
+.cat-bloc > h4 .n { color: var(--text-muted); font-weight: 400; }
+/* « Sur les collections » : le bloc est déjà une boîte, le groupe de cases n'en ajoute pas une. */
+.cat-bloc > .album-cases { border: 0; padding: 0; }
+.cat-bloc > .album-cases legend { padding: 0; margin-bottom: .3rem; color: var(--text);
+                                  font-size: 1.02rem; font-weight: 700; }
+.cat-bloc > p:empty { display: none; }
+.copies-l { list-style: none; margin: 0; padding: 0; display: grid; gap: .15rem; }
+.copies-l li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .1rem .8rem;
+               min-width: 0; overflow-wrap: anywhere; }
+.copies-l li.ici { font-weight: 600; }
+.copies-l li .muted { font-weight: 400; }
+/* « Autres gestes » : un clic de plus pour des gestes rares, à revoir avec Hugo. */
+.autres { display: inline-block; }
+.autres > summary { display: inline-block; cursor: pointer; }
+.autres[open] > summary { margin-bottom: .3rem; }
+.autres-menu { display: flex; flex-wrap: wrap; gap: .4rem; }
 /* `minmax(0, 1fr)` : une piste implicite grandit jusqu'au champ de création ouvert, plus large
    que la colonne sous une préférence de 24, et toute la liste sortait de 5 px avec elle. Bornée,
    la ligne du champ passe à la ligne. */
-.bi-calques { display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem;
-              border-bottom: 1px solid var(--border); padding-bottom: .45rem; min-width: 0; }
-.bi-calques-tete { display: flex; justify-content: space-between; align-items: baseline;
+.bi-calques { display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; min-width: 0; }
+.bi-calques-tete { display: flex; justify-content: space-between; align-items: center;
                    gap: .5rem; flex-wrap: wrap; }
-.bi-calques-tete .lf-groupe, .bi-albums-titre { margin: .2rem 0; }
+.bi-calques-tete .lf-groupe { margin: .2rem 0; }
 .bi-collections { list-style: none; margin: 0; padding: 0; }
 /* `display: flex` (`.lf-tri`) l'emporterait sur la règle UA `[hidden]` : le choix « dans
    l'une / dans toutes » naît caché. */
 #calques-mode[hidden] { display: none; }
-/* Au large, la liste des collections défile dans SA boîte : trente collections ne repoussent
-   pas les albums sous l'écran. Elle porte des boutons, donc son défilement s'atteint au
-   clavier. Sous 40em, la page défile, et rien d'autre. */
-@media (min-width: 40.0625em) {
-  .bi-collections { max-height: 16rem; overflow-y: auto; }
-}
-.bi-collections .col-item { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .4rem;
-                            padding: .1rem .35rem; border-radius: 5px; }
-.bi-collections .col-item.courante { background: color-mix(in srgb, var(--accent-blue) 14%, transparent); }
+.bi-collections .col-sec { margin: .45rem 0 .1rem; padding: 0 .35rem; font-size: .85rem;
+                           font-weight: 600; color: var(--text-muted); }
+.bi-collections .col-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+                            gap: 0 .4rem; align-items: center; padding: .1rem .35rem;
+                            border-radius: 5px; }
+.bi-collections .col-item:hover { background: var(--hover); }
+.bi-collections .col-item.courante { background: color-mix(in srgb, var(--accent-blue) 16%, transparent); }
 .bi-collections .col-calque { flex: none; margin: 0; }
+.col-niv { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: .1rem .35rem; align-items: center;
+           margin-top: -.08rem; min-width: 0; }
+.col-niv:empty { display: none; }
+.col-niv .col-niveau { font-size: .82rem; color: var(--text-muted); overflow-wrap: anywhere;
+                      border: 0; padding: 0; background: none; }
+.col-niv .col-niveau.est-proprietaire { color: var(--text); font-weight: 600; }
+.bi-collections .col-item.courante .col-niv .col-niveau { color: var(--text); }
 /* Le NOM ouvre la fiche : un bouton souligné, de l'encre du texte — sa couleur seule ne le
    distinguerait pas de ses voisins (WCAG 1.4.1). */
 .col-ouvrir { flex: 1 1 6rem; min-width: 0; background: none; border: 0; color: var(--text);
@@ -2336,12 +2489,12 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .col-nb { color: var(--text-muted); font-size: .88rem; font-variant-numeric: tabular-nums; }
 /* Sur une ligne d'album, la collection COCHÉE ressort : elle dit pourquoi l'album est là. Le
    gras porte le sens, la couleur le renforce. */
-.sur-actif { color: var(--accent-blue); font-weight: 600; }
-.lf-objet[aria-current="true"] .sur-actif { color: var(--text); }
+.sur-actif { font-weight: 600; }
 /* La pastille d'une demande, sur une ligne de la liste : le MOT porte l'état, la bordure rouge
    l'accompagne ; l'encre est celle du texte, parce que la ligne choisie a un fond teinté où
    l'encre rouge ne tient plus le 4.5:1 (mesuré par axe, dans les deux thèmes). */
 .album-row .sp-pastille { margin: .15rem 0 0; color: var(--text); }
+.carte-b .sp-pastille { margin: .1rem 0 0; }
 /* Le lot, AU-DESSUS de sa sélection. */
 .bi-lot-aide { margin: .2rem 0 .6rem; }
 .lot { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center;
@@ -2379,13 +2532,6 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .bi-supprimer-col { color: var(--ink-red); }
 .col-export-manque { margin: .2rem 0; }
 .bi-projet-description { margin: .5rem 0 0; max-width: 70ch; overflow-wrap: anywhere; }
-.bi-parts li { align-items: center; }
-.bi-part { display: inline-flex; gap: .6rem; align-items: center; font-variant-numeric: tabular-nums; }
-.bi-part-barre { width: 70px; }
-.bi-part-barre > i { background: var(--accent-blue); }
-/* La fiche d'un album. */
-.bi-retour-collection { margin: 0 0 .3rem; }
-.album-range { margin-top: .9rem; }
 /* « Sur les collections » (COL-3, tranche 3a) : une case par collection du projet de
    l'album ; cocher = rejoindre, décocher = supprimer de la collection. */
 .album-cases { display: flex; flex-wrap: wrap; gap: .2rem 1rem; margin: 0; min-width: 0;
