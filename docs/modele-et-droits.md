@@ -358,9 +358,9 @@ chaque sorte, la date du dernier. Ce sont des **gestes** lus dans le journal —
 depuis compte encore —, pas ce qui reste sur les planches ; et derrière un compte partagé,
 une ligne peut être le travail de plusieurs personnes, ce que l'écran rappelle.
 
-**Une planche suit la règle de l'album**, sans demande à elle : on la supprime là où l'on
-supprimerait l'album sans rien demander. Ailleurs, sa corbeille dit de s'adresser à un
-administrateur.
+**Une planche suit la règle de l'album** : on la supprime là où l'on supprimerait l'album sans
+rien demander ; ailleurs, elle se DEMANDE comme lui (tranche 3c, F5), au responsable du projet,
+ou à un administrateur pour la dernière copie d'un document.
 
 **Un projet se demande aussi** : son responsable, qui ne le supprime pas lui-même, en demande
 la suppression avec un motif — sans certification, puisqu'un projet ne se supprime que vide.

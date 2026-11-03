@@ -580,30 +580,28 @@ albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit o
     le fait confirmer quand il coûte ; la case ne s'offre que sur les collections où vous
     écrivez.
   - **Supprimer définitivement** efface les images et tout le travail fait dessus, pour
-    tout le monde, dans tous les projets. Il efface **tout de suite** par trois chemins
-    (règle du 2026-10-21), et le panneau dit lequel est le vôtre, sous *Efface tout de
-    suite cette copie, ses images et le travail fait dessus. Irréversible.* : *Vous avez
-    créé cette copie, et personne d'autre n'y a travaillé : rien à demander.* — l'erreur,
-    importée ou prise du fonds, qui n'a à attendre personne —, *Vous tenez toutes ses
+    tout le monde, dans tous les projets. Il efface **tout de suite** quand vous TENEZ
+    l'espace (règle de la tranche 3c, 2026-10-26), et le panneau dit, sous *Efface tout de
+    suite cette copie, ses images et le travail fait dessus. Irréversible.*, par quel
+    chemin : *Vous êtes responsable du projet : rien à demander.*, *Vous tenez toutes ses
     collections : rien à demander.* (vous possédez toutes les collections de l'album), ou
-    *Vous êtes responsable du projet : rien à demander.* Les deux derniers effacent même
-    quand d'autres y ont travaillé : le panneau montre alors, **avant** le bouton, **ce que
-    d'autres y perdent** — un tableau, *Ce que n autres personnes perdent* : une ligne par
-    personne, une colonne par sorte de geste concernée (cases et bulles, corrections,
-    annotations, validations, notice et scans), la date du dernier geste ; *Des gestes,
-    comptés au journal* rappelle, au survol, qu'un geste défait depuis compte encore. Le
-    bouton s'appelle *Supprimer définitivement*. **La dernière copie d'un document**, elle,
-    ne se supprime sans demande que par son créateur seul, et seulement si c'est la copie
-    de l'import : à un propriétaire ou un responsable, le panneau dit *C'est la dernière
-    copie de ce document : la supprimer le fait sortir du fonds, images comprises. Vous
-    êtes responsable du projet, mais c'est un administrateur qui décide.*, montre qui perd
-    quoi, et demande. **Sinon, il se demande à un administrateur** : le panneau dit
-    *D'autres s'en servent, ou ce n'est pas vous qui avez créé cette copie : la demande part
-    à un administrateur, qui décide. Rien n'est effacé d'ici là.* Remplissez *Pourquoi ce
-    document n'a pas sa place ici*, lisez ce que la suppression détruirait, cochez *Je
-    certifie que ces données ne sont pas importantes.*, puis *Envoyer la demande*. Sans
-    motif ou sans la case, rien ne part, et le panneau le dit. Ce qui compte comme « avoir
-    travaillé », et pourquoi un album créé avant l'arrivée du fonds se demande toujours :
+    *Vous administrez l'instance : rien à demander.* La règle se lit au survol de ⓘ. Le
+    panneau montre alors, **avant** le bouton, **ce que d'autres y perdent** — un tableau,
+    *Ce que n autres personnes perdent* : une ligne par personne, une colonne par sorte de
+    geste concernée (cases et bulles, corrections, annotations, validations, notice et
+    scans), la date du dernier geste ; *Des gestes, comptés au journal* rappelle, au survol,
+    qu'un geste défait depuis compte encore. Le bouton s'appelle *Supprimer
+    définitivement*. **La dernière copie d'un document**, elle, ne se supprime que par un
+    administrateur : le panneau dit *C'est la dernière copie de ce document. Vous êtes
+    responsable du projet, mais c'est un administrateur qui décide. Rien n'est effacé d'ici
+    là.* (ou, sans chemin, *C'est un administrateur qui décide.*), montre qui perd quoi à qui
+    tient l'espace, et demande. **Sinon, il se demande au responsable du projet** : *La
+    demande part à Paule Propriétaire, responsable du projet, qui décide. Rien n'est effacé
+    d'ici là.* — à un administrateur si le projet n'a pas de responsable. Remplissez
+    *Pourquoi ce document n'a pas sa place ici* — l'étiquette dit qui le lira —, lisez ce que
+    la suppression détruirait, cochez *Je certifie que ces données ne sont pas
+    importantes.*, puis *Envoyer la demande*. Sans motif ou sans la case, rien ne part, et
+    le panneau le dit. Ce qui compte comme « avoir travaillé » :
     [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
   - **Une demande en attente se voit sur l'album**, dans la liste et dans sa fiche : *suppression demandée par
     vous*, ou *suppression demandée* sans nom — seuls un administrateur et la personne qui a
@@ -625,9 +623,9 @@ albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit o
   danger — *Repartir de la transcription*, *Repartir du découpage*… —, avec *Ne s'annule
   pas, Ctrl+Z compris.* Sinon, pour l'album : le motif, la certification (*Repartir de
   zéro détruit ce qui a été posé sur les planches au-dessus du cran choisi…*) et *Envoyer la
-  demande* ; un administrateur répond dans *À faire*. **Une planche ne se demande pas** : à
-  qui ne peut pas la ramener lui-même, le panneau le dit, n'offre aucun bouton, et renvoie
-  à la demande sur l'album entier ou à un administrateur. Une copie remise à
+  demande* ; la demande part au responsable du projet, comme une suppression. **Une planche
+  se demande comme l'album** (tranche 3c) : ↺ sur la planche ouvre le même panneau, et sa
+  ligne dit ensuite *repartir demandé*. Une copie remise à
   zéro le dit dans la tête de sa fiche : *repartie de la transcription le JJ/MM/AAAA* — qui
   l'a fait, au survol, pour qui écrit dans la copie.
 - **Retirer du projet** (tranche 3b) : *Retirer du projet…*, dans la tête de la fiche d'un
@@ -701,12 +699,13 @@ albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit o
   clôt pour tous. La même demande se répond dans l'Administration, fiche du projet. **Responsable**, vos demandes au fonds
   qui attendent se rappellent dans la bande d'outils — *n demandes au fonds, en attente* —, et
   mènent à la fiche du projet, dans l'Administration, où se lit leur état.
-- **Supprimer une planche** suit la règle de l'album, sans demande à elle : sa corbeille 🗑
-  est active là où vous supprimeriez l'album définitivement sans rien demander. Ailleurs,
-  si vous écrivez dans l'album, elle est **grisée** et, quand on la touche, dit sous elle :
-  *Cette planche ne se supprime pas d'ici : d'autres y ont travaillé, ce n'est pas vous qui
-  avez créé cette copie, ou c'est la dernière copie de son document. Adressez-vous à un
-  administrateur de l'instance.* À qui ne fait que lire, pas de corbeille.
+- **Supprimer une planche** suit la règle de l'album (tranche 3c) : sa corbeille 🗑 ouvre un
+  panneau, *Supprimer la planche n*, qui dit ce que le geste efface — *Efface la planche n,
+  son image et le travail posé dessus. Irréversible.* —, puis, là où vous supprimeriez
+  l'album sans rien demander, *Supprimer la planche n* ; ailleurs, le motif, la
+  certification et *Envoyer la demande*, qui part au responsable du projet — à un
+  administrateur pour la dernière copie d'un document. La ligne de la planche dit ensuite
+  *suppression demandée*. À qui ne fait que lire, pas de corbeille.
 - **Planches** : ouvrir, supprimer, et trois marques indépendantes —
   **rôle** (`récit`, numéroté, ou `paratexte` : couverture, liminaire, publicité, écarté de la
   numérotation), **validation** et **verrou** (🔒 protège des passes automatiques). Les gestes
@@ -1177,21 +1176,19 @@ un administrateur peut le rendre à une collection du même projet. Écrivez-lui
 donnant le titre.
 
 **« Supprimer définitivement » envoie une demande au lieu d'effacer.**
-L'album n'est effacé tout de suite que si vous avez créé cette copie vous-même — importée, ou
-prise du fonds —, que personne d'autre n'y a travaillé, et que vous écrivez dans toutes ses
-collections ; ou, depuis le 2026-10-21, si vous possédez toutes ses collections, ou êtes
-responsable de son projet. La dernière copie d'un document se demande toujours — sauf la copie
-de l'import, par qui l'a importée si personne d'autre n'y a jamais rien fait, même défait
-depuis ; une copie prise du fonds devenue la dernière se demande aussi. Dans un bac à sable,
-rien de cela : ce qu'on ne peut pas y supprimer s'efface avec lui. Un album créé avant
-l'arrivée du fonds n'a pas d'importateur écrit : sa suppression par celui qui l'a créé se
-demande toujours. Sous un compte partagé, tout se demande. Cf.
+L'album n'est effacé tout de suite que par qui tient l'espace : le responsable de son projet,
+la personne qui possède toutes ses collections, un administrateur (tranche 3c, 2026-10-26 ;
+avoir créé la copie ne suffit plus). La demande part au responsable du projet, dont le panneau
+dit le nom. La dernière copie d'un document se demande toujours, à un administrateur. Dans un
+bac à sable, rien de cela : quiconque y écrit efface, et ce qu'on ne supprime pas s'efface avec
+lui. Sous un compte partagé, tout se demande. Cf.
 [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
 
-**La corbeille d'une planche est grisée.**
-Une planche se supprime là où l'album se supprimerait sans rien demander — par son créateur,
-le propriétaire de toutes ses collections ou le responsable de son projet —, et nulle part
-ailleurs. Touchez-la : elle dit à qui s'adresser. Un administrateur peut la supprimer.
+**La corbeille d'une planche ouvre une demande.**
+Une planche se supprime tout de suite là où l'album se supprimerait sans rien demander — par
+le propriétaire de toutes ses collections, le responsable de son projet, un administrateur.
+Ailleurs, sa corbeille ouvre le même panneau, qui demande au responsable du projet — à un
+administrateur pour la dernière copie d'un document.
 
 **Le bouton `＋` de l'Atelier a disparu.**
 Un album se crée désormais dans la Bibliothèque (`+ Nouvel album`), qui demande sa
