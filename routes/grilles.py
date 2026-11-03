@@ -163,9 +163,16 @@ def _texte_de(fichier: UploadFile | None, quoi: str) -> io.StringIO | None:
         raise HTTPException(400, f"Le fichier des {quoi} doit être encodé en UTF-8.")
 
 
+def _nom_de(fichier: UploadFile | None, defaut: str) -> str:
+    """Le nom d'un fichier reçu, sans son dossier — pour dire où est une faute."""
+    nom = (getattr(fichier, "filename", None) or "").replace(chr(92), "/").rsplit("/", 1)[-1]
+    return nom.strip() or defaut
+
+
 def _refus_http(exc: grille_import.Refus) -> HTTPException:
-    if exc.anomalies:
-        return HTTPException(exc.statut, {"message": exc.message, "anomalies": exc.anomalies})
+    if exc.anomalies or exc.bilan:
+        return HTTPException(exc.statut, {"message": exc.message, **exc.bilan,
+                                          "anomalies": exc.anomalies})
     return HTTPException(exc.statut, exc.message)
 
 
@@ -180,9 +187,10 @@ def importer_grille(projet_id: int, fichier: UploadFile = File(...),
                     portee: autorisation.Portee = Depends(portee_courante)):
     """Importe un tableur (R3) : une grille NEUVE (`nom`, `ouverte`, `porte_sur`) ou la
     version suivante d'une grille du projet (`grille_id`). Le fichier est vérifié ENTIER :
-    une anomalie de structure le refuse (422, toutes les anomalies dites, rien d'écrit,
-    G12). `a_blanc` rend le BILAN — ce qui naît, change, disparaît depuis la dernière
-    version publiée — sans rien écrire. Réimporter le même fichier ne change rien.
+    une anomalie de structure le refuse (422, toutes les anomalies dites en DONNÉES, le
+    verdict et « À savoir », rien d'écrit, G12). `a_blanc` rend le BILAN — verdict, « À
+    savoir », « Ce qui va naître », ce qui change depuis la dernière version publiée — sans
+    rien écrire. Réimporter le même fichier ne change rien.
 
     À qui gère le projet (404 / 403 nommé) ; jamais dans le projet de jeu. Dans un bac à
     sable, oui (G6) : la grille n'existe que là, et part avec lui."""
@@ -190,12 +198,14 @@ def importer_grille(projet_id: int, fichier: UploadFile = File(...),
     _refuser_le_jeu(conn, projet_id=projet_id)
     flux = _texte_de(fichier, "entrées")
     flux_listes = _texte_de(listes, "listes")
+    noms = (_nom_de(fichier, grille_import.NOMS_PAR_DEFAUT[0]),
+            _nom_de(listes, grille_import.NOMS_PAR_DEFAUT[1]))
     conflit.verrouiller(conn)            # le nom unique et le brouillon se lisent sous le verrou
     try:
         res = grille_import.importer(conn, projet_id=projet_id, flux_entrees=flux,
                                      flux_listes=flux_listes, grille_id=grille_id, nom=nom,
                                      ouverte=ouverte, porte_sur=porte_sur, note=note,
-                                     par=portee.utilisateur, a_blanc=a_blanc)
+                                     par=portee.utilisateur, a_blanc=a_blanc, noms=noms)
     except grille_import.FormatInvalide as e:
         raise HTTPException(400, str(e))
     except grille_import.Refus as e:

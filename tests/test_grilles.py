@@ -67,7 +67,7 @@ def test_le_modele_fictif_se_lit_sans_anomalie_et_fait_jouer_les_trois_formes():
 
 
 ANOMALIES = {
-    "cle vide": [_ligne(forme="simple", libelle="x")],
+    "nom et identifiant vides": [_ligne(forme="simple")],
     "cle en double": [_ligne(cle="a", forme="simple", libelle="a"),
                       _ligne(cle="a", forme="simple", libelle="b")],
     "forme inconnue": [_ligne(cle="a", forme="libre", libelle="a")],
@@ -109,12 +109,22 @@ ANOMALIES = {
 @pytest.mark.parametrize("nom", sorted(ANOMALIES))
 def test_une_anomalie_refuse_le_fichier_entier(nom):
     """G12 : une anomalie de structure refuse TOUT, et le dit — une ligne écartée se lirait,
-    dans le bilan, comme une entrée disparue. Une bonne ligne à côté ne passe pas non plus."""
+    dans le bilan, comme une entrée disparue. Une bonne ligne à côté ne passe pas non plus.
+    Chaque anomalie est une DONNÉE (gabarit du 2026-11-03) : où, ce qui ne va pas, et ce qu'il
+    faut faire, en mots.
+
+    « `cle` vide » n'est plus une anomalie depuis le 2026-11-03 : l'identifiant d'une entrée
+    est facultatif à la création, et se déduit de son nom (`test_grille_tableur`). Ce qui
+    reste fautif, c'est une ligne d'entrée qui n'a NI nom NI identifiant."""
     bonne = _ligne(cle="bonne", forme="simple", libelle="bonne")
     lu = grille_import.lire(flux(csv_de([ENTETE, bonne, *ANOMALIES[nom]])),
                             flux(MODELE_LISTES), porte_sur="mots")
     assert lu["contenu"] is None
     assert lu["anomalies"], nom
+    for a in lu["anomalies"]:
+        assert set(a) == set(grille_import.CHAMPS_FAUTE), a
+        assert a["code"] and a["probleme"] and a["a_faire"], a
+        assert a["fichier"] == "entrées", a
 
 
 def test_toutes_les_anomalies_sont_dites_d_un_coup():
@@ -153,10 +163,12 @@ def test_un_entete_sans_colonne_obligatoire_est_une_erreur_de_format():
 def test_les_avertissements_ne_refusent_rien():
     listes = MODELE_LISTES + "sources;autre libellé;bruit;bruit;\r\n"
     lu = grille_import.lire(flux(MODELE), flux(listes), porte_sur="mots")
-    assert lu["anomalies"] == [] and any("deux libellés" in a for a in lu["avertissements"])
+    assert lu["anomalies"] == [] and [a["code"] for a in lu["avertissements"]] == [
+        "liste_deux_libelles"]
     lignes = [ENTETE, _ligne(cle="e", forme="simple", libelle="e", cible="entite")]
     lu = grille_import.lire(flux(csv_de(lignes)), None, porte_sur="mots")
-    assert lu["contenu"] is not None and any("G3" in a for a in lu["avertissements"])
+    assert lu["contenu"] is not None and any("G3" in a["probleme"]
+                                             for a in lu["avertissements"])
 
 
 # --------------------------------------------------------------------------- #

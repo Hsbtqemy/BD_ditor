@@ -1,39 +1,40 @@
 """Une grille s'écrit dans un TABLEUR, BD_ditor la vérifie et la garde (ANN-7, tranche 1 ;
-cadrage R3, tranché par Hugo le 2026-10-14 et le 2026-10-25).
+cadrage R3, tranché par Hugo le 2026-10-14 et le 2026-10-25 ; le gabarit et le bilan, tranchés
+sur maquette le 2026-11-03).
 
 Cœur partagé, sans I/O propre — le patron de `lexique_import` : il reçoit des FLUX de texte
-et une CONNEXION, l'appelant ouvre les fichiers et tient la transaction. Deux enveloppes :
-`tools/importer_grille.py` et `POST /api/projets/{id}/grilles/import`.
+et une CONNEXION, l'appelant ouvre les fichiers et tient la transaction. Deux enveloppes : `tools/importer_grille.py` et
+`POST /api/projets/{id}/grilles/import`.
 
 Le FORMAT — deux CSV point-virgule, UTF-8 avec ou sans BOM, en-tête obligatoire, lus par NOM
-de colonne (ordre libre, colonnes en trop tolérées). `docs/import-grille.md` le dit pour qui
-remplit le tableur.
+de colonne — a deux sortes de mots, que `grille_tableur` décrit et que ce module lit toutes
+deux : des colonnes MACHINE (`cle`, `forme`, `libelle`…), ou les titres du gabarit, qui sont
+des QUESTIONS (« 4. Ce qu'on choisit »), aux réponses EN MOTS (« une variante », « la case »).
+Les deux se mêlent : un titre ou une valeur se lit d'un côté ou de l'autre. `docs/import-grille.md` le dit pour qui remplit le tableur.
 
-1. Les entrées (`grille-rubriques-entrees.csv`, par exemple) : une ligne par ENTRÉE, et une
-   ligne par VARIANTE. Une ligne de variante RÉPÈTE la `cle` de son entrée, porte
-   `variante_cle` et `variante`, et laisse vides les colonnes propres à l'entrée — ou y
-   recopie exactement celles de l'entrée : un tableur qu'on a rempli en tirant une cellule
-   vers le bas ne doit pas être refusé pour cela. Elle peut porter sa définition, sa
-   structure, ses exemples, son piège.
-   Colonnes : `cle` · `rubrique` · `rubrique_cle` · `forme` · `libelle` · `variante_cle` ·
-   `variante` · `structure` · `definition` · `exemples` · `piege` · `liste` · `precision` ·
-   `lien` · `cible` · `cardinalite`. Obligatoires dans l'en-tête : `cle`, `forme`, `libelle`.
-   Plusieurs exemples, plusieurs cibles : séparés par ` | `. Une rubrique s'écrit du plus
-   large au plus fin, `Niveau 3 > Verbe`, et `rubrique_cle` dit l'identifiant de chaque
-   étage, autant d'étages, même séparateur.
-2. Les listes de qualificatifs (`grille-listes-qualificatifs.csv`), facultatif : une ligne
-   par qualificatif — `liste_cle` · `liste` · `cle` · `libelle` · `definition`.
-La DÉCLARATION (nom, ouverte ou fermée, « Porte sur », note de version) passe en arguments
-de l'outil et en champs du formulaire de la route.
+1. Les entrées : une ligne par ENTRÉE, et une ligne par VARIANTE. Une ligne de variante
+   répète la `cle` de son entrée — ou la laisse vide, et appartient alors à l'entrée du
+   DESSUS —, porte son libellé (`variante`), et laisse vides les colonnes propres à
+   l'entrée, ou y recopie exactement celles de l'entrée.
+2. Les listes de qualificatifs, facultatives : une ligne par qualificatif.
+3. La DÉCLARATION (nom, ouverte ou fermée, « Porte sur », note) : en arguments de l'outil, en
+   champs du formulaire de la route.
+
+Les IDENTIFIANTS sont facultatifs à la création (`_Identifiants`) : une entrée, une
+variante, une rubrique, une liste ou un qualificatif sans le sien le reçoit de son NOM —
+repris d'un objet de même nom dans la version à laquelle on compare, sinon DÉRIVÉ du libellé
+(`grille_tableur.deriver`). Le réexport les rend, pour qu'un renommage reste un renommage.
 
 La VALIDATION refuse le fichier ENTIER à la première anomalie de structure, et les dit
-TOUTES (G12) : une ligne écartée se lirait, dans le bilan, comme une entrée disparue. C'est
-l'inverse de `lexique_import`, et c'est voulu — une version est un tout figé. Ce qui ne
-casse rien est un AVERTISSEMENT, la première valeur retenue.
+TOUTES (G12) : une ligne écartée se lirait, dans le bilan, comme une entrée disparue. Ce qui
+ne casse rien est un AVERTISSEMENT. Les deux sont des DONNÉES (`_faute`) — où (feuille ou
+fichier, ligne), quelle entrée, quelle question, ce qui ne va pas, ce qu'il faut faire —, que
+l'écran dessine et que `en_mots` rend lisibles à l'outil.
 
 Le BILAN compare au plus récent état publié de la grille (ou à sa version vivante), par
-`cle` : ce qui naît, ce qui est renommé, retouché, déplacé, changé de forme, de cible ou de
-cardinalité, ce qui disparaît — avec le nombre de relevés posés sur chaque disparu.
+`cle` : ce qui naît, ce qui est renommé, retouché, déplacé, changé, ce qui disparaît — avec le
+nombre de relevés posés sur chaque disparu. Il porte en tête un VERDICT, « À savoir » (les
+avertissements) et « Ce qui va naître ».
 """
 from __future__ import annotations
 
@@ -42,80 +43,93 @@ import io
 import sqlite3
 import zipfile
 
+import grille_tableur
 import grilles
+from grille_tableur import FormatInvalide  # noqa: F401 — ré-exportée
 from grilles import CARDINALITES, FORMES, propre
 
 COLONNES = ("cle", "rubrique", "rubrique_cle", "forme", "libelle", "variante_cle",
             "variante", "structure", "definition", "exemples", "piege", "liste",
             "precision", "lien", "cible", "cardinalite")
-OBLIGATOIRES = ("cle", "forme", "libelle")
+OBLIGATOIRES = ("forme", "libelle")
 # Les colonnes PROPRES à une entrée : vides sur une ligne de variante, ou recopiées.
 COLONNES_DE_L_ENTREE = ("rubrique", "rubrique_cle", "forme", "libelle", "liste",
                         "precision", "lien", "cible", "cardinalite")
 COLONNES_LISTES = ("liste_cle", "liste", "cle", "libelle", "definition")
-OBLIGATOIRES_LISTES = ("liste_cle", "cle", "libelle")
 SEP_RUBRIQUE = ">"
 SEP_EXEMPLES = "|"
 NOMS_FICHIERS = ("grille-rubriques-entrees.csv", "grille-listes-qualificatifs.csv")
-
-
-class FormatInvalide(ValueError):
-    """Un en-tête inexploitable : une erreur de FORMAT, pas de données (400, ou l'outil sort
-    en 1)."""
+NOMS_PAR_DEFAUT = ("entrées", "listes")
 
 
 class Refus(Exception):
     """L'import ne se fait pas : `statut` (le code HTTP qu'une route rendrait), un message,
-    et les anomalies quand c'est le tableur qui est refusé."""
+    les anomalies quand c'est le tableur qui est refusé, et le `bilan` quand il y en a un —
+    le verdict, « À savoir »."""
 
-    def __init__(self, statut: int, message: str, anomalies=None):
+    def __init__(self, statut: int, message: str, anomalies=None, bilan=None):
         super().__init__(message)
-        self.statut, self.message, self.anomalies = statut, message, list(anomalies or [])
+        self.statut, self.message = statut, message
+        self.anomalies, self.bilan = list(anomalies or []), dict(bilan or {})
+
+
+# --------------------------------------------------------------------------- #
+# Une faute, un avertissement : des DONNÉES
+# --------------------------------------------------------------------------- #
+CHAMPS_FAUTE = ("code", "fichier", "ligne", "cle", "colonne", "question", "probleme",
+                "a_faire")
+
+
+def _faute(code: str, probleme: str, a_faire=None, *, fichier=None, ligne=None, cle=None,
+           colonne=None, listes: bool = False) -> dict:
+    """Une anomalie (ou un avertissement) : `code` (stable, pour l'écran et les tests), où —
+    `fichier` (la feuille ou le fichier), `ligne` —, l'entrée (`cle`), la `colonne` machine
+    et la `question` telle que le gabarit la pose, ce qui ne va pas (`probleme`) et ce qu'il
+    faut faire (`a_faire`), en mots."""
+    titres = grille_tableur.TITRES_LISTES if listes else grille_tableur.TITRES
+    return {"code": code, "fichier": fichier, "ligne": ligne, "cle": cle, "colonne": colonne,
+            "question": titres.get(colonne) if colonne else None, "probleme": probleme,
+            "a_faire": a_faire}
+
+
+def _complete(f: dict) -> dict:
+    """Une faute venue du lecteur d'une feuille : toutes ses clés."""
+    return {**{c: None for c in CHAMPS_FAUTE}, **f}
+
+
+def en_mots(f) -> str:
+    """Une faute ou un avertissement, lisible d'une ligne : « entrées, ligne 12 · « cri » ·
+    4. Ce qu'on choisit : forme « libre » inconnue → répondez … »."""
+    if isinstance(f, str):
+        return f
+    ou = []
+    if f.get("fichier"):
+        ou.append(f"{f['fichier']}" + (f", ligne {f['ligne']}" if f.get("ligne") else ""))
+    if f.get("cle"):
+        ou.append(f"« {f['cle']} »")
+    if f.get("question"):
+        ou.append(f["question"])
+    texte = (" · ".join(ou) + " : " if ou else "") + f["probleme"]
+    return texte + (f" → {f['a_faire']}" if f.get("a_faire") else "")
 
 
 # --------------------------------------------------------------------------- #
 # Lecture et validation
 # --------------------------------------------------------------------------- #
-def _lignes(flux, attendues, obligatoires, nom: str, anomalies: list):
-    """Les lignes d'un CSV point-virgule, par nom de colonne, cellules nettoyées ; une ligne
-    entièrement vide est ignorée en silence. Lève `FormatInvalide` sur un en-tête qui manque
-    une colonne obligatoire."""
-    lecteur = csv.DictReader(flux, delimiter=";")
-    entete = [propre(c) or "" for c in (lecteur.fieldnames or [])]
-    entete = [c.lstrip("﻿") for c in entete]
-    lecteur.fieldnames = entete
-    manquantes = [c for c in obligatoires if c not in entete]
-    if manquantes:
-        raise FormatInvalide(
-            f"{nom} : en-tête invalide, colonnes obligatoires manquantes "
-            f"{', '.join(manquantes)}. Attendu (point-virgule) : {';'.join(attendues)}")
-    sortie = []
-    for n, brut in enumerate(lecteur, start=2):            # ligne 1 = en-tête
-        if None in brut:
-            anomalies.append(f"{nom} l.{n} : plus de cellules que de colonnes — un « ; » "
-                             "dans une cellule ?")
-            continue
-        ligne = {c: _sans_echappement(propre(brut.get(c))) for c in attendues}
-        if not any(propre(v) for v in brut.values()):
-            continue
-        sortie.append((n, ligne))
-    return sortie
-
-
-# Une cellule qui commence par `= + - @` serait EXÉCUTÉE comme une formule par un tableur : le
-# réexport la préfixe d'une apostrophe (le patron de `socle._csv_safe`), et l'import retire
-# cette apostrophe-là, et elle seule — « 'tain » reste « 'tain ».
 _FORMULE = ("=", "+", "-", "@", chr(9), chr(13))
 
 
 def _neutre(valeur) -> str:
-    """Une cellule du réexport, neutralisée contre l'injection de formule."""
+    """Une cellule du réexport CSV, neutralisée contre l'injection de formule : une cellule
+    qui commence par `= + - @` serait EXÉCUTÉE par un tableur ; on la préfixe d'une
+    apostrophe (le patron de `socle._csv_safe`), que l'import retire."""
     v = "" if valeur is None else str(valeur)
     return "'" + v if v[:1] in _FORMULE else v
 
 
 def _sans_echappement(valeur):
-    """L'inverse de `_neutre`, à la lecture."""
+    """L'inverse de `_neutre`, à la lecture : l'apostrophe devant `= + - @` est retirée, et
+    elle seule — « 'tain » reste « 'tain »."""
     if valeur and len(valeur) > 1 and valeur[0] == "'" and valeur[1] in _FORMULE:
         return valeur[1:]
     return valeur
@@ -126,130 +140,352 @@ def _etages(texte) -> list:
 
 
 def _exemples(texte) -> list:
-    return [x for x in (propre(e) for e in str(texte or "").split(SEP_EXEMPLES)) if x]
+    """Plusieurs exemples : séparés par « | », ou un par ligne dans la cellule."""
+    morceaux = str(texte or "").replace("\r\n", "\n").replace("\n", SEP_EXEMPLES)
+    return [x for x in (propre(e) for e in morceaux.split(SEP_EXEMPLES)) if x]
 
 
-def lire(flux_entrees, flux_listes=None, *, porte_sur=None) -> dict:
-    """Lit et VALIDE un tableur. Rend `{"contenu", "anomalies", "avertissements"}` —
-    `contenu` est la forme normalisée de `grilles.contenu`, None dès qu'une anomalie existe.
-    `porte_sur` : la cellule « Porte sur » de la déclaration (« mots »,
-    « bulle | cartouche ») ; absente, l'appelant passe celle de la version précédente."""
-    anomalies: list = []
-    avert: list = []
-    # Les listes d'abord : une entrée à qualificatifs nomme la sienne.
+def _exiger(nom, entete, obligatoires, *, listes: bool) -> list:
+    """Les colonnes MACHINE d'un en-tête (None pour une colonne ignorée). Lève
+    `FormatInvalide` quand une colonne obligatoire manque."""
+    cols = [grille_tableur.colonne_de(t, listes=listes) for t in entete]
+    titres = grille_tableur.TITRES_LISTES if listes else grille_tableur.TITRES
+    manquantes = [c for c in obligatoires if c not in cols]
+    if listes and "liste_cle" not in cols and "liste" not in cols:
+        manquantes.insert(0, "liste")
+    if manquantes:
+        raise FormatInvalide(
+            f"{nom} : en-tête invalide, colonnes obligatoires manquantes "
+            + ", ".join(f"{c} (« {titres.get(c, c)} »)" for c in manquantes)
+            + ". La première ligne qui n'est ni vide ni un commentaire est l'en-tête.")
+    return cols
+
+
+def _par_colonne(nom, entete, lignes, attendues, *, listes, obligatoires, anomalies):
+    """Les lignes d'une feuille, par nom de colonne MACHINE, cellules nettoyées ; une ligne
+    où rien n'est écrit dans une colonne connue est ignorée."""
+    cols = _exiger(nom, entete, obligatoires, listes=listes)
+    sortie = []
+    for n, cellules in lignes:
+        if any(str(x).strip() for x in cellules[len(cols):]):
+            anomalies.append(_faute(
+                "cellules_en_trop", "la ligne a plus de cellules que l'en-tête n'a de colonnes",
+                "un « ; » dans une cellule ? Mettez la cellule entre guillemets, ou retirez "
+                "le « ; »", fichier=nom, ligne=n, listes=listes))
+            continue
+        ligne = {c: None for c in attendues}
+        for c, v in zip(cols, cellules):
+            if c in ligne and ligne[c] is None:
+                ligne[c] = _sans_echappement(propre(v))
+        if any(v is not None for v in ligne.values()):
+            sortie.append((n, ligne))
+    return sortie
+
+
+class _Identifiants:
+    """Les identifiants qui MANQUENT, reçus du NOM (ANN-7, tranché le 2026-11-03 : la colonne
+    grise du gabarit peut être vide). Règle, dans cet ordre :
+
+    1. un identifiant écrit dans le fichier est gardé tel quel, et aucun autre ne le prend ;
+    2. sans identifiant, l'objet REPREND celui de l'objet de même NOM dans la version à
+       laquelle on compare (même libellé exact ; pour une rubrique, même chemin ; pour une
+       variante ou un qualificatif, sous la même entrée ou la même liste), si aucune ligne
+       du fichier ne le revendique — deux objets de même nom les reprennent dans l'ordre ;
+    3. sinon il est DÉRIVÉ du libellé (`grille_tableur.slug` : `écho lointain` →
+       `echo-lointain`), suffixé `-2`, `-3`… s'il est déjà pris — par le fichier ou par la
+       version de référence, pour qu'un nouveau venu ne passe jamais pour un renommage.
+
+    Stable : le même fichier, comparé à la même version, rend les mêmes identifiants ; le
+    réexport les écrit, et un fichier réexporté ne dérive plus rien."""
+
+    def __init__(self, deja_pris, reference_par_nom: dict):
+        self.prises = set(deja_pris)
+        self.reprendre = {k: list(v) for k, v in reference_par_nom.items()}
+        self.deduits: list = []
+
+    def reserver(self, cles) -> None:
+        explicites = {c for c in cles if c}
+        self.prises |= explicites
+        for nom in self.reprendre:
+            self.reprendre[nom] = [c for c in self.reprendre[nom] if c not in explicites]
+
+    def donner(self, nom, *, defaut: str, quoi: str, ligne=None, fichier=None,
+               texte=None) -> str:
+        """L'identifiant de l'objet `nom` (son libellé ; pour une rubrique, son chemin) ;
+        `texte` : ce dont on le dérive, quand ce n'est pas `nom`."""
+        repris = self.reprendre.get(nom) or []
+        if repris:
+            cle, reprise = repris.pop(0), True
+            self.prises.add(cle)
+        else:
+            cle = grille_tableur.deriver(nom if texte is None else texte, self.prises,
+                                         defaut=defaut)
+            reprise = False
+        self.deduits.append({"quoi": quoi, "fichier": fichier, "ligne": ligne,
+                             "libelle": nom if texte is None else texte, "cle": cle,
+                             "repris": reprise})
+        return cle
+
+
+def _par_nom(objets: dict, cle_nom=lambda x: x["libelle"]) -> dict:
+    out: dict = {}
+    for k, x in sorted(objets.items(), key=lambda kv: (kv[1].get("rang", 0), kv[0])):
+        if cle_nom(x):
+            out.setdefault(cle_nom(x), []).append(k)
+    return out
+
+
+def _chemins_de_reference(rubriques: dict) -> dict:
+    out = {}
+    for rc in rubriques:
+        chemin = tuple(rubriques[r]["libelle"]
+                       for r in grilles.chemin_de_rubrique(rubriques, rc))
+        out.setdefault(chemin, []).append(rc)
+    return out
+
+
+def lire(flux_entrees, flux_listes=None, *, porte_sur=None, reference=None,
+         noms=NOMS_PAR_DEFAUT) -> dict:
+    """Lit et VALIDE un tableur CSV. Rend `{"contenu", "anomalies", "avertissements",
+    "identifiants_deduits"}` — `contenu` est la forme normalisée de `grilles.contenu`, None
+    dès qu'une anomalie existe. `porte_sur` : la cellule « Porte sur » de la déclaration ;
+    `reference` : le contenu auquel on compare (les identifiants manquants en sont repris) ;
+    `noms` : les noms des deux fichiers, pour dire où est une faute."""
+    tableur = {"entrees": (noms[0], *grille_tableur.feuille_csv(flux_entrees)),
+               "listes": (noms[1], *grille_tableur.feuille_csv(flux_listes))
+               if flux_listes is not None else None}
+    return lire_tableur(tableur, porte_sur=porte_sur, reference=reference)
+
+
+def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
+                 ou_porte_sur=None) -> dict:
+    """Valide un tableur déjà découpé en feuilles (`lire` pour les CSV) — cf. `lire`."""
+    anomalies = [_complete(f) for f in tableur.get("fautes", [])]
+    avert = [_complete(f) for f in tableur.get("notes", [])]
+    ref = reference or {"cible": None, "rubriques": {}, "entrees": {}, "listes": {}}
+    ou_porte_sur = ou_porte_sur or {"fichier": "déclaration"}
+
+    # -- Les listes d'abord : une entrée à qualificatifs nomme la sienne.
     listes: dict = {}
-    if flux_listes is not None:
-        for n, l in _lignes(flux_listes, COLONNES_LISTES, OBLIGATOIRES_LISTES,
-                            "listes", anomalies):
-            ou = f"listes l.{n}"
-            if not l["liste_cle"]:
-                anomalies.append(f"{ou} : qualificatif « {l['cle'] or l['libelle']} » sans "
-                                 "liste (`liste_cle` vide)")
-                continue
-            if not l["cle"]:
-                anomalies.append(f"{ou} : `cle` vide")
-                continue
+    ids_listes = _Identifiants(ref["listes"], _par_nom(ref["listes"]))
+    deduits = []
+    if tableur.get("listes") is not None:
+        nom_l, entete_l, brutes_l = tableur["listes"]
+        lignes_l = _par_colonne(nom_l, entete_l, brutes_l, COLONNES_LISTES, listes=True,
+                                obligatoires=("libelle",), anomalies=anomalies)
+        ids_listes.reserver(l["liste_cle"] for _, l in lignes_l)
+        nom_vers_cle = {}
+        for _, l in lignes_l:
+            if l["liste_cle"] and l["liste"]:
+                nom_vers_cle.setdefault(l["liste"], l["liste_cle"])
+        resolues = []
+        for n, l in lignes_l:
+            ou = {"fichier": nom_l, "ligne": n, "listes": True}
+            lc = l["liste_cle"]
+            if not lc:
+                if not l["liste"]:
+                    anomalies.append(_faute(
+                        "qualificatif_sans_liste",
+                        f"la case « {l['libelle'] or l['cle']} » n'appartient à aucune liste",
+                        "écrivez le nom de sa liste, colonne « Liste »", colonne="liste", **ou))
+                    continue
+                lc = nom_vers_cle.get(l["liste"])
+                if lc is None:
+                    lc = nom_vers_cle[l["liste"]] = ids_listes.donner(
+                        l["liste"], defaut="liste", quoi="liste", ligne=n, fichier=nom_l)
             if not l["libelle"]:
-                anomalies.append(f"{ou} : libellé vide pour « {l['cle']} »")
+                anomalies.append(_faute("libelle_vide", "la case n'a pas de nom",
+                                        "écrivez ce qu'on coche, colonne « Case »",
+                                        cle=l["cle"], colonne="libelle", **ou))
                 continue
-            liste = listes.setdefault(l["liste_cle"], {"libelle": l["liste"],
-                                                       "qualificatifs": {}})
+            resolues.append((n, l, lc))
+        ids_q = {}
+        for lc in {lc for _, _, lc in resolues}:
+            ref_q = (ref["listes"].get(lc) or {}).get("qualificatifs", {})
+            ids_q[lc] = _Identifiants(ref_q, _par_nom(ref_q))
+            ids_q[lc].reserver(l["cle"] for _, l, x in resolues if x == lc)
+        for n, l, lc in resolues:
+            ou = {"fichier": nom_l, "ligne": n, "listes": True}
+            liste = listes.setdefault(lc, {"libelle": l["liste"], "qualificatifs": {}})
             if l["liste"] and liste["libelle"] and l["liste"] != liste["libelle"]:
-                avert.append(f"{ou} : la liste « {l['liste_cle']} » a deux libellés — "
-                             f"« {liste['libelle']} » retenu")
+                avert.append(_faute(
+                    "liste_deux_libelles",
+                    f"la liste « {lc} » a deux noms — « {liste['libelle']} » est retenu",
+                    "écrivez le même nom sur toutes ses lignes", colonne="liste", **ou))
             liste["libelle"] = liste["libelle"] or l["liste"]
-            if l["cle"] in liste["qualificatifs"]:
-                anomalies.append(f"{ou} : qualificatif « {l['cle']} » en double dans la "
-                                 f"liste « {l['liste_cle']} »")
+            qc = l["cle"] or ids_q[lc].donner(l["libelle"], defaut="case", quoi="qualificatif",
+                                              ligne=n, fichier=nom_l)
+            if qc in liste["qualificatifs"]:
+                anomalies.append(_faute(
+                    "qualificatif_en_double",
+                    f"la case « {qc} » est deux fois dans la liste « {liste['libelle'] or lc} »",
+                    "gardez une seule ligne pour elle", cle=qc, colonne="libelle", **ou))
                 continue
-            liste["qualificatifs"][l["cle"]] = {
-                "libelle": l["libelle"], "definition": l["definition"],
-                "rang": len(liste["qualificatifs"])}
+            liste["qualificatifs"][qc] = {"libelle": l["libelle"], "definition": l["definition"],
+                                          "rang": len(liste["qualificatifs"])}
+        deduits += ids_listes.deduits + [d for x in ids_q.values() for d in x.deduits]
 
-    cible_version, erreur = grilles.lire_cibles(porte_sur)
+    cible_version, erreur = grilles.lire_cibles(grille_tableur.cibles_lues(porte_sur))
     if erreur:
-        anomalies.append(f"« Porte sur » : {erreur}")
+        anomalies.append(_faute("porte_sur_inconnu", f"« Porte sur » : {erreur}",
+                                "écrivez des mots, la case, la planche, ou des sortes de "
+                                "zone", colonne="porte_sur", **ou_porte_sur))
     elif not cible_version:
-        anomalies.append("« Porte sur » manque : sur quoi la grille se pose-t-elle ? "
-                         f"({' · '.join(grilles.CIBLES)})")
+        anomalies.append(_faute(
+            "porte_sur_manque", "« Porte sur » manque : sur quoi la grille se pose-t-elle ?",
+            "déclarez-le à l'import ("
+            + " · ".join(grilles.CIBLES) + ")", colonne="porte_sur", **ou_porte_sur))
 
-    lignes = _lignes(flux_entrees, COLONNES, OBLIGATOIRES, "entrées", anomalies)
+    # -- Les entrées.
+    nom_e, entete_e, brutes_e = tableur["entrees"]
+    lignes = _par_colonne(nom_e, entete_e, brutes_e, COLONNES, listes=False,
+                          obligatoires=OBLIGATOIRES, anomalies=anomalies)
+    est_variante = {n: bool(l["variante_cle"] or l["variante"]) for n, l in lignes}
+    ids_e = _Identifiants(ref["entrees"], _par_nom(ref["entrees"]))
+    ids_e.reserver(l["cle"] for n, l in lignes if not est_variante[n])
+    # Les rubriques : un identifiant écrit vaut pour son chemin partout dans le fichier.
+    ids_r = _Identifiants(ref["rubriques"], _chemins_de_reference(ref["rubriques"]))
+    chemin_cle: dict = {}
+    for _, l in lignes:
+        etages, cles_ = _etages(l["rubrique"]), _etages(l["rubrique_cle"])
+        if cles_ and len(etages) == len(cles_) and all(etages) and all(cles_):
+            ids_r.reserver(cles_)
+            for k in range(len(etages)):
+                chemin_cle.setdefault(tuple(etages[:k + 1]), cles_[k])
+
     entrees: dict = {}
     lignes_variantes = []
     rubriques: dict = {}
     par_chemin: dict = {}
+    au_dessus = None                       # l'entrée de la dernière ligne d'entrée
     for n, l in lignes:
-        ou = f"entrées l.{n}"
-        if not l["cle"]:
-            anomalies.append(f"{ou} : `cle` vide")
+        ou = {"fichier": nom_e, "ligne": n}
+        if est_variante[n]:
+            lignes_variantes.append((n, l, l["cle"] or au_dessus, bool(l["cle"])))
             continue
-        if l["variante_cle"] or l["variante"]:
-            lignes_variantes.append((n, l))
+        cle_ = l["cle"]
+        if not cle_:
+            if not l["libelle"]:
+                anomalies.append(_faute("libelle_vide", "l'entrée n'a ni nom ni identifiant",
+                                        "écrivez son nom, colonne « Entrée »",
+                                        colonne="libelle", **ou))
+                au_dessus = False          # ses variantes ne se disent pas une seconde fois
+                continue
+            cle_ = ids_e.donner(l["libelle"], defaut="entree", quoi="entree", ligne=n,
+                                fichier=nom_e)
+        au_dessus = cle_
+        ou["cle"] = cle_
+        if cle_ in entrees:
+            anomalies.append(_faute(
+                "cle_en_double", f"l'identifiant « {cle_} » est déjà celui d'une autre entrée",
+                "donnez-lui un autre identifiant ; une ligne de variante se reconnaît à sa "
+                "colonne « Variante »", colonne="cle", **ou))
             continue
-        if l["cle"] in entrees:
-            anomalies.append(f"{ou} : la `cle` « {l['cle']} » est déjà celle d'une autre "
-                             "entrée (une ligne de variante porte `variante_cle`)")
-            continue
-        forme = (l["forme"] or "").lower()
+        forme = grille_tableur.forme_lue(l["forme"]) or ""
         if forme not in FORMES:
-            anomalies.append(f"{ou} : forme « {l['forme'] or ''} » inconnue pour « {l['cle']} » "
-                             f"(attendu : {' · '.join(FORMES)})")
+            anomalies.append(_faute(
+                "forme_inconnue", f"la réponse « {l['forme'] or ''} » n'est pas une forme",
+                "répondez « rien », « une variante » ou « des cases d'une liste » ("
+                + " · ".join(FORMES) + ")", colonne="forme", **ou))
         if not l["libelle"]:
-            anomalies.append(f"{ou} : libellé vide pour « {l['cle']} »")
-        # La rubrique : autant d'étages des deux côtés.
-        etages, cles = _etages(l["rubrique"]), _etages(l["rubrique_cle"])
+            anomalies.append(_faute("libelle_vide", "l'entrée n'a pas de nom",
+                                    "écrivez son nom, colonne « Entrée »", colonne="libelle",
+                                    **ou))
+        # La rubrique : autant d'étages des deux côtés ; un identifiant manquant se déduit.
+        etages, cles_ = _etages(l["rubrique"]), _etages(l["rubrique_cle"])
+        if etages and not cles_ and all(etages):
+            for k in range(len(etages)):
+                chemin = tuple(etages[:k + 1])
+                if chemin not in chemin_cle:
+                    chemin_cle[chemin] = ids_r.donner(chemin, defaut="rubrique",
+                                                      quoi="rubrique", ligne=n, fichier=nom_e,
+                                                      texte=etages[k])
+                    ids_r.deduits[-1]["libelle"] = " > ".join(chemin)
+                cles_.append(chemin_cle[chemin])
         rubrique_cle = None
-        if etages or cles:
-            if len(etages) != len(cles) or not all(etages) or not all(cles):
-                anomalies.append(f"{ou} : `rubrique` et `rubrique_cle` n'ont pas les mêmes "
-                                 f"étages pour « {l['cle']} » ({len(etages)} et {len(cles)})")
+        if etages or cles_:
+            if len(etages) != len(cles_) or not all(etages) or not all(cles_):
+                anomalies.append(_faute(
+                    "rubrique_etages",
+                    f"la rubrique et son identifiant n'ont pas les mêmes étages ("
+                    f"{len(etages)} et {len(cles_)})",
+                    "un identifiant par étage, séparés par « > », ou l'identifiant vide",
+                    colonne="rubrique", **ou))
             else:
                 parent = None
-                for k, (libelle, rc) in enumerate(zip(etages, cles)):
+                for k, (libelle, rc) in enumerate(zip(etages, cles_)):
                     chemin = tuple(etages[:k + 1])
                     deja = rubriques.get(rc)
                     if deja is None:
                         rubriques[rc] = {"libelle": libelle, "parent_cle": parent,
                                          "rang": len(rubriques)}
                     elif deja["libelle"] != libelle:
-                        anomalies.append(f"{ou} : la rubrique « {rc} » a deux libellés — "
-                                         f"« {deja['libelle']} » et « {libelle} »")
+                        anomalies.append(_faute(
+                            "rubrique_deux_libelles",
+                            f"la rubrique « {rc} » a deux noms — « {deja['libelle']} » et "
+                            f"« {libelle} »", "écrivez-la partout de la même façon",
+                            colonne="rubrique", **ou))
                     elif deja["parent_cle"] != parent:
-                        anomalies.append(f"{ou} : la rubrique « {rc} » a deux parents — "
-                                         f"« {deja['parent_cle']} » et « {parent} »")
+                        anomalies.append(_faute(
+                            "rubrique_deux_parents",
+                            f"la rubrique « {rc} » est rangée sous deux rubriques — "
+                            f"« {deja['parent_cle']} » et « {parent} »",
+                            "écrivez son chemin partout de la même façon", colonne="rubrique",
+                            **ou))
                     autre = par_chemin.setdefault(chemin, rc)
                     if autre != rc:
-                        anomalies.append(f"{ou} : la rubrique « {' > '.join(chemin)} » a deux "
-                                         f"identifiants — « {autre} » et « {rc} »")
+                        anomalies.append(_faute(
+                            "rubrique_deux_identifiants",
+                            f"la rubrique « {' > '.join(chemin)} » a deux identifiants — "
+                            f"« {autre} » et « {rc} »", "gardez-en un seul",
+                            colonne="rubrique_cle", **ou))
                     parent = rc
-                rubrique_cle = cles[-1]
+                rubrique_cle = cles_[-1]
         liste = l["liste"]
+        if liste and liste not in listes:
+            memes = [lc for lc, x in listes.items() if x["libelle"] == liste]
+            liste = memes[0] if len(memes) == 1 else liste
         if forme == "qualificatifs":
             if not liste:
-                anomalies.append(f"{ou} : « {l['cle']} » est à qualificatifs, sans `liste`")
+                anomalies.append(_faute(
+                    "liste_manque", "l'entrée se pose avec des cases d'une liste, et aucune "
+                    "liste n'est nommée", "écrivez le nom d'une liste, colonne « Liste à "
+                    "cocher »", colonne="liste", **ou))
             elif liste not in listes:
-                anomalies.append(f"{ou} : la liste « {liste} » de « {l['cle']} » est inconnue "
-                                 "(le fichier des listes ne la porte pas)")
+                anomalies.append(_faute(
+                    "liste_inconnue", f"la liste « {liste} » n'existe pas dans les listes à "
+                    "cocher", "ajoutez-la, ou recopiez son nom à l'identique",
+                    colonne="liste", **ou))
         elif liste:
-            anomalies.append(f"{ou} : « {l['cle']} » n'est pas à qualificatifs et nomme une "
-                             f"liste (« {liste} »)")
-        lien = (l["lien"] or "").lower()
+            anomalies.append(_faute(
+                "liste_hors_qualificatifs",
+                f"une liste est nommée (« {l['liste']} »), mais l'entrée ne se pose pas avec "
+                "des cases d'une liste", "répondez « des cases d'une liste » à la question 4, "
+                "ou videz la colonne « Liste à cocher »", colonne="liste", **ou))
+        lien = grille_tableur.norme(l["lien"])
         if lien not in ("", "oui", "non"):
-            anomalies.append(f"{ou} : `lien` vaut « {l['lien']} » pour « {l['cle']} » "
-                             "(attendu : oui, ou vide)")
-        cible, erreur = grilles.lire_cibles(l["cible"])
+            anomalies.append(_faute(
+                "lien_inconnu", f"la réponse « {l['lien']} » n'est ni oui ni non",
+                "répondez « oui » (l'annotateur désigne une autre zone) ou laissez vide",
+                colonne="lien", **ou))
+        cible, erreur = grilles.lire_cibles(grille_tableur.cibles_lues(l["cible"]))
         if erreur:
-            anomalies.append(f"{ou} : {erreur}, pour « {l['cle']} »")
-        cardinalite = (l["cardinalite"] or "").lower() or None
+            anomalies.append(_faute(
+                "cible_inconnue", erreur, "laissez vide (comme la grille), ou écrivez des "
+                "mots, la case, la planche, ou des sortes de zone", colonne="cible", **ou))
+        cardinalite = grille_tableur.cardinalite_lue(l["cardinalite"]) or None
         if cardinalite is not None and cardinalite not in CARDINALITES:
-            anomalies.append(f"{ou} : cardinalité « {l['cardinalite']} » inconnue pour "
-                             f"« {l['cle']} » (attendu : une · plusieurs, ou vide)")
+            anomalies.append(_faute(
+                "cardinalite_inconnue", f"la réponse « {l['cardinalite']} » n'est pas un "
+                "nombre de fois", "répondez « une seule », « plusieurs », ou laissez vide",
+                colonne="cardinalite", **ou))
         effectives = cible or cible_version
         if grilles.CIBLE_ENTITE in effectives:
-            avert.append(f"{ou} : « {l['cle']} » vise l'entité du registre : elle s'importe, "
-                         "mais aucun relevé ne s'y pose avant l'étage de projet des "
-                         "personnages (G3)")
-        entrees[l["cle"]] = {
+            avert.append(_faute(
+                "vise_l_entite", "l'entrée vise l'entité du registre : elle s'importe, mais "
+                "aucun relevé ne s'y pose avant l'étage de projet des personnages (G3)",
+                colonne="cible", **ou))
+        entrees[cle_] = {
             "rubrique_cle": rubrique_cle, "rang": len(entrees), "forme": forme,
             "libelle": l["libelle"], "definition": l["definition"],
             "structure": l["structure"], "piege": l["piege"], "precision": l["precision"],
@@ -258,39 +494,73 @@ def lire(flux_entrees, flux_listes=None, *, porte_sur=None) -> dict:
             "retiree": False, "exemples": _exemples(l["exemples"]), "variantes": {},
             "_ligne": l}
 
-    for n, l in lignes_variantes:
-        ou = f"entrées l.{n}"
-        e = entrees.get(l["cle"])
-        if e is None:
-            anomalies.append(f"{ou} : la variante « {l['variante_cle'] or l['variante']} » "
-                             f"nomme l'entrée « {l['cle']} », qu'aucune ligne ne déclare")
+    # -- Les variantes : à l'entrée qu'elles nomment, ou à celle du dessus.
+    ids_v = {}
+    for k in entrees:
+        ref_v = (ref["entrees"].get(k) or {}).get("variantes", {})
+        ids_v[k] = _Identifiants(ref_v, _par_nom(ref_v))
+        ids_v[k].reserver(l["variante_cle"] for _, l, c, _e in lignes_variantes if c == k)
+    for n, l, cle_, explicite in lignes_variantes:
+        ou = {"fichier": nom_e, "ligne": n, "cle": cle_ or None}
+        nom_v = l["variante"] or l["variante_cle"]
+        if cle_ is False:                       # sous une entrée sans nom, déjà dite
             continue
-        if not l["variante_cle"] or not l["variante"]:
-            anomalies.append(f"{ou} : une variante de « {l['cle']} » a besoin de "
-                             "`variante_cle` ET de `variante`")
+        if cle_ is None:
+            anomalies.append(_faute(
+                "variante_sans_entree", f"la variante « {nom_v} » est écrite avant toute "
+                "entrée", "écrivez-la juste sous l'entrée à laquelle elle appartient",
+                colonne="variante", **ou))
+            continue
+        e = entrees.get(cle_)
+        if e is None:
+            if explicite:
+                anomalies.append(_faute(
+                    "variante_entree_inconnue",
+                    f"la variante « {nom_v} » nomme l'entrée « {cle_} », qu'aucune ligne ne "
+                    "déclare", "écrivez l'entrée, ou corrigez l'identifiant de la ligne",
+                    colonne="cle", **ou))
+            continue
+        if not l["variante"]:
+            anomalies.append(_faute(
+                "variante_sans_nom", f"la variante « {nom_v} » n'a pas de nom",
+                "écrivez son nom, colonne « Variante »", colonne="variante", **ou))
             continue
         if e["forme"] != "variantes":
-            anomalies.append(f"{ou} : « {l['cle']} » n'est pas à variantes, et une ligne lui "
-                             f"donne la variante « {l['variante_cle']} »")
+            anomalies.append(_faute(
+                "variante_sous_autre_forme",
+                f"une variante, « {nom_v} », est écrite sous « {e['libelle'] or cle_} », qui "
+                "ne se pose pas avec une variante",
+                f"répondez « une variante » à la question 4 pour « {e['libelle'] or cle_} », "
+                "ou retirez la ligne", colonne="variante", **ou))
             continue
         for c in COLONNES_DE_L_ENTREE:
             if l[c] is not None and l[c] != e["_ligne"][c]:
-                anomalies.append(f"{ou} : la ligne de variante « {l['variante_cle']} » remplit "
-                                 f"`{c}` autrement que son entrée « {l['cle']} » (à laisser "
-                                 "vide)")
+                anomalies.append(_faute(
+                    "variante_remplit_l_entree",
+                    f"la ligne de la variante « {nom_v} » remplit la colonne de l'entrée "
+                    "autrement qu'elle", "laissez cette colonne vide sur la ligne de variante",
+                    colonne=c, **ou))
                 break
-        if l["variante_cle"] in e["variantes"]:
-            anomalies.append(f"{ou} : variante « {l['variante_cle']} » en double sous "
-                             f"« {l['cle']} »")
+        vc = l["variante_cle"] or ids_v[cle_].donner(l["variante"], defaut="variante",
+                                                     quoi="variante", ligne=n, fichier=nom_e)
+        if vc in e["variantes"]:
+            anomalies.append(_faute(
+                "variante_en_double", f"la variante « {vc} » est deux fois sous l'entrée",
+                "gardez une seule ligne pour elle", colonne="variante", **ou))
             continue
-        e["variantes"][l["variante_cle"]] = {
+        e["variantes"][vc] = {
             "libelle": l["variante"], "definition": l["definition"],
             "structure": l["structure"], "piege": l["piege"], "rang": len(e["variantes"]),
             "exemples": _exemples(l["exemples"])}
+    deduits += ids_e.deduits + ids_r.deduits + [d for x in ids_v.values() for d in x.deduits]
 
     for cle_, e in entrees.items():
         if e["forme"] == "variantes" and not e["variantes"]:
-            anomalies.append(f"entrées : « {cle_} » est à variantes et n'en a aucune")
+            anomalies.append(_faute(
+                "variantes_absentes", "l'entrée se pose avec une variante, et aucune ligne de "
+                "variante n'est écrite pour elle", "écrivez chaque variante sur sa ligne, juste "
+                "sous l'entrée, colonne « Variante » ; ou répondez « rien » à la question 4",
+                fichier=nom_e, cle=cle_, colonne="forme"))
         e.pop("_ligne", None)
     # Un parent circulaire (« a > b » puis « b > a » a déjà deux parents ; reste le cas d'une
     # rubrique qui serait son propre ancêtre par un autre chemin).
@@ -298,21 +568,37 @@ def lire(flux_entrees, flux_listes=None, *, porte_sur=None) -> dict:
         vus, x = set(), rc
         while x is not None and x in rubriques:
             if x in vus:
-                anomalies.append(f"entrées : la rubrique « {rc} » est son propre ancêtre")
+                anomalies.append(_faute(
+                    "rubrique_circulaire", f"la rubrique « {rc} » est son propre ancêtre",
+                    "vérifiez les chemins de rubrique", fichier=nom_e, colonne="rubrique"))
                 break
             vus.add(x)
             x = rubriques[x]["parent_cle"]
     utilisees = {e["liste_cle"] for e in entrees.values() if e["liste_cle"]}
     for lc in listes:
         if lc not in utilisees:
-            avert.append(f"listes : la liste « {lc} » n'est nommée par aucune entrée")
+            avert.append(_faute("liste_inutilisee",
+                                f"la liste « {listes[lc]['libelle'] or lc} » n'est nommée par "
+                                "aucune entrée", fichier=(tableur.get("listes") or ("",))[0],
+                                colonne="liste", listes=True))
     if not entrees and not anomalies:
-        anomalies.append("entrées : le tableur ne porte aucune entrée")
+        anomalies.append(_faute("aucune_entree", "le tableur ne porte aucune entrée",
+                                "écrivez au moins une entrée", fichier=nom_e))
+    if deduits:
+        par_quoi = {}
+        for d in deduits:
+            par_quoi[d["quoi"]] = par_quoi.get(d["quoi"], 0) + 1
+        avert.append(_faute(
+            "identifiants_deduits",
+            "des identifiants manquaient : ils sont pris du nom (" + ", ".join(
+                f"{n} {q}" for q, n in sorted(par_quoi.items())) + ")",
+            "réexportez la grille après l'import : le tableur portera ses identifiants"))
+    resultat = {"anomalies": anomalies, "avertissements": avert,
+                "identifiants_deduits": deduits}
     if anomalies:
-        return {"contenu": None, "anomalies": anomalies, "avertissements": avert}
+        return {"contenu": None, **resultat}
     return {"contenu": {"cible": grilles.ecrire_cibles(cible_version), "rubriques": rubriques,
-                        "entrees": entrees, "listes": listes},
-            "anomalies": [], "avertissements": avert}
+                        "entrees": entrees, "listes": listes}, **resultat}
 
 
 # --------------------------------------------------------------------------- #
@@ -333,12 +619,19 @@ def _releves_sur(conn, grille_id, entree_cle, variante_cle=None) -> int:
                                                  variante_cle)).fetchone()[0]
 
 
+def _releves_sur_qualificatif(conn, grille_id, qualificatif_cle) -> int:
+    if grille_id is None:
+        return 0
+    return conn.execute(
+        "SELECT COUNT(*) FROM releve_qualificatif rq JOIN releve r ON r.id = rq.releve_id "
+        "WHERE r.grille_id = ? AND rq.qualificatif_cle = ?",
+        (grille_id, qualificatif_cle)).fetchone()[0]
+
+
 def bilan(conn: sqlite3.Connection, grille_id, avant: dict | None, apres: dict) -> dict:
-    """Ce qui change de `avant` (le contenu d'une version, ou None) à `apres`, par `cle`.
-    Les disparus comptent les relevés posés sur eux (`grille_id` : la grille d'`avant`).
-    Sans relevé sur la grille, une disparition ne coûte rien ; avec, la décision « retirer,
-    ou fusionner dans… » attend la montée de version (note §6) : les relevés restent sur la
-    version où ils ont été posés."""
+    """Ce qui change de `avant` (le contenu d'une version, ou None) à `apres`, par `cle` —
+    « Ce qui change ». Les disparus comptent les relevés posés sur eux (`grille_id` : la
+    grille d'`avant`)."""
     b = {"nes": [], "renommes": [], "retouches": [], "deplaces": [], "changes": [],
          "disparus": []}
     avant = avant or {"cible": None, "rubriques": {}, "entrees": {}, "listes": {}}
@@ -408,12 +701,9 @@ def bilan(conn: sqlite3.Connection, grille_id, avant: dict | None, apres: dict) 
             b["nes"].append({"quoi": "qualificatif", "cle": f"{lc}/{qc}",
                              "libelle": qb[qc]["libelle"]})
         for qc in qa.keys() - qb.keys():
-            n = conn.execute(
-                "SELECT COUNT(*) FROM releve_qualificatif rq JOIN releve r "
-                "ON r.id = rq.releve_id WHERE r.grille_id = ? AND rq.qualificatif_cle = ?",
-                (grille_id, qc)).fetchone()[0] if grille_id is not None else 0
             b["disparus"].append({"quoi": "qualificatif", "cle": f"{lc}/{qc}",
-                                  "libelle": qa[qc]["libelle"], "releves": n})
+                                  "libelle": qa[qc]["libelle"],
+                                  "releves": _releves_sur_qualificatif(conn, grille_id, qc)})
         for qc in qa.keys() & qb.keys():
             if qa[qc]["libelle"] != qb[qc]["libelle"]:
                 b["renommes"].append({"quoi": "qualificatif", "cle": f"{lc}/{qc}",
@@ -423,6 +713,37 @@ def bilan(conn: sqlite3.Connection, grille_id, avant: dict | None, apres: dict) 
                                        "champs": ["definition"]})
     b["releves_touches"] = sum(d["releves"] for d in b["disparus"])
     return b
+
+
+def va_naitre(avant: dict | None, apres: dict) -> dict:
+    """« Ce qui va naître » : combien de rubriques, d'entrées, de variantes, de listes et de
+    qualificatifs l'import fait naître."""
+    avant = avant or {"rubriques": {}, "entrees": {}, "listes": {}}
+    ea, eb = avant["entrees"], apres["entrees"]
+    la, lb = avant["listes"], apres["listes"]
+    variantes = sum(len(eb[k]["variantes"]) for k in eb.keys() - ea.keys()) + sum(
+        len(eb[k]["variantes"].keys() - ea[k]["variantes"].keys()) for k in eb.keys() & ea.keys())
+    qualificatifs = sum(len(lb[k]["qualificatifs"]) for k in lb.keys() - la.keys()) + sum(
+        len(lb[k]["qualificatifs"].keys() - la[k]["qualificatifs"].keys())
+        for k in lb.keys() & la.keys())
+    return {"rubriques": len(apres["rubriques"].keys() - avant["rubriques"].keys()),
+            "entrees": len(eb.keys() - ea.keys()), "variantes": variantes,
+            "listes": len(lb.keys() - la.keys()), "qualificatifs": qualificatifs}
+
+
+def verdict(etat: str, **compte) -> dict:
+    """Le VERDICT en tête du bilan : un état stable (`refuse`, `aucun_changement`,
+    `importable`, `importe`) et sa phrase."""
+    n = compte.get("n", 0)
+    phrases = {
+        "refuse": f"{n} faute{'s' if n > 1 else ''} à corriger : rien n'est importé tant "
+                  "qu'il en reste une.",
+        "aucun_changement": "Le fichier est juste, et la version en place porte déjà ce "
+                            "contenu : rien n'est écrit.",
+        "importable": "Le fichier est juste : l'import peut se faire.",
+        "importe": "Le fichier est juste, et la grille est importée.",
+    }
+    return {"etat": etat, **compte, "phrase": phrases[etat]}
 
 
 # --------------------------------------------------------------------------- #
@@ -496,27 +817,35 @@ def nom_pris(conn: sqlite3.Connection, projet_id: int, nom: str, *, sauf=None) -
         "AND id IS NOT ?", (projet_id, nom, sauf)).fetchone() is not None
 
 
+def tableur_de(flux_entrees, flux_listes=None, *, noms=NOMS_PAR_DEFAUT) -> dict:
+    """Le tableur à lire, découpé en feuilles : les deux CSV."""
+    return {"entrees": (noms[0], *grille_tableur.feuille_csv(flux_entrees)),
+            "listes": (noms[1], *grille_tableur.feuille_csv(flux_listes))
+            if flux_listes is not None else None}
+
+
 def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_listes=None,
              grille_id: int | None = None, nom: str | None = None, ouverte: bool = False,
              porte_sur: str | None = None, note: str | None = None, par=None,
-             a_blanc: bool = False) -> dict:
+             a_blanc: bool = False, noms=NOMS_PAR_DEFAUT) -> dict:
     """Importe un tableur comme version d'une grille — neuve (`nom`), ou suivante d'une grille
     existante de ce projet (`grille_id`). Le droit de l'appelant est vérifié AVANT (gérer le
     projet) ; ici, les règles du modèle :
 
     - une grille FERMÉE a au plus un brouillon : réimporter le REMPLACE ; si la dernière
       version est publiée, un brouillon neuf naît, au numéro suivant — sauf si son empreinte
-      est celle de la version publiée, ou du brouillon en place : « aucun changement », rien
-      n'est écrit ;
+      est celle de la version publiée, ou du brouillon en place : « aucun changement » ;
     - une grille OUVERTE n'a qu'une version, `vivante`, née au premier import ; elle
       s'enrichit EN POSANT (G14) — la réimporter avec un autre contenu est refusé (409,
       option la plus fermée, à trancher : remplacer écraserait les entrées nées en posant).
 
-    `a_blanc` : rend le bilan sans rien écrire. Lève `Refus` (statut, message, anomalies),
-    `FormatInvalide` sur un en-tête. Ne commite pas ; écrit au journal sous `grille` (sauf à
-    blanc). Rend `{grille_id, version: {numero, etat} | None, ecrit, aucun_changement, bilan,
-    compare_a, avertissements}`."""
+    `a_blanc` : rend le bilan sans rien écrire. Lève `Refus` (statut, message, anomalies,
+    bilan), `FormatInvalide` sur un en-tête. Ne commite pas ; écrit au journal
+    sous `grille` (sauf à blanc). Rend `{grille_id, version: {numero, etat} | None, ecrit,
+    aucun_changement, verdict, a_savoir, va_naitre, bilan, compare_a, declaration,
+    identifiants_deduits}`."""
     import journal                               # import paresseux : le cœur reste léger
+    tableur = tableur_de(flux_entrees, flux_listes, noms=noms)
     g = None
     if grille_id is not None:
         g = conn.execute("SELECT * FROM grille WHERE id = ? AND projet_id = ?",
@@ -541,30 +870,44 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_lis
             derniere = grilles.derniere_version(conn, g["id"])
             porte_sur = (" | ".join(grilles.cibles_de(derniere["cible"]))
                          if derniere is not None else None)
-    lu = lire(flux_entrees, flux_listes, porte_sur=porte_sur)
-    if lu["anomalies"]:
-        raise Refus(422, f"Le tableur est refusé : {len(lu['anomalies'])} anomalie(s). "
-                         "Rien n'est importé.", lu["anomalies"])
-    c = lu["contenu"]
     avant = grilles.contenu(conn, reference["id"]) if reference is not None else None
+    reference_ids = avant
+    if g is not None and reference is None:
+        brouillon_ = grilles.derniere_version(conn, g["id"], grilles.ETAT_BROUILLON)
+        reference_ids = grilles.contenu(conn, brouillon_["id"]) if brouillon_ else None
+    lu = lire_tableur(tableur, porte_sur=porte_sur, reference=reference_ids)
+    anomalies = lu["anomalies"]
+    a_savoir = lu["avertissements"]
+    commun = {"declaration": {"nom": nom, "ouverte": bool(ouverte), "note": note,
+                              "porte_sur": porte_sur},
+              "identifiants_deduits": lu["identifiants_deduits"]}
+    if anomalies:
+        raise Refus(422, f"Le tableur est refusé : {len(anomalies)} anomalie(s). Rien n'est "
+                         "importé.", anomalies,
+                    {"verdict": verdict("refuse", n=len(anomalies)), "a_savoir": a_savoir,
+                     **commun})
+    c = lu["contenu"]
     b = bilan(conn, g["id"] if g is not None else None, avant, c)
     emp = grilles.empreinte(c)
     brouillon = (grilles.derniere_version(conn, g["id"], grilles.ETAT_BROUILLON)
                  if g is not None else None)
     resultat = {"grille_id": g["id"] if g is not None else None, "version": None,
                 "ecrit": False, "aucun_changement": False, "bilan": b,
+                "va_naitre": va_naitre(avant, c),
                 "compare_a": reference["numero"] if reference is not None else None,
-                "avertissements": lu["avertissements"]}
+                "a_savoir": a_savoir, **commun}
     deja = [v for v in (reference, brouillon) if v is not None and v["empreinte"] == emp]
     if deja:
         resultat["aucun_changement"] = True
         resultat["version"] = {"numero": deja[0]["numero"], "etat": deja[0]["etat"]}
+        resultat["verdict"] = verdict("aucun_changement")
         return resultat
     if ouverte and g is not None and reference is not None:
         raise Refus(409, "Une grille ouverte s'enrichit en posant : la réimporter avec un "
                          "autre contenu remplacerait les entrées nées en posant. Rien n'est "
                          "importé.")
     if a_blanc:
+        resultat["verdict"] = verdict("importable")
         if brouillon is not None:
             resultat["version"] = {"numero": brouillon["numero"], "etat": brouillon["etat"],
                                    "remplace": True}
@@ -580,23 +923,27 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_lis
     else:
         gid = g["id"]
     etat = grilles.ETAT_VIVANTE if ouverte else grilles.ETAT_BROUILLON
-    if brouillon is not None:
-        effacer_plan(conn, brouillon["id"])
+    en_place = brouillon
+    if en_place is not None:
+        effacer_plan(conn, en_place["id"])
         conn.execute("UPDATE grille_version SET cible = ?, note = ?, empreinte = ?, "
                      "importee_par = ?, importee_le = datetime('now') WHERE id = ?",
-                     (c["cible"], note, emp, par, brouillon["id"]))
-        ecrire_plan(conn, brouillon["id"], c)
-        numero = brouillon["numero"]
+                     (c["cible"], note, emp, par, en_place["id"]))
+        ecrire_plan(conn, en_place["id"], c)
+        numero = en_place["numero"]
     else:
         derniere = grilles.derniere_version(conn, gid)
         numero = (derniere["numero"] + 1) if derniere is not None else 1
         ecrire_version(conn, gid, c, numero=numero, etat=etat, note=note, par=par)
     journal.journaliser(conn, "modification", "grille", gid,
                         apres={"import": {"numero": numero, "etat": etat, "empreinte": emp,
-                                          "remplace": brouillon is not None}})
-    resultat.update(ecrit=True, version={"numero": numero, "etat": etat,
-                                         **({"remplace": True} if brouillon else {})})
+                                          "remplace": en_place is not None}})
+    resultat.update(ecrit=True, verdict=verdict("importe"),
+                    version={"numero": numero, "etat": etat,
+                             **({"remplace": True} if en_place is not None else {})})
     return resultat
+
+
 
 
 # --------------------------------------------------------------------------- #
@@ -718,10 +1065,10 @@ def _cellule_cibles(valeur) -> str:
 
 
 def exporter(conn: sqlite3.Connection, version_id: int) -> tuple[str, str]:
-    """Les deux CSV d'une version, au format de l'import, identifiants compris : le chemin
-    de la DÉRIVATION allégée (réexporter, réimporter comme grille de son projet, tranché le
-    2026-10-22), et la seule façon de vérifier les `cle` par aller-retour. Réimporté tel
-    quel, il rend la même empreinte (`tests/test_grilles.py`)."""
+    """Les deux CSV d'une version, au format MACHINE de l'import, identifiants compris : le
+    chemin de la DÉRIVATION allégée (réexporter, réimporter comme grille de son projet,
+    tranché le 2026-10-22), et la seule façon de vérifier les `cle` par aller-retour.
+    Réimporté tel quel, il rend la même empreinte (`tests/test_grilles.py`)."""
     c = grilles.contenu(conn, version_id)
 
     def ligne(**valeurs):

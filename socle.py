@@ -708,7 +708,8 @@ def _poser_la_grille_du_bac(conn, projet_id: int) -> Optional[int]:
     except (OSError, ValueError, csv.Error, grille_import.Refus) as exc:
         conn.execute("ROLLBACK TO grille_du_bac")
         conn.execute("RELEASE grille_du_bac")
-        anomalies = "; ".join(getattr(exc, "anomalies", ())[:5])
+        anomalies = "; ".join(grille_import.en_mots(a)
+                              for a in getattr(exc, "anomalies", ())[:5])
         logging.getLogger("bd_annotator").error(
             "Le bac à sable %s naît SANS grille : %s n'a pas pu être importée (%s%s)",
             projet_id, GRILLE_DU_BAC.name, exc, f" — {anomalies}" if anomalies else "")

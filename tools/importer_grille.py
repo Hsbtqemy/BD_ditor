@@ -30,17 +30,24 @@ répéter) : la masque ensuite dans ces collections de son projet, où elle doit
 Mêmes règles que les routes (`grille_import.activer`, `grille_import.masquer`) ; tout se
 fait dans UNE transaction, et un refus n'écrit rien. Ni l'un ni l'autre à blanc.
 
+Les titres et les valeurs se lisent en mots machine comme en mots du gabarit (« 4. Ce qu'on
+choisit », « une variante »), et l'identifiant d'une entrée peut manquer : il se reçoit de
+son nom.
+
 `--ouverte` : une grille OUVERTE (une seule version, vivante, qui s'enrichit en posant).
 `--porte-sur` : la cible des entrées qui ne déclarent pas la leur (« mots », « case »,
 « bulle | cartouche | texte ») ; pour une version suivante, celle de la version précédente
 si on ne la dit pas. `--note` : la note de version.
 
+Le bilan s'imprime lisible : le verdict, ce qu'il faut corriger (où, quelle entrée, quelle
+question, quoi faire), « À savoir », « Ce qui va naître », ce qui change ; `--json` rend les
+mêmes DONNÉES que la route.
+
 L'outil passe une portée TOTALE et aucun agent au journal (« un shell n'a pas d'identité »,
 le patron de `gerer_collections.py`) : qui le lance tient la base entre ses mains.
 
 Code de retour : 0 si l'import s'est fait (ou n'avait rien à changer) ; 1 si le tableur est
-refusé, si le projet, la grille ou un fichier sont introuvables, ou si l'activation ou le
-masque sont refusés — rien n'est écrit ; 2
+refusé, si le projet, la grille ou un fichier sont introuvables, ou si l'activation ou le masque sont refusés — rien n'est écrit ; 2
 pour une erreur d'usage (argparse). `--a-blanc` sort avec le code de l'import qu'il annonce.
 
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
@@ -65,24 +72,43 @@ def _err(msg):
     print(msg, file=sys.stderr)
 
 
-def _bilan(res) -> None:
-    b = res["bilan"]
-    compare = (f"comparé à la version {res['compare_a']}" if res["compare_a"]
-               else "aucune version publiée avant elle")
-    _err(f"  Bilan ({compare}) :")
-    for quoi, cle in (("nés", "nes"), ("renommés", "renommes"), ("retouchés", "retouches"),
-                      ("déplacés", "deplaces"), ("changés", "changes"),
-                      ("disparus", "disparus")):
-        lignes = b[cle]
-        _err(f"    {quoi:<10}: {len(lignes)}")
-        for l in lignes[:12]:
-            detail = l.get("libelle") or l.get("champ") or ", ".join(l.get("champs", []))
-            extra = f" — {l['releves']} relevé(s)" if l.get("releves") else ""
-            _err(f"      · {l['quoi']} « {l['cle']} » {detail or ''}{extra}")
-        if len(lignes) > 12:
-            _err(f"      … et {len(lignes) - 12} autre(s)")
-    for a in res["avertissements"]:
-        _err(f"  ⚠ {a}")
+_QUOI = {"rubriques": "rubrique(s)", "entrees": "entrée(s)", "variantes": "variante(s)",
+         "listes": "liste(s)", "qualificatifs": "case(s) de liste"}
+
+
+def _bilan(res, *, fautes=()) -> None:
+    """Le bilan, lisible : le verdict en tête, ce qu'il faut corriger, « À savoir », « Ce
+    qui va naître », et ce qui change."""
+    v = res.get("verdict")
+    if v:
+        _err(f"  {v['phrase']}")
+    if fautes:
+        _err(f"  À corriger · {len(fautes)}")
+        for f in fautes:
+            _err(f"    ✗ {grille_import.en_mots(f)}")
+    if res.get("a_savoir"):
+        _err(f"  À savoir · {len(res['a_savoir'])}")
+        for a in res["a_savoir"]:
+            _err(f"    ⚠ {grille_import.en_mots(a)}")
+    nait = {k: n for k, n in (res.get("va_naitre") or {}).items() if n}
+    if nait:
+        _err("  Ce qui va naître : " + " · ".join(f"{n} {_QUOI[k]}" for k, n in nait.items()))
+    b = res.get("bilan")
+    if b:
+        compare = (f"comparé à la version {res['compare_a']}" if res.get("compare_a")
+                   else "aucune version publiée avant elle")
+        _err(f"  Ce qui change ({compare}) :")
+        for quoi, cle in (("nés", "nes"), ("renommés", "renommes"), ("retouchés", "retouches"),
+                          ("déplacés", "deplaces"), ("changés", "changes"),
+                          ("disparus", "disparus")):
+            lignes = b[cle]
+            _err(f"    {quoi:<10}: {len(lignes)}")
+            for l in lignes[:12]:
+                detail = l.get("libelle") or l.get("champ") or ", ".join(l.get("champs", []))
+                extra = f" — {l['releves']} relevé(s)" if l.get("releves") else ""
+                _err(f"      · {l['quoi']} « {l['cle']} » {detail or ''}{extra}")
+            if len(lignes) > 12:
+                _err(f"      … et {len(lignes) - 12} autre(s)")
 
 
 def _activer_et_masquer(conn, args, grille_id: int, numero=None) -> list:
@@ -145,6 +171,8 @@ def cmd_importer(args) -> int:
         if chemin and not os.path.isfile(chemin):
             _err(f"Fichier introuvable : {chemin}")
             return CODE_REFUS
+    noms = (os.path.basename(args.fichier),
+            os.path.basename(args.listes) if args.listes else "listes")
     conn = database.get_connection()
     try:
         if conn.execute("SELECT 1 FROM projet WHERE id = ?", (args.projet,)).fetchone() is None:
@@ -159,7 +187,7 @@ def cmd_importer(args) -> int:
                     conn, projet_id=args.projet, flux_entrees=f, flux_listes=listes,
                     grille_id=args.grille, nom=args.nom, ouverte=args.ouverte,
                     porte_sur=args.porte_sur, note=args.note, par=None,
-                    a_blanc=args.a_blanc)
+                    a_blanc=args.a_blanc, noms=noms)
             finally:
                 if listes is not None:
                     listes.close()
@@ -179,8 +207,7 @@ def cmd_importer(args) -> int:
     except grille_import.Refus as e:
         conn.rollback()
         _err(e.message)
-        for a in e.anomalies:
-            _err(f"  ✗ {a}")
+        _bilan(e.bilan, fautes=e.anomalies)
         return CODE_REFUS
     finally:
         conn.close()
