@@ -556,7 +556,7 @@ semaines » (Hugo, le même jour).
   le guide passe encore sous la barre de Firefox, la cause serait l'ancrage `bottom: 0` et
   non la hauteur (piste : `visualViewport`). À rejouer sur le Galaxy, clavier compris. Les
   autres boîtes à 100 % de la hauteur auraient le même défaut sans l'avoir montré : `.lf.bi`
-  (Bibliothèque), `.preview` (Recherche), `#tr-mini img` (Transcription de l'Atelier). **Rejoué par Hugo le 2026-11-02, en production (`55da317`) : « c'est bon »**
+  (Bibliothèque), `.preview` (Recherche), `#tr-mini img` (Transcription de l'Atelier). **Rejoué par Hugo le 2026-11-02, en production (`55da317`) : « c'est bon »** **Les autres boîtes mesurées le 2026-11-02 en simulation** : `.lf.bi`, l'Administration, `.croise`, l'arbre et la minicarte ne perdent rien ; l'aperçu de la Recherche avait le défaut, corrigé avec la case de cette page (`0ac6d79`, cf. `UX-7`). Le jeton `--vh-feuille` est devenu `--svh-visible`, à la racine
 - [x] **L'étiquette du lien ne couvre pas la planche** — attendu : pendant « Désigner sur la
   planche », aucune consigne ne recouvre la minicarte ; elle ne dit pas « Cliquez » au doigt,
   et s'annule au doigt comme par Échap. Relevé par Hugo le 2026-11-02 sur l'iPad : sur
