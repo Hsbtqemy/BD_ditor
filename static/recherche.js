@@ -244,7 +244,7 @@ function renderResults(res, q) {
   for (const r of res.results.slice(0, compte.n)) {
     const card = document.createElement("div");
     card.className = "result";
-    card.title = "Aperçu en place (clic) — ✏️ pour éditer dans la visionneuse";
+    card.title = "Aperçu en place (clic) — ✏️ pour éditer dans l'Atelier";
     // Cliquable mais pas un lien (ouvre l'aperçu) → le rendre accessible au clavier.
     card.setAttribute("role", "button");
     card.tabIndex = 0;

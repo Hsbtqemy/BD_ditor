@@ -1078,7 +1078,7 @@ function renderAccord(r) {
   const date = r.indexe_le ? ` · indexé le ${esc(r.indexe_le)}` : "";
   if (!r.revus) {
     body.innerHTML = `<p class="muted small">Modèle : <b>${modele}</b>${date}</p>`
-      + `<p class="muted small">Aucun token relu — corrigez ou validez des tokens (Visionneuse)`
+      + `<p class="muted small">Aucun token relu — corrigez ou validez des tokens (Atelier)`
       + ` pour mesurer l'accord.</p>`;
     return;
   }

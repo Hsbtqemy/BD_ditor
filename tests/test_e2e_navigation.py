@@ -285,6 +285,9 @@ def test_recherche_resultat_apercu_et_lien_edition(page, seeded_ocr):
     expect(page.locator("#preview")).to_be_visible()
     href = page.locator("#preview-edit").get_attribute("href")
     assert f"region={s['region']}" in href and "retour=" in href
+    # UX-6 — le lien nomme la page comme la navigation : « Atelier », jamais « Visionneuse ».
+    expect(page.locator("#preview-edit")).to_have_text("✏️ Atelier")
+    expect(card).to_have_attribute("title", re.compile(r"dans l'Atelier$"))
 
 
 def test_visionneuse_menu_import_export(page, live_server):
