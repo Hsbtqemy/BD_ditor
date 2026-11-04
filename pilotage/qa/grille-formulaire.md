@@ -52,6 +52,7 @@ pas.
 - [ ] Revenir au formulaire de « Lieux QA » (*Administration › Projets › Projet principal*, « Modifier… » sur sa ligne). Cliquer « Intérieur » dans le plan, puis ↓ (« Descendre Intérieur ») : l'aperçu montre « Extérieur » puis « Intérieur », et la tête dit « brouillon v2 »
 - [ ] Le focus sur la ligne « Intérieur » du plan (Tab jusqu'à elle), Alt + ↑ : l'aperçu revient à « Intérieur » puis « Extérieur », et le focus est resté sur « Intérieur »
 - [ ] ↑ sur la première rubrique est éteint, et son survol dit « Déjà au bord »
+- [ ] Cliquer « Toute la grille » dans le plan : « Note de la v2 » est vide (la note de la v1 ne s'y recopie pas) ; y écrire « Intérieur d'abord », Tab, recharger la page : la note est restée
 - [ ] « ← Projet principal » en tête du formulaire : la fiche du projet revient, le focus sur « Modifier… » de « Lieux QA », et l'adresse ne porte plus `&grille=`
 
 ### Une entrée employée, grille fermée, sous `proprio`
