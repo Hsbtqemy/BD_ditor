@@ -135,3 +135,10 @@ test("les valeurs d'un relevé se nomment avec leur accord (ANN-7, page Annotati
   assert.match(C.messageNonEnregistre({ champ: "precision", auteur: null }),
                /: la vôtre n'a pas été enregistrée\.$/);
 });
+
+test("le formulaire d'une grille nomme ses champs (ANN-7)", () => {
+  assert.equal(C.titreConflit({ champ: "definition", auteur: null }), "Définition modifiée ailleurs");
+  assert.equal(C.titreConflit({ champ: "exemples", auteur: null }), "Exemples modifiés ailleurs");
+  assert.equal(C.titreConflit({ champ: "libelle", auteur: null }), "Nom modifié ailleurs");
+  assert.equal(C.titreConflit({ champ: "ordre", auteur: null }), "Ordre modifié ailleurs");
+});

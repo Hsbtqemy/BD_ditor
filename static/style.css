@@ -3871,6 +3871,118 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .pg-genre-part { border-color: var(--accent-amber); }
 .pg-pied { margin-top: 0; }
 
+/* ── Le formulaire d'une grille (ANN-7 ; l'option HYBRIDE tranchée sur maquette le
+   2026-11-03) ─────────────────────────────────────────────────────────────────────────
+   Il prend la fiche entière : la liste des projets s'efface. TROIS colonnes de taille FIXE
+   pendant le travail — le plan, la fiche, l'aperçu —, chacune qui défile seule ; l'éditeur
+   remplit la hauteur de la fiche, jamais moins de 28rem (une fenêtre basse fait défiler la
+   fiche entière plutôt que d'écraser les colonnes). Plus étroit que ses trois colonnes, il ne
+   se tasse pas : il le DIT (une requête sur la largeur de la fiche, zoom d'interface compris). */
+.lf.pj-formulaire { grid-template-columns: minmax(0, 1fr); }
+.lf.pj-formulaire > .lf-liste { display: none; }
+.lf.pj-formulaire > .lf-fiche { display: flex; flex-direction: column; padding-bottom: .6rem; }
+.fm { display: flex; flex-direction: column; gap: .4rem; flex: 1 0 auto; min-height: 0; }
+.fm-tete { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .4rem 1rem; }
+.fm-retour { flex: 0 0 auto; }
+.fm-tete-l { flex: 1 1 18rem; min-width: 0; }
+.fm-tete h3 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+.fm-tete h3:focus { outline: none; }
+.fm-tete h3:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.fm-tete .pj-sous { margin: .2rem 0 0; display: flex; flex-wrap: wrap; gap: .3rem .7rem;
+                    align-items: baseline; }
+.fm-tete-gestes { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.fm-confirme { flex: 0 0 100%; }
+.fm button[aria-disabled="true"] { border-style: dashed; cursor: not-allowed; }
+.fm-ligne { display: flex; flex-wrap: wrap; gap: .2rem 1rem; align-items: baseline;
+            min-height: 1.3rem; }
+.fm-ligne .col-msg { margin: 0; flex: 1 1 20rem; min-width: 0; }
+.fm-enreg { color: var(--accent-green); }
+.fm-etroit { display: none; }
+.fm-ed { display: grid; grid-template-columns: 16rem minmax(24rem, 1fr) 23rem;
+         grid-template-rows: minmax(0, 1fr); flex: 1 0 0; min-height: 28rem;
+         border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+         background: var(--bg-panel); }
+@container lf-fiche (max-width: 64rem) {
+  .fm-ed { display: none; }
+  .fm-etroit { display: block; }
+}
+.fm-plan { border-right: 1px solid var(--border); overflow-y: auto; padding: .5rem;
+           display: flex; flex-direction: column; gap: .3rem; min-height: 0; }
+.fm-plan .lf-objets { list-style: none; margin: 0; padding: 0; }
+.fm-noeud { align-items: baseline; }
+.fm-prof-1 { padding-left: 1.4rem; } .fm-prof-2 { padding-left: 2.3rem; }
+.fm-prof-3 { padding-left: 3.2rem; } .fm-prof-4, .fm-prof-5 { padding-left: 4.1rem; }
+.fm-rubrique .lf-nom { font-weight: 600; }
+.fm-grille .lf-nom { font-style: italic; }
+.fm-retiree .lf-nom { text-decoration: line-through; color: var(--text-muted); }
+.fm-sep { padding: .4rem .5rem .1rem; }
+.fm-plus { display: flex; gap: .3rem; flex-wrap: wrap; }
+.fm-listes-t { margin: .8rem 0 0; font-size: .78rem; letter-spacing: .06em;
+               text-transform: uppercase; color: var(--text-muted); }
+.fm-fiche { overflow-y: auto; padding: .8rem 1.1rem 4rem; min-width: 0; min-height: 0; }
+.fm-genre { margin: 0 0 .15rem; color: var(--text-muted); font-size: .85rem; overflow-wrap: anywhere; }
+.fm-lib { font-size: 1.15rem; font-weight: 600; width: min(28rem, 100%); box-sizing: border-box;
+          background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
+          border-radius: 6px; padding: .25rem .5rem; font-family: inherit; }
+.fm-ent-tete { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .4rem 1rem; }
+.fm-tete-nom { flex: 1 1 16rem; min-width: 0; }
+.fm-gestes-objet { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+.fm-dep { min-width: 1.9rem; justify-content: center; }
+.fm-note { margin: .5rem 0 0; color: var(--text-muted); font-size: .92rem; }
+fieldset.fm-q { border: 0; padding: 0; margin: 1rem 0 0; min-width: 0; }
+.fm-q-titre { padding: 0; font-weight: 600; display: flex; align-items: baseline; gap: .4rem;
+              margin-bottom: .15rem; }
+.fm-q-n { display: inline-grid; place-items: center; min-width: 1.45rem; height: 1.45rem;
+          border-radius: 50%; font-size: .85rem;
+          background: color-mix(in srgb, var(--accent-blue) 22%, transparent); }
+.fm-aide { color: var(--text-muted); cursor: help; font-weight: 400; }
+.fm-positions { max-width: 38rem; }
+.fm-position { padding: .3rem .55rem; cursor: default; }
+.fm-position > input[type="radio"] { cursor: pointer; }
+.fm-position > label { cursor: pointer; }
+.fm-position.fm-eteinte > label { cursor: not-allowed; color: var(--text-muted); }
+.fm-zones, .fm-sous { grid-column: 2; display: flex; flex-wrap: wrap; gap: .2rem .8rem;
+                      margin-top: .2rem; font-size: .92rem; align-items: center; }
+.fm-zones label:has(input:disabled) { color: var(--text-muted); }
+.fm-vars { grid-column: 2; list-style: none; margin: .3rem 0 .2rem; padding: 0; display: grid;
+           gap: .25rem; counter-reset: v; }
+.fm-vars li { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.fm-vars li::before { counter-increment: v; content: counter(v); color: var(--text-muted);
+                      font-size: .8rem; min-width: 1.1rem; text-align: right; }
+.fm input:not([type]), .fm textarea, .fm-select { background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; padding: .2rem .4rem; font: inherit;
+  min-width: 0; max-width: 100%; box-sizing: border-box; }
+.fm-var-lib { width: 13rem; }
+.fm-case-def { width: 16rem; }
+.fm-var-guide { flex-basis: 100%; display: grid; gap: .25rem; padding: .3rem 0 .3rem 1.4rem;
+                font-size: .92rem; }
+.fm-var-neuve { grid-column: 2; display: flex; flex-wrap: wrap; gap: .3rem .6rem;
+                align-items: center; font-size: .92rem; margin-top: .2rem; }
+.fm-prec { grid-column: 2; width: 14rem; margin-top: .2rem; }
+.fm-select { max-width: 28rem; }
+.fm-guide-champs { display: grid; gap: .25rem; max-width: 38rem; }
+.fm-guide-champs label { font-size: .92rem; margin-top: .25rem; }
+.fm-manque .fm-q-n { background: color-mix(in srgb, var(--accent-amber) 40%, transparent); }
+.fm-manque-msg { margin: .3rem 0 0; color: var(--accent-amber); font-size: .92rem; }
+.fm-section { margin-top: 1rem; }
+.fm-section h4 { margin: 0 0 .3rem; font-size: .8rem; text-transform: uppercase;
+                 letter-spacing: .06em; color: var(--text-muted); }
+.fm-creer { margin-top: 1rem; }
+.fm-conflit { border: 1px solid var(--border); border-left: 3px solid var(--ink-red);
+              border-radius: 6px; padding: .45rem .7rem; margin-bottom: .6rem; display: grid;
+              gap: .25rem; }
+.fm-conflit p { margin: 0; overflow-wrap: anywhere; }
+.fm-conflit .an-bandeau-titre { color: var(--ink-red); font-weight: 600; }
+.fm-conflit .an-bandeau-titre:focus { outline: none; }
+.fm-conflit .an-bandeau-titre:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* L'aperçu : la colonne de la grille de la page Annotation, dans sa cellule — la grille en
+   haut, qui défile, et la ligne du guide en bas, à hauteur fixe. */
+.fm-apercu { border-left: 1px solid var(--border); display: flex; flex-direction: column;
+             min-height: 0; min-width: 0; }
+.fm-ap-titre { margin: 0; padding: .6rem .7rem .3rem; font-size: 1rem; }
+.fm-ap-plan { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 .7rem .5rem; }
+.fm-ap-guide { flex: 0 0 9rem; border-top: 1px solid var(--border); padding: .5rem .7rem; }
+
 /* ── Qui y entre (COL-3) — les membres d'un projet, module monté dans sa fiche ────────
    Le frère de « Qui entre », plus haut, et les mêmes précautions : une liste déroulante
    prend la largeur de sa plus longue option, donc elle rétrécit ; la saisie libre garde

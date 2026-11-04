@@ -47,6 +47,22 @@
     releve: ["Relevé", "m", "le relevé"],
     // ANN-7, tranche 2, commit 9 — le nom d'un détail, sur la page Annotation.
     nom: ["Nom", "m", "le nom"],
+    // ANN-7 — le formulaire d'une grille (Administration) : les champs d'une grille, d'une
+    // rubrique, d'une entrée, d'une variante, d'une liste, d'une case, et leur ordre.
+    libelle: ["Nom", "m", "le nom"],
+    porte_sur: ["« Porte sur »", "m", "« porte sur »"],
+    rubrique_cle: ["Rubrique", "f", "la rubrique"],
+    parent_cle: ["Place", "f", "la place"],
+    forme: ["Forme", "f", "la forme"],
+    definition: ["Définition", "f", "la définition"],
+    structure: ["Structure", "f", "la structure"],
+    piege: ["Piège", "m", "le piège"],
+    exemples: ["Exemples", "mp", "les exemples"],
+    lien: ["Lien", "m", "le lien"],
+    cible: ["Cible", "f", "la cible"],
+    cardinalite: ["Nombre de fois", "m", "le nombre de fois"],
+    liste_cle: ["Liste", "f", "la liste"],
+    ordre: ["Ordre", "m", "l'ordre"],
   };
   const INCONNU = ["Valeur", "f", "la valeur"];
 

@@ -1291,6 +1291,7 @@ function pjRendre() {
 function pjRendreDisposition() {
   const choisi = PJ.axe === "bacs" ? PJ.bacSel !== null : (PJ.sel !== null || PJ.creer);
   $("#pj").classList.toggle("lf--fiche", PJ.vueFiche && choisi);
+  $("#pj").classList.toggle("pj-formulaire", fmActif());
 }
 
 /* --- COL-4 — l'axe « Bacs à sable » --------------------------------------------------
@@ -1898,6 +1899,7 @@ async function pjRendreCopie(albumId) {
 function pjRendreFiche() {
   const box = $("#pj-fiche");
   if (PJ.membres) { PJ.membres.demonter(); PJ.membres = null; }
+  if (fmActif()) { fmRendre(); return; }   // le formulaire d'une grille prend la fiche
   const retour = `<button type="button" class="ghost small lf-retour" data-pj-retour="1">← Liste</button>`;
   if (PJ.creer) { box.innerHTML = retour + pjFicheCreer(); return; }
   const p = pjProjet();
@@ -1941,7 +1943,7 @@ function pjRendreFiche() {
   </article>`;
   if (!PJ.fonds || PJ.fonds.projet !== p.id) pjChargerFonds(p);
   if (GR.projet !== p.id) pgCharger(p);
-  else pgListeRedessiner();                  // le titre compte les grilles déjà lues
+  else { pgListeRedessiner(); fmOuvrirVoulu(); }   // le titre compte les grilles déjà lues
   PJ.membres = BDMembresProjet.monter(box.querySelector("[data-membres-projet]"), {
     projet: { id: p.id, nom: p.nom, gerable: !!p.gerable },
     groupesAdmin: PJ.groupesAdmin,
@@ -1998,6 +2000,7 @@ async function pgCharger(p) {
   GR.erreur = erreur;
   pgListeRedessiner();
   if (!$("#pg-import-zone") || !$("#pg-import-zone").childElementCount) pgImportRedessiner();
+  fmOuvrirVoulu();                           // l'adresse nommait une grille
 }
 
 function pgGrille(id) {
@@ -2031,7 +2034,9 @@ function pgListe(p) {
     const tel = e.telecharger.map((t) => `<a class="pg-telecharger"
         href="/api/grilles/${g.id}/versions/${t.numero}/tableur" download>⤓ ${esc(t.libelle)}</a>`)
       .join("");
-    const gestes = tel
+    const gestes = (g.retiree_le ? "" : `<button type="button" class="ghost small"
+          data-gr-modifier="${g.id}" title="Le formulaire : ${g.ouverte ? "en place"
+            : "dans son brouillon"}">Modifier…</button>`) + tel
       + (e.reimporter ? `<button type="button" class="ghost small" data-gr-reimporter="${g.id}"
           >⤒ Réimporter…</button>` : "")
       + (e.publier ? `<button type="button" class="ghost small" data-gr-publier="${g.id}"
@@ -2060,8 +2065,9 @@ function pgImport(p) {
   if (!d || !d.grilles) return "";
   const imp = GR.imp;
   if (!imp) {
-    return `<div class="pg-gestes"><button type="button" class="ghost small"
-      data-gr-importer="1">⤒ Importer un classeur…</button></div>`;
+    return `<div class="pg-gestes"><button type="button" class="primary small"
+      data-gr-construire="1">+ Construire une grille</button><button type="button"
+      class="ghost small" data-gr-importer="1">⤒ Importer un classeur…</button></div>`;
   }
   const titre = imp.grilleId ? `Réimporter « ${esc(imp.nomGrille)} »`
     : "Importer un classeur : une grille neuve";
@@ -2090,10 +2096,15 @@ function pgBilan() {
   const titre = (texte, n) => `<h5>${texte}${n === undefined ? "" : ` · ${n}`}</h5>`;
   const ton = v.etat === "refuse" ? "ko" : v.etat === "a_repondre" ? "attente" : "ok";
   const decl = B.declarationEnMots(v.declaration);
+  // « Corriger dans le formulaire ↗ » : sur un réimport, quand le plan de la grille connaît
+  // l'objet en faute (une entrée que le fichier ajoute n'y est pas).
+  const corriger = (i) => imp.grilleId && imp.planForm && BDGrilleFormulaire.cibleDeFaute(
+    (imp.anomalies || [])[i], imp.planForm) ? `<button type="button" class="ghost small"
+      data-gr-corriger="${i}">Corriger dans le formulaire ↗</button>` : "";
   const fautes = v.fautes.length ? `<section class="pg-bilan-s">${titre("À corriger",
-      v.fautes.length)}<ol class="pg-fautes">${v.fautes.map((f) => `<li class="pg-faute">
+      v.fautes.length)}<ol class="pg-fautes">${v.fautes.map((f, i) => `<li class="pg-faute">
         ${f.ou ? `<p class="pg-faute-ou">${esc(f.ou)}</p>` : ""}<p>${esc(f.quoi)}</p>
-        ${f.faire ? `<p class="pg-faute-faire">→ ${esc(f.faire)}</p>` : ""}</li>`).join("")}
+        ${f.faire ? `<p class="pg-faute-faire">→ ${esc(f.faire)}</p>` : ""}${corriger(i)}</li>`).join("")}
       </ol></section>` : "";
   const repondre = v.aRepondre.length ? `<section class="pg-bilan-s">${titre("À répondre",
       v.aRepondre.length)}${v.aRepondre.map((a, i) => {
@@ -2186,6 +2197,12 @@ async function pgOuvrirImport(grilleId) {
     imp.noms = BDGrillesProjet.nomsDuPlan(
       await apiGet(`/api/grilles/${g.id}/versions/${ref.numero}`));
   } catch (e) { /* les identifiants se liront tels quels */ }
+  // Le plan que le formulaire montrerait : « Corriger dans le formulaire ↗ » y cherche l'objet
+  // d'une faute.
+  const n = BDGrilleFormulaire.versionMontree(g);
+  try { if (n !== null) imp.planForm = await apiGet(`/api/grilles/${g.id}/versions/${n}`); }
+  catch (e) { /* sans lui, le bilan ne mène pas au formulaire */ }
+  if (GR.imp === imp && imp.vue) pgBilanRedessiner();
 }
 
 function pgFermerImport() {
@@ -2230,6 +2247,7 @@ async function pgEnvoyer(aBlanc) {
   if (GR.imp !== imp) return;                // l'import a été fermé ou rouvert entre-temps
   imp.enVol = false;
   imp.vue = BDGrillesProjet.lireReponse(statut, corps, { classeur: true, noms: imp.noms });
+  imp.anomalies = (corps && typeof corps === "object" && corps.anomalies) || [];
   pgBilanRedessiner("#pg-verdict");
   if (!aBlanc && imp.vue.ecrit) {
     const nom = imp.grilleId ? imp.nomGrille
@@ -2256,7 +2274,16 @@ async function pgGeste(id, faire, message) {
 }
 
 function pgClic(b) {
+  if (fmClic(b)) return true;                // le formulaire d'une grille
   const d = b.dataset;
+  if (d.grConstruire) { fmOuvrir(null); return true; }
+  if (d.grModifier) { fmOuvrir(Number(d.grModifier)); return true; }
+  if (d.grCorriger) {
+    const imp = GR.imp, f = imp && (imp.anomalies || [])[Number(d.grCorriger)];
+    const cible = f && BDGrilleFormulaire.cibleDeFaute(f, imp.planForm);
+    if (cible) fmOuvrir(imp.grilleId, cible);
+    return true;
+  }
   if (d.grImporter) { pgOuvrirImport(null); return true; }
   if (d.grReimporter) { pgOuvrirImport(Number(d.grReimporter)); return true; }
   if (d.grImportFermer) { pgFermerImport(); return true; }
@@ -2307,6 +2334,1147 @@ function pgClic(b) {
   return false;
 }
 
+/* --- Le FORMULAIRE d'une grille (ANN-7 ; l'option HYBRIDE tranchée par Hugo sur maquette le
+   2026-11-03 : un formulaire pour construire, le tableur pour retoucher en nombre) ---------
+   Il s'ouvre depuis le bloc « Grilles » — « + Construire une grille », « Modifier… » d'une
+   grille, « Corriger dans le formulaire ↗ » d'un bilan — et prend toute la fiche : la liste
+   des projets s'efface, « ← <le projet> » y ramène. TROIS COLONNES de taille fixe pendant
+   le travail : le plan, la fiche de ce qu'on a choisi (les six questions du catalogue en
+   boutons radio, l'aide en infobulle), l'aperçu de la grille telle que la page Annotation la
+   montre (le balisage de `static/annotation.js`, ses règles lues dans `lib/annotation.js`).
+
+   CHAQUE CHANGEMENT EST GARDÉ, sans « Enregistrer » : un champ part quand on le quitte, un
+   choix quand on le fait, par les routes de `routes/grilles.py`, un geste à la fois (une
+   file), chacun avec la valeur qu'il voyait (CONC-3). Un 409 de valeur vue ouvre le bandeau
+   de l'application (`lib/conflit.js`) au-dessus de la fiche, la saisie GARDÉE dans son
+   champ ; tant qu'il attend, rien d'autre ne part. Ce que le serveur refuserait encore — une
+   variante attendue, une liste à choisir, une sorte de zone, le nom d'un champ — attend chez
+   le formulaire, marqué ● (`lib/grille-formulaire.js`), et éteint « Publier… » ou
+   « Activer ». Ce qui s'offre sur un objet se lit dans ce que les relevés emploient
+   (`emplois`, rendu avec le plan) : une entrée employée se retire, ou se fusionne sur une
+   grille ouverte, et ne s'offre JAMAIS à supprimer.
+
+   La grille ouverte vit dans l'adresse (`&grille=<id>`). Le formulaire est fait pour un écran
+   large : plus étroit, il le DIT au lieu de se tasser (une requête de conteneur sur la fiche).
+   Aucune garde d'écran : chaque route pose sa question, et le message dit son refus. */
+const FM = {
+  ouvert: false,
+  projet: null,
+  grilleId: null,
+  voulu: null,           // la grille que nomme l'adresse, à ouvrir quand la liste est lue
+  neuve: null,           // la grille qu'on construit, pas encore créée : { nom, ouverte, porte }
+  plan: null,            // le plan de la version montrée (`grilles.plan`)
+  emplois: null,         // ce que les relevés y emploient (`grille_ecriture.emplois`)
+  version: null,         // { numero, etat } de la version montrée
+  sel: { t: "grille", cle: "" },
+  att: new Map(),        // entrée → ce qui attend (`BDGrilleFormulaire.repondre`)
+  attPorte: null,        // « Porte sur » : une zone sans sorte, en attente
+  neuf: null,            // { t, parent } : une entrée, une rubrique, une liste sans nom encore
+  guideVar: null,        // la variante dont le guide est déplié
+  confirme: null,        // « supprimer » | « fusionner » | « publier »
+  conflit: null,         // { detail, construire, o } : le 409 d'une valeur vue
+  retenue: null,         // { id, valeur } : une saisie refusée, gardée dans son champ
+  apercu: null,          // { e, v } : la ligne du guide que l'aperçu montre
+  replis: new Set(),     // les rubriques repliées dans l'aperçu
+  file: Promise.resolve(),
+};
+
+function fmActif() {
+  return FM.ouvert && FM.projet === PJ.sel && !PJ.creer && PJ.axe !== "bacs";
+}
+
+function fmGrille() { return FM.grilleId ? pgGrille(FM.grilleId) : null; }
+
+function fmEntree(cle) {
+  return ((FM.plan && FM.plan.entrees) || []).find((e) => e.cle === cle) || null;
+}
+
+function fmReinitialiser() {
+  Object.assign(FM, { ouvert: false, grilleId: null, neuve: null, plan: null, emplois: null,
+                      version: null, sel: { t: "grille", cle: "" }, attPorte: null, neuf: null,
+                      guideVar: null, confirme: null, conflit: null, retenue: null,
+                      apercu: null });
+  FM.att = new Map();
+  FM.replis = new Set();
+}
+
+function fmMsg(texte, erreur) {
+  const l = $("#pj-formulaire-msg");
+  if (l) pjMsg(l, texte, erreur);
+}
+
+/* Le texte d'un refus : sa phrase, puis ce que disent ses fautes (ce qui ne va pas, ce qu'il
+   faut faire), comme le bilan d'un import. */
+function fmTexteDuRefus(e) {
+  const fautes = (e.detail && e.detail.anomalies) || [];
+  const point = (t) => { const s = String(t || ""); return s && !/[.!?…]$/.test(s) ? s + "." : s; };
+  return [e.message || "Échec.", ...fautes.map((f) => {
+    const p = String(f.probleme || "");
+    return point(p[0] ? p[0].toUpperCase() + p.slice(1) : p) + (f.a_faire ? ` → ${point(f.a_faire)}` : "");
+  })].join(" ");
+}
+
+/* Lit la version que le formulaire montre, avec ce que les relevés y emploient. */
+async function fmLirePlan() {
+  const g = fmGrille();
+  if (!g) return;
+  const n = BDGrilleFormulaire.versionMontree(g);
+  if (n === null) return;
+  const plan = await apiGet(`/api/grilles/${g.id}/versions/${n}?emplois=1`);
+  FM.plan = plan;
+  FM.emplois = plan.emplois || null;
+  FM.version = { numero: plan.numero, etat: plan.etat };
+}
+
+/* Relit les grilles du projet (l'état d'une grille change : un brouillon né, une version
+   publiée, un nom), sans rien redessiner du bloc qu'on ne voit pas. */
+async function fmRelireGrilles() {
+  const p = pjProjet();
+  if (!p) return;
+  try { GR.donnees = await apiGet(`/api/projets/${p.id}/grilles`); GR.projet = p.id; }
+  catch (e) { /* l'état se relira à la prochaine lecture */ }
+}
+
+async function fmOuvrir(grilleId, sel, opts = {}) {
+  const p = pjProjet();
+  if (!p) return;
+  fmReinitialiser();
+  FM.ouvert = true;
+  FM.projet = p.id;
+  if (grilleId) {
+    FM.grilleId = grilleId;
+    try { await fmLirePlan(); }
+    catch (e) {
+      fmReinitialiser();
+      pjRendreFiche();
+      pjRendreDisposition();
+      pjMsg($("#pj-grilles-msg"), `La grille n'a pas pu être lue : ${e.message}`, true);
+      return;
+    }
+    if (sel) FM.sel = sel;
+  } else {
+    FM.neuve = { nom: "", ouverte: false, porte: null };
+  }
+  if (opts.pousser !== false) pjEcrireAdresse(true);
+  pjTaireSauf(null);
+  pjRendreFiche();
+  pjRendreDisposition();
+  $("#pj-fiche").scrollTop = 0;
+  const cible = sel && sel.t !== "grille"
+    ? document.querySelector(`.fm-noeud[aria-current="true"]`) : $("#fm-titre");
+  (FM.neuve ? $("#fm-g-nom") : cible || $("#fm-titre"))?.focus();
+}
+
+function fmFermer() {
+  const id = FM.grilleId;
+  fmReinitialiser();
+  pjEcrireAdresse(true);
+  pjRendreFiche();
+  pjRendreDisposition();
+  const retour = id ? document.querySelector(`[data-gr-modifier="${id}"]`)
+    : $("[data-gr-construire]");
+  (retour || $("#pj-fiche-titre"))?.focus();
+}
+
+/* L'adresse nommait une grille : elle s'ouvre une fois la liste des grilles lue. */
+function fmOuvrirVoulu() {
+  const id = FM.voulu;
+  if (!id || FM.ouvert || !GR.donnees || !GR.donnees.grilles) return;
+  FM.voulu = null;
+  const g = pgGrille(id);
+  if (!g || g.retiree_le) {
+    pjMsg($("#pj-grilles-msg"), "Cette grille n'est pas parmi celles du projet qu'on écrit.", true);
+    return;
+  }
+  fmOuvrir(id, null, { pousser: false });
+}
+
+/* --- Les gestes : une file, un geste à la fois ----------------------------------------
+   `construire()` se lit AU MOMENT D'ENVOYER — la valeur vue est celle du plan d'alors, et un
+   geste devenu sans objet (un champ quitté deux fois) ne part pas. Rend { methode, chemin,
+   corps }, `null` (rien ne change), ou { refus } (refusé ici, sans rien envoyer). `o` : `id`
+   et `saisie`, le champ dont la saisie se garde sur un refus ; `apres(r)`, ce qui suit la
+   réponse ; `relire`, l'état de la grille change. */
+function fmGeste(construire, o = {}) {
+  const tour = FM.file.then(async () => {
+    if (!fmActif()) return;
+    if (FM.conflit && !o.resolution) {
+      fmMsg("Un conflit attend votre choix, au-dessus de la fiche : rien d'autre ne part.", true);
+      return;
+    }
+    const g = construire();
+    if (!g) return;
+    if (g.refus) {
+      if (o.id) FM.retenue = { id: o.id, valeur: o.saisie };
+      fmRendre();
+      fmMsg(g.refus, true);
+      return;
+    }
+    fmEnregistrement("enregistrement…");
+    let r;
+    try { r = await apiSend(g.methode, g.chemin, g.corps); }
+    catch (e) { fmRefus(e, construire, o); return; }
+    if (!fmActif()) return;
+    if (r && r.plan) {
+      FM.plan = r.plan;
+      FM.emplois = r.emplois || FM.emplois;
+      FM.version = r.version || FM.version;
+    }
+    if (FM.retenue && FM.retenue.id === o.id) FM.retenue = null;
+    if (o.apres) o.apres(r);
+    if (o.relire || (r && r.brouillon_cree)) await fmRelireGrilles();
+    pjTaireSauf(null);
+    fmRendre();
+    fmEnregistrement(o.message || "✓ enregistré");
+    if (o.message) fmMsg(o.message);
+  });
+  FM.file = tour.catch((e) => { fmMsg(e.message || "Échec.", true); });
+  return tour;
+}
+
+function fmEnregistrement(texte) {
+  const l = $("#fm-enreg");
+  if (l) l.textContent = texte;
+}
+
+function fmRefus(e, construire, o) {
+  fmEnregistrement("");
+  if (e.statut === 409 && e.detail && e.detail.conflit) {
+    FM.conflit = { detail: e.detail, construire, o };
+    if (o.id) FM.retenue = { id: o.id, valeur: o.saisie };
+    fmRendre();
+    const b = $("#fm-conflit-titre");
+    if (b) b.focus();
+    return;
+  }
+  if (o.id) FM.retenue = { id: o.id, valeur: o.saisie };
+  fmRendre();
+  fmMsg(fmTexteDuRefus(e), true);
+}
+
+/* « Remplacer par la mienne » : le plan relu, la valeur vue devient celle de l'autre, et le
+   même geste repart. « Garder l'autre » : le plan relu, la saisie s'en va. */
+async function fmResoudre(garderMienne) {
+  const cf = FM.conflit;
+  if (!cf) return;
+  try { await fmLirePlan(); } catch (e) { fmMsg(e.message, true); return; }
+  FM.conflit = null;
+  if (!garderMienne) {
+    FM.retenue = null;
+    fmRendre();
+    fmMsg("La version enregistrée est gardée.");
+    return;
+  }
+  fmRendre();
+  await fmGeste(cf.construire, { ...cf.o, resolution: true });
+}
+
+/* --- Ce que les champs envoient ------------------------------------------------------ */
+
+const fmChemin = (suite) => `/api/grilles/${FM.grilleId}${suite || ""}`;
+const fmCle = (cle) => encodeURIComponent(cle);
+
+function fmPatchEntree(cle, champs, o = {}) {
+  return fmGeste(() => {
+    const e = fmEntree(cle);
+    if (!e) return null;
+    const changes = {};
+    for (const [c, x] of Object.entries(champs)) {
+      if (JSON.stringify(BDGrilleFormulaire.vuEntree(e, c)) !== JSON.stringify(x)) changes[c] = x;
+    }
+    if (!Object.keys(changes).length) return null;
+    return { methode: "PATCH", chemin: fmChemin(`/entrees/${fmCle(cle)}`),
+             corps: BDGrilleFormulaire.corpsEntree(e, changes) };
+  }, o);
+}
+
+/* Une réponse aux questions 2, 4, 5 : ce qui attend reste ici, ce qui peut partir part. */
+function fmRepondre(cle, q, valeur, o = {}) {
+  const e = fmEntree(cle);
+  if (!e) return;
+  const r = BDGrilleFormulaire.repondre(e, FM.att.get(cle), q, valeur);
+  if (r.att) FM.att.set(cle, r.att); else FM.att.delete(cle);
+  if (r.refus) {
+    if (o.id) FM.retenue = { id: o.id, valeur: o.saisie };
+    fmRendre();
+    fmMsg(r.refus, true);
+    return;
+  }
+  if (r.envoi) fmPatchEntree(cle, r.envoi, o);
+  else fmRendre();
+}
+
+function fmSortesCochees(attr) {
+  return [...document.querySelectorAll(`[${attr}]`)].filter((x) => x.checked)
+    .map((x) => x.getAttribute(attr));
+}
+
+/* Un champ quitté, un choix fait (l'évènement `change` dans la fiche). */
+function fmChange(t) {
+  if (!fmActif() || !t.closest || !t.closest(".fm")) return false;
+  const F = BDGrilleFormulaire;
+  const v = t.value;
+  const champ = { id: t.id, saisie: v };
+  const s = FM.sel;
+  // La grille.
+  if (t.id === "fm-g-nom") {
+    if (FM.neuve) { FM.neuve.nom = v; fmRendre(); return true; }
+    const nom = v.trim();
+    fmGeste(() => {
+      const g = fmGrille();
+      if (!nom) return { refus: "La grille garde un nom." };
+      if (!g || g.nom === nom) return null;
+      return { methode: "PATCH", chemin: fmChemin(), corps: { nom, vu: { nom: g.nom } } };
+    }, { ...champ, relire: true });
+    return true;
+  }
+  if (t.name === "fm-ouverte" && FM.neuve) { FM.neuve.ouverte = v === "oui"; fmRendre(); return true; }
+  if (t.name === "fm-porte" || t.hasAttribute("data-fm-porte-zone")) {
+    const choix = t.name === "fm-porte" ? v : "zone";
+    const rep = { choix, sortes: choix === "zone" ? fmSortesCochees("data-fm-porte-zone") : [] };
+    const cibles = F.ciblesDeReponse(rep);
+    if (FM.neuve) { FM.neuve.porte = rep; fmRendre(); return true; }
+    FM.attPorte = cibles === null ? rep : null;
+    if (cibles === null) { fmRendre(); return true; }
+    fmGeste(() => {
+      const avant = F.ordonner(FM.plan.porte_sur);
+      if (avant.join("|") === cibles.join("|")) return null;
+      return { methode: "PATCH", chemin: fmChemin(),
+               corps: { porte_sur: cibles, vu: { porte_sur: avant } } };
+    }, { relire: true });
+    return true;
+  }
+  // Une entrée.
+  if (s.t === "entree") {
+    if (t.id === "fm-e-libelle") {
+      const libelle = v.trim();
+      if (FM.neuf && FM.neuf.t === "entree") {
+        if (!libelle) return true;
+        const parent = FM.neuf.parent;
+        fmGeste(() => ({ methode: "POST", chemin: fmChemin("/entrees"),
+                         corps: { libelle, rubrique_cle: parent || null } }),
+                { ...champ, apres: (r) => { FM.neuf = null; FM.sel = { t: "entree", cle: r.cle }; } });
+        return true;
+      }
+      if (!libelle) {
+        FM.retenue = { id: t.id, valeur: v };
+        fmMsg("L'entrée garde un nom : le renommer garde ses relevés.", true);
+        return true;
+      }
+      fmPatchEntree(s.cle, { libelle }, champ);
+      return true;
+    }
+    if (t.id === "fm-e-rubrique") {
+      if (FM.neuf && FM.neuf.t === "entree") { FM.neuf.parent = v || null; return true; }
+      fmPatchEntree(s.cle, { rubrique_cle: v || null });
+      return true;
+    }
+    if (t.name === "fm-cible" || t.hasAttribute("data-fm-zone")) {
+      const choix = t.name === "fm-cible" ? v : "zone";
+      fmRepondre(s.cle, "cible", { choix, sortes: choix === "zone"
+        ? fmSortesCochees("data-fm-zone") : [] });
+      return true;
+    }
+    if (t.name === "fm-card") {
+      fmPatchEntree(s.cle, { cardinalite: v === "ordinaire" ? null : v });
+      return true;
+    }
+    if (t.name === "fm-forme") { fmRepondre(s.cle, "forme", v); return true; }
+    if (t.id === "fm-e-liste") { fmRepondre(s.cle, "liste", v); return true; }
+    if (t.name === "fm-prec") {
+      fmRepondre(s.cle, "precision", v === "oui");
+      if (v === "oui") $("#fm-e-precision")?.focus();
+      return true;
+    }
+    if (t.id === "fm-e-precision") { fmRepondre(s.cle, "nomPrecision", v, champ); return true; }
+    if (t.name === "fm-lien") { fmPatchEntree(s.cle, { lien: v === "oui" }); return true; }
+    if (t.id === "fm-e-exemples") {
+      const ex = F.exemplesDeTexte(v);
+      if (ex.refus) { FM.retenue = { id: t.id, valeur: v }; fmMsg(ex.refus, true); return true; }
+      fmPatchEntree(s.cle, { exemples: ex.exemples }, champ);
+      return true;
+    }
+    const guide = { "fm-e-definition": "definition", "fm-e-structure": "structure",
+                    "fm-e-piege": "piege" }[t.id];
+    if (guide) { fmPatchEntree(s.cle, { [guide]: v.trim() || null }, champ); return true; }
+    if (t.id === "fm-var-neuve") {
+      const libelle = v.trim();
+      if (!libelle) return true;
+      const cle = s.cle;
+      fmGeste(() => {
+        const e = fmEntree(cle);
+        if (!e) return null;
+        const envoi = F.envoiVariante(FM.grilleId, e, FM.att.get(cle), libelle);
+        return envoi;
+      }, { apres: () => {
+        const a = FM.att.get(cle);
+        if (a) { delete a.forme; if (!Object.keys(a).length) FM.att.delete(cle); }
+      } });
+      return true;
+    }
+    if (t.hasAttribute("data-fm-var")) {
+      const vc = t.dataset.fmVar, c = t.dataset.fmChamp, cle = s.cle;
+      let valeur = v.trim() || null;
+      if (c === "exemples") {
+        const ex = F.exemplesDeTexte(v);
+        if (ex.refus) { FM.retenue = { id: t.id, valeur: v }; fmMsg(ex.refus, true); return true; }
+        valeur = ex.exemples;
+      }
+      if (c === "libelle" && !valeur) {
+        FM.retenue = { id: t.id, valeur: v };
+        fmMsg("Une variante garde un nom.", true);
+        return true;
+      }
+      fmGeste(() => {
+        const x = ((fmEntree(cle) || {}).variantes || []).find((y) => y.cle === vc);
+        if (!x) return null;
+        const vu = c === "exemples" ? (x.exemples || []) : (x[c] ?? null);
+        if (JSON.stringify(vu) === JSON.stringify(valeur)) return null;
+        return { methode: "PATCH", chemin: fmChemin(`/entrees/${fmCle(cle)}/variantes/${fmCle(vc)}`),
+                 corps: { [c]: valeur, vu: { [c]: vu } } };
+      }, champ);
+      return true;
+    }
+  }
+  // Une rubrique.
+  if (s.t === "rubrique") {
+    if (t.id === "fm-r-libelle") {
+      const libelle = v.trim();
+      if (FM.neuf && FM.neuf.t === "rubrique") {
+        if (!libelle) return true;
+        const parent = FM.neuf.parent;
+        fmGeste(() => ({ methode: "POST", chemin: fmChemin("/rubriques"),
+                         corps: { libelle, parent_cle: parent || null } }),
+                { ...champ, apres: (r) => { FM.neuf = null; FM.sel = { t: "rubrique", cle: r.cle }; } });
+        return true;
+      }
+      fmPatchObjet("rubrique", s.cle, "libelle", libelle || null, champ);
+      return true;
+    }
+    if (t.id === "fm-r-parent") {
+      if (FM.neuf && FM.neuf.t === "rubrique") { FM.neuf.parent = v || null; return true; }
+      fmPatchObjet("rubrique", s.cle, "parent_cle", v || null);
+      return true;
+    }
+  }
+  // Une liste et ses cases.
+  if (s.t === "liste") {
+    if (t.id === "fm-l-libelle") {
+      const libelle = v.trim();
+      if (FM.neuf && FM.neuf.t === "liste") {
+        if (!libelle) return true;
+        fmGeste(() => ({ methode: "POST", chemin: fmChemin("/listes"), corps: { libelle } }),
+                { ...champ, apres: (r) => { FM.neuf = null; FM.sel = { t: "liste", cle: r.cle }; } });
+        return true;
+      }
+      fmPatchObjet("liste", s.cle, "libelle", libelle || null, champ);
+      return true;
+    }
+    if (t.id === "fm-case-neuve") {
+      const libelle = v.trim();
+      if (!libelle) return true;
+      const lc = s.cle;
+      fmGeste(() => ({ methode: "POST", chemin: fmChemin(`/listes/${fmCle(lc)}/cases`),
+                       corps: { libelle } }));
+      return true;
+    }
+    if (t.hasAttribute("data-fm-case")) {
+      const valeur = v.trim() || null;
+      if (t.dataset.fmChamp === "libelle" && !valeur) {
+        FM.retenue = { id: t.id, valeur: v };
+        fmMsg("Une case garde un nom.", true);
+        return true;
+      }
+      fmPatchObjet("case", t.dataset.fmCase, t.dataset.fmChamp, valeur, champ, s.cle);
+      return true;
+    }
+  }
+  return false;
+}
+
+/* Un champ d'une rubrique, d'une liste ou d'une case, avec sa valeur vue. */
+function fmPatchObjet(quoi, cle, c, valeur, o = {}, liste) {
+  return fmGeste(() => {
+    const p = FM.plan;
+    let objet, chemin;
+    if (quoi === "rubrique") {
+      objet = p.rubriques.find((r) => r.cle === cle);
+      chemin = fmChemin(`/rubriques/${fmCle(cle)}`);
+    } else if (quoi === "liste") {
+      objet = p.listes.find((l) => l.cle === cle);
+      chemin = fmChemin(`/listes/${fmCle(cle)}`);
+    } else {
+      const l = p.listes.find((x) => x.cle === liste);
+      objet = l && l.qualificatifs.find((q) => q.cle === cle);
+      chemin = fmChemin(`/listes/${fmCle(liste)}/cases/${fmCle(cle)}`);
+    }
+    if (!objet) return null;
+    if (c === "libelle" && !valeur) return { refus: "Un nom ne s'efface pas : écrivez-en un autre." };
+    const vu = objet[c] ?? null;
+    if (vu === valeur) return null;
+    return { methode: "PATCH", chemin, corps: { [c]: valeur, vu: { [c]: vu } } };
+  }, o);
+}
+
+/* --- Les boutons ----------------------------------------------------------------------- */
+
+function fmChoisir(t, cle) {
+  FM.sel = { t, cle };
+  FM.neuf = null;
+  FM.confirme = null;
+  FM.guideVar = null;
+  FM.apercu = null;
+  FM.retenue = null;
+  pjTaireSauf(null);
+  fmRendre();
+}
+
+async function fmCreerGrille() {
+  const p = pjProjet(), n = FM.neuve;
+  if (!p || !n) return;
+  const cibles = BDGrilleFormulaire.ciblesDeReponse(n.porte);
+  let r;
+  try {
+    r = await apiSend("POST", `/api/projets/${p.id}/grilles`,
+                      { nom: n.nom.trim(), ouverte: !!n.ouverte, porte_sur: cibles });
+  } catch (e) { fmMsg(fmTexteDuRefus(e), true); return; }
+  await pgCharger(p);
+  FM.neuve = null;
+  FM.grilleId = r.grille_id;
+  FM.plan = r.plan;
+  FM.emplois = r.emplois;
+  FM.version = r.version;
+  FM.sel = { t: "grille", cle: "" };
+  pjEcrireAdresse(true);
+  fmRendre();
+  fmEnregistrement("✓ enregistré");
+  fmMsg(`« ${n.nom.trim()} » est créée. Ajoutez-lui ses entrées : « + Entrée ».`);
+  $("#fm-titre")?.focus();
+}
+
+function fmClic(b) {
+  if (!b.closest(".fm")) return false;
+  const d = b.dataset, F = BDGrilleFormulaire, s = FM.sel;
+  if (b.getAttribute("aria-disabled") === "true") {
+    fmMsg(b.title || "Ce geste n'est pas offert ici.", true);
+    return true;
+  }
+  if (d.fmRetour) { fmFermer(); return true; }
+  if (d.fmRemplacer) { fmResoudre(true); return true; }
+  if (d.fmGarder) { fmResoudre(false); return true; }
+  if (d.fmCreer) { fmCreerGrille(); return true; }
+  if (d.fmSelT) { fmChoisir(d.fmSelT, d.fmSelC || ""); return true; }
+  if (d.fmApE) {
+    if (s.t !== "entree" || s.cle !== d.fmApE) fmChoisir("entree", d.fmApE);
+    FM.apercu = { e: d.fmApE, v: d.fmApV || null };
+    fmRendre();
+    return true;
+  }
+  if (d.fmApRub) {
+    if (FM.replis.has(d.fmApRub)) FM.replis.delete(d.fmApRub); else FM.replis.add(d.fmApRub);
+    fmRendre();
+    return true;
+  }
+  if (d.fmPlus) {
+    const parent = d.fmPlus === "entree"
+      ? (s.t === "rubrique" ? s.cle : s.t === "entree" ? ((fmEntree(s.cle) || {}).rubrique_cle || null) : null)
+      : d.fmPlus === "rubrique" && s.t === "rubrique" ? s.cle : null;
+    FM.sel = { t: d.fmPlus, cle: null };
+    FM.neuf = { t: d.fmPlus, parent };
+    FM.confirme = null;
+    pjTaireSauf(null);
+    fmRendre();
+    $({ entree: "#fm-e-libelle", rubrique: "#fm-r-libelle", liste: "#fm-l-libelle" }[d.fmPlus])?.focus();
+    return true;
+  }
+  if (d.fmDeplacer) {
+    const corps = F.deplacer(FM.plan, d.fmQuoi, d.fmCle, Number(d.fmDeplacer), d.fmParent || undefined);
+    if (!corps) return true;
+    fmGeste(() => {
+      const c = F.deplacer(FM.plan, d.fmQuoi, d.fmCle, Number(d.fmDeplacer), d.fmParent || undefined);
+      return c ? { methode: "PUT", chemin: fmChemin("/ordre"), corps: c } : null;
+    });
+    return true;
+  }
+  if (d.fmVarGuide) {
+    FM.guideVar = FM.guideVar === d.fmVarGuide ? null : d.fmVarGuide;
+    fmRendre();
+    return true;
+  }
+  if (d.fmVarSuppr) {
+    const cle = s.cle, vc = d.fmVarSuppr;
+    fmGeste(() => ({ methode: "DELETE",
+                     chemin: fmChemin(`/entrees/${fmCle(cle)}/variantes/${fmCle(vc)}`) }));
+    return true;
+  }
+  if (d.fmCaseSuppr) {
+    const lc = s.cle, qc = d.fmCaseSuppr;
+    fmGeste(() => ({ methode: "DELETE", chemin: fmChemin(`/listes/${fmCle(lc)}/cases/${fmCle(qc)}`) }));
+    return true;
+  }
+  if (d.fmConfirme) {
+    FM.confirme = FM.confirme === d.fmConfirme ? null : d.fmConfirme;
+    pjTaireSauf(null);
+    fmRendre();
+    $(FM.confirme === "publier" ? "#fm-publier-ok" : FM.confirme === "fusionner" ? "#fm-fusion-dans"
+      : FM.confirme === "supprimer" ? "#fm-supprimer-ok" : `[data-fm-confirme="${d.fmConfirme}"]`)?.focus();
+    return true;
+  }
+  if (d.fmSupprimerOk) {
+    const t = s.t, cle = s.cle;
+    const chemin = { entree: `/entrees/${fmCle(cle)}`, rubrique: `/rubriques/${fmCle(cle)}`,
+                     liste: `/listes/${fmCle(cle)}` }[t];
+    const rubrique = t === "entree" ? ((fmEntree(cle) || {}).rubrique_cle || null) : null;
+    fmGeste(() => ({ methode: "DELETE", chemin: fmChemin(chemin) }), {
+      apres: () => {
+        FM.confirme = null;
+        FM.att.delete(cle);
+        FM.sel = rubrique ? { t: "rubrique", cle: rubrique } : { t: "grille", cle: "" };
+      },
+      message: "Supprimée." });
+    return true;
+  }
+  if (d.fmRetirer || d.fmRemettre) {
+    const cle = s.cle, retirer = !!d.fmRetirer;
+    fmGeste(() => ({ methode: retirer ? "POST" : "DELETE",
+                     chemin: fmChemin(`/entrees/${fmCle(cle)}/retrait`) }),
+            { message: retirer ? "Retirée : elle ne se pose plus, ses relevés restent, à revoir."
+              : "Remise en usage." });
+    return true;
+  }
+  if (d.fmFusionnerOk) {
+    const cle = s.cle, dans = ($("#fm-fusion-dans") || {}).value;
+    if (!dans) { fmMsg("Choisissez l'entrée qui reçoit ses relevés.", true); return true; }
+    fmGeste(() => ({ methode: "POST", chemin: fmChemin(`/entrees/${fmCle(cle)}/fusion`),
+                     corps: { dans } }),
+            { apres: () => { FM.confirme = null; FM.att.delete(cle); FM.sel = { t: "entree", cle: dans }; },
+              message: "Fusionnée : ses relevés suivent l'entrée choisie." });
+    return true;
+  }
+  if (d.fmPublierOk) {
+    const n = Number(d.fmVersion);
+    fmGeste(() => ({ methode: "POST", chemin: fmChemin(`/versions/${n}/publication`) }), {
+      relire: true, apres: () => { FM.confirme = null; },
+      message: `La version ${n} est publiée : elle ne change plus, hors d'une coquille.` });
+    // Publiée, la version montrée reste celle-là ; le plan se relit avec son nouvel état.
+    FM.file = FM.file.then(() => fmLirePlan().then(fmRendre).catch(() => {}));
+    return true;
+  }
+  if (d.fmActiver) {
+    const p = pjProjet(), n = Number(d.fmVersion);
+    fmGeste(() => ({ methode: "PUT", chemin: `/api/projets/${p.id}/grilles/${FM.grilleId}/activation`,
+                     corps: { version: n } }), {
+      relire: true, message: "La grille est active dans le projet : elle paraît dans la page Annotation." });
+    return true;
+  }
+  if (d.fmReimporter) {
+    const id = FM.grilleId;
+    fmFermer();
+    pgOuvrirImport(id);
+    return true;
+  }
+  return false;
+}
+
+/* Le plan se parcourt aux flèches ; Alt + flèche range l'objet choisi parmi ses frères. */
+function fmTouche(ev) {
+  const t = ev.target;
+  if (!fmActif() || !t.matches || !t.matches(".fm-noeud")) return false;
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(ev.key)) return false;
+  ev.preventDefault();
+  if (ev.altKey && (ev.key === "ArrowUp" || ev.key === "ArrowDown")) {
+    const quoi = t.dataset.fmSelT, cle = t.dataset.fmSelC;
+    if (quoi !== "entree" && quoi !== "rubrique") return true;
+    const sens = ev.key === "ArrowUp" ? -1 : 1;
+    if (!BDGrilleFormulaire.deplacer(FM.plan, quoi, cle, sens)) return true;
+    if (FM.sel.t !== quoi || FM.sel.cle !== cle) fmChoisir(quoi, cle);
+    fmGeste(() => {
+      const c = BDGrilleFormulaire.deplacer(FM.plan, quoi, cle, sens);
+      return c ? { methode: "PUT", chemin: fmChemin("/ordre"), corps: c } : null;
+    });
+    return true;
+  }
+  const lignes = [...document.querySelectorAll(".fm-noeud")];
+  const i = lignes.indexOf(t);
+  const j = ev.key === "Home" ? 0 : ev.key === "End" ? lignes.length - 1
+    : Math.max(0, Math.min(lignes.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1)));
+  lignes[j].focus();
+  return true;
+}
+
+/* --- Le dessin ------------------------------------------------------------------------ */
+
+/* Une réponse : son bouton radio, son nom (le seul texte qui l'étiquette), sa phrase, et ce
+   qui s'ouvre sous elle — les sortes de zone, les variantes, la liste — HORS de l'étiquette :
+   un lecteur d'écran lit « Une variante parmi plusieurs », pas chacune des variantes. */
+function fmRadio(nom, valeur, courant, libelle, phrase, extra, eteinte) {
+  const id = `fm-${nom}-${valeur}`;
+  return `<div class="pj-position fm-position${eteinte ? " fm-eteinte" : ""}"${eteinte
+      ? ` title="${esc(eteinte)}"` : ""}><input type="radio" name="fm-${nom}" value="${esc(valeur)}"
+      id="${id}"${courant === valeur ? " checked" : ""}${eteinte ? " disabled" : ""}${phrase
+      ? ` aria-describedby="${id}-p"` : ""}><label for="${id}" class="pj-position-nom">${libelle}</label>${phrase
+      ? `<span class="pj-position-phrase muted small" id="${id}-p">${phrase}</span>` : ""}${extra || ""}</div>`;
+}
+
+function fmQuestion(n, q, corps, manque, extra) {
+  const Q = BDGrilleFormulaire.QUESTIONS[n] || q;
+  return `<fieldset class="fm-q${manque ? " fm-manque" : ""}"${extra || ""}><legend class="fm-q-titre">
+      <span class="fm-q-n" aria-hidden="true">${esc(n)}</span> ${esc(Q.titre)}${Q.aide
+      ? ` <span class="fm-aide" tabindex="0" role="img" aria-label="Aide : ${esc(Q.aide)}" title="${esc(Q.aide)}">ⓘ</span>` : ""}</legend>
+    <div class="pj-positions fm-positions">${corps}</div>${manque
+      ? `<p class="fm-manque-msg">● ${esc(manque)}</p>` : ""}</fieldset>`;
+}
+
+function fmZones(attr, sortes, actif, ajouterCase) {
+  const F = BDGrilleFormulaire;
+  const liste = ajouterCase ? [...F.ZONES, "case"] : F.ZONES;
+  return `<span class="fm-zones" role="group" aria-label="Sortes de zone">${liste.map((k) => `<label>
+      <input type="checkbox" ${attr}="${k}" id="fm-${attr}-${k}"${sortes.includes(k) ? " checked" : ""}${actif
+      ? "" : " disabled"}> ${esc(F.mot(k))}</label>`).join("")}</span>`;
+}
+
+/* La question 2, et « Porte sur » de la grille, partagent leurs réponses. */
+function fmReponsesCible(nom, rep, avecGrille, porteGrille, attr) {
+  const F = BDGrilleFormulaire;
+  const zone = rep && rep.choix === "zone";
+  const sortes = (rep && rep.sortes) || [];
+  const choix = rep ? rep.choix : null;
+  return (avecGrille ? fmRadio(nom, "grille", choix, `Comme la grille · ${esc(F.ciblesEnMots(porteGrille))}`,
+                               "") : "")
+    + fmRadio(nom, "mots", choix, "Des mots", "dans une bulle, un cartouche ou un texte")
+    + fmRadio(nom, "zone", choix, "Une zone entière", "",
+              fmZones(attr, sortes, zone, sortes.includes("case")))
+    + fmRadio(nom, "case", choix, "La case", "")
+    + fmRadio(nom, "planche", choix, "La planche", "")
+    + (choix === "entite" ? fmRadio(nom, "entite", choix, "L'entité du registre", "") : "");
+}
+
+function fmTeteHtml() {
+  const p = pjProjet(), g = fmGrille(), F = BDGrilleFormulaire;
+  const retour = `<button type="button" class="ghost small fm-retour" data-fm-retour="1">← ${esc(p ? p.nom : "Projet")}</button>`;
+  if (FM.neuve) {
+    return `${retour}<div class="fm-tete-l"><h3 id="fm-titre" tabindex="-1">Nouvelle grille</h3>
+      <p class="pj-sous"><span class="pj-puce">pas encore créée</span></p></div>`;
+  }
+  if (!g || !FM.plan) return `${retour}<p class="col-note">Chargement…</p>`;
+  const e = BDGrillesProjet.etat(g);
+  const ou = F.ouSEcrit(g);
+  const pub = F.publiable(FM.plan, FM.att);
+  const eteint = pub.ok ? "" : ` aria-disabled="true" title="${esc(pub.raison)}"`;
+  const ref = e.telecharger[e.telecharger.length - 1];
+  const gestes = (ref ? `<a class="pg-telecharger" href="/api/grilles/${g.id}/versions/${ref.numero}/tableur"
+        download title="Ouvrir la grille dans un tableur, pour retoucher en nombre">⤓ Tableur</a>` : "")
+    + `<button type="button" class="ghost small" data-fm-reimporter="1"
+        title="Relire un tableur retouché : un bilan dit ce qui change avant d'écrire">⤒ Réimporter…</button>`
+    + (e.publier ? `<button type="button" class="primary small" data-fm-confirme="publier"${eteint}
+        >Publier la v${e.publier}…</button>` : "")
+    + (e.activer ? `<button type="button" class="${g.ouverte ? "primary" : "ghost"} small" data-fm-activer="1"
+        data-fm-version="${e.activer}"${g.ouverte ? eteint : ""}>${g.ouverte ? "Activer dans le projet"
+        : `Activer la v${e.activer}`}</button>` : "");
+  const confirme = FM.confirme === "publier" && e.publier ? `<div class="pg-confirme fm-confirme">
+      <p class="small">Publiée, la version ${e.publier} ne change plus, hors d'une coquille.
+        L'activer est un autre geste.</p>
+      <div class="pg-gestes"><button type="button" class="primary small" id="fm-publier-ok"
+        data-fm-publier-ok="1" data-fm-version="${e.publier}">Publier la v${e.publier}</button>
+        <button type="button" class="ghost small" data-fm-confirme="publier">Annuler</button></div></div>` : "";
+  return `${retour}<div class="fm-tete-l"><h3 id="fm-titre" tabindex="-1">${esc(g.nom)}</h3>
+      <p class="pj-sous"><span class="pj-puce">${esc(ou.etiquette)}</span><span class="pj-puce">${esc(e.etiquette)}</span>
+        <span class="muted small">porte sur ${esc(F.ciblesEnMots(FM.plan.porte_sur))}</span></p></div>
+    <div class="fm-tete-gestes">${gestes}</div>${confirme}`;
+}
+
+function fmPlanHtml() {
+  const F = BDGrilleFormulaire, s = FM.sel;
+  if (FM.neuve) {
+    return `<ul class="lf-objets fm-objets" aria-label="Plan de la grille"><li><button type="button"
+      class="lf-objet fm-noeud fm-grille" data-fm-sel-t="grille" data-fm-sel-c="" aria-current="true">
+      <span class="lf-nom">Toute la grille</span><span class="lf-etat">à créer</span></button></li></ul>`;
+  }
+  const courant = (t, cle) => s.t === t && s.cle === cle && !FM.neuf;
+  const ligne = (l) => l.t === "sep"
+    ? `<li class="fm-sep muted small">${esc(l.libelle)}</li>`
+    : `<li><button type="button" class="lf-objet fm-noeud fm-${l.t} fm-prof-${Math.min(l.profondeur, 5)}${l.retiree
+        ? " fm-retiree" : ""}" data-fm-sel-t="${l.t}" data-fm-sel-c="${esc(l.cle)}"${courant(l.t, l.cle)
+        ? ' aria-current="true"' : ""}><span class="lf-nom">${esc(l.libelle || "(sans nom)")}</span>${l.etat
+        ? `<span class="lf-etat${l.alerte ? " alerte" : ""}">${esc(l.etat)}</span>` : ""}</button></li>`;
+  const neuf = (t) => FM.neuf && FM.neuf.t === t ? `<li><button type="button"
+      class="lf-objet fm-noeud fm-${t}" aria-current="true" data-fm-sel-t="${t}" data-fm-sel-c="">
+      <span class="lf-nom">(sans nom)</span><span class="lf-etat alerte">● à nommer</span></button></li>` : "";
+  const lignes = F.lignesDuPlan(FM.plan, FM.att, FM.emplois);
+  const listes = (FM.plan.listes || []).map((l) => ligne({ t: "liste", cle: l.cle, libelle: l.libelle,
+    profondeur: 0, etat: F.pluriel(l.qualificatifs.length, "case"), alerte: false }));
+  return `<ul class="lf-objets fm-objets" aria-label="Plan de la grille">${lignes.map(ligne).join("")}
+      ${neuf("entree")}${neuf("rubrique")}</ul>
+    <div class="fm-plus"><button type="button" class="ghost small" data-fm-plus="entree">+ Entrée</button>
+      <button type="button" class="ghost small" data-fm-plus="rubrique">+ Rubrique</button></div>
+    <h4 class="fm-listes-t">Listes à cocher</h4>
+    <ul class="lf-objets fm-objets" aria-label="Listes à cocher">${listes.join("")}${neuf("liste")}</ul>
+    <div class="fm-plus"><button type="button" class="ghost small" data-fm-plus="liste">+ Liste</button></div>`;
+}
+
+function fmDeplacerHtml(quoi, cle, parent, nom) {
+  const F = BDGrilleFormulaire;
+  const haut = F.deplacer(FM.plan, quoi, cle, -1, parent);
+  const bas = F.deplacer(FM.plan, quoi, cle, 1, parent);
+  const id = `fm-dep-${quoi}-${String(cle).replace(/[^a-z0-9-]/gi, "_")}`;
+  const btn = (sens, ok, fleche, mot) => `<button type="button" class="ghost small fm-dep" id="${id}-${sens > 0
+      ? "bas" : "haut"}" data-fm-deplacer="${sens}" data-fm-quoi="${quoi}" data-fm-cle="${esc(cle)}"${parent
+      ? ` data-fm-parent="${esc(parent)}"` : ""} aria-label="${mot} ${esc(nom)}"${ok ? ""
+      : ' aria-disabled="true" title="Déjà au bord"'}>${fleche}</button>`;
+  return btn(-1, haut, "↑", "Monter") + btn(1, bas, "↓", "Descendre");
+}
+
+function fmFicheGrille() {
+  const F = BDGrilleFormulaire;
+  if (FM.neuve) {
+    const n = FM.neuve;
+    const pret = n.nom.trim() && F.ciblesDeReponse(n.porte);
+    const raison = !n.nom.trim() ? "Donnez-lui un nom." : "Dites sur quoi elle porte (B).";
+    return `<div class="lf-tete"><div><p class="fm-genre">Toute la grille</p>
+        <label class="sr-only" for="fm-g-nom">Nom de la grille</label>
+        <input id="fm-g-nom" class="fm-lib" value="${esc(n.nom)}" maxlength="200" placeholder="Nom de la grille"
+          title="Unique dans le projet"></div></div>
+      ${fmQuestion("A", { titre: "Fermée ou ouverte ?", aide: "Fermée : elle change par versions, publiées, qui ne bougent plus. Ouverte : une seule version, vivante ; on tape un mot qu'elle n'a pas et une entrée simple naît. La réponse ne change plus une fois la grille créée." },
+        fmRadio("ouverte", "non", n.ouverte ? "oui" : "non", "Fermée", "on la publie, puis elle ne bouge plus")
+        + fmRadio("ouverte", "oui", n.ouverte ? "oui" : "non", "Ouverte", "une seule version, qui s'enrichit en posant"))}
+      ${fmQuestion("B", { titre: "Sur quoi porte-t-elle d'ordinaire ?", aide: "La réponse à la question 2 pour toutes les entrées qui ne disent pas la leur." },
+        fmReponsesCible("porte", n.porte, false, [], "data-fm-porte-zone"),
+        n.porte && n.porte.choix === "zone" && !F.ciblesDeReponse(n.porte) ? "Cochez au moins une sorte de zone." : "")}
+      <div class="pg-gestes fm-creer"><button type="button" class="primary small" data-fm-creer="1"${pret
+        ? "" : ` aria-disabled="true" title="${esc(raison)}"`}>Créer la grille</button>
+        <span class="muted small">${pret ? "" : esc(raison)}</span></div>`;
+  }
+  const g = fmGrille(), p = FM.plan;
+  const rep = FM.attPorte || F.reponseCible(p.porte_sur);
+  const nv = (p.entrees || []).reduce((n, e) => n + (e.variantes || []).length, 0);
+  return `<div class="lf-tete"><div><p class="fm-genre">Toute la grille</p>
+      <label class="sr-only" for="fm-g-nom">Nom de la grille</label>
+      <input id="fm-g-nom" class="fm-lib" value="${esc(g.nom)}" maxlength="200" title="Unique dans le projet"></div></div>
+    ${fmQuestion("A", { titre: "Fermée ou ouverte ?", aide: "La nature d'une grille ne change pas après sa création." },
+      fmRadio("ouverte", "non", g.ouverte ? "oui" : "non", "Fermée", "on la publie, puis elle ne bouge plus", "",
+              "La nature d'une grille ne change pas après sa création.")
+      + fmRadio("ouverte", "oui", g.ouverte ? "oui" : "non", "Ouverte", "une seule version, qui s'enrichit en posant", "",
+                "La nature d'une grille ne change pas après sa création."))}
+    ${fmQuestion("B", { titre: "Sur quoi porte-t-elle d'ordinaire ?", aide: "La réponse à la question 2 pour toutes les entrées qui ne disent pas la leur." },
+      fmReponsesCible("porte", rep, false, [], "data-fm-porte-zone"),
+      FM.attPorte ? "Cochez au moins une sorte de zone." : "")}
+    <section class="fm-section"><h4>Dans le plan</h4><p class="muted small">${esc([
+      F.pluriel((p.rubriques || []).length, "rubrique"), F.pluriel((p.entrees || []).length, "entrée"),
+      F.pluriel(nv, "variante"), F.pluriel((p.listes || []).length, "liste")].join(" · "))}</p></section>`;
+}
+
+function fmFicheEntree() {
+  const F = BDGrilleFormulaire, p = FM.plan;
+  const neuf = FM.neuf && FM.neuf.t === "entree";
+  const e = neuf ? null : fmEntree(FM.sel.cle);
+  if (!neuf && !e) return `<p class="col-note">Cette entrée n'est plus dans la grille.</p>`;
+  const rubSel = neuf ? FM.neuf.parent : e.rubrique_cle;
+  const rubriques = `<label class="sr-only" for="fm-e-rubrique">Rubrique</label><select id="fm-e-rubrique" class="fm-select">
+      <option value="">Aucune rubrique</option>${(p.rubriques || []).map((r) => `<option value="${esc(r.cle)}"${rubSel === r.cle
+        ? " selected" : ""}>${esc(F.cheminDeRubrique(p, r.cle))}</option>`).join("")}</select>`;
+  const tete = (gestes) => `<div class="lf-tete fm-ent-tete"><div class="fm-tete-nom"><p class="fm-genre">Entrée${rubSel
+      ? ` · ${esc(F.cheminDeRubrique(p, rubSel))}` : ""}</p>
+      <label class="sr-only" for="fm-e-libelle">Nom de l'entrée</label>
+      <input id="fm-e-libelle" class="fm-lib" value="${esc(neuf ? "" : e.libelle)}" maxlength="200"
+        placeholder="Nom de l'entrée, tel qu'on le lira"
+        title="Le nom tel que l'annotateur le lit dans la grille. Le renommer garde les relevés déjà posés."></div>
+      <div class="fm-gestes-objet">${gestes}</div></div>`;
+  if (neuf) {
+    return tete("") + fmQuestion(1, null, rubriques)
+      + `<p class="fm-manque-msg">● Donnez-lui un nom : l'entrée naît avec lui, et les autres questions s'ouvrent.</p>`;
+  }
+  const att = FM.att.get(e.cle);
+  const r = F.reponses(e, att, p.porte_sur);
+  const o = F.offresEntree(e, FM.emplois, FM.version && FM.version.etat);
+  const m = F.manques(e, att, p);
+  const mq = (q) => (m.find((x) => x.q === q) || {}).texte || "";
+  const formes = F.formesPossibles(e, o);
+  // Les gestes de l'entrée : jamais « Supprimer » sur une entrée qu'un relevé emploie.
+  const gestes = fmDeplacerHtml("entree", e.cle, undefined, e.libelle)
+    + (o.supprimer ? `<button type="button" class="ghost small" data-fm-confirme="supprimer">Supprimer l'entrée…</button>` : "")
+    + (o.retirer ? `<button type="button" class="ghost small" data-fm-retirer="1"
+        title="Elle ne se pose plus ; ses relevés restent, « à revoir »">Retirer</button>` : "")
+    + (o.remettre ? `<button type="button" class="ghost small" data-fm-remettre="1">Remettre en usage</button>` : "")
+    + (o.fusionner !== null ? `<button type="button" class="ghost small" data-fm-confirme="fusionner"
+        title="Ses relevés passent à une autre entrée, et elle quitte la grille">Fusionner dans…</button>` : "");
+  const nom = (k) => (fmEntree(k) || {}).libelle || k;
+  let confirme = "";
+  if (FM.confirme === "supprimer" && o.supprimer) {
+    confirme = `<div class="pg-confirme fm-confirme"><p class="small">Personne ne l'emploie : elle quitte la grille.</p>
+      <div class="pg-gestes"><button type="button" class="primary small" id="fm-supprimer-ok" data-fm-supprimer-ok="1"
+        >Supprimer « ${esc(e.libelle)} »</button><button type="button" class="ghost small" data-fm-confirme="supprimer"
+        >Annuler</button></div></div>`;
+  } else if (FM.confirme === "fusionner" && o.fusionner !== null) {
+    confirme = o.fusionner.length ? `<div class="pg-confirme fm-confirme">
+      <label class="small" for="fm-fusion-dans">Ses ${esc(F.pluriel(o.releves, "relevé"))} passent à :</label>
+      <select id="fm-fusion-dans" class="fm-select">${o.fusionner.map((k) => `<option value="${esc(k)}">${esc(nom(k))}</option>`).join("")}</select>
+      <div class="pg-gestes"><button type="button" class="primary small" data-fm-fusionner-ok="1">Fusionner</button>
+        <button type="button" class="ghost small" data-fm-confirme="fusionner">Annuler</button></div></div>`
+      : `<div class="pg-confirme fm-confirme"><p class="small">Aucune entrée ne peut recevoir ses relevés : il
+        faudrait la même forme, posée de la même façon, la même liste, et ses variantes employées.
+        Retirez-la plutôt.</p><button type="button" class="ghost small" data-fm-confirme="fusionner">Fermer</button></div>`;
+  }
+  const etat = o.releves ? `<p class="fm-note">${e.retiree ? "Retirée : elle ne se pose plus ; " : ""}${esc(F.pluriel(o.releves,
+      "relevé la porte", "relevés la portent"))}${e.retiree ? ", à revoir" : ""}.</p>`
+    : e.retiree ? `<p class="fm-note">Retirée : elle ne se pose plus.</p>` : "";
+  // Q4 : les variantes, ou la liste.
+  const varsHtml = r.forme === "variantes" ? `<ol class="fm-vars">${(e.variantes || []).map((x, i) => {
+      const ov = F.offresVariante(e, x.cle, FM.emplois);
+      const ouvert = FM.guideVar === x.cle;
+      const champ = (c, lib, ta) => {
+        const val = c === "exemples" ? F.texteDExemples(x.exemples) : (x[c] || "");
+        const id = `fm-var-${i}-${c}`;
+        return `<label for="${id}">${lib}</label>${ta ? `<textarea id="${id}" rows="2" data-fm-var="${esc(x.cle)}"
+          data-fm-champ="${c}">${esc(val)}</textarea>` : `<input id="${id}" data-fm-var="${esc(x.cle)}"
+          data-fm-champ="${c}" value="${esc(val)}">`}`;
+      };
+      return `<li><input class="fm-var-lib" id="fm-var-${i}-libelle" data-fm-var="${esc(x.cle)}" data-fm-champ="libelle"
+          value="${esc(x.libelle)}" aria-label="Variante ${i + 1}">
+        ${fmDeplacerHtml("variante", x.cle, e.cle, x.libelle)}
+        <button type="button" class="ghost small" id="fm-var-${i}-guide" data-fm-var-guide="${esc(x.cle)}" aria-expanded="${ouvert}"
+          title="Ce que dit le guide de cette variante : définition, exemples, structure, piège">Guide${(x.definition
+            || (x.exemples || []).length) ? " ✓" : ""}</button>
+        <button type="button" class="ghost small" id="fm-var-${i}-suppr" data-fm-var-suppr="${esc(x.cle)}"
+          aria-label="Supprimer la variante ${esc(x.libelle)}"${ov.supprimer ? "" : ` aria-disabled="true" title="${esc(ov.raison)}"`}>✕</button>
+        ${ouvert ? `<div class="fm-var-guide">${champ("definition", "Définition", true)}${champ("exemples",
+          "Exemples <span class=\"muted small\">un par ligne</span>", true)}${champ("structure", "Structure", false)}${champ("piege",
+          "Piège", true)}</div>` : ""}</li>`;
+    }).join("")}</ol>
+    <div class="fm-var-neuve"><label for="fm-var-neuve">Nouvelle variante</label>
+      <input id="fm-var-neuve" data-fm-neuf="1" placeholder="nom de la variante" title="Elle naît quand vous quittez le champ"></div>` : "";
+  const utilisables = F.listesUtilisables(p);
+  const listeHtml = r.forme === "qualificatifs" ? `<span class="fm-sous"><label for="fm-e-liste">Liste</label>
+      <select id="fm-e-liste" class="fm-select"${o.figee ? ` disabled title="${esc(o.raisonFigee)}"` : ""}>
+        <option value=""${r.liste ? "" : " selected"}>— choisir —</option>${utilisables.map((l) => `<option value="${esc(l.cle)}"${r.liste
+          === l.cle ? " selected" : ""}>${esc(l.libelle)} · ${esc(F.pluriel(l.qualificatifs.length, "case"))}</option>`).join("")}</select>
+      ${r.liste ? `<button type="button" class="ghost small" data-fm-sel-t="liste" data-fm-sel-c="${esc(r.liste)}">Voir la liste</button>` : ""}</span>` : "";
+  const defaut = F.cardinaliteParDefaut(r.ciblesEffectives) === "une" ? "une fois" : "plusieurs fois";
+  const precisionVal = FM.retenue && FM.retenue.id === "fm-e-precision" ? FM.retenue.valeur : r.precision.nom;
+  return `${tete(gestes)}${confirme}${etat}
+    ${fmQuestion(1, null, rubriques)}
+    ${fmQuestion(2, null, fmReponsesCible("cible", r.cible, true, p.porte_sur, "data-fm-zone"), mq(2))}
+    ${fmQuestion(3, null, fmRadio("card", "ordinaire", r.cardinalite, `Comme d'ordinaire · ${defaut}`,
+        `sur ${esc(F.ciblesEnMots(r.ciblesEffectives))}`)
+      + fmRadio("card", "une", r.cardinalite, "Une seule fois", "")
+      + fmRadio("card", "plusieurs", r.cardinalite, "Plusieurs fois", ""))}
+    ${fmQuestion(4, null, fmRadio("forme", "simple", r.forme, F.FORMES.simple.nom, F.FORMES.simple.phrase, "",
+        r.forme === "simple" ? "" : formes.simple)
+      + fmRadio("forme", "variantes", r.forme, F.FORMES.variantes.nom, F.FORMES.variantes.phrase, varsHtml,
+        r.forme === "variantes" ? "" : formes.variantes)
+      + fmRadio("forme", "qualificatifs", r.forme, F.FORMES.qualificatifs.nom, F.FORMES.qualificatifs.phrase,
+        listeHtml, r.forme === "qualificatifs" ? "" : formes.qualificatifs), mq(4))}
+    ${fmQuestion(5, null, fmRadio("prec", "non", r.precision.oui ? "oui" : "non", "Non", "")
+      + fmRadio("prec", "oui", r.precision.oui ? "oui" : "non", "Oui, un champ nommé", "",
+        ` <input id="fm-e-precision" class="fm-prec" value="${esc(precisionVal)}" maxlength="200"
+          placeholder="« région », « laquelle ? »"${r.precision.oui ? "" : " disabled"} aria-label="Nom du champ à écrire">`), mq(5))}
+    ${fmQuestion(6, null, fmRadio("lien", "non", r.lien ? "oui" : "non", "Non", "")
+      + fmRadio("lien", "oui", r.lien ? "oui" : "non", "Oui", "un lien vers une zone de la planche"))}
+    <fieldset class="fm-q fm-guide-champs"><legend class="fm-q-titre">Ce que lit l'annotateur
+      <span class="fm-aide" tabindex="0" role="img" aria-label="Aide : le guide s'affiche sous la grille quand on survole ou choisit l'entrée."
+        title="Le guide : il s'affiche sous la grille quand on survole ou choisit l'entrée.">ⓘ</span></legend>
+      <label for="fm-e-definition">Définition</label><textarea id="fm-e-definition" rows="2">${esc(e.definition || "")}</textarea>
+      <label for="fm-e-exemples">Exemples <span class="muted small">un par ligne</span></label>
+      <textarea id="fm-e-exemples" rows="2">${esc(F.texteDExemples(e.exemples))}</textarea>
+      <label for="fm-e-structure">Structure</label><input id="fm-e-structure" value="${esc(e.structure || "")}">
+      <label for="fm-e-piege">Piège</label><textarea id="fm-e-piege" rows="2">${esc(e.piege || "")}</textarea></fieldset>`;
+}
+
+function fmFicheRubrique() {
+  const F = BDGrilleFormulaire, p = FM.plan;
+  const neuf = FM.neuf && FM.neuf.t === "rubrique";
+  const r = neuf ? null : (p.rubriques || []).find((x) => x.cle === FM.sel.cle);
+  if (!neuf && !r) return `<p class="col-note">Cette rubrique n'est plus dans la grille.</p>`;
+  const places = neuf ? (p.rubriques || []) : F.placesDeRubrique(p, r.cle);
+  const parent = neuf ? FM.neuf.parent : r.parent_cle;
+  const o = neuf ? null : F.offresRubrique(p, r.cle);
+  const gestes = neuf ? "" : fmDeplacerHtml("rubrique", r.cle, undefined, r.libelle)
+    + `<button type="button" class="ghost small" data-fm-confirme="supprimer"${o.supprimer ? ""
+      : ` aria-disabled="true" title="${esc(o.raison)}"`}>Supprimer la rubrique…</button>`;
+  const confirme = !neuf && FM.confirme === "supprimer" && o.supprimer ? `<div class="pg-confirme fm-confirme">
+      <div class="pg-gestes"><button type="button" class="primary small" id="fm-supprimer-ok" data-fm-supprimer-ok="1"
+        >Supprimer « ${esc(r.libelle)} »</button><button type="button" class="ghost small" data-fm-confirme="supprimer"
+        >Annuler</button></div></div>` : "";
+  return `<div class="lf-tete fm-ent-tete"><div class="fm-tete-nom"><p class="fm-genre">Rubrique</p>
+      <label class="sr-only" for="fm-r-libelle">Nom de la rubrique</label>
+      <input id="fm-r-libelle" class="fm-lib" value="${esc(neuf ? "" : r.libelle)}" maxlength="200" placeholder="Nom de la rubrique"></div>
+      <div class="fm-gestes-objet">${gestes}</div></div>${confirme}
+    ${neuf ? `<p class="fm-manque-msg">● Donnez-lui un nom : la rubrique naît avec lui.</p>` : ""}
+    ${fmQuestion(1, null, `<label class="sr-only" for="fm-r-parent">Place</label><select id="fm-r-parent" class="fm-select">
+      <option value="">Au premier niveau</option>${places.map((x) => `<option value="${esc(x.cle)}"${parent === x.cle
+        ? " selected" : ""}>${esc(F.cheminDeRubrique(p, x.cle))}</option>`).join("")}</select>`)}`;
+}
+
+function fmFicheListe() {
+  const F = BDGrilleFormulaire, p = FM.plan;
+  const neuf = FM.neuf && FM.neuf.t === "liste";
+  const l = neuf ? null : (p.listes || []).find((x) => x.cle === FM.sel.cle);
+  if (!neuf && !l) return `<p class="col-note">Cette liste n'est plus dans la grille.</p>`;
+  const tete = (gestes) => `<div class="lf-tete fm-ent-tete"><div class="fm-tete-nom"><p class="fm-genre">Liste à cocher</p>
+      <label class="sr-only" for="fm-l-libelle">Nom de la liste</label>
+      <input id="fm-l-libelle" class="fm-lib" value="${esc(neuf ? "" : l.libelle || "")}" maxlength="200" placeholder="Nom de la liste"></div>
+      <div class="fm-gestes-objet">${gestes}</div></div>`;
+  if (neuf) return tete("") + `<p class="fm-manque-msg">● Donnez-lui un nom : la liste naît avec lui, puis ses cases.</p>`;
+  const o = F.offresListe(p, l.cle);
+  const gestes = `<button type="button" class="ghost small" data-fm-confirme="supprimer"${o.supprimer ? ""
+      : ` aria-disabled="true" title="${esc(o.raison)}"`}>Supprimer la liste…</button>`;
+  const confirme = FM.confirme === "supprimer" && o.supprimer ? `<div class="pg-confirme fm-confirme">
+      <div class="pg-gestes"><button type="button" class="primary small" id="fm-supprimer-ok" data-fm-supprimer-ok="1"
+        >Supprimer « ${esc(l.libelle)} » et ses cases</button><button type="button" class="ghost small"
+        data-fm-confirme="supprimer">Annuler</button></div></div>` : "";
+  return `${tete(gestes)}${confirme}
+    <section class="fm-section"><h4>Ses cases · ${l.qualificatifs.length}</h4><ol class="fm-vars">${l.qualificatifs.map((q, i) => {
+      const oc = F.offresCase(p, l.cle, q.cle, FM.emplois);
+      return `<li><input class="fm-var-lib" id="fm-case-${i}-libelle" data-fm-case="${esc(q.cle)}" data-fm-champ="libelle"
+          value="${esc(q.libelle)}" aria-label="Case ${i + 1}">
+        <input class="fm-case-def" id="fm-case-${i}-definition" data-fm-case="${esc(q.cle)}" data-fm-champ="definition"
+          value="${esc(q.definition || "")}" placeholder="définition (au survol)" aria-label="Définition de ${esc(q.libelle)}">
+        ${fmDeplacerHtml("case", q.cle, l.cle, q.libelle)}
+        <button type="button" class="ghost small" id="fm-case-${i}-suppr" data-fm-case-suppr="${esc(q.cle)}"
+          aria-label="Supprimer la case ${esc(q.libelle)}"${oc.supprimer ? "" : ` aria-disabled="true" title="${esc(oc.raison)}"`}>✕</button></li>`;
+    }).join("")}</ol>
+    <div class="fm-var-neuve"><label for="fm-case-neuve">Nouvelle case</label>
+      <input id="fm-case-neuve" data-fm-neuf="1" placeholder="nom de la case" title="Elle naît quand vous quittez le champ"></div></section>
+    <section class="fm-section"><h4>Elle sert à · ${o.sert.length}</h4><p>${o.sert.length ? esc(o.sert.join(", "))
+      : '<span class="muted small">aucune entrée</span>'}</p>${o.sert.length
+      ? `<p class="col-note">Une liste est partagée : la changer change ces ${esc(F.pluriel(o.sert.length, "entrée"))}.</p>` : ""}</section>`;
+}
+
+function fmConflitHtml() {
+  const cf = FM.conflit;
+  if (!cf) return "";
+  const c = cf.detail.conflit;
+  const v = c.valeur_actuelle;
+  const version = v === null || v === undefined || v === "" ? "—"
+    : Array.isArray(v) ? (v.join(" · ") || "—") : typeof v === "boolean" ? (v ? "oui" : "non") : String(v);
+  return `<div class="fm-conflit an-conflit" role="group" aria-labelledby="fm-conflit-titre">
+    <p class="an-bandeau-titre" id="fm-conflit-titre" tabindex="-1"><span aria-hidden="true">⚠ </span>${esc(BDConflit.titreConflit(c))}</p>
+    <p>Votre saisie n'est pas enregistrée : elle reste dans son champ.</p>
+    <p class="an-bandeau-version"><span class="muted">Version enregistrée : </span>${esc(version)}</p>
+    <div class="pg-gestes"><button type="button" class="primary small" data-fm-remplacer="1">${esc(BDConflit.GESTES.remplacer)}</button>
+      <button type="button" class="ghost small" data-fm-garder="1">${esc(BDConflit.GESTES.garderAutre)}</button></div></div>`;
+}
+
+function fmFicheHtml() {
+  const t = FM.sel.t;
+  const corps = FM.neuve || t === "grille" ? fmFicheGrille() : t === "entree" ? fmFicheEntree()
+    : t === "rubrique" ? fmFicheRubrique() : t === "liste" ? fmFicheListe() : "";
+  return fmConflitHtml() + corps;
+}
+
+/* L'aperçu : la colonne de la grille de la page Annotation, telle que l'annotateur la verra
+   (le balisage de `static/annotation.js`, `rubrique()` et `entree()`, ses règles dans
+   `lib/annotation.js`), et la ligne du guide de l'entrée choisie. On n'y pose rien : un clic
+   choisit l'entrée dans le formulaire. */
+function fmApercuHtml() {
+  const A = BDAnnotation, F = BDGrilleFormulaire;
+  const titre = `<h4 class="fm-ap-titre">Grille <span class="fm-aide" tabindex="0" role="img"
+      aria-label="Aide : ce que l'annotateur verra dans la page Annotation ; un clic choisit l'entrée ici, rien ne se pose"
+      title="Ce que l'annotateur verra dans la page Annotation. Un clic choisit l'entrée ici ; rien ne se pose.">· à l'écran ⓘ</span></h4>`;
+  const plan = F.planDApercu(FM.plan, FM.att);
+  if (!plan) return titre;
+  const selE = FM.sel.t === "entree" && !FM.neuf ? FM.sel.cle : null;
+  const ap = FM.apercu && FM.apercu.e === selE ? FM.apercu : { e: selE, v: null };
+  const marques = (e) => {
+    const cible = A.marqueCible(e);
+    return (cible ? `<span class="an-marque" title="Se pose sur elle d'elle-même, quel que soit « Porte sur »">${esc(cible)}</span>` : "")
+      + (A.marquePlusieurs(e) ? `<span class="an-marque" title="Plusieurs fois sur la même cible">plusieurs</span>` : "");
+  };
+  const entree = (e) => {
+    const guide = ap.e === e.cle && !ap.v ? " guide" : "";
+    if (e.forme === "variantes") {
+      return `<div class="an-ent" role="group" aria-label="${esc(e.libelle)}"><button type="button"
+          class="an-ent-btn an-ent-tete${guide}" data-fm-ap-e="${esc(e.cle)}"><span class="an-ent-lib">${esc(e.libelle)}</span>
+          <span class="muted small">une parmi</span>${marques(e)}</button><div class="an-vars">${(e.variantes || []).map((v) => `<button
+          type="button" class="ghost an-var${ap.e === e.cle && ap.v === v.cle ? " guide" : ""}" data-fm-ap-e="${esc(e.cle)}"
+          data-fm-ap-v="${esc(v.cle)}">${esc(v.libelle)}</button>`).join("")}</div></div>`;
+    }
+    const liste = e.forme === "qualificatifs" ? (plan.listes || []).find((l) => l.cle === e.liste_cle) : null;
+    return `<div class="an-ent"><button type="button" class="an-ent-btn${guide}" data-fm-ap-e="${esc(e.cle)}">
+        <span class="an-box" aria-hidden="true"></span><span class="an-ent-lib">${esc(e.libelle)}</span>${liste
+        ? `<span class="muted small">+ ${esc(liste.libelle || liste.cle)}</span>` : ""}${e.lien
+        ? `<span class="muted small">↔ une autre zone</span>` : ""}${marques(e)}</button>${liste
+        ? `<div class="an-vars an-quals" role="group" aria-label="${esc(liste.libelle || liste.cle)} pour ${esc(e.libelle)}">${liste.qualificatifs.map((q) => `<button
+          type="button" class="ghost an-var" data-fm-ap-e="${esc(e.cle)}"${q.definition ? ` title="${esc(q.definition)}"` : ""}>${esc(q.libelle)}</button>`).join("")}</div>` : ""}</div>`;
+  };
+  const rubrique = (n, niveau) => {
+    const tete = niveau === 0;
+    const t = tete ? A.teinteDeRubrique(plan, n.cle, 7) : null;
+    const teinte = t === null ? "an-trait-autre" : `an-teinte-${t}`;
+    const ouvert = !FM.replis.has(n.cle);
+    const h = `h${Math.min(5 + niveau, 6)}`;
+    return `<section class="an-rub an-niv-${Math.min(n.profondeur || 0, 3)}${tete ? " an-rub-tete" : ""}">${tete
+        ? `<i class="an-rub-filet ${teinte}" aria-hidden="true"></i>` : ""}<${h} class="an-rub-titre"><button type="button"
+        class="an-rub-btn" data-fm-ap-rub="${esc(n.cle)}" aria-expanded="${ouvert}"><span class="an-caret" aria-hidden="true">▾</span>${tete
+        ? `<i class="an-pastille ${teinte}" aria-hidden="true"></i>` : ""}<span class="an-rub-lib">${esc(n.libelle)}</span></button></${h}>${ouvert
+        ? n.entrees.map(entree).join("") + n.enfants.map((x) => rubrique(x, niveau + 1)).join("") : ""}</section>`;
+  };
+  const l = ap.e ? A.ligneDuGuide(plan, ap.e, ap.v) : null;
+  const guide = l ? `<div class="an-g-tete"><span class="an-g-lib">${esc(l.libelle)}</span>${l.chemin
+      ? `<span class="an-g-chemin">${esc(l.chemin)}</span>` : ""}</div>${l.definition ? `<p>${esc(l.definition)}</p>` : ""}${l.structure
+      ? `<p>Structure : ${esc(l.structure)}</p>` : ""}${l.exemples.length ? `<p>Exemples : <span class="an-g-ex">${esc(l.exemples.join(" · "))}</span></p>`
+      : ""}${l.qualificatifs ? `<p class="muted small">${esc(l.qualificatifs.libelle)} : ${esc(l.qualificatifs.termes.join(", "))}</p>`
+      : ""}${l.piege ? `<p class="an-g-piege">${esc(l.piege)}</p>` : ""}`
+    : `<p class="muted small">Choisissez une entrée : son guide se lit ici.</p>`;
+  const arbre = A.arbre(plan);
+  return `${titre}<div class="fm-ap-plan an-plan">${arbre.length ? arbre.map((n) => rubrique(n, 0)).join("")
+      : `<p class="muted small">Aucune entrée en usage.</p>`}</div>
+    <div class="an-guide-contenu fm-ap-guide" tabindex="0" role="region" aria-label="Le guide de l'entrée choisie">${guide}</div>`;
+}
+
+/* Le squelette, une fois ; puis les quatre zones à chaque geste, le focus et la saisie en
+   cours gardés — un champ quitté part pendant qu'on écrit déjà dans le suivant. */
+function fmSquelette() {
+  return `<section class="fm" aria-labelledby="fm-titre">
+    <div class="fm-tete" id="fm-tete-zone"></div>
+    <div class="fm-ligne">${pjLigneDeGeste("formulaire", "p")}
+      <span class="fm-enreg muted small" id="fm-enreg" role="status" aria-live="polite"></span></div>
+    <p class="fm-etroit col-note">Le formulaire se sert sur un écran large : élargissez la fenêtre, ou
+      réduisez le zoom. La grille se retouche aussi dans le tableur (⤓ Tableur).</p>
+    <div class="fm-ed">
+      <nav class="fm-plan" id="fm-plan-zone" aria-label="Plan de la grille"></nav>
+      <div class="fm-fiche" id="fm-fiche-zone"></div>
+      <aside class="fm-apercu" id="fm-apercu-zone" aria-label="Aperçu : la grille telle que la page Annotation la montre"></aside>
+    </div></section>`;
+}
+
+function fmRendre() {
+  const box = $("#pj-fiche");
+  if (!box || !fmActif()) return;
+  if (!box.querySelector(".fm")) box.innerHTML = fmSquelette();
+  const actif = document.activeElement;
+  let garde = null;
+  if (actif && box.contains(actif)) {
+    const data = Object.entries(actif.dataset || {}).filter(([k]) => k.startsWith("fm"));
+    const ecrit = (actif.tagName === "TEXTAREA" || (actif.tagName === "INPUT"
+      && !["radio", "checkbox"].includes(actif.type)));
+    garde = { id: actif.id, data, valeur: ecrit && !actif.dataset.fmNeuf ? actif.value : null,
+              debut: ecrit ? actif.selectionStart : null, fin: ecrit ? actif.selectionEnd : null };
+  }
+  const defile = { fiche: $("#fm-fiche-zone").scrollTop, plan: $("#fm-plan-zone").scrollTop,
+                   apercu: $("#fm-apercu-zone").scrollTop };
+  $("#fm-tete-zone").innerHTML = fmTeteHtml();
+  $("#fm-plan-zone").innerHTML = fmPlanHtml();
+  $("#fm-fiche-zone").innerHTML = fmFicheHtml();
+  $("#fm-apercu-zone").innerHTML = fmApercuHtml();
+  $("#fm-fiche-zone").scrollTop = defile.fiche;
+  $("#fm-plan-zone").scrollTop = defile.plan;
+  $("#fm-apercu-zone").scrollTop = defile.apercu;
+  if (FM.retenue) {
+    const champ = document.getElementById(FM.retenue.id);
+    if (champ) champ.value = FM.retenue.valeur;
+  }
+  if (!garde) return;
+  let el = garde.id ? document.getElementById(garde.id) : null;
+  if (!el && garde.data.length) {
+    const sel = garde.data.map(([k, v]) => `[data-${k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}="${CSS.escape(v)}"]`).join("");
+    el = box.querySelector(sel);
+  }
+  if (!el) return;
+  if (garde.valeur !== null && "value" in el && el.value !== garde.valeur) el.value = garde.valeur;
+  if (el !== document.activeElement) el.focus();
+  if (garde.debut !== null) { try { el.setSelectionRange(garde.debut, garde.fin); } catch (e) { /* */ } }
+}
+
 /* --- Navigation ---------------------------------------------------------------------- */
 
 function pjLireAdresse() {
@@ -2316,6 +3484,13 @@ function pjLireAdresse() {
   PJ.nomme = PJ.sel !== null;
   PJ.vueFiche = PJ.sel !== null;
   PJ.creer = false;
+  // ANN-7 — `&grille=<id>` : le formulaire d'une grille du projet, ouvert dès qu'elle est lue.
+  const grille = q.get("grille");
+  FM.voulu = PJ.sel !== null && grille && /^[1-9]\d*$/.test(grille) ? Number(grille) : null;
+  if (FM.ouvert && (FM.projet !== PJ.sel || (FM.voulu || null) !== (FM.grilleId || null))) {
+    fmReinitialiser();
+  }
+  if (FM.ouvert) FM.voulu = null;
   // COL-4 — `?bacs` ouvre l'axe des bacs à sable, `&bac=<id>` la fiche de l'un d'eux.
   const bac = q.get("bac");
   PJ.bacSel = bac && /^[1-9]\d*$/.test(bac) ? Number(bac) : null;
@@ -2332,6 +3507,8 @@ function pjEcrireAdresse(pousser) {
     if (PJ.bacSel !== null && PJ.vueFiche) p.set("bac", String(PJ.bacSel));
   } else if (PJ.sel === null || !PJ.nomme) p.delete("projet");
   else p.set("projet", String(PJ.sel));
+  if (PJ.axe !== "bacs" && FM.ouvert && FM.grilleId) p.set("grille", String(FM.grilleId));
+  else p.delete("grille");
   const s = p.toString(), url = location.pathname + (s ? "?" + s : "") + location.hash;
   if (url === location.pathname + location.search + location.hash) return;
   history[pousser ? "pushState" : "replaceState"](null, "", url);
@@ -2342,6 +3519,7 @@ function pjEcrireAdresse(pousser) {
    La fiche déjà ouverte n'est pas remontée : son module garderait sinon son message perdu. */
 function pjOuvrir(id, depuisListe) {
   const meme = id === PJ.sel && !PJ.creer && !!pjProjet();
+  if (!meme) fmReinitialiser();
   PJ.sel = id;
   PJ.nomme = true;
   PJ.creer = false;
@@ -2563,6 +3741,7 @@ function pjDemarrer() {
   // « Appliquer » paraissent sous elles. Celles du formulaire de création ne font rien ici.
   $("#pj").addEventListener("change", (ev) => {
     const t = ev.target, p = pjProjet();
+    if (fmChange(t)) return;                 // le formulaire d'une grille
     if (p && t.id === "pj-membres-creent") { pjReglerCreation(t); return; }
     // L'import d'une grille : un fichier choisi, un nom changé, une réponse donnée. Le
     // bilan vérifié ne vaut plus pour un autre fichier ni un autre nom.
@@ -2601,6 +3780,7 @@ function pjDemarrer() {
     pjBaseRedessiner(`input[name="pj-position-${p.id}"]:checked`);
   });
   $("#pj").addEventListener("keydown", (ev) => {
+    if (fmTouche(ev)) return;                // le plan d'une grille : flèches, Alt + flèche
     if (ev.key !== "Enter") return;
     if (ev.target.id === "pj-renommer-nom") { ev.preventDefault(); pjRenommer(); }
     else if (ev.target.id === "pj-nom") { ev.preventDefault(); pjCreer(); }
