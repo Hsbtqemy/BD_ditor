@@ -408,6 +408,12 @@ première anomalie de structure, avec un bilan en DONNÉES (un verdict, chaque f
 quoi faire, « À savoir », « Ce qui va naître ») ; l'identifiant d'une entrée y est facultatif,
 et une grille ouverte s'y réimporte, une entrée employée qui disparaît attendant « retirer » ou
 « fusionner dans… » ; le modèle de `tools/` est FICTIF, et aucune vraie grille ne vit dans le dépôt.
+**Elle s'écrit aussi SANS IMPORT** (l'option hybride, tranchée sur maquette le 2026-11-03 ;
+`grille_ecriture.py`, routes dans `routes/grilles.py`) : grille, rubrique, entrée, variante,
+liste et case se créent, se modifient et se retirent — dans le BROUILLON d'une grille fermée,
+né au besoin de sa dernière version publiée, en place dans une ouverte —, la version entière
+relue sous les refus de l'import et, ouverte, sous les règles de son réimport, avec `vu`
+(CONC-3) et le journal `grille`.
 **Chaque bac à sable reçoit ce modèle à sa naissance** (H4, Hugo, 2026-10-27 ;
 `config.GRILLE_DU_BAC`, `socle._poser_la_grille_du_bac`, `grille_import.installer`) : une
 grille à lui, publiée et active, qui n'est à personne (aucun `par`), part avec lui et revient

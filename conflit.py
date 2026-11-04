@@ -50,6 +50,21 @@ LIBELLES = {
     # v37 (G17) — le nom libre d'une zone de détail (`journal._REGION_COLS`), que garde
     # l'annulation d'une création ou d'une modification de région.
     "nom": "le nom",
+    # ANN-7 — une grille écrite sans import (`routes/grilles.py`) : les champs d'une grille,
+    # d'une rubrique, d'une entrée, d'une variante, d'une liste, d'une case.
+    "libelle": "le nom",
+    "porte_sur": "ce sur quoi elle porte",
+    "rubrique_cle": "la rubrique",
+    "parent_cle": "la place",
+    "forme": "la forme",
+    "definition": "la définition",
+    "structure": "la structure",
+    "piege": "le piège",
+    "exemples": "les exemples",
+    "lien": "le lien",
+    "cible": "la cible",
+    "cardinalite": "le nombre de fois",
+    "liste_cle": "la liste",
 }
 
 

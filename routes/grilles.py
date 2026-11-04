@@ -1,5 +1,6 @@
-"""Les GRILLES d'annotation — importer, publier, activer, masquer, lire (ANN-7, tranche 1 ;
-cadrage R2 à R4, R8 ; décisions de Hugo du 2026-10-25).
+"""Les GRILLES d'annotation — importer, écrire sans import, publier, activer, masquer, lire
+(ANN-7, tranche 1 ; cadrage R2 à R4, R8 ; décisions de Hugo du 2026-10-25 ; l'écriture sans
+import, option HYBRIDE tranchée sur maquette le 2026-11-03).
 
 Sans écran : les routes que la fiche d'un projet (Administration › Projets) et la page
 Annotation consommeront. Une grille s'écrit dans un tableur (`grille_import`), se garde en
@@ -7,8 +8,9 @@ BROUILLON, se PUBLIE en une version figée et numérotée, s'ACTIVE sur un proje
 version ; une collection du projet peut la MASQUER — un filtre d'écran, pas une garde (Q1).
 
 Qui fait quoi (R8) — les décisions d'accès d'une grille sont celles de SON projet :
-- importer, publier, supprimer un brouillon, retirer, supprimer une grille, corriger une
-  coquille, activer, désactiver : qui GÈRE le projet (`peut_gerer_projet` —
+- importer, écrire sans import (créer, modifier, retirer une grille, une rubrique, une entrée,
+  une variante, une liste, une case), publier, supprimer un brouillon, retirer, supprimer une
+  grille, corriger une coquille, activer, désactiver : qui GÈRE le projet (`peut_gerer_projet` —
   son responsable, l'administrateur qui passe outre). 404 sur une grille ou un projet qu'on
   ne voit pas, 403 nommé sur ce qu'on voit sans le gérer ;
 - masquer dans une collection : qui l'ADMINISTRE (`peut_administrer`, G7) ;
@@ -20,17 +22,19 @@ sans rang (`tools/_commun.py`) — administrer un vocabulaire n'est pas annoter.
 """
 from __future__ import annotations
 
+import copy
 import io
 import json
 import sqlite3
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 import autorisation
 import conflit
+import grille_ecriture
 import grille_import
 import grille_tableur
 import grilles
@@ -272,6 +276,11 @@ def publier_version(grille_id: int, numero: int, conn: sqlite3.Connection = Depe
     if v["etat"] != grilles.ETAT_BROUILLON:
         raise HTTPException(409, f"La version {numero} n'est pas un brouillon : elle est "
                                  f"{v['etat']}.")
+    if not conn.execute("SELECT 1 FROM grille_entree WHERE version_id = ? LIMIT 1",
+                        (v["id"],)).fetchone():
+        # Une grille créée sans import naît vide (la règle de l'import : « aucune entrée »).
+        raise HTTPException(409, f"La version {numero} n'a aucune entrée : elle ne se publie "
+                                 "pas.")
     grille_import.publier(conn, grille_id, v, par=portee.utilisateur)
     conn.commit()
     return _vue_grille(conn, g)
@@ -534,3 +543,812 @@ def demasquer_grille(collection_id: int, grille_id: int, conn: sqlite3.Connectio
                         avant={"masquee_dans": collection_id, "collection": c["nom"]})
     conn.commit()
     return Response(status_code=204)
+
+
+# --------------------------------------------------------------------------- #
+# Écrire une grille SANS IMPORT — les routes du formulaire (ANN-7 ; l'option HYBRIDE,
+# tranchée par Hugo sur maquette le 2026-11-03)
+# --------------------------------------------------------------------------- #
+# Une grille fermée s'écrit dans son BROUILLON — né, s'il manque, de sa dernière version
+# publiée —, une grille ouverte dans sa version vivante, en place
+# (`grille_ecriture.version_en_ecriture`). Chaque geste relit la version ENTIÈRE sous les
+# refus de l'import, et, sur une grille ouverte, sous les règles de son réimport : une entrée
+# employée ne se supprime jamais, elle se retire ou se fusionne. Ce qui se MODIFIE accepte
+# `vu`, la valeur que l'écran voyait (CONC-3) : périmée, 409 qui nomme qui l'a changée ; sans
+# elle, le dernier gagne (Q8). Tout s'écrit sous `grille`, un acte par objet touché, dont la
+# charge nomme l'objet (`objet` : « entree:cri », « variante:cri/bang », « rubrique:sons »,
+# « liste:sources », « case:sources/objet », « grille ») — c'est par elle que le 409 trouve
+# l'auteur d'une valeur. À qui gère le projet : 404 sur une grille qu'on ne voit pas, 403
+# nommé sur une grille qu'on lit sans la gérer. Ctrl+Z ne défait rien de cela, comme de
+# l'import. La réponse rend le PLAN de la version écrite (`grilles.plan`), que le formulaire
+# redessine.
+Cible = Optional[Union[str, list[str]]]
+
+
+class _Strict(BaseModel):
+    """Un corps qui refuse ce qu'il ne connaît pas (422) : un identifiant, une nature
+    (`ouverte`) qu'on croirait changer en silence."""
+    model_config = ConfigDict(extra="forbid")
+
+
+class GrilleIn(_Strict):
+    nom: str
+    ouverte: bool = False
+    porte_sur: Cible = None
+    note: Optional[str] = None
+
+
+class GrillePatch(_Strict):
+    nom: Optional[str] = None
+    porte_sur: Cible = None
+    note: Optional[str] = None
+    vu: Optional[dict] = None
+
+
+class VarianteIn(_Strict):
+    cle: Optional[str] = None
+    libelle: Optional[str] = None
+    definition: Optional[str] = None
+    structure: Optional[str] = None
+    piege: Optional[str] = None
+    exemples: Optional[list[str]] = None
+
+
+class VariantePatch(_Strict):
+    libelle: Optional[str] = None
+    definition: Optional[str] = None
+    structure: Optional[str] = None
+    piege: Optional[str] = None
+    exemples: Optional[list[str]] = None
+    vu: Optional[dict] = None
+
+
+class _ChampsEntree(_Strict):
+    libelle: Optional[str] = None
+    rubrique_cle: Optional[str] = None
+    forme: Optional[str] = None
+    definition: Optional[str] = None
+    structure: Optional[str] = None
+    piege: Optional[str] = None
+    exemples: Optional[list[str]] = None
+    precision: Optional[str] = None
+    lien: Optional[bool] = None
+    cible: Cible = None
+    cardinalite: Optional[str] = None
+    liste_cle: Optional[str] = None
+    variantes: Optional[list[VarianteIn]] = None
+
+
+class EntreeIn(_ChampsEntree):
+    cle: Optional[str] = None
+
+
+class EntreePatch(_ChampsEntree):
+    vu: Optional[dict] = None
+
+
+class FusionIn(_Strict):
+    dans: str
+
+
+class RubriqueIn(_Strict):
+    cle: Optional[str] = None
+    libelle: Optional[str] = None
+    parent_cle: Optional[str] = None
+
+
+class RubriquePatch(_Strict):
+    libelle: Optional[str] = None
+    parent_cle: Optional[str] = None
+    vu: Optional[dict] = None
+
+
+class CaseIn(_Strict):
+    cle: Optional[str] = None
+    libelle: Optional[str] = None
+    definition: Optional[str] = None
+
+
+class CasePatch(_Strict):
+    libelle: Optional[str] = None
+    definition: Optional[str] = None
+    vu: Optional[dict] = None
+
+
+class ListeIn(_Strict):
+    cle: Optional[str] = None
+    libelle: Optional[str] = None
+    cases: Optional[list[CaseIn]] = None
+
+
+class ListePatch(_Strict):
+    libelle: Optional[str] = None
+    vu: Optional[dict] = None
+
+
+def _refus(code: str, probleme: str, a_faire=None, *, cle=None, colonne=None,
+           statut: int = 422) -> grille_import.Refus:
+    """Un refus qui porte UNE faute, au format de l'import."""
+    return grille_import.Refus(statut, probleme[:1].upper() + probleme[1:] + ".",
+                               [grille_import._faute(code, probleme, a_faire, cle=cle,
+                                                     colonne=colonne)])
+
+
+def _norme(champ: str, valeur, *, cle=None):
+    """Une valeur reçue, ramenée à la forme du contenu d'une version (`grilles.contenu`)."""
+    if champ == "exemples":
+        return grille_ecriture.exemples(valeur)
+    if champ == "lien":
+        return bool(valeur)
+    if champ == "forme":
+        return grille_ecriture.forme(valeur)
+    if champ == "cardinalite":
+        return grille_ecriture.cardinalite(valeur)
+    if champ in ("cible", "porte_sur"):
+        stockee, erreur = grille_ecriture.cibles(valeur)
+        if erreur:
+            raise _refus("cible_inconnue" if champ == "cible" else "porte_sur_inconnu", erreur,
+                         cle=cle, colonne=champ)
+        return stockee
+    return grille_ecriture.texte(valeur)
+
+
+def _verifier_vu(conn, g, objet: str, vu, permis, actuel: dict, nouveau: dict) -> None:
+    """CONC-3 : pour chaque champ que l'écran déclare avoir vu ET qu'il change, la valeur
+    vue doit être celle qui est écrite — sinon `conflit.Perime`, qui nomme l'auteur par
+    l'acte du journal dont la charge porte cet `objet`."""
+    vu = vu or {}
+    inconnus = set(vu) - set(permis)
+    if inconnus:
+        raise HTTPException(422, f"« vu » ne porte que {', '.join(permis)} : "
+                                 f"{', '.join(sorted(inconnus))} n'en est pas.")
+    for champ, valeur in vu.items():
+        if champ in nouveau:
+            conflit.verifier(conn, "grille", g["id"], champ,
+                             vu=_norme(champ, valeur), actuel=actuel.get(champ),
+                             nouveau=nouveau[champ], objet=("objet", objet))
+
+
+def _charge(objet: str, version: int, champs: dict | None) -> dict | None:
+    return None if champs is None else {"objet": objet, "version": version, **champs}
+
+
+def _vue_entree(e: dict) -> dict:
+    """Une entrée telle que le journal la garde : ses champs, et ses variantes nommées."""
+    return {**{k: e[k] for k in grille_ecriture.CHAMPS_ENTREE}, "retiree": bool(e["retiree"]),
+            "variantes": {vc: x["libelle"] for vc, x in e["variantes"].items()}}
+
+
+def _version_montree(conn, g):
+    """La version que le formulaire montre quand rien ne s'écrit : la vivante, le brouillon,
+    ou la dernière publiée."""
+    return (grilles.derniere_version(conn, g["id"], grilles.ETAT_VIVANTE)
+            or grilles.derniere_version(conn, g["id"], grilles.ETAT_BROUILLON)
+            or grilles.derniere_version(conn, g["id"], grilles.ETAT_PUBLIEE))
+
+
+def _reponse(conn, g, v, *, cree: bool, cle=None, a_savoir=(), fusions=()) -> dict:
+    return {"grille_id": g["id"], "version": {"numero": v["numero"], "etat": v["etat"]},
+            "brouillon_cree": cree, "cle": cle, "a_savoir": list(a_savoir),
+            "fusions": [{k: f[k] for k in ("de", "dans", "releve_ids")} for f in fusions],
+            "plan": grilles.plan(conn, v["id"])}
+
+
+def _ecrire(conn, portee, grille_id: int, geste) -> dict:
+    """Le patron de chaque geste du formulaire. `geste(g, v, avant, apres, ref)` change
+    `apres` (une copie du contenu de la version en écriture) et rend `{"cle", "actes",
+    "reponses"?, "note"?}` — `actes` : (type, objet, avant, après) à écrire au journal ; vide,
+    rien ne change, et rien ne s'écrit (pas même un brouillon). Ici : le verrou, le droit, la
+    version, la relecture entière (`grille_ecriture.ecrire`), le journal, le commit."""
+    conflit.verrouiller(conn)
+    g = _get_grille(conn, portee, grille_id, gerer=True)
+    conn.execute("SAVEPOINT geste")       # ce qu'on défait si rien ne change, et rien d'autre
+    try:
+        v, cree = grille_ecriture.version_en_ecriture(conn, g, par=portee.utilisateur)
+        avant = grilles.contenu(conn, v["id"])
+        apres = copy.deepcopy(avant)
+        fait = geste(g, v, avant, apres, grille_ecriture.reference(conn, g["id"]))
+        if not fait["actes"]:
+            conn.execute("ROLLBACK TO geste")
+            conn.execute("RELEASE geste")
+            conn.commit()
+            return _reponse(conn, g, _version_montree(conn, g), cree=False, cle=fait["cle"])
+        a_savoir, fusions = grille_ecriture.ecrire(conn, g, v, avant, apres,
+                                                   note=fait.get("note", v["note"]),
+                                                   reponses=fait.get("reponses"))
+    except grille_import.Refus as exc:
+        raise _refus_http(exc)
+    except conflit.Perime as exc:
+        raise HTTPException(409, exc.detail())
+    faites = {f"entree:{f['de']}": f["releve_ids"] for f in fusions}
+    for type_, objet, av, ap in fait["actes"]:
+        if objet in faites and ap is not None:
+            ap = {**ap, "releve_ids": faites[objet]}
+        journal.journaliser(conn, type_, "grille", g["id"],
+                            avant=_charge(objet, v["numero"], av),
+                            apres=_charge(objet, v["numero"], ap))
+    conn.commit()
+    return _reponse(conn, g, v, cree=cree, cle=fait["cle"], a_savoir=a_savoir,
+                    fusions=fusions)
+
+
+def _modifier(objet: str, cible: dict, d: dict, champs, *, conn, g, vu, cle=None):
+    """Applique à `cible` (un objet du contenu) les champs de `d` qui CHANGENT, après la
+    garde de `vu`. Rend (avant, après) des champs changés — vides si rien ne change."""
+    nouveaux = {c: _norme(c, d[c], cle=cle) for c in champs if c in d}
+    _verifier_vu(conn, g, objet, vu, champs, cible, nouveaux)
+    changes = {c: x for c, x in nouveaux.items() if x != cible.get(c)}
+    av = {c: cible.get(c) for c in changes}
+    cible.update(changes)
+    return av, changes
+
+
+def _introuvable(quoi: str, cle: str, v) -> HTTPException:
+    return HTTPException(404, f"{quoi} « {cle} » introuvable dans la version {v['numero']}.")
+
+
+@router.post("/api/projets/{projet_id}/grilles", status_code=201)
+def creer_grille(projet_id: int, payload: GrilleIn, conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    """CRÉE une grille sans import, VIDE : fermée, son brouillon 1 ; ouverte, sa version
+    vivante 1. Un nom unique dans le projet (409 nommé, la règle de l'import), « Porte sur »
+    exigé (422). Une grille vide ne se publie pas. À qui gère le projet ; jamais dans le
+    projet de jeu ; dans un bac à sable, oui (G6)."""
+    _get_projet(conn, portee, projet_id, gerer=True, motif=_MOTIF_GERER)
+    _refuser_le_jeu(conn, projet_id=projet_id)
+    conflit.verrouiller(conn)
+    nom = grilles.propre(payload.nom)
+    try:
+        if not nom:
+            raise _refus("libelle_vide", "la grille n'a pas de nom", "donnez-lui un nom",
+                         colonne="nom")
+        if grille_import.nom_pris(conn, projet_id, nom):
+            raise grille_import.Refus(409, f"Une grille de ce projet s'appelle déjà « {nom} » :"
+                                           " choisissez un autre nom.")
+        porte_sur = _norme("porte_sur", payload.porte_sur)
+        if porte_sur is None:
+            raise _refus("porte_sur_manque", "« Porte sur » manque : sur quoi la grille se "
+                         "pose-t-elle ?", "des mots, la case, la planche, ou des sortes de "
+                         "zone", colonne="porte_sur")
+    except grille_import.Refus as exc:
+        raise _refus_http(exc)
+    gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte, cree_par) "
+                       "VALUES (?, ?, ?, ?)", (projet_id, nom, int(payload.ouverte),
+                                               portee.utilisateur)).lastrowid
+    etat = grilles.ETAT_VIVANTE if payload.ouverte else grilles.ETAT_BROUILLON
+    grille_import.ecrire_version(conn, gid, {"cible": porte_sur, "rubriques": {},
+                                             "entrees": {}, "listes": {}},
+                                 numero=1, etat=etat, note=grilles.propre(payload.note),
+                                 par=portee.utilisateur)
+    journal.journaliser(conn, "creation", "grille", gid,
+                        apres={"projet_id": projet_id, "nom": nom,
+                               "ouverte": payload.ouverte, "porte_sur": porte_sur,
+                               "version": {"numero": 1, "etat": etat}})
+    conn.commit()
+    g = {**_row(conn.execute("SELECT * FROM grille WHERE id = ?", (gid,))), "gerable": True}
+    return _reponse(conn, g, grilles.version(conn, gid, 1), cree=False)
+
+
+@router.patch("/api/grilles/{grille_id}")
+def modifier_grille(grille_id: int, payload: GrillePatch, conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Renomme une grille (`nom`, sur la grille : aucune version ne naît), ou change ce sur
+    quoi elle porte d'ordinaire et sa note de version (`porte_sur`, `note` : dans la version
+    en écriture). Sa nature, fermée ou ouverte, ne change pas (422 : le corps la refuse).
+    `vu` : `nom`, `porte_sur`, `note`."""
+    d = payload.model_dump(exclude_unset=True)
+    vu = d.pop("vu", None) or {}
+    if set(vu) - {"nom", "porte_sur", "note"}:
+        raise HTTPException(422, "« vu » ne porte que nom, porte_sur, note.")
+    if "nom" in d:
+        conflit.verrouiller(conn)
+        g = _get_grille(conn, portee, grille_id, gerer=True)
+        nom = grilles.propre(d["nom"])
+        if not nom:
+            raise _refus_http(_refus("libelle_vide", "la grille n'a pas de nom",
+                                     "donnez-lui un nom", colonne="nom"))
+        try:
+            _verifier_vu(conn, g, "grille", {k: x for k, x in vu.items() if k == "nom"},
+                         ("nom",), {"nom": g["nom"]}, {"nom": nom})
+        except conflit.Perime as exc:
+            raise HTTPException(409, exc.detail())
+        if nom != g["nom"]:
+            if grille_import.nom_pris(conn, g["projet_id"], nom, sauf=grille_id):
+                raise HTTPException(409, f"Une grille de ce projet s'appelle déjà « {nom} ».")
+            conn.execute("UPDATE grille SET nom = ? WHERE id = ?", (nom, grille_id))
+            journal.journaliser(conn, "modification", "grille", grille_id,
+                                avant={"objet": "grille", "nom": g["nom"]},
+                                apres={"objet": "grille", "nom": nom})
+    if not {"porte_sur", "note"} & set(d):
+        g = _get_grille(conn, portee, grille_id, gerer=True)
+        conn.commit()
+        return _reponse(conn, g, _version_montree(conn, g), cree=False)
+
+    def geste(g, v, avant, apres, ref):
+        actuel = {"porte_sur": apres["cible"], "note": v["note"]}
+        nouveaux = {c: _norme(c, d[c]) for c in ("porte_sur", "note") if c in d}
+        _verifier_vu(conn, g, "grille", {k: x for k, x in vu.items() if k != "nom"},
+                     ("porte_sur", "note"), actuel, nouveaux)
+        changes = {c: x for c, x in nouveaux.items() if x != actuel[c]}
+        if "porte_sur" in changes:
+            apres["cible"] = changes["porte_sur"]
+        return {"cle": None, "note": changes.get("note", v["note"]),
+                "actes": [("modification", "grille", {c: actuel[c] for c in changes},
+                           changes)] if changes else []}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+# -- Les rubriques ------------------------------------------------------------ #
+@router.post("/api/grilles/{grille_id}/rubriques", status_code=201)
+def creer_rubrique(grille_id: int, payload: RubriqueIn, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    """Une rubrique, au premier niveau ou sous `parent_cle`. Son identifiant, s'il n'est pas
+    donné, se reçoit de son chemin (la dérivation de l'import). Une rubrique vide se garde
+    dans le formulaire ; le tableur, qui ne connaît une rubrique que par ses entrées, ne la
+    réexporte pas."""
+    def geste(g, v, avant, apres, ref):
+        libelle = grilles.propre(payload.libelle)
+        if not libelle:
+            raise _refus("libelle_vide", "la rubrique n'a pas de nom", "donnez-lui un nom",
+                         colonne="rubrique")
+        parent = grilles.propre(payload.parent_cle)
+        cle = grille_ecriture.cle_donnee(payload.cle, rubrique=True)
+        if cle is None:
+            cle = grille_ecriture.cle_neuve(
+                grille_ecriture.chemin(apres["rubriques"], parent, libelle),
+                deja=apres["rubriques"], ref=(ref or {}).get("rubriques"),
+                defaut="rubrique", quoi="rubrique", texte_=libelle)
+        elif cle in apres["rubriques"]:
+            raise _refus("rubrique_deux_identifiants", f"l'identifiant « {cle} » est déjà "
+                         "celui d'une rubrique", "donnez-lui un autre identifiant", cle=cle,
+                         colonne="rubrique_cle")
+        apres["rubriques"][cle] = {"libelle": libelle, "parent_cle": parent,
+                                   "rang": grille_ecriture.rang_suivant(apres["rubriques"])}
+        return {"cle": cle, "actes": [("creation", f"rubrique:{cle}", None,
+                                       {"libelle": libelle, "parent_cle": parent})]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.patch("/api/grilles/{grille_id}/rubriques/{cle}")
+def modifier_rubrique(grille_id: int, cle: str, payload: RubriquePatch,
+                      conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    """Renomme une rubrique ou la range ailleurs (`parent_cle`, vide : au premier niveau).
+    `vu` : `libelle`, `parent_cle`."""
+    d = payload.model_dump(exclude_unset=True)
+    vu = d.pop("vu", None)
+
+    def geste(g, v, avant, apres, ref):
+        r = apres["rubriques"].get(cle)
+        if r is None:
+            raise _introuvable("Rubrique", cle, v)
+        av, ap = _modifier(f"rubrique:{cle}", r, d, grille_ecriture.CHAMPS_RUBRIQUE,
+                           conn=conn, g=g, vu=vu, cle=cle)
+        return {"cle": cle, "actes": [("modification", f"rubrique:{cle}", av, ap)] if ap else []}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.delete("/api/grilles/{grille_id}/rubriques/{cle}")
+def supprimer_rubrique(grille_id: int, cle: str, conn: sqlite3.Connection = Depends(db),
+                       portee: autorisation.Portee = Depends(portee_courante)):
+    """Supprime une rubrique VIDE — ni entrée (retirées comprises), ni rubrique rangée sous
+    elle : 409 nommé sinon (« on ne la supprime que vide », maquette du 2026-11-03)."""
+    def geste(g, v, avant, apres, ref):
+        r = apres["rubriques"].get(cle)
+        if r is None:
+            raise _introuvable("Rubrique", cle, v)
+        n_e = sum(1 for e in apres["entrees"].values() if e["rubrique_cle"] == cle)
+        n_r = sum(1 for x in apres["rubriques"].values() if x["parent_cle"] == cle)
+        if n_e or n_r:
+            raise grille_import.Refus(409, f"La rubrique « {r['libelle']} » range {n_e} "
+                                           f"entrée(s) et {n_r} rubrique(s) : elle ne se "
+                                           "supprime que vide. Rangez-les ailleurs d'abord.")
+        del apres["rubriques"][cle]
+        return {"cle": cle, "actes": [("suppression", f"rubrique:{cle}",
+                                       {"libelle": r["libelle"], "parent_cle": r["parent_cle"]},
+                                       None)]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+# -- Les entrées ------------------------------------------------------------- #
+def _variante_neuve(e: dict, x: dict, ref_entree: dict | None, *, entree_cle: str) -> str:
+    """Ajoute à l'entrée `e` la variante décrite par `x` ; rend son identifiant."""
+    libelle = grilles.propre(x.get("libelle"))
+    if not libelle:
+        raise _refus("variante_sans_nom", "la variante n'a pas de nom", "donnez-lui un nom",
+                     cle=entree_cle, colonne="variante")
+    vc = grille_ecriture.cle_donnee(x.get("cle"))
+    if vc is None:
+        vc = grille_ecriture.cle_neuve(libelle, deja=e["variantes"],
+                                       ref=(ref_entree or {}).get("variantes"),
+                                       defaut="variante", quoi="variante")
+    elif vc in e["variantes"]:
+        raise _refus("variante_en_double", f"la variante « {vc} » est déjà sous l'entrée",
+                     "donnez-lui un autre identifiant", cle=entree_cle, colonne="variante")
+    e["variantes"][vc] = {"libelle": libelle, "rang": grille_ecriture.rang_suivant(e["variantes"]),
+                          **{c: _norme(c, x.get(c)) for c in ("definition", "structure",
+                                                              "piege", "exemples")}}
+    return vc
+
+
+def _employee(conn, g, cle: str) -> int:
+    return grille_ecriture.releves_sur(conn, g["id"], cle)
+
+
+@router.post("/api/grilles/{grille_id}/entrees", status_code=201)
+def creer_entree(grille_id: int, payload: EntreeIn, conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    """Une entrée, avec ses réponses aux six questions et ce que lit l'annotateur ; une
+    entrée à variantes arrive AVEC ses variantes (`variantes`), une entrée à cocher avec une
+    liste qui a des cases — les refus de l'import (422). Son identifiant, s'il n'est pas
+    donné, se reçoit de son nom (la dérivation de l'import)."""
+    d = payload.model_dump(exclude_unset=True)
+
+    def geste(g, v, avant, apres, ref):
+        libelle = grilles.propre(d.get("libelle"))
+        if not libelle:
+            raise _refus("libelle_vide", "l'entrée n'a pas de nom", "donnez-lui un nom",
+                         colonne="libelle")
+        cle = grille_ecriture.cle_donnee(d.get("cle"))
+        if cle is None:
+            cle = grille_ecriture.cle_neuve(libelle, deja=apres["entrees"],
+                                            ref=(ref or {}).get("entrees"), defaut="entree",
+                                            quoi="entree")
+        elif cle in apres["entrees"]:
+            raise _refus("cle_en_double", f"l'identifiant « {cle} » est déjà celui d'une "
+                         "autre entrée", "donnez-lui un autre identifiant", cle=cle,
+                         colonne="cle")
+        e = {"rubrique_cle": None, "rang": grille_ecriture.rang_suivant(apres["entrees"]),
+             "forme": "simple", "libelle": libelle, "definition": None, "structure": None,
+             "piege": None, "precision": None, "lien": False, "cible": None,
+             "cardinalite": None, "liste_cle": None, "retiree": False, "exemples": [],
+             "variantes": {}}
+        e.update({c: _norme(c, d[c], cle=cle) for c in grille_ecriture.CHAMPS_ENTREE
+                  if c in d and c != "libelle"})
+        for x in d.get("variantes") or []:
+            _variante_neuve(e, x, (ref or {}).get("entrees", {}).get(cle), entree_cle=cle)
+        apres["entrees"][cle] = e
+        return {"cle": cle, "actes": [("creation", f"entree:{cle}", None, _vue_entree(e))]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.patch("/api/grilles/{grille_id}/entrees/{cle}")
+def modifier_entree(grille_id: int, cle: str, payload: EntreePatch,
+                    conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Modifie une entrée — son nom, sa rubrique, ses réponses, ce que lit l'annotateur — et
+    lui AJOUTE des variantes (`variantes` : c'est ainsi qu'une entrée devient « à variantes »).
+    Quitter « des cases d'une liste » délie sa liste ; quitter « une variante » demande
+    d'avoir retiré ses variantes (422). Sur une grille ouverte, une entrée employée ne change
+    ni de forme ni de liste (409, la règle du réimport). `vu` : les champs de l'entrée."""
+    d = payload.model_dump(exclude_unset=True)
+    vu = d.pop("vu", None)
+    neuves = d.pop("variantes", None) or []
+
+    def geste(g, v, avant, apres, ref):
+        e = apres["entrees"].get(cle)
+        if e is None:
+            raise _introuvable("Entrée", cle, v)
+        champs = dict(d)
+        if ("forme" in champs and _norme("forme", champs["forme"]) != "qualificatifs"
+                and "liste_cle" not in champs):
+            champs["liste_cle"] = None
+        av, ap = _modifier(f"entree:{cle}", e, champs, grille_ecriture.CHAMPS_ENTREE,
+                           conn=conn, g=g, vu=vu, cle=cle)
+        actes = [("modification", f"entree:{cle}", av, ap)] if ap else []
+        for x in neuves:
+            vc = _variante_neuve(e, x, (ref or {}).get("entrees", {}).get(cle), entree_cle=cle)
+            actes.append(("creation", f"variante:{cle}/{vc}", None,
+                          {c: e["variantes"][vc][c] for c in grille_ecriture.CHAMPS_VARIANTE}))
+        return {"cle": cle, "actes": actes}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.delete("/api/grilles/{grille_id}/entrees/{cle}")
+def supprimer_entree(grille_id: int, cle: str, conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
+    """Supprime une entrée que PERSONNE n'emploie. Une entrée employée — un relevé la porte,
+    dans quelque version que ce soit — ne se supprime jamais (tranché par Hugo le
+    2026-11-03) : 409 nommé, qui dit ce qu'on peut faire — la retirer, ou, sur une grille
+    ouverte, la fusionner dans une entrée qui peut recevoir ses relevés (`fusionner_dans`)."""
+    def geste(g, v, avant, apres, ref):
+        e = apres["entrees"].get(cle)
+        if e is None:
+            raise _introuvable("Entrée", cle, v)
+        n = _employee(conn, g, cle)
+        if n:
+            choix, vers = [grille_import.RETIRER], []
+            if v["etat"] == grilles.ETAT_VIVANTE:
+                sans = {**apres, "entrees": {k: x for k, x in apres["entrees"].items()
+                                             if k != cle}}
+                employees = {r[0] for r in conn.execute(
+                    "SELECT DISTINCT variante_cle FROM releve WHERE grille_id = ? "
+                    "AND version_id = ? AND entree_cle = ? AND variante_cle IS NOT NULL",
+                    (g["id"], v["id"], cle))}
+                vers = grille_import._vers_possibles(avant, sans, cle, employees)
+                choix.append(grille_import.FUSIONNER)
+            raise grille_import.Refus(
+                409, f"{n} relevé(s) portent « {e['libelle']} » : elle ne se supprime pas. "
+                     + ("Retirez-la, ou fusionnez-la dans une autre." if len(choix) > 1
+                        else "Retirez-la : ses relevés restent lisibles dans leur version."),
+                [], {"a_repondre": [{"cle": cle, "libelle": e["libelle"], "releves": n,
+                                     "choix": choix, "fusionner_dans": vers}]})
+        del apres["entrees"][cle]
+        return {"cle": cle, "actes": [("suppression", f"entree:{cle}", _vue_entree(e), None)]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+def _retrait(conn, portee, grille_id: int, cle: str, retiree: bool) -> dict:
+    def geste(g, v, avant, apres, ref):
+        e = apres["entrees"].get(cle)
+        if e is None:
+            raise _introuvable("Entrée", cle, v)
+        if bool(e["retiree"]) == retiree:
+            return {"cle": cle, "actes": []}
+        e["retiree"] = retiree
+        return {"cle": cle, "actes": [("modification", f"entree:{cle}",
+                                       {"retiree": not retiree}, {"retiree": retiree})]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.post("/api/grilles/{grille_id}/entrees/{cle}/retrait")
+def retirer_entree(grille_id: int, cle: str, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    """RETIRE une entrée, ce que fait le réimport d'une grille ouverte : elle reste dans la
+    version, ne se pose plus, et ses relevés restent, « à revoir » (`releves_effectifs`).
+    Dans le brouillon d'une grille fermée, la version suivante la portera retirée."""
+    return _retrait(conn, portee, grille_id, cle, True)
+
+
+@router.delete("/api/grilles/{grille_id}/entrees/{cle}/retrait")
+def remettre_entree(grille_id: int, cle: str, conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Remet en usage une entrée retirée — ce que fait le réimport d'un fichier qui la porte
+    de nouveau."""
+    return _retrait(conn, portee, grille_id, cle, False)
+
+
+@router.post("/api/grilles/{grille_id}/entrees/{cle}/fusion")
+def fusionner_entree(grille_id: int, cle: str, payload: FusionIn,
+                     conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
+    """FUSIONNE une entrée employée dans une autre, ce que fait le réimport d'une grille
+    ouverte : ses relevés passent à l'entrée d'arrivée, et elle quitte la version. Seulement
+    vers une entrée de même forme, posée de la même manière, de la même liste, qui porte
+    ses variantes employées, et sans poser deux fois une entrée « une seule fois »
+    (`grille_import._vers_possibles`, `_fusion_en_double` : 409 et la faute). Sur une grille
+    FERMÉE, refusé (409 nommé) : ses relevés vivent dans leur version publiée, que rien ne
+    change ; on y retire l'entrée du brouillon. Sur une entrée que personne n'emploie : rien
+    à fusionner, elle se supprime (409 nommé)."""
+    def geste(g, v, avant, apres, ref):
+        e = apres["entrees"].get(cle)
+        if e is None:
+            raise _introuvable("Entrée", cle, v)
+        if v["etat"] != grilles.ETAT_VIVANTE:
+            raise grille_import.Refus(409, "Une grille fermée ne fusionne pas : ses relevés "
+                                           "vivent dans leur version publiée, qui ne change "
+                                           "plus. Retirez l'entrée du brouillon.")
+        if not _employee(conn, g, cle):
+            raise grille_import.Refus(409, f"Aucun relevé ne porte « {e['libelle']} » : il "
+                                           "n'y a rien à fusionner. Supprimez-la.")
+        dans = grilles.propre(payload.dans)
+        del apres["entrees"][cle]
+        return {"cle": cle, "reponses": {cle: (grille_import.FUSIONNER, dans)},
+                "actes": [("suppression", f"entree:{cle}", _vue_entree(e),
+                           {"fusionnee_dans": dans})]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+# -- Les variantes ------------------------------------------------------------ #
+@router.post("/api/grilles/{grille_id}/entrees/{cle}/variantes", status_code=201)
+def creer_variante(grille_id: int, cle: str, payload: VarianteIn,
+                   conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    """Une variante de plus sous une entrée à variantes (422 sous une autre forme)."""
+    def geste(g, v, avant, apres, ref):
+        e = apres["entrees"].get(cle)
+        if e is None:
+            raise _introuvable("Entrée", cle, v)
+        vc = _variante_neuve(e, payload.model_dump(exclude_unset=True),
+                             (ref or {}).get("entrees", {}).get(cle), entree_cle=cle)
+        return {"cle": vc, "actes": [("creation", f"variante:{cle}/{vc}", None,
+                                      {c: e["variantes"][vc][c]
+                                       for c in grille_ecriture.CHAMPS_VARIANTE})]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.patch("/api/grilles/{grille_id}/entrees/{cle}/variantes/{variante_cle}")
+def modifier_variante(grille_id: int, cle: str, variante_cle: str, payload: VariantePatch,
+                      conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    """Modifie une variante : son nom, ce que lit l'annotateur. `vu` : ses champs."""
+    d = payload.model_dump(exclude_unset=True)
+    vu = d.pop("vu", None)
+
+    def geste(g, v, avant, apres, ref):
+        x = (apres["entrees"].get(cle) or {}).get("variantes", {}).get(variante_cle)
+        if x is None:
+            raise _introuvable("Variante", f"{cle}/{variante_cle}", v)
+        objet = f"variante:{cle}/{variante_cle}"
+        av, ap = _modifier(objet, x, d, grille_ecriture.CHAMPS_VARIANTE, conn=conn, g=g,
+                           vu=vu, cle=cle)
+        return {"cle": variante_cle, "actes": [("modification", objet, av, ap)] if ap else []}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.delete("/api/grilles/{grille_id}/entrees/{cle}/variantes/{variante_cle}")
+def supprimer_variante(grille_id: int, cle: str, variante_cle: str,
+                       conn: sqlite3.Connection = Depends(db),
+                       portee: autorisation.Portee = Depends(portee_courante)):
+    """Supprime une variante que personne n'emploie (409 nommé sinon, sur une grille fermée
+    comme sur une ouverte : rien ne la retire, et ses relevés la nomment). La dernière d'une
+    entrée à variantes ne se supprime pas (422, la règle de l'import)."""
+    def geste(g, v, avant, apres, ref):
+        e = apres["entrees"].get(cle)
+        x = (e or {}).get("variantes", {}).get(variante_cle)
+        if x is None:
+            raise _introuvable("Variante", f"{cle}/{variante_cle}", v)
+        n = grille_ecriture.releves_sur(conn, g["id"], cle, variante_cle)
+        if n:
+            raise grille_import.Refus(409, f"{n} relevé(s) portent la variante "
+                                           f"« {x['libelle']} » : elle ne se supprime pas.")
+        del e["variantes"][variante_cle]
+        objet = f"variante:{cle}/{variante_cle}"
+        return {"cle": variante_cle, "actes": [("suppression", objet, {
+            c: x[c] for c in grille_ecriture.CHAMPS_VARIANTE}, None)]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+# -- Les listes et leurs cases ------------------------------------------------ #
+def _case_neuve(liste: dict, x: dict, ref_liste: dict | None, *, liste_cle: str) -> str:
+    libelle = grilles.propre(x.get("libelle"))
+    if not libelle:
+        raise _refus("libelle_vide", "la case n'a pas de nom", "donnez-lui un nom",
+                     cle=liste_cle, colonne="libelle")
+    qc = grille_ecriture.cle_donnee(x.get("cle"))
+    if qc is None:
+        qc = grille_ecriture.cle_neuve(libelle, deja=liste["qualificatifs"],
+                                       ref=(ref_liste or {}).get("qualificatifs"),
+                                       defaut="case", quoi="qualificatif")
+    elif qc in liste["qualificatifs"]:
+        raise _refus("qualificatif_en_double", f"la case « {qc} » est déjà dans la liste",
+                     "donnez-lui un autre identifiant", cle=qc, colonne="libelle")
+    liste["qualificatifs"][qc] = {"libelle": libelle,
+                                  "definition": grilles.propre(x.get("definition")),
+                                  "rang": grille_ecriture.rang_suivant(liste["qualificatifs"])}
+    return qc
+
+
+@router.post("/api/grilles/{grille_id}/listes", status_code=201)
+def creer_liste(grille_id: int, payload: ListeIn, conn: sqlite3.Connection = Depends(db),
+                portee: autorisation.Portee = Depends(portee_courante)):
+    """Une liste à cocher, avec ses cases (`cases`) ou vide ; une entrée ne la nomme qu'une
+    fois qu'elle a une case. Son identifiant, s'il n'est pas donné, se reçoit de son nom."""
+    def geste(g, v, avant, apres, ref):
+        libelle = grilles.propre(payload.libelle)
+        if not libelle:
+            raise _refus("libelle_vide", "la liste n'a pas de nom", "donnez-lui un nom",
+                         colonne="liste")
+        lc = grille_ecriture.cle_donnee(payload.cle)
+        if lc is None:
+            lc = grille_ecriture.cle_neuve(libelle, deja=apres["listes"],
+                                           ref=(ref or {}).get("listes"), defaut="liste",
+                                           quoi="liste")
+        elif lc in apres["listes"]:
+            raise _refus("liste_en_double", f"l'identifiant « {lc} » est déjà celui d'une "
+                         "liste", "donnez-lui un autre identifiant", cle=lc, colonne="liste")
+        liste = apres["listes"][lc] = {"libelle": libelle, "qualificatifs": {}}
+        ref_l = (ref or {}).get("listes", {}).get(lc)
+        for x in payload.model_dump(exclude_unset=True).get("cases") or []:
+            _case_neuve(liste, x, ref_l, liste_cle=lc)
+        return {"cle": lc, "actes": [("creation", f"liste:{lc}", None, {
+            "libelle": libelle, "cases": {qc: q["libelle"]
+                                          for qc, q in liste["qualificatifs"].items()}})]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.patch("/api/grilles/{grille_id}/listes/{liste_cle}")
+def modifier_liste(grille_id: int, liste_cle: str, payload: ListePatch,
+                   conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    """Renomme une liste. `vu` : `libelle`."""
+    d = payload.model_dump(exclude_unset=True)
+    vu = d.pop("vu", None)
+
+    def geste(g, v, avant, apres, ref):
+        liste = apres["listes"].get(liste_cle)
+        if liste is None:
+            raise _introuvable("Liste", liste_cle, v)
+        if "libelle" in d and not grilles.propre(d["libelle"]):
+            raise _refus("libelle_vide", "la liste n'a pas de nom", "donnez-lui un nom",
+                         cle=liste_cle, colonne="liste")
+        av, ap = _modifier(f"liste:{liste_cle}", liste, d, grille_ecriture.CHAMPS_LISTE,
+                           conn=conn, g=g, vu=vu)
+        return {"cle": liste_cle,
+                "actes": [("modification", f"liste:{liste_cle}", av, ap)] if ap else []}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.delete("/api/grilles/{grille_id}/listes/{liste_cle}")
+def supprimer_liste(grille_id: int, liste_cle: str, conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Supprime une liste qu'aucune entrée ne nomme (retirées comprises : 409 nommé sinon) ;
+    ses cases partent avec elle — sur une grille ouverte, une case qu'un relevé coche ne
+    disparaît pas (409, la règle du réimport)."""
+    def geste(g, v, avant, apres, ref):
+        liste = apres["listes"].get(liste_cle)
+        if liste is None:
+            raise _introuvable("Liste", liste_cle, v)
+        sert = [e["libelle"] for e in apres["entrees"].values()
+                if e["liste_cle"] == liste_cle]
+        if sert:
+            raise grille_import.Refus(409, f"La liste « {liste['libelle'] or liste_cle} » sert "
+                                           f"à {len(sert)} entrée(s) ({', '.join(sert)}) : "
+                                           "elle ne se supprime pas.")
+        del apres["listes"][liste_cle]
+        return {"cle": liste_cle, "actes": [("suppression", f"liste:{liste_cle}", {
+            "libelle": liste["libelle"],
+            "cases": {qc: q["libelle"] for qc, q in liste["qualificatifs"].items()}}, None)]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.post("/api/grilles/{grille_id}/listes/{liste_cle}/cases", status_code=201)
+def creer_case(grille_id: int, liste_cle: str, payload: CaseIn,
+               conn: sqlite3.Connection = Depends(db),
+               portee: autorisation.Portee = Depends(portee_courante)):
+    """Une case de plus dans une liste — elle s'offre à toutes les entrées qui la nomment."""
+    def geste(g, v, avant, apres, ref):
+        liste = apres["listes"].get(liste_cle)
+        if liste is None:
+            raise _introuvable("Liste", liste_cle, v)
+        qc = _case_neuve(liste, payload.model_dump(exclude_unset=True),
+                         (ref or {}).get("listes", {}).get(liste_cle), liste_cle=liste_cle)
+        q = liste["qualificatifs"][qc]
+        return {"cle": qc, "actes": [("creation", f"case:{liste_cle}/{qc}", None,
+                                      {c: q[c] for c in grille_ecriture.CHAMPS_CASE})]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.patch("/api/grilles/{grille_id}/listes/{liste_cle}/cases/{case_cle}")
+def modifier_case(grille_id: int, liste_cle: str, case_cle: str, payload: CasePatch,
+                  conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    """Renomme une case, ou change sa définition. `vu` : `libelle`, `definition`."""
+    d = payload.model_dump(exclude_unset=True)
+    vu = d.pop("vu", None)
+
+    def geste(g, v, avant, apres, ref):
+        q = (apres["listes"].get(liste_cle) or {}).get("qualificatifs", {}).get(case_cle)
+        if q is None:
+            raise _introuvable("Case", f"{liste_cle}/{case_cle}", v)
+        if "libelle" in d and not grilles.propre(d["libelle"]):
+            raise _refus("libelle_vide", "la case n'a pas de nom", "donnez-lui un nom",
+                         cle=case_cle, colonne="libelle")
+        objet = f"case:{liste_cle}/{case_cle}"
+        av, ap = _modifier(objet, q, d, grille_ecriture.CHAMPS_CASE, conn=conn, g=g, vu=vu,
+                           cle=case_cle)
+        return {"cle": case_cle, "actes": [("modification", objet, av, ap)] if ap else []}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+@router.delete("/api/grilles/{grille_id}/listes/{liste_cle}/cases/{case_cle}")
+def supprimer_case(grille_id: int, liste_cle: str, case_cle: str,
+                   conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    """Supprime une case qu'aucun relevé ne coche (409 nommé sinon, sur une grille fermée
+    comme sur une ouverte). La dernière case d'une liste qu'une entrée nomme ne se supprime
+    pas (422)."""
+    def geste(g, v, avant, apres, ref):
+        liste = apres["listes"].get(liste_cle)
+        q = (liste or {}).get("qualificatifs", {}).get(case_cle)
+        if q is None:
+            raise _introuvable("Case", f"{liste_cle}/{case_cle}", v)
+        n = grille_ecriture.releves_sur_case(conn, g["id"], case_cle)
+        if n:
+            raise grille_import.Refus(409, f"{n} relevé(s) cochent la case « {q['libelle']} » :"
+                                           " elle ne se supprime pas.")
+        del liste["qualificatifs"][case_cle]
+        objet = f"case:{liste_cle}/{case_cle}"
+        return {"cle": case_cle, "actes": [("suppression", objet, {
+            c: q[c] for c in grille_ecriture.CHAMPS_CASE}, None)]}
+    return _ecrire(conn, portee, grille_id, geste)

@@ -209,6 +209,11 @@ ou dans la feuille « 3. Listes à cocher » du classeur ; la déclaration (nom,
 grille ». **G13 est rouvert** (Hugo, 2026-11-03) : il disait « deux CSV, pas de classeur » ; le
 classeur, produit et relu par BéDéditeur, porte ce qu'un CSV ne garde pas — listes déroulantes,
 aide sur les titres, la case fautive en rouge —, et les deux CSV restent le format machine.
+
+*Elle s'écrit aussi sans tableur (l'option hybride, 2026-11-03) : les routes du formulaire
+(`routes/grilles.py`, `grille_ecriture.py`) écrivent objet par objet, dans le brouillon d'une
+grille fermée ou en place dans une ouverte, sous les mêmes refus que l'import.*
+
 Une anomalie de structure refuse le fichier ENTIER (G12). **L'import rend un bilan avant de
 publier**, en DONNÉES — un verdict, chaque faute (où, quelle entrée, quelle question, ce qui ne
 va pas, ce qu'il faut faire), « À savoir », « Ce qui va naître », ce qui change —, et pour
