@@ -160,10 +160,19 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
         # Re-détecter NE DOIT PAS détruire le travail humain : on ne supprime
         # que les bulles 'auto' encore VIDES et NON annotées ; celles porteuses
         # de texte OCR ou d'une annotation sont préservées.
+        #
+        # UX-6 — ni une bulle qu'un humain a RETOUCHÉE (`touche`, posé par toute
+        # modification d'une région par sa route : cadre, type, rattachement). L'Atelier
+        # ne faisait passer à `corrige` qu'un cadre de Kumiko ou du jeu : une bulle du
+        # moteur dont on avait repris le cadre gardait `auto`, et la détection suivante
+        # l'effaçait avec la correction. L'écran la marque `corrige` désormais, mais un
+        # autre client, ou Ctrl+Z qui rend le cadre et garde la marque, n'y passent pas :
+        # c'est ici que le travail se garde.
         doomed = conn.execute(
             """WITH RECURSIVE doomed(id) AS (
                    SELECT id FROM regions
                    WHERE planche_id = ? AND type = 'bulle' AND source = 'auto'
+                     AND touche = 0
                      AND TRIM(COALESCE(ocr_texte, '')) = ''
                      AND NOT EXISTS (SELECT 1 FROM annotations a
                                      WHERE a.region_id = regions.id)

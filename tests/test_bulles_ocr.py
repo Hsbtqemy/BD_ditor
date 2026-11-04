@@ -113,6 +113,53 @@ def test_redetecter_bulles_preserve_annotation(client, planche, monkeypatch):
     assert body["preservees"] == 1
 
 
+@requires_bulles
+@pytest.mark.parametrize("annuler", [False, True], ids=["reprise", "reprise-puis-ctrl-z"])
+def test_redetecter_bulles_garde_un_cadre_repris(client, planche, monkeypatch, annuler):
+    """UX-6 — une bulle du moteur dont on reprend le cadre n'est pas perdue à la détection
+    suivante. La perte rejouée : le moteur pose une bulle (`auto`), un humain en reprend le
+    cadre par la route de géométrie — sans toucher à `source`, comme l'Atelier le faisait
+    pour une bulle `auto` et comme le fait tout autre client —, puis on re-détecte ailleurs :
+    la bulle, vide et non annotée, partait avec la correction. Le serveur la garde parce
+    qu'elle est RETOUCHÉE (`touche`), quoi qu'en dise sa source. Après Ctrl+Z, qui rend le
+    cadre du moteur, elle reste aussi : un geste humain y a eu lieu, le plus prudent est de
+    ne rien effacer."""
+    _add_case(client, planche, 0, 0, 400, 500)
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(50, 60, 80, 40)]))
+    client.post(f"/api/planches/{planche['id']}/detecter-bulles")
+    b = next(r for r in client.get(
+        f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle")
+    assert b["source"] == "auto"
+    r = client.put(f"/api/regions/{b['id']}", json={"x": 40, "w": 110})
+    assert r.status_code == 200 and r.json()["source"] == "auto", r.text
+    if annuler:
+        assert client.post("/api/undo").status_code == 200
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(200, 200, 60, 30)]))
+    body = client.post(f"/api/planches/{planche['id']}/detecter-bulles").json()
+    regions = {r["id"]: r for r in client.get(f"/api/planches/{planche['id']}/regions").json()}
+    assert b["id"] in regions, "la bulle reprise a été effacée par la re-détection"
+    attendu = (50, 80) if annuler else (40, 110)
+    assert (regions[b["id"]]["x"], regions[b["id"]]["w"]) == attendu
+    assert body["preservees"] == 1 and body["nb_bulles"] == 1
+
+
+@requires_bulles
+def test_redetecter_bulles_remplace_toujours_une_bulle_jamais_touchee(client, planche,
+                                                                     monkeypatch):
+    """Le témoin de la précédente : sans geste humain, la bulle du moteur reste remplacée,
+    la garde ne fige pas tout ce que le moteur a posé."""
+    _add_case(client, planche, 0, 0, 400, 500)
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(50, 60, 80, 40)]))
+    client.post(f"/api/planches/{planche['id']}/detecter-bulles")
+    b = next(r for r in client.get(
+        f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle")
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(200, 200, 60, 30)]))
+    client.post(f"/api/planches/{planche['id']}/detecter-bulles")
+    ids = [r["id"] for r in client.get(f"/api/planches/{planche['id']}/regions").json()
+           if r["type"] == "bulle"]
+    assert b["id"] not in ids and len(ids) == 1
+
+
 def test_iou_unitaire():
     """IoU : identiques = 1, disjointes = 0, petite incluse dans grande = faible."""
     assert bulles._iou({"x": 0, "y": 0, "w": 10, "h": 10}, {"x": 0, "y": 0, "w": 10, "h": 10}) == 1.0

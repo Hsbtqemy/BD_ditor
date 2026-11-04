@@ -2576,11 +2576,11 @@ async function patchRegion(id, fields, vuExplicite = null) {
     if (vuExplicite && k in vuExplicite) vu[k] = vuExplicite[k];
     else if (r) vu[k] = r[k] ?? null;
   }
-  // La source suit la retouche : un cadre posé par Kumiko ou par le JEU d'un bac à sable,
-  // repris à la main, devient « corrige ». Pour le jeu (UX-6), c'est ce que lit l'étape
-  // « Corriger le découpage » du guide, qui ne distingue pas autrement un cadre repris d'un
-  // texte retouché (`touche` vaut pour les deux).
-  if (r && (r.source === "kumiko" || r.source === "jeu") &&
+  // La source suit la retouche : un cadre posé par Kumiko, le moteur de bulles ou le JEU
+  // d'un bac à sable, repris à la main, devient « corrige ». Pour le jeu (UX-6), c'est ce
+  // que lit l'étape « Corriger le découpage » du guide, qui ne distingue pas autrement un
+  // cadre repris d'un texte retouché (`touche` vaut pour les deux).
+  if (r && (r.source === "kumiko" || r.source === "auto" || r.source === "jeu") &&
       ("x" in fields || "y" in fields || "w" in fields || "h" in fields || "type" in fields)) {
     fields.source = "corrige";
   }
