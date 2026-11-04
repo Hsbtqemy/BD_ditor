@@ -269,7 +269,8 @@ def importer_grille(projet_id: int, fichier: UploadFile = File(...),
 def publier_version(grille_id: int, numero: int, conn: sqlite3.Connection = Depends(db),
                     portee: autorisation.Portee = Depends(portee_courante)):
     """Publie le BROUILLON : il devient une version figée, qui garde son numéro (le suivant).
-    409 nommé sur une version qui n'est pas un brouillon."""
+    409 nommé sur une version qui n'est pas un brouillon, qui n'a aucune entrée, ou qui porte
+    exactement la dernière version publiée (même empreinte et même ordre : rien à publier)."""
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id, gerer=True)
     v = _get_version(conn, g, numero)
@@ -281,6 +282,16 @@ def publier_version(grille_id: int, numero: int, conn: sqlite3.Connection = Depe
         # Une grille créée sans import naît vide (la règle de l'import : « aucune entrée »).
         raise HTTPException(409, f"La version {numero} n'a aucune entrée : elle ne se publie "
                                  "pas.")
+    publiee = grilles.derniere_version(conn, grille_id, grilles.ETAT_PUBLIEE)
+    if publiee is not None:
+        # Un brouillon qui porte exactement la dernière version publiée — même contenu, même
+        # ordre — ne fait pas une version : la publier donnerait deux numéros au même plan
+        # (le patron de l'import, qui dit « aucun changement » ; choix à confirmer).
+        b, p = grilles.contenu(conn, v["id"]), grilles.contenu(conn, publiee["id"])
+        if grilles.empreinte(b) == grilles.empreinte(p) and grilles.ordre(b) == grilles.ordre(p):
+            raise HTTPException(409, f"Le brouillon {numero} porte exactement la version "
+                                     f"{publiee['numero']} publiée : il n'y a rien à publier. "
+                                     "Changez-le, ou supprimez-le.")
     grille_import.publier(conn, grille_id, v, par=portee.utilisateur)
     conn.commit()
     return _vue_grille(conn, g)
@@ -565,7 +576,8 @@ def demasquer_grille(collection_id: int, grille_id: int, conn: sqlite3.Connectio
 # `vu`, la valeur que l'écran voyait (CONC-3) : périmée, 409 qui nomme qui l'a changée ; sans
 # elle, le dernier gagne (Q8). Tout s'écrit sous `grille`, un acte par objet touché, dont la
 # charge nomme l'objet (`objet` : « entree:cri », « variante:cri/bang », « rubrique:sons »,
-# « liste:sources », « case:sources/objet », « grille ») — c'est par elle que le 409 trouve
+# « liste:sources », « case:sources/objet », « grille », et pour un ordre les frères qu'il
+# range, « ordre:entree:sons ») — c'est par elle que le 409 trouve
 # l'auteur d'une valeur. À qui gère le projet : 404 sur une grille qu'on ne voit pas, 403
 # nommé sur une grille qu'on lit sans la gérer. Ctrl+Z ne défait rien de cela, comme de
 # l'import. La réponse rend le PLAN de la version écrite (`grilles.plan`), que le formulaire
@@ -1359,4 +1371,93 @@ def supprimer_case(grille_id: int, liste_cle: str, case_cle: str,
         objet = f"case:{liste_cle}/{case_cle}"
         return {"cle": case_cle, "actes": [("suppression", objet, {
             c: q[c] for c in grille_ecriture.CHAMPS_CASE}, None)]}
+    return _ecrire(conn, portee, grille_id, geste)
+
+
+# -- L'ordre ------------------------------------------------------------------ #
+_ORDONNABLES = ("rubrique", "entree", "variante", "case")
+
+
+class OrdreIn(_Strict):
+    """Ranger un objet à une PLACE parmi ses frères : une rubrique parmi celles de même
+    parent, une entrée parmi celles de sa rubrique, une variante parmi celles de son entrée,
+    une case parmi celles de sa liste. `place` : son rang parmi eux, à partir de 0. `vu` :
+    l'ordre des frères que l'écran voyait (leurs identifiants)."""
+    quoi: str
+    cle: str
+    entree_cle: Optional[str] = None
+    liste_cle: Optional[str] = None
+    place: int
+    vu: Optional[list[str]] = None
+
+
+def _ranger(objets: dict, freres: list, neufs: list) -> None:
+    """RENUMÉROTE les rangs de `objets` — tous ceux de la même sorte — de 0 à n : les
+    `freres` reprennent, dans leur ordre neuf (`neufs`), les places qu'ils tenaient dans
+    l'ordre entier, et les autres ne bougent pas."""
+    places = iter(neufs)
+    entier = [next(places) if k in freres else k for k in grilles._par_rang(objets)]
+    for rang, k in enumerate(entier):
+        objets[k]["rang"] = rang
+
+
+@router.put("/api/grilles/{grille_id}/ordre")
+def ranger_dans_la_grille(grille_id: int, payload: OrdreIn,
+                          conn: sqlite3.Connection = Depends(db),
+                          portee: autorisation.Portee = Depends(portee_courante)):
+    """RANGE une rubrique, une entrée, une variante ou une case à une place parmi ses frères
+    (`quoi`, `cle`, `entree_cle` pour une variante, `liste_cle` pour une case). L'ordre ne
+    fait pas l'empreinte d'une version — réordonner les lignes du tableur n'en fait pas une
+    (cadrage R3) —, mais il est ce que l'annotateur voit : sur une grille fermée, il s'écrit
+    dans le brouillon comme tout geste du formulaire, et un brouillon qui ne change QUE
+    l'ordre se publie. `vu` : l'ordre des frères que l'écran voyait — périmé, 409 de CONC-3,
+    qui nomme qui l'a changé. Au journal, un acte sous la grille, dont l'objet nomme les
+    frères (« ordre:entree:<rubrique> »). Une place hors des frères : 422."""
+    if payload.quoi not in _ORDONNABLES:
+        raise HTTPException(422, f"« quoi » est l'un de : {', '.join(_ORDONNABLES)}.")
+
+    def geste(g, v, avant, apres, ref):
+        quoi, cle = payload.quoi, payload.cle
+        if quoi == "rubrique":
+            r = apres["rubriques"].get(cle)
+            if r is None:
+                raise _introuvable("Rubrique", cle, v)
+            objets, parent = apres["rubriques"], r["parent_cle"]
+            freres = [k for k in grilles._par_rang(objets)
+                      if objets[k]["parent_cle"] == parent]
+        elif quoi == "entree":
+            e = apres["entrees"].get(cle)
+            if e is None:
+                raise _introuvable("Entrée", cle, v)
+            objets, parent = apres["entrees"], e["rubrique_cle"]
+            freres = [k for k in grilles._par_rang(objets)
+                      if objets[k]["rubrique_cle"] == parent]
+        elif quoi == "variante":
+            parent = payload.entree_cle
+            e = apres["entrees"].get(parent or "")
+            if e is None or cle not in e["variantes"]:
+                raise _introuvable("Variante", f"{parent}/{cle}", v)
+            objets = e["variantes"]
+            freres = grilles._par_rang(objets)
+        else:
+            parent = payload.liste_cle
+            liste = apres["listes"].get(parent or "")
+            if liste is None or cle not in liste["qualificatifs"]:
+                raise _introuvable("Case", f"{parent}/{cle}", v)
+            objets = liste["qualificatifs"]
+            freres = grilles._par_rang(objets)
+        if not 0 <= payload.place < len(freres):
+            raise HTTPException(422, f"La place {payload.place} n'existe pas : "
+                                     f"{len(freres)} place(s), de 0 à {len(freres) - 1}.")
+        objet = f"ordre:{quoi}:{parent or ''}"
+        neufs = [k for k in freres if k != cle]
+        neufs.insert(payload.place, cle)
+        if payload.vu is not None:
+            conflit.verifier(conn, "grille", g["id"], "ordre", vu=list(payload.vu),
+                             actuel=freres, nouveau=neufs, objet=("objet", objet))
+        if neufs == freres:
+            return {"cle": cle, "actes": []}
+        _ranger(objets, freres, neufs)
+        return {"cle": cle, "actes": [("modification", objet, {"ordre": freres},
+                                       {"ordre": neufs, "deplace": cle})]}
     return _ecrire(conn, portee, grille_id, geste)

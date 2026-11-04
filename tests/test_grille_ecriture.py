@@ -661,3 +661,92 @@ def test_le_journal_nomme_chaque_objet(client, decor, db_path):
     # Ctrl+Z ne défait pas un geste sur une grille.
     r = client.get("/api/undo/prochain", headers=LEA)
     assert r.status_code == 404 or "grille" not in r.text
+
+
+# --------------------------------------------------------------------------- #
+# L'ordre, et le brouillon qui ne change rien
+# --------------------------------------------------------------------------- #
+def _cles(objets):
+    return [x["cle"] for x in objets]
+
+
+def test_les_objets_d_une_grille_se_reordonnent(client, decor, db_path):
+    """Une rubrique, une entrée, une variante, une case se rangent à une place parmi leurs
+    frères ; sur une grille fermée, dans le brouillon ; les autres ne bougent pas ; `vu`
+    garde l'ordre vu ; au journal, un acte qui nomme les frères."""
+    g = grille_active(client, decor["p"])
+    gid = g["grille_id"]
+    url = f"/api/grilles/{gid}/ordre"
+    v1 = ok(client.get(f"/api/grilles/{gid}/versions/1", headers=LEA))
+    depuis = _dernier_acte(db_path)
+    r = ok(client.put(url, headers=LEA, json={"quoi": "entree", "cle": "ton-de-voix",
+                                              "place": 0, "vu": ["cri", "ton-de-voix"]}))
+    assert r["version"] == {"numero": 2, "etat": "brouillon"} and r["brouillon_cree"]
+    entrees = _cles(r["plan"]["entrees"])
+    assert entrees.index("ton-de-voix") < entrees.index("cri")
+    autres = [k for k in _cles(v1["entrees"]) if k not in ("cri", "ton-de-voix")]
+    assert [k for k in entrees if k not in ("cri", "ton-de-voix")] == autres
+    # La version publiée ne bouge pas.
+    assert _cles(ok(client.get(f"/api/grilles/{gid}/versions/1", headers=LEA))["entrees"]) \
+        == _cles(v1["entrees"])
+    acte = _actes(db_path, depuis)[-1]
+    assert acte["avant"] == {"objet": "ordre:entree:voix", "version": 2,
+                             "ordre": ["cri", "ton-de-voix"]}
+    assert acte["apres"] == {"objet": "ordre:entree:voix", "version": 2,
+                             "ordre": ["ton-de-voix", "cri"], "deplace": "ton-de-voix"}
+    # Une rubrique parmi celles de son étage.
+    r = ok(client.put(url, headers=LEA, json={"quoi": "rubrique", "cle": "image", "place": 0}))
+    assert _cles(x for x in r["plan"]["rubriques"] if x["parent_cle"] is None) == [
+        "image", "sons", "provenance", "graphisme", "echanges"]
+    # Une variante parmi celles de son entrée, une case parmi celles de sa liste.
+    r = ok(client.put(url, headers=LEA, json={"quoi": "variante", "entree_cle": "onomatopee",
+                                              "cle": "splash", "place": 1}))
+    assert _cles(_entree(r["plan"], "onomatopee")["variantes"]) == ["bang", "splash", "crac"]
+    r = ok(client.put(url, headers=LEA, json={"quoi": "case", "liste_cle": "sources",
+                                              "cle": "hors-champ", "place": 0}))
+    (sources,) = [x for x in r["plan"]["listes"] if x["cle"] == "sources"]
+    assert _cles(sources["qualificatifs"]) == ["hors-champ", "personnage", "objet"]
+    # À sa place : rien ne s'écrit.
+    depuis = _dernier_acte(db_path)
+    ok(client.put(url, headers=LEA, json={"quoi": "entree", "cle": "cri", "place": 1}))
+    assert _actes(db_path, depuis) == []
+    # Une place hors des frères, une sorte inconnue : 422 ; un objet absent : 404.
+    for corps, code in (({"quoi": "entree", "cle": "cri", "place": 2}, 422),
+                        ({"quoi": "entree", "cle": "cri", "place": -1}, 422),
+                        ({"quoi": "liste", "cle": "sources", "place": 0}, 422),
+                        ({"quoi": "variante", "entree_cle": "cri", "cle": "bang",
+                          "place": 0}, 404),
+                        ({"quoi": "case", "liste_cle": "sources", "cle": "rien",
+                          "place": 0}, 404)):
+        assert client.put(url, headers=LEA, json=corps).status_code == code, corps
+    # Un ordre vu périmé : le 409 de CONC-3, qui nomme qui l'a changé.
+    ok(client.put(url, headers=ADMIN, json={"quoi": "entree", "cle": "cri", "place": 0}))
+    r = client.put(url, headers=LEA, json={"quoi": "entree", "cle": "cri", "place": 1,
+                                           "vu": ["ton-de-voix", "cri"]})
+    assert r.status_code == 409, r.text
+    d = r.json()["detail"]
+    assert d["conflit"]["champ"] == "ordre" and d["conflit"]["auteur"]["login"] == "decor"
+    assert "l'ordre a été modifié" in d["message"]
+    # Qui ne gère pas le projet : 403 nommé.
+    assert client.put(url, headers=SAM, json={"quoi": "entree", "cle": "cri",
+                                              "place": 1}).status_code == 403
+
+
+def test_un_brouillon_identique_a_la_version_publiee_ne_se_publie_pas(client, decor, db_path):
+    """Un brouillon qui porte exactement la dernière version publiée ne se publie pas (409
+    nommé) : il donnerait deux numéros au même plan. Changer l'ordre suffit à en faire une
+    version — c'est ce que l'annotateur voit, même si l'empreinte l'écarte."""
+    g = grille_active(client, decor["p"])
+    gid = g["grille_id"]
+    piege = "un cri n'est pas une onomatopée de choc : on le pose sur le cri, pas sur le bruit"
+    ok(client.patch(f"/api/grilles/{gid}/entrees/cri", headers=LEA, json={"piege": "x"}))
+    ok(client.patch(f"/api/grilles/{gid}/entrees/cri", headers=LEA, json={"piege": piege}))
+    r = client.post(f"/api/grilles/{gid}/versions/2/publication", headers=LEA)
+    assert r.status_code == 409 and "rien à publier" in r.json()["detail"], r.text
+    assert _q(db_path, "SELECT numero, etat FROM grille_version ORDER BY numero") == [
+        {"numero": 1, "etat": "publiee"}, {"numero": 2, "etat": "brouillon"}]
+    ok(client.put(f"/api/grilles/{gid}/ordre", headers=LEA,
+                  json={"quoi": "entree", "cle": "ton-de-voix", "place": 0}))
+    ok(client.post(f"/api/grilles/{gid}/versions/2/publication", headers=LEA))
+    entrees = _cles(ok(client.get(f"/api/grilles/{gid}/versions/2", headers=LEA))["entrees"])
+    assert entrees.index("ton-de-voix") < entrees.index("cri")

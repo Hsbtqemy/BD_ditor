@@ -65,6 +65,7 @@ LIBELLES = {
     "cible": "la cible",
     "cardinalite": "le nombre de fois",
     "liste_cle": "la liste",
+    "ordre": "l'ordre",
 }
 
 

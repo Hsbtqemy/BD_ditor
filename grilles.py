@@ -232,6 +232,20 @@ def _sans_rangs(objet):
     return objet
 
 
+def _par_rang(objets: dict) -> list:
+    return [k for k, _ in sorted(objets.items(), key=lambda kv: (kv[1].get("rang", 0), kv[0]))]
+
+
+def ordre(c: dict) -> dict:
+    """L'ORDRE d'un contenu, que l'empreinte écarte : les identifiants des rubriques, des
+    entrées, des variantes de chaque entrée et des cases de chaque liste, dans l'ordre de
+    leurs rangs. Deux contenus de même empreinte et de même ordre sont la même version À
+    L'ÉCRAN — ce qu'on ne publie pas deux fois (`routes/grilles.publier_version`)."""
+    return {"rubriques": _par_rang(c["rubriques"]), "entrees": _par_rang(c["entrees"]),
+            "variantes": {k: _par_rang(e["variantes"]) for k, e in c["entrees"].items()},
+            "cases": {lc: _par_rang(l["qualificatifs"]) for lc, l in c["listes"].items()}}
+
+
 def empreinte(c: dict) -> str:
     """Le SHA-256 du contenu normalisé : cellules nettoyées, lignes triées par `cle` (les
     clés JSON triées), sans les rangs — réordonner les lignes du tableur ne fait pas une
