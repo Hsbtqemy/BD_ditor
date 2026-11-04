@@ -182,6 +182,30 @@ def test_un_identifiant_manquant_se_derive_du_nom_sans_collision():
         (6, "entree", False)]
 
 
+def test_un_identifiant_ecrit_qui_porte_une_barre_oblique_est_une_faute():
+    """Une « / » ne tient pas dans l'adresse d'une route (`…/entrees/{cle}/variantes/{v}`) :
+    l'import la refuse, comme le formulaire, au lieu d'écrire une entrée que les routes
+    n'adresseraient pas. Dite une fois par valeur, à sa première ligne."""
+    texte = ("cle;rubrique;rubrique_cle;forme;libelle;variante_cle;variante;liste\r\n"
+             "a/b;Sons;sons/voix;variantes;a;;;\r\n"
+             "a/b;;;;;x/y;x;\r\n"
+             "ok;;;qualificatifs;ok;;;l/1\r\n")
+    listes = "liste_cle;liste;cle;libelle\r\nl/1;L;c/1;une case\r\n"
+    lu = grille_import.lire(flux(texte), flux(listes), porte_sur="mots")
+    assert lu["contenu"] is None
+    barres = [(a["fichier"], a["ligne"], a["colonne"]) for a in lu["anomalies"]
+              if a["code"] == "cle_barre_oblique"]
+    assert barres == [("listes", 2, "liste_cle"), ("listes", 2, "cle"),
+                      ("entrées", 2, "cle"), ("entrées", 2, "rubrique_cle"),
+                      ("entrées", 3, "variante_cle")]
+    a = next(a for a in lu["anomalies"] if a["code"] == "cle_barre_oblique")
+    assert a["probleme"] and a["a_faire"]
+    # Sans identifiant, il se prend du nom, et le nom peut porter une « / ».
+    lu = grille_import.lire(flux("cle;forme;libelle\r\n;simple;et/ou\r\n"), None,
+                            porte_sur="mots")
+    assert lu["anomalies"] == [] and list(lu["contenu"]["entrees"]) == ["et-ou"]
+
+
 def test_un_identifiant_manquant_reprend_celui_de_l_objet_de_meme_nom():
     """Dans un réimport, un fichier écrit à la main garde les identifiants de la version à
     laquelle on compare : même nom, même identifiant — sinon un fichier sans identifiants

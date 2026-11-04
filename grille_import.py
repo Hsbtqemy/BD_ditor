@@ -190,6 +190,28 @@ def _par_colonne(nom, entete, lignes, attendues, *, listes, obligatoires, anomal
     return sortie
 
 
+SEP_ADRESSE = "/"
+
+
+def _barres_obliques(nom, lignes, colonnes, *, listes, anomalies) -> None:
+    """Un identifiant ÉCRIT qui porte une « / » est une faute : il ne tiendrait pas dans
+    l'adresse d'une route (`…/entrees/{cle}/variantes/{variante}`), que le formulaire emploie
+    pour l'écrire, ni dans la charge du journal (« variante:cri/bang ») ; le formulaire le
+    refuse déjà (`grille_ecriture.cle_donnee`). Une fois par valeur, à sa première ligne :
+    la ligne d'une variante répète l'identifiant de son entrée."""
+    dits = set()
+    for n, l in lignes:
+        for c in colonnes:
+            valeur = l.get(c)
+            if not valeur or SEP_ADRESSE not in valeur or (c, valeur) in dits:
+                continue
+            dits.add((c, valeur))
+            anomalies.append(_faute(
+                "cle_barre_oblique", f"l'identifiant « {valeur} » porte une « / », qu'un "
+                "identifiant ne porte pas", "retirez-la, ou videz la cellule : l'identifiant "
+                "se prendra du nom", fichier=nom, ligne=n, colonne=c, listes=listes))
+
+
 class _Identifiants:
     """Les identifiants qui MANQUENT, reçus du NOM (ANN-7, tranché le 2026-11-03 : la colonne
     grise du classeur peut être vide). Règle, dans cet ordre :
@@ -282,6 +304,8 @@ def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
         nom_l, entete_l, brutes_l = tableur["listes"]
         lignes_l = _par_colonne(nom_l, entete_l, brutes_l, COLONNES_LISTES, listes=True,
                                 obligatoires=("libelle",), anomalies=anomalies)
+        _barres_obliques(nom_l, lignes_l, ("liste_cle", "cle"), listes=True,
+                         anomalies=anomalies)
         ids_listes.reserver(l["liste_cle"] for _, l in lignes_l)
         nom_vers_cle = {}
         for _, l in lignes_l:
@@ -349,6 +373,8 @@ def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
     nom_e, entete_e, brutes_e = tableur["entrees"]
     lignes = _par_colonne(nom_e, entete_e, brutes_e, COLONNES, listes=False,
                           obligatoires=OBLIGATOIRES, anomalies=anomalies)
+    _barres_obliques(nom_e, lignes, ("cle", "rubrique_cle", "variante_cle"), listes=False,
+                     anomalies=anomalies)
     est_variante = {n: bool(l["variante_cle"] or l["variante"]) for n, l in lignes}
     ids_e = _Identifiants(ref["entrees"], _par_nom(ref["entrees"]))
     ids_e.reserver(l["cle"] for n, l in lignes if not est_variante[n])
