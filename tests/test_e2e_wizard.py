@@ -251,7 +251,11 @@ def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
         _preference_police(page, police)
         page.set_viewport_size({"width": 320, "height": 800})
         _arriver(page, jeu["base"])
-        perdus = _perdus(page)
+        # `#canvas` est la surface de pan de l'Atelier, exemptée par décision écrite
+        # (`EXEMPTIONS` de test_e2e_reflow) : il prend la largeur de la planche dès qu'elle
+        # arrive, si bien que cette ligne échouait ou non selon l'image, avant ou après la
+        # mesure (2026-11-04, poste et image).
+        perdus = [c for c in _perdus(page) if c["id"] != "canvas"]
         if perdus:
             echecs.append(f"ligne, police {police} : {perdus[:3]}")
         page.locator("#bac-commencer").click()
