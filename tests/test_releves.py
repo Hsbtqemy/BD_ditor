@@ -518,14 +518,23 @@ def test_une_entree_nait_en_la_posant_dans_une_grille_ouverte(client, decor, db_
     d = {**decor, **g}
     r = poser(client, d, region_id=bulle(d), nouvelle_entree={"libelle": "Rire Nerveux"},
               mots=[0])
-    assert r["entree_cle"] == "rire nerveux"
+    # Son identifiant se dérive comme à l'import : sans accents, minuscules, tirets.
+    assert r["entree_cle"] == "rire-nerveux"
+    # Une entrée de même nom (casse, espaces) est reprise.
     r2 = poser(client, d, region_id=bulle(d), nouvelle_entree={"libelle": "rire  nerveux"},
                mots=[1])
-    assert r2["entree_cle"] == "rire nerveux"
-    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_entree WHERE cle = 'rire nerveux'")[
+    assert r2["entree_cle"] == "rire-nerveux"
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_entree WHERE libelle = 'Rire Nerveux'")[
         0]["n"] == 1
+    # Un autre nom dont l'identifiant dérivé est déjà pris reçoit « -2 », jamais l'entrée
+    # d'un autre : « Vu ! » n'est pas « vu ».
+    r3 = poser(client, d, region_id=bulle(d), nouvelle_entree={"libelle": "Vu !"}, mots=[2])
+    assert r3["entree_cle"] == "vu-2"
+    r4 = poser(client, d, region_id=bulle(d), nouvelle_entree={"libelle": "Écho Lointain"},
+               mots=[3])
+    assert r4["entree_cle"] == "echo-lointain"
     assert _q(db_path, "SELECT COUNT(*) AS n FROM evenement WHERE cible_table = 'grille' "
-                       "AND apres LIKE '%entree_neuve%'")[0]["n"] == 1
+                       "AND apres LIKE '%entree_neuve%'")[0]["n"] == 3
     # Dans une grille fermée, non.
     poser(client, decor, attendu=(422,), region_id=bulle(decor),
           nouvelle_entree={"libelle": "nouveau"}, mots=[0])

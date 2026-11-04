@@ -50,6 +50,7 @@ from pydantic import BaseModel
 
 import autorisation
 import conflit
+import grille_ecriture
 import grilles
 import journal
 import mots
@@ -415,19 +416,25 @@ class ReleveIn(BaseModel):
 
 def _entree_neuve(conn, grille_id: int, version, libelle: str):
     """Une entrée qui naît EN LA POSANT, dans la version vivante d'une grille OUVERTE (G14,
-    le patron des tags libres) : sa `cle` dérive de son libellé (`database.cle_tag`), une
-    entrée de même clé est reprise. Simple, sans rubrique ; sa cible est celle de la
-    version. Au journal, sous la grille, et l'empreinte de la version suit."""
+    le patron des tags libres) : une entrée de même NOM — comparé par la clé d'un libellé
+    (`database.cle_tag` : casse, apostrophes, espaces) — est reprise ; sinon sa `cle` se
+    DÉRIVE de son libellé comme à l'import et au formulaire (`grille_ecriture.cle_neuve` :
+    sans accents, minuscules, tirets, 48 caractères, `-2` à la collision). Simple, sans
+    rubrique ; sa cible est celle de la version. Au journal, sous la grille, et l'empreinte
+    de la version suit."""
     libelle = grilles.propre(libelle)
     if not libelle:
         raise HTTPException(422, "Une entrée neuve a besoin d'un libellé.")
-    cle = cle_tag(libelle)
-    e = grilles.entree(conn, version["id"], cle)
+    entrees = {r["cle"]: r for r in conn.execute(
+        "SELECT * FROM grille_entree WHERE version_id = ? ORDER BY rang, id", (version["id"],))}
+    e = next((r for r in entrees.values() if cle_tag(r["libelle"]) == cle_tag(libelle)), None)
     if e is not None and e["retiree"]:
         raise HTTPException(422, f"« {libelle} » est retirée de la grille : elle ne se pose "
                                  "plus.")
     if e is not None:
         return e
+    cle = grille_ecriture.cle_neuve(libelle, deja=entrees, ref=None, defaut="entree",
+                                    quoi="entree")
     rang = conn.execute("SELECT COALESCE(MAX(rang), -1) + 1 FROM grille_entree "
                         "WHERE version_id = ?", (version["id"],)).fetchone()[0]
     conn.execute("INSERT INTO grille_entree (version_id, cle, rang, forme, libelle) "
