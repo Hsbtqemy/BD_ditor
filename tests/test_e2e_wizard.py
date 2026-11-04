@@ -30,19 +30,12 @@ from test_e2e_bac_a_sable import (CAMILLE, DOMINIQUE, _api, _inviter, _ouvrir,  
 
 pytestmark = pytest.mark.e2e
 
-SURFACES_AUDITEES = {"/": "l'Atelier, où « Mon bac à sable » mène et où l'album s'ouvre seul"}
-SURFACES_HORS_PERIMETRE = {
-    "/annotation": "le même script partagé que l'Atelier ; l'ouverture seule y suit la même "
-                   "règle, jouée une fois sur la surface d'arrivée",
-    "/corpus": "le même script partagé que l'Atelier ; l'ouverture seule y suit la même "
-               "règle, jouée une fois sur la surface d'arrivée",
-    "/recherche": "le même script partagé que l'Atelier ; l'ouverture seule y suit la même "
-                  "règle, jouée une fois sur la surface d'arrivée",
-    "/exploration": "le même script partagé que l'Atelier ; l'ouverture seule y suit la même "
-                    "règle, jouée une fois sur la surface d'arrivée",
-    "/administration": "le même script partagé que l'Atelier ; l'ouverture seule y suit la "
-                       "même règle, jouée une fois sur la surface d'arrivée",
-}
+# Les six surfaces, avec le titre que la fenêtre leur donne : le « ? » se joue sur chacune
+# (l'album et la visite sur celles où ils mènent).
+SURFACES_AUDITEES = {"/": "Atelier", "/annotation": "Annotation", "/corpus": "Bibliothèque",
+                     "/recherche": "Recherche", "/exploration": "Exploration",
+                     "/administration": "Administration"}
+SURFACES_HORS_PERIMETRE = {}
 
 SOUVENIR = "() => { try { return localStorage.getItem('bd-wizard'); } catch (e) { return null; } }"
 
@@ -390,9 +383,7 @@ def test_la_visite_traverse_les_pages_et_finit_sur_la_carte(page, jeu):
     expect(compte).to_have_text("Visite 1 / 7")
 
 
-TITRES = {"/": "Atelier", "/annotation": "Annotation", "/corpus": "Bibliothèque",
-          "/recherche": "Recherche", "/exploration": "Exploration",
-          "/administration": "Administration"}
+TITRES = SURFACES_AUDITEES
 
 
 def test_le_point_d_interrogation_rouvre_les_reperes_sur_les_six_surfaces(page, live_server):
