@@ -1266,7 +1266,11 @@ def test_corpus_appartenance_album(page, seeded):
     assert "pourrez la rendre depuis l'Administration" in dialogues[0], dialogues
 
     # Rangé ailleurs, l'album vit dans deux collections — et la sortie ne demande plus rien.
-    page.locator(f'#album-range-cases input[data-ranger="{autre}"]').click()
+    # La case se coche AVANT que le PUT ne parte : on attend sa réponse, sans quoi la lecture
+    # qui suit courait contre lui (rouge dans l'image, vert sur le poste, 2026-11-04).
+    with page.expect_response(lambda r: r.request.method == "PUT"
+                              and f"/collections/{autre}" in r.url):
+        page.locator(f'#album-range-cases input[data-ranger="{autre}"]').click()
     page.wait_for_function("() => document.querySelectorAll("
                            "'#album-range-cases input[data-ranger]:checked').length === 2",
                            timeout=3000)
