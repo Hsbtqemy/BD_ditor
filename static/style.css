@@ -3785,6 +3785,65 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
   font-size: 1rem; font-family: inherit; }
 .pj-demande-etat, .pj-demander-ouvrir { margin: .5rem 0 .2rem; }
 
+/* ── Les grilles d'un projet (ANN-7) — le bloc de sa fiche, et le bilan d'un import ─────
+   Des lignes qui passent à la ligne, jamais un tableau : rien n'a à défiler de côté, à
+   aucune largeur. Le bilan est un document qu'on lit de haut en bas : le verdict, puis ce
+   qu'il faut corriger, chaque faute dans sa boîte. Ses couleurs ne portent rien seules — le
+   verdict le dit en mots, une faute se lit par son texte. */
+.pg-liste { list-style: none; margin: 0; padding: 0; max-width: 62rem; }
+.pg-grille { padding: .4rem 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.pg-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .6rem; }
+.pg-nom { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.pg-nom:focus { outline: none; }
+.pg-nom:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pg-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem;
+             margin-top: .35rem; }
+.pg-telecharger { color: var(--accent-blue); font-size: .92rem; overflow-wrap: anywhere; }
+.pg-confirme { margin-top: .4rem; padding: .4rem .6rem; border-left: 2px solid var(--border); }
+.pg-confirme p { margin: 0; }
+.pg-import { margin-top: .6rem; padding: .6rem .8rem; border: 1px solid var(--border);
+             border-radius: 8px; display: grid; gap: .45rem; max-width: 52rem; min-width: 0; }
+.pg-import h5 { margin: 0; font-size: .95rem; overflow-wrap: anywhere; }
+.pg-import-l { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .7rem;
+               min-width: 0; }
+.pg-import-l > label { min-width: 8rem; color: var(--text-muted); font-size: .92rem; }
+.pg-import-l input[type="file"] { min-width: 0; max-width: 100%; color: var(--text); }
+.pg-import-l input[type="text"] { flex: 1 1 12rem; min-width: 0; max-width: 24rem;
+  background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: .3rem .5rem; font: inherit; }
+.pg-bilan { display: grid; gap: .6rem; min-width: 0; }
+.pg-bilan h5 { margin: 0 0 .3rem; font-size: .8rem; text-transform: uppercase;
+               letter-spacing: .06em; color: var(--text-muted); font-weight: 600; }
+.pg-verdict { margin: 0; padding: .45rem .7rem; border-radius: 6px; border-left: 4px solid;
+              font-weight: 600; overflow-wrap: anywhere; }
+.pg-verdict:focus { outline: none; }
+.pg-verdict:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pg-verdict-ok { border-color: var(--accent-green);
+                 background: color-mix(in srgb, var(--accent-green) 10%, transparent); }
+.pg-verdict-ko { border-color: var(--accent-amber);
+                 background: color-mix(in srgb, var(--accent-amber) 12%, transparent); }
+.pg-verdict-attente { border-color: var(--accent-blue);
+                      background: color-mix(in srgb, var(--accent-blue) 10%, transparent); }
+.pg-declaration { margin: 0; color: var(--text-muted); overflow-wrap: anywhere; }
+.pg-fautes { margin: 0; padding: 0 0 0 1.4rem; display: grid; gap: .45rem; }
+.pg-faute { border: 1px solid var(--border); border-radius: 6px; padding: .4rem .6rem;
+            min-width: 0; overflow-wrap: anywhere; }
+.pg-faute p { margin: 0; }
+.pg-faute-ou { color: var(--text-muted); font-size: .9rem; }
+.pg-faute-faire { font-weight: 600; }
+.pg-repondre { display: grid; gap: .25rem; margin-bottom: .45rem; min-width: 0; }
+.pg-repondre label { overflow-wrap: anywhere; }
+.pg-repondre select { min-width: 0; max-width: 100%; background: var(--bg-input);
+  color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: .2rem .35rem;
+  font: inherit; }
+.pg-changements, .pg-savoir { list-style: none; margin: 0; padding: 0; }
+.pg-changements li, .pg-savoir li { padding: .2rem 0; border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere; }
+.pg-genre { display: inline-block; font-size: .8rem; border: 1px solid var(--border);
+            border-radius: 999px; padding: 0 .45rem; color: var(--text-muted); }
+.pg-genre-part { border-color: var(--accent-amber); }
+.pg-pied { margin-top: 0; }
+
 /* ── Qui y entre (COL-3) — les membres d'un projet, module monté dans sa fiche ────────
    Le frère de « Qui entre », plus haut, et les mêmes précautions : une liste déroulante
    prend la largeur de sa plus longue option, donc elle rétrécit ; la saisie libre garde

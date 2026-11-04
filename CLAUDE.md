@@ -365,7 +365,9 @@ Deux paliers de métadonnées descriptives (FAIR/dépôt, cf. `docs/dictionnaire
 **Les GRILLES et les RELEVÉS** (ANN-7, tranche 1, v37, 2026-10-25 ; le modèle :
 `docs/grilles-et-releves.md`, le tableur : `docs/import-grille.md`, le cadrage :
 `docs/ann7-tranche1-cadrage.md`). Seize tables (`database.TABLES_DES_GRILLES`) et
-`regions.nom` ; l'écran est la page Annotation (tranche 2). **Le type de région `detail`**
+`regions.nom` ; l'écran est la page Annotation (tranche 2), et, pour importer, publier et
+activer une grille, le bloc « Grilles » de la fiche d'un projet de l'Administration
+(`static/lib/grilles-projet.js`). **Le type de région `detail`**
 (ANN-7, tranche 2, commit 9 ; G17) : un détail d'image, tracé dans une case depuis la page
 Annotation, qui porte un NOM (`regions.nom`, écrit par `POST`/`PUT` des régions, gardé par
 `vu` comme le texte) et jamais de texte ; il se range dans une case ou nulle part, rien ne se

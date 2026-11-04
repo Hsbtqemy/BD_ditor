@@ -1927,6 +1927,11 @@ function pjRendreFiche() {
     ${justification}
     <section class="pj-section" data-membres-projet></section>
     <section class="pj-section"><h4>Collections</h4>${pjCollections(p)}</section>
+    <section class="pj-section pg" aria-labelledby="pj-grilles-titre">
+      <h4 id="pj-grilles-titre">Grilles</h4>
+      <div id="pg-liste-zone">${pgListe(p)}</div>
+      <div id="pg-import-zone">${pgImport(p)}</div>
+      ${pjLigneDeGeste("grilles", "p")}</section>
     <section class="pj-section pj-base" aria-labelledby="pj-base-titre">
       <h4 id="pj-base-titre">Ce que la base ouvre aux membres${p.base
         ? ` · ${esc(p.base.nom)}` : ""}</h4>
@@ -1935,6 +1940,8 @@ function pjRendreFiche() {
     <section class="pj-section"><h4>Ce projet</h4>${pjDecider(p)}</section>
   </article>`;
   if (!PJ.fonds || PJ.fonds.projet !== p.id) pjChargerFonds(p);
+  if (GR.projet !== p.id) pgCharger(p);
+  else pgListeRedessiner();                  // le titre compte les grilles déjà lues
   PJ.membres = BDMembresProjet.monter(box.querySelector("[data-membres-projet]"), {
     projet: { id: p.id, nom: p.nom, gerable: !!p.gerable },
     groupesAdmin: PJ.groupesAdmin,
@@ -1957,6 +1964,347 @@ async function pjApresMembres() {
   PJ.nomme = false;
   pjRendre();
   pjPrevenirLaBande();
+}
+
+/* --- Les grilles du projet (ANN-7 ; le bloc et le bilan tranchés par Hugo sur maquette,
+   2026-11-03) -------------------------------------------------------------------------
+   Sous « Collections » : chaque grille, son état, ce sur quoi elle porte ; ses gestes —
+   télécharger le classeur d'une version, réimporter, publier un brouillon, activer,
+   désactiver — et « Importer un classeur… » pour une grille neuve. L'import se VÉRIFIE
+   d'abord (`a_blanc`) : le bilan dit le verdict, chaque faute, ce qui change et ce qui
+   naîtra ; « Importer » ne s'offre que sur un fichier juste, chaque entrée employée qui
+   disparaît ayant sa réponse. Ce qui s'offre et les mots du bilan vivent dans
+   `static/lib/grilles-projet.js`. Le bloc pose SA question au serveur
+   (`GET /api/projets/{id}/grilles` ne rend les grilles qu'à qui gère le projet) : la fiche
+   d'un projet qu'on règle ne lui sert pas de garde. Le formulaire de construction et le
+   masquage par collection n'y sont pas. */
+const GR = {
+  projet: null,          // le projet dont les grilles sont lues
+  donnees: null,         // la réponse de `GET /api/projets/{id}/grilles`
+  erreur: null,
+  publier: null,         // la grille dont « Publier… » est ouvert
+  imp: null,             // l'import ouvert : { grilleId, nomGrille, fichier, vue, reponses, … }
+};
+
+async function pgCharger(p) {
+  const id = p.id;
+  let d = null, erreur = null;
+  try { d = await apiGet(`/api/projets/${id}/grilles`); }
+  catch (e) { erreur = e.message || "échec"; }
+  if (PJ.sel !== id) return;                 // la fiche a changé pendant la lecture
+  if (GR.projet !== id) { GR.imp = null; GR.publier = null; }
+  GR.projet = id;
+  GR.donnees = d;
+  GR.erreur = erreur;
+  pgListeRedessiner();
+  if (!$("#pg-import-zone") || !$("#pg-import-zone").childElementCount) pgImportRedessiner();
+}
+
+function pgGrille(id) {
+  return ((GR.donnees && GR.donnees.grilles) || []).find((g) => g.id === id) || null;
+}
+
+function pgListe(p) {
+  if (GR.projet !== p.id) return `<p class="col-note">Chargement…</p>`;
+  if (GR.erreur) {
+    return `<p class="col-note erreur">Les grilles du projet n'ont pas pu être lues :
+      ${esc(GR.erreur)}</p>`;
+  }
+  const d = GR.donnees;
+  if (!d.grilles) {
+    // Le serveur ne rend toutes les grilles qu'à qui gère le projet : ailleurs, les seules
+    // actives, en lecture.
+    const actives = d.actives || [];
+    return (actives.length
+      ? `<ul class="pg-liste">${actives.map((a) => `<li class="pg-grille"><div class="pg-tete">
+          <span class="pg-nom">${esc(a.nom)}</span> <span class="pj-puce">v${a.version.numero}
+          active</span></div></li>`).join("")}</ul>`
+      : `<p class="muted small">Aucune grille active.</p>`)
+      + `<p class="col-note">Les grilles d'un projet se règlent par ses responsables.</p>`;
+  }
+  if (!d.grilles.length) {
+    return `<p class="muted small">Aucune grille.</p>`;
+  }
+  const B = BDGrillesProjet;
+  return `<ul class="pg-liste">${d.grilles.map((g) => {
+    const e = B.etat(g);
+    const tel = e.telecharger.map((t) => `<a class="pg-telecharger"
+        href="/api/grilles/${g.id}/versions/${t.numero}/tableur" download>⤓ ${esc(t.libelle)}</a>`)
+      .join("");
+    const gestes = tel
+      + (e.reimporter ? `<button type="button" class="ghost small" data-gr-reimporter="${g.id}"
+          >⤒ Réimporter…</button>` : "")
+      + (e.publier ? `<button type="button" class="ghost small" data-gr-publier="${g.id}"
+          >Publier la v${e.publier}…</button>` : "")
+      + (e.activer ? `<button type="button" class="ghost small" data-gr-activer="${g.id}"
+          data-gr-version="${e.activer}">Activer la v${e.activer}</button>` : "")
+      + (e.desactiver ? `<button type="button" class="ghost small" data-gr-desactiver="${g.id}"
+          >Désactiver</button>` : "");
+    const confirme = GR.publier === g.id && e.publier ? `<div class="pg-confirme">
+        <p class="small">Publiée, la version ${e.publier} ne change plus, hors d'une coquille.
+          L'activer est un autre geste.</p>
+        <div class="pg-gestes"><button type="button" class="primary small"
+          data-gr-publier-ok="${g.id}" data-gr-version="${e.publier}">Publier la
+          v${e.publier}</button><button type="button" class="ghost small"
+          data-gr-publier-annuler="${g.id}">Annuler</button></div></div>` : "";
+    return `<li class="pg-grille" data-gr-ligne="${g.id}"><div class="pg-tete">
+        <span class="pg-nom" tabindex="-1">${esc(g.nom)}</span>
+        <span class="pj-puce">${esc(e.etiquette)}</span>${e.porteSur
+          ? ` <span class="muted small">porte sur ${esc(e.porteSur)}</span>` : ""}</div>
+      <div class="pg-gestes">${gestes}</div>${confirme}</li>`;
+  }).join("")}</ul>`;
+}
+
+function pgImport(p) {
+  const d = GR.projet === p.id ? GR.donnees : null;
+  if (!d || !d.grilles) return "";
+  const imp = GR.imp;
+  if (!imp) {
+    return `<div class="pg-gestes"><button type="button" class="ghost small"
+      data-gr-importer="1">⤒ Importer un classeur…</button></div>`;
+  }
+  const titre = imp.grilleId ? `Réimporter « ${esc(imp.nomGrille)} »`
+    : "Importer un classeur : une grille neuve";
+  return `<div class="pg-import" role="group" aria-labelledby="pg-import-titre">
+    <h5 id="pg-import-titre">${titre}</h5>
+    <div class="pg-import-l"><label for="pg-fichier">Le classeur (.xlsx)</label>
+      <input type="file" id="pg-fichier" accept=".xlsx,${BDGrillesProjet.TYPE_CLASSEUR}">
+      <span class="muted small" id="pg-fichier-nom">${imp.fichier ? esc(imp.fichier.name)
+        : ""}</span></div>
+    ${imp.grilleId ? "" : `<div class="pg-import-l"><label for="pg-nom">Nom</label>
+      <input type="text" id="pg-nom" value="${esc(imp.nom || "")}" maxlength="200"
+        title="Vide : le nom écrit dans la feuille « 1. La grille » du classeur"></div>`}
+    <div class="pg-gestes"><button type="button" class="ghost small" data-gr-verifier="1"
+      >Vérifier</button><button type="button" class="ghost small" data-gr-import-fermer="1"
+      >Annuler</button><span class="muted small">Rien n'est écrit avant « Importer ».</span></div>
+    <div id="pg-bilan-zone">${pgBilan()}</div></div>`;
+}
+
+function pgBilan() {
+  const imp = GR.imp;
+  if (!imp) return "";
+  if (imp.enVol) return `<p class="col-note">Vérification…</p>`;
+  const v = imp.vue;
+  if (!v) return "";
+  const B = BDGrillesProjet;
+  const titre = (texte, n) => `<h5>${texte}${n === undefined ? "" : ` · ${n}`}</h5>`;
+  const ton = v.etat === "refuse" ? "ko" : v.etat === "a_repondre" ? "attente" : "ok";
+  const decl = B.declarationEnMots(v.declaration);
+  const fautes = v.fautes.length ? `<section class="pg-bilan-s">${titre("À corriger",
+      v.fautes.length)}<ol class="pg-fautes">${v.fautes.map((f) => `<li class="pg-faute">
+        ${f.ou ? `<p class="pg-faute-ou">${esc(f.ou)}</p>` : ""}<p>${esc(f.quoi)}</p>
+        ${f.faire ? `<p class="pg-faute-faire">→ ${esc(f.faire)}</p>` : ""}</li>`).join("")}
+      </ol></section>` : "";
+  const repondre = v.aRepondre.length ? `<section class="pg-bilan-s">${titre("À répondre",
+      v.aRepondre.length)}${v.aRepondre.map((a, i) => {
+        const choix = B.choixDeReponse(a, imp.noms);
+        const pris = imp.reponses[a.cle] || "";
+        return `<div class="pg-repondre"><label for="pg-rep-${i}">« ${esc(a.libelle)} »
+            disparaît du classeur · ${esc(B.pluriel(a.releves, "relevé posé",
+              "relevés posés"))}</label>
+          <select id="pg-rep-${i}" data-gr-reponse="${esc(a.cle)}">
+            <option value=""${pris ? "" : " selected"}>— à décider —</option>
+            ${choix.map((c) => `<option value="${esc(c.valeur)}"${c.valeur === pris
+              ? " selected" : ""}>${esc(c.libelle)}</option>`).join("")}</select></div>`;
+      }).join("")}</section>` : "";
+  const change = v.changements.length ? `<section class="pg-bilan-s">${titre("Ce qui change",
+      v.changements.length)}<ul class="pg-changements">${v.changements.map((c) => `<li>
+        <span class="pg-genre${c.genre === "disparaît" ? " pg-genre-part" : ""}">${esc(c.genre)}</span>
+        <span class="muted small">${esc(c.quoi)}</span>${c.nom ? ` <b>${esc(c.nom)}</b>` : ""}${
+        c.detail ? ` <span class="muted small">${esc(c.detail)}</span>` : ""}</li>`).join("")}
+      </ul></section>` : "";
+  const savoir = v.aSavoir.length ? `<section class="pg-bilan-s">${titre("À savoir",
+      v.aSavoir.length)}<ul class="pg-savoir">${v.aSavoir.map((f) => `<li>${f.ou
+        ? `<span class="muted small">${esc(f.ou)} :</span> ` : ""}${esc(f.quoi)}${f.faire
+        ? ` <span class="muted small">→ ${esc(f.faire)}</span>` : ""}</li>`).join("")}</ul>
+      </section>` : "";
+  const nait = !imp.grilleId && v.vaNaitre && v.etat !== "refuse"
+    ? `<section class="pg-bilan-s">${titre("Ce qui va naître")}<p>${esc(v.vaNaitre)}</p></section>` : "";
+  const im = B.importable(v, imp.reponses);
+  const pied = v.etat === "importe"
+    ? `<button type="button" class="ghost small" data-gr-import-fermer="1">Fermer</button>`
+    : `<button type="button" class="primary small" id="pg-importer" data-gr-importer-ok="1"${
+        im.ok ? "" : ` aria-disabled="true" aria-describedby="pg-importer-raison"`}>Importer</button>
+      ${im.ok ? "" : `<span class="muted small" id="pg-importer-raison">${esc(im.raison)}</span>`}`;
+  return `<div class="pg-bilan">
+    <p class="pg-verdict pg-verdict-${ton}" id="pg-verdict" tabindex="-1">${esc(v.phrase)}</p>
+    ${decl ? `<p class="small pg-declaration">La grille : ${esc(decl)}</p>` : ""}
+    ${fautes}${repondre}${change}${savoir}${nait}
+    <div class="pg-gestes pg-pied">${pied}</div></div>`;
+}
+
+function pgListeRedessiner(focus) {
+  const zone = $("#pg-liste-zone"), p = pjProjet();
+  if (!zone || !p) return;
+  zone.innerHTML = pgListe(p);
+  const titre = $("#pj-grilles-titre");
+  if (titre) {
+    const n = GR.projet === p.id && GR.donnees && GR.donnees.grilles;
+    titre.textContent = n ? `Grilles · ${n.length}` : "Grilles";
+  }
+  if (focus) {
+    const el = zone.querySelector(focus);
+    if (el) el.focus();
+  }
+}
+
+function pgImportRedessiner(focus) {
+  const zone = $("#pg-import-zone"), p = pjProjet();
+  if (!zone || !p) return;
+  zone.innerHTML = pgImport(p);
+  if (focus) {
+    const el = zone.querySelector(focus);
+    if (el) el.focus();
+  }
+}
+
+function pgBilanRedessiner(focus) {
+  const zone = $("#pg-bilan-zone");
+  if (!zone) return;
+  zone.innerHTML = pgBilan();
+  if (focus) {
+    const el = zone.querySelector(focus);
+    if (el) el.focus();
+  }
+}
+
+/* Ouvre l'import — d'une grille neuve, ou le réimport d'une grille du projet. Pour un
+   réimport, les noms de la version comparée sont lus à côté : « Ce qui change » dit « cri »
+   plutôt que son identifiant. */
+async function pgOuvrirImport(grilleId) {
+  const g = grilleId ? pgGrille(grilleId) : null;
+  GR.publier = null;
+  GR.imp = { grilleId: g ? g.id : null, nomGrille: g ? g.nom : "", fichier: null, nom: "",
+             vue: null, reponses: {}, enVol: false, noms: null };
+  pjTaireSauf(null);
+  pgListeRedessiner();
+  pgImportRedessiner("#pg-fichier");
+  const ref = g ? BDGrillesProjet.etat(g).telecharger[0] : null;
+  if (!ref) return;
+  const imp = GR.imp;
+  try {
+    imp.noms = BDGrillesProjet.nomsDuPlan(
+      await apiGet(`/api/grilles/${g.id}/versions/${ref.numero}`));
+  } catch (e) { /* les identifiants se liront tels quels */ }
+}
+
+function pgFermerImport() {
+  const id = GR.imp && GR.imp.grilleId;
+  GR.imp = null;
+  pgImportRedessiner();
+  const retour = id ? document.querySelector(`[data-gr-reimporter="${id}"]`)
+    : $("[data-gr-importer]");
+  if (retour) retour.focus();
+}
+
+/* Vérifie (`a_blanc`) ou importe pour de bon. Le fichier gardé en mémoire repart à chaque
+   envoi : le champ, redessiné, ne le porte plus. */
+async function pgEnvoyer(aBlanc) {
+  const imp = GR.imp, p = pjProjet();
+  if (!imp || !p || imp.enVol) return;       // un envoi à la fois
+  const msg = $("#pj-grilles-msg");
+  if (!imp.fichier) {
+    pjMsg(msg, "Choisissez d'abord un classeur (.xlsx).", true);
+    const champ = $("#pg-fichier");
+    if (champ) champ.focus();
+    return;
+  }
+  if (!BDGrillesProjet.estUnClasseur(imp.fichier.name)) {
+    pjMsg(msg, "Seul un classeur .xlsx s'importe ici : enregistrez le fichier dans ce format.",
+          true);
+    return;
+  }
+  pjTaireSauf(null);
+  const fd = new FormData();
+  fd.append("fichier", imp.fichier, imp.fichier.name);
+  if (imp.grilleId) fd.append("grille_id", String(imp.grilleId));
+  else if ((imp.nom || "").trim()) fd.append("nom", imp.nom.trim());
+  fd.append("a_blanc", aBlanc ? "true" : "false");
+  const reponses = BDGrillesProjet.reponsesPourEnvoi(imp.vue, imp.reponses);
+  if (Object.keys(reponses).length) fd.append("reponses", JSON.stringify(reponses));
+  imp.enVol = true;
+  pgBilanRedessiner();
+  let statut = 200, corps;
+  try { corps = await apiSend("POST", `/api/projets/${p.id}/grilles/import`, fd); }
+  catch (e) { statut = e.statut || 0; corps = e.detail !== undefined ? e.detail : e.message; }
+  if (GR.imp !== imp) return;                // l'import a été fermé ou rouvert entre-temps
+  imp.enVol = false;
+  imp.vue = BDGrillesProjet.lireReponse(statut, corps, { classeur: true, noms: imp.noms });
+  pgBilanRedessiner("#pg-verdict");
+  if (!aBlanc && imp.vue.ecrit) {
+    const nom = imp.grilleId ? imp.nomGrille
+      : ((imp.vue.declaration && imp.vue.declaration.nom) || "La grille");
+    await pgCharger(p);
+    pjMsg(msg, `« ${nom} » est importée.`);
+  }
+}
+
+/* Publier, activer, désactiver : le geste, son message, la liste relue. Le focus revient
+   sur le nom de la grille : le bouton actionné part avec son geste, et ses voisins
+   changent selon le nouvel état. */
+async function pgGeste(id, faire, message) {
+  const p = pjProjet(), g = pgGrille(id);
+  if (!p || !g) return;
+  const msg = $("#pj-grilles-msg");
+  try { await faire(p, g); }
+  catch (e) { pjMsg(msg, e.message || "Échec", true); return; }
+  GR.publier = null;
+  await pgCharger(p);
+  const nom = document.querySelector(`[data-gr-ligne="${id}"] .pg-nom`);
+  if (nom) nom.focus();
+  pjMsg(msg, message(g));
+}
+
+function pgClic(b) {
+  const d = b.dataset;
+  if (d.grImporter) { pgOuvrirImport(null); return true; }
+  if (d.grReimporter) { pgOuvrirImport(Number(d.grReimporter)); return true; }
+  if (d.grImportFermer) { pgFermerImport(); return true; }
+  if (d.grVerifier) { pgEnvoyer(true); return true; }
+  if (d.grImporterOk) {
+    if (b.getAttribute("aria-disabled") === "true") {
+      pjMsg($("#pj-grilles-msg"), BDGrillesProjet.importable(GR.imp && GR.imp.vue,
+        GR.imp && GR.imp.reponses).raison, true);
+      return true;
+    }
+    pgEnvoyer(false);
+    return true;
+  }
+  if (d.grPublier) {
+    const id = Number(d.grPublier);
+    GR.publier = GR.publier === id ? null : id;
+    pjTaireSauf(null);
+    pgListeRedessiner(GR.publier ? `[data-gr-publier-ok="${id}"]` : `[data-gr-publier="${id}"]`);
+    return true;
+  }
+  if (d.grPublierAnnuler) {
+    const id = Number(d.grPublierAnnuler);
+    GR.publier = null;
+    pgListeRedessiner(`[data-gr-publier="${id}"]`);
+    return true;
+  }
+  if (d.grPublierOk) {
+    const n = Number(d.grVersion);
+    pgGeste(Number(d.grPublierOk),
+            (p, g) => apiSend("POST", `/api/grilles/${g.id}/versions/${n}/publication`),
+            (g) => `La version ${n} de « ${g.nom} » est publiée.`);
+    return true;
+  }
+  if (d.grActiver) {
+    const n = Number(d.grVersion);
+    pgGeste(Number(d.grActiver),
+            (p, g) => apiSend("PUT", `/api/projets/${p.id}/grilles/${g.id}/activation`,
+                              { version: n }),
+            (g) => `« ${g.nom} » est active dans le projet, dans sa version ${n}.`);
+    return true;
+  }
+  if (d.grDesactiver) {
+    pgGeste(Number(d.grDesactiver),
+            (p, g) => apiSend("DELETE", `/api/projets/${p.id}/grilles/${g.id}/activation`),
+            (g) => `« ${g.nom} » n'est plus active : ses relevés restent, en lecture.`);
+    return true;
+  }
+  return false;
 }
 
 /* --- Navigation ---------------------------------------------------------------------- */
@@ -2165,6 +2513,7 @@ function pjDemarrer() {
     }
     const b = ev.target.closest("button");
     if (!b) return;
+    if (pgClic(b)) return;                   // les grilles du projet
     if (b.dataset.pj) pjOuvrir(Number(b.dataset.pj), true);
     else if (b.dataset.pjBac) bacOuvrir(Number(b.dataset.pjBac), true);
     else if (b.dataset.pjAxe) pjChangerAxe(b.dataset.pjAxe);
@@ -2215,6 +2564,31 @@ function pjDemarrer() {
   $("#pj").addEventListener("change", (ev) => {
     const t = ev.target, p = pjProjet();
     if (p && t.id === "pj-membres-creent") { pjReglerCreation(t); return; }
+    // L'import d'une grille : un fichier choisi, un nom changé, une réponse donnée. Le
+    // bilan vérifié ne vaut plus pour un autre fichier ni un autre nom.
+    if (GR.imp && t.id === "pg-fichier") {
+      GR.imp.fichier = (t.files && t.files[0]) || null;
+      // Le nom gardé d'un fichier d'avant (le champ redessiné ne le porte plus) s'efface :
+      // le champ dit désormais lui-même le sien.
+      const nom = $("#pg-fichier-nom");
+      if (nom) nom.textContent = "";
+      GR.imp.vue = null;
+      GR.imp.reponses = {};
+      pjTaireSauf(null);
+      pgBilanRedessiner();
+      return;
+    }
+    if (GR.imp && t.id === "pg-nom") {
+      GR.imp.nom = t.value;
+      GR.imp.vue = null;
+      pgBilanRedessiner();
+      return;
+    }
+    if (GR.imp && t.matches && t.matches("[data-gr-reponse]")) {
+      GR.imp.reponses[t.dataset.grReponse] = t.value;
+      pgBilanRedessiner(`#${CSS.escape(t.id)}`);
+      return;
+    }
     if (p && t.matches && t.matches("[data-e7-source]")) {
       PJ.e7Choix.set(Number(t.dataset.e7Source), Number(t.value));
       pjE7Redessiner(`[data-e7-source="${t.dataset.e7Source}"][value="${t.value}"]`);
