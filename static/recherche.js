@@ -15,6 +15,7 @@ const state = {
   attributs: [],
   timer: null,
   searchGen: 0,   // jeton de fraîcheur : ignore les réponses de recherche périmées
+  corpus: Promise.resolve(null),   // GET /api/corpus, ou null : la cause d'un écran vide (UX-6)
 };
 
 // INFRA-5 — l'état de départ (avant que search() ne réécrive l'URL) : celui de l'adresse
@@ -45,7 +46,22 @@ async function loadCorpus() {
   try {
     const c = await apiGet("/api/corpus");
     $("#corpus-stats").innerHTML = Resultats.chiffresCorpus(c);   // accordés (UX-6)
-  } catch (e) { /* aperçu non bloquant */ }
+    return c;
+  } catch (e) { return null; /* aperçu non bloquant */ }
+}
+
+/* UX-6 — un écran vide dit sa cause quand le corpus la donne : sans album à lire, ni
+   « Tapez un mot-clé » ni « Aucun résultat » ne disent pourquoi rien ne viendra. Écrit
+   seulement si aucune recherche n'est partie depuis. */
+function direVide(defaut) {
+  const gen = state.searchGen;
+  const box = $("#results");
+  box.innerHTML = `<div class="search-hint">${escapeHtml(defaut)}</div>`;
+  state.corpus.then((c) => {
+    const cause = Resultats.causeVide(c);
+    if (cause && gen === state.searchGen)
+      box.innerHTML = `<div class="search-hint">${escapeHtml(cause)}</div>`;
+  });
 }
 
 /* ---------------- Filtres : albums + nuage de tags ---------------- */
@@ -143,8 +159,8 @@ function search() {
   history.replaceState(null, "", [...display].length ? "?" + display.toString() : location.pathname);
   Nav.memoriser(STOCKAGE, "recherche", display.toString());   // INFRA-5 : vide compris
   if (vide) {
-    $("#results").innerHTML =
-      '<div class="search-hint">Tapez un mot-clé, ou choisissez un album / type / tag / facette grammaticale.</div>';
+    ++state.searchGen;                         // une réponse en vol n'écrase plus l'invite
+    direVide("Tapez un mot-clé, ou choisissez un album / type / tag / facette grammaticale.");
     $("#result-count").textContent = "";
     $("#btn-export").disabled = true;
     return;
@@ -232,7 +248,8 @@ function renderResults(res, q) {
       ? '<div class="search-hint">Cette recherche ne contient aucun terme cherchable :'
         + ' la ponctuation et les symboles ne sont pas indexés. Essayez un mot,'
         + ' ou passez par les filtres et le nuage de tags.</div>'
-      : '<div class="search-hint">Aucun résultat.</div>';
+      : "";
+    if (!res.sans_terme) direVide("Aucun résultat.");
     return;
   }
   for (const r of res.results.slice(0, compte.n)) {
@@ -320,7 +337,7 @@ async function setup() {
     if (e.key === "Escape" && !$("#preview").hidden) closePreview();
   });
   setupBack();   // bouton « ← Retour » (drill explicite, ou history.back si on vient de l'app)
-  loadCorpus();
+  state.corpus = loadCorpus();
   loadTags();
   // Les tags naissent dans la VISIONNEUSE, souvent dans un autre onglet. Bâti une
   // seule fois, le nuage restait figé sur l'état du démarrage (D1/D2) : on le relit

@@ -21,13 +21,36 @@ const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
 // une « origine » de personnage et une « origine » de case ne se confondent plus).
 const CIBLE_LBL = { personnage: "locuteur", case: "scène" };
 let ATTR_CATALOGUE = [];   // valeurs d'attribut à plat (cible→dim→valeur) — source des puces
-const state = { timer: null, gen: 0, attributs: { f: new Set(), b: new Set() } };
+// `corpus` : GET /api/corpus, ou null — la cause d'un écran vide (UX-6, `direVide`).
+const state = { timer: null, gen: 0, attributs: { f: new Set(), b: new Set() },
+                corpus: Promise.resolve(null) };
 
 async function loadCorpus() {
   try {
     const c = await apiGet("/api/corpus");
     $("#corpus-stats").innerHTML = Resultats.chiffresCorpus(c);   // accordés (UX-6)
-  } catch (e) { /* non bloquant */ }
+    return c;
+  } catch (e) { return null; /* non bloquant */ }
+}
+
+/* UX-6 — un écran vide dit sa VRAIE cause. « Aucune donnée (relancer l'indexation NLP ?) »
+   s'affichait aussi quand aucun corpus n'est ouvert — l'arrivant qui n'a que son bac à
+   sable, exclu de l'Exploration — et se lisait comme une panne. Le corpus que l'Exploration
+   lit (`GET /api/corpus`, même portée que ses requêtes) dit s'il n'y a aucun album ou aucun
+   texte ; sinon, des critères posés expliquent le vide ; sinon seulement, l'index. `ecrire`
+   reçoit le message, et n'est appelé que si aucun calcul n'est reparti depuis. */
+function direVide(ecrire, criteres, defaut) {
+  const gen = state.gen;
+  state.corpus.then((c) => {
+    if (gen !== state.gen) return;
+    ecrire(Resultats.causeVide(c, { texte: true })
+      || (criteres ? "Aucune donnée pour ces critères." : defaut));
+  });
+}
+const NLP_A_RELANCER = "Aucune donnée (relancer l'indexation NLP ?).";
+// Des critères posés sur le sous-corpus A (hors portée des tags, qui ne filtre rien seule).
+function criteresA() {
+  return [...filtresA().keys()].some((k) => k !== "tag_scope");
 }
 
 async function loadAlbums() {
@@ -354,7 +377,13 @@ function renderDist(res) {
   const compte = Resultats.etat((res.results || []).length);
   const rows = (res.results || []).slice(0, compte.n);
   box.innerHTML = "";
-  if (!rows.length) { $("#dist-info").textContent = "Aucune donnée (relancer l'indexation NLP ?)."; return; }
+  if (!rows.length) {
+    $("#dist-info").textContent = "";
+    direVide((m) => { $("#dist-info").textContent = m; },
+             Object.values(sideFilters("f")).some(Boolean) || selectedAttributs("f").length > 0,
+             NLP_A_RELANCER);
+    return;
+  }
   const total = rows.reduce((s, r) => s + r.freq, 0);
   const max = Math.max(...rows.map((r) => r.freq));
   $("#dist-info").innerHTML =
@@ -408,7 +437,9 @@ function renderComparaison(res) {
     `Comparaison par <b>${esc(res.champ)}</b> — A : ${res.total_a} occ. · B : ${res.total_b} occ. ` +
     `(${mesure} ; cliquer pour voir en contexte)`;
   if (!res.total_a && !res.total_b) {
-    box.innerHTML = '<div class="muted small">Aucune donnée dans ces sous-corpus.</div>';
+    box.innerHTML = "";
+    direVide((m) => { box.innerHTML = `<div class="muted small">${esc(m)}</div>`; },
+             false, "Aucune donnée dans ces sous-corpus.");
     return;
   }
   box.innerHTML =
@@ -509,7 +540,9 @@ function renderKwic(res) {
     " — cliquer une ligne pour voir la case";
   if (!rows.length) {
     box.className = "kwic";
-    box.innerHTML = '<p class="muted small">Aucune occurrence.</p>';
+    box.innerHTML = "";
+    direVide((m) => { box.innerHTML = `<p class="muted small">${esc(m)}</p>`; },
+             false, "Aucune occurrence.");
     return;
   }
   const aligne = kwicStyle() === "aligne";
@@ -536,7 +569,9 @@ function renderCroise(res) {
     (tronque ? ` (top ${CROISE_LIMIT} par axe)` : "") +
     " — cliquer une cellule pour voir les tokens en contexte";
   if (!xs.length || !ys.length) {
-    box.innerHTML = '<p class="muted small">Aucune donnée (relancer l\'indexation NLP ?).</p>';
+    box.innerHTML = "";
+    direVide((m) => { box.innerHTML = `<p class="muted small">${esc(m)}</p>`; },
+             criteresA(), NLP_A_RELANCER);
     return;
   }
   const maxCell = Math.max(1, ...res.grille.flat());
@@ -1228,7 +1263,7 @@ async function setup() {
   if (window.BDDialog)
     BDDialog.register($("#accord-inter-modal"),
       { box: ".modal-box", labelledby: "accord-inter-title", onClose: closeAccordInter });
-  loadCorpus();
+  state.corpus = loadCorpus();
   await loadAlbums();        // options d'album (A et B) avant restauration
   await loadTags();          // options de tag (A et B) avant restauration
   await loadPersonnages();   // locuteurs (A et B)

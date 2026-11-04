@@ -70,3 +70,26 @@ test("les chiffres du corpus s'accordent chacun à son nombre", () => {
   assert.doesNotMatch(chiffresCorpus({}), /undefined/);
   assert.match(chiffresCorpus({ albums: 3 }), /<b>3<\/b> albums/);
 });
+
+/* --- causeVide (UX-6) -------------------------------------------------------------------
+   « Aucune donnée (relancer l'indexation NLP ?) » à qui n'a aucun corpus ouvert se lisait
+   comme une panne. La cause se lit dans `GET /api/corpus`, et seulement là. */
+const { causeVide } = require("../../static/lib/resultats.js");
+
+test("sans album, l'écran vide dit qu'il n'y a rien à lire", () => {
+  assert.match(causeVide({ albums: 0, transcrites: 0 }, { texte: true }), /Aucun album.*explorer/);
+  assert.match(causeVide({ albums: 0 }), /Aucun album.*chercher/);
+  assert.match(causeVide({}), /Aucun album/);   // un compte absent vaut zéro
+});
+
+test("des albums sans texte : l'Exploration le dit, la Recherche non", () => {
+  assert.match(causeVide({ albums: 2, transcrites: 0 }, { texte: true }), /Aucune zone transcrite/);
+  // La Recherche trouve aussi par une note ou un tag : pas de cause à donner.
+  assert.equal(causeVide({ albums: 2, transcrites: 0 }), null);
+});
+
+test("un corpus qui porte de quoi répondre, ou illisible : aucune cause, le message reste", () => {
+  assert.equal(causeVide({ albums: 2, transcrites: 5 }, { texte: true }), null);
+  for (const x of [null, undefined, "x", 3])
+    assert.equal(causeVide(x, { texte: true }), null, String(x));
+});

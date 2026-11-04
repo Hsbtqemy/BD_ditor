@@ -65,6 +65,26 @@
     }).join("");
   }
 
+  /* UX-6 — la CAUSE d'un écran vide, quand le serveur la donne. `c` : la réponse de
+     `GET /api/corpus` sans paramètre, c'est-à-dire le corpus que la Recherche et
+     l'Exploration lisent (ni bac à sable ni jeu, `Portee.pour_le_corpus`, la portée même de
+     leurs requêtes). « Aucune donnée (relancer l'indexation NLP ?) » s'affichait aussi à qui
+     n'avait aucun corpus ouvert — l'arrivant qui n'a que son bac à sable — et se lisait
+     comme une panne. `texte` : l'écran ne compte que des mots transcrits (l'Exploration) ;
+     sans lui, une note ou un tag suffisent à trouver quelque chose (la Recherche). `null` :
+     aucune cause connue — corpus illisible, ou qui porte de quoi répondre —, l'appelant
+     garde son message. */
+  function causeVide(c, options) {
+    if (!c || typeof c !== "object") return null;
+    const texte = !!(options && options.texte);
+    if (!((Number(c.albums) || 0) > 0))
+      return "Aucun album dans le corpus que vous lisez : rien à "
+        + (texte ? "explorer." : "chercher.");
+    if (texte && !((Number(c.transcrites) || 0) > 0))
+      return "Aucune zone transcrite dans le corpus que vous lisez : rien à explorer.";
+    return null;
+  }
+
   return { LIMITE: LIMITE, etat: etat, accord: accord, nombre: nombre,
-           chiffresCorpus: chiffresCorpus };
+           chiffresCorpus: chiffresCorpus, causeVide: causeVide };
 });
