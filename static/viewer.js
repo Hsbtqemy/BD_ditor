@@ -1929,8 +1929,12 @@ function renderTranscription() {
   if (r) { state.selectedId = r.id; syncUrl(); }
   // Un bandeau ne survit pas à la bulle qu'il concerne ; il survit à un nouveau rendu d'ELLE.
   if (state.conflit && (!r || state.conflit.regionId !== r.id)) fermerConflit();
+  // Le compte porte sur les zones de texte de la planche, de toutes sortes : « Bulle n / N »
+  // quand elles sont toutes des bulles, « Zone n / N » sinon — jamais « Bulle 4 / 4 » sur
+  // un cartouche (UX-6). La sorte de la zone affichée se lit à côté (`#tr-type`).
+  const nom = list.every((x) => x.type === "bulle") ? "Bulle" : "Zone";
   $("#tr-progress").textContent = list.length
-    ? `Bulle ${state.trIndex + 1} / ${list.length}` : "Aucune région de texte";
+    ? `${nom} ${state.trIndex + 1} / ${list.length}` : "Aucune région de texte";
   $("#tr-type").textContent = r ? r.type : "";
 
   // crop NET de la bulle, recadré dans le master côté serveur.

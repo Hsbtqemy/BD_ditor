@@ -818,3 +818,108 @@ def test_l_etape_exporter_ne_promet_que_ce_qui_sort(page, live_server, tmp_path,
     # La phrase de Hugo suit, telle quelle.
     expect(phrase).to_contain_text("Ailleurs que dans un bac à sable")
 
+
+# ── 768 px : la visite ne cache pas la dernière zone de la Recherche et de l'Exploration ──
+#
+# `pilotage/UX-6.md`, « La maquette se mesure sur l'écran codé » : à 768 px, sous des
+# polices de 16 et 24, la fenêtre de la visite ne cache rien d'indispensable à la dernière
+# zone de ces deux pages — leurs résultats, qui disent à l'arrivant pourquoi ils sont vides.
+# Mesuré sur le TEXTE de la zone (chaque ligne, par `Range`), coupé à l'écran : une ligne
+# hors de l'écran se rejoint en défilant, une ligne sous la fenêtre ne se rejoint pas.
+
+TEXTE_SOUS_LA_FENETRE = """(marque) => {
+  const q = document.getElementById('wizard-fenetre').getBoundingClientRect();
+  const zones = [...document.querySelectorAll(`[data-parcours="${marque}"]`)];
+  if (!zones.length) return { zone: false };
+  const lignes = [];
+  for (const zone of zones) {
+  const w = document.createTreeWalker(zone, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    if (!n.textContent.trim()) continue;
+    const r = document.createRange();
+    r.selectNodeContents(n);
+    for (const b of r.getClientRects()) {
+      if (b.width < 1 || b.height < 1 || b.bottom <= 0 || b.top >= innerHeight) continue;
+      lignes.push({ texte: n.textContent.trim().slice(0, 40), l: b.left, t: b.top,
+                    r: b.right, b: b.bottom });
+    }
+  }
+  }
+  const sous = lignes.filter((b) => Math.min(b.r, q.right) - Math.max(b.l, q.left) > 1
+                                    && Math.min(b.b, q.bottom) - Math.max(b.t, q.top) > 1);
+  return { zone: true, lignes: lignes.length, sous,
+           fen: { l: q.left, t: q.top, r: q.right, b: q.bottom } };
+}"""
+
+
+@pytestmark_proxy
+def test_a_768_px_la_visite_ne_cache_pas_les_resultats(page, jeu):
+    if page.context.browser.browser_type.name != "chromium":
+        pytest.skip("la préférence de police se pose par CDP")
+    from test_e2e_bac_a_sable import _preference_police
+    bac = _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    _arriver(page, jeu["base"])
+    echecs = []
+    for police in (16, 24):
+        _preference_police(page, police)
+        page.set_viewport_size({"width": 768, "height": 800})
+        for chemin, marque in (("/recherche", "recherche-resultats"),
+                               ("/exploration", "exploration-resultat")):
+            n = page.evaluate("(c) => BDWizard.VISITE.findIndex((v) => !v.bande && v.surface === c)",
+                              chemin)
+            page.evaluate("""([login, bac, n]) => sessionStorage.setItem('bd-wizard-visite',
+              JSON.stringify({ login, bac: bac.id, efface_le: bac.efface_le, page: n,
+                               temps: 0 }))""", ["camille", bac, n])
+            page.goto(jeu["base"] + chemin, wait_until="domcontentloaded")
+            expect(page.locator("#wizard-visite-compte")).to_have_text(re.compile(r"^Visite"))
+            # La zone se remplit après sa réponse : on attend qu'elle dise quelque chose.
+            # La zone dit pourquoi elle est vide une fois sa réponse arrivée ; puis on la
+            # choisit dans la liste, comme l'arrivant qui veut la lire.
+            page.wait_for_function("""(m) => [...document.querySelectorAll(
+              `[data-parcours="${m}"]`)].some((z) => z.textContent.trim().length > 0)""",
+                                   arg=marque)
+            repere = page.locator(f'#wizard-zones .wf-zone[data-zone="{marque}"]')
+            expect(repere).to_be_visible()
+            repere.click()
+            expect(repere).to_have_attribute("aria-pressed", "true")
+            page.wait_for_timeout(300)
+            m = page.evaluate(TEXTE_SOUS_LA_FENETRE, marque)
+            ou = f"768 px, police {police}, {chemin}"
+            if not m["zone"] or not m["lignes"]:
+                echecs.append(f"{ou} : la zone {marque} ne montre aucun texte")
+            elif m["sous"]:
+                echecs.append(f"{ou} : la fenêtre {m['fen']} cache {m['sous']}")
+    assert not echecs, "\n".join(echecs)
+
+
+# ── La Transcription nomme ce qu'elle montre ───────────────────────────────────────────
+#
+# Le titre de la Transcription disait « Bulle 4 / 4 » sur un cartouche ou un texte hors
+# bulle : il compte les zones de texte de la planche, de toutes sortes.
+
+@pytestmark_proxy
+def test_la_transcription_ne_dit_pas_bulle_sur_un_cartouche(page, jeu_decoupe):
+    bac = _ouvrir(jeu_decoupe, CAMILLE)
+    vue = _api(jeu_decoupe["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    parcours = next(j for j in vue["jeu"] if j["role"] == "pas-a-pas")
+    pid = parcours["planche_ids"][0]
+    case = next(r for r in _api(jeu_decoupe["base"], CAMILLE, "GET",
+                                f"/api/planches/{pid}/regions") if r["type"] == "case")
+    _api(jeu_decoupe["base"], CAMILLE, "POST", f"/api/planches/{pid}/regions",
+         {"type": "cartouche", "x": 20, "y": 450, "w": 150, "h": 30, "parent_id": case["id"]})
+    assert bac["id"]
+    _sous(page, CAMILLE)
+    page.goto(f"{jeu_decoupe['base']}/?album={parcours['album_id']}&planche={pid}"
+              "&mode=transcription", wait_until="domcontentloaded")
+    progres, sorte = page.locator("#tr-progress"), page.locator("#tr-type")
+    expect(progres).to_be_visible(timeout=15000)
+    vus = []
+    for _ in range(3):
+        expect(sorte).not_to_have_text("")
+        vus.append((sorte.inner_text(), progres.inner_text()))
+        page.locator("#tr-next").click()
+        page.wait_for_timeout(150)
+    assert {s for s, _ in vus} == {"bulle", "cartouche"}, vus
+    for s, p in vus:
+        assert re.fullmatch(r"Zone \d / 3", p), (s, p)

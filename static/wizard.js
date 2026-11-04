@@ -675,7 +675,7 @@
         : a.dataset.zone ? `[data-zone="${a.dataset.zone}"]` : null) : null;
       if (F.mode === "etape") dessinerEtape(garde); else dessinerFenetre(garde);
     }
-    if (F.mode === "etape") poserFenetre();
+    if (F.mode === "etape") poserFenetre(); else reserverLaVisite();
     dessinerVoile();
     appliquerInert();
   }
@@ -719,7 +719,7 @@
     F.temps = mode === "plan" ? W.tempsVisibles(pos.page, voit) : [];
     foyer.hidden = false;
     if (mode === "etape") dessinerEtape(); else dessinerFenetre();
-    if (mode === "etape") poserFenetre();
+    if (mode === "etape") poserFenetre(); else reserverLaVisite();
     dessinerVoile();
     appliquerInert();
     observer();
@@ -821,8 +821,10 @@
     fenetre.querySelectorAll(".wf-zone").forEach((b) =>
       b.setAttribute("aria-pressed", String(b.dataset.zone === F.choisie)));
     if (F.choisie) {
-      const e = zonesDe(F.choisie)[0];
-      if (e) e.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const els = zonesDe(F.choisie);
+      // Sur un écran étroit, la zone choisie remonte au-dessus de la feuille.
+      if (els.length && etroit()) amener(els, true);
+      else if (els.length) els[0].scrollIntoView({ block: "nearest", inline: "nearest" });
     }
     dessinerVoile();
   }
@@ -1197,6 +1199,18 @@
 
   const ETROIT = "(max-width: 40em)";
 
+  function etroit() { return !!(window.matchMedia && window.matchMedia(ETROIT).matches); }
+
+  /* La visite et les repères, sur un écran étroit (sous 40em), sont une feuille en bas
+     (`style.css`) : comme pour le guide, la page lui réserve sa hauteur, pour que le bas
+     de la page — les résultats de la Recherche et de l'Exploration — puisse remonter
+     au-dessus d'elle ; choisir un repère l'y amène (`pilotage/UX-6.md`, « La maquette se
+     mesure sur l'écran codé », 768 px sous une grande police). */
+  function reserverLaVisite() {
+    if (F.mode === "etape" || !fenetre) return;
+    reserver(etroit() ? fenetre.offsetHeight + 24 : 0);
+  }
+
   function reserver(px) {
     const b = document.body, root = document.documentElement;
     const avant = b.classList.contains("wizard-reserve") ? root.style.getPropertyValue("--wizard-reserve") : "";
@@ -1228,10 +1242,9 @@
     if (F.mode !== "etape" || !fenetre) return;
     const etape = `${S.souvenir.parcours}:${S.souvenir.etape}:${G.fin}`;
     const cle = `${etape}:${window.innerWidth}x${window.innerHeight}`;
-    const etroit = !!(window.matchMedia && window.matchMedia(ETROIT).matches);
     // Le repli est tenu pour l'étape et la taille de l'écran : la feuille réserve sa place,
     // ce qui change la page, et la fenêtre n'en repartirait pas à côté pour revenir.
-    let feuille = etroit || !!(G.pose && G.pose.cle === cle && G.pose.feuille);
+    let feuille = etroit() || !!(G.pose && G.pose.cle === cle && G.pose.feuille);
     if (!feuille) {
       fenetre.classList.remove("feuille");
       reserver(0);
