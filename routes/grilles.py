@@ -142,16 +142,24 @@ def fiche_grille(grille_id: int, conn: sqlite3.Connection = Depends(db),
 
 
 @router.get("/api/grilles/{grille_id}/versions/{numero}")
-def plan_de_version(grille_id: int, numero: int, conn: sqlite3.Connection = Depends(db),
+def plan_de_version(grille_id: int, numero: int, emplois: bool = Query(False),
+                    conn: sqlite3.Connection = Depends(db),
                     portee: autorisation.Portee = Depends(portee_courante)):
     """Le PLAN entier d'une version (R13) — rubriques imbriquées, entrées avec leur cible et
     leur cardinalité effectives, la précision et le lien attendus, variantes, listes,
     définitions, structures, exemples, pièges —, de quoi filtrer côté écran sans aller-
-    retour. Un brouillon, à qui gère le projet seulement."""
+    retour. Un brouillon, à qui gère le projet seulement.
+
+    `emplois` (le formulaire de construction) : ce que les relevés emploient dans la grille
+    (`grille_ecriture.emplois`) — des comptes, sans personne —, à qui GÈRE le projet ; la clé
+    est absente pour les autres, qui n'écrivent pas la grille."""
     g = _get_grille(conn, portee, grille_id)
     v = _get_version(conn, g, numero)
-    return {"grille": {"id": g["id"], "nom": g["nom"], "ouverte": bool(g["ouverte"])},
-            **grilles.plan(conn, v["id"])}
+    corps = {"grille": {"id": g["id"], "nom": g["nom"], "ouverte": bool(g["ouverte"])},
+             **grilles.plan(conn, v["id"])}
+    if emplois and g["gerable"]:
+        corps["emplois"] = grille_ecriture.emplois(conn, g, v, grilles.contenu(conn, v["id"]))
+    return corps
 
 
 # --------------------------------------------------------------------------- #
@@ -748,10 +756,15 @@ def _version_montree(conn, g):
 
 
 def _reponse(conn, g, v, *, cree: bool, cle=None, a_savoir=(), fusions=()) -> dict:
+    """La réponse d'un geste : la version écrite, son PLAN que le formulaire redessine, et ce
+    que les relevés y emploient (`grille_ecriture.emplois`) — de quoi n'offrir ensuite que
+    les gestes que le serveur accepte."""
+    v = dict(v)
     return {"grille_id": g["id"], "version": {"numero": v["numero"], "etat": v["etat"]},
             "brouillon_cree": cree, "cle": cle, "a_savoir": list(a_savoir),
             "fusions": [{k: f[k] for k in ("de", "dans", "releve_ids")} for f in fusions],
-            "plan": grilles.plan(conn, v["id"])}
+            "plan": grilles.plan(conn, v["id"]),
+            "emplois": grille_ecriture.emplois(conn, g, v, grilles.contenu(conn, v["id"]))}
 
 
 def _ecrire(conn, portee, grille_id: int, geste) -> dict:

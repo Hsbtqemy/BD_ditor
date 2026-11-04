@@ -292,6 +292,7 @@ def plan(conn: sqlite3.Connection, version_id: int) -> dict:
             "cible_declaree": list(cibles_de(e["cible"])), "cibles": list(cibles),
             "pose": sorte_de_pose(cibles),
             "cardinalite": cardinalite_effective(e, cibles),
+            "cardinalite_declaree": e["cardinalite"],
             "liste_cle": e["liste_cle"], "retiree": e["retiree"],
             "variantes": [{"cle": vc, "libelle": x["libelle"], "definition": x["definition"],
                            "structure": x["structure"], "piege": x["piege"],

@@ -525,6 +525,49 @@ def test_fusionner_fait_ce_que_fait_le_reimport(client, ouverte, db_path):
                              "fusionnee_dans": "hurlement", "releve_ids": [d["releve"]]}
 
 
+def test_le_formulaire_lit_ce_que_les_releves_emploient(client, ouverte, decor):
+    """Le formulaire n'offre que les gestes que le serveur accepte : il lit, avec le plan, ce
+    que les relevés emploient (`emplois`) — par entrée, par variante, par case, et où une
+    entrée employée d'une grille ouverte se fusionnerait —, aux comptes des refus. À qui
+    gère le projet seulement : la clé est absente pour un membre, et du plan qu'on lit sans
+    la demander."""
+    gid = ouverte["grille_id"]
+    ok(client.post(f"/api/grilles/{gid}/entrees", headers=LEA, json={
+        "libelle": "hurlement", "rubrique_cle": "voix"}), 201)
+    plan = ok(client.get(f"/api/grilles/{gid}/versions/1", params={"emplois": "1"},
+                         headers=LEA))
+    em = plan["emplois"]
+    assert em["entrees"] == {"cri": 1, "onomatopee": 1, "echo": 1}
+    assert em["variantes"] == {"onomatopee": {"bang": 1}}
+    assert em["cases"] == {"objet": 1}
+    # Les cibles de la fusion sont celles que le refus de « Supprimer » nommerait.
+    refus = client.delete(f"/api/grilles/{gid}/entrees/cri", headers=LEA).json()["detail"]
+    assert em["fusionner_dans"]["cri"] == refus["a_repondre"][0]["fusionner_dans"]         == ["hurlement"]
+    assert set(em["fusionner_dans"]) == {"cri", "onomatopee", "echo"}
+    # La réponse d'un geste les porte aussi.
+    r = ok(client.patch(f"/api/grilles/{gid}/entrees/cri", headers=LEA,
+                        json={"definition": "un cri"}))
+    assert r["emplois"]["entrees"]["cri"] == 1
+    # Sans la demander, ou sans gérer le projet : la clé est absente.
+    assert "emplois" not in ok(client.get(f"/api/grilles/{gid}/versions/1", headers=LEA))
+    lu = client.get(f"/api/grilles/{gid}/versions/1", params={"emplois": "1"}, headers=STAG)
+    assert lu.status_code == 200 and "emplois" not in lu.json()
+    # Le plan dit la cardinalité DÉCLARÉE à côté de l'effective : « comme d'ordinaire ».
+    cri = _entree(plan, "cri")
+    assert cri["cardinalite_declaree"] is None and cri["cardinalite"] == "plusieurs"
+
+
+def test_dans_une_fermee_aucune_fusion_ne_s_offre(client, decor):
+    g = grille_active(client, decor["p"])
+    gid = g["grille_id"]
+    ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": gid, "version": 1, "region_id": decor["zones"]["bulle"],
+        "entree_cle": "cri", "mots": [8]}), 201)
+    em = ok(client.get(f"/api/grilles/{gid}/versions/1", params={"emplois": "1"},
+                       headers=LEA))["emplois"]
+    assert em["entrees"] == {"cri": 1} and em["fusionner_dans"] == {}
+
+
 def test_une_entree_retiree_que_personne_n_emploie_se_supprime(client, ouverte, db_path):
     """Le réimport garde retirée, sans question, une entrée retirée que le fichier ne porte
     pas ; le formulaire, qui la nomme pour la supprimer, la supprime."""

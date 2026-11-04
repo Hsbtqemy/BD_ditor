@@ -175,6 +175,43 @@ def releves_sur_case(conn, grille_id: int, qualificatif_cle: str) -> int:
     return grille_import._releves_sur_qualificatif(conn, grille_id, qualificatif_cle)
 
 
+def emplois(conn, g, v: dict, c: dict) -> dict:
+    """Ce qu'un relevé emploie dans la grille `g`, pour que le FORMULAIRE n'offre que les
+    gestes que le serveur accepte (la case « Le formulaire suit cette règle ») : une entrée
+    employée se retire — ou, sur une grille ouverte, se fusionne —, jamais ne se supprime ;
+    une variante ou une case employée ne se supprime pas. Les comptes sont ceux des refus
+    (`releves_sur`, `releves_sur_case`) : toutes versions confondues. `c` : le contenu de la
+    version `v`, que le formulaire montre.
+
+    Rend `{"entrees": {cle: n}, "variantes": {cle: {vc: n}}, "cases": {qc: n},
+    "fusionner_dans": {cle: [...]}}` — les seuls objets employés ; `fusionner_dans` (dans une
+    version VIVANTE seulement) : les entrées où la fusion se ferait, la règle du refus de
+    `routes/grilles.supprimer_entree` (`grille_import._vers_possibles`)."""
+    entrees, variantes = {}, {}
+    for r in conn.execute("SELECT entree_cle, variante_cle, COUNT(*) AS n FROM releve "
+                          "WHERE grille_id = ? GROUP BY entree_cle, variante_cle", (g["id"],)):
+        entrees[r["entree_cle"]] = entrees.get(r["entree_cle"], 0) + r["n"]
+        if r["variante_cle"] is not None:
+            variantes.setdefault(r["entree_cle"], {})[r["variante_cle"]] = r["n"]
+    cases = {r["qualificatif_cle"]: r["n"] for r in conn.execute(
+        "SELECT rq.qualificatif_cle, COUNT(*) AS n FROM releve_qualificatif rq "
+        "JOIN releve r ON r.id = rq.releve_id WHERE r.grille_id = ? "
+        "GROUP BY rq.qualificatif_cle", (g["id"],))}
+    fusionner = {}
+    if v["etat"] == grilles.ETAT_VIVANTE:
+        for cle in c["entrees"]:
+            if not entrees.get(cle):
+                continue
+            employees = {r[0] for r in conn.execute(
+                "SELECT DISTINCT variante_cle FROM releve WHERE grille_id = ? "
+                "AND version_id = ? AND entree_cle = ? AND variante_cle IS NOT NULL",
+                (g["id"], v["id"], cle))}
+            sans = {**c, "entrees": {k: x for k, x in c["entrees"].items() if k != cle}}
+            fusionner[cle] = grille_import._vers_possibles(c, sans, cle, employees)
+    return {"entrees": entrees, "variantes": variantes, "cases": cases,
+            "fusionner_dans": fusionner}
+
+
 # --------------------------------------------------------------------------- #
 # Les refus de l'import, sur une version entière
 # --------------------------------------------------------------------------- #
