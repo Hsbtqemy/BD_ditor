@@ -520,10 +520,13 @@ kbd {
    pour zéro quand le navigateur répartit les éléments entre les rangées : elle ne change
    aucune coupure. */
 .display-menu { margin-left: auto; }
-/* UX-6 — le « ? » (« Revoir les repères de cette page », `theme.js`) précède « Aa » : la
-   marge automatique passe à lui, et « Aa » le suit sans écart de plus. */
-.bande-aide { margin-left: auto; font-weight: 700; }
-.bande-aide + .display-menu { margin-left: 0; }
+/* UX-6 — le « ? » (« Revoir les repères de cette page », `theme.js`) précède « Aa », sans
+   marge automatique : « Aa » GARDE la sienne. MESURÉ le 2026-11-04 : la marge passée au « ? »
+   laissait « Aa », seul en tête d'une rangée, à gauche — et son panneau, ancré à droite du
+   bouton au-dessus de 28em, pendait de 258 px hors du bord gauche (640 et 768 px sous une
+   police de 20, `tests/test_e2e_reflow.py`). Sur une rangée, `.nav-spacer` les tient côte à
+   côte ; une rangée enroulée peut les séparer, et c'est le prix. */
+.bande-aide { font-weight: 700; }
 
 /* Pastille « utilisateur connecté · déconnexion » (INFRA-1), injectée par theme.js
    à droite de la bande 1 ; absente en local (pas d'auth). */
