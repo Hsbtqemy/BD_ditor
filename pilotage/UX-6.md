@@ -5,9 +5,17 @@ statut: interrompu
 
 # UX-6 — écran « par où commencer » et guide utilisateur
 
-**Arrêté sur** — 2026-09-06, `91ed11e` : **la moitié documentaire est écrite**, en DEUX
-fichiers et non un — `docs/guide-utilisateur.md` (les gestes) et `docs/modele-et-droits.md`
-(les objets et les règles). Reste l'écran.
+**Arrêté sur** — 2026-11-04, `93a7e71` : **la première tranche de l'écran est sur `dev`**
+(`44bcb17`, `b83b9fb`, `9a341dc`, `93a7e71`, pas encore poussée) — la logique du wizard
+sous Node, une marque stable par zone de la visite, l'album de présentation et la carte des
+étapes dans son bac à sable. Suite par défaut verte sur le poste et dans l'image ; les e2e
+verts sur le poste et dans l'image une fois corrigés deux tests qui couraient contre la page
+(`93a7e71` ici, `4932307` pour un test de COL-3 que l'image faisait tomber). Restent la
+fenêtre posée sur la zone (tranches 2 à 4) et les cases ci-dessous.
+
+**2026-09-06, `91ed11e`** : la moitié documentaire est écrite, en DEUX fichiers et non un —
+`docs/guide-utilisateur.md` (les gestes) et `docs/modele-et-droits.md` (les objets et les
+règles).
 
 **2026-10-21 — l'écran est décalé à plus tard** (Hugo, au tri des chantiers). Il passe après
 l'import en lot (`UX-11`), les formats de scan (`IMG-1`), le sélecteur de collection de
@@ -40,10 +48,10 @@ Le texte des pages de l'album est celui que Hugo a réécrit, dans la maquette, 
 - [x] **La visite guidée surlignée est RETENUE** — attendu : tranché, RENVERSE le refus de cette fiche, qui tenait à son couplage au balisage des surfaces. Ce couplage devient une dépendance à tenir (première case ci-dessous)
 - [x] **Les modes de l'Atelier : quatre à la sortie du wizard, trois après le basculement d'`ANN-7`** — attendu : tranché. Le 4e se dit « Annotation pour poser des tags et une note (les grilles sont dans la page Annotation) ». Ordre : `UX-20`, le wizard, le basculement. Le renvoi est chez `ANN-7`
 - [x] **« Corriger » : l'Atelier cadre seul** — attendu : tranché. En entrant dans l'étape, la planche se rapproche de la bulle, et elle revient à la planche entière en sortant
-- [ ] **Chaque zone de la visite a une marque stable** — attendu : un attribut par zone (`data-parcours`, par exemple), et un test qui échoue si une marque nommée par le guide manque à sa surface ; sans lui, un écran remanié fait disparaître une zone du guide sans bruit
+- [x] **Chaque zone de la visite a une marque stable** — attendu : un attribut par zone (`data-parcours`, par exemple), et un test qui échoue si une marque nommée par le guide manque à sa surface ; sans lui, un écran remanié fait disparaître une zone du guide sans bruit — fait le 2026-11-04 (`b83b9fb`) : `data-parcours`, tenu par `tests/test_wizard_marques.py`
 - [ ] **La fenêtre sur la zone se dessine au clavier** — attendu : elle n'est pas une modale, la zone reste jouable, le reste est `inert`, et le focus y entre et en sort sans piège ; la maquette ne le fait pas
 - [x] **Le souvenir est tranché** — attendu : l'album déjà vu, le parcours et l'étape vivent soit dans le navigateur, rangés par login comme `bd-bacs-a-sable`, soit avec le bac à sable ; dans les deux cas, après un effacement, le wizard ne reprend pas à l'étape 6 sur une planche remise à zéro **Tranché par Hugo le 2026-11-03 : dans le navigateur, rangé par login et sous l'identifiant du bac à sable — aucune migration, il ne suit pas d'un poste à l'autre.**
-- [ ] **Après un effacement, le wizard repart du début** — attendu : sur un bac à sable effacé (lundi ou « Remettre à neuf… »), le souvenir rangé sous l'ancien identifiant n'est plus lu ; si l'identifiant survit à la remise à neuf, une autre marque (`efface_le`) fait la différence, mesurée par un test
+- [x] **Après un effacement, le wizard repart du début** — attendu : sur un bac à sable effacé (lundi ou « Remettre à neuf… »), le souvenir rangé sous l'ancien identifiant n'est plus lu ; si l'identifiant survit à la remise à neuf, une autre marque (`efface_le`) fait la différence, mesurée par un test — fait le 2026-11-04 : l'identifiant ne survit pas (un projet neuf, `AUTOINCREMENT`), mesuré sur les deux chemins par `tests/test_wizard_souvenir.py`, et le côté navigateur par `tests/js/wizard.test.js`
 - [ ] **Ce qui compte comme une étape faite est défini** — attendu : une liste, étape par étape, lue sur les régions, les textes et les relevés, qui tient sur des données repartant à neuf chaque lundi
 - [ ] **Sans moteur, « Pré-remplir » se dit optionnel** — attendu : `GET /api/sante` suffit ; l'étape et l'album disent « optionnel ici »
 - [ ] **« Automatisez la reconnaissance » s'écrit après la vraie passe** — attendu : le vrai découpage et le vrai OCR ont tourné sur *Moustache et Trottinette*, dont le lettrage est manuscrit, et la page dit ce qu'ils ont rendu ; la maquette SIMULE ses erreurs (`t0t`, `rec0nnaît`) et promet « 3 cases, 3 bulles, 1 cartouche » sans mesure
@@ -98,7 +106,7 @@ Proposés par l'agent qui code la première tranche (copie `ux6-wizard`, pas enc
 
 ### Vérifications
 - [ ] `pytest -m e2e` reste sans violation axe sérieuse ou critique sur les cinq surfaces × deux thèmes, **écran ouvert** : l'audit actuel ne voit jamais de modale au chargement
-- [ ] La suite E2E existante passe sans qu'aucun test n'ait été réécrit pour contourner l'écran : le harnais le neutralise explicitement, en un seul endroit
+- [x] La suite E2E existante passe sans qu'aucun test n'ait été réécrit pour contourner l'écran : le harnais le neutralise explicitement, en un seul endroit — vérifié le 2026-11-04 : `window.BD_SANS_WIZARD` posé par la fixture `context` de `tests/conftest.py`, seul endroit ; la seule assertion existante changée (`test_e2e_bac_a_sable`) l'est parce que la ligne porte désormais « Par où commencer », pas pour contourner l'album
 - [ ] Aucun petit texte coloré de l'écran n'utilise un accent brut : tokens d'encre AA-sûrs, règle d'accessibilité de `CLAUDE.md`
 - [ ] Sur 375 px de large, la carte des étapes reste lisible et la fermeture atteignable sans défilement horizontal
 - [ ] La passe `pilotage/qa/accueil-par-ou-commencer.md` a été jouée une fois sur l'écran construit, et son verdict sur le nombre d'étapes est reporté ici
