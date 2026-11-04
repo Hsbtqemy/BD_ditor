@@ -5,7 +5,16 @@ statut: interrompu
 
 # UX-6 — écran « par où commencer » et guide utilisateur
 
-**Arrêté sur** — 2026-11-04, `93a7e71` : **la première tranche de l'écran est sur `dev`**
+**Arrêté sur** — 2026-11-04, `418055d` : **la tranche 2 est sur `dev`** (`6bafa84`, `fbd2bf5`,
+`86175dd`, `418055d`, pas encore poussée) — le « ? » de la bande sur les six surfaces, la
+fenêtre posée à côté de la zone (pas une modale : la zone jouable, le reste `inert`, le focus
+sans piège), la visite des sept pages en deux temps ; choisir un parcours lance la visite, la
+carte vient après. Hors d'un bac à sable, les repères ne parlent pas du bac à sable
+(`418055d`). Joués sur la copie rebasée : `test_e2e_wizard` 11, `test_e2e_reflow` 52 en
+entier, `test_e2e_a11y` 107, `test_e2e_bac_a_sable` 43, `test_e2e_masquage` 18, tests Node 28.
+Restent les tranches 3 et 4 et les cases ci-dessous.
+
+**Plus tôt, le 2026-11-04** — `93a7e71` : **la première tranche de l'écran est sur `dev`**
 (`44bcb17`, `b83b9fb`, `9a341dc`, `93a7e71`, pas encore poussée) — la logique du wizard
 sous Node, une marque stable par zone de la visite, l'album de présentation et la carte des
 étapes dans son bac à sable. Suite par défaut verte sur le poste et dans l'image ; les e2e
@@ -49,7 +58,7 @@ Le texte des pages de l'album est celui que Hugo a réécrit, dans la maquette, 
 - [x] **Les modes de l'Atelier : quatre à la sortie du wizard, trois après le basculement d'`ANN-7`** — attendu : tranché. Le 4e se dit « Annotation pour poser des tags et une note (les grilles sont dans la page Annotation) ». Ordre : `UX-20`, le wizard, le basculement. Le renvoi est chez `ANN-7`
 - [x] **« Corriger » : l'Atelier cadre seul** — attendu : tranché. En entrant dans l'étape, la planche se rapproche de la bulle, et elle revient à la planche entière en sortant
 - [x] **Chaque zone de la visite a une marque stable** — attendu : un attribut par zone (`data-parcours`, par exemple), et un test qui échoue si une marque nommée par le guide manque à sa surface ; sans lui, un écran remanié fait disparaître une zone du guide sans bruit — fait le 2026-11-04 (`b83b9fb`) : `data-parcours`, tenu par `tests/test_wizard_marques.py`
-- [ ] **La fenêtre sur la zone se dessine au clavier** — attendu : elle n'est pas une modale, la zone reste jouable, le reste est `inert`, et le focus y entre et en sort sans piège ; la maquette ne le fait pas
+- [x] **La fenêtre sur la zone se dessine au clavier** — attendu : elle n'est pas une modale, la zone reste jouable, le reste est `inert`, et le focus y entre et en sort sans piège ; la maquette ne le fait pas — fait le 2026-11-04 (`86175dd`) : `test_la_fenetre_sur_la_zone_au_clavier_et_en_deux_temps` (le reste `inert`, Maj+Tab et Tab sans s'arrêter sur un inerte, Échap rend le focus, ni `role` ni `aria-modal`)
 - [x] **Le souvenir est tranché** — attendu : l'album déjà vu, le parcours et l'étape vivent soit dans le navigateur, rangés par login comme `bd-bacs-a-sable`, soit avec le bac à sable ; dans les deux cas, après un effacement, le wizard ne reprend pas à l'étape 6 sur une planche remise à zéro **Tranché par Hugo le 2026-11-03 : dans le navigateur, rangé par login et sous l'identifiant du bac à sable — aucune migration, il ne suit pas d'un poste à l'autre.**
 - [x] **Après un effacement, le wizard repart du début** — attendu : sur un bac à sable effacé (lundi ou « Remettre à neuf… »), le souvenir rangé sous l'ancien identifiant n'est plus lu ; si l'identifiant survit à la remise à neuf, une autre marque (`efface_le`) fait la différence, mesurée par un test — fait le 2026-11-04 : l'identifiant ne survit pas (un projet neuf, `AUTOINCREMENT`), mesuré sur les deux chemins par `tests/test_wizard_souvenir.py`, et le côté navigateur par `tests/js/wizard.test.js`
 - [ ] **Ce qui compte comme une étape faite est défini** — attendu : une liste, étape par étape, lue sur les régions, les textes et les relevés, qui tient sur des données repartant à neuf chaque lundi
@@ -58,7 +67,7 @@ Le texte des pages de l'album est celui que Hugo a réécrit, dans la maquette, 
 - [ ] **« Exporter » dit ce qui sort vraiment d'un bac à sable** — attendu : l'étape et les phrases des pages ne promettent aucune sortie refusée : le jeu de production est en part serveur, export fermé pour tous, donc rien n'y sort d'un bac à sable
 - [ ] **L'Atelier a un geste de tracer pour tous** — attendu : au clavier et au doigt, comme « Tracer une zone » de la page Annotation ; aujourd'hui Maj+glisser ne se voit qu'une fois une région choisie, et l'étape « Tracer une zone » ne tient pas sans lui
 - [ ] **`docs/guide-utilisateur.md` dit les neuf étapes** — attendu : « Tracer une zone » y a sa section, et chaque étape de l'écran y renvoie
-- [ ] **La maquette se mesure sur l'écran codé** — attendu : à 320 px et en grande police, la bande du haut gagne le « ? » sans déborder ; à 768 px, la fenêtre ne cache rien d'indispensable à la dernière zone de la Recherche et de l'Exploration ; « Visite n / 7 » ne reste pas figé entre les deux temps d'une page ; le titre de la Transcription ne dit pas « Bulle 4 / 4 » sur un cartouche
+- [ ] **La maquette se mesure sur l'écran codé** — attendu : à 320 px et en grande police, la bande du haut gagne le « ? » sans déborder ; à 768 px, la fenêtre ne cache rien d'indispensable à la dernière zone de la Recherche et de l'Exploration ; « Visite n / 7 » ne reste pas figé entre les deux temps d'une page ; le titre de la Transcription ne dit pas « Bulle 4 / 4 » sur un cartouche **Le 2026-11-04 (`86175dd`) : à 320 px, polices 16 et 24, la bande gagne le « ? » sans déborder (`test_e2e_reflow` vert en entier), et « Visite n / 7 » change entre les deux temps (« · 1 / 2 », « · 2 / 2 ») ; restent 768 px et la suite.**
 - [ ] **Exploration vide : le message dit la vraie cause** — attendu : « Aucune donnée (relancer l'indexation NLP ?) » n'apparaît plus quand c'est qu'aucun corpus n'est ouvert ; le wizard y conduit tout arrivant
 - [ ] **La Recherche dit « Atelier »** — attendu : le bouton de l'aperçu et son infobulle ne disent plus « Visionneuse », que le wizard n'enseigne pas
 - [ ] **La visite tient pour un compte sans autre projet** — attendu : Recherche et Exploration, à zéro partout parce que le bac à sable en est exclu, ne se lisent pas comme une panne ; la phrase d'export ne s'y affiche plus à qui n'a rien à exporter
@@ -75,6 +84,18 @@ Proposés par l'agent qui code la première tranche (copie `ux6-wizard`, pas enc
 - [x] **L'étape « Exporter » ne promet rien** — attendu : tranché, sa phrase commence par « Ailleurs que dans un bac à sable… » ; la case « Exporter dit ce qui sort vraiment » reste ouverte jusqu'à l'écran codé
 - [x] **Choisir un parcours ouvre la carte des étapes** — attendu : tranché, en attendant la fenêtre posée sur la zone
 - [x] **L'album se lit une page à la fois** — attendu : tranché, sans glissé au doigt ; ses illustrations sont les miniatures du jeu servies par l'instance, les pages 6 et 7 sans illustration
+
+### Tranché par Hugo le 2026-11-04 — les choix de la tranche 2
+Proposés par l'agent qui code la tranche 2, confirmés tous les sept par Hugo, sans maquette : chacun se revoit sur l'écran codé.
+- [x] **Le compte de la visite s'écrit « Visite 2 / 7 · 1 / 2 »** — attendu : tranché, le second nombre suit les deux temps d'une page
+- [x] **Le « ? » est offert à tout compte, hors d'un bac à sable compris** — attendu : tranché ; hors d'un bac à sable, les repères de la Recherche et de l'Exploration ne parlent pas du bac à sable, et chez un invité ils disent « ce bac à sable » (`418055d`, un test Node balaie toute la visite)
+- [x] **Le « ? » ouvre la page de la surface, jamais celle de la barre du haut** — attendu : tranché, comme la maquette
+- [x] **Un repère se choisit au clic dans la liste, jamais au survol ni au focus** — attendu : tranché
+- [x] **Échap ferme la visite sans ouvrir la carte** — attendu : tranché
+- [x] **Sous 40em, la fenêtre est une feuille en bas, pleine largeur, 55 % de haut au plus** — attendu : tranché, à revoir sur l'écran codé
+- [x] **Quand la bande passe à la ligne, le « ? » et « Aa » peuvent se séparer** — attendu : tranché
+- [ ] **Un menu ouvert depuis une zone n'est pas assombri** — attendu : « Aa » ou « Traitement » ouverts pendant la visite se lisent en clair ; aujourd'hui ils restent jouables mais s'affichent sous l'assombri, hors du trou
+- [ ] **Chez un invité, la zone « Votre bac à sable » de la barre du haut dit ses gestes** — attendu : la fenêtre ne lui promet ni « inviter » ni « remettre à neuf », qu'il n'a pas, mais « Quitter… » (le titre dit déjà « Ce bac à sable » depuis `418055d`, la phrase non)
 
 ### Arbitrages
 - [x] La liste des étapes et leur ordre sont figés AVANT la première ligne de code, chaque étape nommant une surface et un geste : c'est le contrat commun de l'écran et du guide, et le laisser flotter ferait diverger les deux
@@ -105,7 +126,7 @@ Proposés par l'agent qui code la première tranche (copie `ux6-wizard`, pas enc
 - [x] **Les deux documents d'usage décrivent QUATRE surfaces, et il y en a cinq depuis le 2026-09-07** (UX-10 : `/administration`, où 👥 Collections et 🩺 Moteurs ont DÉMÉNAGÉ — la Bibliothèque n'y renvoie plus). Constat déposé ici par la session UX-10, qui n'a pas touché ces fichiers : ils appartiennent à ce chantier, et deux sessions n'écrivent pas dans le même fichier. Neuf emplacements, relevés : `docs/guide-utilisateur.md` — le titre « ## 2. Les quatre surfaces », la mention du panneau 🩺 Moteurs « de la Bibliothèque » en tête, les deux entrées 👥 Collections / 🩺 Moteurs de la liste des panneaux, et le dépannage « Ouvrez 🩺 Moteurs dans la Bibliothèque » ; `docs/modele-et-droits.md` — le tableau « panneau *👥 Collections* de la Bibliothèque », la phrase sur ce que le panneau déclare des groupes admin, le tableau « dans l'application, panneau *👥 Collections* », et le passage sur le genre **groupe**. `README.md` (ligne 10) décrit ce que CONTIENT le guide et suivra. Attendu : plus aucun renvoi vers la Bibliothèque pour ces deux panneaux, et le compte de surfaces juste — fait le 2026-09-07 (`909fe18`), sur DIX emplacements et non neuf : le § 5 de `modele-et-droits.md` disait des descripteurs de diffusion qu'« ils s'affichent dans la Bibliothèque », alors que `static/corpus.js` n'a plus une occurrence d'`embargo` — tout est dans `static/administration.js`. Le relevé nommait les deux panneaux ; l'affichage du régime avait déménagé sans être nommé, et c'est en vérifiant la liste plutôt qu'en la suivant qu'il est apparu
 
 ### Vérifications
-- [ ] `pytest -m e2e` reste sans violation axe sérieuse ou critique sur les cinq surfaces × deux thèmes, **écran ouvert** : l'audit actuel ne voit jamais de modale au chargement
+- [ ] `pytest -m e2e` reste sans violation axe sérieuse ou critique sur les cinq surfaces × deux thèmes, **écran ouvert** : l'audit actuel ne voit jamais de modale au chargement **Le 2026-11-04 : axe passé sur la visite ouverte (barre du haut et Atelier), thèmes sombre et clair ; pas encore sur la fenêtre des repères surface par surface.**
 - [x] La suite E2E existante passe sans qu'aucun test n'ait été réécrit pour contourner l'écran : le harnais le neutralise explicitement, en un seul endroit — vérifié le 2026-11-04 : `window.BD_SANS_WIZARD` posé par la fixture `context` de `tests/conftest.py`, seul endroit ; la seule assertion existante changée (`test_e2e_bac_a_sable`) l'est parce que la ligne porte désormais « Par où commencer », pas pour contourner l'album
 - [ ] Aucun petit texte coloré de l'écran n'utilise un accent brut : tokens d'encre AA-sûrs, règle d'accessibilité de `CLAUDE.md`
 - [ ] Sur 375 px de large, la carte des étapes reste lisible et la fermeture atteignable sans défilement horizontal
