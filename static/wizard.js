@@ -8,13 +8,18 @@
      · l'ALBUM de présentation, qui s'ouvre seul au chargement d'une page de SON bac à
        sable tant qu'il n'a pas été vu, avec « Passer » et « Fermer ✕ », et dont la
        dernière page fait choisir un parcours, rapide ou complet ;
-     · la CARTE des étapes du parcours choisi, chacune menant à sa surface et à son outil ;
-     · « Par où commencer », premier geste de la ligne du bac à sable, qui rouvre l'une ou
-       l'autre.
+     · la VISITE des sept pages, après le choix d'un parcours, dans la FENÊTRE posée à
+       côté des zones — le reste assombri et `inert`, les zones jouables —, puis la CARTE
+       des étapes du parcours choisi, chacune menant à sa surface et à son outil ;
+     · « Par où commencer », premier geste de la ligne du bac à sable, qui rouvre l'album
+       ou la carte ;
+     · les REPÈRES de la page où l'on est, dans la même fenêtre, que rouvre le « ? » de la
+       bande (`theme.js`), sur les six surfaces et pour tout compte.
 
-   Les deux sont bâtis sur `static/lib/dialog.js` : rôle, piège à focus, Échap, retour du
-   focus. La FENÊTRE posée sur la zone — le guide pas à pas, le reste `inert` — et la visite
-   des sept pages ne sont pas encore là : la carte en tient lieu.
+   L'album et la carte sont bâtis sur `static/lib/dialog.js` : rôle, piège à focus, Échap,
+   retour du focus. La fenêtre sur la zone ne l'est pas : elle n'est pas une modale (cf. sa
+   section). Le guide pas à pas, étape par étape, n'est pas encore là : la carte en tient
+   lieu.
 
    Chargé APRÈS `lib/bac-a-sable.js`, `bac-a-sable.js` et `lib/wizard.js`, AVANT le script
    de la surface. Il lit ce que `bac-a-sable.js` a déjà lu (`BDBacEcran.pret` : l'identité,
@@ -107,6 +112,8 @@
   }
 
   async function ouvrir(mode) {
+    // L'album et la carte prennent la place de la fenêtre sur la zone : jamais les deux.
+    fermerFenetre(false);
     await lireMoteurs();
     dialogue();
     S.mode = mode;
@@ -284,10 +291,13 @@
     else tourner(S.page - 1, "#wizard-prec");
   }
 
+  /* Choisir un parcours ouvre la VISITE des pages, qui passe avant les deux parcours (Hugo,
+     2026-11-02, décision H) ; la carte des étapes vient au bout de la visite, ou quand on la
+     passe. */
   function choisir(parcours) {
     retenir(W.choisirParcours(S.souvenir, parcours));
-    S.mode = "carte";
-    dessiner(".wizard-etapes a");
+    fermer();
+    commencerVisite({ page: 0, temps: 0 });
   }
 
   /* ── La carte des étapes ─────────────────────────────────────────────────────────── */
@@ -327,11 +337,448 @@
       dessiner("#wizard-changer");
     });
     act.appendChild(changer);
+    const visite = bouton("ghost small", "Revoir la visite", "wizard-revoir-visite");
+    visite.addEventListener("click", () => { fermer(); commencerVisite({ page: 0, temps: 0 }); });
+    act.appendChild(visite);
     const revoir = bouton("ghost small", "Revoir la présentation", "wizard-revoir");
     revoir.addEventListener("click", () => { S.mode = "album"; S.page = 0; dessiner("#wizard-suiv"); });
     act.appendChild(revoir);
     boite.appendChild(act);
   }
+
+  /* ── La fenêtre sur la zone ──────────────────────────────────────────────────────────
+     Tranchée par Hugo sur maquette le 2026-11-02 : une fenêtre posée à côté de la zone, le
+     reste assombri, la zone JOUABLE. Elle sert deux fois :
+       · la VISITE des pages (« Visite n / 7 »), après le choix d'un parcours : sept pages,
+         la barre du haut puis les six surfaces, chacune en un ou deux temps ;
+       · les REPÈRES de la page où l'on est, que rouvre le « ? » de la bande (`theme.js`),
+         pour tout compte, sans rien changer à la page — ni mode, ni album.
+
+     Ce N'EST PAS une modale (la case « La fenêtre sur la zone se dessine au clavier ») :
+       · les zones du temps sont jouables, tout le reste est `inert` — ni clic, ni focus, ni
+         lecteur d'écran ; l'assombri n'est qu'une image (`pointer-events: none`) ;
+       · aucun piège à focus. La fenêtre est posée en fin de document : Tab la quitte
+         comme on quitte une page, et Maj+Tab depuis la fenêtre entre dans les zones, qui la
+         précèdent ; depuis les zones, Tab revient à elle. Échap la ferme et rend le focus à
+         qui l'avait ouverte ;
+       · une boîte de dialogue ouverte depuis une zone (« Remettre à neuf… ») reste jouable
+         au-dessus d'elle.
+
+     Elle change de côté avec le TEMPS, au bouton « Suivant » — à droite au premier, à gauche
+     au second —, jamais au survol (refusé par Hugo). Sa place est à la feuille : rien ne la
+     déplace pendant qu'on lit. Ce qui bouge est l'assombri, redessiné quand la page change
+     (une zone qui arrive, un tiroir qui s'ouvre, le défilement).
+
+     La visite traverse les pages : sa position vit dans le stockage de session
+     (`BDWizard.retenirVisite`), et la page suivante la reprend à son chargement. */
+  const SVG = "http://www.w3.org/2000/svg";
+  const F = { mode: null, pos: null, temps: [], choisie: null, declencheur: null,
+              inertes: new Set(), cle: "", obs: null, attente: 0 };
+  let foyer = null, voileSvg = null, fenetre = null;
+
+  function chemin() { return location.pathname.replace(/\/+$/, "") || "/"; }
+
+  /* Les éléments d'une zone qui se voient : une boîte non vide, ni `visibility: hidden`
+     (les tiroirs fermés de l'Atelier et de la page Annotation), ni un bloc masqué. */
+  function zonesDe(marque) {
+    return Array.from(document.querySelectorAll(`[data-parcours="${marque}"]`)).filter((e) => {
+      if (foyer && foyer.contains(e)) return false;
+      const r = e.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return false;
+      return getComputedStyle(e).visibility !== "hidden";
+    });
+  }
+
+  function voit(marque) { return zonesDe(marque).length > 0; }
+
+  function rectDe(els) {
+    const rs = els.map((e) => e.getBoundingClientRect());
+    return { l: Math.min(...rs.map((r) => r.left)), t: Math.min(...rs.map((r) => r.top)),
+             r: Math.max(...rs.map((r) => r.right)), b: Math.max(...rs.map((r) => r.bottom)) };
+  }
+
+  function svg(tag, attrs) {
+    const e = document.createElementNS(SVG, tag);
+    Object.keys(attrs || {}).forEach((k) => e.setAttribute(k, attrs[k]));
+    return e;
+  }
+
+  function construireFoyer() {
+    if (foyer) return;
+    foyer = el("div", "wizard-foyer");
+    foyer.id = "wizard-foyer";
+    voileSvg = svg("svg", { class: "wizard-voile", "aria-hidden": "true", focusable: "false",
+                            preserveAspectRatio: "none" });
+    fenetre = el("section", "wizard-fenetre");
+    fenetre.id = "wizard-fenetre";
+    fenetre.addEventListener("keydown", clavierFenetre);
+    fenetre.addEventListener("click", clicFenetre);
+    foyer.appendChild(voileSvg);
+    foyer.appendChild(fenetre);
+    document.body.appendChild(foyer);
+  }
+
+  /* Les repères du temps affiché, et la page qu'ils décrivent. */
+  function reperesDuTemps() { return W.reperes(F.pos.page, F.pos.temps, voit); }
+
+  function dessinerFenetre(focus) {
+    const page = W.VISITE[F.pos.page], plan = F.mode === "plan";
+    fenetre.innerHTML = "";
+    fenetre.classList.toggle("gauche", W.cote(F.pos) === "gauche");
+    fenetre.setAttribute("aria-label", plan ? "Les repères de cette page" : "La visite des pages");
+
+    const tete = el("div", "wf-tete");
+    const compte = el("span", "wf-compte", plan ? "Cette page" : W.compteVisite(F.pos));
+    compte.id = "wizard-visite-compte";
+    compte.setAttribute("aria-live", "polite");
+    tete.appendChild(compte);
+    if (!plan) {
+      const barre = el("span", "wf-barre");
+      barre.setAttribute("aria-hidden", "true");
+      W.VISITE.forEach((x, i) => barre.appendChild(
+        el("i", i < F.pos.page ? "ok" : i === F.pos.page ? "ici" : null)));
+      tete.appendChild(barre);
+    }
+    fenetre.appendChild(tete);
+
+    const h = el("h2", "wf-titre", W.typo(page.titre));
+    h.id = "wizard-fenetre-titre";
+    h.tabIndex = -1;
+    fenetre.appendChild(h);
+    fenetre.appendChild(el("p", "wf-phrase", W.typo(page.phrase)));
+
+    const ol = el("ol", "wf-zones");
+    ol.id = "wizard-zones";
+    ol.setAttribute("aria-label", "Repères");
+    const reps = reperesDuTemps();
+    F.cle = reps.map((r) => r.marque).join(" ");
+    reps.forEach((r) => {
+      const li = el("li");
+      const b = bouton("wf-zone", null);
+      b.dataset.zone = r.marque;
+      b.setAttribute("aria-pressed", String(F.choisie === r.marque));
+      const n = el("span", "wf-n", String(r.n));
+      n.setAttribute("aria-hidden", "true");
+      b.appendChild(n);
+      const t = el("span", "wf-texte");
+      t.appendChild(el("b", null, r.nom));
+      t.appendChild(document.createTextNode(" "));
+      t.appendChild(el("span", "wf-detail", r.phrase));
+      b.appendChild(t);
+      li.appendChild(b);
+      ol.appendChild(li);
+    });
+    fenetre.appendChild(ol);
+
+    const act = el("div", "wf-actions");
+    if (plan) {
+      if (F.temps.length > 1) {
+        const i = F.temps.indexOf(F.pos.temps);
+        const p = bouton("ghost small", "←", "wizard-reperes-prec");
+        p.setAttribute("aria-label", "Repères précédents");
+        p.disabled = i <= 0;
+        p.dataset.geste = "plan-prec";
+        const s = bouton("ghost small", "→", "wizard-reperes-suiv");
+        s.setAttribute("aria-label", "Repères suivants");
+        s.disabled = i >= F.temps.length - 1;
+        s.dataset.geste = "plan-suiv";
+        act.appendChild(p);
+        act.appendChild(s);
+      }
+      const f = bouton("primary small", "Fermer ✕", "wizard-reperes-fermer");
+      f.dataset.geste = "fermer";
+      act.appendChild(f);
+    } else {
+      const p = bouton("ghost small", "←", "wizard-visite-prec");
+      p.setAttribute("aria-label", "Précédent");
+      p.disabled = W.precedent(F.pos) === null;
+      p.dataset.geste = "prec";
+      const passer = bouton("ghost small", "Passer la visite", "wizard-visite-passer");
+      passer.dataset.geste = "fin";
+      const fin = W.estFin(F.pos);
+      const s = bouton("primary small", fin ? "Commencer →" : "Suivant →", "wizard-visite-suiv");
+      s.dataset.geste = fin ? "fin" : "suiv";
+      act.appendChild(p);
+      act.appendChild(passer);
+      act.appendChild(s);
+    }
+    fenetre.appendChild(act);
+
+    let f = focus ? fenetre.querySelector(focus) : null;
+    // Un bouton éteint ne prend pas le focus : le titre le reçoit à sa place.
+    if (focus && (!f || f.disabled)) f = h;
+    if (f) f.focus({ preventScroll: true });
+  }
+
+  /* Ce qui reste jouable : les zones du temps affiché, la fenêtre, les messages de la page,
+     et une boîte de dialogue ouverte par-dessus. Tout le reste devient `inert` — posé sur
+     les frères du chemin qui mène du corps à chaque élément gardé (un élément inerte rend
+     inerte tout ce qu'il contient, sans retour possible pour un descendant). Ce que la page
+     avait déjà rendu inerte n'est ni compté ni rendu. */
+  function gardes() {
+    const k = [foyer];
+    reperesDuTemps().forEach((r) => k.push(...zonesDe(r.marque)));
+    const toasts = document.getElementById("toasts");
+    if (toasts) k.push(toasts);
+    document.querySelectorAll('[aria-modal="true"]').forEach((d) => {
+      if (d.getClientRects().length) k.push(d);
+    });
+    return k;
+  }
+
+  function appliquerInert() {
+    const k = gardes(), voulu = new Set();
+    (function marquer(parent) {
+      Array.from(parent.children).forEach((c) => {
+        if (k.includes(c)) return;
+        if (k.some((x) => c.contains(x))) { marquer(c); return; }
+        if (/^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(c.tagName)) return;
+        voulu.add(c);
+      });
+    })(document.body);
+    F.inertes.forEach((e) => { if (!voulu.has(e)) { e.inert = false; F.inertes.delete(e); } });
+    voulu.forEach((e) => {
+      if (F.inertes.has(e)) { e.inert = true; return; }
+      if (!e.inert) { e.inert = true; F.inertes.add(e); }
+    });
+  }
+
+  function rendreInert() {
+    F.inertes.forEach((e) => { e.inert = false; });
+    F.inertes.clear();
+  }
+
+  /* L'assombri : un SVG qui couvre la fenêtre du navigateur, troué d'un rectangle par zone
+     du temps (un masque : deux trous qui se touchent ne se réassombrissent pas), un cadre
+     autour de la zone choisie et une pastille numérotée sur chacune. Ses coordonnées sont
+     celles de `getBoundingClientRect`, dans la boîte de la fenêtre (`viewBox`) : le zoom de
+     l'interface, posé sur la racine, ne les déforme pas. */
+  function dessinerVoile() {
+    const W0 = window.innerWidth, H0 = window.innerHeight, m = 4;
+    const z = typeof document.documentElement.currentCSSZoom === "number"
+      ? document.documentElement.currentCSSZoom : 1;
+    voileSvg.setAttribute("viewBox", `0 0 ${W0} ${H0}`);
+    voileSvg.innerHTML = "";
+    const defs = svg("defs");
+    const masque = svg("mask", { id: "wizard-masque", maskUnits: "userSpaceOnUse",
+                                 x: 0, y: 0, width: W0, height: H0 });
+    masque.appendChild(svg("rect", { x: 0, y: 0, width: W0, height: H0, fill: "#fff" }));
+    const trous = [];
+    reperesDuTemps().forEach((r) => {
+      const els = zonesDe(r.marque);
+      if (!els.length) return;
+      // Le trou ne déborde pas de la fenêtre du navigateur : une zone de toute la largeur
+      // (la bande) dessinerait sinon un cadre plus large que la page.
+      const q = rectDe(els);
+      const t = { l: Math.max(q.l - m, 0), t: Math.max(q.t - m, 0),
+                  r: Math.min(q.r + m, W0), b: Math.min(q.b + m, H0), rep: r };
+      if (t.r - t.l < 1 || t.b - t.t < 1) return;
+      trous.push(t);
+      masque.appendChild(svg("rect", { x: t.l, y: t.t, width: t.r - t.l, height: t.b - t.t,
+                                       rx: 6, fill: "#000" }));
+    });
+    defs.appendChild(masque);
+    voileSvg.appendChild(defs);
+    voileSvg.appendChild(svg("rect", { class: "wf-ombre", x: 0, y: 0, width: W0, height: H0,
+                                       mask: "url(#wizard-masque)" }));
+    const rayon = 11 * z;
+    trous.forEach((t) => {
+      voileSvg.appendChild(svg("rect", {
+        class: "wf-cadre" + (t.rep.marque === F.choisie ? " ici" : ""),
+        x: t.l, y: t.t, width: t.r - t.l, height: t.b - t.t, rx: 6 }));
+      const cx = Math.max(t.l, rayon + 2), cy = Math.max(t.t, rayon + 2);
+      const g = svg("g", { class: "wf-pastille" });
+      g.appendChild(svg("circle", { cx, cy, r: rayon }));
+      const txt = svg("text", { x: cx, y: cy, "text-anchor": "middle",
+                                "dominant-baseline": "central", "font-size": 13 * z });
+      txt.textContent = String(t.rep.n);
+      g.appendChild(txt);
+      voileSvg.appendChild(g);
+    });
+  }
+
+  /* Une mise à jour par image au plus : la page qui se dessine, le défilement et la taille
+     de la fenêtre en demandent en rafale. La liste ne se redessine que si les zones visibles
+     ont changé — une zone qui arrive avec la page — et garde alors le focus qu'elle avait. */
+  function mettreAJour() {
+    F.attente = 0;
+    if (!F.mode || !foyer) return;
+    const cle = reperesDuTemps().map((r) => r.marque).join(" ");
+    if (cle !== F.cle) {
+      const a = document.activeElement;
+      const garde = a && fenetre.contains(a) ? (a.id ? `#${a.id}`
+        : a.dataset.zone ? `[data-zone="${a.dataset.zone}"]` : null) : null;
+      dessinerFenetre(garde);
+    }
+    dessinerVoile();
+    appliquerInert();
+  }
+
+  function planifier() {
+    if (!F.mode || F.attente) return;
+    F.attente = window.requestAnimationFrame(mettreAJour);
+  }
+
+  function observer() {
+    if (F.obs) return;
+    F.obs = new MutationObserver((liste) => {
+      if (liste.some((m) => !foyer || !foyer.contains(m.target))) planifier();
+    });
+    F.obs.observe(document.body, { childList: true, subtree: true, attributes: true,
+                                   attributeFilter: ["class", "hidden", "style", "open"] });
+    window.addEventListener("resize", planifier);
+    document.addEventListener("scroll", planifier, true);
+    document.addEventListener("transitionend", planifier, true);
+  }
+
+  function cesserDObserver() {
+    if (F.obs) F.obs.disconnect();
+    F.obs = null;
+    window.removeEventListener("resize", planifier);
+    document.removeEventListener("scroll", planifier, true);
+    document.removeEventListener("transitionend", planifier, true);
+    if (F.attente) window.cancelAnimationFrame(F.attente);
+    F.attente = 0;
+  }
+
+  /* Ouvrir la fenêtre sur la page où l'on est. Le focus va au titre une fois la main rendue :
+     ouverte depuis l'album, la fenêtre suit la fermeture d'une modale, qui rend le focus à
+     son déclencheur dans la même foulée (`dialog.js`). */
+  function ouvrirFenetre(mode, pos, declencheur) {
+    construireFoyer();
+    F.mode = mode;
+    F.pos = pos;
+    F.choisie = null;
+    F.declencheur = declencheur || null;
+    F.temps = mode === "plan" ? W.tempsVisibles(pos.page, voit) : [];
+    foyer.hidden = false;
+    dessinerFenetre();
+    dessinerVoile();
+    appliquerInert();
+    observer();
+    setTimeout(() => {
+      const h = document.getElementById("wizard-fenetre-titre");
+      if (F.mode && h) h.focus({ preventScroll: true });
+    }, 0);
+  }
+
+  /* Fermer : la page redevient entière, puis le focus revient à qui a ouvert la fenêtre
+     (le « ? »), sinon à « Par où commencer », sinon au contenu. `rendre` à faux : une autre
+     fenêtre prend la suite (l'album, la carte) et pose le focus elle-même. */
+  function fermerFenetre(rendre) {
+    if (!F.mode) return;
+    const visite = F.mode === "visite", decl = F.declencheur;
+    cesserDObserver();
+    rendreInert();
+    F.mode = null;
+    F.pos = null;
+    F.choisie = null;
+    if (foyer) foyer.hidden = true;
+    if (fenetre) fenetre.innerHTML = "";
+    if (voileSvg) voileSvg.innerHTML = "";
+    if (visite) W.oublierVisite();
+    if (rendre === false) return;
+    const cible = [decl, document.getElementById("bac-commencer"), retourDuFocus()]
+      .find((e) => e && e.isConnected && e.getClientRects().length);
+    if (cible) cible.focus();
+  }
+
+  /* Aller à une position de la visite : sur la même surface, la fenêtre se redessine ; sur
+     une autre, la position est retenue et la page suivante la reprend. */
+  function allerVisite(pos, focus) {
+    const p = W.position(pos);
+    if (!p) return;
+    const surface = W.VISITE[p.page].surface;
+    if (surface !== chemin()) {
+      // La page peut retenir le départ (une saisie à perdre) : la fenêtre reste alors
+      // telle quelle, sur la position d'où l'on partait.
+      W.retenirVisite(S.login, S.bac, p);
+      location.assign(W.adresseVisite(p.page, vue()));
+      return;
+    }
+    W.retenirVisite(S.login, S.bac, p);
+    const pageNeuve = !F.pos || F.pos.page !== p.page;
+    F.pos = p;
+    F.choisie = null;
+    dessinerFenetre(pageNeuve ? "#wizard-fenetre-titre" : focus);
+    mettreAJour();
+  }
+
+  function commencerVisite(pos) {
+    relire();
+    const p = W.position(pos);
+    if (!p) return;
+    if (W.VISITE[p.page].surface === chemin()) {
+      W.retenirVisite(S.login, S.bac, p);
+      ouvrirFenetre("visite", p, null);
+    } else {
+      allerVisite(p);
+    }
+  }
+
+  /* Au bout de la visite, ou passée : la carte, le focus sur l'étape où l'on est. */
+  function finirVisite() {
+    fermerFenetre(false);
+    relire();
+    ouvrir("carte").then(() => {
+      const a = boite && boite.querySelector('.wizard-etapes li[aria-current="step"] a');
+      if (a) a.focus();
+    });
+  }
+
+  /* Le « ? » : les repères de la page où l'on est, sans rien y changer. */
+  function reperes(declencheur) {
+    const i = W.pageDeLaSurface(chemin());
+    if (i < 0) return;
+    fermerFenetre(false);
+    const t = W.tempsVisibles(i, voit);
+    ouvrirFenetre("plan", { page: i, temps: t[0] }, declencheur);
+  }
+
+  function choisirZone(marque) {
+    F.choisie = F.choisie === marque ? null : marque;
+    fenetre.querySelectorAll(".wf-zone").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.zone === F.choisie)));
+    if (F.choisie) {
+      const e = zonesDe(F.choisie)[0];
+      if (e) e.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    dessinerVoile();
+  }
+
+  function clicFenetre(ev) {
+    const z = ev.target.closest(".wf-zone");
+    if (z) { choisirZone(z.dataset.zone); return; }
+    const b = ev.target.closest("[data-geste]");
+    if (!b || b.disabled) return;
+    const g = b.dataset.geste;
+    if (g === "fermer") fermerFenetre();
+    else if (g === "suiv") allerVisite(W.suivant(F.pos), "#wizard-visite-suiv");
+    else if (g === "prec") allerVisite(W.precedent(F.pos), "#wizard-visite-prec");
+    else if (g === "fin") finirVisite();
+    else if (g === "plan-prec" || g === "plan-suiv") {
+      const i = F.temps.indexOf(F.pos.temps) + (g === "plan-suiv" ? 1 : -1);
+      if (i < 0 || i >= F.temps.length) return;
+      F.pos = { page: F.pos.page, temps: F.temps[i] };
+      F.choisie = null;
+      dessinerFenetre(g === "plan-suiv" ? "#wizard-reperes-suiv" : "#wizard-reperes-prec");
+      mettreAJour();
+    }
+  }
+
+  /* Les touches tapées dans la fenêtre ne remontent pas à la page : sous elle, l'Atelier
+     change de mode à une lettre et de zone aux flèches. Échap la ferme. */
+  function clavierFenetre(ev) {
+    ev.stopPropagation();
+    if (ev.key === "Escape") { ev.preventDefault(); fermerFenetre(); }
+  }
+
+  // Échap quand le focus est perdu sur la page (un élément gardé qu'un rendu a remplacé).
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape" || !F.mode) return;
+    const a = document.activeElement;
+    if (!a || a === document.body) fermerFenetre();
+  });
 
   /* ── « Par où commencer », dans la ligne du bac à sable ──────────────────────────── */
   function poserLeBouton() {
@@ -357,8 +804,16 @@
     // La ligne se redessine — un projet changé, une invitation : le bouton la suit.
     document.addEventListener("bd:bac-a-sable-maj", () => { relire(); poserLeBouton(); });
     try {
-      if (window.BD_SANS_WIZARD !== true && W.ouvreSeul(S.login, S.E.courant, S.souvenir)) {
-        await ouvrir("album");
+      // Une visite en cours reprend sur la page où elle mène ; arrivée ailleurs — un lien
+      // suivi pendant la visite —, elle s'arrête.
+      const enCours = W.lireVisite(S.login, S.bac);
+      if (enCours && W.VISITE[enCours.page].surface === chemin()) {
+        ouvrirFenetre("visite", enCours, null);
+      } else {
+        if (enCours) W.oublierVisite();
+        if (window.BD_SANS_WIZARD !== true && W.ouvreSeul(S.login, S.E.courant, S.souvenir)) {
+          await ouvrir("album");
+        }
       }
     } finally {
       // Ouvert seul ou non, c'est tranché : ce que les tests attendent avant de dire qu'il
@@ -367,7 +822,7 @@
     }
   }
 
-  const ecran = { ouvrir, decide: false };
+  const ecran = { ouvrir, reperes, fermerFenetre, decide: false };
   window.BDWizardEcran = ecran;
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer);

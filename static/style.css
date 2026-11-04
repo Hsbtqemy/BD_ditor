@@ -748,6 +748,62 @@ kbd {
   border-radius: 4px; font-size: .8462rem; color: var(--text-muted); white-space: nowrap; }
 .wizard-actions { justify-content: flex-end; }
 
+/* La fenêtre sur la zone (UX-6) — la visite des pages et les repères du « ? ». Ce n'est pas
+   une modale : l'assombri est un SVG qui ne prend aucun clic (`pointer-events: none`), troué
+   sur les zones jouables ; c'est `inert`, posé par `wizard.js`, qui retire le reste. Sous
+   les modales (100) : une boîte ouverte depuis une zone passe au-dessus. La fenêtre a sa
+   place à la feuille — en bas à droite, en bas à gauche au second temps d'une page, en
+   feuille sur toute la largeur quand l'écran est étroit — et rien ne la déplace pendant
+   qu'on lit ; sa liste défile en elle, ses gestes restent en vue. Petits textes : le numéro
+   d'une zone en `--bg-deep` sur l'accent (l'invariant des boutons pleins), le détail en
+   `--text-muted`. */
+.wizard-foyer[hidden] { display: none; }
+.wizard-voile { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 90;
+                pointer-events: none; }
+.wizard-voile .wf-ombre { fill: var(--scrim); }
+.wizard-voile .wf-cadre { fill: none; stroke: var(--accent-amber); stroke-width: 2;
+                          stroke-opacity: .6; }
+.wizard-voile .wf-cadre.ici { stroke-width: 3; stroke-opacity: 1; }
+.wizard-voile .wf-pastille circle { fill: var(--accent-amber); stroke: var(--bg-deep);
+                                    stroke-width: 2; }
+.wizard-voile .wf-pastille text { fill: var(--bg-deep); font-weight: 700; }
+.wizard-fenetre {
+  position: fixed; z-index: 95; right: .6154rem; bottom: .6154rem;
+  width: min(25rem, calc(100% - 1.2308rem)); max-height: calc(100% - 1.2308rem);
+  box-sizing: border-box; display: flex; flex-direction: column; gap: .5385rem;
+  padding: .7692rem .9231rem; color: var(--text); background: var(--bg-panel);
+  border: 1px solid var(--focus); border-radius: 10px; box-shadow: 0 12px 32px var(--shadow);
+}
+.wizard-fenetre.gauche { right: auto; left: .6154rem; }
+.wizard-fenetre > * { flex-shrink: 0; min-width: 0; }
+.wf-tete { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem .6154rem; }
+.wf-compte { font-weight: 700; font-variant-numeric: tabular-nums; }
+.wf-barre { display: inline-flex; gap: 3px; }
+.wf-barre i { display: block; width: 1.1rem; height: 5px; border-radius: 2px;
+              background: var(--border); }
+.wf-barre i.ok { background: var(--accent-green); }
+.wf-barre i.ici { background: var(--focus); }
+.wf-titre { margin: 0; font-size: 1.1538rem; overflow-wrap: anywhere; }
+.wf-phrase { margin: 0; overflow-wrap: anywhere; }
+.wf-zones { list-style: none; margin: 0; padding: 0; display: grid; gap: .1538rem;
+            flex-shrink: 1; min-height: 2.5rem; overflow-y: auto; }
+.wf-zone { display: flex; gap: .4615rem; align-items: flex-start; width: 100%;
+  padding: .2308rem .3077rem; text-align: left; background: none; border: 0; border-radius: 5px;
+  color: var(--text); font: inherit; line-height: 1.3; cursor: pointer; }
+.wf-zone:hover { background: var(--hover); }
+.wf-zone[aria-pressed="true"] { background: var(--hover); box-shadow: inset 3px 0 0 var(--accent-amber); }
+.wf-n { flex: none; display: grid; place-items: center; width: 1.4615rem; height: 1.4615rem;
+  border-radius: 50%; font-weight: 700; font-size: .8462rem; background: var(--accent-amber);
+  color: var(--bg-deep); }
+.wf-texte { min-width: 0; overflow-wrap: anywhere; }
+.wf-detail { color: var(--text-muted); }
+.wf-actions { display: flex; flex-wrap: wrap; gap: .3846rem; align-items: center; }
+.wf-actions .primary { margin-left: auto; }
+@media (max-width: 40em) {
+  .wizard-fenetre, .wizard-fenetre.gauche { left: .4615rem; right: .4615rem; bottom: .4615rem;
+                                            width: auto; max-height: 55%; }
+}
+
 /* La page vide : sous « Sélectionnez ou importez une planche pour commencer » (Atelier), et
    en carte dans la fiche de la Bibliothèque. */
 #stage-empty:has(> .bac-vide-geste) { flex-direction: column; gap: .3077rem; }

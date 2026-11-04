@@ -4,8 +4,10 @@ La forme a été tranchée par Hugo sur maquette le 2026-11-02 (`pilotage/UX-6.m
 ALBUM de présentation qui s'ouvre seul après « Mon bac à sable », avec « Passer » et
 « Fermer ✕ », dont la dernière page fait choisir un parcours ; le souvenir — l'album vu, le
 parcours, l'étape — vit dans le navigateur, rangé par login et sous l'identifiant du bac à
-sable (Hugo, 2026-11-03). Cette tranche pose l'album et la CARTE des étapes ; la fenêtre
-sur la zone et la visite des pages viendront ensuite.
+sable (Hugo, 2026-11-03). Après le choix d'un parcours, la VISITE des pages, dans une
+fenêtre posée à côté des zones — le reste assombri et `inert`, les zones jouables, deux
+temps par page de plusieurs zones —, puis la CARTE des étapes. Le « ? » de la bande rouvre
+les repères de la page où l'on est, sur les six surfaces et pour tout compte.
 
 Chaque test mesure ce que l'écran MONTRE (visible d'abord : `to_have_text` lit aussi un
 élément caché) et ce que le navigateur RETIENT (le stockage local), sous camille, une
@@ -49,6 +51,12 @@ def _album(page):
     voile = page.locator("#wizard-modal")
     expect(voile).to_be_visible()
     return voile
+
+
+def _visite(page):
+    fen = page.locator("#wizard-fenetre")
+    expect(fen).to_be_visible()
+    return fen
 
 
 def _souvenir(page):
@@ -117,6 +125,12 @@ def test_choisir_un_parcours_mene_a_la_carte_et_l_album_ne_revient_plus(page, je
     album = _album(page)
     album.locator("#wizard-passer").click()
     album.locator("#wizard-choix-rapide").click()
+    # La visite des pages passe avant le parcours (Hugo, 2026-11-02) ; la passer ouvre la
+    # carte des étapes.
+    expect(_visite(page).locator("#wizard-visite-compte")).to_have_text("Visite 1 / 7")
+    expect(page.locator("#wizard-modal")).to_be_hidden()
+    page.locator("#wizard-visite-passer").click()
+    album = _album(page)
     expect(album.locator("#wizard-titre")).to_have_text("Par où commencer")
     etapes = album.locator(".wizard-etapes > li")
     expect(etapes).to_have_count(4)
@@ -209,26 +223,243 @@ def test_chez_un_autre_le_wizard_ne_s_ouvre_pas(page, jeu, wizard_actif):
     assert _souvenir(page) is None
 
 
+# ── La fenêtre sur la zone : la visite des pages et le « ? » ───────────────────────────
+#
+# Ce n'est pas une modale (case « La fenêtre sur la zone se dessine au clavier ») : les zones
+# du temps restent jouables, tout le reste est `inert`, et le focus y entre et en sort sans
+# piège. Les états se lisent dans le DOM — `inert` hérité, l'élément focalisé —, jamais dans
+# l'image de l'assombri.
+
+VISITE_SESSION = ("() => { try { return sessionStorage.getItem('bd-wizard-visite'); } "
+                  "catch (e) { return null; } }")
+INERTE = "(sel) => { const e = document.querySelector(sel); return !!e && !!e.closest('[inert]'); }"
+OU_EST_LE_FOCUS = """() => {
+  const a = document.activeElement;
+  if (!a || a === document.body) return { corps: true, zone: null, fenetre: false, inerte: false };
+  const z = a.closest('[data-parcours]');
+  return { corps: false, zone: z ? z.dataset.parcours : null,
+           fenetre: !!a.closest('#wizard-fenetre'), inerte: !!a.closest('[inert]') };
+}"""
+VISIBLE = """(m) => [...document.querySelectorAll(`[data-parcours="${m}"]`)].some((e) => {
+  const r = e.getBoundingClientRect();
+  return r.width >= 1 && r.height >= 1 && getComputedStyle(e).visibility !== 'hidden'; })"""
+ETAT_PAGE = """() => { const b = document.querySelector('.mode-btn[aria-pressed="true"]');
+  return { adresse: location.href, mode: b ? b.dataset.mode : null }; }"""
+
+
+def _commencer_la_visite(page, jeu):
+    """camille dans son bac à sable, l'Atelier ; « Par où commencer », « Passer », le
+    parcours rapide : la visite commence là où l'on est."""
+    bac = _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    _arriver(page, jeu["base"])
+    page.locator("#bac-commencer").click()
+    album = _album(page)
+    album.locator("#wizard-passer").click()
+    album.locator("#wizard-choix-rapide").click()
+    return bac
+
+
+@pytestmark_proxy
+def test_la_fenetre_sur_la_zone_au_clavier_et_en_deux_temps(page, jeu):
+    _commencer_la_visite(page, jeu)
+    fen = _visite(page)
+    compte, titre = page.locator("#wizard-visite-compte"), page.locator("#wizard-fenetre-titre")
+    expect(compte).to_have_text("Visite 1 / 7")
+    expect(titre).to_have_text("La barre du haut")
+    expect(titre).to_be_focused()
+    expect(page.locator("#wizard-modal")).to_be_hidden()
+    # Pas une modale : ni rôle de dialogue, ni `aria-modal`.
+    assert fen.get_attribute("role") is None and fen.get_attribute("aria-modal") is None
+    expect(page.locator("#wizard-zones .wf-zone b")).to_have_text(
+        ["Les six pages", "Le projet", "Votre compte", "Aa", "?", "Votre bac à sable"])
+    # La barre du haut est jouable, la bande des outils et la page ne le sont plus.
+    assert page.evaluate(INERTE, "#header") and page.evaluate(INERTE, "#sidebar")
+    assert not page.evaluate(INERTE, ".surf-nav") and not page.evaluate(INERTE, "#bac-ligne")
+
+    # « Suivant » : l'Atelier, au premier temps — la fenêtre à droite, le titre focalisé.
+    page.locator("#wizard-visite-suiv").click()
+    expect(compte).to_have_text("Visite 2 / 7 · 1 / 2")
+    expect(titre).to_have_text("Atelier")
+    expect(titre).to_be_focused()
+    expect(fen).not_to_have_class(re.compile(r"\bgauche\b"))
+    a_droite = fen.bounding_box()
+    assert page.evaluate(INERTE, "#panel") and not page.evaluate(INERTE, "#sidebar")
+    assert page.evaluate(INERTE, ".surf-nav")
+    # La zone est JOUABLE : un clic sur un mode le change.
+    edition = page.locator('.mode-btn[data-mode="edition"]')
+    edition.click()
+    expect(edition).to_have_attribute("aria-pressed", "true")
+    page.locator('.mode-btn[data-mode="navigation"]').click()
+    # Un repère se choisit dans la liste, sans que la fenêtre bouge.
+    planche = page.locator('#wizard-zones .wf-zone[data-zone="atelier-planche"]')
+    planche.click()
+    expect(planche).to_have_attribute("aria-pressed", "true")
+    assert fen.bounding_box() == a_droite
+
+    # « Suivant » : le second temps, la fenêtre passe à gauche ; le focus reste sur le bouton.
+    page.locator("#wizard-visite-suiv").click()
+    expect(compte).to_have_text("Visite 2 / 7 · 2 / 2")
+    expect(fen).to_have_class(re.compile(r"\bgauche\b"))
+    expect(page.locator("#wizard-visite-suiv")).to_be_focused()
+    a_gauche = fen.bounding_box()
+    assert a_gauche["x"] < a_droite["x"]
+    assert not page.evaluate(INERTE, "#panel") and page.evaluate(INERTE, "#sidebar")
+    # Jamais au survol : le pointeur qui passe sur les zones ne la déplace pas.
+    for sel in ("#panel", "#viewer", "#sidebar"):
+        b = page.locator(sel).bounding_box()
+        page.mouse.move(b["x"] + b["width"] / 2, b["y"] + b["height"] / 2)
+        page.wait_for_timeout(100)
+        assert fen.bounding_box() == a_gauche, sel
+
+    # Le clavier : Maj+Tab depuis la fenêtre entre dans une zone du temps ; Tab en revient,
+    # sans jamais s'arrêter sur un élément inerte.
+    titre.focus()
+    page.keyboard.press("Shift+Tab")
+    ou = page.evaluate(OU_EST_LE_FOCUS)
+    assert ou["zone"] in ("atelier-structure", "atelier-actions") and not ou["inerte"], ou
+    for _ in range(80):
+        page.keyboard.press("Tab")
+        ou = page.evaluate(OU_EST_LE_FOCUS)
+        assert not ou["inerte"], ou
+        assert ou["fenetre"] or ou["zone"] in ("atelier-structure", "atelier-actions"), ou
+        if ou["fenetre"]:
+            break
+    else:
+        pytest.fail("Tab ne revient pas de la zone à la fenêtre")
+
+    # Échap : la fenêtre part, plus rien n'est inerte, le focus revient à « Par où
+    # commencer », et la visite est oubliée.
+    page.keyboard.press("Escape")
+    expect(fen).to_be_hidden()
+    for sel in ("#header", "#sidebar", "#panel", ".surf-nav"):
+        assert not page.evaluate(INERTE, sel), sel
+    expect(page.locator("#bac-commencer")).to_be_focused()
+    assert page.evaluate(VISITE_SESSION) is None
+
+
+@pytestmark_proxy
+def test_la_visite_traverse_les_pages_et_finit_sur_la_carte(page, jeu):
+    bac = _commencer_la_visite(page, jeu)
+    parcours = next(j for j in bac["jeu"] if j["role"] == "pas-a-pas")
+    compte = page.locator("#wizard-visite-compte")
+    expect(compte).to_have_text("Visite 1 / 7")
+    page.locator("#wizard-visite-suiv").click()
+    expect(compte).to_have_text("Visite 2 / 7 · 1 / 2")
+    page.locator("#wizard-visite-suiv").click()
+    expect(compte).to_have_text("Visite 2 / 7 · 2 / 2")
+    # La page suivante est une autre surface : on y va, sur la planche du parcours, et la
+    # visite y reprend.
+    page.locator("#wizard-visite-suiv").click()
+    page.wait_for_url(re.compile(r"/annotation\?"))
+    assert f"album={parcours['album_id']}" in page.url
+    assert f"planche={parcours['planche_ids'][0]}" in page.url
+    expect(compte).to_have_text("Visite 3 / 7 · 1 / 2")
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Annotation")
+    expect(page.locator("#wizard-fenetre-titre")).to_be_focused()
+    # « ← » revient d'où l'on vient : l'Atelier, à son second temps.
+    page.locator("#wizard-visite-prec").click()
+    page.wait_for_url(re.compile(r"/\?album="))
+    expect(compte).to_have_text("Visite 2 / 7 · 2 / 2")
+    expect(page.locator("#wizard-fenetre")).to_have_class(re.compile(r"\bgauche\b"))
+
+    # Arrivé ailleurs que là où la visite mène — un lien suivi en route —, elle s'arrête.
+    page.goto(jeu["base"] + "/recherche", wait_until="domcontentloaded")
+    page.wait_for_function("() => !!(window.BDWizardEcran && window.BDWizardEcran.decide)")
+    expect(page.locator("#wizard-fenetre")).to_have_count(0)
+    assert page.evaluate(VISITE_SESSION) is None
+
+    # La dernière page : « Commencer → » ouvre la carte des étapes.
+    page.evaluate("(v) => sessionStorage.setItem('bd-wizard-visite', JSON.stringify(v))",
+                  {"login": "camille", "bac": bac["id"], "efface_le": bac["efface_le"],
+                   "page": 6, "temps": 0})
+    page.goto(jeu["base"] + "/administration?vue=instance", wait_until="domcontentloaded")
+    expect(compte).to_have_text("Visite 7 / 7")
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Administration")
+    suivant = page.locator("#wizard-visite-suiv")
+    expect(suivant).to_have_text("Commencer →")
+    suivant.click()
+    album = _album(page)
+    expect(album.locator("#wizard-titre")).to_have_text("Par où commencer")
+    expect(album.locator(".wizard-etapes a").first).to_be_focused()
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
+    assert page.evaluate(VISITE_SESSION) is None
+    # La carte la repropose.
+    album.locator("#wizard-revoir-visite").click()
+    page.wait_for_url(re.compile(r"/\?album="))
+    expect(compte).to_have_text("Visite 1 / 7")
+
+
+TITRES = {"/": "Atelier", "/annotation": "Annotation", "/corpus": "Bibliothèque",
+          "/recherche": "Recherche", "/exploration": "Exploration",
+          "/administration": "Administration"}
+
+
+def test_le_point_d_interrogation_rouvre_les_reperes_sur_les_six_surfaces(page, live_server):
+    """Pour tout compte — ici le mono-poste, sans bac à sable : le « ? » est juste avant
+    « Aa », son nom est la phrase de l'infobulle ; il ouvre les repères de la page où l'on
+    est, ne nomme que ce qu'elle montre, et ne change ni l'adresse ni le mode ; Échap rend
+    le focus au « ? »."""
+    for surface, titre in TITRES.items():
+        page.goto(live_server + surface, wait_until="domcontentloaded")
+        aide = page.locator("#site-nav > .bande-aide")
+        expect(aide).to_be_visible()
+        expect(aide).to_have_text("?")
+        expect(aide).to_have_attribute("aria-label", "Revoir les repères de cette page")
+        expect(aide).to_have_attribute("title", "Revoir les repères de cette page")
+        assert aide.get_attribute("aria-expanded") is None
+        assert page.evaluate("""() => {
+          const a = document.querySelector('#site-nav > .bande-aide');
+          return a.nextElementSibling === document.querySelector('#site-nav > .display-menu'); }""")
+        page.wait_for_function("() => !!(window.BDWizardEcran && window.BDWizardEcran.decide)")
+        avant = page.evaluate(ETAT_PAGE)
+        aide.click()
+        fen = _visite(page)
+        expect(page.locator("#wizard-visite-compte")).to_have_text("Cette page")
+        expect(page.locator("#wizard-fenetre-titre")).to_have_text(titre)
+        expect(page.locator("#wizard-fenetre-titre")).to_be_focused()
+        marques = page.locator("#wizard-zones .wf-zone").evaluate_all(
+            "(bs) => bs.map((b) => b.dataset.zone)")
+        assert marques, surface
+        for m in marques:
+            assert page.evaluate(VISIBLE, m), (surface, m)
+        # La barre du haut n'est pas un repère de la page : elle est inerte, « ? » compris.
+        assert page.evaluate(INERTE, "#site-nav > .bande-aide"), surface
+        if surface == "/":
+            # Deux temps sur l'Atelier : « → » passe au second, la fenêtre change de côté.
+            page.locator("#wizard-reperes-suiv").click()
+            expect(fen).to_have_class(re.compile(r"\bgauche\b"))
+            expect(page.locator("#wizard-reperes-prec")).to_be_enabled()
+        page.keyboard.press("Escape")
+        expect(fen).to_be_hidden()
+        expect(aide).to_be_focused()
+        assert not page.evaluate(INERTE, "#site-nav > .bande-aide")
+        assert page.evaluate(ETAT_PAGE) == avant, surface
+
+
 # ── Accessibilité et petites fenêtres ──────────────────────────────────────────────────
 
 @pytestmark_proxy
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_l_album_et_la_carte(page, jeu, theme):
-    """axe (WCAG 2.1 AA), album ouvert sur sa première page, sur la page du choix, puis
-    la carte des étapes : aucune violation sérieuse ou critique."""
+    """axe (WCAG 2.1 AA), album ouvert sur sa première page, sur la page du choix, la
+    visite qui suit le choix, puis la carte des étapes : aucune violation sérieuse ou
+    critique."""
     from test_e2e_bac_a_sable import _audit_axe
     page.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
     _ouvrir(jeu, CAMILLE)
     _sous(page, CAMILLE)
     _arriver(page, jeu["base"])
     page.locator("#bac-commencer").click()
-    album = _album(page)
+    _album(page)
     rapports = []
     for quoi, geste in (("album, première page", None),
                         ("album, choix du parcours", "#wizard-passer"),
-                        ("carte des étapes", "#wizard-choix-complet")):
+                        ("visite, première page", "#wizard-choix-complet"),
+                        ("visite, l'Atelier", "#wizard-visite-suiv"),
+                        ("carte des étapes", "#wizard-visite-passer")):
         if geste:
-            album.locator(geste).click()
+            page.locator(geste).click()
         page.wait_for_timeout(250)
         v, f = _audit_axe(page)
         if v:
@@ -238,8 +469,9 @@ def test_a11y_l_album_et_la_carte(page, jeu, theme):
 
 @pytestmark_proxy
 def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
-    """À 320 px, sous des préférences de 16 et 24 : l'album et la carte ne perdent rien et
-    ne s'écrasent pas, et la ligne qui porte « Par où commencer » non plus."""
+    """À 320 px, sous des préférences de 16 et 24 : l'album, la fenêtre de la visite et la
+    carte ne perdent rien et ne s'écrasent pas, et la ligne qui porte « Par où commencer »
+    non plus."""
     if page.context.browser.browser_type.name != "chromium":
         pytest.skip("la préférence de police se pose par CDP")
     from test_e2e_bac_a_sable import _perdus, _preference_police
@@ -259,16 +491,18 @@ def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
         if perdus:
             echecs.append(f"ligne, police {police} : {perdus[:3]}")
         page.locator("#bac-commencer").click()
-        album = _album(page)
-        for quoi, geste in (("album", None), ("choix", "#wizard-passer"),
-                            ("carte", "#wizard-choix-rapide")):
+        _album(page)
+        for quoi, geste, boite in (("album", None, ".wizard-boite"),
+                                   ("choix", "#wizard-passer", ".wizard-boite"),
+                                   ("visite", "#wizard-choix-rapide", "#wizard-fenetre"),
+                                   ("carte", "#wizard-visite-passer", ".wizard-boite")):
             if geste:
-                album.locator(geste).click()
+                page.locator(geste).click()
             page.wait_for_timeout(250)
             perdus = _perdus(page)
             if perdus:
                 echecs.append(f"{quoi}, police {police} : {perdus[:3]}")
-            ecrase = decrire_ecrasement(page.evaluate(ECRASEMENT, ".wizard-boite"))
+            ecrase = decrire_ecrasement(page.evaluate(ECRASEMENT, boite))
             if ecrase:
                 echecs.append(f"{quoi}, police {police} : ÉCRASÉ\n" + "\n".join(ecrase))
         page.keyboard.press("Escape")
