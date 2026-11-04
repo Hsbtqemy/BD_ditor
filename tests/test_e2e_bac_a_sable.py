@@ -721,7 +721,9 @@ def test_la_bibliotheque_d_un_bac_compte_ses_albums_et_n_offre_pas_le_fonds(page
     page.locator("#bi-avancement summary").click()
     synth = page.locator("#corpus-synthese")
     expect(synth).to_be_visible()
-    expect(synth).to_contain_text(f"{n_albums} album(s) · {n_planches} planche(s)")
+    # Accordés à leur nombre (UX-6), comme les chiffres du corpus au-dessus.
+    expect(synth).to_contain_text(f"{n_albums} albums · {n_planches} planches")
+    expect(synth).not_to_contain_text("(s)")
     expect(page.locator("#bi-prendre-fonds")).to_have_count(0)
     # Dans l'onglet Albums de la base aussi.
     page.goto(jeu["base"] + f"/corpus?collection={bac['base']['id']}&onglet=albums",

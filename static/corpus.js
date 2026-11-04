@@ -128,7 +128,8 @@ async function loadAlbums(compter = true) {
 function validBadge(n, total) {
   const pct = total ? Math.round(100 * n / total) : 0;
   const cls = total && n === total ? "all" : "";
-  return `<span class="val-album ${cls}" title="${n}/${total} planche(s) validée(s)">`
+  const titre = `${Resultats.nombre(n, "validée")} sur ${Resultats.nombre(total, "planche")}`;
+  return `<span class="val-album ${cls}" title="${titre}">`
        + `${n}/${total}<i class="val-mini"><i style="width:${pct}%"></i></i></span>`;
 }
 
@@ -724,8 +725,9 @@ async function loadSynthese() {
   ici.hidden = false;
   $("#bi-avancement").hidden = false;
   ici.innerHTML =
-    `<div class="synth-line"><b>Tout ce que vous lisez</b> · ${c.albums} album(s) · ${total} planche(s)`
-    + ` · <span class="synth-val">✔ ${c.validees} validée(s) (${pct} %)</span></div>`
+    `<div class="synth-line"><b>Tout ce que vous lisez</b> · ${Resultats.nombre(c.albums, "album")} · ${
+      Resultats.nombre(total, "planche")}`
+    + ` · <span class="synth-val">✔ ${Resultats.nombre(c.validees, "validée")} (${pct} %)</span></div>`
     + `<div class="synth-bar">${bar}</div>`
     + `<div class="synth-legend muted small">`
     + order.map((s) => `<span><i class="seg seg-${s}"></i> ${lbl[s]} (${st[s] || 0})</span>`).join("")
@@ -2149,7 +2151,8 @@ async function runBatch(sur) {
     const job = await apiSend("POST", "/api/jobs", corps);
     toast(`Lot lancé : ${job.total} planche${job.total > 1 ? "s" : ""}`, "success");
     if (job.verrouillees_ignorees)
-      toast(`${job.verrouillees_ignorees} planche(s) verrouillée(s) ignorée(s) 🔒`);
+      toast(`${Resultats.nombre(job.verrouillees_ignorees, "planche verrouillée ignorée",
+                                "planches verrouillées ignorées")} 🔒`);
     pollJobs();
   } catch (e) { toast("Lot : " + e.message, "error"); }
 }
@@ -2183,7 +2186,7 @@ function renderJobs(list) {
     const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
     const label = { en_cours: "en cours", termine: "terminé", annule: "annulé",
                     echec: "échec" }[j.status] || j.status;
-    const err = j.errors.length ? ` · <span class="job-err">${j.errors.length} erreur(s)</span>` : "";
+    const err = j.errors.length ? ` · <span class="job-err">${Resultats.nombre(j.errors.length, "erreur")}</span>` : "";
     const detail = j.errors.length ? `<details class="job-erreurs"><summary>Voir les erreurs</summary>
       <ul>${j.errors.map((e) => `<li>${esc(e.planche_id ? `Planche ${e.planche_id}` : "Lot")}${
         e.passe ? ` · ${esc(e.passe)}` : ""} : ${esc(e.erreur || e.message || "")}</li>`).join("")}</ul></details>` : "";
@@ -2952,7 +2955,7 @@ async function setRole(pid, role) {
 function relectureCell(p, ecrire = true) {
   const rs = p.relecture_statut
     || { statut: "a_faire", derive: "a_faire", force: false, tokens: 0, relus: 0 };
-  const title = `Dérivé : ${RELECTURE_LBL[rs.derive]} (${rs.relus}/${rs.tokens} token(s) relu(s))`
+  const title = `Dérivé : ${RELECTURE_LBL[rs.derive]} (${rs.relus} sur ${Resultats.nombre(rs.tokens, "token")} ${Resultats.accord(rs.relus, "relu")})`
     + (rs.force ? ` · forcé « ${RELECTURE_LBL[rs.statut]} »` : "");
   const opts = ["a_faire", "en_cours", "faite"].map((s) =>
     `<option value="${s}"${rs.force && rs.statut === s ? " selected" : ""}>${RELECTURE_LBL[s]}</option>`).join("");
@@ -3045,9 +3048,9 @@ async function validateAllAlbum() {
   const todo = state.planches.filter((p) => !p.validee);
   const ligne = $("#detail-valider-msg");
   if (!todo.length) { colMsg(ligne, "Toutes les planches sont déjà validées."); return; }
-  if (!confirm(`Valider ${todo.length} planche(s) de cet album ?`)) return;
+  if (!confirm(`Valider ${Resultats.nombre(todo.length, "planche")} de cet album ?`)) return;
   const albumId = state.openId;
-  colMsg(ligne, `Validation de ${todo.length} planche(s)…`);
+  colMsg(ligne, `Validation de ${Resultats.nombre(todo.length, "planche")}…`);
   let r;
   try {
     r = await apiSend("POST", `/api/albums/${albumId}/valider`);
