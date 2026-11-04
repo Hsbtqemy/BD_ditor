@@ -197,3 +197,12 @@ test("une cible se dit en mots, une inconnue sous sa clé", () => {
   assert.equal(G.porteSurEnMots(["case", "zzz"]), "la case ou zzz");
   assert.equal(G.porteSurEnMots([]), "");
 });
+
+test("sur une grille fermée, l'entrée qui disparaît n'attend que « retirer »", () => {
+  const vue = { etat: "a_repondre", fautes: [], aRepondre: [{ cle: "cri", libelle: "cri",
+    releves: 1, choix: ["retirer"], fusionnerDans: [] }] };
+  assert.deepEqual(G.importable(vue, {}), { ok: false,
+    raison: "1 entrée à répondre : dites pour chacune « retirer »." });
+  assert.deepEqual(G.choixDeReponse(vue.aRepondre[0], null).map((c) => c.valeur), ["retirer"]);
+  assert.equal(G.importable(vue, { cri: "retirer" }).ok, true);
+});

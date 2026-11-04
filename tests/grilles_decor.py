@@ -10,6 +10,7 @@ Tout se monte par l'API, derrière le proxy, comme une personne le ferait ; seul
 l'API ne pose pas d'elle-même (la nature d'un compte) passe par SQL.
 """
 import io
+import json
 import sqlite3
 from pathlib import Path
 
@@ -57,7 +58,7 @@ def csv_de(lignes) -> str:
 
 def importer(client, projet_id, qui, *, entrees=MODELE, listes=MODELE_LISTES, nom="Signaux",
              grille_id=None, ouverte=False, porte_sur="mots", a_blanc=False, note=None,
-             attendu=(200,)):
+             attendu=(200,), reponses=None):
     files = {"fichier": ("grille-rubriques-entrees.csv", entrees.encode("utf-8-sig"),
                          "text/csv")}
     if listes is not None:
@@ -72,6 +73,8 @@ def importer(client, projet_id, qui, *, entrees=MODELE, listes=MODELE_LISTES, no
         data["porte_sur"] = porte_sur
     if note is not None:
         data["note"] = note
+    if reponses is not None:
+        data["reponses"] = json.dumps(reponses)
     r = client.post(f"/api/projets/{projet_id}/grilles/import", files=files, data=data,
                     headers=qui)
     assert r.status_code in attendu, (r.status_code, r.text[:800])

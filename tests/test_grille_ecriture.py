@@ -689,6 +689,59 @@ def test_le_reimport_d_une_fermee_tient_la_regle_du_formulaire_sur_une_variante_
     ok(client.delete(f"/api/grilles/{gid}/listes/sources/cases/hors-champ", headers=LEA))
 
 
+def test_le_reimport_d_une_fermee_demande_retirer_pour_une_entree_employee_qui_disparait(
+        client, decor, db_path):
+    """Une ENTRÉE qu'un relevé emploie, et que le fichier ne porte plus entière, ne disparaît
+    pas du brouillon d'une grille fermée : comme pour une ouverte, l'import la demande
+    (`a_repondre`, 409 sans réponse) — mais la seule réponse est « retirer », une fermée ne
+    fusionnant pas. Recommandation de la pilote, à confirmer par Hugo. Le formulaire tient la
+    même règle (`supprimer_entree`) : les deux chemins sont joués."""
+    g = grille_active(client, decor["p"])
+    gid = g["grille_id"]
+    ok(client.post("/api/releves", headers=STAG, json={
+        "grille_id": gid, "version": 1, "region_id": decor["zones"]["bulle"],
+        "entree_cle": "cri", "mots": [8]}), 201)
+    lignes = MODELE.split("\r\n")
+    sans = lambda *cles: "\r\n".join(l for l in lignes if not l.startswith(cles))
+    sans_cri = sans("cri;")
+    assert sans_cri != MODELE
+    # Le formulaire : « retirer » seul.
+    r = client.delete(f"/api/grilles/{gid}/entrees/cri", headers=LEA)
+    assert r.status_code == 409 and r.json()["detail"]["a_repondre"][0]["choix"] == ["retirer"]
+    # Le réimport, à blanc : la question, et rien d'écrit.
+    res = importer(client, decor["p"], LEA, grille_id=gid, entrees=sans_cri, a_blanc=True)
+    assert res["verdict"]["etat"] == "a_repondre"
+    assert "fusionner" not in res["verdict"]["phrase"]
+    assert res["a_repondre"] == [{"cle": "cri", "libelle": "cri", "releves": 1,
+                                  "choix": ["retirer"], "fusionner_dans": []}]
+    (d,) = [x for x in res["bilan"]["disparus"] if x["cle"] == "cri"]
+    assert d["decision"] == "a_repondre"
+    # Pour de bon, sans réponse : 409, rien n'est né.
+    refus = importer(client, decor["p"], LEA, grille_id=gid, entrees=sans_cri,
+                     attendu=(409,))["detail"]
+    assert refus["a_repondre"][0]["cle"] == "cri"
+    assert _n(db_path, "SELECT COUNT(*) FROM grille_version") == 1
+    # « Fusionner » est refusé sur une fermée.
+    refus = importer(client, decor["p"], LEA, grille_id=gid, entrees=sans_cri,
+                     reponses={"cri": "fusionner:echo"}, attendu=(409,))["detail"]
+    assert [a["code"] for a in refus["anomalies"]] == ["fusion_sur_une_fermee"]
+    # « Retirer » : le brouillon la porte retirée, le relevé vit dans la version publiée.
+    res = importer(client, decor["p"], LEA, grille_id=gid, entrees=sans_cri,
+                   reponses={"cri": "retirer"})
+    assert res["ecrit"] and res["version"]["etat"] == "brouillon"
+    v2 = ok(client.get(f"/api/grilles/{gid}/versions/{res['version']['numero']}",
+                       headers=LEA))
+    assert _entree(v2, "cri")["retiree"] is True
+    assert _q(db_path, "SELECT etat FROM releves_effectifs")[0]["etat"] == "normal"
+    # Une entrée que personne n'emploie, elle, part sans question.
+    res = importer(client, decor["p"], LEA, grille_id=gid, entrees=sans("cri;", "ambiance;"),
+                   reponses={"cri": "retirer"})
+    v2 = ok(client.get(f"/api/grilles/{gid}/versions/{res['version']['numero']}",
+                       headers=LEA))
+    assert "ambiance" not in [e["cle"] for e in v2["entrees"]]
+    assert _entree(v2, "cri")["retiree"] is True
+
+
 def test_le_journal_nomme_chaque_objet(client, decor, db_path):
     gid = importer(client, decor["p"], LEA)["grille_id"]
     depuis = _dernier_acte(db_path)

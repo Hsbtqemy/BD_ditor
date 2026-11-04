@@ -1017,6 +1017,66 @@ def reconcilier_ouverte(conn, grille_id: int, version_id: int, avant: dict, apre
     return apres, a_repondre, fusions, fautes
 
 
+def reconcilier_fermee(conn, grille_id: int, avants, apres: dict,
+                       reponses: dict) -> tuple[dict, list, list]:
+    """Une ENTRÉE employée qui disparaît ENTIÈRE du réimport d'une grille FERMÉE attend sa
+    réponse, comme sur une ouverte (`reconcilier_ouverte`) — la règle du formulaire, où une
+    entrée employée ne se supprime jamais. La seule réponse est « retirer » : elle reste dans
+    le brouillon, retirée, et ses relevés se relisent dans leur version publiée ;
+    « fusionner dans… » est refusé sur une fermée (choix 1 des routes d'écriture, le
+    2026-11-04) — la montée de version n'existe pas.
+
+    Recommandation de la session de pilotage, à confirmer par Hugo. `avants` : les contenus
+    que le fichier remplace (la dernière version publiée, le brouillon en place, le plus
+    récent en dernier). Une entrée retirée que le fichier ne porte pas reste retirée, sans
+    question ; une entrée que personne n'emploie part. Rend (contenu, à répondre, fautes)."""
+    apres = copy.deepcopy(apres)
+    avants = [a for a in avants if a]
+    a_repondre, fautes = [], []
+    rang = max([e["rang"] for e in apres["entrees"].values()] + [-1])
+    connues = {}
+    for a in avants:                      # le plus récent l'emporte : le brouillon en place
+        for k, e in a["entrees"].items():
+            connues[k] = (e, a)
+
+    def garder(cle_):
+        nonlocal rang
+        e, a = connues[cle_]
+        rang += 1
+        apres["entrees"][cle_] = {**copy.deepcopy(e), "rang": rang, "retiree": True}
+        lc = e.get("liste_cle")
+        if lc and lc not in apres["listes"] and lc in a["listes"]:
+            apres["listes"][lc] = copy.deepcopy(a["listes"][lc])
+
+    for cle_ in sorted(connues.keys() - apres["entrees"].keys(),
+                       key=lambda k: connues[k][0]["rang"]):
+        e = connues[cle_][0]
+        if e.get("retiree"):
+            garder(cle_)
+            continue
+        n = _releves_sur(conn, grille_id, cle_)
+        if n == 0:
+            continue
+        reponse = reponses.get(cle_)
+        if reponse is None:
+            a_repondre.append({"cle": cle_, "libelle": e["libelle"], "releves": n,
+                               "choix": [RETIRER], "fusionner_dans": []})
+        elif reponse[0] == RETIRER:
+            garder(cle_)
+        else:
+            fautes.append(_faute(
+                "fusion_sur_une_fermee", f"« {e['libelle']} » ne peut pas être fusionnée : "
+                "une grille fermée ne fusionne pas, ses relevés vivent dans leur version "
+                "publiée", "retirez-la", cle=cle_))
+    for cle_ in reponses.keys() - {a["cle"] for a in a_repondre} - {
+            k for k, x in apres["entrees"].items() if x.get("retiree")} - {
+            f["cle"] for f in fautes}:
+        fautes.append(_faute(
+            "reponse_sans_objet", f"une réponse est donnée pour « {cle_} », qui ne "
+            "disparaît pas", "retirez cette réponse", cle=cle_))
+    return apres, a_repondre, fautes
+
+
 def employes_qui_disparaissent(conn, grille_id: int, avants, apres: dict) -> list:
     """Les fautes d'un réimport d'une grille FERMÉE qui ferait disparaître, de son brouillon,
     une VARIANTE ou une CASE qu'un relevé emploie — dans quelque version que ce soit : ses
@@ -1190,7 +1250,9 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
       version est publiée, un brouillon neuf naît, au numéro suivant — sauf si son empreinte
       est celle de la version publiée, ou du brouillon en place : « aucun changement » ; une
       variante ou une case qu'un relevé emploie n'en disparaît pas (409, la règle du
-      formulaire : `employes_qui_disparaissent`) ;
+      formulaire : `employes_qui_disparaissent`), et une ENTRÉE employée que le fichier ne
+      porte plus attend « retirer » (`reconcilier_fermee`, recommandation de la pilote à
+      confirmer par Hugo) ;
     - une grille OUVERTE n'a qu'une version, `vivante`, née au premier import, qui s'enrichit
       EN POSANT (G14) ; la réimporter la récrit EN PLACE (tranché par Hugo le 2026-11-03,
       renversant le 409 d'avant), et une entrée employée que le fichier ne porte pas attend
@@ -1263,16 +1325,20 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
         # Une grille FERMÉE : son brouillon tient la règle du formulaire sur une variante ou
         # une case employée — elle ne disparaît pas (choix 3 des routes d'écriture).
         brouillon_en_place = grilles.derniere_version(conn, g["id"], grilles.ETAT_BROUILLON)
-        fautes = employes_qui_disparaissent(
-            conn, g["id"], (avant, grilles.contenu(conn, brouillon_en_place["id"])
-                            if brouillon_en_place is not None else None), c)
+        avants = (avant, grilles.contenu(conn, brouillon_en_place["id"])
+                  if brouillon_en_place is not None else None)
+        # Une ENTRÉE employée qui disparaît entière attend « retirer », comme sur une ouverte
+        # (recommandation de la pilote, à confirmer par Hugo : `reconcilier_fermee`).
+        c, a_repondre, fautes = reconcilier_fermee(conn, g["id"], avants, c,
+                                                   lire_reponses(reponses))
+        fautes += employes_qui_disparaissent(conn, g["id"], avants, c)
         if fautes:
             raise Refus(409, f"La grille ne peut pas être réimportée ainsi : {len(fautes)} "
                              "point(s) à régler. Rien n'est importé.", fautes,
                         {"verdict": verdict("refuse", n=len(fautes)), "a_savoir": a_savoir,
                          **commun})
     b = bilan(conn, g["id"] if g is not None else None, avant, c)
-    for d in b["disparus"] if vivante else ():
+    for d in b["disparus"] if g is not None else ():
         if d["quoi"] == "entree":
             fusion = next((f for f in fusions if f["de"] == d["cle"]), None)
             d["decision"] = (f"{FUSIONNER}:{fusion['dans']}" if fusion
@@ -1297,11 +1363,16 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
         return resultat
     if a_repondre:
         resultat["verdict"] = verdict("a_repondre", n=len(a_repondre))
+        if not vivante:                       # une fermée ne fusionne pas : « retirer » seul
+            resultat["verdict"]["phrase"] = resultat["verdict"]["phrase"].replace(
+                "« retirer » ou « fusionner dans… »", "« retirer »")
         if a_blanc:
             return resultat
         raise Refus(409, f"{len(a_repondre)} entrée(s) employée(s) disparaissent de la grille "
-                         "ouverte : dites pour chacune « retirer » ou « fusionner dans… ». "
-                         "Rien n'est importé.", [], resultat)
+                         + ("ouverte : dites pour chacune « retirer » ou « fusionner dans… »."
+                            if vivante else ": dites pour chacune « retirer » (une grille "
+                            "fermée ne fusionne pas).")
+                         + " Rien n'est importé.", [], resultat)
     if a_blanc:
         resultat["verdict"] = verdict("importable")
         if brouillon is not None:

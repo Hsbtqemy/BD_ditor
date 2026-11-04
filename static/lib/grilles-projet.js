@@ -305,8 +305,11 @@
     if (vue.etat === "importe") return { ok: false, raison: "Le fichier est importé." };
     const manquent = vue.aRepondre.filter((a) => !r[a.cle]);
     if (manquent.length) {
+      // Une grille fermée ne fusionne pas : « retirer » est sa seule réponse.
+      const fusion = manquent.some((a) => (a.choix || []).includes("fusionner"));
       return { ok: false, raison: `${pluriel(manquent.length, "entrée")} à répondre : dites `
-        + "pour chacune « retirer » ou « fusionner dans… »." };
+        + (fusion ? "pour chacune « retirer » ou « fusionner dans… »."
+          : "pour chacune « retirer ».") };
     }
     return { ok: true, raison: "" };
   }

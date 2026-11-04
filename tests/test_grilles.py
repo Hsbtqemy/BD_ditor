@@ -234,8 +234,11 @@ def test_un_disparu_dit_le_nombre_de_releves_poses_sur_lui(client, decor, db_pat
                           "regarde le lecteur;;;;;;case;\r\n", "")
     res = importer(client, decor["p"], LEA, grille_id=g["grille_id"], entrees=sans,
                    a_blanc=True)
+    # Employée, elle attend « retirer » (`reconcilier_fermee`) : le bilan le dit.
     assert [d for d in res["bilan"]["disparus"] if d["quoi"] == "entree"] == [
-        {"quoi": "entree", "cle": "regard-camera", "libelle": "regard caméra", "releves": 1}]
+        {"quoi": "entree", "cle": "regard-camera", "libelle": "regard caméra", "releves": 1,
+         "decision": "a_repondre"}]
+    assert res["verdict"]["etat"] == "a_repondre"
     assert res["bilan"]["releves_touches"] == 1
 
 
