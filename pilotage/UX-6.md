@@ -5,8 +5,18 @@ statut: interrompu
 
 # UX-6 — écran « par où commencer » et guide utilisateur
 
-**Arrêté sur** — 2026-11-04, `418055d` : **la tranche 2 est sur `dev`** (`6bafa84`, `fbd2bf5`,
-`86175dd`, `418055d`, pas encore poussée) — le « ? » de la bande sur les six surfaces, la
+**Arrêté sur** — 2026-11-04, `183c757` : **la tranche 3 est sur `dev`, PAS poussée, et sa reprise
+est interrompue** (`dcaa88b`, `aab9a43`, `511401b`, `183c757`) — le guide pas à pas sur la
+planche, l'étape faite lue sur la planche, « Corriger » qui cadre seul, « ✎ Tracer » dans
+l'Atelier au clavier et au doigt, « optionnel ici » sans moteur. Hugo a refusé la fenêtre du
+guide « toujours à gauche » : elle recouvre ce que l'étape montre. La reprise — la règle de
+placement de la maquette — a été arrêtée en cours le soir du 2026-11-04, l'ordinateur fermé :
+son état est dans `ETAT-REPRISE.md` de la copie `copie-ux6-t3` du scratchpad de la session
+de pilotage, hors dépôt (cf. la zone « En cours » ci-dessous). Joués sur `dev` combiné : suite
+par défaut verte ; `test_e2e_wizard`, `test_e2e_atelier_tracer`, `test_e2e_masquage` verts.
+
+**Plus tôt, le 2026-11-04** — `418055d` : **la tranche 2 est sur `dev`** (`6bafa84`, `fbd2bf5`,
+`86175dd`, `418055d`, poussée le jour même) — le « ? » de la bande sur les six surfaces, la
 fenêtre posée à côté de la zone (pas une modale : la zone jouable, le reste `inert`, le focus
 sans piège), la visite des sept pages en deux temps ; choisir un parcours lance la visite, la
 carte vient après. Hors d'un bac à sable, les repères ne parlent pas du bac à sable
@@ -61,11 +71,11 @@ Le texte des pages de l'album est celui que Hugo a réécrit, dans la maquette, 
 - [x] **La fenêtre sur la zone se dessine au clavier** — attendu : elle n'est pas une modale, la zone reste jouable, le reste est `inert`, et le focus y entre et en sort sans piège ; la maquette ne le fait pas — fait le 2026-11-04 (`86175dd`) : `test_la_fenetre_sur_la_zone_au_clavier_et_en_deux_temps` (le reste `inert`, Maj+Tab et Tab sans s'arrêter sur un inerte, Échap rend le focus, ni `role` ni `aria-modal`)
 - [x] **Le souvenir est tranché** — attendu : l'album déjà vu, le parcours et l'étape vivent soit dans le navigateur, rangés par login comme `bd-bacs-a-sable`, soit avec le bac à sable ; dans les deux cas, après un effacement, le wizard ne reprend pas à l'étape 6 sur une planche remise à zéro **Tranché par Hugo le 2026-11-03 : dans le navigateur, rangé par login et sous l'identifiant du bac à sable — aucune migration, il ne suit pas d'un poste à l'autre.**
 - [x] **Après un effacement, le wizard repart du début** — attendu : sur un bac à sable effacé (lundi ou « Remettre à neuf… »), le souvenir rangé sous l'ancien identifiant n'est plus lu ; si l'identifiant survit à la remise à neuf, une autre marque (`efface_le`) fait la différence, mesurée par un test — fait le 2026-11-04 : l'identifiant ne survit pas (un projet neuf, `AUTOINCREMENT`), mesuré sur les deux chemins par `tests/test_wizard_souvenir.py`, et le côté navigateur par `tests/js/wizard.test.js`
-- [ ] **Ce qui compte comme une étape faite est défini** — attendu : une liste, étape par étape, lue sur les régions, les textes et les relevés, qui tient sur des données repartant à neuf chaque lundi
-- [ ] **Sans moteur, « Pré-remplir » se dit optionnel** — attendu : `GET /api/sante` suffit ; l'étape et l'album disent « optionnel ici »
+- [ ] **Ce qui compte comme une étape faite est défini** — attendu : une liste, étape par étape, lue sur les régions, les textes et les relevés, qui tient sur des données repartant à neuf chaque lundi **Codé le 2026-11-04 (`511401b`) : la liste en tête de `static/lib/wizard.js`, `faite()`, testée sous Node — à confirmer avec les choix de la tranche 3.**
+- [ ] **Sans moteur, « Pré-remplir » se dit optionnel** — attendu : `GET /api/sante` suffit ; l'étape et l'album disent « optionnel ici » **Codé le 2026-11-04 (`511401b`) : la carte, le guide et la page des moteurs de l'album disent « optionnel ici » ; testé sous Node, pas joué en e2e sans moteur.**
 - [ ] **« Automatisez la reconnaissance » s'écrit après la vraie passe** — attendu : le vrai découpage et le vrai OCR ont tourné sur *Moustache et Trottinette*, dont le lettrage est manuscrit, et la page dit ce qu'ils ont rendu ; la maquette SIMULE ses erreurs (`t0t`, `rec0nnaît`) et promet « 3 cases, 3 bulles, 1 cartouche » sans mesure
 - [ ] **« Exporter » dit ce qui sort vraiment d'un bac à sable** — attendu : l'étape et les phrases des pages ne promettent aucune sortie refusée : le jeu de production est en part serveur, export fermé pour tous, donc rien n'y sort d'un bac à sable
-- [ ] **L'Atelier a un geste de tracer pour tous** — attendu : au clavier et au doigt, comme « Tracer une zone » de la page Annotation ; aujourd'hui Maj+glisser ne se voit qu'une fois une région choisie, et l'étape « Tracer une zone » ne tient pas sans lui
+- [x] **L'Atelier a un geste de tracer pour tous** — attendu : au clavier et au doigt, comme « Tracer une zone » de la page Annotation ; aujourd'hui Maj+glisser ne se voit qu'une fois une région choisie, et l'étape « Tracer une zone » ne tient pas sans lui — fait le 2026-11-04 (`aab9a43`) : « ✎ Tracer » dans la barre du canevas, en Édition ; au clavier par `rectangleInitial` / `rectangleClavier` de `lib/annotation.js`, au doigt le bouton arme le glissé (`tests/test_e2e_atelier_tracer.py`, la barre mesurée à 320, 768 et 1 280 px, polices 16 et 24)
 - [ ] **`docs/guide-utilisateur.md` dit les neuf étapes** — attendu : « Tracer une zone » y a sa section, et chaque étape de l'écran y renvoie
 - [ ] **La maquette se mesure sur l'écran codé** — attendu : à 320 px et en grande police, la bande du haut gagne le « ? » sans déborder ; à 768 px, la fenêtre ne cache rien d'indispensable à la dernière zone de la Recherche et de l'Exploration ; « Visite n / 7 » ne reste pas figé entre les deux temps d'une page ; le titre de la Transcription ne dit pas « Bulle 4 / 4 » sur un cartouche **Le 2026-11-04 (`86175dd`) : à 320 px, polices 16 et 24, la bande gagne le « ? » sans déborder (`test_e2e_reflow` vert en entier), et « Visite n / 7 » change entre les deux temps (« · 1 / 2 », « · 2 / 2 ») ; restent 768 px et la suite.**
 - [ ] **Exploration vide : le message dit la vraie cause** — attendu : « Aucune donnée (relancer l'indexation NLP ?) » n'apparaît plus quand c'est qu'aucun corpus n'est ouvert ; le wizard y conduit tout arrivant
@@ -94,8 +104,16 @@ Proposés par l'agent qui code la tranche 2, confirmés tous les sept par Hugo, 
 - [x] **Échap ferme la visite sans ouvrir la carte** — attendu : tranché
 - [x] **Sous 40em, la fenêtre est une feuille en bas, pleine largeur, 55 % de haut au plus** — attendu : tranché, à revoir sur l'écran codé
 - [x] **Quand la bande passe à la ligne, le « ? » et « Aa » peuvent se séparer** — attendu : tranché
-- [ ] **Un menu ouvert depuis une zone n'est pas assombri** — attendu : « Aa » ou « Traitement » ouverts pendant la visite se lisent en clair ; aujourd'hui ils restent jouables mais s'affichent sous l'assombri, hors du trou
-- [ ] **Chez un invité, la zone « Votre bac à sable » de la barre du haut dit ses gestes** — attendu : la fenêtre ne lui promet ni « inviter » ni « remettre à neuf », qu'il n'a pas, mais « Quitter… » (le titre dit déjà « Ce bac à sable » depuis `418055d`, la phrase non)
+- [x] **Un menu ouvert depuis une zone n'est pas assombri** — attendu : « Aa » ou « Traitement » ouverts pendant la visite se lisent en clair ; aujourd'hui ils restent jouables mais s'affichent sous l'assombri, hors du trou — fait le 2026-11-04 (`511401b`) : un trou de l'assombri sur la liste de « Traitement » ou le panneau « Aa » (le test e2e joue « Traitement »)
+- [x] **Chez un invité, la zone « Votre bac à sable » de la barre du haut dit ses gestes** — attendu : la fenêtre ne lui promet ni « inviter » ni « remettre à neuf », qu'il n'a pas, mais « Quitter… » (le titre dit déjà « Ce bac à sable » depuis `418055d`, la phrase non) — fait le 2026-11-04 (`511401b`) : « Quand il s'efface, et ce qu'on y fait : le quitter. » (texte de l'agent, à relire par Hugo)
+
+### En cours — la tranche 3, sa reprise interrompue le 2026-11-04
+Hugo a refusé la fenêtre du guide « toujours à gauche » et demandé de reprendre la règle de la maquette (`C:\temp\maquette-lot4\wizard.js`, `FOYERS`, `rectFoyer`, `majFoyer`). L'état de la reprise : `ETAT-REPRISE.md` de la copie `copie-ux6-t3`.
+- [ ] **La fenêtre du guide ne recouvre pas ce que l'étape montre** — attendu : chaque étape éclaire un foyer PRÉCIS (la carte de l'album, le bloc de la source, « Traitement » et son menu, la bulle à corriger et le panneau, la colonne de droite de la Transcription, la case agrandie et la grille, le champ de recherche) ; la fenêtre se pose à droite du foyer, sinon à gauche, dessous, dessus, et en bas à gauche seulement si rien ne tient ; une étape neuve fait défiler jusqu'à son foyer, et sur un écran étroit la page réserve la hauteur de la feuille
+- [ ] **« Corriger » cadre la bulle hors de la fenêtre** — attendu : en entrant dans l'étape, la bulle se voit en entier, à côté de la fenêtre et non dessous
+- [ ] **Un test échoue si la fenêtre recouvre le foyer** — attendu : chaque étape des deux parcours, à 1 280 et 768 px, polices 16 et 24 ; il tombe sur une fenêtre forcée à gauche
+- [ ] **La tranche 3 est relue contre la maquette** — attendu : chaque écart entre l'écran codé et la maquette (foyers, textes, boutons, comportement) listé, aligné ou motivé
+- [ ] **Les choix de la tranche 3 sont confirmés** — attendu : Hugo répond aux neuf choix restants proposés par l'agent le 2026-11-04 (le choix « fenêtre toujours à gauche » est retiré) : étape faite marquée sans passage automatique ; « ✎ Tracer » en Édition seulement, premier rectangle dans la case choisie ou au milieu de la part visible ; une région du jeu reprise passe à `corrige` ; l'état du guide dans l'onglet, Échap = ✕ ; la bulle à cadrer, la plus petite non reprise, cadre ×3 ; « Tracer » exige case ET bulle, « Transcrire » au complet toutes les zones de texte ; « Seule la dernière rangée… » seulement si le jeu a posé des régions ; deux textes de l'agent (le repère « Transcription », la phrase de l'invité), « Parcours terminé » sans vignettes ; « optionnel ici » sur l'album sans aucun moteur, sur l'étape dès qu'il manque l'OCR
 
 ### Arbitrages
 - [x] La liste des étapes et leur ordre sont figés AVANT la première ligne de code, chaque étape nommant une surface et un geste : c'est le contrat commun de l'écran et du guide, et le laisser flotter ferait diverger les deux
