@@ -3,7 +3,7 @@
 # ENGENDRÉ — ne pas éditer à la main. Régénérer par :
 #     python deploy/geler_verrous.py
 #
-# Produit le 2026-09-09 par `pip freeze` DANS l'image `bdediteur:gel-base`, et non
+# Produit le 2026-11-04 par `pip freeze` DANS l'image `bdediteur:gel-base`, et non
 # depuis un environnement de développement : le venv local n'est pas l'artefact livré
 # (QA-5, mesuré le 2026-08-27 — 451 tests verts en local, trois moteurs morts dans
 # l'image le même jour).
@@ -52,9 +52,9 @@ matplotlib==3.11.1
 mdurl==0.1.2
 murmurhash==1.0.15
 ninja==1.13.2
-openpyxl==3.1.5
 opencv-python==4.13.0.92
 opencv-python-headless==4.13.0.92
+openpyxl==3.1.5
 packaging==26.3
 polars==1.44.1
 polars-runtime-32==1.44.1
