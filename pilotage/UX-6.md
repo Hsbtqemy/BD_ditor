@@ -11,8 +11,8 @@ planche, l'étape faite lue sur la planche, « Corriger » qui cadre seul, « �
 l'Atelier au clavier et au doigt, « optionnel ici » sans moteur. Hugo a refusé la fenêtre du
 guide « toujours à gauche » : elle recouvre ce que l'étape montre. La reprise — la règle de
 placement de la maquette — a été arrêtée en cours le soir du 2026-11-04, l'ordinateur fermé :
-son état est dans `ETAT-REPRISE.md` de la copie `copie-ux6-t3` du scratchpad de la session
-de pilotage, hors dépôt (cf. la zone « En cours » ci-dessous). Joués sur `dev` combiné : suite
+son état est dans `C:	empd-reprise-2026-11-04\` (`ETAT-REPRISE.md` et le correctif non
+commité, `ux6-t3-reprise.patch`, à appliquer sur `183c757`), hors dépôt (cf. la zone « En cours » ci-dessous). Joués sur `dev` combiné : suite
 par défaut verte ; `test_e2e_wizard`, `test_e2e_atelier_tracer`, `test_e2e_masquage` verts.
 
 **Plus tôt, le 2026-11-04** — `418055d` : **la tranche 2 est sur `dev`** (`6bafa84`, `fbd2bf5`,
@@ -108,7 +108,7 @@ Proposés par l'agent qui code la tranche 2, confirmés tous les sept par Hugo, 
 - [x] **Chez un invité, la zone « Votre bac à sable » de la barre du haut dit ses gestes** — attendu : la fenêtre ne lui promet ni « inviter » ni « remettre à neuf », qu'il n'a pas, mais « Quitter… » (le titre dit déjà « Ce bac à sable » depuis `418055d`, la phrase non) — fait le 2026-11-04 (`511401b`) : « Quand il s'efface, et ce qu'on y fait : le quitter. » (texte de l'agent, à relire par Hugo)
 
 ### En cours — la tranche 3, sa reprise interrompue le 2026-11-04
-Hugo a refusé la fenêtre du guide « toujours à gauche » et demandé de reprendre la règle de la maquette (`C:\temp\maquette-lot4\wizard.js`, `FOYERS`, `rectFoyer`, `majFoyer`). L'état de la reprise : `ETAT-REPRISE.md` de la copie `copie-ux6-t3`.
+Hugo a refusé la fenêtre du guide « toujours à gauche » et demandé de reprendre la règle de la maquette (`C:\temp\maquette-lot4\wizard.js`, `FOYERS`, `rectFoyer`, `majFoyer`). L'état de la reprise : `C:	empd-reprise-2026-11-04\ETAT-REPRISE.md`, et le travail non commité dans `ux6-t3-reprise.patch` à côté (sur `183c757`) : les foyers précis, l'assombri à un trou, `placerFenetre` testé sous Node, la feuille du bas, « Corriger » recadré, le test de recouvrement — restent à rejouer les e2e et à commiter.
 - [ ] **La fenêtre du guide ne recouvre pas ce que l'étape montre** — attendu : chaque étape éclaire un foyer PRÉCIS (la carte de l'album, le bloc de la source, « Traitement » et son menu, la bulle à corriger et le panneau, la colonne de droite de la Transcription, la case agrandie et la grille, le champ de recherche) ; la fenêtre se pose à droite du foyer, sinon à gauche, dessous, dessus, et en bas à gauche seulement si rien ne tient ; une étape neuve fait défiler jusqu'à son foyer, et sur un écran étroit la page réserve la hauteur de la feuille
 - [ ] **« Corriger » cadre la bulle hors de la fenêtre** — attendu : en entrant dans l'étape, la bulle se voit en entier, à côté de la fenêtre et non dessous
 - [ ] **Un test échoue si la fenêtre recouvre le foyer** — attendu : chaque étape des deux parcours, à 1 280 et 768 px, polices 16 et 24 ; il tombe sur une fenêtre forcée à gauche
