@@ -3,7 +3,7 @@
    Chargé en <script> sur les SIX surfaces → expose `window.BDWizard` ; aussi require()-able
    par `tests/js/wizard.test.js`, qui le vérifie par tables de cas, et lu par
    `tests/test_wizard_marques.py`, qui confronte la visite aux gabarits. Rien n'est lu au
-   chargement : ni le document, ni le stockage, ni l'heure.
+   chargement : ni le document, ni les stockages, ni l'heure.
 
    La forme a été tranchée par Hugo sur maquette le 2026-11-02 (`pilotage/UX-6.md`, zone
    « Tranché par Hugo sur maquette ») : une présentation (un ALBUM de pages), le choix d'un
@@ -13,6 +13,10 @@
      · les neuf ÉTAPES et le parcours rapide (`ETAPES`, `RAPIDE`, `etapes`) ;
      · la VISITE des sept pages et la marque stable de chacune de ses zones (`VISITE`,
        `marques`) — un attribut `data-parcours` sur la surface, que le test exige ;
+     · la FENÊTRE sur la zone : les deux temps d'une page et le côté qui va avec, le compte
+       de la visite, les repères qu'elle nomme, la page que rouvre le « ? », où mène une
+       page de la visite, et sa position le temps qu'elle traverse les pages (`suivant`,
+       `cote`, `reperes`, `pageDeLaSurface`, `adresseVisite`, `retenirVisite`) ;
      · le SOUVENIR (`lireSouvenir`, `retenirSouvenir`) : l'album déjà vu, le parcours choisi,
        l'étape. Tranché par Hugo le 2026-11-03 : dans le NAVIGATEUR, rangé par login comme
        `bd-bacs-a-sable`, et sous l'identifiant du bac à sable — aucune migration ;
@@ -210,8 +214,8 @@
      deux temps, la fenêtre changeant de côté au bouton « Suivant » (Hugo, 2026-11-02).
      `bande` : la page de la barre du haut, dont les marques vivent sur les six surfaces.
 
-     Les textes sont ceux de la maquette. Le « ? » de la bande (« Revoir les repères de
-     cette page ») n'a pas encore sa marque : il naîtra avec la fenêtre sur la zone. */
+     Les textes sont ceux de la maquette, le « ? » de la bande compris (« Revoir les repères
+     de cette page », posé par `theme.js`). */
   const VISITE = [
     { surface: "/", bande: true, titre: "La barre du haut",
       phrase: "Elle est la même partout. Elle dit où vous êtes, et mène d'une page à l'autre.",
@@ -223,6 +227,7 @@
           + "il se change ici."],
         ["bande-compte", "Votre compte", "Le compte connecté, et la déconnexion."],
         ["bande-affichage", "Aa", "Le thème, le contraste et la taille du texte."],
+        ["bande-aide", "?", "Rouvre les repères de la page où vous êtes."],
         ["bande-bac", "Votre bac à sable", "Quand il s'efface, et ce qu'on y fait : rouvrir "
           + "ce guide, inviter, remettre à neuf."],
       ] },
@@ -310,6 +315,152 @@
     VISITE.forEach((v) => v.zones.forEach((z) => out.push(
       { surface: v.surface, bande: !!v.bande, marque: z[0] })));
     return out;
+  }
+
+  /* ── La fenêtre sur la zone ────────────────────────────────────────────────────────
+     Une position de la visite est `{ page, temps }` : la page de `VISITE`, et le temps où
+     l'on est — 0, ou 1 pour la suite d'une page de plusieurs zones (Hugo, 2026-11-02). La
+     fenêtre change de côté avec le temps, au bouton « Suivant », jamais au survol : à droite
+     au premier temps, à gauche au second, que ses zones occupent la gauche ou la droite de
+     la page (les zones de second temps sont la colonne de droite et les gestes rares). */
+  function tempsDe(i) {
+    const v = VISITE[i];
+    if (!v) return [];
+    return v.zones.some((z) => (z[3] || 0) === 1) ? [0, 1] : [0];
+  }
+
+  /* Une position lisible, ou `null` : une page hors de la visite, un temps que la page n'a
+     pas. */
+  function position(pos) {
+    if (!pos || !Number.isInteger(pos.page) || !VISITE[pos.page]) return null;
+    const t = pos.temps === undefined ? 0 : pos.temps;
+    return tempsDe(pos.page).includes(t) ? { page: pos.page, temps: t } : null;
+  }
+
+  /* « Suivant » : le second temps de la page s'il existe, sinon la page suivante ; `null`
+     au bout de la visite. « ← » : l'inverse, et la page précédente reprend à son DERNIER
+     temps — on revient d'où l'on vient. */
+  function suivant(pos) {
+    const p = position(pos);
+    if (!p) return null;
+    if (p.temps === 0 && tempsDe(p.page).includes(1)) return { page: p.page, temps: 1 };
+    return p.page + 1 < VISITE.length ? { page: p.page + 1, temps: 0 } : null;
+  }
+
+  function precedent(pos) {
+    const p = position(pos);
+    if (!p) return null;
+    if (p.temps === 1) return { page: p.page, temps: 0 };
+    if (p.page === 0) return null;
+    const t = tempsDe(p.page - 1);
+    return { page: p.page - 1, temps: t[t.length - 1] };
+  }
+
+  function estFin(pos) { return !!position(pos) && suivant(pos) === null; }
+
+  /* Le compte dit la page ET le temps : « Visite n / 7 » ne reste pas figé entre les deux
+     temps d'une page (`pilotage/UX-6.md`, « La maquette se mesure sur l'écran codé ») — la
+     maquette le laissait à la même valeur. La forme « · 1 / 2 » est un choix à revoir sur
+     l'écran codé. */
+  function compteVisite(pos) {
+    const p = position(pos);
+    if (!p) return "";
+    const t = tempsDe(p.page);
+    const base = `Visite ${p.page + 1} / ${VISITE.length}`;
+    return typo(t.length > 1 ? `${base} · ${p.temps + 1} / ${t.length}` : base);
+  }
+
+  function cote(pos) {
+    const p = position(pos);
+    return p && p.temps === 1 ? "gauche" : "droite";
+  }
+
+  /* Les repères d'un temps : `[{ marque, nom, phrase, n }]`. `visible(marque)` dit si la
+     zone se voit sur la page à cet instant : la fenêtre ne nomme que ce que la page montre
+     (Hugo, 2026-11-02, pour le « ? » ; la visite suit la même règle). Le numéro court sur
+     les zones VISIBLES de toute la page, dans l'ordre de la visite : le second temps
+     continue le premier, et un trou ne laisse pas de numéro sans zone. */
+  function reperes(i, t, visible) {
+    const v = VISITE[i];
+    if (!v) return [];
+    const voit = typeof visible === "function" ? visible : () => true;
+    const out = [];
+    let n = 0;
+    v.zones.forEach((z) => {
+      if (!voit(z[0])) return;
+      n += 1;
+      if ((z[3] || 0) === t) out.push({ marque: z[0], nom: typo(z[1]), phrase: typo(z[2]), n });
+    });
+    return out;
+  }
+
+  /* Les temps d'une page où la page montre au moins une zone : le « ? » ne fait pas passer
+     à un temps vide. Au moins le premier, pour que la fenêtre dise la page. */
+  function tempsVisibles(i, visible) {
+    const t = tempsDe(i).filter((x) => reperes(i, x, visible).length);
+    return t.length ? t : tempsDe(i).slice(0, 1);
+  }
+
+  /* Le « ? » rouvre les repères de la page où l'on est : la page de la visite de cette
+     SURFACE, jamais celle de la barre du haut (qui vit sur toutes). `-1` hors des six. */
+  function pageDeLaSurface(chemin) {
+    const c = String(chemin || "").replace(/\/+$/, "") || "/";
+    return VISITE.findIndex((v) => !v.bande && v.surface === c);
+  }
+
+  /* Où mène une page de la visite : sa surface, sur la planche du parcours là où une
+     planche se travaille, la fiche de l'album dans la Bibliothèque (sa zone « La fiche »),
+     la vue Instance dans l'Administration (sa zone « Instance », que les autres vues
+     masquent). Ni mode ni outil : la visite montre, elle ne fait rien faire. */
+  function adresseVisite(i, vue) {
+    const v = VISITE[i];
+    if (!v) return "/";
+    if (v.surface === "/administration") return "/administration?vue=instance";
+    const a = albumDuParcours(vue);
+    if (!a) return v.surface;
+    const p = new URLSearchParams();
+    p.set("album", String(a.album_id));
+    if (v.surface === "/corpus") return `/corpus?${p}`;
+    if (v.surface !== "/" && v.surface !== "/annotation") return v.surface;
+    p.set("planche", String(a.planche_ids[0]));
+    return `${v.surface}?${p}`;
+  }
+
+  /* La visite en cours traverse les pages : sa position vit dans le stockage de SESSION
+     (un onglet, le temps de la visite), sous le login et le bac à sable qui l'ont
+     commencée, toute lecture et écriture sous try/catch. Sans ce stockage, la visite
+     s'arrête au changement de page : rien de plus. */
+  const CLE_VISITE = "bd-wizard-visite";
+
+  function stockageSession() {
+    try { return root.sessionStorage || null; } catch (e) { return null; }
+  }
+
+  function retenirVisite(login, bac, pos, dans) {
+    const p = position(pos);
+    if (!login || !bac || !Number.isInteger(bac.id) || !p) return false;
+    const s = dans === undefined ? stockageSession() : dans;
+    try {
+      if (!s) return false;
+      s.setItem(CLE_VISITE, JSON.stringify({ login, bac: bac.id, efface_le: bac.efface_le || null,
+                                             page: p.page, temps: p.temps }));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function lireVisite(login, bac, depuis) {
+    if (!login || !bac || !Number.isInteger(bac.id)) return null;
+    const s = depuis === undefined ? stockageSession() : depuis;
+    try {
+      const v = s ? JSON.parse(s.getItem(CLE_VISITE) || "null") : null;
+      if (!v || v.login !== login || !memeBac(v, bac)) return null;
+      return position(v);
+    } catch (e) { return null; }
+  }
+
+  function oublierVisite(dans) {
+    const s = dans === undefined ? stockageSession() : dans;
+    try { if (s) s.removeItem(CLE_VISITE); } catch (e) { /* rien à oublier */ }
   }
 
   /* ── Le souvenir ───────────────────────────────────────────────────────────────────
@@ -421,5 +572,8 @@
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
            typo, moteurs, textePage, etapes, albumDuParcours, phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
-           choisirParcours, allerA, neJamaisAfficher };
+           choisirParcours, allerA, neJamaisAfficher,
+           CLE_VISITE, tempsDe, position, suivant, precedent, estFin, compteVisite, cote,
+           reperes, tempsVisibles, pageDeLaSurface, adresseVisite, retenirVisite, lireVisite,
+           oublierVisite };
 });

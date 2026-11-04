@@ -9,8 +9,8 @@ la zone du guide sans bruit.
 
 La marque est un attribut, `data-parcours="<marque>"`, posé soit dans le GABARIT de la
 surface, soit par un SCRIPT que ce gabarit charge (la bande du haut : `theme.js` pour le
-projet, le compte et « Aa », `bac-a-sable.js` pour la ligne du bac à sable). Les marques de
-la barre du haut valent sur les six surfaces.
+projet, le compte, « ? » et « Aa », `bac-a-sable.js` pour la ligne du bac à sable). Les
+marques de la barre du haut valent sur les six surfaces.
 
 **La liste vient de `static/lib/wizard.js`, lue DEUX fois** : par une extraction Python du
 source, qui tourne partout — l'image de test n'a pas Node —, et par Node quand il est là.
@@ -141,9 +141,10 @@ def test_le_motif_mord():
     assert MARQUE_JS.findall('e.setAttribute("data-parcours", "c-d")') == ["c-d"]
     assert MARQUE_JS.findall(_sans_commentaires('/* w.dataset.parcours = "a-b"; */')) == []
     assert MARQUE_HTML.findall(_sans_commentaires_html('<!-- data-parcours="a-b" -->')) == []
-    # Et la bande : `theme.js` pose bien les trois marques qu'on lui prête.
+    # Et la bande : `theme.js` pose bien les quatre marques qu'on lui prête.
     posees = poseurs("index.html")
     for mq, lieu in (("bande-projet", "theme.js"), ("bande-compte", "theme.js"),
-                     ("bande-affichage", "theme.js"), ("bande-bac", "bac-a-sable.js"),
+                     ("bande-affichage", "theme.js"), ("bande-aide", "theme.js"),
+                     ("bande-bac", "bac-a-sable.js"),
                      ("bande-pages", "index.html")):
         assert lieu in posees.get(mq, []), (mq, posees.get(mq))

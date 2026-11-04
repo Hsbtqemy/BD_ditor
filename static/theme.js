@@ -675,7 +675,8 @@
         // Ancre AVANT le menu « Aa ». buildMenu a déplacé .btn-theme DANS un
         // wrapper .display-menu (enfant direct de #site-nav) ; viser .btn-theme
         // lèverait NotFoundError (plus enfant direct). Garde + repli en fin de bande.
-        var anchor = bar.querySelector(".display-menu");
+        // UX-6 — et avant le « ? », qui précède « Aa ».
+        var anchor = bar.querySelector(".bande-aide") || bar.querySelector(".display-menu");
         if (anchor && anchor.parentNode === bar) bar.insertBefore(wrap, anchor);
         else bar.appendChild(wrap);
       })
@@ -755,7 +756,7 @@
     // pose À CÔTÉ du projet (`static/bac-a-sable.js`) : un projet redessiné ne passe pas
     // derrière lui.
     var ancre = bar.querySelector(".bac-ouvrir-bande") || bar.querySelector(".user-chip")
-      || bar.querySelector(".display-menu");
+      || bar.querySelector(".bande-aide") || bar.querySelector(".display-menu");
     if (ancre && ancre.parentNode === bar) bar.insertBefore(wrap, ancre);
     else bar.appendChild(wrap);
   }
@@ -822,12 +823,42 @@
     if (!back.title) back.title = "Revenir d'où l'on vient";
   }
 
+  /* ---- « ? » : revoir les repères de cette page (UX-6, source unique) ----
+     Le rappel du wizard « Par où commencer » (Hugo, 2026-11-02 : un bouton sur les SIX
+     surfaces, pour tout compte, et non dans le seul bac à sable). Il rouvre les repères de
+     la page où l'on est — la fenêtre posée à côté des zones, que dessine `wizard.js` —, ne
+     nomme que ce que la page montre, et ne change ni le mode ni l'album. La forme « ? » à
+     côté de « Aa » est celle de la maquette, à revoir sur l'écran codé.
+
+     Juste AVANT « Aa », enfant direct de la bande comme lui : la pastille, le projet et
+     « Mon bac à sable » se rangent avant le « ? » (leurs ancres le connaissent). Ni
+     `aria-expanded` ni `aria-haspopup` : la fenêtre n'est pas un menu qu'on déplie, et un
+     repliable entrerait dans l'inventaire que la mesure de reflow exige ouvert. Le nom
+     accessible est la phrase de l'infobulle — « ? » seul ne dit rien. */
+  function buildAide() {
+    var bar = document.getElementById("site-nav");
+    if (!bar || bar.querySelector(".bande-aide")) return;
+    var b = el("button", "ghost bande-aide", "?");
+    b.type = "button";
+    b.dataset.parcours = "bande-aide";           // UX-6 : une zone de la visite
+    b.title = "Revoir les repères de cette page";
+    b.setAttribute("aria-label", "Revoir les repères de cette page");
+    b.addEventListener("click", function () {
+      var w = window.BDWizardEcran;
+      if (w && typeof w.reperes === "function") w.reperes(b);
+    });
+    var aa = bar.querySelector(".display-menu");
+    if (aa && aa.parentNode === bar) bar.insertBefore(b, aa);
+    else bar.appendChild(b);
+  }
+
   function wire() {
     buildBack();
     buildHeaderNav();
     buildProjet();
     buildUserChip();
     document.querySelectorAll(".btn-theme").forEach(buildMenu);
+    buildAide();
     sync();
     a11y();
   }

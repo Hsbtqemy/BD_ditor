@@ -268,3 +268,122 @@ test("la visite : sept pages, la barre du haut puis les six surfaces, des marque
   // Une page de plusieurs zones se joue en un ou deux temps, jamais trois.
   for (const v of W.VISITE) for (const z of v.zones) assert.ok([undefined, 1].includes(z[3]), z[0]);
 });
+
+/* ── La fenêtre sur la zone ───────────────────────────────────────────────────────────── */
+
+const ATELIER = 1, BIBLIO = 3, RECHERCHE = 4, ADMIN = 6;
+
+test("le « ? » de la barre du haut est une zone de la visite, entre « Aa » et le bac", () => {
+  const bande = W.VISITE[0].zones.map((z) => z[0]);
+  assert.deepEqual(bande, ["bande-pages", "bande-projet", "bande-compte", "bande-affichage",
+                           "bande-aide", "bande-bac"]);
+});
+
+test("une page se joue en un ou deux temps, et la fenêtre change de côté avec lui", () => {
+  assert.deepEqual(W.tempsDe(0), [0]);
+  assert.deepEqual(W.tempsDe(ATELIER), [0, 1]);
+  assert.deepEqual(W.tempsDe(RECHERCHE), [0]);
+  assert.deepEqual(W.tempsDe(99), []);
+  assert.equal(W.cote({ page: ATELIER, temps: 0 }), "droite");
+  assert.equal(W.cote({ page: ATELIER, temps: 1 }), "gauche");
+  assert.equal(W.cote({ page: RECHERCHE }), "droite");
+});
+
+test("« Suivant » passe au second temps, puis à la page suivante ; « ← » revient d'où l'on vient", () => {
+  assert.deepEqual(W.suivant({ page: 0, temps: 0 }), { page: ATELIER, temps: 0 });
+  assert.deepEqual(W.suivant({ page: ATELIER, temps: 0 }), { page: ATELIER, temps: 1 });
+  assert.deepEqual(W.suivant({ page: ATELIER, temps: 1 }), { page: 2, temps: 0 });
+  assert.deepEqual(W.precedent({ page: 2, temps: 0 }), { page: ATELIER, temps: 1 });
+  assert.deepEqual(W.precedent({ page: ATELIER, temps: 1 }), { page: ATELIER, temps: 0 });
+  assert.deepEqual(W.precedent({ page: ATELIER, temps: 0 }), { page: 0, temps: 0 });
+  assert.equal(W.precedent({ page: 0, temps: 0 }), null);
+  assert.equal(W.suivant({ page: ADMIN, temps: 0 }), null);
+  assert.equal(W.estFin({ page: ADMIN, temps: 0 }), true);
+  assert.equal(W.estFin({ page: ATELIER, temps: 0 }), false);
+  // Toute la visite, en avançant : chaque page, chaque temps, une seule fois.
+  const vus = [];
+  for (let p = { page: 0, temps: 0 }; p; p = W.suivant(p)) vus.push(`${p.page}.${p.temps}`);
+  assert.deepEqual(vus, ["0.0", "1.0", "1.1", "2.0", "2.1", "3.0", "3.1", "4.0", "5.0", "6.0"]);
+  // Une position illisible ne mène nulle part.
+  assert.equal(W.suivant({ page: RECHERCHE, temps: 1 }), null);
+  assert.equal(W.position({ page: "1" }), null);
+  assert.equal(W.position(null), null);
+});
+
+test("« Visite n / 7 » ne reste pas figé entre les deux temps d'une page", () => {
+  assert.equal(W.compteVisite({ page: 0, temps: 0 }), "Visite 1 / 7");
+  const a = W.compteVisite({ page: ATELIER, temps: 0 });
+  const b = W.compteVisite({ page: ATELIER, temps: 1 });
+  assert.notEqual(a, b);
+  assert.match(a, /^Visite 2 \/ 7/);
+  assert.match(b, /^Visite 2 \/ 7/);
+  assert.equal(W.compteVisite({ page: 99 }), "");
+});
+
+test("les repères ne nomment que ce que la page montre, numérotés sans trou", () => {
+  const tout = W.reperes(ATELIER, 0);
+  assert.deepEqual(tout.map((r) => [r.marque, r.n]),
+                   [["atelier-planches", 1], ["atelier-modes", 2], ["atelier-planche", 3]]);
+  assert.deepEqual(W.reperes(ATELIER, 1).map((r) => [r.marque, r.n]),
+                   [["atelier-structure", 4], ["atelier-actions", 5]]);
+  // Le panneau de structure n'est pas visible (un tiroir fermé) : il n'est pas nommé, et
+  // la suite reprend à 4.
+  const sauf = (m) => m !== "atelier-structure";
+  assert.deepEqual(W.reperes(ATELIER, 1, sauf).map((r) => [r.marque, r.n]),
+                   [["atelier-actions", 4]]);
+  assert.deepEqual(W.reperes(ATELIER, 0, () => false), []);
+  assert.equal(tout[0].nom, "Album et planches");
+  assert.match(tout[1].phrase, /^Navigation pour parcourir/);
+  // Un temps sans zone visible ne se propose pas au « ? ».
+  const sansFiche = (m) => !["bibliotheque-fiche", "bibliotheque-nouvel-album"].includes(m);
+  assert.deepEqual(W.tempsVisibles(BIBLIO, sansFiche), [0]);
+  assert.deepEqual(W.tempsVisibles(BIBLIO), [0, 1]);
+  assert.deepEqual(W.tempsVisibles(BIBLIO, () => false), [0]);
+});
+
+test("le « ? » rouvre la page de la surface, jamais la barre du haut", () => {
+  assert.equal(W.pageDeLaSurface("/"), ATELIER);
+  assert.equal(W.pageDeLaSurface("/corpus"), BIBLIO);
+  assert.equal(W.pageDeLaSurface("/corpus/"), BIBLIO);
+  assert.equal(W.pageDeLaSurface("/administration"), ADMIN);
+  assert.equal(W.pageDeLaSurface("/docs"), -1);
+  assert.equal(W.pageDeLaSurface(""), ATELIER);
+});
+
+test("chaque page de la visite mène à sa surface, sur la planche du parcours", () => {
+  assert.deepEqual(W.VISITE.map((v, i) => W.adresseVisite(i, VUE)), [
+    "/?album=31&planche=310",
+    "/?album=31&planche=310",
+    "/annotation?album=31&planche=310",
+    "/corpus?album=31",
+    "/recherche",
+    "/exploration",
+    "/administration?vue=instance",
+  ]);
+  // Ni mode ni outil : la visite montre, elle ne fait rien faire.
+  for (let i = 0; i < W.VISITE.length; i += 1) {
+    assert.doesNotMatch(W.adresseVisite(i, VUE), /mode=/);
+  }
+  assert.equal(W.adresseVisite(ATELIER, null), "/");
+  assert.equal(W.adresseVisite(BIBLIO, { jeu: [] }), "/corpus");
+  assert.equal(W.adresseVisite(99, VUE), "/");
+});
+
+test("la visite en cours se relit sous le même login et le même bac à sable, et s'oublie", () => {
+  const s = memoire();
+  s.removeItem = (k) => s.brut().delete(k);
+  assert.equal(W.retenirVisite("camille", BAC, { page: ATELIER, temps: 1 }, s), true);
+  assert.deepEqual(W.lireVisite("camille", BAC, s), { page: ATELIER, temps: 1 });
+  assert.equal(W.lireVisite("lea", BAC, s), null);
+  assert.equal(W.lireVisite("camille", { id: 42, efface_le: BAC.efface_le }, s), null);
+  assert.equal(W.lireVisite("camille", { id: 41, efface_le: "2026-11-16 03:00:00" }, s), null);
+  W.oublierVisite(s);
+  assert.equal(W.lireVisite("camille", BAC, s), null);
+  // Une position hors de la visite ne s'écrit pas ; un stockage hostile ne lève rien.
+  assert.equal(W.retenirVisite("camille", BAC, { page: RECHERCHE, temps: 1 }, s), false);
+  assert.equal(W.retenirVisite(null, BAC, { page: 0 }, s), false);
+  assert.equal(W.retenirVisite("camille", BAC, { page: 0 }, HOSTILE), false);
+  assert.equal(W.lireVisite("camille", BAC, HOSTILE), null);
+  assert.doesNotThrow(() => W.oublierVisite(HOSTILE));
+  assert.equal(W.lireVisite("camille", BAC, memoire({ [W.CLE_VISITE]: "{pas du json" })), null);
+});

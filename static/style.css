@@ -520,6 +520,10 @@ kbd {
    pour zéro quand le navigateur répartit les éléments entre les rangées : elle ne change
    aucune coupure. */
 .display-menu { margin-left: auto; }
+/* UX-6 — le « ? » (« Revoir les repères de cette page », `theme.js`) précède « Aa » : la
+   marge automatique passe à lui, et « Aa » le suit sans écart de plus. */
+.bande-aide { margin-left: auto; font-weight: 700; }
+.bande-aide + .display-menu { margin-left: 0; }
 
 /* Pastille « utilisateur connecté · déconnexion » (INFRA-1), injectée par theme.js
    à droite de la bande 1 ; absente en local (pas d'auth). */

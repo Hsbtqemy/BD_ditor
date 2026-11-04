@@ -120,7 +120,8 @@
     const b = bouton("ghost small bac-ouvrir-bande");
     const projet = bar.querySelector(".projet-courant");
     const ancre = projet && projet.parentNode === bar ? projet.nextSibling
-      : bar.querySelector(".user-chip") || bar.querySelector(".display-menu");
+      : bar.querySelector(".user-chip") || bar.querySelector(".bande-aide")
+        || bar.querySelector(".display-menu");
     if (ancre && ancre.parentNode === bar) bar.insertBefore(b, ancre);
     else bar.appendChild(b);
   }
