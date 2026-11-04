@@ -267,8 +267,8 @@ def test_distribution_ne_ment_pas_a_la_limite_exacte(page, corpus_tags, recus, a
               wait_until="networkidle")
 
     info = page.locator("#dist-info")
-    expect(info).to_contain_text("200 valeur(s)")
-    expect(info).to_contain_text("200 occurrence(s)")   # une par ligne, jamais 201
+    expect(info).to_contain_text("200 valeurs de")
+    expect(info).to_contain_text("200 occurrences")   # une par ligne, jamais 201
     if attendu:
         expect(info).to_contain_text("limité aux 200 plus fréquentes")
     else:
@@ -284,7 +284,7 @@ def test_concordance_ne_ment_pas_a_la_limite_exacte(page, corpus_tags, recus, at
               wait_until="networkidle")
 
     info = page.locator("#dist-info")
-    expect(info).to_contain_text("200 occurrence(s)")
+    expect(info).to_contain_text("200 occurrences")
     if attendu:
         expect(info).to_contain_text("limité à 200")
     else:

@@ -44,13 +44,7 @@ function highlight(text, q) {
 async function loadCorpus() {
   try {
     const c = await apiGet("/api/corpus");
-    const chips = [
-      ["albums", "albums"], ["planches", "planches"], ["regions", "régions"],
-      ["transcrites", "transcrites"], ["annotees", "annotées"], ["tags", "tags"],
-    ];
-    $("#corpus-stats").innerHTML = chips
-      .map(([k, lbl]) => `<span class="stat"><b>${c[k]}</b> ${lbl}</span>`)
-      .join("");
+    $("#corpus-stats").innerHTML = Resultats.chiffresCorpus(c);   // accordés (UX-6)
   } catch (e) { /* aperçu non bloquant */ }
 }
 

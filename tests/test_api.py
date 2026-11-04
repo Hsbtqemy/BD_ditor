@@ -420,10 +420,14 @@ def test_resultats_js_servi_et_charge_avant_recherche_js(client):
     bronche — ils importent le fichier directement."""
     js = client.get("/static/lib/resultats.js")
     assert js.status_code == 200 and "LIMITE" in js.text
-    html = client.get("/recherche").text
-    assert "/static/lib/resultats.js" in html
-    assert (html.index("/static/lib/resultats.js")
-            < html.index("/static/recherche.js"))
+    # UX-6 — les chiffres du corpus, accordés, y vivent aussi : l'Exploration et la
+    # Bibliothèque les lisent (`Resultats.chiffresCorpus`).
+    for route, script in (("/recherche", "/static/recherche.js"),
+                          ("/exploration", "/static/exploration.js"),
+                          ("/corpus", "/static/corpus.js")):
+        html = client.get(route).text
+        assert "/static/lib/resultats.js" in html, route
+        assert html.index("/static/lib/resultats.js") < html.index(script), route
 
 
 def test_dialog_js_servi_et_charge_avant_le_script_de_page(client):

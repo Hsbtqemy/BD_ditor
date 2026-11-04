@@ -43,3 +43,30 @@ test("une réponse aberrante ne fabrique jamais un compte négatif ou fractionna
   }
   assert.equal(etat(3.7, 200).n, 3);   // tronqué à l'entier, jamais « 3.7 résultats »
 });
+
+/* --- accord / nombre / chiffresCorpus (UX-6) ------------------------------------------
+   « L'Accord accorde au pluriel » : les chiffres du corpus s'écrivaient au pluriel fixe,
+   « 1 albums », « 1 planches » dans un bac à sable tout neuf. */
+const { accord, nombre, chiffresCorpus } = require("../../static/lib/resultats.js");
+
+test("0 et 1 au singulier, au-delà au pluriel", () => {
+  assert.equal(nombre(0, "album"), "0 album");
+  assert.equal(nombre(1, "planche"), "1 planche");
+  assert.equal(nombre(2, "planche"), "2 planches");
+  assert.equal(nombre(1, "terme défini", "termes définis"), "1 terme défini");
+  assert.equal(nombre(3, "terme défini", "termes définis"), "3 termes définis");
+  assert.equal(accord(2, "token relu", "tokens relus"), "tokens relus");
+  assert.equal(nombre(undefined, "album"), "0 album");   // jamais « undefined albums »
+});
+
+test("les chiffres du corpus s'accordent chacun à son nombre", () => {
+  const html = chiffresCorpus({ albums: 1, planches: 1, regions: 0, transcrites: 2,
+                                annotees: 1, tags: 5 });
+  assert.equal(html,
+    '<span class="stat"><b>1</b> album</span><span class="stat"><b>1</b> planche</span>'
+    + '<span class="stat"><b>0</b> région</span><span class="stat"><b>2</b> transcrites</span>'
+    + '<span class="stat"><b>1</b> annotée</span><span class="stat"><b>5</b> tags</span>');
+  // Une réponse incomplète : 0, jamais « undefined ».
+  assert.doesNotMatch(chiffresCorpus({}), /undefined/);
+  assert.match(chiffresCorpus({ albums: 3 }), /<b>3<\/b> albums/);
+});

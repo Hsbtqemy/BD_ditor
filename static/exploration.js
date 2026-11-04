@@ -26,10 +26,7 @@ const state = { timer: null, gen: 0, attributs: { f: new Set(), b: new Set() } }
 async function loadCorpus() {
   try {
     const c = await apiGet("/api/corpus");
-    $("#corpus-stats").innerHTML = [
-      ["albums", "albums"], ["planches", "planches"], ["regions", "régions"],
-      ["transcrites", "transcrites"], ["annotees", "annotées"], ["tags", "tags"],
-    ].map(([k, lbl]) => `<span class="stat"><b>${c[k]}</b> ${lbl}</span>`).join("");
+    $("#corpus-stats").innerHTML = Resultats.chiffresCorpus(c);   // accordés (UX-6)
   } catch (e) { /* non bloquant */ }
 }
 
@@ -203,7 +200,7 @@ function renderAttrChips(pre) {
     chip.dataset.vid = id;
     chip.textContent = v.valeur;
     chip.setAttribute("aria-pressed", actif ? "true" : "false");
-    if (v.nb_usages != null) chip.title = `${v.nb_usages} usage(s)`;
+    if (v.nb_usages != null) chip.title = Resultats.nombre(v.nb_usages, "usage");
     chip.onclick = () => {
       const on = !sel.has(id);
       if (on) sel.add(id); else sel.delete(id);
@@ -361,7 +358,8 @@ function renderDist(res) {
   const total = rows.reduce((s, r) => s + r.freq, 0);
   const max = Math.max(...rows.map((r) => r.freq));
   $("#dist-info").innerHTML =
-    `${rows.length} valeur(s) de <b>${esc(ch)}</b> · ${total} occurrence(s)` +
+    `${Resultats.nombre(rows.length, "valeur")} de <b>${esc(ch)}</b> · `
+    + Resultats.nombre(total, "occurrence") +
     (compte.tronque ? ` (limité aux ${Resultats.LIMITE} plus fréquentes)` : "") +
     " — cliquer une valeur pour voir les emplois en contexte";
   const fa = sideFilters("f");
@@ -506,7 +504,7 @@ function renderKwic(res) {
   const rows = (res.results || []).slice(0, compte.n);
   const lemme = lemmeSaisi();
   $("#dist-info").innerHTML =
-    `${compte.n} occurrence(s)` + (lemme ? ` de <b>${esc(lemme)}</b>` : "") +
+    Resultats.nombre(compte.n, "occurrence") + (lemme ? ` de <b>${esc(lemme)}</b>` : "") +
     (compte.tronque ? ` (limité à ${Resultats.LIMITE})` : "") +
     " — cliquer une ligne pour voir la case";
   if (!rows.length) {
@@ -534,7 +532,7 @@ function renderCroise(res) {
   const box = $("#croise"), xs = res.x, ys = res.y;
   const tronque = res.x_tronque || res.y_tronque;
   $("#dist-info").innerHTML =
-    `<b>${esc(res.libelle_x)}</b> × <b>${esc(res.libelle_y)}</b> — ${res.total} croisement(s)` +
+    `<b>${esc(res.libelle_x)}</b> × <b>${esc(res.libelle_y)}</b> — ${Resultats.nombre(res.total, "croisement")}` +
     (tronque ? ` (top ${CROISE_LIMIT} par axe)` : "") +
     " — cliquer une cellule pour voir les tokens en contexte";
   if (!xs.length || !ys.length) {
@@ -686,7 +684,7 @@ async function loadLexique() {
 
 function lexResume(r) {
   const pct = r.pct_defini == null ? "—" : Math.round(r.pct_defini * 100) + " %";
-  return `${r.definis}/${r.total} terme(s) défini(s) — ${pct}`;
+  return `${Resultats.nombre(r.definis, "terme défini", "termes définis")} sur ${r.total} — ${pct}`;
 }
 
 /* Le menu « Portée » : les collections où l'on ÉCRIT (`ecrivable`, AUTH-12 — comme le menu
@@ -717,8 +715,9 @@ function termEditor(kind, term, defi) {
             : `/api/attributs/dimensions/${term.id}/lexique`;
   const nom = kind === "tag" ? term.label : (term.nom || term.valeur);
   const sub = kind === "dimension" ? (CIBLE_LBL[term.cible] || term.cible)
-            : kind === "domaine" ? `${term.nb_dimensions} dimension(s)`
-            : kind === "valeur" ? `${term.nb_usages} usage(s)` : `${term.frequence} pose(s)`;
+            : kind === "domaine" ? Resultats.nombre(term.nb_dimensions, "dimension")
+            : kind === "valeur" ? Resultats.nombre(term.nb_usages, "usage")
+            : Resultats.nombre(term.frequence, "pose");
   const defini = term.etat === "defini";
   const domaineField = kind === "dimension"
     ? `<label>Domaine <select data-f="domaine_id">${domaineOptions(term.domaine_id)}</select></label>`
@@ -1083,7 +1082,8 @@ function renderAccord(r) {
     return;
   }
   let html = `<p class="muted small">Modèle : <b>${modele}</b>${date} — <b>${r.revus}</b> `
-    + `token(s) relu(s) (${r.corriges} corrigé(s), ${r.valides} validé(s))</p>`;
+    + `${Resultats.accord(r.revus, "token relu", "tokens relus")} `
+    + `(${Resultats.nombre(r.corriges, "corrigé")}, ${Resultats.nombre(r.valides, "validé")})</p>`;
   html += '<div class="table-cadre" tabindex="0" role="region" aria-label="Accord par champ">'
     + '<table class="accord-table"><thead><tr><th scope="col">Champ</th>'
     + '<th scope="col">Accord</th><th scope="col">Taux</th></tr></thead><tbody>';
@@ -1129,8 +1129,9 @@ function renderAccordInter(r) {
       + 'comparer (nécessite plusieurs relecteurs authentifiés).</p>';
     return;
   }
-  let html = `<p class="muted small"><b>${r.retouches}</b> re-touche(s) inter-auteurs · `
-    + `${r.auteurs.length} auteur(s) : ${r.auteurs.map(esc).join(", ")}</p>`;
+  let html = `<p class="muted small"><b>${r.retouches}</b> `
+    + `${Resultats.accord(r.retouches, "re-touche")} inter-auteurs · `
+    + `${Resultats.nombre(r.auteurs.length, "auteur")} : ${r.auteurs.map(esc).join(", ")}</p>`;
   html += '<div class="table-cadre" tabindex="0" role="region" aria-label="Accord de révision par champ">'
     + '<table class="accord-table"><thead><tr><th scope="col">Champ</th>'
     + '<th scope="col">Accord</th><th scope="col">Taux</th></tr></thead><tbody>';

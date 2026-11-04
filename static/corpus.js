@@ -88,10 +88,7 @@ let CHIFFRES = "";
 async function loadCorpus() {
   try {
     const c = await apiGet(routeCorpus());
-    CHIFFRES = [
-      ["albums", "albums"], ["planches", "planches"], ["regions", "régions"],
-      ["transcrites", "transcrites"], ["annotees", "annotées"], ["tags", "tags"],
-    ].map(([k, lbl]) => `<span class="stat"><b>${c[k]}</b> ${lbl}</span>`).join("");
+    CHIFFRES = Resultats.chiffresCorpus(c);   // accordés à leur nombre (UX-6)
     const ici = $("#corpus-stats");
     if (ici) ici.innerHTML = CHIFFRES;
   } catch (e) { /* non bloquant */ }

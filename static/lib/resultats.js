@@ -39,5 +39,32 @@
     };
   }
 
-  return { LIMITE: LIMITE, etat: etat };
+  /* UX-6 — un nombre et son nom, ACCORDÉS : « 0 album », « 1 album », « 2 albums ». La règle
+     française met 0 et 1 au singulier, comme `etat` ci-dessus. `pluriel` par défaut : le
+     singulier suivi d'un « s ». `accord` rend le mot seul, pour qui écrit le nombre à part
+     (en gras, dans un lien) ; `nombre` le nombre et le mot. */
+  function accord(n, singulier, pluriel) {
+    return (Number(n) || 0) > 1 ? (pluriel || singulier + "s") : singulier;
+  }
+  function nombre(n, singulier, pluriel) {
+    return (Number(n) || 0) + " " + accord(n, singulier, pluriel);
+  }
+
+  /* Les chiffres du corpus (`GET /api/corpus`), tels que la Recherche, l'Exploration et la
+     Bibliothèque les montrent : chacun accordé à son nombre. Ils s'écrivaient en trois copies
+     au pluriel fixe — « 1 albums », « 1 planches » dans un bac à sable tout neuf. Un nombre
+     absent de la réponse se lit 0, jamais « undefined ». */
+  const CHIFFRES_CORPUS = [
+    ["albums", "album"], ["planches", "planche"], ["regions", "région"],
+    ["transcrites", "transcrite"], ["annotees", "annotée"], ["tags", "tag"],
+  ];
+  function chiffresCorpus(c) {
+    return CHIFFRES_CORPUS.map(([cle, mot]) => {
+      const n = Number(c && c[cle]) || 0;
+      return `<span class="stat"><b>${n}</b> ${accord(n, mot)}</span>`;
+    }).join("");
+  }
+
+  return { LIMITE: LIMITE, etat: etat, accord: accord, nombre: nombre,
+           chiffresCorpus: chiffresCorpus };
 });
