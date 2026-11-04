@@ -58,9 +58,9 @@
     if (!p) {
       return present
         ? { etat: "present", mot: "présent, non éprouvé",
-            note: "Le module est là. Qu'il fonctionne reste à prouver." }
+            note: "Le module est là ; « Éprouver » dit s'il fonctionne." }
         : { etat: "absent", mot: "non installé",
-            note: "Sa passe répondra 503. Normal si vous ne vous en servez pas." };
+            note: "Sa passe sera refusée. Normal si vous ne vous en servez pas." };
     }
     if (p.ok) {
       return { etat: "ok", mot: "opérationnel", note: "Importé pour de bon, sans erreur." };
@@ -101,8 +101,8 @@
     return { erreur: false,
              texte: etats.includes("ok")
                ? "Tous les moteurs installés répondent."
-               : "Aucun moteur installé sur cette instance. Les passes de "
-                 + "reconnaissance répondront 503 ; le reste de l'outil fonctionne." };
+               : "Aucun moteur installé sur cette instance : les passes de "
+                 + "reconnaissance seront refusées, le reste de l'outil fonctionne." };
   }
 
   return { MOTEURS, etat, bilan };

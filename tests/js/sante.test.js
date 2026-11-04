@@ -122,5 +122,8 @@ test("tout va bien se dit sans emphase, et n'est pas une erreur", () => {
 test("aucun moteur installé n'est pas une panne, et le bilan le dit", () => {
   const b = bilan(RIEN_LA, tousAbsents);
   assert.equal(b.erreur, false, "un poste sans moteur n'a rien à réparer");
-  assert.match(b.texte, /503/);   // ce qui arrivera concrètement, pas juste « absent »
+  // Ce qui arrivera concrètement, pas juste « absent » — et en mots : « 503 » est un code
+  // du protocole, qu'un arrivant ne lit pas (UX-6).
+  assert.match(b.texte, /seront refusées/);
+  assert.doesNotMatch(b.texte, /503/);
 });

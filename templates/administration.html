@@ -269,18 +269,17 @@
          et c'est la question que se pose quiconque voit une passe ne rien produire. -->
     <section class="admin-bloc" id="sante-bloc" data-parcours="administration-instance" data-dans-vue="instance" aria-labelledby="sante-title">
       <h2 id="sante-title">🩺 Moteurs de reconnaissance</h2>
-      <p class="muted small">Les moteurs sont <b>optionnels</b> : absent, un moteur ne casse
-        rien — sa passe répond 503 et le reste de l'outil vit sa vie. Le cas grave est
-        l'autre, et c'est celui qu'on vient chercher ici : un moteur <b>installé mais
-        cassé</b>, qu'un contrôle de présence annonce disponible.</p>
+      <!-- UX-6 — ce qu'un arrivant lit pendant la visite : des mots, l'aide en infobulle
+           (écran stable). Ni « 503 » ni « contrôle de présence » : le premier est un code
+           du protocole, le second une notion du serveur. -->
+      <p class="muted small" id="sante-intro">Optionnels : absent, un moteur ne casse rien.
+        <span title="Sans un moteur, sa passe (découper les cases, détecter les bulles, lire le texte) est refusée, et le reste de l'outil fonctionne. Le cas grave est un moteur installé mais en panne : la liste dit seulement qu'un module est là, « Éprouver » le charge pour de bon." aria-hidden="true">ⓘ</span><span class="sr-only"> — Sans un moteur, sa passe (découper les cases, détecter les bulles, lire le texte) est refusée, et le reste de l'outil fonctionne. Le cas grave est un moteur installé mais en panne : la liste dit seulement qu'un module est là, « Éprouver » le charge pour de bon.</span></p>
       <div id="sante-body"></div>
-      <p class="muted small">Ce qui précède ne dit que la <b>présence</b> des modules,
-        et c'est précisément ce qui peut mentir : un moteur trouvé sur le disque peut
-        très bien refuser de s'importer. <b>Éprouver</b> les importe pour de bon :
-        quelques secondes et quelques centaines de mégaoctets au premier appel, puis le
-        résultat est retenu jusqu'au prochain redémarrage du serveur.</p>
       <div class="contrib-add">
-        <button id="sante-eprouver" class="primary small" type="button">Éprouver les moteurs</button>
+        <button id="sante-eprouver" class="primary small" type="button"
+                aria-describedby="sante-eprouver-aide"
+                title="Charge réellement chaque moteur : trouvé sur le disque, un moteur peut encore refuser de démarrer. Quelques secondes et quelques centaines de mégaoctets au premier appel ; le résultat est retenu jusqu'au prochain redémarrage du serveur.">Éprouver les moteurs</button>
+        <span id="sante-eprouver-aide" class="sr-only">Charge réellement chaque moteur : trouvé sur le disque, un moteur peut encore refuser de démarrer. Quelques secondes et quelques centaines de mégaoctets au premier appel ; le résultat est retenu jusqu'au prochain redémarrage du serveur.</span>
       </div>
       <p id="sante-msg" class="muted small" role="status" aria-live="polite"></p>
     </section>

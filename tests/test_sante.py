@@ -189,6 +189,33 @@ def test_la_page_charge_le_module_du_panneau():
     assert "/static/lib/sante.js" not in corpus
 
 
+def test_le_panneau_se_lit_par_un_arrivant():
+    """UX-6 — le panneau est ce que la visite de l'Administration montre à un arrivant :
+    l'écran ne lui dit ni « 503 » (un code du protocole) ni « contrôle de présence » (une
+    notion du serveur). L'explication vit en infobulle, et pour un lecteur d'écran à côté
+    d'elle — l'écran reste stable. Ce test lit le bloc tel qu'il s'affiche : le gabarit
+    hors commentaires et hors attributs, puis les attributs `title` à part."""
+    html = (Path(__file__).resolve().parent.parent / "templates"
+            / "administration.html").read_text(encoding="utf-8")
+    bloc = re.search(r'<section[^>]*id="sante-bloc".*?</section>', html, re.DOTALL).group(0)
+    bloc = re.sub(r"<!--.*?-->", "", bloc, flags=re.DOTALL)
+    visible = re.sub(r"<[^>]+>", " ", bloc)
+    for mot in ("503", "contrôle de présence"):
+        assert mot not in visible, f"le panneau des moteurs dit encore « {mot} »"
+    # Les phrases sont parties en infobulle, pas disparues : le « pourquoi » d'Éprouver et
+    # ce qu'un moteur absent fait reste lisible au survol et au lecteur d'écran.
+    titres = " ".join(re.findall(r'title="([^"]*)"', bloc))
+    assert "refusée" in titres and "Charge réellement" in titres
+    assert "aria-describedby=\"sante-eprouver-aide\"" in bloc
+    # La phrase à l'écran est COURTE : des mots, pas un paragraphe.
+    intro = re.search(r'<p[^>]*id="sante-intro"[^>]*>(.*?)<span', bloc, re.DOTALL).group(1)
+    assert len(" ".join(intro.split())) <= 60, intro
+    # Et le module ne le dit pas davantage : la note d'un moteur absent, et le bilan.
+    module = (_STATIC / "lib" / "sante.js").read_text(encoding="utf-8")
+    chaines = " ".join(re.findall(r'"([^"\n]*)"', module))
+    assert "503" not in chaines, "une note du panneau dit encore « 503 »"
+
+
 def test_le_panneau_renvoie_a_une_section_qui_existe():
     """Le bilan du panneau ne se contente pas de dire « en panne », il dit où aller —
     sinon l'opérateur est exactement où il était, avec un mot de plus. Encore faut-il que
