@@ -438,6 +438,16 @@ def test_une_coquille_se_corrige_sans_nouvelle_version(client, decor, db_path):
     ok(client.patch(url, headers=LEA, json={"entree_cle": "onomatopee", "variante_cle": "bang",
                                             "piege": "pas un tir"}))
     ok(client.patch(url, headers=LEA, json={"entree_cle": "cri", "libelle": "x"}), 422)
+    # Un exemple qui porte « | » ou un retour à la ligne : le refus de la création — le
+    # réexport le découperait en deux exemples. Rien n'est écrit.
+    for exemple in ("AH | OH", "AH\nOH"):
+        for objet in ({"entree_cle": "cri"}, {"entree_cle": "onomatopee", "variante_cle": "bang"}):
+            r = client.patch(url, headers=LEA, json={**objet, "exemples": ["OK", exemple]})
+            assert r.status_code == 422, r.text
+            assert [a["code"] for a in r.json()["detail"]["anomalies"]] == ["exemple_separateur"]
+    assert _q(db_path, "SELECT texte FROM grille_exemple e JOIN grille_version v "
+                       "ON v.id = e.version_id WHERE e.entree_cle = 'cri' "
+                       "AND e.variante_cle IS NULL")[0]["texte"] == "AÏE"
     assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_version")[0]["n"] == 1
     # Le tableur qui porte la même correction se réimporte sans changement.
     corrige = (MODELE.replace("un cri poussé par un personnage, écrit en toutes lettres",

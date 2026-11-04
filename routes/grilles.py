@@ -374,7 +374,9 @@ def corriger_coquille(grille_id: int, numero: int, payload: CoquilleIn,
     """Corrige une COQUILLE dans une version publiée (ou vivante), sans nouvelle version, au
     journal : une définition, un piège, des exemples. L'empreinte de la version suit — un
     tableur qui porte la même correction se réimporte sans changement. 422 sur un champ qui
-    ne se corrige pas ainsi (un libellé, une forme : une nouvelle version)."""
+    ne se corrige pas ainsi (un libellé, une forme : une nouvelle version), et sur un
+    exemple qui porte « | » ou un retour à la ligne (`exemple_separateur`, le refus de la
+    création)."""
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id, gerer=True)
     v = _get_version(conn, g, numero)
@@ -412,6 +414,12 @@ def corriger_coquille(grille_id: int, numero: int, payload: CoquilleIn,
                          (apres[champ], ligne["id"]))
     if "exemples" in nouveaux:
         textes = [t for t in (grilles.propre(x) for x in (nouveaux["exemples"] or [])) if t]
+        if not grille_ecriture._sans_separateur(textes):
+            # Le refus de la création : le réexport découperait l'exemple en deux.
+            raise _refus_http(_refus(
+                "exemple_separateur", "un exemple porte un « | » ou un retour à la ligne, "
+                "qui séparent deux exemples", "écrivez chaque exemple à part",
+                cle=payload.entree_cle, colonne="exemples"))
         ancien = [r["texte"] for r in conn.execute(
             "SELECT texte FROM grille_exemple WHERE version_id = ? AND entree_cle = ? "
             "AND variante_cle IS ? ORDER BY rang, id", (v["id"], *exemples_de))]
