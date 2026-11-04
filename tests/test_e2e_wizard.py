@@ -415,6 +415,10 @@ def test_le_point_d_interrogation_rouvre_les_reperes_sur_les_six_surfaces(page, 
           const a = document.querySelector('#site-nav > .bande-aide');
           return a.nextElementSibling === document.querySelector('#site-nav > .display-menu'); }""")
         page.wait_for_function("() => !!(window.BDWizardEcran && window.BDWizardEcran.decide)")
+        if surface == "/exploration":
+            # L'Exploration écrit son état dans l'adresse à sa première exécution, après ses
+            # lectures : lue avant, l'adresse « change » sans que le « ? » y soit pour rien.
+            page.wait_for_url(re.compile(r"[?&]vue="))
         avant = page.evaluate(ETAT_PAGE)
         aide.click()
         fen = _visite(page)
