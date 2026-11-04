@@ -1451,6 +1451,10 @@ button[aria-busy="true"]:disabled { opacity: .75; cursor: progress; }
   cursor: grab;
 }
 #stage.mode-edition { cursor: crosshair; }
+/* UX-6 — « ✎ Tracer » armé : au doigt, le glissé trace au lieu de faire défiler. */
+#stage.trace-arme { touch-action: none; }
+#atelier-tracer[aria-pressed="true"] { border-color: var(--accent-blue); background: var(--bg-input);
+                                       font-weight: 600; }
 #stage.panning { cursor: grabbing; }
 #canvas {
   position: absolute; top: 0; left: 0;

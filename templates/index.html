@@ -118,6 +118,11 @@
         <button id="zoom-in" class="icon-btn" title="Zoom +">＋</button>
         <button id="zoom-fit" class="ghost small" title="Ajuster">Ajuster</button>
         <button id="zoom-reset" class="ghost small" title="100 %">1:1</button>
+        <!-- UX-6 — tracer une zone sans souris : au doigt, ce bouton arme le glissé ; au
+             clavier, il pose un rectangle que les flèches déplacent. En mode Édition
+             seulement, et dans la barre du canevas, pas dans la bande des outils. -->
+        <button id="atelier-tracer" class="ghost small" type="button" aria-pressed="false" hidden
+                title="Tracer une nouvelle zone sur la planche ; dans une case, elle devient une bulle. À la souris, il suffit de glisser sur le fond.">✎ Tracer</button>
         <div class="breadcrumb" id="breadcrumb"></div>
         <button id="btn-tiroir-panneau" class="icon-btn tiroir-bascule" aria-expanded="false"
                 aria-controls="panel" aria-label="Afficher le panneau d'annotation"
@@ -543,6 +548,7 @@
 <script src="/static/bac-a-sable.js"></script><!-- COL-4 : « Mon bac à sable » et sa ligne, sur les six surfaces -->
 <script src="/static/lib/wizard.js"></script>
 <script src="/static/wizard.js"></script><!-- UX-6 : « Par où commencer », dans son bac à sable -->
+<script src="/static/lib/annotation.js"></script><!-- UX-6 : le rectangle de « Tracer », commun avec la page Annotation -->
 <script src="/static/viewer.js"></script>
 </body>
 </html>

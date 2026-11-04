@@ -342,6 +342,7 @@ async function selectPlanche(id) {
   state.planche = p;
   state.selectedId = null;
   state.collapsedNodes = new Set();   // l'état de pli de l'arbre est propre à la planche
+  renoncerAuTrace(false);             // UX-6 : un tracé en cours ne suit pas sur une autre planche
 
   renderPlancheList();
   const album = state.albums.find((a) => a.id === state.albumId);
@@ -376,6 +377,7 @@ async function selectPlanche(id) {
   fitView();
   renderPanel();
 }
+
 
 async function loadRegions(plancheId) {
   const gen = plancheGen;
@@ -610,6 +612,7 @@ function renderOverlay() {
   overlay.appendChild(gRegions);
 
   if (state.mode === "edition" && state.selectedId != null) renderHandles();
+  dessinerTraceClavier();   // UX-6 : le rectangle de « ✎ Tracer » survit à un redessin
   updateOverlayScale();
 }
 
@@ -1320,6 +1323,7 @@ function setMode(mode) {
                   annotation: "Annotation", transcription: "Transcription" }[mode];
   $("#stat-mode").textContent = "Mode : " + label;
   $("#transcription").hidden = mode !== "transcription";
+  majBoutonTracer();        // UX-6 : « ✎ Tracer » est un geste du mode Édition
   renderOverlay();
   renderPanel();
   syncUrl();   // UX-12 : le mode est dans l'adresse (renderPanel l'y met aussi, sans le promettre)
@@ -2671,6 +2675,162 @@ async function createRegion(x, y, w, h) {
 }
 
 /* ===================================================================
+   « Tracer » — un geste de tracer pour TOUS (UX-6)
+   =================================================================== */
+/* À la souris, on trace en glissant sur le fond (Maj+glisser au-dessus d'une case). Ni le
+   clavier ni le doigt n'avaient ce geste : le bouton « ✎ Tracer » de la barre du canevas,
+   en mode Édition, le leur donne, comme « Tracer une zone » de la page Annotation
+   (`#an-tracer`) dont il reprend la règle sans la recopier (`BDAnnotation.rectangleInitial`,
+   `rectangleClavier`, `TRACE_MIN`) :
+     · au doigt (et au stylet), le bouton ARME le glissé : le geste suivant sur la planche
+       trace au lieu de défiler, puis le bouton se désarme ;
+     · au clavier, il pose un rectangle au milieu de ce qu'on voit — dans la case choisie,
+       s'il y en a une —, que les flèches déplacent et que Maj+flèches redimensionnent ;
+       Entrée le crée, Échap y renonce et rend le focus au bouton.
+   La zone créée suit la règle du glissé (`createRegion`) : dans une case, une bulle ; sinon,
+   une case. */
+const TRACE = { arme: false, clavier: null, bornes: null };
+
+function majBoutonTracer() {
+  const b = $("#atelier-tracer");
+  if (!b) return;
+  const offert = state.mode === "edition" && !!state.planche;
+  if (!offert && (TRACE.arme || TRACE.clavier)) renoncerAuTrace(false);
+  b.hidden = !offert;
+  b.setAttribute("aria-pressed", String(TRACE.arme || !!TRACE.clavier));
+  stage.classList.toggle("trace-arme", TRACE.arme);
+  if (TRACE.clavier) {
+    stage.tabIndex = 0;
+    stage.setAttribute("role", "group");
+    stage.setAttribute("aria-label", "Zone à tracer : flèches pour la déplacer, Maj+flèches "
+                       + "pour sa taille, Entrée pour la créer, Échap pour renoncer");
+  } else {
+    stage.removeAttribute("tabindex");
+    stage.removeAttribute("role");
+    stage.removeAttribute("aria-label");
+  }
+}
+
+/* Ce que le rectangle du clavier ne quitte pas : la case choisie, sinon la part de la
+   planche qu'on voit (le tout, si elle est hors de vue). En pixels master. */
+function bornesDuTrace() {
+  const r = selectedRegion();
+  if (r && r.type === "case") return { x: r.x, y: r.y, w: r.w, h: r.h };
+  const W = state.planche.largeur_px, H = state.planche.hauteur_px;
+  const s = stage.getBoundingClientRect(), k = state.zoom * state.webScale;
+  const x1 = Math.max(0, -state.tx / k), y1 = Math.max(0, -state.ty / k);
+  const x2 = Math.min(W, (s.width - state.tx) / k), y2 = Math.min(H, (s.height - state.ty) / k);
+  const min = BDAnnotation.TRACE_MIN || 8;
+  if (x2 - x1 < min || y2 - y1 < min) return { x: 0, y: 0, w: W, h: H };
+  return { x: Math.round(x1), y: Math.round(y1), w: Math.round(x2 - x1), h: Math.round(y2 - y1) };
+}
+
+function dessinerTraceClavier() {
+  let dr = overlay.querySelector("#draw-rect");
+  if (!TRACE.clavier) { if (dr) dr.remove(); return; }
+  if (!dr) { dr = svg("rect", { id: "draw-rect", class: "draw-rect" }); overlay.appendChild(dr); }
+  const r = TRACE.clavier;
+  dr.setAttribute("x", r.x); dr.setAttribute("y", r.y);
+  dr.setAttribute("width", r.w); dr.setAttribute("height", r.h);
+}
+
+/* `rendre` : le focus revient au bouton (on renonce au clavier). */
+function renoncerAuTrace(rendre = true) {
+  const auClavier = !!TRACE.clavier;
+  TRACE.arme = false;
+  TRACE.clavier = null;
+  TRACE.bornes = null;
+  dessinerTraceClavier();
+  majBoutonTracer();
+  if (rendre && auClavier) $("#atelier-tracer").focus();
+}
+
+function basculerTracer(auClavier) {
+  if (TRACE.arme || TRACE.clavier) { renoncerAuTrace(); return; }
+  if (state.mode !== "edition" || !state.planche) return;
+  if (auClavier) {
+    TRACE.bornes = bornesDuTrace();
+    TRACE.clavier = BDAnnotation.rectangleInitial(TRACE.bornes);
+    dessinerTraceClavier();
+    majBoutonTracer();
+    stage.focus({ preventScroll: true });
+    annoncer("Flèches pour déplacer la zone, Maj+flèches pour sa taille, Entrée pour la créer.");
+  } else {
+    TRACE.arme = true;
+    majBoutonTracer();
+    annoncer("Glissez sur la planche pour tracer la zone. Échap annule.");
+  }
+}
+
+function setupTracer() {
+  // `detail` vaut 0 pour un clic né du clavier (Entrée, Espace) : il n'y a pas de pointeur.
+  $("#atelier-tracer").addEventListener("click", (e) => basculerTracer(e.detail === 0));
+  // Le rectangle du clavier : la planche a le focus le temps de le placer. Les flèches ne
+  // remontent pas au raccourci de l'Atelier, qui passe d'une zone à l'autre.
+  stage.addEventListener("keydown", (e) => {
+    if (!TRACE.clavier || e.target !== stage) return;
+    if (e.key === "Enter") {
+      e.preventDefault(); e.stopPropagation();
+      const r = TRACE.clavier;
+      renoncerAuTrace(false);
+      $("#atelier-tracer").focus();
+      createRegion(r.x, r.y, r.w, r.h);
+      return;
+    }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); renoncerAuTrace(); return; }
+    const r = BDAnnotation.rectangleClavier(TRACE.clavier, e.key, e.shiftKey, TRACE.bornes);
+    if (!r) return;
+    e.preventDefault(); e.stopPropagation();
+    TRACE.clavier = r;
+    dessinerTraceClavier();
+  });
+  // Au doigt : le bouton armé, le glissé trace. `preventDefault` retient les événements de
+  // souris qu'un navigateur rejoue après un toucher.
+  stage.addEventListener("pointerdown", (e) => {
+    if (!TRACE.arme || e.pointerType === "mouse" || !state.planche) return;
+    e.preventDefault();
+    drag = { kind: "draw", start: clientToMaster(e), doigt: e.pointerId };
+  });
+  window.addEventListener("pointermove", (e) => {
+    if (!drag || drag.doigt !== e.pointerId) return;
+    tracerJusqua(clientToMaster(e));
+  });
+  // Une zone née désarme le bouton ; un toucher qui n'a rien tracé le laisse armé.
+  window.addEventListener("pointerup", (e) => {
+    if (!drag || drag.doigt !== e.pointerId) return;
+    drag = null;
+    if (finirLeTrace()) renoncerAuTrace(false);
+  });
+  window.addEventListener("pointercancel", (e) => {
+    if (!drag || drag.doigt !== e.pointerId) return;
+    drag = null;
+    const dr = overlay.querySelector("#draw-rect");
+    if (dr) dr.remove();
+  });
+}
+
+/* Le rectangle d'un glissé, de son départ au point `p` (pixels master). */
+function tracerJusqua(p) {
+  let dr = overlay.querySelector("#draw-rect");
+  if (!dr) { dr = svg("rect", { id: "draw-rect", class: "draw-rect" }); overlay.appendChild(dr); }
+  const x = Math.min(drag.start.x, p.x), y = Math.min(drag.start.y, p.y);
+  dr.setAttribute("x", x); dr.setAttribute("y", y);
+  dr.setAttribute("width", Math.abs(p.x - drag.start.x));
+  dr.setAttribute("height", Math.abs(p.y - drag.start.y));
+}
+
+/* Le glissé se termine : la zone naît si elle n'est pas un clic qui a tremblé. */
+function finirLeTrace() {
+  const dr = overlay.querySelector("#draw-rect");
+  if (!dr) return false;
+  const w = +dr.getAttribute("width"), h = +dr.getAttribute("height");
+  const x = +dr.getAttribute("x"), y = +dr.getAttribute("y");
+  dr.remove();
+  if (w > 4 && h > 4) { createRegion(x, y, w, h); return true; }
+  return false;
+}
+
+/* ===================================================================
    Interactions souris sur le stage
    =================================================================== */
 let drag = null;  // { kind, ... }
@@ -2714,9 +2874,10 @@ stage.addEventListener("mousedown", (e) => {
     return;
   }
   if (state.mode === "edition") {
-    if (e.shiftKey) {
+    if (e.shiftKey || TRACE.arme) {
       // Maj+glisser : forcer un nouveau tracé même au-dessus d'une case
       // (sinon le rect de la case intercepte le clic) → sous-région par géométrie.
+      // « ✎ Tracer » armé fait de même (UX-6).
       drag = { kind: "draw", start: clientToMaster(e) };
     } else if (hit && Number(hit.dataset.id) === state.selectedId) {
       // déplacer la région sélectionnée
@@ -2754,12 +2915,7 @@ window.addEventListener("mousemove", (e) => {
 
   const p = clientToMaster(e);
   if (drag.kind === "draw") {
-    let dr = overlay.querySelector("#draw-rect");
-    if (!dr) { dr = svg("rect", { id: "draw-rect", class: "draw-rect" }); overlay.appendChild(dr); }
-    const x = Math.min(drag.start.x, p.x), y = Math.min(drag.start.y, p.y);
-    dr.setAttribute("x", x); dr.setAttribute("y", y);
-    dr.setAttribute("width", Math.abs(p.x - drag.start.x));
-    dr.setAttribute("height", Math.abs(p.y - drag.start.y));
+    if (drag.doigt === undefined) tracerJusqua(p);   // le doigt a son écouteur (« ✎ Tracer »)
   } else if (drag.kind === "move") {
     const r = selectedRegion();
     r.x = Math.round(drag.orig.x + (p.x - drag.start.x));
@@ -2773,17 +2929,11 @@ window.addEventListener("mousemove", (e) => {
 
 window.addEventListener("mouseup", (e) => {
   stage.classList.remove("panning");
-  if (!drag) return;
+  if (!drag || drag.doigt !== undefined) return;
   const d = drag; drag = null;
 
   if (d.kind === "draw") {
-    const dr = overlay.querySelector("#draw-rect");
-    if (dr) {
-      const w = +dr.getAttribute("width"), h = +dr.getAttribute("height");
-      const x = +dr.getAttribute("x"), y = +dr.getAttribute("y");
-      dr.remove();
-      if (w > 4 && h > 4) createRegion(x, y, w, h);
-    }
+    if (finirLeTrace() && TRACE.arme) renoncerAuTrace(false);
   } else if (d.kind === "move" || d.kind === "resize") {
     const r = selectedRegion();
     // La région a bougé PENDANT le geste : la valeur vue est celle d'avant (`d.orig`).
@@ -3882,6 +4032,7 @@ function setupKeyboard() {
       const dr = overlay.querySelector("#draw-rect");
       if (dr) dr.remove();
       drag = null;
+      if (TRACE.arme) renoncerAuTrace(false);
       deselect();   // flushSave inclus : ne perd pas une annotation en attente
     }
   });
@@ -4063,6 +4214,7 @@ async function init() {
   $("#planche-actualiser").onclick = actualiserPlanche;
   setupTiroirs();
   setupKeyboard();
+  setupTracer();
   setupBack();
   setMode("navigation");
   window.addEventListener("resize", () => { if (state.planche) applyTransform(); });
