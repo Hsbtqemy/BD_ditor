@@ -376,8 +376,47 @@ async function selectPlanche(id) {
   if (gen !== plancheGen) return;
   fitView();
   renderPanel();
+  appliquerCadrage();
 }
 
+/* ===================================================================
+   Ce que le guide « Par où commencer » demande à l'Atelier (UX-6)
+   =================================================================== */
+/* « Corriger le découpage » : l'Atelier cadre seul (Hugo, 2026-11-02). En entrant dans
+   l'étape, la planche se rapproche de la bulle à corriger, choisie pour que ses poignées se
+   voient ; en sortant, elle revient à la planche entière. Le cadre et la vue sont la règle
+   de `lib/wizard.js` (`cadreAutour`, `vueCadree`). Une demande faite avant que la planche
+   soit là attend qu'elle le soit. */
+const CADRAGE = { voulu: null, pose: false };
+
+function appliquerCadrage() {
+  const v = CADRAGE.voulu;
+  if (!v || !window.BDWizard || !state.planche || state.planche.id !== v.planche || !state.webW) return;
+  const r = state.regionsById.get(v.region);
+  if (!r) return;
+  CADRAGE.voulu = null;
+  const s = stage.getBoundingClientRect();
+  const cadre = BDWizard.cadreAutour(r, state.planche.largeur_px, state.planche.hauteur_px);
+  const vue = BDWizard.vueCadree(cadre, { w: s.width, h: s.height }, state.webScale);
+  if (!vue) return;
+  if (state.selectedId !== r.id) selectRegion(r.id);
+  Object.assign(state, vue);
+  applyTransform();
+  CADRAGE.pose = true;
+}
+
+window.BDAtelierVue = {
+  cadrer(plancheId, regionId) {
+    CADRAGE.voulu = { planche: plancheId, region: regionId };
+    appliquerCadrage();
+  },
+  toutVoir() {
+    CADRAGE.voulu = null;
+    if (!CADRAGE.pose) return;
+    CADRAGE.pose = false;
+    if (state.planche) fitView();
+  },
+};
 
 async function loadRegions(plancheId) {
   const gen = plancheGen;
@@ -2537,7 +2576,11 @@ async function patchRegion(id, fields, vuExplicite = null) {
     if (vuExplicite && k in vuExplicite) vu[k] = vuExplicite[k];
     else if (r) vu[k] = r[k] ?? null;
   }
-  if (r && r.source === "kumiko" &&
+  // La source suit la retouche : un cadre posé par Kumiko ou par le JEU d'un bac à sable,
+  // repris à la main, devient « corrige ». Pour le jeu (UX-6), c'est ce que lit l'étape
+  // « Corriger le découpage » du guide, qui ne distingue pas autrement un cadre repris d'un
+  // texte retouché (`touche` vaut pour les deux).
+  if (r && (r.source === "kumiko" || r.source === "jeu") &&
       ("x" in fields || "y" in fields || "w" in fields || "h" in fields || "type" in fields)) {
     fields.source = "corrige";
   }

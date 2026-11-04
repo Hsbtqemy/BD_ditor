@@ -31,7 +31,7 @@ from test_e2e_bac_a_sable import (CAMILLE, DOMINIQUE, _api, _inviter, _ouvrir,  
 pytestmark = pytest.mark.e2e
 
 # Les six surfaces, avec le titre que la fenêtre leur donne : le « ? » se joue sur chacune
-# (l'album et la visite sur celles où ils mènent).
+# (l'album, la visite et le guide sur celles où ils mènent).
 SURFACES_AUDITEES = {"/": "Atelier", "/annotation": "Annotation", "/corpus": "Bibliothèque",
                      "/recherche": "Recherche", "/exploration": "Exploration",
                      "/administration": "Administration"}
@@ -118,11 +118,14 @@ def test_choisir_un_parcours_mene_a_la_carte_et_l_album_ne_revient_plus(page, je
     album = _album(page)
     album.locator("#wizard-passer").click()
     album.locator("#wizard-choix-rapide").click()
-    # La visite des pages passe avant le parcours (Hugo, 2026-11-02) ; la passer ouvre la
-    # carte des étapes.
+    # La visite des pages passe avant le parcours (Hugo, 2026-11-02) ; la passer mène aux
+    # gestes : le guide, sur la page de la première étape ; ☰ y ouvre la carte des étapes.
     expect(_visite(page).locator("#wizard-visite-compte")).to_have_text("Visite 1 / 7")
     expect(page.locator("#wizard-modal")).to_be_hidden()
     page.locator("#wizard-visite-passer").click()
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Tracer une zone", timeout=15000)
+    expect(page).to_have_url(re.compile(r"mode=edition"))
+    page.locator("#wizard-guide-carte").click()
     album = _album(page)
     expect(album.locator("#wizard-titre")).to_have_text("Par où commencer")
     etapes = album.locator(".wizard-etapes > li")
@@ -144,6 +147,10 @@ def test_choisir_un_parcours_mene_a_la_carte_et_l_album_ne_revient_plus(page, je
     expect(page.locator("#bac-commencer")).to_be_visible()
     expect(page.locator("#wizard-modal")).to_have_count(0)
     assert _souvenir(page)["camille"]["etape"] == 2
+    # Le guide s'ouvre sur l'étape, sur sa page ; Échap le quitte.
+    expect(_visite(page).locator("#wizard-fenetre-titre")).to_have_text("Transcrire et relire")
+    page.keyboard.press("Escape")
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
     # « Par où commencer » rouvre la CARTE, sur l'étape où l'on est.
     page.locator("#bac-commencer").click()
     album = _album(page)
@@ -362,7 +369,8 @@ def test_la_visite_traverse_les_pages_et_finit_sur_la_carte(page, jeu):
     expect(page.locator("#wizard-fenetre")).to_have_count(0)
     assert page.evaluate(VISITE_SESSION) is None
 
-    # La dernière page : « Commencer → » ouvre la carte des étapes.
+    # La dernière page : « Commencer → » mène aux gestes — le guide, sur la première étape
+    # du parcours, sur sa page.
     page.evaluate("(v) => sessionStorage.setItem('bd-wizard-visite', JSON.stringify(v))",
                   {"login": "camille", "bac": bac["id"], "efface_le": bac["efface_le"],
                    "page": 6, "temps": 0})
@@ -372,12 +380,16 @@ def test_la_visite_traverse_les_pages_et_finit_sur_la_carte(page, jeu):
     suivant = page.locator("#wizard-visite-suiv")
     expect(suivant).to_have_text("Commencer →")
     suivant.click()
+    titre = page.locator("#wizard-fenetre-titre")
+    expect(titre).to_have_text("Tracer une zone", timeout=15000)
+    expect(page).to_have_url(re.compile(r"/\?album=.*mode=edition"))
+    expect(page.locator("#wizard-guide-compte")).to_have_text("1 / 4")
+    expect(titre).to_be_focused()
+    assert page.evaluate(VISITE_SESSION) is None
+    # ☰ ouvre la carte, qui repropose la visite.
+    page.locator("#wizard-guide-carte").click()
     album = _album(page)
     expect(album.locator("#wizard-titre")).to_have_text("Par où commencer")
-    expect(album.locator(".wizard-etapes a").first).to_be_focused()
-    expect(page.locator("#wizard-fenetre")).to_be_hidden()
-    assert page.evaluate(VISITE_SESSION) is None
-    # La carte la repropose.
     album.locator("#wizard-revoir-visite").click()
     page.wait_for_url(re.compile(r"/\?album="))
     expect(compte).to_have_text("Visite 1 / 7")
@@ -434,8 +446,8 @@ def test_le_point_d_interrogation_rouvre_les_reperes_sur_les_six_surfaces(page, 
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_l_album_et_la_carte(page, jeu, theme):
     """axe (WCAG 2.1 AA), album ouvert sur sa première page, sur la page du choix, la
-    visite qui suit le choix, puis la carte des étapes : aucune violation sérieuse ou
-    critique."""
+    visite qui suit le choix, le guide qui la suit, puis la carte des étapes : aucune
+    violation sérieuse ou critique."""
     from test_e2e_bac_a_sable import _audit_axe
     page.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
     _ouvrir(jeu, CAMILLE)
@@ -448,9 +460,13 @@ def test_a11y_l_album_et_la_carte(page, jeu, theme):
                         ("album, choix du parcours", "#wizard-passer"),
                         ("visite, première page", "#wizard-choix-complet"),
                         ("visite, l'Atelier", "#wizard-visite-suiv"),
-                        ("carte des étapes", "#wizard-visite-passer")):
+                        ("guide, première étape", "#wizard-visite-passer"),
+                        ("carte des étapes", "#wizard-guide-carte")):
         if geste:
             page.locator(geste).click()
+        if geste == "#wizard-visite-passer":
+            # Passer la visite mène à la page de l'étape, où le guide s'ouvre.
+            expect(page.locator("#wizard-guide-compte")).to_be_visible(timeout=15000)
         page.wait_for_timeout(250)
         v, f = _audit_axe(page)
         if v:
@@ -486,9 +502,13 @@ def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
         for quoi, geste, boite in (("album", None, ".wizard-boite"),
                                    ("choix", "#wizard-passer", ".wizard-boite"),
                                    ("visite", "#wizard-choix-rapide", "#wizard-fenetre"),
-                                   ("carte", "#wizard-visite-passer", ".wizard-boite")):
+                                   ("guide", "#wizard-visite-passer", "#wizard-fenetre"),
+                                   ("carte", "#wizard-guide-carte", ".wizard-boite")):
             if geste:
                 page.locator(geste).click()
+            if geste == "#wizard-visite-passer":
+                # La page de l'étape se charge, et le guide s'y ouvre.
+                expect(page.locator("#wizard-guide-compte")).to_be_visible(timeout=15000)
             page.wait_for_timeout(250)
             perdus = _perdus(page)
             if perdus:
@@ -498,6 +518,166 @@ def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
                 echecs.append(f"{quoi}, police {police} : ÉCRASÉ\n" + "\n".join(ecrase))
         page.keyboard.press("Escape")
         expect(page.locator("#wizard-modal")).to_be_hidden()
-        # La carte est retenue : le tour suivant repart d'un souvenir neuf.
-        page.evaluate("() => { try { localStorage.removeItem('bd-wizard'); } catch (e) {} }")
+        # La carte est retenue, le guide ouvert dans l'onglet : le tour suivant repart d'un
+        # souvenir neuf.
+        page.evaluate("""() => { try { localStorage.removeItem('bd-wizard');
+                                       sessionStorage.removeItem('bd-wizard-guide'); }
+                                 catch (e) {} }""")
     assert not echecs, "\n".join(echecs)
+
+
+# ── Le guide, étape par étape (tranche 3) ──────────────────────────────────────────────
+#
+# Une étape faite se voit sur la planche, sans coche à déclarer (Hugo, 2026-11-02) : le
+# geste se fait pour de vrai, sur la planche du parcours, et le guide le lit.
+
+# Le jeu de la maquette, en petit : une seule rangée découpée — une case, deux bulles dont
+# l'une trop petite — sur une planche de 400 × 500 ; le reste est à tracer.
+JEU_DECOUPE = [{
+    "cle": "parcours", "titre": "Le parcours", "role": "pas-a-pas", "rang": 1,
+    "cran": "decoupage",
+    "planches": [{"fichier": "p1.png", "regions": [
+        {"type": "case", "x": 10, "y": 300, "w": 180, "h": 190, "enfants": [
+            {"type": "bulle", "x": 20, "y": 310, "w": 100, "h": 30},
+            {"type": "bulle", "x": 130, "y": 312, "w": 40, "h": 18}]}]}]}]
+
+
+@pytest.fixture
+def jeu_decoupe(live_server, tmp_path):
+    from test_e2e_bac_a_sable import _outil
+    from test_jeu import ecrire_jeu
+    depot = ecrire_jeu(tmp_path / "jeu-depot", JEU_DECOUPE, images=("p1.png",))
+    _outil(tmp_path, "tools/preparer_jeu.py", "--depot", str(depot), "--appliquer")
+    _api(live_server, CAMILLE, "GET", "/api/moi")
+    return {"base": live_server, "tmp": tmp_path}
+
+
+def _au_guide(page, jeu, parcours="rapide"):
+    """camille dans son bac à sable : « Par où commencer », le parcours, la visite passée —
+    le guide s'ouvre sur la première étape, sur sa page."""
+    bac = _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    _arriver(page, jeu["base"])
+    page.locator("#bac-commencer").click()
+    album = _album(page)
+    album.locator("#wizard-passer").click()
+    album.locator(f"#wizard-choix-{parcours}").click()
+    _visite(page)
+    page.locator("#wizard-visite-passer").click()
+    expect(page.locator("#wizard-guide-compte")).to_be_visible(timeout=15000)
+    expect(page.locator("#wizard-fenetre-titre")).to_be_focused()
+    return bac
+
+
+def _ecran(page, mx, my):
+    """Un point de la planche (pixels master, planche de 400 px de large) à l'écran."""
+    b = page.locator("#planche-img").bounding_box()
+    k = b["width"] / 400
+    return b["x"] + mx * k, b["y"] + my * k
+
+
+def _glisser(page, de, a, maj=False):
+    with page.expect_response(lambda r: r.url.endswith("/regions")
+                              and r.request.method == "POST") as rep:
+        if maj:
+            page.keyboard.down("Shift")
+        page.mouse.move(*_ecran(page, *de))
+        page.mouse.down()
+        page.mouse.move(*_ecran(page, *a), steps=6)
+        page.mouse.up()
+        if maj:
+            page.keyboard.up("Shift")
+    return rep.value.json()
+
+
+@pytestmark_proxy
+def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
+    _au_guide(page, jeu_decoupe)
+    titre, fait = page.locator("#wizard-fenetre-titre"), page.locator("#wizard-guide-fait")
+    suivant = page.locator("#wizard-guide-suiv")
+    expect(titre).to_have_text("Tracer une zone")
+    expect(page.locator("#wizard-guide-compte")).to_have_text("1 / 4")
+    # Le jeu a découpé une rangée : la phrase de Hugo le dit. Rien n'est fait.
+    expect(page.locator("#wizard-fenetre .wf-phrase")).to_contain_text("Seule la dernière rangée")
+    expect(fait).to_be_hidden()
+    expect(suivant).to_have_text("Passer →")
+    # Pas une modale, et la planche est jouable : on y trace une case, à la souris…
+    assert not page.evaluate(INERTE, "#stage") and page.evaluate(INERTE, "#sidebar")
+    case = _glisser(page, (220, 40), (380, 260))
+    assert (case["type"], case["source"]) == ("case", "manuel"), case
+    expect(page.locator("#wizard-fenetre .wf-phrase")).to_contain_text("Sa bulle non plus")
+    expect(fait).to_be_hidden()
+    # … puis une bulle dedans, Maj+glisser : l'étape est faite, sans rien déclarer.
+    bulle = _glisser(page, (240, 60), (330, 110), maj=True)
+    assert (bulle["type"], bulle["parent_id"]) == ("bulle", case["id"]), bulle
+    expect(fait).to_be_visible()
+    expect(fait).to_have_text("✓ Fait")
+    expect(suivant).to_have_text("Suivant →")
+    expect(suivant).to_have_class(re.compile(r"\bprimary\b"))
+    # Le guide ne passe pas seul à la suite.
+    expect(titre).to_have_text("Tracer une zone")
+
+    # « Corriger » : la planche se rapproche de la plus petite bulle du jeu, choisie.
+    zoom = page.locator("#zoom-level")
+    entier = zoom.inner_text()
+    suivant.click()
+    expect(titre).to_have_text("Corriger le découpage")
+    expect(page.locator("#wizard-guide-compte")).to_have_text("2 / 4")
+    expect(zoom).not_to_have_text(entier)
+    assert int(zoom.inner_text().rstrip(" %")) > int(entier.rstrip(" %"))
+    regions = _api(jeu_decoupe["base"], CAMILLE, "GET",
+                   "/api/planches/" + re.search(r"planche=(\d+)", page.url).group(1) + "/regions")
+    petite = next(r for r in regions if r["type"] == "bulle" and r["w"] == 40)
+    expect(page.locator("#region-id")).to_have_text(f"#{petite['id']}")
+    expect(fait).to_be_hidden()
+    # Le cadre repris à la poignée : fait.
+    poignee = page.locator('rect.handle[data-handle="e"]').bounding_box()
+    x, y = poignee["x"] + poignee["width"] / 2, poignee["y"] + poignee["height"] / 2
+    with page.expect_response(lambda r: f"/api/regions/{petite['id']}" in r.url
+                              and r.request.method == "PUT") as rep:
+        page.mouse.move(x, y)
+        page.mouse.down()
+        page.mouse.move(x + 40, y, steps=5)
+        page.mouse.up()
+    assert rep.value.json()["source"] == "corrige"
+    expect(fait).to_have_text("✓ Fait")
+    expect(page.locator("#wizard-fenetre .wf-phrase")).to_contain_text("huit poignées")
+    # En sortant de l'étape, la planche revient entière.
+    page.locator("#wizard-guide-prec").click()
+    expect(titre).to_have_text("Tracer une zone")
+    expect(zoom).to_have_text(entier)
+    # La carte dit ce qui est fait.
+    page.locator("#wizard-guide-carte").click()
+    album = _album(page)
+    etapes = album.locator(".wizard-etapes > li")
+    expect(etapes.nth(0).locator(".wizard-fait")).to_have_text("✓ fait")
+    expect(etapes.nth(1).locator(".wizard-fait")).to_have_text("✓ fait")
+    expect(etapes.nth(2).locator(".wizard-fait")).to_have_count(0)
+    # Fermée, la carte rend la place au guide ; ✕ le quitte, et il ne revient pas seul.
+    album.locator("#wizard-fermer").click()
+    expect(titre).to_have_text("Tracer une zone")
+    page.locator("#wizard-guide-quitter").click()
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
+    expect(page.locator("#bac-commencer")).to_be_focused()
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function("() => !!(window.BDWizardEcran && window.BDWizardEcran.decide)")
+    expect(page.locator("#wizard-fenetre")).to_have_count(0)
+
+
+@pytestmark_proxy
+def test_un_menu_ouvert_depuis_une_zone_n_est_pas_assombri(page, jeu):
+    """La visite, au second temps de l'Atelier : « Traitement » ouvert se lit en clair — un
+    trou de l'assombri le couvre."""
+    _commencer_la_visite(page, jeu)
+    page.locator("#wizard-visite-suiv").click()
+    page.locator("#wizard-visite-suiv").click()
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Visite 2 / 7 · 2 / 2")
+    page.locator("#btn-traitement").click()
+    menu = page.locator("#traitement-menu")
+    expect(menu).to_be_visible()
+    page.wait_for_function("""() => {
+      const m = document.getElementById('traitement-menu').getBoundingClientRect();
+      return [...document.querySelectorAll('#wizard-masque rect[fill="#000"]')].some((t) => {
+        const x = +t.getAttribute('x'), y = +t.getAttribute('y');
+        return x <= m.left && y <= m.top && x + +t.getAttribute('width') >= m.right
+          && y + +t.getAttribute('height') >= m.bottom; }); }""")

@@ -20,7 +20,36 @@
      · le SOUVENIR (`lireSouvenir`, `retenirSouvenir`) : l'album déjà vu, le parcours choisi,
        l'étape. Tranché par Hugo le 2026-11-03 : dans le NAVIGATEUR, rangé par login comme
        `bd-bacs-a-sable`, et sous l'identifiant du bac à sable — aucune migration ;
-     · quand l'album s'ouvre seul (`ouvreSeul`), et où mène chaque étape (`adresseEtape`).
+     · quand l'album s'ouvre seul (`ouvreSeul`), et où mène chaque étape (`adresseEtape`) ;
+     · le GUIDE, étape par étape (`faite`, `phraseGuide`, `bulleACorriger`, `cadreAutour`,
+       `vueCadree`, `retenirGuide`) : ce qui compte comme une étape faite, la phrase qui
+       suit la planche, et le cadrage de « Corriger le découpage ».
+
+   CE QUI COMPTE COMME UNE ÉTAPE FAITE (`pilotage/UX-6.md` : « il le voit sur la planche,
+   sans coche à déclarer », Hugo, 2026-11-02). Tout se lit sur la planche du parcours et sur
+   son album, tels que le serveur les rend — `GET /api/planches/{id}/regions`,
+   `GET /api/planches/{id}/releves`, `GET /api/albums` —, jamais sur ce que l'arrivant
+   déclare. Les données d'un bac à sable repartent à neuf chaque lundi : chaque règle tient
+   sur un bac à sable NEUF, où le jeu a posé ses régions (`source` « jeu », jamais
+   retouchées) et rien d'autre.
+     · Constituer le corpus — la fiche de l'album du parcours s'est ouverte dans la
+       Bibliothèque (son adresse le nomme), pendant que le guide était sur l'étape ;
+     · Décrire l'album — sa notice porte une source de numérisation ;
+     · Pré-remplir — une zone de la planche est née d'un moteur (`activite_id`), ou une zone
+       de texte que personne n'a tracée ni retouchée porte un texte : celui de l'OCR. Si le
+       jeu posait lui-même des textes, l'étape se lirait faite d'emblée ;
+     · Tracer une zone — une case ET une bulle tracées à la main (`source` « manuel ») ;
+     · Corriger le découpage — le cadre d'une zone que le jeu ou un moteur a posée a été
+       repris à la main (`source` « corrige », que l'Atelier pose au premier déplacement ou
+       redimensionnement) ;
+     · Transcrire et relire — une zone de texte (bulle, cartouche, texte) porte un texte
+       qu'une main a écrit ou retouché (`touche`) ; au parcours complet, il faut en plus que
+       TOUTES les zones de texte de la planche portent un texte ;
+     · Annoter — un relevé est posé sur la planche, sur une zone ou sur la planche entière ;
+     · Chercher et explorer, Exporter — des étapes DITES : faites dès que le guide les a
+       montrées.
+   Le guide marque l'étape faite (« ✓ Fait ») et fait de « Suivant » son geste principal ;
+   il ne passe pas seul à la suivante.
 
    Le serveur reste seul à trancher les droits : ce module ne lit que la ligne du projet
    courant (`GET /api/projets`), la vue de son bac à sable (`GET /api/bac-a-sable`) et la
@@ -115,6 +144,13 @@
     return typo(page.sansMoteur && m && m.aucun ? page.sansMoteur : page.texte);
   }
 
+  /* La marque d'une page de l'album : « optionnel ici » sur celle des moteurs quand aucun
+     n'est installé (`pilotage/UX-6.md`, « Sans moteur, “Pré-remplir” se dit optionnel ») ;
+     `null` sinon. */
+  function marquePage(page, m) {
+    return page && page.sansMoteur && m && m.aucun ? "optionnel ici" : null;
+  }
+
   /* ── Les neuf étapes ───────────────────────────────────────────────────────────────
      Neuf et non huit (Hugo, 2026-11-02) : « Tracer une zone » s'ajoute entre
      « Pré-remplir » et « Corriger le découpage ». Chaque étape nomme une SURFACE et un
@@ -122,36 +158,39 @@
      « Constituer le corpus » nomme l'album du parcours tel que le jeu l'a posé. */
   const ETAPES = [
     { k: "corpus", titre: "Constituer le corpus", ou: "Bibliothèque", surface: "/corpus",
+      zones: ["bibliotheque-catalogue", "bibliotheque-fiche"],
       phrase: "Un album rassemble des planches. Le vôtre est déjà là : ouvrez {album}." },
     { k: "decrire", titre: "Décrire l'album", ou: "Bibliothèque", surface: "/corpus",
-      album: true,
+      album: true, zones: ["bibliotheque-fiche"],
       phrase: "Une notice dit d'où vient l'album. Notez la source de numérisation." },
     { k: "preremplir", titre: "Pré-remplir", ou: "Atelier, Traitement", surface: "/",
-      facultatif: true,
+      facultatif: true, zones: ["atelier-actions", "atelier-planche"],
       phrase: "Un moteur peut lire le texte des bulles à votre place : c'est l'OCR. "
         + "Lancez-le, puis regardez ce qu'il propose.",
       sansMoteur: "Aucun moteur n'est installé sur cette instance. Rien n'est cassé : le "
         + "découpage et le texte se font à la main." },
     { k: "tracer", titre: "Tracer une zone", ou: "Atelier, mode Édition", surface: "/",
-      mode: "edition",
+      mode: "edition", zones: ["atelier-planche", "atelier-structure"],
       phrase: "Glissez sur le fond pour tracer une case. Dans une case, maintenez Maj et "
         + "glissez pour tracer une bulle." },
     { k: "decoupage", titre: "Corriger le découpage", ou: "Atelier, mode Édition",
-      surface: "/", mode: "edition",
+      surface: "/", mode: "edition", zones: ["atelier-planche", "atelier-structure"],
       phrase: "Le cadre d'une bulle est trop petit. Agrandissez-le par une de ses poignées : "
         + "tout le texte doit tenir dedans." },
     { k: "transcrire", titre: "Transcrire et relire", ou: "Atelier, mode Transcription",
-      surface: "/", mode: "transcription",
+      surface: "/", mode: "transcription", zones: ["atelier-transcription"],
       phrase: "Recopiez le texte de la bulle, tel qu'il est écrit. La touche Tab passe à la "
         + "bulle suivante." },
     { k: "annoter", titre: "Annoter", ou: "Page Annotation", surface: "/annotation",
+      zones: ["annotation-case", "annotation-mots", "annotation-grille"],
       phrase: "Cliquez un mot de la bulle, puis une entrée de la grille, à droite : c'est le "
         + "vocabulaire du projet." },
     { k: "chercher", titre: "Chercher et explorer", ou: "Recherche, Exploration",
       surface: "/recherche", dite: true, sansAlbum: true,
+      zones: ["recherche-champ", "recherche-resultats"],
       phrase: "Ces deux pages portent sur le vrai corpus : votre bac à sable n'y paraît pas." },
     { k: "exporter", titre: "Exporter", ou: "Bibliothèque, Atelier", surface: "/corpus",
-      album: true, dite: true,
+      album: true, dite: true, zones: ["bibliotheque-fiche"],
       // La phrase de la maquette promettait des sorties qu'un bac à sable refuse (le jeu de
       // production est en part serveur) ; celle-ci ne promet rien du bac à sable (Hugo,
       // 2026-11-03).
@@ -230,7 +269,10 @@
         ["bande-aide", "?", "Rouvre les repères de la page où vous êtes."],
         ["bande-bac", "Votre bac à sable", "Quand il s'efface, et ce qu'on y fait : rouvrir "
           + "ce guide, inviter, remettre à neuf."],
-      ] },
+      ],
+      // Chez un invité, la ligne n'offre que « Quitter… » : ni le guide, ni inviter, ni
+      // remettre à neuf (`pilotage/UX-6.md`, choix de la tranche 2).
+      invite: { zones: { "bande-bac": "Quand il s'efface, et ce qu'on y fait : le quitter." } } },
     { surface: "/", titre: "Atelier",
       phrase: "Le travail sur la planche : tracer, lancer les moteurs, transcrire.",
       zones: [
@@ -246,6 +288,9 @@
           + "choisie.", 1],
         ["atelier-actions", "Traitement, Import / Export", "Lancer les moteurs, ajouter des "
           + "planches, sortir un album.", 1],
+        // Ne se voit qu'en mode Transcription, qui recouvre la page : le guide y conduit.
+        ["atelier-transcription", "Transcription", "La zone agrandie et son texte. Tab passe à "
+          + "la zone suivante.", 1],
       ] },
     { surface: "/annotation", titre: "Annotation",
       phrase: "L'analyse, case par case, avec le vocabulaire du projet.",
@@ -387,7 +432,8 @@
     const v = VISITE[i];
     if (!v) return [];
     const voit = typeof visible === "function" ? visible : () => true;
-    const hors = (!bac && v.horsBac && v.horsBac.zones) || {};
+    const hors = (!bac && v.horsBac && v.horsBac.zones)
+      || (bac === "autre" && v.invite && v.invite.zones) || {};
     const out = [];
     let n = 0;
     v.zones.forEach((z) => {
@@ -599,11 +645,187 @@
     return Object.assign({}, n, { album_vu: !!oui || n.parcours !== null });
   }
 
+  /* ── Le guide, étape par étape ─────────────────────────────────────────────────────
+     Ce qui compte comme une étape FAITE est écrit en tête de ce module. `d` porte ce qu'on
+     a lu : `{ regions, releves, album, vues }` — les régions et les relevés de la planche
+     du parcours, la ligne de son album dans `GET /api/albums`, les étapes vues (« corpus »,
+     quand la fiche de l'album s'est ouverte, et les étapes dites que le guide a montrées).
+     Une donnée absente vaut « pas encore » : rien ne se marque fait sur ce qu'on n'a pas
+     lu. */
+  const TYPES_TEXTE = ["bulle", "cartouche", "texte"];
+  const aLaMain = (r) => !!r && r.source === "manuel";
+  const texteDe = (r) => String((r && r.ocr_texte) || "").trim();
+
+  function liste(x) { return Array.isArray(x) ? x : []; }
+
+  function faite(e, d, parcours) {
+    if (!e) return false;
+    const D = d || {}, regions = liste(D.regions), vues = liste(D.vues);
+    switch (e.k) {
+      case "corpus": return vues.includes("corpus");
+      case "decrire": return !!(D.album && String(D.album.source_numerisation || "").trim());
+      case "preremplir":
+        return regions.some((r) => r && r.activite_id != null)
+          || regions.some((r) => r && TYPES_TEXTE.includes(r.type) && !aLaMain(r)
+                          && !r.touche && !!texteDe(r));
+      case "tracer":
+        return regions.some((r) => aLaMain(r) && r.type === "case")
+          && regions.some((r) => aLaMain(r) && r.type === "bulle");
+      case "decoupage": return regions.some((r) => !!r && r.source === "corrige");
+      case "transcrire": {
+        const zones = regions.filter((r) => r && TYPES_TEXTE.includes(r.type));
+        if (!zones.some((r) => !!texteDe(r) && !!r.touche)) return false;
+        return parcours !== "complet" || zones.every((r) => !!texteDe(r));
+      }
+      case "annoter": return liste(D.releves).length > 0;
+      default: return !!e.dite && vues.includes(e.k);
+    }
+  }
+
+  /* Les phrases que Hugo a écrites pour une étape qui avance (maquette du 2026-11-02) :
+     « Tracer une zone » dit ce qui reste à tracer, « Corriger » ce qu'on peut encore faire
+     une fois le cadre repris. La première suppose le jeu de la maquette — la dernière
+     rangée découpée, sa case du milieu retirée — : elle ne se dit que si le jeu a posé des
+     régions sur la planche ; sans elles, la phrase de l'étape. */
+  const PHRASES = {
+    tracerJeu: "Seule la dernière rangée de cette planche est découpée, et sa case du milieu "
+      + "n'a pas de cadre. Sur le fond de la planche, glissez pour la tracer.",
+    tracerBulle: "Sa bulle non plus. Maintenez Maj et glissez autour d'elle : tracé dans une "
+      + "case, un cadre devient une bulle. La molette rapproche la planche.",
+    tracerFait: "Le type se change à droite : case, bulle, personnage, texte, cartouche. Un "
+      + "détail d'image se trace dans la page Annotation.",
+    decoupageFait: "Un cadre sélectionné se déplace en le glissant. Ses huit poignées le "
+      + "redimensionnent, et Suppr le retire.",
+  };
+
+  function phraseGuide(e, vue, m, d, parcours) {
+    if (!e) return "";
+    const regions = liste(d && d.regions);
+    if (e.k === "tracer") {
+      if (faite(e, d, parcours)) return typo(PHRASES.tracerFait);
+      if (regions.some((r) => aLaMain(r) && r.type === "case")) return typo(PHRASES.tracerBulle);
+      if (regions.some((r) => !!r && r.source === "jeu")) return typo(PHRASES.tracerJeu);
+    }
+    if (e.k === "decoupage" && faite(e, d, parcours)) return typo(PHRASES.decoupageFait);
+    return phraseEtape(e, vue, m);
+  }
+
+  /* Le bouton principal du guide : « Suivant → » quand l'étape est faite, dite, ou
+     optionnelle ici ; « Passer → » sinon ; « Terminer » à la dernière (la maquette). */
+  function boutonGuide(e, d, m, parcours, derniere) {
+    if (derniere) return { texte: "Terminer", principal: true };
+    const avance = faite(e, d, parcours) || !!(e && e.dite)
+      || marqueEtape(e, m) === "optionnel ici";
+    return { texte: avance ? "Suivant →" : "Passer →", principal: avance };
+  }
+
+  /* « Corriger » : l'Atelier cadre seul (Hugo, 2026-11-02). En entrant dans l'étape, la
+     planche se rapproche de la bulle à corriger ; elle revient à la planche entière en
+     sortant. La bulle : la PLUS PETITE de celles que le jeu ou un moteur a posées et que
+     personne n'a encore reprises — le défaut du jeu est un cadre trop petit —, `null` s'il
+     n'y en a pas (rien à cadrer). */
+  function bulleACorriger(regions) {
+    const c = liste(regions).filter((r) => r && r.type === "bulle" && r.w > 0 && r.h > 0
+                                     && !aLaMain(r) && r.source !== "corrige");
+    if (!c.length) return null;
+    return c.reduce((a, b) => (b.w * b.h < a.w * a.h
+      || (b.w * b.h === a.w * a.h && b.id < a.id) ? b : a));
+  }
+
+  /* Le cadre autour de la bulle, en pixels master : trois fois sa taille, et jamais moins
+     d'un quart de la largeur ni d'un huitième de la hauteur de la planche, pour qu'on la
+     voie dans sa case ; centré sur elle, ramené dans la planche. */
+  function cadreAutour(r, W, H) {
+    if (!r || !(W > 0) || !(H > 0)) return null;
+    const w = Math.min(W, Math.max(3 * r.w, W / 4)), h = Math.min(H, Math.max(3 * r.h, H / 8));
+    const x = Math.max(0, Math.min(W - w, r.x + r.w / 2 - w / 2));
+    const y = Math.max(0, Math.min(H - h, r.y + r.h / 2 - h / 2));
+    return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+  }
+
+  /* La vue de l'Atelier qui montre ce cadre au milieu de la scène : `{ zoom, tx, ty }` —
+     le zoom porte sur le dérivé (`webScale` = sa largeur / la largeur master) —, bornée
+     comme le zoom de l'Atelier. */
+  function vueCadree(cadre, scene, webScale, zoomMax) {
+    if (!cadre || !scene || !(scene.w > 0) || !(scene.h > 0) || !(webScale > 0)) return null;
+    const z = Math.min(zoomMax || 8, Math.max(0.02, Math.min(scene.w / (cadre.w * webScale),
+                                                             scene.h / (cadre.h * webScale))));
+    return { zoom: z,
+             tx: scene.w / 2 - (cadre.x + cadre.w / 2) * webScale * z,
+             ty: scene.h / 2 - (cadre.y + cadre.h / 2) * webScale * z };
+  }
+
+  /* Le guide traverse les pages, comme la visite : qu'il est ouvert, et les étapes vues,
+     vivent dans le stockage de SESSION, sous le login et le bac à sable qui l'ont ouvert.
+     Un autre onglet, ou le lendemain, le rouvre par « Par où commencer ». */
+  const CLE_GUIDE = "bd-wizard-guide";
+  const VUES = ETAPES.filter((e) => e.dite || e.k === "corpus").map((e) => e.k);
+
+  function guideNeuf() { return { actif: false, vues: [] }; }
+
+  function normaliserGuide(g) {
+    if (!g || typeof g !== "object") return guideNeuf();
+    const vues = liste(g.vues).filter((k, i, t) => VUES.includes(k) && t.indexOf(k) === i);
+    return { actif: g.actif === true, vues };
+  }
+
+  function lireGuide(login, bac, depuis) {
+    if (!login || !bac || !Number.isInteger(bac.id)) return guideNeuf();
+    const s = depuis === undefined ? stockageSession() : depuis;
+    try {
+      const g = s ? JSON.parse(s.getItem(CLE_GUIDE) || "null") : null;
+      if (!g || g.login !== login || !memeBac(g, bac)) return guideNeuf();
+      return normaliserGuide(g);
+    } catch (e) { return guideNeuf(); }
+  }
+
+  function retenirGuide(login, bac, guide, dans) {
+    if (!login || !bac || !Number.isInteger(bac.id)) return false;
+    const s = dans === undefined ? stockageSession() : dans;
+    try {
+      if (!s) return false;
+      const n = normaliserGuide(guide);
+      s.setItem(CLE_GUIDE, JSON.stringify({ login, bac: bac.id, efface_le: bac.efface_le || null,
+                                            actif: n.actif, vues: n.vues }));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* Une étape vue, ajoutée sans doublon — un nouvel objet. */
+  function marquerVue(guide, k) {
+    const n = normaliserGuide(guide);
+    return normaliserGuide({ actif: n.actif, vues: n.vues.concat([k]) });
+  }
+
+  /* Le guide s'ouvre sur la page de son étape : sa surface, et l'album et la planche que
+     son adresse nomme (`recherche` : la chaîne de l'adresse où l'on est). Le mode n'en est
+     pas : un mode changé à la main ne fait pas disparaître le guide. */
+  function etapeIci(e, chemin, recherche, vue) {
+    const c = String(chemin || "").replace(/\/+$/, "") || "/";
+    if (!e || e.surface !== c) return false;
+    const voulu = new URLSearchParams(adresseEtape(e, vue).split("?")[1] || "");
+    const ici = new URLSearchParams(recherche || "");
+    return ["album", "planche"].every((k) => !voulu.has(k) || ici.get(k) === voulu.get(k));
+  }
+
+  /* Les marques que les étapes nomment, `[{ etape, surface, marque }]` : le test vérifie
+     que la visite les nomme aussi, sur la même surface — une marque n'existe que pour elle,
+     et c'est sa liste que `tests/test_wizard_marques.py` confronte aux gabarits. */
+  function marquesDesEtapes() {
+    const out = [];
+    ETAPES.forEach((e) => liste(e.zones).forEach((m) => out.push(
+      { etape: e.k, surface: e.surface, marque: m })));
+    return out;
+  }
+
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
            typo, moteurs, textePage, etapes, albumDuParcours, phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,
            CLE_VISITE, tempsDe, position, suivant, precedent, estFin, compteVisite, cote,
            reperes, phrasePage, bacDuProjet, tempsVisibles, pageDeLaSurface, adresseVisite, retenirVisite, lireVisite,
-           oublierVisite };
+           oublierVisite, marquePage,
+           faite, phraseGuide, boutonGuide, bulleACorriger, cadreAutour, vueCadree, PHRASES,
+           CLE_GUIDE, guideNeuf, lireGuide, retenirGuide, marquerVue, etapeIci,
+           marquesDesEtapes };
 });

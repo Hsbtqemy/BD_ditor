@@ -34,9 +34,12 @@
   "use strict";
   const W = window.BDWizard, B = window.BDBacEcran;
   if (!W || !B) return;
+  // L'adresse d'arrivée, lue avant le script de la surface : l'Atelier réécrit la sienne
+  // pendant qu'il charge (`syncUrl`), et le guide doit savoir sur quelle planche on arrive.
+  const ADRESSE_D_ARRIVEE = location.search;
 
-  const S = { E: null, login: null, bac: null, souvenir: W.neuf(), moteurs: null,
-              mode: "album", page: 0 };
+  const S = { E: null, login: null, bac: null, souvenir: W.neuf(), guide: W.guideNeuf(),
+              moteurs: null, mode: "album", page: 0 };
   let voile = null, boite = null;
 
   function el(tag, cls, txt) {
@@ -59,6 +62,12 @@
     S.login = (E && E.moi && E.moi.utilisateur) || null;
     S.bac = W.bacASoi(E && E.courant);
     S.souvenir = W.lireSouvenir(S.login, S.bac);
+    S.guide = W.lireGuide(S.login, S.bac);
+  }
+
+  function retenirLeGuide(guide) {
+    S.guide = guide;
+    W.retenirGuide(S.login, S.bac, guide);
   }
 
   function vue() {
@@ -104,17 +113,22 @@
       || document.querySelector("main");
   }
 
-  function fermer() {
+  /* `reprendre` : la carte fermée rend la place au guide, s'il est ouvert et que son étape
+     est sur cette page. Faux quand un autre geste prend la suite (la visite, une étape). */
+  function fermer(reprendre = true) {
     if (!voile || voile.hidden) return;
+    const carte = S.mode === "carte";
     voile.hidden = true;
     const b = document.getElementById("bac-commencer");
     if (b) b.setAttribute("aria-expanded", "false");
+    if (reprendre && carte) reprendreLeGuide();
   }
 
   async function ouvrir(mode) {
     // L'album et la carte prennent la place de la fenêtre sur la zone : jamais les deux.
     fermerFenetre(false);
     await lireMoteurs();
+    if (mode === "carte") await lireDonnees();
     dialogue();
     S.mode = mode;
     S.page = 0;
@@ -122,6 +136,9 @@
     voile.hidden = false;
     const b = document.getElementById("bac-commencer");
     if (b) b.setAttribute("aria-expanded", "true");
+    // La carte s'ouvre sur l'étape où l'on est.
+    const a = mode === "carte" && boite.querySelector('.wizard-etapes li[aria-current="step"] a');
+    if (a) a.focus();
   }
 
   function dessiner(focus) {
@@ -213,7 +230,10 @@
       const num = el("span", "wizard-num", String(i + 1));
       num.setAttribute("aria-hidden", "true");
       txt.appendChild(num);
-      txt.appendChild(el("h3", null, W.typo(p.titre)));
+      const h3 = el("h3", null, W.typo(p.titre));
+      const marque = W.marquePage(p, S.moteurs);
+      if (marque) h3.appendChild(el("span", "wizard-marque", marque));
+      txt.appendChild(h3);
       txt.appendChild(el("p", null, W.textePage(p, S.moteurs)));
       page.appendChild(txt);
     } else {
@@ -296,7 +316,7 @@
      passe. */
   function choisir(parcours) {
     retenir(W.choisirParcours(S.souvenir, parcours));
-    fermer();
+    fermer(false);
     commencerVisite({ page: 0, temps: 0 });
   }
 
@@ -319,8 +339,18 @@
       const corps = el("div", "wizard-etape");
       const a = el("a", "wizard-lien", W.typo(e.titre));
       a.href = W.adresseEtape(e, v);
-      a.addEventListener("click", () => retenir(W.allerA(S.souvenir, i)));
+      a.addEventListener("click", (ev) => {
+        retenir(W.allerA(S.souvenir, i));
+        retenirLeGuide({ actif: true, vues: S.guide.vues });
+        // Déjà sur la page de l'étape : le guide s'ouvre sans recharger.
+        if (memePage(a.getAttribute("href"))) {
+          ev.preventDefault();
+          fermer(false);
+          ouvrirLeGuide();
+        }
+      });
       corps.appendChild(a);
+      if (W.faite(e, G.d, s.parcours)) corps.appendChild(el("span", "wizard-fait", "✓ fait"));
       const marque = W.marqueEtape(e, S.moteurs);
       if (marque) corps.appendChild(el("span", "wizard-marque", marque));
       corps.appendChild(el("span", "muted small", ` · ${W.typo(e.ou)}`));
@@ -338,7 +368,7 @@
     });
     act.appendChild(changer);
     const visite = bouton("ghost small", "Revoir la visite", "wizard-revoir-visite");
-    visite.addEventListener("click", () => { fermer(); commencerVisite({ page: 0, temps: 0 }); });
+    visite.addEventListener("click", () => { fermer(false); commencerVisite({ page: 0, temps: 0 }); });
     act.appendChild(visite);
     const revoir = bouton("ghost small", "Revoir la présentation", "wizard-revoir");
     revoir.addEventListener("click", () => { S.mode = "album"; S.page = 0; dessiner("#wizard-suiv"); });
@@ -421,6 +451,16 @@
   /* Les repères du temps affiché, et la page qu'ils décrivent. */
   function reperesDuTemps() {
     return W.reperes(F.pos.page, F.pos.temps, voit, W.bacDuProjet(S.E && S.E.courant));
+  }
+
+  /* Les zones jouables de la fenêtre : les repères du temps pour la visite et le « ? » ;
+     pour le guide, les zones de l'étape qui se voient, sans numéro (elles ne sont pas une
+     liste à lire, mais l'endroit du geste). */
+  function zonesActives() {
+    if (F.mode !== "etape") return reperesDuTemps();
+    const e = etapeCourante();
+    if (G.fin || !e) return [];
+    return (e.zones || []).filter(voit).map((m) => ({ marque: m, n: null }));
   }
 
   function dessinerFenetre(focus) {
@@ -520,7 +560,7 @@
      avait déjà rendu inerte n'est ni compté ni rendu. */
   function gardes() {
     const k = [foyer];
-    reperesDuTemps().forEach((r) => k.push(...zonesDe(r.marque)));
+    zonesActives().forEach((r) => k.push(...zonesDe(r.marque)));
     const toasts = document.getElementById("toasts");
     if (toasts) k.push(toasts);
     document.querySelectorAll('[aria-modal="true"]').forEach((d) => {
@@ -567,7 +607,9 @@
                                  x: 0, y: 0, width: W0, height: H0 });
     masque.appendChild(svg("rect", { x: 0, y: 0, width: W0, height: H0, fill: "#fff" }));
     const trous = [];
-    reperesDuTemps().forEach((r) => {
+    const trou = (t) => masque.appendChild(svg("rect", { x: t.l, y: t.t, width: t.r - t.l,
+                                                         height: t.b - t.t, rx: 6, fill: "#000" }));
+    zonesActives().forEach((r) => {
       const els = zonesDe(r.marque);
       if (!els.length) return;
       // Le trou ne déborde pas de la fenêtre du navigateur : une zone de toute la largeur
@@ -577,8 +619,12 @@
                   r: Math.min(q.r + m, W0), b: Math.min(q.b + m, H0), rep: r };
       if (t.r - t.l < 1 || t.b - t.t < 1) return;
       trous.push(t);
-      masque.appendChild(svg("rect", { x: t.l, y: t.t, width: t.r - t.l, height: t.b - t.t,
-                                       rx: 6, fill: "#000" }));
+      trou(t);
+      // Un menu ouvert depuis la zone (« Aa », « Traitement ») déborde d'elle : il se lit
+      // en clair, comme elle (`pilotage/UX-6.md`, choix de la tranche 2).
+      menusOuverts(els).forEach((q) => trou({ l: Math.max(q.left - m, 0), t: Math.max(q.top - m, 0),
+                                              r: Math.min(q.right + m, W0),
+                                              b: Math.min(q.bottom + m, H0) }));
     });
     defs.appendChild(masque);
     voileSvg.appendChild(defs);
@@ -589,6 +635,7 @@
       voileSvg.appendChild(svg("rect", {
         class: "wf-cadre" + (t.rep.marque === F.choisie ? " ici" : ""),
         x: t.l, y: t.t, width: t.r - t.l, height: t.b - t.t, rx: 6 }));
+      if (t.rep.n == null) return;   // les zones du guide n'ont pas de numéro
       const cx = Math.max(t.l, rayon + 2), cy = Math.max(t.t, rayon + 2);
       const g = svg("g", { class: "wf-pastille" });
       g.appendChild(svg("circle", { cx, cy, r: rayon }));
@@ -606,12 +653,13 @@
   function mettreAJour() {
     F.attente = 0;
     if (!F.mode || !foyer) return;
-    const cle = reperesDuTemps().map((r) => r.marque).join(" ");
+    if (F.mode === "etape") noterLaFiche();
+    const cle = zonesActives().map((r) => r.marque).join(" ");
     if (cle !== F.cle) {
       const a = document.activeElement;
       const garde = a && fenetre.contains(a) ? (a.id ? `#${a.id}`
         : a.dataset.zone ? `[data-zone="${a.dataset.zone}"]` : null) : null;
-      dessinerFenetre(garde);
+      if (F.mode === "etape") dessinerEtape(garde); else dessinerFenetre(garde);
     }
     dessinerVoile();
     appliquerInert();
@@ -655,7 +703,7 @@
     F.declencheur = declencheur || null;
     F.temps = mode === "plan" ? W.tempsVisibles(pos.page, voit) : [];
     foyer.hidden = false;
-    dessinerFenetre();
+    if (mode === "etape") dessinerEtape(); else dessinerFenetre();
     dessinerVoile();
     appliquerInert();
     observer();
@@ -671,6 +719,8 @@
   function fermerFenetre(rendre) {
     if (!F.mode) return;
     const visite = F.mode === "visite", decl = F.declencheur;
+    if (F.mode === "etape") sortirDuCadrage();
+    G.fin = false;
     cesserDObserver();
     rendreInert();
     F.mode = null;
@@ -720,13 +770,16 @@
   }
 
   /* Au bout de la visite, ou passée : la carte, le focus sur l'étape où l'on est. */
+  /* Au bout de la visite, ou passée : les gestes (la maquette, « vis-fin ») — le guide sur
+     l'étape où l'on est, sur sa page. */
   function finirVisite() {
     fermerFenetre(false);
     relire();
-    ouvrir("carte").then(() => {
-      const a = boite && boite.querySelector('.wizard-etapes li[aria-current="step"] a');
-      if (a) a.focus();
-    });
+    retenirLeGuide({ actif: true, vues: S.guide.vues });
+    const e = etapeCourante();
+    if (!e) { ouvrir("carte"); return; }
+    const adresse = W.adresseEtape(e, vue());
+    if (memePage(adresse)) ouvrirLeGuide(); else location.assign(adresse);
   }
 
   /* Le « ? » : les repères de la page où l'on est, sans rien y changer. */
@@ -755,6 +808,7 @@
     const b = ev.target.closest("[data-geste]");
     if (!b || b.disabled) return;
     const g = b.dataset.geste;
+    if (gesteDuGuide(g)) return;
     if (g === "fermer") fermerFenetre();
     else if (g === "suiv") allerVisite(W.suivant(F.pos), "#wizard-visite-suiv");
     else if (g === "prec") allerVisite(W.precedent(F.pos), "#wizard-visite-prec");
@@ -773,15 +827,280 @@
      change de mode à une lettre et de zone aux flèches. Échap la ferme. */
   function clavierFenetre(ev) {
     ev.stopPropagation();
-    if (ev.key === "Escape") { ev.preventDefault(); fermerFenetre(); }
+    if (ev.key === "Escape") { ev.preventDefault(); echap(); }
+  }
+
+  /* Échap ferme la fenêtre ; dans le guide, c'est « Quitter » (✕). */
+  function echap() {
+    if (F.mode === "etape") quitterLeGuide(); else fermerFenetre();
   }
 
   // Échap quand le focus est perdu sur la page (un élément gardé qu'un rendu a remplacé).
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape" || !F.mode) return;
     const a = document.activeElement;
-    if (!a || a === document.body) fermerFenetre();
+    if (!a || a === document.body) echap();
   });
+
+  /* ── Le guide, étape par étape ───────────────────────────────────────────────────────
+     Après la visite, la même fenêtre guide les GESTES, un par étape du parcours choisi (Hugo,
+     2026-11-02, déroulé 4) : posée à côté des zones de l'étape — le reste assombri et
+     `inert`, les zones jouables —, sur la page où le geste se fait. Une étape faite se voit
+     sur la planche, sans coche à déclarer (décision C) : le guide relit la planche du
+     parcours après chaque écriture de la page, la marque « ✓ Fait » et fait de « Suivant »
+     son geste principal ; il ne passe pas seul à l'étape suivante. Ce qui compte comme fait
+     est écrit dans `lib/wizard.js` (`faite`).
+
+     Il vit dans l'onglet (`BDWizard.retenirGuide`, stockage de session) : ouvert, il se
+     rouvre sur la page de son étape ; ailleurs, il attend. ✕ ou Échap le quittent, « Par où
+     commencer » le rouvre par la carte, qui le reprend là où on était. ☰ ouvre la carte.
+
+     « Corriger le découpage » : l'Atelier cadre seul (`BDAtelierVue.cadrer`) — la planche se
+     rapproche de la bulle à corriger en entrant dans l'étape, et revient à la planche
+     entière en sortant (`BDAtelierVue.toutVoir`). */
+  const G = { d: null, lecture: 0, attente: 0, cadree: false, fin: false, vue: null,
+              annoncee: null };
+
+  function annoncer(texte) {
+    let z = document.getElementById("wizard-annonce");
+    if (!z) {
+      z = el("p", "sr-only");
+      z.id = "wizard-annonce";
+      z.setAttribute("aria-live", "polite");
+      (foyer || document.body).appendChild(z);
+    }
+    z.textContent = "";
+    setTimeout(() => { z.textContent = texte; }, 50);
+  }
+
+  function etapeCourante() {
+    const l = W.etapes(S.souvenir.parcours);
+    return l[S.souvenir.etape] || null;
+  }
+
+  /* L'adresse d'une étape est-elle la page où l'on est ? Même chemin, et chaque paramètre
+     qu'elle nomme a ici la même valeur — l'Atelier ajoute les siens (la zone choisie). */
+  function memePage(adresse) {
+    let u;
+    try { u = new URL(adresse, location.href); } catch (e) { return false; }
+    if ((u.pathname.replace(/\/+$/, "") || "/") !== chemin()) return false;
+    const ici = new URLSearchParams(location.search);
+    for (const [k, v] of u.searchParams) if (ici.get(k) !== v) return false;
+    return true;
+  }
+
+  /* Ce que le guide lit pour dire une étape faite : la planche du parcours (ses régions,
+     ses relevés) et la ligne de son album. Une lecture refusée laisse sa part vide. La plus
+     récente l'emporte. */
+  async function lireDonnees() {
+    const a = W.albumDuParcours(vue());
+    const n = ++G.lecture;
+    const d = { regions: [], releves: [], album: null, vues: S.guide.vues };
+    if (a) {
+      const pid = a.planche_ids[0];
+      const [regions, releves, albums] = await Promise.all([
+        apiGet(`/api/planches/${pid}/regions`).catch(() => null),
+        apiGet(`/api/planches/${pid}/releves`).catch(() => null),
+        apiGet("/api/albums").catch(() => null)]);
+      d.regions = Array.isArray(regions) ? regions : [];
+      d.releves = releves && Array.isArray(releves.releves) ? releves.releves : [];
+      d.album = Array.isArray(albums) ? albums.find((x) => x.id === a.album_id) || null : null;
+    }
+    if (n === G.lecture) G.d = d;
+    return G.d;
+  }
+
+  /* Chaque écriture de la page — un tracé, un cadre repris, un texte, un relevé, la
+     notice — fait relire la planche, une fois les écritures d'une rafale passées. */
+  function relireBientot() {
+    if (F.mode !== "etape") return;
+    clearTimeout(G.attente);
+    G.attente = setTimeout(async () => {
+      if (F.mode !== "etape") return;
+      await lireDonnees();
+      if (F.mode === "etape") dessinerEtape(focusGarde());
+    }, 400);
+  }
+
+  (function ecouterLesEcritures() {
+    const envoyer = window.apiSend;
+    if (typeof envoyer !== "function") return;
+    window.apiSend = async function (...args) {
+      const r = await envoyer.apply(this, args);
+      relireBientot();
+      return r;
+    };
+  })();
+
+  function focusGarde() {
+    const a = document.activeElement;
+    return a && fenetre && fenetre.contains(a) && a.id ? `#${a.id}` : null;
+  }
+
+  /* « Constituer le corpus » : la fiche de l'album du parcours s'ouvre dans la
+     Bibliothèque — son adresse le nomme. Lu à chaque mise à jour de la fenêtre. */
+  function noterLaFiche() {
+    const e = etapeCourante(), a = W.albumDuParcours(vue());
+    if (!e || e.k !== "corpus" || !a || chemin() !== "/corpus") return;
+    if (new URLSearchParams(location.search).get("album") !== String(a.album_id)) return;
+    if (S.guide.vues.includes("corpus")) return;
+    retenirLeGuide(W.marquerVue(S.guide, "corpus"));
+    if (G.d) G.d = Object.assign({}, G.d, { vues: S.guide.vues });
+    dessinerEtape(focusGarde());
+  }
+
+  function dessinerEtape(focus) {
+    const s = S.souvenir, liste = W.etapes(s.parcours), i = s.etape, e = liste[i];
+    const d = Object.assign({}, G.d || {}, { vues: S.guide.vues });
+    fenetre.innerHTML = "";
+    fenetre.classList.add("gauche");
+    fenetre.setAttribute("aria-label", "Le parcours");
+    const h = el("h2", "wf-titre");
+    h.id = "wizard-fenetre-titre";
+    h.tabIndex = -1;
+    const act = el("div", "wf-actions");
+    const quitter = bouton("ghost small", "Fermer ✕", "wizard-guide-quitter");
+    quitter.dataset.geste = "guide-quitter";
+    if (G.fin || !e) {
+      h.textContent = "Parcours terminé";
+      fenetre.appendChild(h);
+      fenetre.appendChild(el("p", "wf-phrase", W.typo(
+        "Continuez sur une autre planche : rien ne vous guide, rien ne se perd avant lundi.")));
+      act.appendChild(quitter);
+      fenetre.appendChild(act);
+      F.cle = "";
+    } else {
+      const tete = el("div", "wf-tete");
+      const compte = el("span", "wf-compte", `${i + 1} / ${liste.length}`);
+      compte.id = "wizard-guide-compte";
+      tete.appendChild(compte);
+      const barre = el("span", "wf-barre");
+      barre.setAttribute("aria-hidden", "true");
+      liste.forEach((x, j) => barre.appendChild(
+        el("i", W.faite(x, d, s.parcours) ? "ok" : j === i ? "ici" : null)));
+      tete.appendChild(barre);
+      fenetre.appendChild(tete);
+      h.textContent = W.typo(e.titre);
+      const marque = W.marqueEtape(e, S.moteurs);
+      if (marque) h.appendChild(el("span", "wizard-marque", marque));
+      fenetre.appendChild(h);
+      fenetre.appendChild(el("p", "wf-phrase", W.phraseGuide(e, vue(), S.moteurs, d, s.parcours)));
+      const estFaite = W.faite(e, d, s.parcours);
+      const fait = el("p", "wf-fait", estFaite ? "✓ Fait" : "");
+      fait.id = "wizard-guide-fait";
+      fenetre.appendChild(fait);
+      // Une étape qui DEVIENT faite s'annonce, dans une région qui ne se redessine pas.
+      const cle = `${s.parcours}:${i}`;
+      if (estFaite && G.annoncee !== cle && G.vue === cle) annoncer(`${W.typo(e.titre)} : fait.`);
+      if (estFaite) G.annoncee = cle;
+      G.vue = cle;
+      const prec = bouton("ghost small", "←", "wizard-guide-prec");
+      prec.setAttribute("aria-label", "Étape précédente");
+      prec.disabled = i === 0;
+      prec.dataset.geste = "guide-prec";
+      const carte = bouton("ghost small", "☰", "wizard-guide-carte");
+      carte.setAttribute("aria-label", "Toutes les étapes");
+      carte.title = "Toutes les étapes";
+      carte.dataset.geste = "guide-carte";
+      quitter.textContent = "✕";
+      quitter.setAttribute("aria-label", "Quitter le parcours");
+      quitter.title = "Quitter : « Par où commencer » le rouvre";
+      const b = W.boutonGuide(e, d, S.moteurs, s.parcours, i === liste.length - 1);
+      const suiv = bouton(`${b.principal ? "primary" : "ghost"} small`, b.texte, "wizard-guide-suiv");
+      suiv.dataset.geste = "guide-suiv";
+      [prec, carte, quitter, suiv].forEach((x) => act.appendChild(x));
+      fenetre.appendChild(act);
+      F.cle = zonesActives().map((r) => r.marque).join(" ");
+    }
+    let f = focus ? fenetre.querySelector(focus) : null;
+    if (focus && (!f || f.disabled)) f = h;
+    if (f) f.focus({ preventScroll: true });
+  }
+
+  /* Ouvrir le guide sur l'étape où l'on est, sur cette page : lire la planche, dessiner,
+     puis — pour « Corriger » — cadrer la bulle. Une étape dite est vue dès qu'elle s'affiche. */
+  async function ouvrirLeGuide(recherche = location.search) {
+    const e = etapeCourante();
+    if (!e || !W.etapeIci(e, chemin(), recherche, vue())) return;
+    fermerFenetre(false);
+    G.fin = false;
+    if (e.dite) retenirLeGuide(W.marquerVue(S.guide, e.k));
+    await lireMoteurs();
+    await lireDonnees();
+    ouvrirFenetre("etape", null, null);
+    entrerDansLeCadrage();
+  }
+
+  /* La carte fermée, ou une page qui se charge : le guide reprend s'il est ouvert. */
+  async function reprendreLeGuide(recherche = location.search) {
+    relire();
+    if (!S.guide.actif || !S.souvenir.parcours || F.mode) return;
+    const e = etapeCourante();
+    if (e && W.etapeIci(e, chemin(), recherche, vue())) await ouvrirLeGuide(recherche);
+  }
+
+  /* Aller à l'étape `i` du parcours : sur cette page, la fenêtre se redessine ; ailleurs,
+     on y va, et la page suivante rouvre le guide. */
+  async function allerEtape(i, focus) {
+    sortirDuCadrage();
+    retenir(W.allerA(S.souvenir, i));
+    const e = etapeCourante();
+    if (!e) return;
+    const adresse = W.adresseEtape(e, vue());
+    if (!memePage(adresse)) { location.assign(adresse); return; }
+    if (e.dite) retenirLeGuide(W.marquerVue(S.guide, e.k));
+    await lireDonnees();
+    if (F.mode !== "etape") return;
+    dessinerEtape(focus);
+    mettreAJour();
+    entrerDansLeCadrage();
+  }
+
+  function quitterLeGuide() {
+    retenirLeGuide({ actif: false, vues: S.guide.vues });
+    fermerFenetre();
+  }
+
+  function gesteDuGuide(g) {
+    if (F.mode !== "etape" || !/^guide-/.test(g)) return false;
+    const l = W.etapes(S.souvenir.parcours), i = S.souvenir.etape;
+    if (g === "guide-quitter") quitterLeGuide();
+    else if (g === "guide-carte") ouvrir("carte");
+    else if (g === "guide-prec" && i > 0) allerEtape(i - 1, "#wizard-guide-prec");
+    else if (g === "guide-suiv") {
+      if (i + 1 < l.length) allerEtape(i + 1, "#wizard-guide-suiv");
+      else { sortirDuCadrage(); G.fin = true; dessinerEtape("#wizard-guide-quitter"); mettreAJour(); }
+    }
+    return true;
+  }
+
+  /* « Corriger » : l'Atelier se rapproche de la bulle à corriger, si l'étape n'est pas
+     déjà faite et que la planche du parcours est celle qu'il montre. */
+  function entrerDansLeCadrage() {
+    const e = etapeCourante(), a = W.albumDuParcours(vue());
+    if (!e || e.k !== "decoupage" || chemin() !== "/" || !window.BDAtelierVue || !a) return;
+    if (W.faite(e, G.d, S.souvenir.parcours)) return;
+    const b = W.bulleACorriger(G.d && G.d.regions);
+    if (!b) return;
+    G.cadree = true;
+    window.BDAtelierVue.cadrer(a.planche_ids[0], b.id);
+  }
+
+  function sortirDuCadrage() {
+    if (!G.cadree) return;
+    G.cadree = false;
+    if (window.BDAtelierVue) window.BDAtelierVue.toutVoir();
+  }
+
+  /* Un menu ouvert depuis une zone : sa liste déborde d'elle. */
+  function menusOuverts(els) {
+    const out = [];
+    els.forEach((e) => e.querySelectorAll(".dropdown-menu, .display-panel").forEach((m) => {
+      const r = m.getBoundingClientRect();
+      if (r.width >= 1 && r.height >= 1 && getComputedStyle(m).visibility !== "hidden") out.push(r);
+    }));
+    return out;
+  }
 
   /* ── « Par où commencer », dans la ligne du bac à sable ──────────────────────────── */
   function poserLeBouton() {
@@ -816,6 +1135,9 @@
         if (enCours) W.oublierVisite();
         if (window.BD_SANS_WIZARD !== true && W.ouvreSeul(S.login, S.E.courant, S.souvenir)) {
           await ouvrir("album");
+        } else {
+          // Le guide ouvert dans cet onglet reprend sur la page de son étape.
+          await reprendreLeGuide(ADRESSE_D_ARRIVEE);
         }
       }
     } finally {

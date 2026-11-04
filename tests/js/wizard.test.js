@@ -348,10 +348,15 @@ test("les repères ne nomment que ce que la page montre, numérotés sans trou",
   assert.deepEqual(tout.map((r) => [r.marque, r.n]),
                    [["atelier-planches", 1], ["atelier-modes", 2], ["atelier-planche", 3]]);
   assert.deepEqual(W.reperes(ATELIER, 1).map((r) => [r.marque, r.n]),
+                   [["atelier-structure", 4], ["atelier-actions", 5],
+                    ["atelier-transcription", 6]]);
+  // La Transcription ne se voit qu'en son mode, qui recouvre la page.
+  const horsTranscription = (m) => m !== "atelier-transcription";
+  assert.deepEqual(W.reperes(ATELIER, 1, horsTranscription).map((r) => [r.marque, r.n]),
                    [["atelier-structure", 4], ["atelier-actions", 5]]);
   // Le panneau de structure n'est pas visible (un tiroir fermé) : il n'est pas nommé, et
   // la suite reprend à 4.
-  const sauf = (m) => m !== "atelier-structure";
+  const sauf = (m) => m !== "atelier-structure" && m !== "atelier-transcription";
   assert.deepEqual(W.reperes(ATELIER, 1, sauf).map((r) => [r.marque, r.n]),
                    [["atelier-actions", 4]]);
   assert.deepEqual(W.reperes(ATELIER, 0, () => false), []);
@@ -409,4 +414,182 @@ test("la visite en cours se relit sous le même login et le même bac à sable, 
   assert.equal(W.lireVisite("camille", BAC, HOSTILE), null);
   assert.doesNotThrow(() => W.oublierVisite(HOSTILE));
   assert.equal(W.lireVisite("camille", BAC, memoire({ [W.CLE_VISITE]: "{pas du json" })), null);
+});
+
+/* ── Le guide, étape par étape (tranche 3) ────────────────────────────────────────────── */
+
+const etape = (k) => W.ETAPES.find((e) => e.k === k);
+/* La planche d'un bac à sable NEUF : ce que le jeu a posé, rien d'autre. */
+const JEU = [
+  { id: 1, type: "case", source: "jeu", touche: 0, x: 14, y: 971, w: 293, h: 308 },
+  { id: 4, type: "bulle", source: "jeu", touche: 0, x: 26, y: 971, w: 100, h: 26 },
+  { id: 6, type: "bulle", source: "jeu", touche: 0, x: 146, y: 972, w: 72, h: 25 },
+  { id: 7, type: "cartouche", source: "jeu", touche: 0, x: 634, y: 1230, w: 320, h: 50 },
+];
+const avec = (...ajouts) => JEU.map((r) => ({ ...r })).concat(ajouts);
+const change = (id, champs) => JEU.map((r) => (r.id === id ? { ...r, ...champs } : { ...r }));
+
+test("un bac à sable neuf n'a aucune étape faite", () => {
+  const d = { regions: avec(), releves: [], album: { source_numerisation: null }, vues: [] };
+  for (const p of ["rapide", "complet"]) {
+    for (const e of W.etapes(p)) assert.equal(W.faite(e, d, p), false, `${p} · ${e.k}`);
+  }
+  // Rien de lu : rien de fait.
+  for (const e of W.ETAPES) assert.equal(W.faite(e, null, "complet"), false, e.k);
+  assert.equal(W.faite(null, {}, "rapide"), false);
+});
+
+test("chaque étape se lit faite sur ce que la planche porte", () => {
+  const f = (k, d, p = "complet") => W.faite(etape(k), d, p);
+  // Constituer : la fiche de l'album ouverte ; décrire : une source de numérisation.
+  assert.equal(f("corpus", { vues: ["corpus"] }), true);
+  assert.equal(f("decrire", { album: { source_numerisation: "  " } }), false);
+  assert.equal(f("decrire", { album: { source_numerisation: "Epson V850, 600 dpi" } }), true);
+  // Pré-remplir : une zone née d'un moteur, ou un texte qu'aucune main n'a écrit.
+  assert.equal(f("preremplir", { regions: avec({ id: 9, type: "case", source: "kumiko",
+                                                 activite_id: 3 }) }), true);
+  assert.equal(f("preremplir", { regions: change(4, { ocr_texte: "On arrive !" }) }), true);
+  assert.equal(f("preremplir", { regions: change(4, { ocr_texte: "On arrive !", touche: 1 }) }),
+               false);
+  // Tracer : une case ET une bulle, à la main.
+  const caseMain = { id: 20, type: "case", source: "manuel", touche: 0 };
+  const bulleMain = { id: 21, type: "bulle", source: "manuel", touche: 0 };
+  assert.equal(f("tracer", { regions: avec(caseMain) }), false);
+  assert.equal(f("tracer", { regions: avec(bulleMain) }), false);
+  assert.equal(f("tracer", { regions: avec(caseMain, bulleMain) }), true);
+  // Corriger : un cadre du jeu repris à la main ; une zone tracée ne compte pas.
+  assert.equal(f("decoupage", { regions: avec(caseMain) }), false);
+  assert.equal(f("decoupage", { regions: change(6, { source: "corrige", w: 115, touche: 1 }) }),
+               true);
+  // Annoter : un relevé, sur une zone ou sur la planche.
+  assert.equal(f("annoter", { releves: [{ id: 1, planche_id: 5, region_id: null }] }), true);
+  // Les étapes dites : faites une fois montrées.
+  assert.equal(f("chercher", { vues: ["chercher"] }), true);
+  assert.equal(f("exporter", { vues: ["chercher"] }), false);
+  assert.equal(f("exporter", { vues: ["exporter"] }), true);
+});
+
+test("transcrire : un texte de la main suffit au parcours rapide, tous au complet", () => {
+  const f = (d, p) => W.faite(etape("transcrire"), d, p);
+  const une = change(4, { ocr_texte: "On arrive !", touche: 1 });
+  assert.equal(f({ regions: une }, "rapide"), true);
+  assert.equal(f({ regions: une }, "complet"), false);
+  // Un texte de l'OCR ne suffit pas : il faut une main.
+  const ocr = JEU.map((r) => (r.type === "case" ? { ...r } : { ...r, ocr_texte: "LU" }));
+  assert.equal(f({ regions: ocr }, "rapide"), false);
+  const tout = ocr.map((r) => (r.id === 6 ? { ...r, ocr_texte: "Pas trop tôt !", touche: 1 } : r));
+  assert.equal(f({ regions: tout }, "complet"), true);
+  // Un cadre seulement corrigé, sans texte, n'est pas une transcription.
+  assert.equal(f({ regions: change(6, { touche: 1, source: "corrige" }) }, "rapide"), false);
+});
+
+test("la phrase du guide suit ce qui reste à tracer, et ce que permet un cadre repris", () => {
+  const p = (k, d) => W.phraseGuide(etape(k), VUE, { aucun: false, ocr: true }, d, "rapide");
+  const T = (s) => W.typo(s);
+  assert.equal(p("tracer", { regions: avec() }), T(W.PHRASES.tracerJeu));
+  // Sans région du jeu sur la planche, la phrase de l'étape.
+  assert.equal(p("tracer", { regions: [] }), W.phraseEtape(etape("tracer"), VUE, null));
+  assert.equal(p("tracer", { regions: avec({ id: 20, type: "case", source: "manuel" }) }),
+               T(W.PHRASES.tracerBulle));
+  assert.equal(p("tracer", { regions: avec({ id: 20, type: "case", source: "manuel" },
+                                           { id: 21, type: "bulle", source: "manuel" }) }),
+               T(W.PHRASES.tracerFait));
+  assert.equal(p("decoupage", { regions: avec() }), W.phraseEtape(etape("decoupage"), VUE, null));
+  assert.equal(p("decoupage", { regions: change(6, { source: "corrige" }) }),
+               T(W.PHRASES.decoupageFait));
+  // Sans OCR, « Pré-remplir » dit qu'il n'y a pas de moteur.
+  assert.equal(W.phraseGuide(etape("preremplir"), VUE, { aucun: true, ocr: false }, {}, "complet"),
+               W.typo(etape("preremplir").sansMoteur));
+});
+
+test("le bouton du guide : « Suivant » quand c'est fait, dit ou optionnel ici, sinon « Passer »", () => {
+  const m = { aucun: false, ocr: true }, sans = { aucun: true, ocr: false };
+  const b = (k, d, mo = m, der = false) => W.boutonGuide(etape(k), d, mo, "complet", der);
+  assert.deepEqual(b("tracer", { regions: avec() }), { texte: "Passer →", principal: false });
+  assert.deepEqual(b("decoupage", { regions: change(6, { source: "corrige" }) }),
+                   { texte: "Suivant →", principal: true });
+  assert.deepEqual(b("chercher", {}), { texte: "Suivant →", principal: true });
+  assert.deepEqual(b("preremplir", {}), { texte: "Passer →", principal: false });
+  assert.deepEqual(b("preremplir", {}, sans), { texte: "Suivant →", principal: true });
+  assert.deepEqual(b("exporter", {}, m, true), { texte: "Terminer", principal: true });
+});
+
+test("sans moteur, la page des moteurs et « Pré-remplir » se disent optionnels ici", () => {
+  const page = W.PAGES.find((p) => p.k === "moteurs");
+  assert.equal(W.marquePage(page, { aucun: true, ocr: false }), "optionnel ici");
+  assert.equal(W.marquePage(page, { aucun: false, ocr: true }), null);
+  assert.equal(W.marquePage(W.PAGES[0], { aucun: true, ocr: false }), null);
+  assert.equal(W.marquePage(page, null), null);
+  assert.equal(W.marqueEtape(etape("preremplir"), { aucun: true, ocr: false }), "optionnel ici");
+  assert.equal(W.marqueEtape(etape("preremplir"), { aucun: false, ocr: true }), "facultatif");
+});
+
+test("« Corriger » cadre la plus petite bulle que personne n'a reprise", () => {
+  assert.equal(W.bulleACorriger(avec()).id, 6);
+  // Reprise (corrigée), elle ne se cadre plus ; une bulle tracée à la main non plus.
+  assert.equal(W.bulleACorriger(change(6, { source: "corrige" })).id, 4);
+  assert.equal(W.bulleACorriger([{ id: 30, type: "bulle", source: "manuel", x: 0, y: 0,
+                                   w: 5, h: 5 }]), null);
+  assert.equal(W.bulleACorriger([]), null);
+  assert.equal(W.bulleACorriger(null), null);
+  // Le cadre : trois fois la bulle, au moins un quart de la largeur et un huitième de la
+  // hauteur, centré sur elle et ramené dans la planche.
+  const c = W.cadreAutour({ x: 146, y: 972, w: 72, h: 25 }, 975, 1296);
+  assert.deepEqual(c, { x: 60, y: 904, w: 244, h: 162 });
+  assert.ok(c.x <= 146 && c.x + c.w >= 146 + 72 && c.y <= 972 && c.y + c.h >= 972 + 25);
+  assert.deepEqual(W.cadreAutour({ x: 900, y: 1280, w: 70, h: 14 }, 975, 1296),
+                   { x: 731, y: 1134, w: 244, h: 162 });
+  assert.equal(W.cadreAutour(null, 975, 1296), null);
+  // La vue : le cadre au milieu de la scène, au plus grand zoom qui le montre entier.
+  const v = W.vueCadree({ x: 60, y: 904, w: 244, h: 162 }, { w: 800, h: 600 }, 1);
+  assert.ok(Math.abs(v.zoom - Math.min(800 / 244, 600 / 162)) < 1e-9);
+  assert.ok(Math.abs(v.tx + (60 + 122) * v.zoom - 400) < 1e-9);
+  assert.ok(Math.abs(v.ty + (904 + 81) * v.zoom - 300) < 1e-9);
+  assert.equal(W.vueCadree({ x: 0, y: 0, w: 1, h: 1 }, { w: 800, h: 600 }, 1).zoom, 8);
+  assert.equal(W.vueCadree(null, { w: 800, h: 600 }, 1), null);
+});
+
+test("le guide se retient le temps d'un onglet, sous le login et le bac à sable", () => {
+  const s = memoire();
+  assert.deepEqual(W.lireGuide("camille", BAC, s), { actif: false, vues: [] });
+  const g = W.marquerVue(W.marquerVue({ actif: true, vues: [] }, "corpus"), "corpus");
+  assert.deepEqual(g, { actif: true, vues: ["corpus"] });
+  assert.equal(W.retenirGuide("camille", BAC, W.marquerVue(g, "inconnue"), s), true);
+  assert.deepEqual(W.lireGuide("camille", BAC, s), { actif: true, vues: ["corpus"] });
+  assert.deepEqual(W.lireGuide("lea", BAC, s), W.guideNeuf());
+  assert.deepEqual(W.lireGuide("camille", { id: 42, efface_le: BAC.efface_le }, s), W.guideNeuf());
+  assert.equal(W.retenirGuide("camille", BAC, g, HOSTILE), false);
+  assert.deepEqual(W.lireGuide("camille", BAC, HOSTILE), W.guideNeuf());
+  assert.deepEqual(W.lireGuide("camille", BAC, memoire({ [W.CLE_GUIDE]: "{" })), W.guideNeuf());
+  // La page d'une étape : sa surface, et l'album et la planche que son adresse nomme.
+  assert.equal(W.etapeIci(etape("tracer"), "/", "?album=31&planche=310&mode=navigation", VUE),
+               true);
+  assert.equal(W.etapeIci(etape("tracer"), "/", "?album=31&planche=311", VUE), false);
+  assert.equal(W.etapeIci(etape("tracer"), "/", "", VUE), false);
+  assert.equal(W.etapeIci(etape("tracer"), "/corpus", "?album=31&planche=310", VUE), false);
+  assert.equal(W.etapeIci(etape("corpus"), "/corpus/", "", VUE), true);
+  assert.equal(W.etapeIci(etape("decrire"), "/corpus", "", VUE), false);
+  assert.equal(W.etapeIci(etape("decrire"), "/corpus", "?album=31&onglet=x", VUE), true);
+  assert.equal(W.etapeIci(etape("chercher"), "/recherche", "?q=x", VUE), true);
+  assert.equal(W.etapeIci(null, "/", "", VUE), false);
+});
+
+test("chaque zone d'une étape est une marque que la visite nomme sur la même surface", () => {
+  const visite = W.marques();
+  const etapes = W.marquesDesEtapes();
+  assert.ok(etapes.length >= W.ETAPES.length);
+  for (const e of W.ETAPES) assert.ok((e.zones || []).length, `${e.k} sans zone`);
+  for (const m of etapes) {
+    assert.ok(visite.some((v) => !v.bande && v.surface === m.surface && v.marque === m.marque),
+              `${m.etape} : ${m.marque} n'est pas une zone de la visite sur ${m.surface}`);
+  }
+});
+
+test("chez un invité, la ligne du bac à sable ne promet que « Quitter »", () => {
+  const bac = W.reperes(0, 0, null, "autre").find((r) => r.marque === "bande-bac");
+  assert.equal(bac.nom, "Ce bac à sable");
+  assert.doesNotMatch(bac.phrase, /inviter|remettre|guide/);
+  assert.match(bac.phrase, /quitter/);
+  const mien = W.reperes(0, 0, null, "mien").find((r) => r.marque === "bande-bac");
+  assert.match(mien.phrase, /inviter, remettre à neuf/);
 });
