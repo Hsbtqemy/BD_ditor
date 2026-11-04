@@ -94,10 +94,22 @@
         + "commenter et exporter. Tracez des cadres où vous le souhaitez et qualifiez-les. "
         + "Ce découpage permet ensuite de transcrire une bulle précise, ou de la citer : "
         + "« planche 3, case 2, bulle 1 »." },
+    // PROPOSITION de la tranche 4, à confirmer par Hugo : le texte ne dit que ce qui a été
+    // MESURÉ — les vraies passes jouées le 2026-11-04 sur la planche du parcours, *Moustache
+    // et Trottinette*, au lettrage manuscrit (Kumiko, ogkalu YOLOv8 sous ultralytics 8.4.65,
+    // EasyOCR 1.7.2 : les versions des verrous). Bulles : 7 trouvées sur 12, aucune fausse ;
+    // l'OCR lit « reconnail » pour « reconnaît » dans le dernier récitatif. Une autre version
+    // des moteurs, ou une autre planche du parcours, demandera de remesurer.
+    // Le texte de Hugo, repris de la maquette :
+    //   « Réalisez une première reconnaissance de votre corpus : les moteurs intégrés
+    //   découpent les cases et les bulles et transcrivent le texte automatiquement. Vous
+    //   n'avez plus qu'à corriger, et votre correction n'est jamais écrasée. »
     { k: "moteurs", titre: "Automatisez la reconnaissance",
       texte: "Réalisez une première reconnaissance de votre corpus : les moteurs intégrés "
-        + "découpent les cases et les bulles et transcrivent le texte automatiquement. Vous "
-        + "n'avez plus qu'à corriger, et votre correction n'est jamais écrasée.",
+        + "découpent les cases et les bulles et transcrivent le texte. Ils se trompent, "
+        + "surtout sur un lettrage manuscrit : sur la planche du parcours, ils trouvent "
+        + "7 bulles sur 12 et lisent « reconnail » pour « reconnaît ». À vous de corriger et "
+        + "de compléter, et votre correction n'est jamais écrasée.",
       sansMoteur: "Une instance équipée découpe les cases et les bulles et transcrit le texte "
         + "automatiquement. Ici, les moteurs ne sont pas installés : vous tracez et vous "
         + "transcrivez à la main." },

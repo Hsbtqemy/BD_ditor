@@ -257,6 +257,21 @@ test("dans un bac à sable, la visite ne promet pas d'en sortir un album", () =>
     .forEach((r) => assert.doesNotMatch(r.phrase, /sortir un album\.$/i, r.marque))));
 });
 
+test("« Automatisez la reconnaissance » ne dit que ce que les vraies passes ont rendu", () => {
+  // Mesuré le 2026-11-04 sur *Moustache et Trottinette* (`static/lib/wizard.js`, la page
+  // des moteurs) ; la maquette SIMULAIT ses erreurs et ses comptes, sans mesure.
+  const page = W.PAGES.find((p) => p.k === "moteurs");
+  const t = W.textePage(page, W.moteurs({ kumiko: true, bulles: true, ocr: true }));
+  assert.match(t, /7.bulles sur 12/);
+  assert.match(t, /«.reconnail.» pour «.reconnaît.»/);
+  assert.match(t, /n'est jamais écrasée\.$/);
+  for (const simule of ["t0t", "rec0nnaît", "3 cases", "3 bulles", "1 cartouche"]) {
+    assert.ok(!t.includes(simule), simule);
+  }
+  // Rien ne dit qu'il n'y aurait « plus qu'à corriger » : 5 bulles sur 12 restent à tracer.
+  assert.doesNotMatch(t, /plus qu'à corriger/);
+});
+
 /* ── Sans moteur ──────────────────────────────────────────────────────────────────────── */
 
 test("sans moteur, « Pré-remplir » se dit optionnel ici, et l'album le dit aussi", () => {
