@@ -3141,8 +3141,9 @@ function fmNoteDeVersion(g) {
   const aide = g.ouverte ? "Ce que la grille est devenue, en une phrase."
     : n.naitra ? `Ce que la v${n.numero} changera, en une phrase : elle naîtra avec ce brouillon.`
       : `Ce que la v${n.numero} change, en une phrase ; elle se lit avec la version.`;
-  return `<section class="fm-section"><h4><label for="fm-g-note" title="${esc(aide)}">Note de la v${
-    n.numero}</label></h4><textarea id="fm-g-note" rows="2" maxlength="2000" title="${esc(aide)}"
+  // Une ouverte n'a qu'une version, vivante : « la v1 » n'y dirait rien.
+  const titre = g.ouverte ? "Note" : `Note de la v${n.numero}`;
+  return `<section class="fm-section"><h4><label for="fm-g-note" title="${esc(aide)}">${titre}</label></h4><textarea id="fm-g-note" rows="2" maxlength="2000" title="${esc(aide)}"
     >${esc(n.vue)}</textarea></section>`;
 }
 

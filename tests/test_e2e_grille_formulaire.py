@@ -292,6 +292,12 @@ def test_la_note_de_version_s_ecrit_dans_le_brouillon_d_une_fermee(page, live_se
     page.reload(wait_until="networkidle")
     expect(page.locator("#fm-g-note")).to_have_value("les signaux sonores à part")
 
+    # Une ouverte n'a qu'une version, vivante : sa note ne se dit pas « de la v1 ».
+    with _http(base) as c:
+        o = grille_active_vivante(c, nom="Libre", ouverte=True)
+    _ouvrir(page, base, o["projet_id"], o["grille_id"])
+    expect(page.locator('label[for="fm-g-note"]')).to_have_text("Note")
+
 
 def _retouche(data: bytes, retouche) -> bytes:
     wb = openpyxl.load_workbook(io.BytesIO(data))
