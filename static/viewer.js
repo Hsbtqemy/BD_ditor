@@ -386,7 +386,8 @@ async function selectPlanche(id) {
    l'étape, la planche se rapproche de la bulle à corriger, choisie pour que ses poignées se
    voient ; en sortant, elle revient à la planche entière. Le cadre et la vue sont la règle
    de `lib/wizard.js` (`cadreAutour`, `vueCadree`). Une demande faite avant que la planche
-   soit là attend qu'elle le soit. */
+   soit là attend qu'elle le soit. `libre` (coordonnées de l'écran) : la part de la scène
+   où cadrer — celle que la fenêtre du guide ne recouvre pas ; la scène entière sinon. */
 const CADRAGE = { voulu: null, pose: false };
 
 function appliquerCadrage() {
@@ -396,9 +397,12 @@ function appliquerCadrage() {
   if (!r) return;
   CADRAGE.voulu = null;
   const s = stage.getBoundingClientRect();
+  const z = v.libre || { l: s.left, t: s.top, r: s.right, b: s.bottom };
   const cadre = BDWizard.cadreAutour(r, state.planche.largeur_px, state.planche.hauteur_px);
-  const vue = BDWizard.vueCadree(cadre, { w: s.width, h: s.height }, state.webScale);
+  const vue = BDWizard.vueCadree(cadre, { w: z.r - z.l, h: z.b - z.t }, state.webScale);
   if (!vue) return;
+  vue.tx += z.l - s.left;
+  vue.ty += z.t - s.top;
   if (state.selectedId !== r.id) selectRegion(r.id);
   Object.assign(state, vue);
   applyTransform();
@@ -406,8 +410,8 @@ function appliquerCadrage() {
 }
 
 window.BDAtelierVue = {
-  cadrer(plancheId, regionId) {
-    CADRAGE.voulu = { planche: plancheId, region: regionId };
+  cadrer(plancheId, regionId, libre) {
+    CADRAGE.voulu = { planche: plancheId, region: regionId, libre: libre || null };
     appliquerCadrage();
   },
   toutVoir() {
@@ -415,6 +419,11 @@ window.BDAtelierVue = {
     if (!CADRAGE.pose) return;
     CADRAGE.pose = false;
     if (state.planche) fitView();
+  },
+  // La scène a changé de taille (la feuille du guide réserve sa hauteur) : la planche
+  // entière s'y réajuste ; une vue cadrée, le guide la recadre lui-même.
+  ajuster() {
+    if (!CADRAGE.pose && state.planche) fitView();
   },
 };
 

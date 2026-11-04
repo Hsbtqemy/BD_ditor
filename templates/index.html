@@ -49,8 +49,8 @@
     </div>
     <div class="header-actions" data-parcours="atelier-actions">
       <div class="dropdown">
-        <button class="ghost" id="btn-traitement" title="Traitements automatiques sur l'album">⚙<span class="mode-label"> Traitement </span>▾</button>
-        <div class="dropdown-menu" id="traitement-menu">
+        <button class="ghost" id="btn-traitement" data-parcours="atelier-traitement" title="Traitements automatiques sur l'album">⚙<span class="mode-label"> Traitement </span>▾</button>
+        <div class="dropdown-menu" id="traitement-menu" data-parcours="atelier-traitement-menu">
           <button id="btn-segmenter" title="Détecter les cases (Kumiko)">Segmenter les cases</button>
           <button id="btn-bulles" title="Détecter les bulles (passe 2)">Détecter les bulles</button>
           <button id="btn-ocr" title="OCR des bulles → pré-remplissage (passe 3)">OCR des bulles</button>
@@ -354,7 +354,7 @@
     <div id="tr-left">
       <div id="tr-mini"></div>
     </div>
-    <div id="tr-right">
+    <div id="tr-right" data-parcours="atelier-transcription-texte">
       <div id="tr-head">
         <span id="tr-progress">—</span>
         <span id="tr-type" class="badge"></span>

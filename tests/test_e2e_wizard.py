@@ -685,3 +685,75 @@ def test_un_menu_ouvert_depuis_une_zone_n_est_pas_assombri(page, jeu):
         const x = +t.getAttribute('x'), y = +t.getAttribute('y');
         return x <= m.left && y <= m.top && x + +t.getAttribute('width') >= m.right
           && y + +t.getAttribute('height') >= m.bottom; }); }""")
+
+
+# ── La fenêtre du guide ne recouvre jamais son foyer ───────────────────────────────────
+#
+# Hugo, sur la maquette (redit le 2026-11-04) : la fenêtre se pose À CÔTÉ de ce que
+# l'étape éclaire — à droite, sinon à gauche, dessous, dessus —, et en feuille en bas quand
+# rien ne tient ou que l'écran est étroit, la page lui réservant sa hauteur. Ce test la
+# mesure sur chaque étape des deux parcours, à 1 280 et 768 px, sous des polices de 16 et
+# 24 (à 768 px sous 24, l'écran est sous 40em : la feuille). Le foyer est mesuré ICI, sur
+# les éléments que l'écran éclaire, coupés par ce qui ne les laisse pas déborder.
+
+MESURE_FOYER = """() => {
+  const els = window.BDWizardEcran.elementsDuFoyer();
+  const part = (x) => {
+    const q = x.getBoundingClientRect();
+    let r = { l: q.left, t: q.top, r: q.right, b: q.bottom };
+    const couper = (z) => { r = { l: Math.max(r.l, z.left), t: Math.max(r.t, z.top),
+                                  r: Math.min(r.r, z.right), b: Math.min(r.b, z.bottom) }; };
+    for (let a = x.parentElement; a && a !== document.body; a = a.parentElement) {
+      const s = getComputedStyle(a);
+      if (s.overflowX !== 'visible' || s.overflowY !== 'visible') couper(a.getBoundingClientRect());
+    }
+    couper({ left: 0, top: 0, right: innerWidth, bottom: innerHeight });
+    return r.r - r.l >= 1 && r.b - r.t >= 1 ? r : null;
+  };
+  const rs = els.map(part).filter(Boolean);
+  const q = document.getElementById('wizard-fenetre').getBoundingClientRect();
+  const fen = { l: q.left, t: q.top, r: q.right, b: q.bottom };
+  const recouvrent = rs.filter((r) => Math.min(r.r, fen.r) - Math.max(r.l, fen.l) > 1
+                                      && Math.min(r.b, fen.b) - Math.max(r.t, fen.t) > 1);
+  return { n: rs.length, fen, recouvrent, feuille: document.getElementById('wizard-fenetre')
+             .classList.contains('feuille'), titre: document.getElementById('wizard-fenetre-titre')
+             .textContent };
+}"""
+
+
+@pytestmark_proxy
+@pytest.mark.parametrize("largeur", [1280, 768])
+def test_la_fenetre_du_guide_ne_recouvre_jamais_son_foyer(page, jeu_decoupe, largeur):
+    if page.context.browser.browser_type.name != "chromium":
+        pytest.skip("la préférence de police se pose par CDP")
+    from test_e2e_bac_a_sable import _preference_police
+    bac = _ouvrir(jeu_decoupe, CAMILLE)
+    vue = _api(jeu_decoupe["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    _sous(page, CAMILLE)
+    _arriver(page, jeu_decoupe["base"])
+    plan = page.evaluate("""(vue) => ['rapide', 'complet'].flatMap((p) =>
+      BDWizard.etapes(p).map((e, i) => ({ parcours: p, i, k: e.k,
+                                          adresse: BDWizard.adresseEtape(e, vue) })))""", vue)
+    assert len(plan) == 13
+    echecs = []
+    for police in (16, 24):
+        _preference_police(page, police)
+        page.set_viewport_size({"width": largeur, "height": 800})
+        for e in plan:
+            page.evaluate("""([login, bac, p, i]) => {
+              localStorage.setItem('bd-wizard', JSON.stringify({ [login]: { bac: bac.id,
+                efface_le: bac.efface_le, album_vu: true, parcours: p, etape: i } }));
+              sessionStorage.setItem('bd-wizard-guide', JSON.stringify({ login, bac: bac.id,
+                efface_le: bac.efface_le, actif: true, vues: [] })); }""",
+                          ["camille", bac, e["parcours"], e["i"]])
+            page.goto(jeu_decoupe["base"] + e["adresse"], wait_until="domcontentloaded")
+            expect(page.locator("#wizard-guide-compte")).to_be_visible(timeout=15000)
+            page.wait_for_timeout(600)          # le cadrage, la feuille et sa réserve
+            m = page.evaluate(MESURE_FOYER)
+            ou = f"{largeur} px, police {police}, {e['parcours']} · {e['k']}"
+            if not m["n"]:
+                echecs.append(f"{ou} : aucun élément du foyer ne se voit")
+            elif m["recouvrent"]:
+                echecs.append(f"{ou} : la fenêtre {m['fen']} recouvre {m['recouvrent']}"
+                              f"{' (feuille)' if m['feuille'] else ''}")
+    assert not echecs, "\n".join(echecs)

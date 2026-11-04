@@ -465,6 +465,7 @@
 
   function dessinerFenetre(focus) {
     const page = W.VISITE[F.pos.page], plan = F.mode === "plan";
+    libererLaPose();
     fenetre.innerHTML = "";
     fenetre.classList.toggle("gauche", W.cote(F.pos) === "gauche");
     fenetre.setAttribute("aria-label", plan ? "Les repères de cette page" : "La visite des pages");
@@ -561,6 +562,7 @@
   function gardes() {
     const k = [foyer];
     zonesActives().forEach((r) => k.push(...zonesDe(r.marque)));
+    if (F.mode === "etape") k.push(...elementsDuFoyer());
     const toasts = document.getElementById("toasts");
     if (toasts) k.push(toasts);
     document.querySelectorAll('[aria-modal="true"]').forEach((d) => {
@@ -609,7 +611,15 @@
     const trous = [];
     const trou = (t) => masque.appendChild(svg("rect", { x: t.l, y: t.t, width: t.r - t.l,
                                                          height: t.b - t.t, rx: 6, fill: "#000" }));
-    zonesActives().forEach((r) => {
+    // Le guide : UN trou, le rectangle commun de son foyer (`foyerDeLEtape`).
+    const f = F.mode === "etape" ? foyerDeLEtape() : null;
+    if (f) {
+      const t = { l: Math.max(f.l - m, 0), t: Math.max(f.t - m, 0), r: Math.min(f.r + m, W0),
+                  b: Math.min(f.b + m, H0), rep: { marque: null, n: null } };
+      trous.push(t);
+      trou(t);
+    }
+    (F.mode === "etape" ? [] : zonesActives()).forEach((r) => {
       const els = zonesDe(r.marque);
       if (!els.length) return;
       // Le trou ne déborde pas de la fenêtre du navigateur : une zone de toute la largeur
@@ -661,6 +671,7 @@
         : a.dataset.zone ? `[data-zone="${a.dataset.zone}"]` : null) : null;
       if (F.mode === "etape") dessinerEtape(garde); else dessinerFenetre(garde);
     }
+    if (F.mode === "etape") poserFenetre();
     dessinerVoile();
     appliquerInert();
   }
@@ -704,6 +715,7 @@
     F.temps = mode === "plan" ? W.tempsVisibles(pos.page, voit) : [];
     foyer.hidden = false;
     if (mode === "etape") dessinerEtape(); else dessinerFenetre();
+    if (mode === "etape") poserFenetre();
     dessinerVoile();
     appliquerInert();
     observer();
@@ -721,6 +733,7 @@
     const visite = F.mode === "visite", decl = F.declencheur;
     if (F.mode === "etape") sortirDuCadrage();
     G.fin = false;
+    libererLaPose();
     cesserDObserver();
     rendreInert();
     F.mode = null;
@@ -953,7 +966,8 @@
     const s = S.souvenir, liste = W.etapes(s.parcours), i = s.etape, e = liste[i];
     const d = Object.assign({}, G.d || {}, { vues: S.guide.vues });
     fenetre.innerHTML = "";
-    fenetre.classList.add("gauche");
+    fenetre.classList.remove("gauche");
+    fenetre.classList.add("etape");
     fenetre.setAttribute("aria-label", "Le parcours");
     const h = el("h2", "wf-titre");
     h.id = "wizard-fenetre-titre";
@@ -1012,6 +1026,9 @@
       fenetre.appendChild(act);
       F.cle = zonesActives().map((r) => r.marque).join(" ");
     }
+    // Son contenu a changé, donc sa taille : elle se repose (sans attendre une mutation de
+    // la page, que l'observateur ne voit pas quand elle vient de la fenêtre).
+    if (F.mode === "etape") poserFenetre();
     let f = focus ? fenetre.querySelector(focus) : null;
     if (focus && (!f || f.disabled)) f = h;
     if (f) f.focus({ preventScroll: true });
@@ -1083,14 +1100,180 @@
     const b = W.bulleACorriger(G.d && G.d.regions);
     if (!b) return;
     G.cadree = true;
+    G.bulle = b.id;
+    G.recadre = null;
     window.BDAtelierVue.cadrer(a.planche_ids[0], b.id);
   }
 
   function sortirDuCadrage() {
+    G.bulle = null;
     if (!G.cadree) return;
     G.cadree = false;
     if (window.BDAtelierVue) window.BDAtelierVue.toutVoir();
   }
+
+  /* ── Le foyer de l'étape, et la place de la fenêtre ─────────────────────────────────
+     Hugo, sur la maquette (2026-11-02, redit le 2026-11-04) : le trou de l'assombri est le
+     rectangle commun des éléments PRÉCIS que l'étape éclaire (`BDWizard.FOYERS`), mesuré à
+     chaque dessin, et la fenêtre se pose à côté — à droite s'il y a la place, sinon à
+     gauche, dessous, dessus (`BDWizard.placerFenetre`). Quand rien ne tient, et toujours sur
+     un écran étroit (sous 40em), elle est une FEUILLE en bas, et la page lui réserve sa
+     hauteur : rien de la page n'est sous elle. Elle se remesure à chaque mise à jour de la
+     fenêtre — une taille, un zoom de la planche, un foyer qui change. Une étape neuve amène
+     son foyer dans la vue. */
+  function elementsDuFoyer() {
+    const e = etapeCourante();
+    if (F.mode !== "etape" || G.fin || !e) return [];
+    const a = W.albumDuParcours(vue()), out = [];
+    W.foyer(e).forEach((m) => {
+      let sel = `[data-parcours="${m}"]`;
+      if (m === "@album") {
+        sel = a ? `[data-parcours="bibliotheque-catalogue"] [data-ouvrir-album="${a.album_id}"]` : null;
+      } else if (m === "@bulle") {
+        const b = G.bulle != null ? G.bulle
+          : ((G.d && G.d.regions) || []).filter((r) => r.type === "bulle" && r.source === "corrige")
+            .map((r) => r.id)[0];
+        sel = b != null ? `#overlay rect.region[data-id="${b}"]` : null;
+      }
+      if (sel) document.querySelectorAll(sel).forEach((x) => { if (partVisible(x)) out.push(x); });
+    });
+    return out;
+  }
+
+  /* La part d'un élément qui se voit : son rectangle, coupé par chaque ancêtre qui ne laisse
+     pas déborder (une région zoomée s'arrête au bord de la scène) et par l'écran ; `null`
+     s'il ne se voit pas. */
+  function partVisible(x) {
+    if (foyer && foyer.contains(x)) return null;
+    const q = x.getBoundingClientRect();
+    if (q.width < 1 || q.height < 1 || getComputedStyle(x).visibility === "hidden") return null;
+    let r = { l: q.left, t: q.top, r: q.right, b: q.bottom };
+    const couper = (z) => { r = { l: Math.max(r.l, z.left), t: Math.max(r.t, z.top),
+                                  r: Math.min(r.r, z.right), b: Math.min(r.b, z.bottom) }; };
+    for (let a = x.parentElement; a && a !== document.body; a = a.parentElement) {
+      const st = getComputedStyle(a);
+      if (st.overflowX !== "visible" || st.overflowY !== "visible") couper(a.getBoundingClientRect());
+    }
+    couper({ left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight });
+    return r.r - r.l >= 1 && r.b - r.t >= 1 ? r : null;
+  }
+
+  function foyerDeLEtape() {
+    const rs = elementsDuFoyer().map(partVisible).filter(Boolean);
+    if (!rs.length) return null;
+    return { l: Math.min(...rs.map((r) => r.l)), t: Math.min(...rs.map((r) => r.t)),
+             r: Math.max(...rs.map((r) => r.r)), b: Math.max(...rs.map((r) => r.b)) };
+  }
+
+  const ETROIT = "(max-width: 40em)";
+
+  function reserver(px) {
+    const b = document.body, root = document.documentElement;
+    const avant = b.classList.contains("wizard-reserve") ? root.style.getPropertyValue("--wizard-reserve") : "";
+    if (px > 0) {
+      root.style.setProperty("--wizard-reserve", `${Math.ceil(px)}px`);
+      b.classList.add("wizard-reserve");
+    } else if (b.classList.contains("wizard-reserve")) {
+      b.classList.remove("wizard-reserve");
+      root.style.removeProperty("--wizard-reserve");
+    }
+    const apres = b.classList.contains("wizard-reserve") ? root.style.getPropertyValue("--wizard-reserve") : "";
+    // La scène de l'Atelier a changé de taille : la planche entière s'y réajuste.
+    if (avant !== apres && window.BDAtelierVue && window.BDAtelierVue.ajuster) {
+      window.BDAtelierVue.ajuster();
+    }
+  }
+
+  function libererLaPose() {
+    if (!fenetre) return;
+    fenetre.classList.remove("etape", "feuille");
+    fenetre.style.left = "";
+    fenetre.style.top = "";
+    reserver(0);
+    G.pose = null;
+    G.amene = null;
+  }
+
+  function poserFenetre() {
+    if (F.mode !== "etape" || !fenetre) return;
+    const etape = `${S.souvenir.parcours}:${S.souvenir.etape}:${G.fin}`;
+    const cle = `${etape}:${window.innerWidth}x${window.innerHeight}`;
+    const etroit = !!(window.matchMedia && window.matchMedia(ETROIT).matches);
+    // Le repli est tenu pour l'étape et la taille de l'écran : la feuille réserve sa place,
+    // ce qui change la page, et la fenêtre n'en repartirait pas à côté pour revenir.
+    let feuille = etroit || !!(G.pose && G.pose.cle === cle && G.pose.feuille);
+    if (!feuille) {
+      fenetre.classList.remove("feuille");
+      reserver(0);
+      const w = fenetre.offsetWidth, h = fenetre.offsetHeight, m = 8;
+      const p = W.placerFenetre(foyerDeLEtape(), { w, h },
+        { l: m, t: m, r: window.innerWidth - m, b: window.innerHeight - m }, 14);
+      if (p.cote === "repli") feuille = true;
+      else {
+        fenetre.style.left = `${Math.round(p.x)}px`;
+        fenetre.style.top = `${Math.round(p.y)}px`;
+      }
+    }
+    if (feuille) {
+      fenetre.style.left = "";
+      fenetre.style.top = "";
+      fenetre.classList.add("feuille");
+      reserver(fenetre.offsetHeight + 24);
+    }
+    G.pose = { cle, etape, feuille };
+    // Une étape neuve amène son foyer dans la vue, au-dessus de la feuille — dès qu'il est
+    // là : la fiche d'un album, par exemple, se dessine après la fenêtre.
+    // Une seconde et demie durant : une fiche, un catalogue se dessinent après la fenêtre et
+    // déplacent le foyer.
+    if (G.amene !== etape) { G.amene = etape; G.ameneDepuis = Date.now(); }
+    if (Date.now() - G.ameneDepuis < 1500) {
+      const els = elementsDuFoyer();
+      if (els.length) amener(els, feuille);
+      else if (F.attente === 0) setTimeout(planifier, 100);
+    }
+    garderLaBulleHorsDeLaFenetre();
+  }
+
+  /* Amener le foyer dans la vue : d'abord dans son cadre de défilement, puis la page
+     elle-même, quand elle défile (à l'étroit, sous une grande police), pour que son bas
+     passe au-dessus de la feuille. */
+  function amener(els, feuille) {
+    const haut = 8, bas = () => window.innerHeight - (feuille ? fenetre.offsetHeight + 24 : 8);
+    const union = () => {
+      const rs = els.map((x) => x.getBoundingClientRect());
+      return { t: Math.min(...rs.map((r) => r.top)), b: Math.max(...rs.map((r) => r.bottom)) };
+    };
+    let r = union();
+    if (r.t >= haut && r.b <= bas()) return;
+    els[0].scrollIntoView({ block: "nearest", inline: "nearest" });
+    r = union();
+    if (r.b > bas()) window.scrollBy({ top: Math.min(r.t - haut, r.b - bas()), behavior: "instant" });
+    else if (r.t < haut) window.scrollBy({ top: r.t - haut, behavior: "instant" });
+  }
+
+  /* « Corriger » cadre la bulle de sorte qu'elle reste hors de la fenêtre : si la fenêtre
+     la recouvre, ou que la bulle n'est plus dans la scène (la feuille a réduit la page),
+     l'Atelier la recadre dans la part de la scène que la fenêtre laisse libre — une fois
+     par mise en page, sans boucle. */
+  function garderLaBulleHorsDeLaFenetre() {
+    if (!G.cadree || G.bulle == null || !window.BDAtelierVue) return;
+    const bulle = document.querySelector(`#overlay rect.region[data-id="${G.bulle}"]`);
+    const scene = document.getElementById("stage");
+    if (!bulle || !scene) return;
+    const q = bulle.getBoundingClientRect(), s = scene.getBoundingClientRect();
+    const fq = fenetre.getBoundingClientRect();
+    const b = { l: q.left, t: q.top, r: q.right, b: q.bottom };
+    const sc = { l: s.left, t: s.top, r: s.right, b: s.bottom };
+    const fen = { l: fq.left, t: fq.top, r: fq.right, b: fq.bottom };
+    const dedans = b.l >= sc.l && b.r <= sc.r && b.t >= sc.t && b.b <= sc.b;
+    if (dedans && !W.recouvre(b, fen)) return;
+    const cle = `${G.pose && G.pose.cle}:${Math.round(sc.r - sc.l)}x${Math.round(sc.b - sc.t)}`;
+    if (G.recadre === cle) return;
+    G.recadre = cle;
+    const a = W.albumDuParcours(vue());
+    if (a) window.BDAtelierVue.cadrer(a.planche_ids[0], G.bulle, W.zoneLibre(sc, fen, 14));
+  }
+
 
   /* Un menu ouvert depuis une zone : sa liste déborde d'elle. */
   function menusOuverts(els) {
@@ -1147,7 +1330,8 @@
     }
   }
 
-  const ecran = { ouvrir, reperes, fermerFenetre, decide: false };
+  const ecran = { ouvrir, reperes, fermerFenetre, decide: false,
+                  elementsDuFoyer: () => elementsDuFoyer() };
   window.BDWizardEcran = ecran;
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer);

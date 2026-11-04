@@ -593,3 +593,61 @@ test("chez un invité, la ligne du bac à sable ne promet que « Quitter »", ()
   const mien = W.reperes(0, 0, null, "mien").find((r) => r.marque === "bande-bac");
   assert.match(mien.phrase, /inviter, remettre à neuf/);
 });
+
+/* ── Le foyer de l'étape et la place de la fenêtre (tranche 3, reprise de la maquette) ── */
+
+test("chaque étape a un foyer, et `@album`, `@bulle` seuls se résolvent à l'écran", () => {
+  for (const e of W.ETAPES) assert.ok(W.foyer(e).length, `${e.k} sans foyer`);
+  assert.deepEqual(W.foyer(etape("corpus")), ["@album"]);
+  assert.deepEqual(W.foyer(etape("decoupage")), ["@bulle", "atelier-structure"]);
+  assert.deepEqual(W.foyer(null), []);
+  const dyn = W.ETAPES.flatMap((e) => W.foyer(e)).filter((m) => m[0] === "@");
+  assert.deepEqual([...new Set(dyn)].sort(), ["@album", "@bulle"]);
+  // Les marques des foyers, sans les dynamiques, et chacune sur la surface de son étape.
+  const m = W.marquesDesFoyers();
+  assert.ok(m.every((x) => x.marque[0] !== "@"));
+  assert.deepEqual(m.find((x) => x.marque === "bibliotheque-notice"),
+                   { etape: "decrire", surface: "/corpus", marque: "bibliotheque-notice" });
+});
+
+const ECRAN = { l: 8, t: 8, r: 1272, b: 712 };
+const FEN = { w: 286, h: 200 };
+
+test("la fenêtre se pose à droite du foyer, sinon à gauche, dessous, dessus, puis se replie", () => {
+  const p = (f) => W.placerFenetre(f, FEN, ECRAN, 14);
+  // À droite : il y a la place.
+  assert.deepEqual(p({ l: 100, t: 300, r: 500, b: 400 }), { cote: "droite", x: 514, y: 300 });
+  // À droite ne tient pas : à gauche, collée au foyer.
+  assert.deepEqual(p({ l: 600, t: 50, r: 1100, b: 400 }), { cote: "gauche", x: 300, y: 50 });
+  // Ni à droite ni à gauche : dessous, bornée à l'écran.
+  assert.deepEqual(p({ l: 100, t: 20, r: 1200, b: 300 }), { cote: "dessous", x: 100, y: 314 });
+  assert.deepEqual(p({ l: 1100, t: 20, r: 1200, b: 300 }).cote, "gauche");
+  // Ni côté ni dessous : dessus.
+  assert.deepEqual(p({ l: 100, t: 400, r: 1200, b: 650 }), { cote: "dessus", x: 100, y: 186 });
+  // Rien ne tient : le repli.
+  assert.equal(p({ l: 100, t: 100, r: 1200, b: 650 }).cote, "repli");
+  // Le haut de la fenêtre suit le foyer, sans sortir de l'écran.
+  assert.equal(p({ l: 100, t: 650, r: 400, b: 700 }).y, 512);
+  // Sans foyer, au centre.
+  assert.deepEqual(p(null), { cote: "centre", x: 497, y: 260 });
+  // Aucun de ces placements ne recouvre son foyer.
+  for (const f of [{ l: 100, t: 300, r: 500, b: 400 }, { l: 600, t: 50, r: 1100, b: 400 },
+                   { l: 100, t: 20, r: 1200, b: 300 }, { l: 100, t: 400, r: 1200, b: 650 }]) {
+    const q = p(f);
+    assert.equal(W.recouvre(f, { l: q.x, t: q.y, r: q.x + FEN.w, b: q.y + FEN.h }), false, q.cote);
+  }
+});
+
+test("la part de la scène que la fenêtre laisse libre, pour cadrer « Corriger »", () => {
+  const scene = { l: 240, t: 100, r: 1000, b: 700 };
+  // La fenêtre hors de la scène : la scène entière.
+  assert.deepEqual(W.zoneLibre(scene, { l: 1010, t: 100, r: 1270, b: 300 }, 14), scene);
+  // À gauche dans la scène : la bande à sa droite.
+  assert.deepEqual(W.zoneLibre(scene, { l: 200, t: 400, r: 500, b: 700 }, 14),
+                   { l: 514, t: 100, r: 1000, b: 700 });
+  // En feuille, en bas : la bande au-dessus.
+  assert.deepEqual(W.zoneLibre(scene, { l: 0, t: 500, r: 1280, b: 720 }, 14),
+                   { l: 240, t: 100, r: 1000, b: 486 });
+  assert.equal(W.recouvre({ l: 0, t: 0, r: 10, b: 10 }, { l: 10, t: 0, r: 20, b: 10 }), false);
+  assert.equal(W.recouvre({ l: 0, t: 0, r: 10, b: 10 }, null), false);
+});

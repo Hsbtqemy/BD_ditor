@@ -1461,7 +1461,7 @@ function htmlCeDocument(a) {
 
 /* « Vos droits ici », sur un album : l'union de ses collections, en actes. */
 function htmlActesAlbum(a) {
-  return `<ul class="droits" aria-label="Ce que vous pouvez sur cet album">${BDBiblio.actesAlbum(a, COLS.toutes).map((x) =>
+  return `<ul class="droits" data-parcours="bibliotheque-actes" aria-label="Ce que vous pouvez sur cet album">${BDBiblio.actesAlbum(a, COLS.toutes).map((x) =>
     `<li class="${x.oui ? "oui" : "non"}" data-acte="${x.cle}">${esc(x.libelle)}<span class="sr-only">${x.oui ? " : oui" : " : non"}</span></li>`).join("")}</ul>`;
 }
 
@@ -1544,7 +1544,7 @@ function renderDetail() {
   fiche.hidden = false;
   fiche.innerHTML = `<p class="cat-fermer"><button type="button" class="ghost small" data-retour-album="1">Fermer ✕</button></p>
     <section id="album-detail" aria-labelledby="album-titre">
-      <div class="lf-tete detail-head"><div class="cat-tete-album">
+      <div class="lf-tete detail-head" data-parcours="bibliotheque-notice"><div class="cat-tete-album">
         ${a.couverture ? `<img class="couv-fiche" alt="" src="/api/planches/${a.couverture}/miniature">` : ""}
         <div class="cat-tete-texte">
         <p class="genre">${copie ? "Album · copie de travail" : "Album"}</p>

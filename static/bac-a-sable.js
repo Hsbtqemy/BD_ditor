@@ -221,6 +221,7 @@
     if (ancienne && ancienne.textContent === texte) return;
     const p = ancienne || el("p", "bac-hors-recherche");
     p.id = "bac-hors-recherche";
+    p.dataset.parcours = "recherche-bac";   // UX-6 : le foyer de « Chercher et explorer »
     p.textContent = texte;
     if (!ancienne) ancre.parentNode.insertBefore(p, ancre);
   }

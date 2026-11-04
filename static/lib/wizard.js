@@ -198,6 +198,65 @@
         + "enregistrements et en manifeste IIIF, et un album en JSON, CSV ou TEI." },
   ];
   const RAPIDE = ["tracer", "decoupage", "transcrire", "annoter"];
+
+  /* Le FOYER d'une étape (Hugo, sur la maquette du 2026-11-02, redit le 2026-11-04) : ce
+     qu'elle éclaire, des éléments PRÉCIS de la page — la carte de l'album, la tête de sa
+     fiche, « Traitement » et son menu ouvert, LA bulle à corriger et le panneau, la colonne
+     du texte de la Transcription, la case agrandie et la grille, le champ de recherche. Le
+     trou de l'assombri est leur rectangle commun, et la fenêtre se pose à côté
+     (`placerFenetre`). Une marque `data-parcours` désigne chacun ; `@album` (la carte de
+     l'album du parcours) et `@bulle` (la bulle à corriger) se résolvent à l'écran. Les
+     ZONES d'une étape, plus larges, restent ce qui est jouable. */
+  const FOYERS = {
+    corpus: ["@album"],
+    decrire: ["bibliotheque-notice"],
+    preremplir: ["atelier-traitement", "atelier-traitement-menu"],
+    tracer: ["atelier-planche", "atelier-structure"],
+    decoupage: ["@bulle", "atelier-structure"],
+    transcrire: ["atelier-transcription-texte"],
+    annoter: ["annotation-case", "annotation-grille"],
+    chercher: ["recherche-champ", "recherche-bac"],
+    exporter: ["bibliotheque-actes"],
+  };
+
+  function foyer(e) { return (e && FOYERS[e.k]) || []; }
+
+  /* Où poser la fenêtre du guide : à DROITE du foyer si elle y tient, sinon à GAUCHE,
+     sinon DESSOUS, sinon DESSUS — bornée à l'écran, à `marge` du foyer ; `repli` si rien ne
+     tient (l'écran la pose alors en feuille, en bas, et la page lui réserve sa hauteur).
+     `f` et `ecran` : `{ l, t, r, b }` ; `taille` : `{ w, h }`. Sans foyer, au centre. */
+  function placerFenetre(f, taille, ecran, marge) {
+    const e = marge === undefined ? 14 : marge, w = taille.w, h = taille.h, v = ecran;
+    const borne = (x, a, b) => Math.max(a, Math.min(x, Math.max(a, b)));
+    if (!f) return { cote: "centre", x: (v.l + v.r - w) / 2, y: (v.t + v.b - h) / 2 };
+    if (f.r + e + w <= v.r) return { cote: "droite", x: f.r + e, y: borne(f.t, v.t, v.b - h) };
+    if (f.l - e - w >= v.l) return { cote: "gauche", x: f.l - e - w, y: borne(f.t, v.t, v.b - h) };
+    if (f.b + e + h <= v.b) return { cote: "dessous", x: borne(f.l, v.l, v.r - w), y: f.b + e };
+    if (f.t - e - h >= v.t) return { cote: "dessus", x: borne(f.l, v.l, v.r - w), y: f.t - e - h };
+    return { cote: "repli", x: v.l, y: v.b - h };
+  }
+
+  /* Deux rectangles `{ l, t, r, b }` se recouvrent-ils ? */
+  function recouvre(a, b) {
+    return !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+  }
+
+  /* La part de la scène que la fenêtre laisse libre, pour y cadrer « Corriger » : la plus
+     grande des quatre bandes de `scene` à `marge` de `fen` (à sa gauche, à sa droite,
+     au-dessus, au-dessous) ; la scène entière si la fenêtre ne la recouvre pas. */
+  function zoneLibre(scene, fen, marge) {
+    const m = marge === undefined ? 14 : marge;
+    if (!recouvre(scene, fen)) return Object.assign({}, scene);
+    const bandes = [
+      { l: scene.l, t: scene.t, r: Math.min(scene.r, fen.l - m), b: scene.b },
+      { l: Math.max(scene.l, fen.r + m), t: scene.t, r: scene.r, b: scene.b },
+      { l: scene.l, t: scene.t, r: scene.r, b: Math.min(scene.b, fen.t - m) },
+      { l: scene.l, t: Math.max(scene.t, fen.b + m), r: scene.r, b: scene.b },
+    ].filter((z) => z.r - z.l > 0 && z.b - z.t > 0);
+    if (!bandes.length) return Object.assign({}, scene);
+    const aire = (z) => (z.r - z.l) * (z.b - z.t);
+    return bandes.reduce((a, z) => (aire(z) > aire(a) ? z : a));
+  }
   const PARCOURS = ["rapide", "complet"];
 
   function etapes(parcours) {
@@ -811,6 +870,16 @@
   /* Les marques que les étapes nomment, `[{ etape, surface, marque }]` : le test vérifie
      que la visite les nomme aussi, sur la même surface — une marque n'existe que pour elle,
      et c'est sa liste que `tests/test_wizard_marques.py` confronte aux gabarits. */
+  /* Les marques que les FOYERS nomment, `[{ etape, surface, marque }]` (sans `@album` ni
+     `@bulle`, que l'écran résout) : `tests/test_wizard_marques.py` exige que chacune soit
+     posée sur la surface de son étape. */
+  function marquesDesFoyers() {
+    const out = [];
+    ETAPES.forEach((e) => foyer(e).filter((m) => m[0] !== "@").forEach((m) => out.push(
+      { etape: e.k, surface: e.surface, marque: m })));
+    return out;
+  }
+
   function marquesDesEtapes() {
     const out = [];
     ETAPES.forEach((e) => liste(e.zones).forEach((m) => out.push(
@@ -827,5 +896,5 @@
            oublierVisite, marquePage,
            faite, phraseGuide, boutonGuide, bulleACorriger, cadreAutour, vueCadree, PHRASES,
            CLE_GUIDE, guideNeuf, lireGuide, retenirGuide, marquerVue, etapeIci,
-           marquesDesEtapes };
+           marquesDesEtapes, FOYERS, foyer, placerFenetre, recouvre, zoneLibre, marquesDesFoyers };
 });

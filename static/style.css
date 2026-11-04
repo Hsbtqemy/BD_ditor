@@ -808,6 +808,18 @@ kbd {
   .wizard-fenetre, .wizard-fenetre.gauche { left: .4615rem; right: .4615rem; bottom: .4615rem;
                                             width: auto; max-height: 55%; }
 }
+/* Le guide (tranche 3) : la fenêtre se pose À CÔTÉ de son foyer, aux coordonnées que
+   `wizard.js` calcule (`left`, `top`) ; quand rien ne tient, et sur un écran étroit, elle est
+   une FEUILLE en bas, et la page lui réserve sa hauteur (`body.wizard-reserve`) : la coque
+   de chaque surface, à `height: 100%` du corps, se loge au-dessus d'elle. */
+.wizard-fenetre.etape { right: auto; bottom: auto; width: min(22rem, calc(100% - 1.2308rem)); }
+.wizard-fenetre.etape.feuille { left: .4615rem; right: .4615rem; top: auto; bottom: .4615rem;
+                                width: auto; max-height: 55%; }
+body.wizard-reserve { box-sizing: border-box; padding-bottom: var(--wizard-reserve, 0px); }
+/* Là où la page défile (à l'étroit, sous une grande police : `overflow: visible`), le
+   contenu déborde du corps, et sa marge ne donne aucune place de plus : un bloc vide après
+   la coque en donne, pour que le bas de la page remonte au-dessus de la feuille. */
+body.wizard-reserve::after { content: ""; display: block; height: var(--wizard-reserve, 0px); }
 
 /* La page vide : sous « Sélectionnez ou importez une planche pour commencer » (Atelier), et
    en carte dans la fiche de la Bibliothèque. */

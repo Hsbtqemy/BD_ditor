@@ -63,6 +63,23 @@ def marques_extraites():
     return out
 
 
+def foyers_extraits():
+    """`[(surface, marque)]` que nomment les FOYERS des étapes (`const FOYERS = {`), sans
+    `@album` ni `@bulle`, que l'écran résout ; la surface est celle de l'étape, lue dans
+    `ETAPES`."""
+    source = _sans_commentaires(LIB.read_text(encoding="utf-8"))
+    etapes = source[source.index("const ETAPES = ["):source.index("\n  ];", source.index("const ETAPES = ["))]
+    surfaces = dict(re.findall(r'\{\s*k:\s*"([a-z]+)"[^{}]*?surface:\s*"([^"]*)"', etapes))
+    debut = source.index("const FOYERS = {")
+    bloc = source[debut:source.index("\n  };", debut)]
+    out = []
+    for k, liste in re.findall(r'\n\s*([a-z]+):\s*\[([^\]]*)\]', bloc):
+        for m in re.findall(r'"([^"]+)"', liste):
+            if not m.startswith("@"):
+                out.append((surfaces[k], m))
+    return out
+
+
 def marques_de_node():
     r = subprocess.run(
         ["node", "-e", "process.stdout.write(JSON.stringify(require(process.argv[1]).marques()))",
@@ -82,8 +99,11 @@ def poseurs(gabarit: str):
         chemin = RACINE / "static" / src
         if not chemin.exists():
             continue
-        for m in MARQUE_JS.findall(_sans_commentaires(chemin.read_text(encoding="utf-8"))):
-            trouvees.setdefault(m, []).append(src)
+        js = _sans_commentaires(chemin.read_text(encoding="utf-8"))
+        # Une marque posée par un script : par `dataset`, ou dans le balisage qu'il écrit.
+        for m in MARQUE_JS.findall(js) + MARQUE_HTML.findall(js):
+            if "${" not in m:                     # un sélecteur bâti, pas une marque posée
+                trouvees.setdefault(m, []).append(src)
     return trouvees
 
 
@@ -93,6 +113,7 @@ def _sans_commentaires_html(html: str) -> str:
 
 def test_la_liste_des_marques_n_est_pas_vide():
     """Le plancher : une liste vide rendrait tous les contrôles suivants vacants."""
+    assert foyers_extraits(), "aucun foyer d'étape extrait"
     m = marques_extraites()
     surfaces = {s for s, bande, _ in m if not bande}
     assert set(GABARITS) <= surfaces, (
@@ -104,8 +125,25 @@ def test_la_liste_des_marques_n_est_pas_vide():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js non installé")
 def test_l_extraction_dit_ce_que_dit_le_module():
-    """Deux énumérations indépendantes du même source, et la même liste."""
+    """Deux énumérations indépendantes du même source, et la même liste — pour la visite
+    comme pour les foyers des étapes."""
     assert marques_extraites() == marques_de_node()
+    r = subprocess.run(
+        ["node", "-e", "process.stdout.write(JSON.stringify(require(process.argv[1])"
+         ".marquesDesFoyers()))", str(LIB)],
+        cwd=str(RACINE), capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    assert foyers_extraits() == [(m["surface"], m["marque"]) for m in json.loads(r.stdout)]
+
+
+def test_chaque_foyer_a_sa_marque_sur_la_surface_de_son_etape():
+    """Le foyer d'une étape (UX-6, tranche 3) est fait de marques plus fines que les zones
+    de la visite : chacune doit être posée sur la surface de l'étape, sans quoi le guide
+    éclairerait un trou vide et poserait sa fenêtre n'importe où."""
+    f = foyers_extraits()
+    assert len(f) >= 10, f
+    manquent = [(s, mq) for s, mq in f if mq not in poseurs(GABARITS[s])]
+    assert not manquent, f"foyers sans marque sur leur surface : {manquent}"
 
 
 @pytest.mark.parametrize("surface", sorted(GABARITS))
@@ -124,7 +162,7 @@ def test_chaque_zone_nommee_par_la_visite_a_sa_marque_sur_sa_surface(surface):
 def test_aucune_marque_n_est_morte():
     """L'autre sens : une marque posée que la visite ne nomme pas est un reste, qu'un écran
     remanié laissera croire tenu. Elle se retire, ou la visite la nomme."""
-    nommees = {mq for _, _, mq in marques_extraites()}
+    nommees = {mq for _, _, mq in marques_extraites()} | {mq for _, mq in foyers_extraits()}
     mortes = {}
     for gabarit in GABARITS.values():
         for mq, lieux in poseurs(gabarit).items():
