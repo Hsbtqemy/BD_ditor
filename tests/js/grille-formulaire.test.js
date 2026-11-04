@@ -269,6 +269,21 @@ test("la tête dit où s'écrit un geste, et quelle version se montre", () => {
   assert.equal(F.versionMontree({ versions: [v(1, "publiee")] }), 1);
 });
 
+test("la note de version est celle de la version où s'écrit un geste", () => {
+  const v = (numero, etat, note = null) => ({ numero, etat, note });
+  assert.deepEqual(F.noteDeVersion({ ouverte: true, versions: [v(1, "vivante", "x")] }),
+                   { numero: 1, vue: "x", naitra: false });
+  // Fermée publiée sans brouillon : la note de la v1 ne se montre pas — le brouillon v2
+  // naîtra sans note, et la déclarer vue ferait un faux conflit.
+  assert.deepEqual(F.noteDeVersion({ ouverte: false, versions: [v(1, "publiee", "la v1")] }),
+                   { numero: 2, vue: "", naitra: true });
+  assert.deepEqual(F.noteDeVersion({ ouverte: false,
+                                     versions: [v(1, "publiee", "la v1"), v(2, "brouillon", "b")] }),
+                   { numero: 2, vue: "b", naitra: false });
+  assert.deepEqual(F.noteDeVersion({ ouverte: false, versions: [v(1, "brouillon")] }),
+                   { numero: 1, vue: "", naitra: false });
+});
+
 /* --- Le plan, l'ordre ---------------------------------------------------------------- */
 
 test("le plan range chaque rubrique avec ses entrées, puis « Hors rubrique »", () => {

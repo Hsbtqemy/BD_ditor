@@ -442,6 +442,19 @@
       + "premier changement" : "aucune version", brouillon: null };
   }
 
+  /* La NOTE de version (ce que la version change) : celle de la version où s'écrit un geste
+     — la vivante d'une ouverte, le brouillon d'une fermée — ; sur une fermée sans brouillon,
+     celle du brouillon qui naîtra au premier changement, vide (il naît sans note). `numero` :
+     la version qu'elle décrit ; `vue` : ce que l'écran déclare avoir vu (CONC-3). */
+  function noteDeVersion(g) {
+    const vs = (g && g.versions) || [];
+    const der = (etat) => vs.filter((v) => v.etat === etat).pop() || null;
+    const v = g && g.ouverte ? der("vivante") || vs[vs.length - 1] || null : der("brouillon");
+    if (v) return { numero: v.numero, vue: v.note || "", naitra: false };
+    const p = der("publiee");
+    return { numero: p ? p.numero + 1 : 1, vue: "", naitra: true };
+  }
+
   /* La version que le formulaire MONTRE quand rien ne s'écrit encore : la vivante, le
      brouillon, ou la dernière publiée (`routes/grilles._version_montree`). */
   function versionMontree(g) {
@@ -593,7 +606,7 @@
     ciblesDeReponse, ciblesEnMots, reponseCardinalite, cardinaliteParDefaut, reponses,
     manques, listesUtilisables, aCompleter, repondre, envoiVariante, vuEntree, avecVu,
     corpsEntree, exemplesDeTexte, texteDExemples, offresEntree, formesPossibles, offresVariante, offresCase,
-    offresRubrique, offresListe, placesDeRubrique, cheminDeRubrique, ouSEcrit,
+    offresRubrique, offresListe, placesDeRubrique, cheminDeRubrique, ouSEcrit, noteDeVersion,
     versionMontree, publiable, lignesDuPlan, freres, deplacer, planDApercu, cibleDeFaute,
   };
 });

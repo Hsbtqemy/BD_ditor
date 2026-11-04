@@ -269,6 +269,30 @@ def test_un_409_de_valeur_vue_garde_la_saisie(page, live_server):
     assert next(e for e in plan["entrees"] if e["cle"] == "cri")["definition"] == "la mienne"
 
 
+def test_la_note_de_version_s_ecrit_dans_le_brouillon_d_une_fermee(page, live_server):
+    """Sur une fermée publiée, la note dit la v2 à naître, VIDE (le brouillon naît sans
+    note : déclarer vue celle de la v1 ferait un faux conflit) ; la quitter fait naître le
+    brouillon qui la porte, et la v1 garde la sienne."""
+    base = live_server
+    with _http(base) as c:
+        g = grille_active_vivante(c, nom="Signaux", ouverte=False)
+        note_v1 = c.get(f"/api/grilles/{g['grille_id']}/versions/1").json().get("note")
+    _ouvrir(page, base, g["projet_id"], g["grille_id"])
+    note = page.locator("#fm-g-note")
+    expect(page.locator('label[for="fm-g-note"]')).to_have_text("Note de la v2")
+    expect(note).to_have_value("")
+    note.fill("les signaux sonores à part")
+    page.keyboard.press("Tab")
+    expect(page.locator(".fm-tete .pj-puce").first).to_have_text("brouillon v2")
+    expect(page.locator(".fm-conflit")).to_have_count(0)
+    with _http(base) as c:
+        vs = {v["numero"]: v for v in c.get(f"/api/grilles/{g['grille_id']}").json()["versions"]}
+    assert vs[2]["note"] == "les signaux sonores à part"
+    assert vs[1]["note"] == note_v1
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#fm-g-note")).to_have_value("les signaux sonores à part")
+
+
 def _retouche(data: bytes, retouche) -> bytes:
     wb = openpyxl.load_workbook(io.BytesIO(data))
     retouche(wb[grille_tableur.FEUILLE_ENTREES])

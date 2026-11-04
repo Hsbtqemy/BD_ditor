@@ -2628,6 +2628,16 @@ function fmChange(t) {
     }, { ...champ, relire: true });
     return true;
   }
+  if (t.id === "fm-g-note" && !FM.neuve) {
+    const note = v.trim();
+    fmGeste(() => {
+      const n = F.noteDeVersion(fmGrille());
+      if (note === n.vue.trim()) return null;
+      return { methode: "PATCH", chemin: fmChemin(),
+               corps: { note: note || null, vu: { note: n.vue || null } } };
+    }, { ...champ, relire: true });
+    return true;
+  }
   if (t.name === "fm-ouverte" && FM.neuve) { FM.neuve.ouverte = v === "oui"; fmRendre(); return true; }
   if (t.name === "fm-porte" || t.hasAttribute("data-fm-porte-zone")) {
     const choix = t.name === "fm-porte" ? v : "zone";
@@ -3124,6 +3134,18 @@ function fmDeplacerHtml(quoi, cle, parent, nom) {
   return btn(-1, haut, "↑", "Monter") + btn(1, bas, "↓", "Descendre");
 }
 
+/* La note de version : ce que la version change, en une phrase ; elle part quand on quitte
+   le champ, dans la version où s'écrit un geste (`BDGrilleFormulaire.noteDeVersion`). */
+function fmNoteDeVersion(g) {
+  const n = BDGrilleFormulaire.noteDeVersion(g);
+  const aide = g.ouverte ? "Ce que la grille est devenue, en une phrase."
+    : n.naitra ? `Ce que la v${n.numero} changera, en une phrase : elle naîtra avec ce brouillon.`
+      : `Ce que la v${n.numero} change, en une phrase ; elle se lit avec la version.`;
+  return `<section class="fm-section"><h4><label for="fm-g-note" title="${esc(aide)}">Note de la v${
+    n.numero}</label></h4><textarea id="fm-g-note" rows="2" maxlength="2000" title="${esc(aide)}"
+    >${esc(n.vue)}</textarea></section>`;
+}
+
 function fmFicheGrille() {
   const F = BDGrilleFormulaire;
   if (FM.neuve) {
@@ -3158,6 +3180,7 @@ function fmFicheGrille() {
     ${fmQuestion("B", { titre: "Sur quoi porte-t-elle d'ordinaire ?", aide: "La réponse à la question 2 pour toutes les entrées qui ne disent pas la leur." },
       fmReponsesCible("porte", rep, false, [], "data-fm-porte-zone"),
       FM.attPorte ? "Cochez au moins une sorte de zone." : "")}
+    ${fmNoteDeVersion(g)}
     <section class="fm-section"><h4>Dans le plan</h4><p class="muted small">${esc([
       F.pluriel((p.rubriques || []).length, "rubrique"), F.pluriel((p.entrees || []).length, "entrée"),
       F.pluriel(nv, "variante"), F.pluriel((p.listes || []).length, "liste")].join(" · "))}</p></section>`;
