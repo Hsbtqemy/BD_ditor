@@ -175,6 +175,25 @@ test("l'import s'éteint dans un album de MON bac à sable au plafond, et nulle 
   assert.equal(B.raisonImportEteint(plein, null), null, "un album sans projet");
 });
 
+/* ── L'export (UX-6, tranche 4) ──────────────────────────────────────────────────────── */
+
+test("« exporter » se ferme sur un album de MON bac à sable que le jeu n'ouvre pas", () => {
+  // Le jeu de production : tout en part serveur, rien d'exportable.
+  const ferme = { ...VUE, jeu: VUE.jeu.map((j) => ({ ...j, exportable: false })) };
+  assert.equal(B.exportFerme(ferme, { id: 31, projet_id: 7 }), true, "la copie du parcours");
+  assert.equal(B.exportFerme(ferme, { id: 99, projet_id: 7 }), true, "un album créé ici");
+  // La part du dépôt : la copie d'un document ouvert reste à ce que dit sa collection.
+  const ouvert = { ...VUE, jeu: [{ ...VUE.jeu[1], exportable: true }, VUE.jeu[0]] };
+  assert.equal(B.exportFerme(ouvert, { id: 31, projet_id: 7 }), false);
+  assert.equal(B.exportFerme(ouvert, { id: 30, projet_id: 7 }), true, "exportable absent : fermé");
+  // Ne fait que fermer, et seulement chez soi.
+  assert.equal(B.exportFerme(ferme, { id: 31, projet_id: 9 }), false, "le bac à sable d'un autre");
+  assert.equal(B.exportFerme(ferme, { id: 31, projet_id: 1 }), false, "un vrai projet");
+  assert.equal(B.exportFerme(ferme, { id: 31, projet_id: null }), false, "une copie au fonds");
+  assert.equal(B.exportFerme(null, { id: 31, projet_id: 7 }), false, "sans vue, rien");
+  assert.equal(B.exportFerme(ferme, null), false);
+});
+
 /* ── Remettre à neuf ─────────────────────────────────────────────────────────────────── */
 
 test("ce qui part : le travail, les planches importées, les collections, les invités nommés", () => {

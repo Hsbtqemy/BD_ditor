@@ -448,6 +448,9 @@
     },
     /* La raison d'éteindre l'import dans un album de ce projet, ou `null`. */
     raisonImport(albumProjetId) { return L.raisonImportEteint(E.vue, albumProjetId); },
+    /* L'export de cet album (une ligne de `GET /api/albums`) est-il fermé par le bac à
+       sable ? Lu APRÈS `pret`. */
+    exportFerme(album) { return L.exportFerme(E.vue, album); },
     /* Le projet courant est-il un bac à sable ? — `null` s'il n'en est pas un, sa ligne de
        `GET /api/projets` sinon. */
     bacCourant() { return L.estBac(E.courant) ? E.courant : null; },

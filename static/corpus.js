@@ -1461,9 +1461,13 @@ function htmlCeDocument(a) {
     </li>`).join("")}</ul></section>`;
 }
 
-/* « Vos droits ici », sur un album : l'union de ses collections, en actes. */
+/* « Vos droits ici », sur un album : l'union de ses collections, en actes. Dans un bac à
+   sable, « exporter » se ferme là où le serveur refuse l'export (`BDBac.exportFerme`). */
 function htmlActesAlbum(a) {
-  return `<ul class="droits" data-parcours="bibliotheque-actes" aria-label="Ce que vous pouvez sur cet album">${BDBiblio.actesAlbum(a, COLS.toutes).map((x) =>
+  const ferme = !!(window.BDBacEcran && BDBacEcran.exportFerme(a));
+  const actes = BDBiblio.actesAlbum(a, COLS.toutes)
+    .map((x) => (x.cle === "exporter" && ferme ? Object.assign({}, x, { oui: false }) : x));
+  return `<ul class="droits" data-parcours="bibliotheque-actes" aria-label="Ce que vous pouvez sur cet album">${actes.map((x) =>
     `<li class="${x.oui ? "oui" : "non"}" data-acte="${x.cle}">${esc(x.libelle)}<span class="sr-only">${x.oui ? " : oui" : " : non"}</span></li>`).join("")}</ul>`;
 }
 
@@ -1633,6 +1637,17 @@ function raisonPlafond(a) {
 
 /* Le compte des planches importées a changé (la ligne l'a relu) : la fiche ouverte d'un
    album redessine son seul bloc d'import, sans rien remonter d'autre. */
+/* La vue du bac à sable arrive après la fiche : ses actes se redessinent s'ils changent. */
+function majActesAlbum() {
+  const a = state.albums.find((x) => x.id === state.openId);
+  const ul = document.querySelector('#biblio-volet ul.droits[data-parcours="bibliotheque-actes"]');
+  if (!a || !ul) return;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = htmlActesAlbum(a);
+  const neuf = tmp.firstElementChild;
+  if (neuf && neuf.outerHTML !== ul.outerHTML) ul.replaceWith(neuf);
+}
+
 function majImportPlafond() {
   const a = state.albums.find((x) => x.id === state.openId);
   const bloc = document.getElementById("bi-import");
@@ -4991,8 +5006,10 @@ function setup() {
   // Les chiffres, une fois le projet courant lu : ceux d'un bac à sable sont les siens (COL-4).
   ALBUMS_PRETS.then(loadCorpus);
   // COL-4 — la ligne du bac à sable a lu son état (le compte des planches importées) : la
-  // fiche d'un album ouverte éteint ou rallume son import.
+  // fiche d'un album ouverte éteint ou rallume son import, et ferme « exporter » là où le
+  // bac à sable le refuse.
   document.addEventListener("bd:bac-a-sable-maj", majImportPlafond);
+  document.addEventListener("bd:bac-a-sable-maj", majActesAlbum);
   loadEtatSharedocs().then(() => ouvrirDepuisAdresse(false));
   pollJobs();     // reprend l'affichage d'un éventuel lot déjà en cours
 }

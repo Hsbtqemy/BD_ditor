@@ -215,6 +215,48 @@ test("la phrase de « Constituer le corpus » nomme l'album du parcours", () => 
   assert.match(W.phraseEtape(W.ETAPES[0], null, null), /ouvrez l'album du parcours\.$/);
 });
 
+/* ── Ce qui sort d'un bac à sable (tranche 4) ─────────────────────────────────────────── */
+
+test("« Exporter » dit ce qui sort VRAIMENT du bac à sable, d'après le jeu", () => {
+  const exp = W.ETAPES.find((e) => e.k === "exporter");
+  const hugo = "Ailleurs que dans un bac à sable, une collection sort en fiche, en "
+    + "enregistrements et en manifeste IIIF, et un album en JSON, CSV ou TEI.";
+  // Le jeu de production : tout en part serveur — rien ne sort, et la phrase le dit d'abord.
+  const ferme = { ...VUE, jeu: VUE.jeu.map((j) => ({ ...j, exportable: false })) };
+  assert.equal(W.phraseEtape(exp, ferme, null),
+               W.typo(`Ici, rien ne sort : l'export d'un bac à sable est fermé. ${hugo}`));
+  assert.equal(W.phraseEtape(exp, VUE, null), W.phraseEtape(exp, ferme, null),
+               "exportable absent ne vaut pas ouvert");
+  // La part du dépôt : la copie ouverte se nomme, et la planche importée la ferme.
+  const un = { ...VUE, jeu: [VUE.jeu[0], { ...VUE.jeu[1], exportable: true }] };
+  assert.equal(W.phraseEtape(exp, un, null),
+               W.typo("Ici, seul « Moustache et Trottinette » peut sortir, tant que vous n'y "
+                      + `importez aucune planche. ${hugo}`));
+  const deux = { ...VUE, jeu: VUE.jeu.map((j) => ({ ...j, exportable: true })) };
+  assert.ok(W.phraseEtape(exp, deux, null).startsWith(
+    W.typo("Ici, seuls « Un exemple », « Moustache et Trottinette » et « Le stock » peuvent "
+           + "sortir")));
+  // Sans la vue du bac à sable, rien n'est dit d'ici : la phrase de Hugo seule.
+  assert.equal(W.phraseEtape(exp, null, null), W.typo(hugo));
+  // Aucune autre étape ne parle de l'export d'ici.
+  W.ETAPES.filter((e) => e !== exp).forEach((e) =>
+    assert.doesNotMatch(W.phraseEtape(e, ferme, null), /^Ici/, e.k));
+});
+
+test("dans un bac à sable, la visite ne promet pas d'en sortir un album", () => {
+  const actions = (bac) => W.reperes(W.pageDeLaSurface("/"), 1, null, bac)
+    .find((r) => r.marque === "atelier-actions").phrase;
+  // Hors d'un bac à sable, la phrase de la maquette ; dans un bac à sable, sortir un album
+  // se dit « hors d'un bac à sable » — le sien comme celui où l'on est invité.
+  assert.equal(actions(null), "Lancer les moteurs, ajouter des planches, sortir un album.");
+  for (const bac of ["mien", "autre"]) {
+    assert.match(actions(bac), /Sortir un album, hors d'un bac à sable\.$/, bac);
+  }
+  // Rien, dans ce que la visite dit d'un bac à sable, ne promet une sortie sans réserve.
+  W.VISITE.forEach((v, i) => W.tempsDe(i).forEach((t) => W.reperes(i, t, null, "mien")
+    .forEach((r) => assert.doesNotMatch(r.phrase, /sortir un album\.$/i, r.marque))));
+});
+
 /* ── Sans moteur ──────────────────────────────────────────────────────────────────────── */
 
 test("sans moteur, « Pré-remplir » se dit optionnel ici, et l'album le dit aussi", () => {

@@ -195,7 +195,12 @@
       // production est en part serveur) ; celle-ci ne promet rien du bac à sable (Hugo,
       // 2026-11-03).
       phrase: "Ailleurs que dans un bac à sable, une collection sort en fiche, en "
-        + "enregistrements et en manifeste IIIF, et un album en JSON, CSV ou TEI." },
+        + "enregistrements et en manifeste IIIF, et un album en JSON, CSV ou TEI.",
+      // Et elle dit, devant, ce qui sort VRAIMENT d'ici (`phraseExport`).
+      ici: { rien: "Ici, rien ne sort : l'export d'un bac à sable est fermé.",
+             un: "Ici, seul {titres} peut sortir, tant que vous n'y importez aucune planche.",
+             plusieurs: "Ici, seuls {titres} peuvent sortir, tant que vous n'y importez "
+               + "aucune planche." } },
   ];
   const RAPIDE = ["tracer", "decoupage", "transcrire", "annoter"];
 
@@ -277,7 +282,27 @@
     if (!e) return "";
     if (e.sansMoteur && m && !m.ocr) return typo(e.sansMoteur);
     const a = albumDuParcours(vue);
-    return typo(e.phrase.replace("{album}", a && a.titre ? a.titre : "l'album du parcours"));
+    const p = e.phrase.replace("{album}", a && a.titre ? a.titre : "l'album du parcours");
+    const ici = phraseExport(e, vue);
+    return typo(ici ? `${ici} ${p}` : p);
+  }
+
+  /* Ce qui sort VRAIMENT du bac à sable (`pilotage/UX-6.md`, « “Exporter” dit ce qui sort
+     vraiment d'un bac à sable ») : le serveur décide l'export d'un album de bac à sable
+     DOCUMENT par document — seule une copie d'un document du jeu ouvert à l'export
+     (`jeu[].exportable` de `GET /api/bac-a-sable`, la part du dépôt) sort, et pas si elle
+     porte une planche importée ; le jeu de production est tout entier en part serveur, donc
+     rien n'y sort. Sans la vue du bac à sable, on ne sait pas : rien n'est dit, la phrase de
+     l'étape ne promettant rien d'ici. */
+  function phraseExport(e, vue) {
+    if (!e || !e.ici || !vue || typeof vue !== "object") return "";
+    const jeu = Array.isArray(vue.jeu) ? vue.jeu : [];
+    const titres = jeu.filter((j) => j && j.exportable === true && j.titre)
+      .map((j) => `« ${j.titre} »`);
+    if (!titres.length) return e.ici.rien;
+    const liste = titres.length === 1 ? titres[0]
+      : `${titres.slice(0, -1).join(", ")} et ${titres[titres.length - 1]}`;
+    return (titres.length === 1 ? e.ici.un : e.ici.plusieurs).replace("{titres}", liste);
   }
 
   /* « facultatif », ou « optionnel ici » quand l'OCR n'est pas là ; `null` sinon. Sur la
@@ -336,6 +361,10 @@
       invite: { zones: { "bande-bac": "Quand il s'efface, et ce qu'on y fait : le quitter." } } },
     { surface: "/", titre: "Atelier",
       phrase: "Le travail sur la planche : tracer, lancer les moteurs, transcrire.",
+      // Hors d'un bac à sable, la phrase de la maquette ; dans un bac à sable, elle ne
+      // promet pas d'en sortir un album, que le serveur y refuse (`phraseExport`).
+      horsBac: { zones: { "atelier-actions": "Lancer les moteurs, ajouter des planches, "
+        + "sortir un album." } },
       zones: [
         ["atelier-planches", "Album et planches", "Choisissez la collection, l'album, puis "
           + "la planche."],
@@ -348,7 +377,7 @@
         ["atelier-structure", "Structure", "L'arbre des zones, et le détail de celle qui est "
           + "choisie.", 1],
         ["atelier-actions", "Traitement, Import / Export", "Lancer les moteurs, ajouter des "
-          + "planches, sortir un album.", 1],
+          + "planches. Sortir un album, hors d'un bac à sable.", 1],
         // Ne se voit qu'en mode Transcription, qui recouvre la page : le guide y conduit.
         ["atelier-transcription", "Transcription", "La zone agrandie et son texte. Tab passe à "
           + "la zone suivante.", 1],

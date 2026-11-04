@@ -763,3 +763,58 @@ def test_la_fenetre_du_guide_ne_recouvre_jamais_son_foyer(page, jeu_decoupe, lar
                 echecs.append(f"{ou} : la fenêtre {m['fen']} recouvre {m['recouvrent']}"
                               f"{' (feuille)' if m['feuille'] else ''}")
     assert not echecs, "\n".join(echecs)
+
+
+# ── « Exporter » dit ce qui sort vraiment d'un bac à sable (tranche 4) ─────────────────
+#
+# Le serveur décide l'export d'un album de bac à sable document par document : seule la
+# copie d'un document du jeu ouvert à l'export (la part du dépôt) peut sortir, et le jeu de
+# production est tout entier en part serveur. La fiche de l'album, que l'étape éclaire, ne
+# dit donc « exporter » que là où le serveur le permet, et la phrase de l'étape le dit
+# d'abord. Les deux sens sont joués : un mutant qui fermerait tout passerait sinon.
+
+def _export(base, album_id):
+    import httpx
+    with httpx.Client(base_url=base, trust_env=False, timeout=60, headers=CAMILLE) as c:
+        return c.get("/api/export/json", params={"album_id": album_id})
+
+
+@pytestmark_proxy
+@pytest.mark.parametrize("exportable", [False, True])
+def test_l_etape_exporter_ne_promet_que_ce_qui_sort(page, live_server, tmp_path, exportable):
+    from test_e2e_bac_a_sable import _outil
+    from test_jeu import ecrire_jeu
+    doc = dict(JEU_DECOUPE[0], exportable=exportable)
+    depot = ecrire_jeu(tmp_path / "jeu-depot", [doc], images=("p1.png",))
+    _outil(tmp_path, "tools/preparer_jeu.py", "--depot", str(depot), "--appliquer")
+    jeu = {"base": live_server, "tmp": tmp_path}
+    bac = _ouvrir(jeu, CAMILLE)
+    vue = _api(live_server, CAMILLE, "GET", "/api/bac-a-sable")
+    parcours = next(j for j in vue["jeu"] if j["role"] == "pas-a-pas")
+    assert parcours["exportable"] is exportable
+    _sous(page, CAMILLE)
+    _arriver(page, live_server)
+    complet = page.evaluate("() => BDWizard.etapes('complet').map((e) => e.k)")
+    i = complet.index("exporter")
+    page.evaluate("""([login, bac, i]) => {
+      localStorage.setItem('bd-wizard', JSON.stringify({ [login]: { bac: bac.id,
+        efface_le: bac.efface_le, album_vu: true, parcours: 'complet', etape: i } }));
+      sessionStorage.setItem('bd-wizard-guide', JSON.stringify({ login, bac: bac.id,
+        efface_le: bac.efface_le, actif: true, vues: [] })); }""", ["camille", bac, i])
+    page.goto(f"{live_server}/corpus?album={parcours['album_id']}", wait_until="domcontentloaded")
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Exporter", timeout=15000)
+    phrase = page.locator("#wizard-fenetre .wf-phrase")
+    acte = page.locator('#biblio-volet .droits [data-acte="exporter"]')
+    expect(acte).to_be_visible()
+    if exportable:
+        expect(phrase).to_contain_text("peut sortir, tant que vous n")
+        expect(acte).to_have_class("oui")
+        # Et le serveur le confirme : l'album sort.
+        assert _export(live_server, parcours["album_id"]).status_code == 200
+    else:
+        expect(phrase).to_contain_text("Ici, rien ne sort")
+        expect(acte).to_have_class("non")
+        assert _export(live_server, parcours["album_id"]).status_code == 403
+    # La phrase de Hugo suit, telle quelle.
+    expect(phrase).to_contain_text("Ailleurs que dans un bac à sable")
+

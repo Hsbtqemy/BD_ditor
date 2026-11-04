@@ -196,6 +196,20 @@
       + "remettez le bac à sable à neuf.";
   }
 
+  /* L'export d'un album de MON bac à sable est-il FERMÉ ? Le serveur le décide document par
+     document, pour toute portée (`socle._exiger_l_export_hors_bac`) : seule la copie d'un
+     document du jeu ouvert à l'export — `jeu[].exportable` de la vue, la part du dépôt —
+     peut sortir. La case « exporter » d'une collection à soi dirait sinon « oui » sur un
+     album que le serveur refuse (le jeu de production est tout entier en part serveur).
+     Ne fait que FERMER : `false` hors de mon bac à sable, sans vue, ou pour la copie d'un
+     document ouvert — le serveur y refuse encore un album qui porte une planche importée,
+     ce que la vue ne permet pas de distinguer. */
+  function exportFerme(vue, album) {
+    if (!vue || !album || album.projet_id == null || vue.id !== album.projet_id) return false;
+    const jeu = Array.isArray(vue.jeu) ? vue.jeu : [];
+    return !jeu.some((j) => j && j.album_id === album.id && j.exportable === true);
+  }
+
   /* ── Remettre à neuf : ce qui part, ce qui revient ─────────────────────────────────
      Deux colonnes (Hugo, 2026-10-24). La remise à neuf supprime le projet et en fait
      naître un neuf (S5) : les invitations partent avec lui, et se nomment. `invites` : les
@@ -371,7 +385,7 @@
   return { CLE_SOUVENIRS, AIDE_MIEN, aide, instant, jourEtHeure, jourCourt, jjmm, jour,
            heure, mien, offrir, offrirPageVide, estBac, horsRecherche, ligne,
            libelleInviter, plafond,
-           raisonImportEteint, remiseANeuf, enumeration, adresseApresOuverture,
+           raisonImportEteint, exportFerme, remiseANeuf, enumeration, adresseApresOuverture,
            souvenirsDe, disparus, disparusDe, messageDisparu, lireSouvenirs,
            retenirSouvenirs, proprietaire, axeBacsVisible, adresseApresRemise,
            trierBacs, enteteBacs, phraseFicheBac, dateLongue };
