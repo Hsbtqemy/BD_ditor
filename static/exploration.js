@@ -1234,11 +1234,12 @@ async function setup() {
   $("#btn-export-analyse").onclick = exporterAnalyse;
   // DROIT-2 — les trois exports de la page ne se proposent qu'à qui peut exporter
   // quelque part ; la note dit quand le fichier emportera moins que l'écran.
-  Promise.resolve(window.BDMoi).then(etatExport, () => "tout").then((etat) => {
+  Promise.resolve(window.BDMoi).catch(() => null).then((moi) => {
+    const etat = etatExport(moi);
     for (const id of ["#btn-export-analyse", "#btn-export-accord",
                       "#btn-export-accord-inter"]) $(id).hidden = etat === "rien";
     const note = $("#export-note");
-    note.textContent = noteExport(etat);
+    note.textContent = noteExport(etat, moi);
     note.hidden = !note.textContent;
   });
   // Les deux panneaux n'ont pas de critères : leur export est l'écran, en fichier.

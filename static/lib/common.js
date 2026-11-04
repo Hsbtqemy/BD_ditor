@@ -203,7 +203,17 @@
     const e = moi && moi.acces && moi.acces.exporter;
     return aLaCle(e) ? e : "tout";
   }
-  function noteExport(etat) { return aLaCle(etat) ? NOTES_EXPORT[etat] : ""; }
+  /* UX-6 — « rien » a deux causes, et la note n'en dit qu'une : on lit des collections sans
+     pouvoir en exporter aucune. À qui ne lit AUCUNE collection hors de son bac à sable — le
+     compte qui n'a que lui —, il n'y a rien à exporter, et la phrase (« vous ne l'avez sur
+     aucune de celles que vous lisez ») parlait d'un droit à quelqu'un dont l'écran est vide.
+     Le nombre vient du serveur (`acces.collections` de /api/moi, sans les bacs à sable), comme
+     l'état : l'écran ne déduit aucun droit. `moi` absent, la note reste celle de l'état. */
+  function noteExport(etat, moi) {
+    if (!aLaCle(etat)) return "";
+    if (etat === "rien" && moi && moi.acces && moi.acces.collections === 0) return "";
+    return NOTES_EXPORT[etat];
+  }
 
   /* La série d'un album et son rang, tels qu'on les lit devant le titre : « Tintin · T3 ».
      Le tome est un texte libre (« 3 », « HS », « Intégrale ») : un nombre seul prend le « T »,

@@ -155,6 +155,17 @@ test("noteExport ne parle que d'un export partiel ou impossible", () => {
   assert.equal(noteExport("constructor"), "");
 });
 
+test("noteExport se tait chez qui ne lit aucune collection : il n'a rien à exporter (UX-6)", () => {
+  // Le compte qui n'a que son bac à sable : /api/moi dit « rien » ET 0 collection lue.
+  assert.equal(noteExport("rien", { acces: { exporter: "rien", collections: 0 } }), "");
+  // Qui lit sans pouvoir exporter garde la phrase : c'est elle qui lui dit pourquoi.
+  assert.match(noteExport("rien", { acces: { exporter: "rien", collections: 2 } }), /aucune/);
+  // Une portée totale (`collections` null) et une réponse illisible : la note de l'état.
+  assert.match(noteExport("rien", { acces: { collections: null } }), /aucune/);
+  assert.match(noteExport("rien", null), /aucune/);
+  assert.match(noteExport("partiel", { acces: { collections: 0 } }), /n'emporte que/);
+});
+
 
 test("serieTome : la série et son rang, tels qu'on les lit devant le titre", () => {
   assert.equal(serieTome({ serie: "Tintin", tome: "3" }), "Tintin · T3");

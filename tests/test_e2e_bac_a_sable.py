@@ -743,6 +743,37 @@ def test_hors_du_bac_les_chiffres_restent_ceux_du_corpus(page, jeu):
     assert not [v for v in vues if "bac_a_sable=" in v[1]], vues
 
 
+@pytestmark_proxy
+def test_sans_autre_projet_la_recherche_et_l_exploration_ne_se_lisent_pas_en_panne(page, jeu):
+    """UX-6 — camille n'a que son bac à sable, que la Recherche et l'Exploration ne voient
+    pas : tout y est à zéro. Les chiffres s'accordent (« 0 album »), l'écran vide dit sa
+    cause au lieu de « relancer l'indexation NLP ? », et la phrase d'export se tait — elle
+    n'a rien à exporter. lea, qui LIT une collection sans pouvoir l'exporter, garde la phrase :
+    la garde distingue les deux, sur la clé que le serveur rend (`acces.collections`)."""
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    page.goto(jeu["base"] + "/exploration", wait_until="networkidle")
+    expect(page.locator("#corpus-stats")).to_contain_text("0 album")
+    expect(page.locator("#corpus-stats")).not_to_contain_text("albums")
+    info = page.locator("#dist-info")
+    expect(info).to_have_text("Aucun album dans le corpus que vous lisez : rien à explorer.")
+    expect(page.locator("#btn-export-analyse")).to_be_hidden()
+    expect(page.locator("#export-note")).to_be_hidden()
+
+    page.goto(jeu["base"] + "/recherche?q=bonjour", wait_until="networkidle")
+    expect(page.locator("#results .search-hint")).to_have_text(
+        "Aucun album dans le corpus que vous lisez : rien à chercher.")
+    expect(page.locator("#btn-export")).to_be_hidden()
+    expect(page.locator("#export-note")).to_be_hidden()
+
+    _projet_de_lea(jeu)
+    _sous(page, LEA)
+    for surface in HORS_RECHERCHE:
+        page.goto(jeu["base"] + surface, wait_until="networkidle")
+        expect(page.locator("#export-note")).to_be_visible()
+        expect(page.locator("#export-note")).to_contain_text("aucune de celles que vous lisez")
+
+
 # ── L'Administration ───────────────────────────────────────────────────────────────────
 
 @pytestmark_proxy

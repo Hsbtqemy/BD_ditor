@@ -326,10 +326,11 @@ async function setup() {
   $("#btn-export").onclick = exportCsv;   // export du jeu de résultats courant (CSV)
   // DROIT-2 — le bouton ne se propose qu'à qui peut exporter quelque part, et la note
   // dit quand le fichier emportera moins que l'écran. La garde reste au serveur.
-  Promise.resolve(window.BDMoi).then(etatExport, () => "tout").then((etat) => {
+  Promise.resolve(window.BDMoi).catch(() => null).then((moi) => {
+    const etat = etatExport(moi);
     $("#btn-export").hidden = etat === "rien";
     const note = $("#export-note");
-    note.textContent = noteExport(etat);
+    note.textContent = noteExport(etat, moi);
     note.hidden = !note.textContent;
   });
   $("#preview-close").onclick = closePreview;
