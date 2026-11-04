@@ -1635,8 +1635,6 @@ function raisonPlafond(a) {
   return window.BDBacEcran ? BDBacEcran.raisonImport(a.projet_id) : null;
 }
 
-/* Le compte des planches importées a changé (la ligne l'a relu) : la fiche ouverte d'un
-   album redessine son seul bloc d'import, sans rien remonter d'autre. */
 /* La vue du bac à sable arrive après la fiche : ses actes se redessinent s'ils changent. */
 function majActesAlbum() {
   const a = state.albums.find((x) => x.id === state.openId);
@@ -1648,6 +1646,8 @@ function majActesAlbum() {
   if (neuf && neuf.outerHTML !== ul.outerHTML) ul.replaceWith(neuf);
 }
 
+/* Le compte des planches importées a changé (la ligne l'a relu) : la fiche ouverte d'un
+   album redessine son seul bloc d'import, sans rien remonter d'autre. */
 function majImportPlafond() {
   const a = state.albums.find((x) => x.id === state.openId);
   const bloc = document.getElementById("bi-import");

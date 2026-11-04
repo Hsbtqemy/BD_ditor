@@ -18,8 +18,8 @@
 
    L'album et la carte sont bâtis sur `static/lib/dialog.js` : rôle, piège à focus, Échap,
    retour du focus. La fenêtre sur la zone ne l'est pas : elle n'est pas une modale (cf. sa
-   section). Le guide pas à pas, étape par étape, n'est pas encore là : la carte en tient
-   lieu.
+   section), et le GUIDE pas à pas non plus : la même fenêtre, posée à côté du foyer de
+   chaque étape (cf. sa section).
 
    Chargé APRÈS `lib/bac-a-sable.js`, `bac-a-sable.js` et `lib/wizard.js`, AVANT le script
    de la surface. Il lit ce que `bac-a-sable.js` a déjà lu (`BDBacEcran.pret` : l'identité,
