@@ -1017,6 +1017,53 @@ def reconcilier_ouverte(conn, grille_id: int, version_id: int, avant: dict, apre
     return apres, a_repondre, fusions, fautes
 
 
+def employes_qui_disparaissent(conn, grille_id: int, avants, apres: dict) -> list:
+    """Les fautes d'un réimport d'une grille FERMÉE qui ferait disparaître, de son brouillon,
+    une VARIANTE ou une CASE qu'un relevé emploie — dans quelque version que ce soit : ses
+    relevés vivent dans une version publiée, et la nomment. La règle du formulaire (« une
+    variante ou une case employée ne se supprime pas, même dans le brouillon d'une fermée »,
+    tranché par Hugo le 2026-11-04 ; `routes/grilles.supprimer_variante`, `supprimer_case`)
+    et celle du réimport d'une OUVERTE (`reconcilier_ouverte`), aux mêmes codes.
+
+    `avants` : les contenus que le fichier remplace (la dernière version publiée, le
+    brouillon en place) — ce qu'on en connaît dit le nom d'un disparu. Une variante ne se
+    cherche que sous une entrée que le fichier porte encore : une entrée qui disparaît
+    entière a sa règle à elle."""
+    avants = [a for a in avants if a]
+    fautes = []
+    for cle_, x in apres["entrees"].items():
+        connues = {}
+        for a in avants:
+            for vc, var in ((a["entrees"].get(cle_) or {}).get("variantes") or {}).items():
+                connues.setdefault(vc, var["libelle"])
+        for vc, libelle in connues.items():
+            if vc in x["variantes"]:
+                continue
+            n = _releves_sur(conn, grille_id, cle_, vc)
+            if n:
+                fautes.append(_faute(
+                    "variante_employee_disparait",
+                    f"la variante « {libelle or vc} » de « {x['libelle'] or cle_} » disparaît "
+                    f"alors que {n} relevé(s) la portent", "gardez sa ligne", cle=cle_,
+                    colonne="variante"))
+    cases = {}
+    for a in avants:
+        for lc, liste in a["listes"].items():
+            for qc, q in liste["qualificatifs"].items():
+                cases.setdefault((lc, qc), (liste["libelle"], q["libelle"]))
+    for (lc, qc), (nom_liste, libelle) in cases.items():
+        if qc in (apres["listes"].get(lc) or {}).get("qualificatifs", {}):
+            continue
+        n = _releves_sur_qualificatif(conn, grille_id, qc)
+        if n:
+            fautes.append(_faute(
+                "case_employee_disparait",
+                f"la case « {libelle or qc} » de la liste « {nom_liste or lc} » disparaît "
+                f"alors que {n} relevé(s) la cochent", "gardez sa ligne",
+                fichier=NOMS_PAR_DEFAUT[1], colonne="libelle", listes=True))
+    return fautes
+
+
 def _fusion_en_double(conn, grille_id: int, version_id: int, de: str, dans: str) -> bool:
     """Reporter les relevés de `de` sur `dans` poserait-il deux relevés « une seule fois »
     de la même entrée sur la même cible ? L'index de la cardinalité le refuserait."""
@@ -1141,7 +1188,9 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
       feuille « 1. La grille » du classeur (`declarer`) ;
     - une grille FERMÉE a au plus un brouillon : réimporter le REMPLACE ; si la dernière
       version est publiée, un brouillon neuf naît, au numéro suivant — sauf si son empreinte
-      est celle de la version publiée, ou du brouillon en place : « aucun changement » ;
+      est celle de la version publiée, ou du brouillon en place : « aucun changement » ; une
+      variante ou une case qu'un relevé emploie n'en disparaît pas (409, la règle du
+      formulaire : `employes_qui_disparaissent`) ;
     - une grille OUVERTE n'a qu'une version, `vivante`, née au premier import, qui s'enrichit
       EN POSANT (G14) ; la réimporter la récrit EN PLACE (tranché par Hugo le 2026-11-03,
       renversant le 409 d'avant), et une entrée employée que le fichier ne porte pas attend
@@ -1208,6 +1257,18 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
         if fautes:
             raise Refus(409, f"La grille ouverte ne peut pas être réimportée ainsi : "
                              f"{len(fautes)} point(s) à régler. Rien n'est importé.", fautes,
+                        {"verdict": verdict("refuse", n=len(fautes)), "a_savoir": a_savoir,
+                         **commun})
+    elif g is not None:
+        # Une grille FERMÉE : son brouillon tient la règle du formulaire sur une variante ou
+        # une case employée — elle ne disparaît pas (choix 3 des routes d'écriture).
+        brouillon_en_place = grilles.derniere_version(conn, g["id"], grilles.ETAT_BROUILLON)
+        fautes = employes_qui_disparaissent(
+            conn, g["id"], (avant, grilles.contenu(conn, brouillon_en_place["id"])
+                            if brouillon_en_place is not None else None), c)
+        if fautes:
+            raise Refus(409, f"La grille ne peut pas être réimportée ainsi : {len(fautes)} "
+                             "point(s) à régler. Rien n'est importé.", fautes,
                         {"verdict": verdict("refuse", n=len(fautes)), "a_savoir": a_savoir,
                          **commun})
     b = bilan(conn, g["id"] if g is not None else None, avant, c)

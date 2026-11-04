@@ -16,7 +16,8 @@ import zipfile
 import pytest
 
 from conftest import ADMIN
-from grilles_decor import ANA, LEA, SAM, STAG, ZOE, grille_active, importer, monter, ok
+from grilles_decor import (ANA, LEA, MODELE, MODELE_LISTES, SAM, STAG, ZOE, grille_active,
+                           importer, monter, ok)
 
 
 @pytest.fixture
@@ -597,6 +598,52 @@ def test_dans_le_brouillon_d_une_fermee_une_entree_employee_se_retire_et_ne_fusi
         "entree_cle": "onomatopee", "variante_cle": "bang", "mots": [0]}), 201)
     assert client.delete(f"/api/grilles/{gid}/entrees/onomatopee/variantes/bang",
                          headers=LEA).status_code == 409
+
+
+def test_le_reimport_d_une_fermee_tient_la_regle_du_formulaire_sur_une_variante_ou_une_case(
+        client, decor, db_path):
+    """Une variante ou une case qu'un relevé emploie ne se supprime pas du brouillon d'une
+    grille fermée (choix 3, tranché par Hugo le 2026-11-04) — au formulaire comme au
+    réimport du tableur, qui la laissait disparaître. Ce que personne n'emploie part, par
+    l'un comme par l'autre."""
+    g = grille_active(client, decor["p"])
+    gid = g["grille_id"]
+    for corps in ({"entree_cle": "onomatopee", "variante_cle": "bang", "mots": [0]},
+                  {"entree_cle": "echo", "qualificatifs": ["objet"], "mots": [1]}):
+        ok(client.post("/api/releves", headers=STAG, json={
+            "grille_id": gid, "version": 1, "region_id": decor["zones"]["bulle"], **corps}), 201)
+    sans_bang = MODELE.replace(
+        "onomatopee;;;;;bang;bang;;un choc sec, une détonation;BANG ! | PAN !;;;;;;\r\n", "")
+    sans_objet = MODELE_LISTES.replace("sources;source du son;objet;objet;un objet de la case\r\n",
+                                       "")
+    assert sans_bang != MODELE and sans_objet != MODELE_LISTES
+    # Le formulaire : 409.
+    r = client.delete(f"/api/grilles/{gid}/entrees/onomatopee/variantes/bang", headers=LEA)
+    assert r.status_code == 409 and "1 relevé(s)" in r.json()["detail"]
+    r = client.delete(f"/api/grilles/{gid}/listes/sources/cases/objet", headers=LEA)
+    assert r.status_code == 409 and "cochent" in r.json()["detail"]
+    # Le réimport : 409 aussi, à blanc comme pour de bon, la faute en données.
+    for a_blanc in (True, False):
+        refus = importer(client, decor["p"], LEA, grille_id=gid, entrees=sans_bang,
+                         a_blanc=a_blanc, attendu=(409,))["detail"]
+        assert [(a["code"], a["cle"]) for a in refus["anomalies"]] == [
+            ("variante_employee_disparait", "onomatopee")]
+        assert refus["verdict"]["etat"] == "refuse"
+    refus = importer(client, decor["p"], LEA, grille_id=gid, listes=sans_objet,
+                     attendu=(409,))["detail"]
+    assert [a["code"] for a in refus["anomalies"]] == ["case_employee_disparait"]
+    assert _n(db_path, "SELECT COUNT(*) FROM grille_version") == 1      # rien n'est né
+    # Un brouillon déjà né ne change pas la règle : la variante est connue par lui aussi.
+    ok(client.patch(f"/api/grilles/{gid}/entrees/cri", headers=LEA, json={"piege": "x"}))
+    importer(client, decor["p"], LEA, grille_id=gid, entrees=sans_bang, attendu=(409,))
+    # Ce que personne n'emploie part, au réimport comme au formulaire.
+    sans_crac = MODELE.replace("onomatopee;;;;;crac;crac;;une rupture, un craquement;CRAC;;;;;;\r\n",
+                               "")
+    assert sans_crac != MODELE
+    res = importer(client, decor["p"], LEA, grille_id=gid, entrees=sans_crac)
+    assert res["ecrit"] and res["version"]["etat"] == "brouillon"
+    assert [x["cle"] for x in res["bilan"]["disparus"]] == ["onomatopee/crac"]
+    ok(client.delete(f"/api/grilles/{gid}/listes/sources/cases/hors-champ", headers=LEA))
 
 
 def test_le_journal_nomme_chaque_objet(client, decor, db_path):
