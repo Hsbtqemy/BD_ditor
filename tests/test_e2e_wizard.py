@@ -302,6 +302,9 @@ def test_la_fenetre_sur_la_zone_au_clavier_et_en_deux_temps(page, jeu):
     expect(compte).to_have_text("Visite 2 / 7 · 2 / 2")
     expect(fen).to_have_class(re.compile(r"\bgauche\b"))
     expect(page.locator("#wizard-visite-suiv")).to_be_focused()
+    # Le second temps éclaire d'emblée sa première zone (la maquette).
+    expect(page.locator('#wizard-zones .wf-zone[data-zone="atelier-structure"]')).to_have_attribute(
+        "aria-pressed", "true")
     a_gauche = fen.bounding_box()
     assert a_gauche["x"] < a_droite["x"]
     assert not page.evaluate(INERTE, "#panel") and page.evaluate(INERTE, "#sidebar")
@@ -390,6 +393,7 @@ def test_la_visite_traverse_les_pages_et_finit_sur_la_carte(page, jeu):
     page.locator("#wizard-guide-carte").click()
     album = _album(page)
     expect(album.locator("#wizard-titre")).to_have_text("Par où commencer")
+    expect(album.locator("#wizard-revoir-visite")).to_have_text("Revoir les pages")
     album.locator("#wizard-revoir-visite").click()
     page.wait_for_url(re.compile(r"/\?album="))
     expect(compte).to_have_text("Visite 1 / 7")
@@ -654,8 +658,10 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
     page.locator("#wizard-guide-carte").click()
     album = _album(page)
     etapes = album.locator(".wizard-etapes > li")
-    expect(etapes.nth(0).locator(".wizard-fait")).to_have_text("✓ fait")
-    expect(etapes.nth(1).locator(".wizard-fait")).to_have_text("✓ fait")
+    expect(etapes.nth(0).locator(".wizard-n")).to_have_text("✓")
+    expect(etapes.nth(1).locator(".wizard-n")).to_have_text("✓")
+    expect(etapes.nth(1).locator(".wizard-fait")).to_have_text(" (fait)")
+    expect(etapes.nth(2).locator(".wizard-n")).to_have_text("3")
     expect(etapes.nth(2).locator(".wizard-fait")).to_have_count(0)
     # Fermée, la carte rend la place au guide ; ✕ le quitte, et il ne revient pas seul.
     album.locator("#wizard-fermer").click()

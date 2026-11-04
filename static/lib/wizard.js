@@ -280,10 +280,12 @@
     return typo(e.phrase.replace("{album}", a && a.titre ? a.titre : "l'album du parcours"));
   }
 
-  /* « facultatif », ou « optionnel ici » quand l'OCR n'est pas là ; `null` sinon. */
-  function marqueEtape(e, m) {
+  /* « facultatif », ou « optionnel ici » quand l'OCR n'est pas là ; `null` sinon. Sur la
+     carte, la maquette dit pourquoi : « optionnel ici : moteur absent ». */
+  function marqueEtape(e, m, surLaCarte) {
     if (!e || !e.facultatif) return null;
-    return m && !m.ocr ? "optionnel ici" : "facultatif";
+    if (!(m && !m.ocr)) return "facultatif";
+    return surLaCarte ? "optionnel ici : moteur absent" : "optionnel ici";
   }
 
   /* Où mène une étape : sa surface, l'outil qu'elle décrit — le mode de l'Atelier — et la

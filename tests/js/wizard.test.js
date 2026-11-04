@@ -522,6 +522,10 @@ test("sans moteur, la page des moteurs et « Pré-remplir » se disent optionnel
   assert.equal(W.marquePage(page, null), null);
   assert.equal(W.marqueEtape(etape("preremplir"), { aucun: true, ocr: false }), "optionnel ici");
   assert.equal(W.marqueEtape(etape("preremplir"), { aucun: false, ocr: true }), "facultatif");
+  // Sur la carte, la maquette dit pourquoi.
+  assert.equal(W.marqueEtape(etape("preremplir"), { aucun: true, ocr: false }, true),
+               "optionnel ici : moteur absent");
+  assert.equal(W.marqueEtape(etape("preremplir"), { aucun: false, ocr: true }, true), "facultatif");
 });
 
 test("« Corriger » cadre la plus petite bulle que personne n'a reprise", () => {

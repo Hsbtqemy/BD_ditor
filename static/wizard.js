@@ -333,7 +333,10 @@
     liste.forEach((e, i) => {
       const li = el("li");
       if (i === s.etape) li.setAttribute("aria-current", "step");
-      const num = el("span", "wizard-n", String(i + 1));
+      // Une étape faite : « ✓ » à la place de son numéro, et « fait » pour le lecteur
+      // d'écran (la maquette).
+      const ok = W.faite(e, G.d, s.parcours);
+      const num = el("span", "wizard-n" + (ok ? " ok" : ""), ok ? "✓" : String(i + 1));
       num.setAttribute("aria-hidden", "true");
       li.appendChild(num);
       const corps = el("div", "wizard-etape");
@@ -350,8 +353,8 @@
         }
       });
       corps.appendChild(a);
-      if (W.faite(e, G.d, s.parcours)) corps.appendChild(el("span", "wizard-fait", "✓ fait"));
-      const marque = W.marqueEtape(e, S.moteurs);
+      if (ok) corps.appendChild(el("span", "sr-only wizard-fait", " (fait)"));
+      const marque = W.marqueEtape(e, S.moteurs, true);
       if (marque) corps.appendChild(el("span", "wizard-marque", marque));
       corps.appendChild(el("span", "muted small", ` · ${W.typo(e.ou)}`));
       corps.appendChild(el("p", "wizard-phrase", W.phraseEtape(e, v, S.moteurs)));
@@ -367,12 +370,13 @@
       dessiner("#wizard-changer");
     });
     act.appendChild(changer);
-    const visite = bouton("ghost small", "Revoir la visite", "wizard-revoir-visite");
-    visite.addEventListener("click", () => { fermer(false); commencerVisite({ page: 0, temps: 0 }); });
-    act.appendChild(visite);
+    // L'ordre et les mots de la maquette : la présentation, puis les pages.
     const revoir = bouton("ghost small", "Revoir la présentation", "wizard-revoir");
     revoir.addEventListener("click", () => { S.mode = "album"; S.page = 0; dessiner("#wizard-suiv"); });
     act.appendChild(revoir);
+    const visite = bouton("ghost small", "Revoir les pages", "wizard-revoir-visite");
+    visite.addEventListener("click", () => { fermer(false); commencerVisite({ page: 0, temps: 0 }); });
+    act.appendChild(visite);
     boite.appendChild(act);
   }
 
@@ -765,7 +769,7 @@
     W.retenirVisite(S.login, S.bac, p);
     const pageNeuve = !F.pos || F.pos.page !== p.page;
     F.pos = p;
-    F.choisie = null;
+    F.choisie = premiereDuSecondTemps();
     dessinerFenetre(pageNeuve ? "#wizard-fenetre-titre" : focus);
     mettreAJour();
   }
@@ -804,6 +808,14 @@
     ouvrirFenetre("plan", { page: i, temps: t[0] }, declencheur);
   }
 
+  /* Le second temps d'une page éclaire d'emblée sa première zone : la fenêtre vient de
+     passer à gauche pour elle (la maquette). Au premier temps, aucune. */
+  function premiereDuSecondTemps() {
+    if (!F.pos || F.pos.temps !== 1) return null;
+    const r = reperesDuTemps()[0];
+    return r ? r.marque : null;
+  }
+
   function choisirZone(marque) {
     F.choisie = F.choisie === marque ? null : marque;
     fenetre.querySelectorAll(".wf-zone").forEach((b) =>
@@ -830,7 +842,7 @@
       const i = F.temps.indexOf(F.pos.temps) + (g === "plan-suiv" ? 1 : -1);
       if (i < 0 || i >= F.temps.length) return;
       F.pos = { page: F.pos.page, temps: F.temps[i] };
-      F.choisie = null;
+      F.choisie = premiereDuSecondTemps();
       dessinerFenetre(g === "plan-suiv" ? "#wizard-reperes-suiv" : "#wizard-reperes-prec");
       mettreAJour();
     }
@@ -980,6 +992,23 @@
       fenetre.appendChild(h);
       fenetre.appendChild(el("p", "wf-phrase", W.typo(
         "Continuez sur une autre planche : rien ne vous guide, rien ne se perd avant lundi.")));
+      // Les autres planches du jeu, en vignettes (la maquette) : chacune mène à l'Atelier.
+      const v = vue(), parcours = W.albumDuParcours(v);
+      const autres = (v && Array.isArray(v.jeu) ? v.jeu : []).filter((j) =>
+        j !== parcours && Array.isArray(j.planche_ids) && j.planche_ids.length);
+      if (autres.length) {
+        const pl = el("div", "wf-vignettes");
+        autres.forEach((j) => {
+          const lien = el("a", "wf-vignette");
+          lien.href = `/?album=${j.album_id}&planche=${j.planche_ids[0]}`;
+          lien.title = j.titre || "";
+          const img = miniature(j.planche_ids[0]);
+          img.alt = j.titre || "Une planche du jeu";
+          lien.appendChild(img);
+          pl.appendChild(lien);
+        });
+        fenetre.appendChild(pl);
+      }
       act.appendChild(quitter);
       fenetre.appendChild(act);
       F.cle = "";
@@ -1000,9 +1029,8 @@
       fenetre.appendChild(h);
       fenetre.appendChild(el("p", "wf-phrase", W.phraseGuide(e, vue(), S.moteurs, d, s.parcours)));
       const estFaite = W.faite(e, d, s.parcours);
-      const fait = el("p", "wf-fait", estFaite ? "✓ Fait" : "");
+      const fait = el("span", "wf-fait", estFaite ? "✓ Fait" : "");
       fait.id = "wizard-guide-fait";
-      fenetre.appendChild(fait);
       // Une étape qui DEVIENT faite s'annonce, dans une région qui ne se redessine pas.
       const cle = `${s.parcours}:${i}`;
       if (estFaite && G.annoncee !== cle && G.vue === cle) annoncer(`${W.typo(e.titre)} : fait.`);
@@ -1022,7 +1050,8 @@
       const b = W.boutonGuide(e, d, S.moteurs, s.parcours, i === liste.length - 1);
       const suiv = bouton(`${b.principal ? "primary" : "ghost"} small`, b.texte, "wizard-guide-suiv");
       suiv.dataset.geste = "guide-suiv";
-      [prec, carte, quitter, suiv].forEach((x) => act.appendChild(x));
+      // L'ordre de la maquette : « ✓ Fait », ←, le geste principal (poussé à droite), ☰, ✕.
+      [fait, prec, suiv, carte, quitter].forEach((x) => act.appendChild(x));
       fenetre.appendChild(act);
       F.cle = zonesActives().map((r) => r.marque).join(" ");
     }
@@ -1076,6 +1105,7 @@
   function quitterLeGuide() {
     retenirLeGuide({ actif: false, vues: S.guide.vues });
     fermerFenetre();
+    if (typeof toast === "function") toast(W.typo("« Par où commencer » le rouvre, à la même étape."));
   }
 
   function gesteDuGuide(g) {

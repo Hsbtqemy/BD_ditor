@@ -800,10 +800,16 @@ kbd {
 .wf-actions { display: flex; flex-wrap: wrap; gap: .3846rem; align-items: center; }
 .wf-actions .primary { margin-left: auto; }
 /* Le guide (tranche 3) : « ✓ Fait » se lit en toutes lettres, sans couleur porteuse. */
-.wf-fait { margin: 0; font-weight: 700; }
+.wf-fait { font-weight: 700; white-space: nowrap; }
 .wf-fait:empty { display: none; }
+#wizard-guide-suiv { margin-left: auto; }
+.wizard-n.ok { font-weight: 700; }
+.wf-vignettes { display: flex; flex-wrap: wrap; gap: .3846rem; }
+.wf-vignette { display: block; width: 2.4rem; border: 1px solid var(--border); border-radius: 3px;
+               overflow: hidden; }
+.wf-vignette img { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover;
+                   object-position: top; }
 .wf-titre .wizard-marque { vertical-align: middle; font-weight: 400; }
-.wizard-fait { margin-left: .4615rem; font-size: .8462rem; font-weight: 700; white-space: nowrap; }
 @media (max-width: 40em) {
   .wizard-fenetre, .wizard-fenetre.gauche { left: .4615rem; right: .4615rem; bottom: .4615rem;
                                             width: auto; max-height: 55%; }
