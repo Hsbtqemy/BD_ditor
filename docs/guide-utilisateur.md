@@ -61,17 +61,19 @@ suivi de son nom — ou d'une liste déroulante dès que vous en voyez plusieurs
 
 ---
 
-## 3. Le parcours en huit étapes
+## 3. Le parcours en neuf étapes
 
 **Pour apprendre l'outil sans rien risquer, ouvrez « Mon bac à sable »** : un projet à vous,
 rempli d'un jeu de planches, où l'on suit les étapes ci-dessous sur pièce. Il est décrit
-juste après ce parcours, en *Mon bac à sable*.
+juste après ce parcours, en *Mon bac à sable*. Son écran *Par où commencer* propose les mêmes
+neuf étapes, sous les mêmes titres et dans le même ordre : chacune de ses étapes a sa section
+ici, et le parcours rapide en prend quatre — tracer, corriger, transcrire, annoter.
 
 **Avant d'entrer dans une collection, vous entrez dans un projet** : son nom se lit en haut
 de chaque page, et c'est de ce projet que la Bibliothèque vous montre les collections.
 
 C'est l'ordre à suivre pour un corpus qui part de zéro. **Sur un corpus déjà rempli**, on
-entre directement à l'étape 4, 5 ou 6 selon ce qui reste à faire : la Bibliothèque affiche
+entre directement à l'une des étapes 4 à 7 selon ce qui reste à faire : la Bibliothèque affiche
 pour chaque planche son statut, sa validation et son avancement de relecture.
 
 ### Étape 1 — Constituer le corpus
@@ -208,19 +210,45 @@ manuel d'une repasse automatique.
 Si un moteur n'est pas installé, cette étape se saute entièrement — la suite fonctionne
 identiquement, avec plus de travail manuel à l'étape 4.
 
-### Étape 4 — Corriger le découpage
+### Étape 4 — Tracer une zone
+**Atelier · mode Édition (`E`) : glisser sur la planche, ou `✎ Tracer`**
+
+Une zone se crée là où les moteurs n'en ont pas posé — ou partout, sans moteur. On ne fait
+pas que corriger un découpage : on le fait.
+
+**À la souris**, glissez sur le fond de la planche : le cadre devient une **case**. Pour
+tracer **dans** une case, maintenez **`Maj`** et glissez : le cadre devient une **bulle** de
+cette case — sans `Maj`, un clic sur la case la choisit, et un glissé sur la case choisie la
+déplace. La molette rapproche la planche, pour tracer au plus près d'une petite bulle.
+
+**Au clavier et au doigt, `✎ Tracer`**, dans la barre de la planche, à côté du zoom (en mode
+Édition seulement) :
+
+- **au clavier**, il pose un rectangle au milieu de ce que vous voyez — dans la case choisie,
+  s'il y en a une. Les flèches le déplacent, `Maj` + flèches changent sa taille, `Entrée` le
+  crée, `Échap` y renonce et rend le focus au bouton ;
+- **au doigt** (ou au stylet), il arme le glissé : le geste suivant sur la planche trace au
+  lieu de faire défiler, puis le bouton se désarme. Un toucher qui ne trace rien le laisse
+  armé ; le retoucher y renonce.
+
+La règle est la même partout : tracé dans une case, le cadre devient une bulle ; ailleurs,
+une case. Le **type** se change ensuite dans le panneau de droite : case, bulle, personnage,
+texte, cartouche. Un **détail d'image** — un objet, un geste, qu'on veut annoter sans qu'il
+porte de texte — se trace dans la page *Annotation*, case par case (§4, *Annotation*).
+
+### Étape 5 — Corriger le découpage
 **Atelier · mode Édition (`E`)**
 
 Redimensionnez les régions par leurs poignées, ajustez au pixel près par saisie numérique,
-dessinez les régions manquantes au cliquer-glisser, supprimez les fausses (`Suppr`). Une
-région porte un **type** : case, bulle, personnage, texte, cartouche.
+supprimez les fausses (`Suppr`) ; celles qui manquent se tracent (étape 4). Une région
+porte un **type** : case, bulle, personnage, texte, cartouche.
 
 **Cette étape conditionne la suivante, et c'est la raison de sa place ici.** Le crop
 plein écran du mode Transcription est découpé dans la copie de travail **à partir du cadre
 de la région** : une bulle mal détourée est illisible, donc intranscriptible. Elle reste taggable,
 en revanche — la géométrie contraint le texte, pas l'interprétation.
 
-### Étape 5 — Transcrire et relire
+### Étape 6 — Transcrire et relire
 **Atelier · mode Transcription (`T`), puis panneau Grammaire**
 
 Le mode Transcription est un plein écran bulle à bulle : le crop net à gauche, l'éditeur à
@@ -254,7 +282,7 @@ toute réindexation, y compris après un changement de modèle linguistique.
 La Bibliothèque affiche par planche un **statut de relecture** — à faire, en cours, faite —
 qui avance tout seul à mesure que les mots sont relus, et qu'on peut forcer si besoin.
 
-### Étape 6 — Annoter
+### Étape 7 — Annoter
 **Page Annotation (`/annotation`) · Atelier, mode Annotation (`A`)**
 
 C'est le cœur du travail, et il a deux écrans. Une **grille** se relève dans la **page
@@ -344,7 +372,7 @@ serait votre geste le plus récent, et Ctrl+Z le déferait d'abord.
 Sur le choix « tag ou dimension ? », voir [`modele-et-droits.md`](modele-et-droits.md) §4 :
 un tag se cherche, un attribut se compte.
 
-### Étape 7 — Chercher et explorer
+### Étape 8 — Chercher et explorer
 **Recherche (`/recherche`), puis Exploration (`/exploration`)**
 
 La **Recherche** interroge en plein texte les dialogues, les notes et les tags — et les lemmes
@@ -370,11 +398,16 @@ Trois panneaux complètent la surface : **📖 Lexique** (documenter le vocabula
 Ce dernier est le seul rapport **réservé** : il faut écrire quelque part pour le consulter,
 parce qu'il mesure des personnes et non un corpus.
 
-### Étape 8 — Exporter
+### Étape 9 — Exporter
 **Atelier · menu `⇅ Import / Export`**
 
 Trois formats, par album : **JSON-LD**, **CSV** et **TEI P5**. Une **sauvegarde** complète de
 la base est également téléchargeable depuis ce menu — réservée aux administrateurs.
+
+**D'un bac à sable, presque rien ne sort** : seule la copie d'un document du jeu ouvert à
+l'export, où l'on n'a rien importé (*Mon bac à sable*, ci-dessous). La fiche d'un album le
+dit — *exporter* y est éteint là où l'export est refusé —, et l'étape *Exporter* de *Par où
+commencer* aussi.
 
 **Exporter demande un droit à part**, que le propriétaire d'une collection accorde à
 chaque accès : lire ou annoter un album n'y suffit pas (cf.
@@ -425,6 +458,16 @@ Un clic, et vous arrivez dans l'**Atelier, sur la planche du parcours** du jeu. 
 se choisit dans la liste *Projet* comme les autres, sous le nom *Mon bac à sable* ; recliquer
 ramène au même. Un compte partagé a le sien aussi, avec les mêmes gestes : ce qu'on y fait
 n'a aucune valeur, et rien n'en sort.
+
+**Par où commencer.** Dans votre bac à sable, un album de présentation s'ouvre de lui-même,
+page après page, jusqu'à ce que vous choisissiez un parcours — **rapide**, quatre gestes, ou
+**complet**, les neuf étapes du §3 — ou cochiez *Ne plus afficher* ; *Par où commencer*, en
+tête de la ligne du bac à sable, le rouvre. Viennent ensuite la **visite des sept pages** (la
+barre du haut, puis les six surfaces), dans une fenêtre posée à côté des zones qu'elle
+nomme, puis le **guide**, étape par étape, sur la planche du parcours. Une étape faite se voit
+sur la planche — *✓ Fait* —, sans rien déclarer ; *Passer →* va à la suivante sans la faire,
+*☰* montre toutes les étapes, *✕* quitte. Sur les six pages, et pour tout compte, bac à
+sable ou non, le **?** de la bande du haut rouvre les repères de la page où vous êtes.
 
 **La ligne du bac à sable.** Tant que le projet courant est un bac à sable, une rangée
 rayée se lit sous la bande, sur toutes les pages : *Bac à sable* (son aide au survol du nom),
@@ -986,11 +1029,11 @@ Quatre modes, un sélecteur en haut, un raccourci chacun :
 | Mode | Touche | Ce qu'on y fait |
 |---|:---:|---|
 | **Navigation** | `N` | lire : zoom molette, déplacement au cliquer-glisser, `←` `→` d'une région à l'autre |
-| **Édition** | `E` | corriger la géométrie : poignées, coordonnées, dessin, `Suppr` |
+| **Édition** | `E` | tracer et corriger la géométrie : dessin, `✎ Tracer` (au clavier, au doigt), poignées, coordonnées, `Suppr` |
 | **Annotation** | `A` | locuteur, personnages, situation, tags, note |
 | **Transcription** | `T` | plein écran bulle à bulle, `Tab` / `Maj+Tab` |
 
-Les onglets sont un **sélecteur**, pas un parcours : leur ordre n'est pas celui des huit
+Les onglets sont un **sélecteur**, pas un parcours : leur ordre n'est pas celui des neuf
 étapes, et c'est assumé.
 
 Le panneau de gauche liste les planches ; celui de droite dépend de la sélection. Il contient
@@ -1116,7 +1159,7 @@ connue et mesurée, décrite dans `docs/modele-et-droits.md` § *Le vocabulaire*
 
 ### Exploration (`/exploration`)
 
-Les quatre vues du tableau de l'étape 7, avec des filtres communs : album, type de région,
+Les quatre vues du tableau de l'étape 8, avec des filtres communs : album, type de région,
 catégorie grammaticale, **provenance** (auto / corrigé / validé), tag, locuteur. Le filtre de
 provenance est celui qui permet de ne mesurer que sur ce qui a été relu par un humain.
 
