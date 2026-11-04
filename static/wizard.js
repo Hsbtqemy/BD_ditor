@@ -419,7 +419,9 @@
   }
 
   /* Les repères du temps affiché, et la page qu'ils décrivent. */
-  function reperesDuTemps() { return W.reperes(F.pos.page, F.pos.temps, voit); }
+  function reperesDuTemps() {
+    return W.reperes(F.pos.page, F.pos.temps, voit, W.bacDuProjet(S.E && S.E.courant));
+  }
 
   function dessinerFenetre(focus) {
     const page = W.VISITE[F.pos.page], plan = F.mode === "plan";
@@ -445,7 +447,8 @@
     h.id = "wizard-fenetre-titre";
     h.tabIndex = -1;
     fenetre.appendChild(h);
-    fenetre.appendChild(el("p", "wf-phrase", W.typo(page.phrase)));
+    fenetre.appendChild(el("p", "wf-phrase",
+      W.phrasePage(F.pos.page, W.bacDuProjet(S.E && S.E.courant))));
 
     const ol = el("ol", "wf-zones");
     ol.id = "wizard-zones";

@@ -320,6 +320,29 @@ test("« Visite n / 7 » ne reste pas figé entre les deux temps d'une page", ()
   assert.equal(W.compteVisite({ page: 99 }), "");
 });
 
+test("hors d'un bac à sable, aucun repère ne parle du bac à sable", () => {
+  // Le « ? » est offert à tout compte (Hugo, 2026-11-04) : la Recherche et l'Exploration
+  // ne disent « votre bac à sable n'y paraît pas » que dans un bac à sable. La zone
+  // `bande-bac` n'existe que dans un bac à sable : la fenêtre ne la nomme pas ailleurs.
+  W.VISITE.forEach((v, i) => {
+    if (i === 0 && v.bande) return;
+    assert.doesNotMatch(W.phrasePage(i, null), /bac à sable/, v.titre);
+    W.tempsDe(i).forEach((t) => W.reperes(i, t, (m) => m !== "bande-bac", null).forEach((r) =>
+      assert.doesNotMatch(`${r.nom} ${r.phrase}`, /bac à sable/, `${v.titre} ${r.marque}`)));
+  });
+  assert.equal(W.phrasePage(RECHERCHE, null), "Retrouver un mot dans tout le corpus.");
+  assert.match(W.reperes(RECHERCHE, 0, null, null)[0].phrase, /^Le corpus ouvert à votre compte\.$/);
+  // Dans son bac à sable, la phrase de la maquette ; chez un invité, « ce bac à sable ».
+  assert.match(W.phrasePage(RECHERCHE, "mien"), /Votre bac à sable n.y paraît pas\.$/);
+  assert.match(W.phrasePage(RECHERCHE, "autre"), /Ce bac à sable n.y paraît pas\.$/);
+  assert.match(W.phrasePage(RECHERCHE + 1, "autre"), /ce bac à sable\.$/);
+  assert.match(W.reperes(RECHERCHE, 0, null, "autre")[0].phrase, /sans ce bac à sable/);
+  assert.equal(W.bacDuProjet({ bac_a_sable: { mien: true } }), "mien");
+  assert.equal(W.bacDuProjet({ bac_a_sable: { mien: false } }), "autre");
+  assert.equal(W.bacDuProjet({ id: 3 }), null);
+  assert.equal(W.bacDuProjet(null), null);
+});
+
 test("les repères ne nomment que ce que la page montre, numérotés sans trou", () => {
   const tout = W.reperes(ATELIER, 0);
   assert.deepEqual(tout.map((r) => [r.marque, r.n]),

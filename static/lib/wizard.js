@@ -277,6 +277,8 @@
       ] },
     { surface: "/recherche", titre: "Recherche",
       phrase: "Retrouver un mot dans tout le corpus. Votre bac à sable n'y paraît pas.",
+      horsBac: { phrase: "Retrouver un mot dans tout le corpus.",
+                 zones: { "recherche-corpus": "Le corpus ouvert à votre compte." } },
       zones: [
         ["recherche-corpus", "Ce que vous lisez", "Le corpus ouvert à votre compte, sans "
           + "votre bac à sable."],
@@ -289,6 +291,7 @@
       ] },
     { surface: "/exploration", titre: "Exploration",
       phrase: "Le corpus en chiffres. Elle ne lit pas non plus votre bac à sable.",
+      horsBac: { phrase: "Le corpus en chiffres." },
       zones: [
         ["exploration-vues", "Les vues", "Distribution, concordance, croisement, "
           + "comparaison."],
@@ -380,18 +383,45 @@
      (Hugo, 2026-11-02, pour le « ? » ; la visite suit la même règle). Le numéro court sur
      les zones VISIBLES de toute la page, dans l'ordre de la visite : le second temps
      continue le premier, et un trou ne laisse pas de numéro sans zone. */
-  function reperes(i, t, visible) {
+  function reperes(i, t, visible, bac) {
     const v = VISITE[i];
     if (!v) return [];
     const voit = typeof visible === "function" ? visible : () => true;
+    const hors = (!bac && v.horsBac && v.horsBac.zones) || {};
     const out = [];
     let n = 0;
     v.zones.forEach((z) => {
       if (!voit(z[0])) return;
       n += 1;
-      if ((z[3] || 0) === t) out.push({ marque: z[0], nom: typo(z[1]), phrase: typo(z[2]), n });
+      if ((z[3] || 0) === t) {
+        out.push({ marque: z[0], nom: typo(selonLeBac(z[1], bac)),
+                   phrase: typo(hors[z[0]] || selonLeBac(z[2], bac)), n });
+      }
     });
     return out;
+  }
+
+  /* Ce qu'une page dit du bac à sable dépend de celui où l'on est : `bac` vaut "mien",
+     "autre" (un invité : « ce bac à sable », comme `BDBac.horsRecherche`) ou null. Le
+     « ? » est offert hors d'un bac à sable (Hugo, 2026-11-04) : là, la Recherche et
+     l'Exploration ne disent pas « votre bac à sable n'y paraît pas » à qui n'en a pas
+     (`horsBac`). La visite, elle, ne se joue que dans son propre bac à sable. */
+  function selonLeBac(texte, bac) {
+    if (bac !== "autre") return texte;
+    return texte.replace(/([Vv])otre bac à sable/g, (m, v) => `${v === "V" ? "C" : "c"}e bac à sable`);
+  }
+
+  function phrasePage(i, bac) {
+    const v = VISITE[i];
+    if (!v) return "";
+    if (!bac && v.horsBac && v.horsBac.phrase) return typo(v.horsBac.phrase);
+    return typo(selonLeBac(v.phrase, bac));
+  }
+
+  /* Le bac à sable du projet courant, au sens de `selonLeBac`. */
+  function bacDuProjet(projet) {
+    const b = projet && projet.bac_a_sable;
+    return b ? (b.mien ? "mien" : "autre") : null;
   }
 
   /* Les temps d'une page où la page montre au moins une zone : le « ? » ne fait pas passer
@@ -574,6 +604,6 @@
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,
            CLE_VISITE, tempsDe, position, suivant, precedent, estFin, compteVisite, cote,
-           reperes, tempsVisibles, pageDeLaSurface, adresseVisite, retenirVisite, lireVisite,
+           reperes, phrasePage, bacDuProjet, tempsVisibles, pageDeLaSurface, adresseVisite, retenirVisite, lireVisite,
            oublierVisite };
 });
