@@ -258,16 +258,15 @@ test("dans un bac à sable, la visite ne promet pas d'en sortir un album", () =>
     .forEach((r) => assert.doesNotMatch(r.phrase, /sortir un album\.$/i, r.marque))));
 });
 
-test("« Automatisez la reconnaissance » ne dit que ce que les vraies passes ont rendu", () => {
-  // Mesuré le 2026-11-04 sur *Moustache et Trottinette* (`static/lib/wizard.js`, la page
-  // des moteurs) ; la maquette SIMULAIT ses erreurs et ses comptes, sans mesure.
+test("« Automatisez la reconnaissance » dit que les moteurs se trompent, sans le parcours", () => {
+  // La présentation est détachée du parcours pratique (Hugo, 2026-11-05) : ni la planche du
+  // parcours, ni de chiffres ; elle dit seulement que les moteurs se trompent.
   const page = W.PAGES.find((p) => p.k === "moteurs");
   const t = W.textePage(page, W.moteurs({ kumiko: true, bulles: true, ocr: true }));
-  assert.match(t, /7.bulles sur 12/);
-  assert.match(t, /«.reconnail.» pour «.reconnaît.»/);
+  assert.match(t, /se trompent parfois, surtout sur un lettrage manuscrit/);
   assert.match(t, /n'est jamais écrasée\.$/);
-  for (const simule of ["t0t", "rec0nnaît", "3 cases", "3 bulles", "1 cartouche"]) {
-    assert.ok(!t.includes(simule), simule);
+  for (const dit of ["parcours", "planche", "sur 12", "reconnail", "t0t", "3 cases"]) {
+    assert.ok(!t.includes(dit), dit);
   }
   // Rien ne dit qu'il n'y aurait « plus qu'à corriger » : 5 bulles sur 12 restent à tracer.
   assert.doesNotMatch(t, /plus qu'à corriger/);
