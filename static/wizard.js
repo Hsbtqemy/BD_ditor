@@ -638,7 +638,14 @@
       trous.push(t);
       trou(t);
     }
-    (F.mode === "etape" ? [] : zonesActives()).forEach((r) => {
+    // Une zone MONTRÉE — survolée, focalisée ou choisie au clic — reste seule en clair, les
+    // autres repassent sous l'assombri (la maquette, Hugo, 2026-11-05 : « les éléments ne
+    // sont pas dé-focus ») ; aucune, toutes les zones du temps sont en clair. Les pastilles
+    // numérotées restent sur toutes, pour qu'on retrouve chaque zone de la liste.
+    const actives = F.mode === "etape" ? [] : zonesActives();
+    const seule = actives.some((r) => r.marque === montree() && voit(r.marque)) ? montree() : null;
+    const pastilles = [];
+    actives.forEach((r) => {
       const els = zonesDe(r.marque);
       if (!els.length) return;
       // Le trou ne déborde pas de la fenêtre du navigateur : une zone de toute la largeur
@@ -647,6 +654,8 @@
       const t = { l: Math.max(q.l - m, 0), t: Math.max(q.t - m, 0),
                   r: Math.min(q.r + m, W0), b: Math.min(q.b + m, H0), rep: r };
       if (t.r - t.l < 1 || t.b - t.t < 1) return;
+      pastilles.push(t);
+      if (seule && r.marque !== seule) return;
       trous.push(t);
       trou(t);
       // Un menu ouvert depuis la zone (« Aa », « Traitement ») déborde d'elle : il se lit
@@ -662,8 +671,10 @@
     const rayon = 11 * z;
     trous.forEach((t) => {
       voileSvg.appendChild(svg("rect", {
-        class: "wf-cadre" + (t.rep.marque && t.rep.marque === montree() ? " ici" : ""),
+        class: "wf-cadre" + (t.rep.marque && t.rep.marque === seule ? " ici" : ""),
         x: t.l, y: t.t, width: t.r - t.l, height: t.b - t.t, rx: 6 }));
+    });
+    pastilles.forEach((t) => {
       if (t.rep.n == null) return;   // les zones du guide n'ont pas de numéro
       const cx = Math.max(t.l, rayon + 2), cy = Math.max(t.t, rayon + 2);
       const g = svg("g", { class: "wf-pastille" });

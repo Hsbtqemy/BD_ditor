@@ -262,19 +262,27 @@ def _commencer_la_visite(page, jeu):
 
 @pytestmark_proxy
 def test_le_survol_d_une_ligne_cerne_sa_zone_et_inversement(page, jeu):
-    """Comme la maquette (Hugo, 2026-11-05) : le pointeur sur une ligne de la liste cerne sa
-    zone sur la page ; sur la zone, il surligne sa ligne ; en partant, rien ne reste cerné.
-    La fenêtre ne bouge pas."""
+    """Comme la maquette (Hugo, 2026-11-05) : le pointeur sur une ligne de la liste laisse sa
+    zone SEULE en clair, cernée, les autres sous l'assombri ; sur la zone, il surligne sa
+    ligne ; en partant, toutes les zones reviennent en clair. La fenêtre ne bouge pas."""
     _commencer_la_visite(page, jeu)
     fen = _visite(page)
     expect(page.locator("#wizard-visite-compte")).to_have_text("Visite 1 / 7")
     place = fen.bounding_box()
     ligne = page.locator('#wizard-zones .wf-zone[data-zone="bande-projet"]')
     cerne = page.locator(".wizard-voile .wf-cadre.ici")
+    trous = page.locator('#wizard-masque rect[fill="#000"]')
+    pastilles = page.locator(".wizard-voile .wf-pastille")
     expect(cerne).to_have_count(0)
+    toutes = trous.count()
+    assert toutes > 1, "au départ, toutes les zones du temps sont en clair"
+    expect(pastilles).to_have_count(toutes)
     ligne.hover()
     expect(ligne).to_have_class(re.compile(r"\bici\b"))
     expect(cerne).to_have_count(1)
+    # Les autres zones repassent sous l'assombri ; leurs pastilles restent.
+    expect(trous).to_have_count(1)
+    expect(pastilles).to_have_count(toutes)
     # Le cadre cerné est celui de la zone « Le projet » : il l'entoure.
     zone = page.locator('[data-parcours="bande-projet"]').first.bounding_box()
     cadre = cerne.bounding_box()
@@ -283,6 +291,7 @@ def test_le_survol_d_une_ligne_cerne_sa_zone_et_inversement(page, jeu):
     # Ailleurs, plus rien n'est cerné ; sur la zone de la page, sa ligne se surligne.
     page.mouse.move(5, 600)
     expect(cerne).to_have_count(0)
+    expect(trous).to_have_count(toutes)
     expect(ligne).not_to_have_class(re.compile(r"\bici\b"))
     page.locator('[data-parcours="bande-projet"]').first.hover()
     expect(ligne).to_have_class(re.compile(r"\bici\b"))
