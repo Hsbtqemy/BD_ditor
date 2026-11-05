@@ -1028,3 +1028,28 @@ test("ce qui lance s'éteint pendant la visite, sauf ce qui l'est déjà par soi
   assert.match(index, /id="traitement-menu"[^>]*data-parcours-lance/);
   assert.match(index, /id="donnees-menu"[^>]*data-parcours-lance/);
 });
+
+test("la visite revient à la planche du parcours en arrivant sur l'Atelier ou l'Annotation", () => {
+  const vue = { jeu: [{ titre: "Autre", album_id: 5, planche_ids: [50] },
+                      { titre: "Parcours", role: "pas-a-pas", album_id: 6, planche_ids: [7, 8] }] };
+  const atelier = W.VISITE.findIndex((v) => !v.bande && v.surface === "/");
+  const annotation = W.VISITE.findIndex((v) => v.surface === "/annotation");
+  const bande = W.VISITE.findIndex((v) => v.bande);
+  // La bonne planche : rien.
+  assert.equal(W.retourALaPlanche(atelier, "?album=6&planche=7&mode=edition", vue), null);
+  // Un autre album, ou une autre planche du même : retour, au même temps.
+  assert.equal(W.retourALaPlanche(atelier, "?album=5&planche=50", vue), "/?album=6&planche=7");
+  assert.equal(W.retourALaPlanche(atelier, "?album=6&planche=8", vue), "/?album=6&planche=7");
+  assert.equal(W.retourALaPlanche(annotation, "?collection=2&album=5&planche=50", vue),
+               "/annotation?album=6&planche=7");
+  // Un autre album sans planche : retour aussi ; la page qui n'a rien dit encore : attendre.
+  assert.equal(W.retourALaPlanche(atelier, "?album=5", vue), "/?album=6&planche=7");
+  assert.equal(W.retourALaPlanche(atelier, "?album=6", vue), "attendre");
+  assert.equal(W.retourALaPlanche(atelier, "", vue), "attendre");
+  // Ni la barre du haut, ni les autres pages, ni un jeu sans planche.
+  assert.equal(W.retourALaPlanche(bande, "?album=5&planche=50", vue), null);
+  for (const s of ["/corpus", "/recherche", "/exploration", "/administration"]) {
+    assert.equal(W.retourALaPlanche(W.pageDeLaSurface(s), "?album=5&planche=50", vue), null, s);
+  }
+  assert.equal(W.retourALaPlanche(atelier, "?album=5&planche=50", { jeu: [] }), null);
+});

@@ -1378,3 +1378,47 @@ def test_sans_moteur_automatisez_montre_la_rangee_avant_tout_decoupage(page, jeu
     expect(ill.locator(".wizard-zone")).to_have_count(0)
     expect(ill.locator(".wizard-lus")).to_have_count(0)
     expect(album.locator(".wizard-marque")).to_have_text("optionnel ici")
+
+
+# ── La visite montre la planche du parcours ────────────────────────────────────────────
+#
+# Hugo, 2026-11-05 : pendant la visite on peut changer d'album dans l'Atelier ; mais quand la
+# visite ARRIVE sur un temps de l'Atelier ou de la page Annotation, elle revient à la planche
+# du parcours, où l'on voit comment s'agencent cases et bulles.
+
+@pytest.fixture
+def jeu_deux_albums(live_server, tmp_path):
+    from test_e2e_bac_a_sable import _outil
+    from test_jeu import ecrire_jeu
+    docs = JEU_DECOUPE + [{"cle": "stock", "titre": "Le stock", "role": "stock",
+                           "planches": [{"fichier": "p2.png"}]}]
+    depot = ecrire_jeu(tmp_path / "jeu-depot", docs, images=("p1.png", "p2.png"))
+    _outil(tmp_path, "tools/preparer_jeu.py", "--depot", str(depot), "--appliquer")
+    _api(live_server, CAMILLE, "GET", "/api/moi")
+    return {"base": live_server, "tmp": tmp_path}
+
+
+@pytestmark_proxy
+def test_la_visite_revient_a_la_planche_du_parcours(page, jeu_deux_albums):
+    jeu = jeu_deux_albums
+    _commencer_la_visite(page, jeu)
+    vue = _api(jeu["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    parcours = next(j for j in vue["jeu"] if j["role"] == "pas-a-pas")
+    autre = next(j for j in vue["jeu"] if j["role"] != "pas-a-pas" and j.get("planche_ids"))
+    compte = page.locator("#wizard-visite-compte")
+    page.locator("#wizard-visite-suiv").click()
+    expect(compte).to_have_text("Visite 2 / 7 · 1 / 2")
+    # Au premier temps de l'Atelier, la liste Album est jouable : on change d'album.
+    choix = page.locator("#album-select")
+    if not choix.locator(f'option[value="{autre["album_id"]}"]').count():
+        page.locator("#collection-select").select_option(index=0)
+    choix.select_option(str(autre["album_id"]))
+    page.wait_for_url(re.compile(rf"album={autre['album_id']}\b"))
+    expect(compte).to_have_text("Visite 2 / 7 · 1 / 2")
+    # « Suivant → » : la visite revient à la planche du parcours, à son second temps.
+    page.locator("#wizard-visite-suiv").click()
+    page.wait_for_url(re.compile(rf"album={parcours['album_id']}&planche={parcours['planche_ids'][0]}"))
+    expect(compte).to_have_text("Visite 2 / 7 · 2 / 2")
+    # La Structure montre ses cases et ses bulles.
+    expect(page.locator("#panel .tn-label", has_text="case").first).to_be_visible()
+    expect(page.locator("#panel .tn-label", has_text="bulle")).to_have_count(2)

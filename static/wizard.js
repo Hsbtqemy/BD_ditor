@@ -580,7 +580,8 @@
      (`BDWizard.retenirVisite`), et la page suivante la reprend à son chargement. */
   const SVG = "http://www.w3.org/2000/svg";
   const F = { mode: null, pos: null, temps: [], choisie: null, survolee: null, declencheur: null,
-              inertes: new Set(), cle: "", obs: null, attente: 0, menu: null, parScript: false };
+              inertes: new Set(), cle: "", obs: null, attente: 0, menu: null, parScript: false,
+              verifier: false };
   let foyer = null, voileSvg = null, fenetre = null;
 
   function chemin() { return location.pathname.replace(/\/+$/, "") || "/"; }
@@ -879,9 +880,25 @@
   /* Une mise à jour par image au plus : la page qui se dessine, le défilement et la taille
      de la fenêtre en demandent en rafale. La liste ne se redessine que si les zones visibles
      ont changé — une zone qui arrive avec la page — et garde alors le focus qu'elle avait. */
+  /* Arrivée sur un temps de l'Atelier ou de la page Annotation : la planche du parcours
+     (`BDWizard.retourALaPlanche`), retrouvée au même temps si l'on en avait changé. Une
+     fois par arrivée — changer d'album pendant le temps reste libre —, et seulement quand
+     la page a dit sa planche. */
+  function revenirALaPlanche() {
+    if (F.mode !== "visite" || !F.verifier) return false;
+    const r = W.retourALaPlanche(F.pos.page, location.search, vue());
+    if (r === "attendre") return false;
+    F.verifier = false;
+    if (!r) return false;
+    W.retenirVisite(S.login, S.bac, F.pos);
+    location.assign(r);
+    return true;
+  }
+
   function mettreAJour() {
     F.attente = 0;
     if (!F.mode || !foyer) return;
+    if (revenirALaPlanche()) return;
     if (F.mode === "etape") noterLaFiche();
     const cle = zonesActives().map((r) => r.marque).join(" ");
     if (cle !== F.cle) {
@@ -932,6 +949,7 @@
     F.choisie = null;
     F.survolee = null;
     F.declencheur = declencheur || null;
+    F.verifier = mode === "visite";
     F.temps = mode === "plan" ? W.tempsVisibles(pos.page, voit) : [];
     foyer.hidden = false;
     if (mode === "etape") dessinerEtape(); else dessinerFenetre();
@@ -939,6 +957,7 @@
     dessinerVoile();
     appliquerInert();
     observer();
+    if (F.verifier) planifier();   // la planche de la visite, si la page est déjà posée
     setTimeout(() => {
       const h = document.getElementById("wizard-fenetre-titre");
       if (F.mode && h) h.focus({ preventScroll: true });
@@ -987,6 +1006,7 @@
     }
     W.retenirVisite(S.login, S.bac, p);
     fermerMenu();
+    F.verifier = true;
     const pageNeuve = !F.pos || F.pos.page !== p.page;
     F.pos = p;
     F.choisie = null;
@@ -1691,7 +1711,8 @@
     document.addEventListener("bd:bac-a-sable-maj", () => { relire(); poserLeBouton(); });
     try {
       // Une visite en cours reprend sur la page où elle mène. Arrivée sur une AUTRE des six
-      // pages — un lien suivi pendant la visite, « Annotation » dans la barre —, elle SUIT :
+      // pages — par une adresse tapée, ou Précédent : un lien ne mène plus ailleurs pendant
+      // la visite (`BDWizard.PERD_LE_FIL`) —, elle SUIT :
       // elle reprend à la page de cette surface, à son premier temps (Hugo, 2026-11-05 : la
       // fenêtre ne se perd pas, comme dans la maquette). Ailleurs, elle s'arrête.
       const enCours = W.lireVisite(S.login, S.bac);

@@ -948,6 +948,25 @@
     return `${v.surface}?${p}`;
   }
 
+  /* La planche que la visite montre (Hugo, 2026-11-05). Pendant la visite la page est
+     jouable, on peut changer d'album dans l'Atelier ; mais quand la visite ARRIVE sur un temps
+     de l'Atelier ou de la page Annotation, elle montre la planche du parcours, où l'on voit
+     comment s'agencent cases et bulles. Lue dans l'ADRESSE, que les deux pages tiennent à
+     jour à chaque planche affichée (`syncUrl`, `syncAdresse`). Rend l'adresse où revenir,
+     `null` quand c'est la bonne planche (ou une page qui n'est pas concernée), « attendre »
+     quand la page n'a pas encore dit sa planche. */
+  function retourALaPlanche(i, recherche, vue) {
+    const v = VISITE[i];
+    if (!v || v.bande || (v.surface !== "/" && v.surface !== "/annotation")) return null;
+    const a = albumDuParcours(vue);
+    if (!a) return null;
+    const q = new URLSearchParams(recherche || "");
+    const album = q.get("album"), planche = q.get("planche");
+    if (album && album !== String(a.album_id)) return adresseVisite(i, vue);
+    if (!album || !planche) return "attendre";
+    return planche === String(a.planche_ids[0]) ? null : adresseVisite(i, vue);
+  }
+
   /* La visite en cours traverse les pages : sa position vit dans le stockage de SESSION
      (un onglet, le temps de la visite), sous le login et le bac à sable qui l'ont
      commencée, toute lecture et écriture sous try/catch. Sans ce stockage, la visite
@@ -1284,6 +1303,7 @@
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
            vocabulaire, initiale, compteOccurrences, apercuCarte, choixDuParcours,
            PERD_LE_FIL, menePlusLoin, gesteDuClic, menuOuvert, LANCE, aEteindre,
+           retourALaPlanche,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,
