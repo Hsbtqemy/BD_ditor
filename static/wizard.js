@@ -1679,7 +1679,25 @@
 
   const ETROIT = "(max-width: 40em)";
 
+  /* Le zoom d'interface (« Aa », `theme.js`) est un `zoom` CSS sur la racine : les mesures de
+     l'écran (`getBoundingClientRect`, `innerWidth`) sont en pixels VISIBLES, la place d'un
+     élément fixe s'écrit en pixels de la page, que le zoom multiplie ; et une requête média
+     ne le voit pas. Défaut vu par Hugo sur la recette (2026-11-05) : à 790 px sous un zoom de
+     200 %, la fenêtre du guide se posait à moitié hors de l'écran, sur son foyer. */
+  function zoomDeLaPage() {
+    const z = document.documentElement.currentCSSZoom;
+    return typeof z === "number" && z > 0 ? z : 1;
+  }
+
   function etroit() { return !!(window.matchMedia && window.matchMedia(ETROIT).matches); }
+
+  // Le guide pose sa fenêtre lui-même : il est étroit sous 40em de LARGEUR UTILE, le zoom
+  // d'interface compris (40em visibles sous un zoom z font 40·z em de la fenêtre). La visite,
+  // elle, suit la requête média de la feuille de style.
+  function etroitPourLeGuide() {
+    return etroit() || !!(window.matchMedia
+      && window.matchMedia(`(max-width: ${40 * zoomDeLaPage()}em)`).matches);
+  }
 
   /* La visite et les repères, sur un écran étroit (sous 40em), sont une feuille en bas
      (`style.css`) : comme pour le guide, la page lui réserve sa hauteur, pour que le bas
@@ -1724,13 +1742,16 @@
     const cle = `${etape}:${window.innerWidth}x${window.innerHeight}`;
     // Le repli est tenu pour l'étape et la taille de l'écran : la feuille réserve sa place,
     // ce qui change la page, et la fenêtre n'en repartirait pas à côté pour revenir.
-    let feuille = etroit() || !!(G.pose && G.pose.cle === cle && G.pose.feuille);
+    let feuille = etroitPourLeGuide() || !!(G.pose && G.pose.cle === cle && G.pose.feuille);
     if (!feuille) {
       fenetre.classList.remove("feuille", "sans-visuel");
       reserver(0);
-      const placer = () => W.placerFenetre(foyerDeLEtape(),
-        { w: fenetre.offsetWidth, h: fenetre.offsetHeight },
-        { l: 8, t: 8, r: window.innerWidth - 8, b: window.innerHeight - 8 }, 14);
+      // Tout en pixels visibles : la taille de la fenêtre comme le foyer et l'écran.
+      const placer = () => {
+        const q = fenetre.getBoundingClientRect();
+        return W.placerFenetre(foyerDeLEtape(), { w: q.width, h: q.height },
+          { l: 8, t: 8, r: window.innerWidth - 8, b: window.innerHeight - 8 }, 14);
+      };
       let p = placer();
       // Le visuel d'une étape se retire plutôt que de pousser la fenêtre sur le foyer.
       if (p.cote === "repli" && fenetre.querySelector(".wf-visuel")) {
@@ -1739,8 +1760,10 @@
       }
       if (p.cote === "repli") feuille = true;
       else {
-        fenetre.style.left = `${Math.round(p.x)}px`;
-        fenetre.style.top = `${Math.round(p.y)}px`;
+        // … et la place s'écrit en pixels de la page : divisée par le zoom.
+        const z = zoomDeLaPage();
+        fenetre.style.left = `${Math.round(p.x / z)}px`;
+        fenetre.style.top = `${Math.round(p.y / z)}px`;
       }
     }
     if (feuille) {

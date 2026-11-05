@@ -1150,6 +1150,46 @@ MESURE_FOYER = """() => {
 }"""
 
 
+# Défaut vu par Hugo sur la recette (2026-11-05) : à 790 px, sous un zoom de 200 %, la
+# fenêtre du guide se posait à moitié hors de l'écran, sur le panneau de la Transcription.
+# Deux lectures de « 200 % » : le zoom d'interface (« Aa », un `zoom` CSS sur la racine,
+# que les requêtes média ne voient pas), et le zoom du navigateur, qui fait d'une fenêtre de
+# 790 px une page de 395 px CSS. La fenêtre doit tenir DANS l'écran et hors de son foyer.
+
+@pytestmark_proxy
+@pytest.mark.parametrize("largeur, zoom", [(790, 1.25), (790, 1.5), (790, 2), (395, 1)])
+def test_la_fenetre_du_guide_tient_dans_l_ecran_sous_un_zoom(page, jeu_decoupe, largeur, zoom):
+    page.add_init_script(f"try {{ localStorage.setItem('bd-zoom', '{zoom}'); }} catch (e) {{}}")
+    bac = _ouvrir(jeu_decoupe, CAMILLE)
+    vue = _api(jeu_decoupe["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    _sous(page, CAMILLE)
+    page.set_viewport_size({"width": largeur, "height": 800})
+    _arriver(page, jeu_decoupe["base"])
+    plan = page.evaluate("""(vue) => BDWizard.etapes('rapide').map((e, i) =>
+      ({ i, k: e.k, adresse: BDWizard.adresseEtape(e, vue) }))""", vue)
+    echecs = []
+    for e in plan:
+        page.evaluate("""([login, bac, i, k]) => {
+          localStorage.setItem('bd-wizard', JSON.stringify({ [login]: { bac: bac.id,
+            efface_le: bac.efface_le, album_vu: true, parcours: 'rapide', etape: i, k } }));
+          sessionStorage.setItem('bd-wizard-guide', JSON.stringify({ login, bac: bac.id,
+            efface_le: bac.efface_le, actif: true, vues: [] })); }""",
+                      ["camille", bac, e["i"], e["k"]])
+        page.goto(jeu_decoupe["base"] + e["adresse"], wait_until="domcontentloaded")
+        expect(page.locator("#wizard-guide-compte")).to_be_visible(timeout=15000)
+        page.wait_for_timeout(600)
+        z = page.evaluate("() => document.documentElement.currentCSSZoom || 1")
+        m = page.evaluate(MESURE_FOYER)
+        f = m["fen"]
+        ou = f"{largeur} px, zoom {zoom} (appliqué {z}), {e['k']}"
+        if f["l"] < -1 or f["t"] < -1 or f["r"] > largeur + 1 or f["b"] > 801:
+            echecs.append(f"{ou} : la fenêtre {f} sort de l'écran")
+        if m["recouvrent"]:
+            echecs.append(f"{ou} : la fenêtre {f} recouvre {m['recouvrent']}"
+                          f"{' (feuille)' if m['feuille'] else ''}")
+    assert not echecs, "\n".join(echecs)
+
+
 @pytestmark_proxy
 @pytest.mark.parametrize("largeur", [1280, 768])
 def test_la_fenetre_du_guide_ne_recouvre_jamais_son_foyer(page, jeu_decoupe, largeur):
