@@ -5,7 +5,7 @@ statut: livré
 
 # COL-4 — « Mon bac à sable » : un projet de test à soi, remis à neuf chaque semaine, où l'on apprend l'outil
 
-**Arrêté sur** `81c164c` (2026-11-01, sur `dev`, pas encore en production : la ligne du bac à
+**Arrêté sur** `6b68f2a` (2026-11-05) : une chaîne de test passée en chaîne brute, sans rien changer à ce qu'elle teste (un avertissement de Python à chaque collecte). Avant lui, `81c164c` (2026-11-01, sur `dev`, pas encore en production : la ligne du bac à
 sable ne recouvre plus la bande 2 de l'Atelier ; rouge de la passe navigateur dans l'image,
 police de l'image, les rangées 1 et 2 passées en `max-content`). Avant cela, `c73de66` (le même
 jour : une collection sans album ne publie plus les totaux de l'instance, et ce qui se fait dans
