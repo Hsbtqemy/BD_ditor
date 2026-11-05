@@ -280,6 +280,30 @@
     return [];
   }
 
+  /* La dernière page de l'album (Hugo, 2026-11-05, « deux colonnes + choix riches »).
+     À gauche, l'aperçu de la carte « Par où commencer » : ses neuf étapes numérotées, la
+     première marquée « ici », comme la carte s'ouvre. Rien n'y est recopié : les titres
+     sont ceux des étapes. */
+  function apercuCarte() {
+    return { titre: TITRE_CARTE,
+             description: `Un aperçu de la carte « ${TITRE_CARTE} » : ses ${ETAPES.length} `
+               + `étapes, de « ${ETAPES[0].titre} » à « ${ETAPES[ETAPES.length - 1].titre} ».`,
+             etapes: ETAPES.map((e, i) => ({ n: i + 1, k: e.k, titre: e.titre, ici: i === 0 })) };
+  }
+
+  /* À droite, les deux choix en cartes, tirés du texte des parcours et de leurs étapes : la
+     DURÉE lue dans le détail (« 5 minutes » → « 5 min »), les étapes par leur NUMÉRO sur la
+     carte, et le geste résumé de la première à la dernière (« tracer → annoter »). */
+  function choixDuParcours() {
+    return FIN.parcours.map((c) => {
+      const es = etapes(c.k), m = /(\d+)\s*minutes?/.exec(c.detail || "");
+      return { k: c.k, titre: c.titre, detail: typo(c.detail),
+               duree: m ? typo(`${m[1]} min`) : null,
+               etapes: es.map((e) => ETAPES.indexOf(e) + 1),
+               resume: es.length ? `${es[0].k} → ${es[es.length - 1].k}` : "" };
+    });
+  }
+
   /* L'album du parcours : la copie du rôle `pas-a-pas` que le jeu a posée dans le bac à
      sable, avec ses planches ; sinon la première copie qui en a une ; `null` sinon. */
   function albumDuParcours(vue) {
@@ -1170,7 +1194,7 @@
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
            typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
-           vocabulaire, initiale, compteOccurrences,
+           vocabulaire, initiale, compteOccurrences, apercuCarte, choixDuParcours,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

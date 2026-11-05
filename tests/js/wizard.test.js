@@ -920,3 +920,25 @@ test("la première page : un éventail fixe de cinq planches, aux teintes altern
                                   "corpus-saint-cyr.jpg"]);
   assert.ok(ill.description.trim());
 });
+
+test("la dernière page : l'aperçu de la carte, tiré des étapes, la première « ici »", () => {
+  const a = W.apercuCarte();
+  assert.equal(a.titre, W.TITRE_CARTE);
+  assert.deepEqual(a.etapes.map((e) => e.titre), W.ETAPES.map((e) => e.titre));
+  assert.deepEqual(a.etapes.map((e) => e.n), W.ETAPES.map((e, i) => i + 1));
+  assert.deepEqual(a.etapes.filter((e) => e.ici).map((e) => e.n), [1]);
+  assert.match(a.description, /9 étapes/);
+});
+
+test("la dernière page : deux choix en cartes, durée, étapes numérotées et geste résumé", () => {
+  const c = W.choixDuParcours();
+  assert.deepEqual(c.map((x) => x.k), W.FIN.parcours.map((x) => x.k));
+  assert.deepEqual(c.map((x) => x.titre), ["Parcours rapide", "Parcours complet"]);
+  assert.deepEqual(c.map((x) => x.duree), ["5 min", "15 min"]);
+  // Les numéros sont ceux de la carte : le parcours rapide en a 4, le complet les 9.
+  assert.deepEqual(c[0].etapes, W.RAPIDE.map((k) => W.ETAPES.findIndex((e) => e.k === k) + 1));
+  assert.deepEqual(c[1].etapes, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(c.map((x) => x.resume), ["tracer → annoter", "corpus → exporter"]);
+  // Le détail du parcours reste ce que le lecteur d'écran lit, tel quel.
+  assert.deepEqual(c.map((x) => sp(x.detail)), W.FIN.parcours.map((x) => sp(W.typo(x.detail))));
+});

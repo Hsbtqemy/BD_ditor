@@ -690,7 +690,7 @@ kbd {
 .wizard-haut button { white-space: nowrap; }
 .wizard-page { display: grid; gap: 1.2308rem; align-items: center; min-height: 20rem;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
-.wizard-page.sans-ill, .wizard-page.wizard-fin { grid-template-columns: minmax(0, 1fr); }
+.wizard-page.sans-ill { grid-template-columns: minmax(0, 1fr); }
 /* La page qui arrive glisse de son côté (la maquette) ; rien ne bouge pour qui a demandé
    moins d'animations. La boîte ne laisse pas déborder la page pendant qu'elle glisse. */
 .wizard-album { overflow-x: clip; }
@@ -815,15 +815,39 @@ kbd {
   border-radius: 4px; color: var(--text-muted); min-width: 0; overflow-wrap: anywhere; }
 .wizard-entree.cochee { color: var(--text); font-weight: 600; border-color: var(--accent-blue);
   background: color-mix(in srgb, var(--accent-blue) 16%, transparent); }
-.wizard-fin { align-content: center; }
-.wizard-choix { display: grid; gap: .6154rem;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
-.wizard-choix-btn { display: grid; gap: .2308rem; text-align: left; padding: .7692rem .9231rem;
+/* La dernière page, en deux colonnes comme les autres (Hugo, 2026-11-05) : l'aperçu de la
+   carte, puis les deux choix en cartes. À l'étroit, quand les colonnes s'empilent (moins de
+   deux pistes de 16rem), l'aperçu se retire : les choix sont ce qu'on vient chercher. */
+.wizard-page.wizard-fin { container: wizard-fin / inline-size; }
+@container wizard-fin (max-width: 33.2rem) { .wizard-fin .wizard-ill { display: none; } }
+.wizard-fixe-carte { justify-items: stretch; gap: .3077rem; padding: .4615rem .6154rem;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel);
+  box-shadow: 0 4px 12px var(--shadow); box-sizing: border-box; max-width: 17rem; }
+.wizard-apercu-titre { margin: 0; font-weight: 700; }
+.wizard-apercu { margin: 0; padding: 0; list-style: none; display: grid; gap: .0769rem;
+  font-size: .8462rem; }
+.wizard-apercu li { display: flex; align-items: center; gap: .4615rem; padding: .0769rem .3077rem;
+  border-left: 3px solid transparent; border-radius: 3px; min-width: 0; }
+.wizard-apercu li.ici { border-left-color: var(--focus); background: var(--hover); font-weight: 700; }
+.wizard-pastille { flex: none; display: inline-grid; place-items: center; min-width: 1.2308rem;
+  height: 1.2308rem; padding: 0 .1538rem; box-sizing: border-box; border-radius: 999px;
+  border: 1px solid var(--border); font-size: .7692rem; font-weight: 600; color: var(--text);
+  background: var(--bg-input); font-variant-numeric: tabular-nums; }
+.wizard-choix { display: grid; gap: .4615rem; margin-top: .3077rem; }
+.wizard-choix-btn { display: grid; gap: .3077rem; text-align: left; padding: .4615rem .7692rem;
   border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input);
   color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
-.wizard-choix-btn:hover { background: var(--hover); }
-.wizard-choix-btn strong { font-size: 1.0769rem; }
-.wizard-choix-btn span { color: var(--text-muted); overflow-wrap: anywhere; }
+.wizard-choix-btn:hover { background: var(--hover); border-color: var(--focus); }
+.wizard-choix-haut, .wizard-choix-bas { display: flex; flex-wrap: wrap; align-items: center;
+  gap: .3077rem .6154rem; min-width: 0; }
+.wizard-choix-haut strong { font-size: 1.0769rem; }
+.wizard-duree { font-weight: 700; font-size: .9231rem; padding: 0 .4615rem; border-radius: 999px;
+  border: 1px solid var(--focus); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wizard-pastilles { display: inline-flex; flex-wrap: wrap; gap: .1538rem; }
+.wizard-pastilles .wizard-pastille { background: var(--bg-panel); }
+.wizard-resume { color: var(--text-muted); font-size: .9231rem; }
+.wizard-commencer { margin-left: auto; font-weight: 600; white-space: nowrap; }
+.wizard-bas .wizard-jamais { color: var(--text-muted); font-size: .9231rem; }
 /* `.modal-box label` pose une colonne : la case et son libellé restent sur une rangée. */
 .modal-box label.wizard-jamais { flex-direction: row; align-items: center; gap: .4615rem; }
 .wizard-bas { display: flex; flex-wrap: wrap; align-items: center; gap: .6154rem; }

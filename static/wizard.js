@@ -356,28 +356,22 @@
       txt.appendChild(el("p", null, W.textePage(p, S.moteurs)));
       page.appendChild(txt);
     } else {
+      // La dernière page a la forme des autres (Hugo, 2026-11-05) : l'aperçu de la carte à
+      // gauche, le texte et les deux choix à droite.
       page.classList.add("wizard-fin");
-      page.appendChild(el("h3", null, W.typo(W.FIN.titre)));
-      page.appendChild(el("p", null, W.typo(W.FIN.texte)));
+      const c = el("div", "wizard-ill");
+      c.appendChild(apercuDeLaCarte());
+      page.appendChild(c);
+      const txt = el("div", "wizard-txt");
+      const num = el("span", "wizard-num", String(n));
+      num.setAttribute("aria-hidden", "true");
+      txt.appendChild(num);
+      txt.appendChild(el("h3", null, W.typo(W.FIN.titre)));
+      txt.appendChild(el("p", null, W.typo(W.FIN.texte)));
       const choix = el("div", "wizard-choix");
-      W.FIN.parcours.forEach((c) => {
-        const b = bouton("wizard-choix-btn", null, `wizard-choix-${c.k}`);
-        b.dataset.choix = c.k;
-        b.appendChild(el("strong", null, c.titre));
-        b.appendChild(el("span", null, W.typo(c.detail)));
-        b.addEventListener("click", () => choisir(c.k));
-        choix.appendChild(b);
-      });
-      page.appendChild(choix);
-      const lab = el("label", "wizard-jamais");
-      const cb = el("input");
-      cb.type = "checkbox";
-      cb.id = "wizard-jamais";
-      cb.checked = S.souvenir.album_vu && !S.souvenir.parcours;
-      cb.addEventListener("change", () => retenir(W.neJamaisAfficher(S.souvenir, cb.checked)));
-      lab.appendChild(cb);
-      lab.appendChild(document.createTextNode(` ${W.FIN.jamais}`));
-      page.appendChild(lab);
+      W.choixDuParcours().forEach((x) => choix.appendChild(carteDeChoix(x)));
+      txt.appendChild(choix);
+      page.appendChild(txt);
     }
     boite.appendChild(page);
 
@@ -399,8 +393,61 @@
       const suiv = bouton("primary small", "Suivant →", "wizard-suiv");
       suiv.addEventListener("click", () => tourner(S.page + 1, "#wizard-suiv"));
       bas.appendChild(suiv);
+    } else {
+      // « Ne plus afficher », discret, à la place de « Suivant ».
+      const lab = el("label", "wizard-jamais");
+      const cb = el("input");
+      cb.type = "checkbox";
+      cb.id = "wizard-jamais";
+      cb.checked = S.souvenir.album_vu && !S.souvenir.parcours;
+      cb.addEventListener("change", () => retenir(W.neJamaisAfficher(S.souvenir, cb.checked)));
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(` ${W.FIN.jamais}`));
+      bas.appendChild(lab);
     }
     boite.appendChild(bas);
+  }
+
+  /* L'aperçu de la carte « Par où commencer » (`BDWizard.apercuCarte`) : une illustration
+     inerte et décrite, comme celles des autres pages, dessinée et non photographiée. */
+  function apercuDeLaCarte() {
+    const a = W.apercuCarte();
+    const d = el("div", "wizard-fixe wizard-fixe-carte");
+    d.setAttribute("role", "img");
+    d.setAttribute("aria-label", W.typo(a.description));
+    d.appendChild(el("p", "wizard-apercu-titre", a.titre));
+    const ol = el("ol", "wizard-apercu");
+    a.etapes.forEach((e) => {
+      const li = el("li", e.ici ? "ici" : null);
+      li.appendChild(el("span", "wizard-pastille", String(e.n)));
+      li.appendChild(el("span", null, W.typo(e.titre)));
+      ol.appendChild(li);
+    });
+    d.appendChild(ol);
+    return d;
+  }
+
+  /* Un choix de parcours : UNE carte, UN bouton (`#wizard-choix-<k>`). Le lecteur d'écran
+     en lit le titre et le détail du parcours ; les pastilles, qui le redisent en numéros
+     d'étapes, lui sont tues. */
+  function carteDeChoix(x) {
+    const b = bouton("wizard-choix-btn", null, `wizard-choix-${x.k}`);
+    b.dataset.choix = x.k;
+    b.setAttribute("aria-label", `${x.titre} : ${x.detail}`);
+    const haut = el("span", "wizard-choix-haut");
+    haut.appendChild(el("strong", null, x.titre));
+    if (x.duree) haut.appendChild(el("span", "wizard-duree", x.duree));
+    haut.appendChild(el("span", "wizard-commencer", "Commencer →"));
+    b.appendChild(haut);
+    const bas = el("span", "wizard-choix-bas");
+    const ps = el("span", "wizard-pastilles");
+    ps.setAttribute("aria-hidden", "true");
+    x.etapes.forEach((k) => ps.appendChild(el("span", "wizard-pastille", String(k))));
+    bas.appendChild(ps);
+    bas.appendChild(el("span", "wizard-resume", x.resume));
+    b.appendChild(bas);
+    b.addEventListener("click", () => choisir(x.k));
+    return b;
   }
 
   /* Tourner la page garde le focus sur le bouton pressé ; sur la dernière page, où

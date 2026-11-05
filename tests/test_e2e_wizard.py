@@ -1028,8 +1028,9 @@ def test_la_transcription_ne_dit_pas_bulle_sur_un_cartouche(page, jeu_decoupe):
 # lu `GET /api/sante` en s'ouvrant, pour la page 4 —, et chaque image arrive.
 
 PAGES_ILLUSTREES = {1: "outil", 2: "corpus", 3: "zones", 4: "moteurs", 5: "analyse", 6: "collab",
-                    7: "sortir"}
-SANS_IMAGE = {"collab"}  # des membres et un fil de doute : du texte seul
+                    7: "sortir", 8: "carte"}
+# Du texte seul : des membres et un fil de doute ; l'aperçu de la carte des étapes.
+SANS_IMAGE = {"collab", "carte"}
 
 
 @pytestmark_proxy
@@ -1072,6 +1073,15 @@ def test_les_illustrations_de_l_album_ne_demandent_rien_a_l_instance(page, jeu):
             expect(ill.locator(".wizard-pivot")).to_have_count(3)
             expect(ill.locator(".wizard-zone-mot")).to_have_count(3)
             expect(ill.locator(".wizard-format")).to_have_count(4)
+        if k == "carte":
+            # L'aperçu des neuf étapes, puis les deux choix en cartes ; « Ne plus afficher »
+            # dans la barre du bas.
+            expect(ill.locator(".wizard-apercu li")).to_have_count(9)
+            for choix in ("rapide", "complet"):
+                carte = album.locator(f"#wizard-choix-{choix}")
+                expect(carte.locator(".wizard-duree")).to_be_visible()
+                expect(carte.locator(".wizard-commencer")).to_be_visible()
+            expect(album.locator(".wizard-bas #wizard-jamais")).to_be_visible()
         if k == "collab":
             expect(ill.locator(".wizard-membres li")).to_have_count(3)
             expect(ill.locator(".wizard-doute")).to_be_visible()
