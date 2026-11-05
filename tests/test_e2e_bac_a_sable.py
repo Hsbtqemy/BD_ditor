@@ -1164,7 +1164,7 @@ def test_le_bac_de_l_administrateur_se_trie_et_se_filtre_par_son_login(page, jeu
 # Le contraste de la ligne sur SA rayure, que axe ne mesure pas (un fond en dégradé lui
 # est « incomplet ») : chaque encre de la ligne contre les DEUX teintes de la rayure, dans
 # les quatre thèmes — le plafond atteint compris, en encre d'alerte.
-_CONTRASTES = """() => {
+_CONTRASTES = r"""() => {
   const rgb = (c) => { const m = c.match(/rgba?\(([^)]+)\)/)[1].split(',').map(Number);
                        return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 }; };
   const sonde = (prop, val) => { const s = document.createElement('span'); s.style[prop] = val;
