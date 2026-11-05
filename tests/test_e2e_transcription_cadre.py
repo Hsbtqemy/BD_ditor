@@ -167,34 +167,45 @@ def test_la_bulle_la_plus_haute_ne_chasse_rien_hors_de_la_fenetre(
 
 
 @pytest.mark.parametrize("largeur", LARGEURS)
-def test_une_bulle_plus_petite_que_le_cadre_n_est_pas_agrandie(
+def test_une_bulle_plus_petite_que_le_cadre_est_agrandie_au_plus_trois_fois(
         page, corpus_deux_bulles, largeur):
-    """Un crop de master n'est jamais étiré : agrandir n'ajoute pas d'information, du flou.
+    """Une petite bulle grossit pour remplir son cadre, au plus ×3, sans se déformer ni
+    déborder (Hugo, 2026-11-05 : « la bulle est toute petite par rapport à l'écran »).
 
-    `width/height: 100%` + `object-fit: contain` remplissait la boîte, donc grossissait les
-    petites bulles — jusqu'à ×6 sur le banc, et le 317 % relevé à l'écran. Sans cette
-    mesure, un futur `width: 100%` rétablirait le flou sans faire tomber quoi que ce soit.
+    La règle d'avant — bornée, jamais étirée — date des scans gardés en haute résolution ;
+    depuis IMG-1, la copie de travail est à 300 dpi au plus, et une bulle du jeu tient en
+    200 × 30 px. Au-delà de ×3, on ne lit pas mieux : `ajusterCropTr` (`viewer.js`) s'arrête là.
 
-    La garde vérifie d'abord que le cadre est PLUS GRAND que la bulle : « elle n'a pas
-    grossi » ne veut rien dire là où il n'y avait pas la place de grossir.
+    La garde vérifie d'abord que le cadre est PLUS GRAND que la bulle : « elle a grossi » ne
+    veut rien dire là où il n'y avait pas la place de grossir.
     """
     page.set_viewport_size({"width": largeur, "height": HAUTEUR})
     _ouvrir_en_transcription(page, corpus_deux_bulles, "petite")
+    page.wait_for_function(
+        "() => { const c = document.querySelector('#tr-crop');"
+        " return c && c.getBoundingClientRect().width > c.naturalWidth; }", timeout=10000)
     m = page.evaluate(_MESURE)
+    nw, nh = m["naturel"]["largeur"], m["naturel"]["hauteur"]
 
-    assert (m["naturel"]["largeur"], m["naturel"]["hauteur"]) == (PETITE["w"], PETITE["h"]), (
+    assert (nw, nh) == (PETITE["w"], PETITE["h"]), (
         f"le crop chargé fait {m['naturel']} au lieu de {PETITE['w']}×{PETITE['h']}")
-    assert (m["cadre"]["largeur"] > m["naturel"]["largeur"]
-            and m["cadre"]["hauteur"] > m["naturel"]["hauteur"]), (
+    assert (m["cadre"]["largeur"] > nw and m["cadre"]["hauteur"] > nh), (
         f"à {largeur}×{HAUTEUR} le cadre fait {m['cadre']['largeur']}×"
-        f"{m['cadre']['hauteur']} pour une bulle de {m['naturel']['largeur']}×"
-        f"{m['naturel']['hauteur']} : il n'y a pas la place de l'agrandir, donc cette "
-        "garde ne mesure plus rien. Réduire la bulle du décor, ou agrandir la fenêtre")
+        f"{m['cadre']['hauteur']} pour une bulle de {nw}×{nh} : il n'y a pas la place de "
+        "l'agrandir, donc cette garde ne mesure plus rien. Réduire la bulle du décor, ou "
+        "agrandir la fenêtre")
 
-    assert m["crop"]["largeur"] == m["naturel"]["largeur"], (
-        f"à {largeur}×{HAUTEUR}, la bulle est rendue sur {m['crop']['largeur']} px de "
-        f"large pour {m['naturel']['largeur']} px de master : elle est AGRANDIE, donc "
-        "floue. Le crop doit être BORNÉ (`max-width`/`max-height`), jamais étiré")
-    assert m["crop"]["hauteur"] == m["naturel"]["hauteur"], (
-        f"à {largeur}×{HAUTEUR}, la bulle est rendue sur {m['crop']['hauteur']} px de "
-        f"haut pour {m['naturel']['hauteur']} px de master : elle est AGRANDIE")
+    echelle = m["crop"]["largeur"] / nw
+    assert echelle > 1.05, (
+        f"à {largeur}×{HAUTEUR}, la bulle reste à {m['crop']['largeur']} px pour {nw} px : "
+        "elle n'est pas agrandie, perdue dans son cadre")
+    assert echelle <= 3.01, (
+        f"à {largeur}×{HAUTEUR}, la bulle est agrandie ×{echelle:.2f} : au-delà de ×3, "
+        "on ne lit pas mieux, on voit le flou")
+    assert abs(m["crop"]["hauteur"] / nh - echelle) < 0.05, (
+        f"la bulle est déformée : ×{echelle:.2f} en largeur, "
+        f"×{m['crop']['hauteur'] / nh:.2f} en hauteur")
+    assert (m["crop"]["largeur"] <= m["cadre"]["largeur"]
+            and m["crop"]["hauteur"] <= m["cadre"]["hauteur"]), (
+        f"la bulle agrandie ({m['crop']['largeur']}×{m['crop']['hauteur']}) déborde de son "
+        f"cadre ({m['cadre']['largeur']}×{m['cadre']['hauteur']})")

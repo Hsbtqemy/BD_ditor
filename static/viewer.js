@@ -1914,6 +1914,27 @@ function buildTrMini() {
   mini.appendChild(svg);
 }
 
+/* La vignette de la zone, AGRANDIE jusqu'à remplir son cadre, au plus ×3 (Hugo, 2026-11-05,
+   sur un grand écran : « la bulle est toute petite »). La règle d'avant — bornée, jamais
+   étirée — a été mesurée quand le serveur gardait les scans : une bulle y faisait des
+   centaines de pixels. Depuis IMG-1, la copie de travail est à 300 dpi au plus, et les
+   planches du jeu bien moins (975 px de large) : une bulle tient en 200 × 30 px, perdue dans
+   un grand cadre. Au-delà de ×3, on ne lit pas mieux, on voit le flou. Plus grande que son
+   cadre, elle est réduite pour y entrer, comme avant (`max-width`/`max-height`). */
+const TR_AGRANDI_MAX = 3;
+function ajusterCropTr() {
+  const img = $("#tr-crop"), boite = $("#tr-crop-wrap");
+  if (!img || !boite) return;
+  img.style.width = "";
+  const nw = img.naturalWidth, nh = img.naturalHeight;
+  if (img.hidden || !nw || !nh) return;
+  const s = getComputedStyle(boite);
+  const lw = boite.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+  const lh = boite.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom);
+  const echelle = Math.min(lw / nw, lh / nh, TR_AGRANDI_MAX);
+  if (echelle > 1) img.style.width = `${Math.floor(nw * echelle)}px`;
+}
+
 function renderTranscription() {
   const list = state.trRegions;
   const r = list[state.trIndex];
@@ -1941,6 +1962,13 @@ function renderTranscription() {
   // Cache-buster sur les coordonnées : si la bbox change (mode Édition), l'URL
   // change → pas de crop périmé servi depuis le cache navigateur.
   const cropImg = $("#tr-crop");
+  if (!cropImg.dataset.ajuste) {
+    // Une fois : la vignette s'ajuste à son chargement et quand son cadre change de taille.
+    cropImg.dataset.ajuste = "1";
+    cropImg.addEventListener("load", ajusterCropTr);
+    if (window.ResizeObserver) new ResizeObserver(ajusterCropTr).observe($("#tr-crop-wrap"));
+  }
+  cropImg.style.width = "";
   if (r) cropImg.src = `/api/regions/${r.id}/crop?b=${r.x}-${r.y}-${r.w}-${r.h}`;
   else cropImg.removeAttribute("src");
   // Sans région : MASQUER l'<img> (sinon Chrome affiche l'icône d'image cassée

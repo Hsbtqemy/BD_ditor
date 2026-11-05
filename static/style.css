@@ -2044,7 +2044,10 @@ h3.collapsible:hover { color: var(--text); }
     repeating-conic-gradient(var(--stage-a) 0% 25%, var(--stage-b) 0% 50%) 50% / 22px 22px;
   border: 1px solid var(--border); border-radius: 6px; overflow: auto; padding: .9231rem;
 }
-/* BORNÉE, jamais étirée. `width/height: 100%` + `object-fit: contain` remplissait la
+/* AGRANDIE jusqu'à remplir le cadre, au plus ×3, depuis le 2026-11-05 (`ajusterCropTr` dans
+   `viewer.js`, qui dit pourquoi la règle ci-dessous a changé) ; les bornes restent : une
+   vignette plus grande que son cadre y est réduite. Ce qui suit est la règle d'avant, gardée
+   pour sa mesure. BORNÉE, jamais étirée. `width/height: 100%` + `object-fit: contain` remplissait la
    boîte, donc AGRANDISSAIT les petites bulles — jusqu'à ×6 sur le banc, et ×2,6 sur la
    bulle 288 × 266 que l'écran montrait à 317 %. Mesuré sur la base de recette : des 31
    bulles transcrites, 19 tiennent telles quelles dans le cadre et y gagnent leur netteté,
