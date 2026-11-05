@@ -470,14 +470,33 @@ Maquette https://claude.ai/artifact/Kq5QsjxMvj3RokM5u6k9z1, version 2, privée :
   bouton du mode avec lui ; on annote dans la page Annotation.** D'ici là il reste, faute que
   la page fasse tout ce qu'il fait (les deux cases suivantes) ; les tags, la situation et le
   profil, qu'il est seul à écrire, deviennent des grilles au basculement même (Q3)
-- [ ] **L'identité d'une boîte personnage s'écrit dans la page Annotation** — attendu : dans
+- [x] **L'identité d'une boîte personnage s'écrit dans la page Annotation** — attendu : dans
   le Contexte d'une boîte, on choisit ou crée le personnage, comme le locuteur (le champ de
   `lib/champ-personnage.js`, sous la garde de CONC-4). Aujourd'hui la page le montre en
   lecture seule ; seul le mode Annotation de l'Atelier l'écrit. Condition du retrait du mode
+  **Fait le 2026-11-05 (`4b313a4`, sur `dev`)** : le champ du locuteur monté une seconde fois,
+  sur un album où l'on écrit ; locuteur et personnage partagent la valeur vue, le bandeau du
+  conflit, les gardes de départ et Ctrl+Z. Le serveur n'a pas changé
 - [ ] **Le panneau Personnage s'ouvre depuis la page Annotation** — attendu : depuis le
   locuteur ou une boîte, on ouvre la fiche du personnage et ses alignements (Wikidata, VIAF,
   IdRef… : A5, `GET/POST/DELETE /api/personnages/{id}/alignements`), comme dans l'Atelier, où
-  il est seul aujourd'hui. Condition du retrait du mode
+  il est seul aujourd'hui. Condition du retrait du mode **Fait le 2026-11-05 (`25d8735`, sur
+  `dev`)** : « Fiche » sur la puce du locuteur et sur celle d'une boîte ouvre une modale —
+  nom, série, alignements ; le widget d'alignement est sorti de `viewer.js` dans
+  `static/lib/alignements.js`, monté par les deux surfaces. Le profil n'y est pas (il part au
+  basculement, I2 du cadrage)
+- [ ] **Les choix de la fiche d'un personnage sont confirmés** — attendu : Hugo répond aux
+  trois choix de l'agent du 2026-11-05 : (1) la fiche est une MODALE ouverte par « Fiche »,
+  ni feuille ni bloc du Contexte (la forme qui ne déplace rien) ; (2) ajouter ou retirer un
+  alignement n'est offert que sur un album où l'on écrit, alors que le serveur n'exige que
+  d'écrire quelque part (le registre est global) ; (3) les mots : « Fiche », « Personnage —
+  <nom · série> », « Autorité (référentiels externes) » comme dans l'Atelier
+- [ ] **Le balayage des masquages voit les identifiants composés** — attendu :
+  `tests/test_e2e_masquage.py` repère un `hidden` posé par `montrer(id, oui)` ou par
+  `$(idLien(…)).hidden` dans `static/annotation.js`, ou les déclare un par un. Vu par l'agent
+  du personnage le 2026-11-05 : il ne lit que les `$("#id").hidden` écrits en toutes
+  lettres ; son « × » sortait ainsi du balayage sans qu'aucun test le dise — déclaré depuis
+  dans `NON_RESOLUS` —, et `montrer` y échappe de la même façon, depuis bien avant
 
 ### Le basculement — cadrage rendu le 2026-11-05 (`docs/ann7-tranche3-cadrage.md`)
 - [ ] **Hugo tranche I1 à I9** — attendu : une réponse à chacune des neuf questions en tête du cadrage (la tranche 3 seule ou avec la 4, le profil d'ici la cible « entité », qui écrit les grilles de tags libres et de situation, « annotée », la coupure de Ctrl+Z, l'index plein texte, les anciens chemins, le contrôle de la production, la vraie base v38), et un mot sur la liste « se tranchent en route »
