@@ -491,7 +491,7 @@ Maquette https://claude.ai/artifact/Kq5QsjxMvj3RokM5u6k9z1, version 2, privée :
   alignement n'est offert que sur un album où l'on écrit, alors que le serveur n'exige que
   d'écrire quelque part (le registre est global) ; (3) les mots : « Fiche », « Personnage —
   <nom · série> », « Autorité (référentiels externes) » comme dans l'Atelier
-- [ ] **Le balayage des masquages voit les identifiants composés** — attendu :
+- [x] **Le balayage des masquages voit les identifiants composés** — attendu : — **fait le 2026-11-05** (`45b4d42`) : le balayage part de toute affectation de `hidden` ; ce qu'il ne résout pas fait échouer le test tant que ce n'est pas déclaré ; `montrer("#…")` et les boucles sur des littéraux sont résolus, les identifiants composés d'`idLien` déclarés et mesurés. Quatre formes y échappaient, dont deux dans l'Exploration
   `tests/test_e2e_masquage.py` repère un `hidden` posé par `montrer(id, oui)` ou par
   `$(idLien(…)).hidden` dans `static/annotation.js`, ou les déclare un par un. Vu par l'agent
   du personnage le 2026-11-05 : il ne lit que les `$("#id").hidden` écrits en toutes
