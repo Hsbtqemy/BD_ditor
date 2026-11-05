@@ -415,12 +415,18 @@ Maquette https://claude.ai/artifact/Kq5QsjxMvj3RokM5u6k9z1, version 2, privée :
   **Tenu le 2026-10-22, avec deux précisions de la séance** : ces grilles naissent NEUVES, les
   termes d'aujourd'hui ne s'y convertissent pas (Q3) ; le profil vise l'ENTITÉ, la boîte
   personnage étant une autre cible (Q4)
-- [ ] **Le coût de la réécriture est mesuré** — attendu : chaque lecteur des tags et des
+- [x] **Le coût de la réécriture est mesuré** — attendu : chaque lecteur des tags et des
   attributs relevé, avec un ordre de grandeur. Le coût n'est pas dans les données mais dans
   le code : Recherche et index plein texte, Exploration (distribution, croisement,
   concordance), exports (CSV, JSON, TEI, SKOS), lexique et import du tableur, annulation,
   cloisonnement des termes, registre des personnages. Une lecture du code, sans passe de
   tests
+  **Mesuré le 2026-11-05 à `9ef3143`** (`docs/ann7-tranche3-cadrage.md`, « L'inventaire
+  mesuré », commandes en annexe) : sept tables, dix index et une colonne de l'index plein
+  texte partent ; 31 routes sur 231 disparaissent, une vingtaine changent de forme ; trois
+  questions d'autorisation partent ; 368 fonctions de test dans 65 fichiers touchent le
+  vocabulaire (un majorant), et 76 tests navigateur dans 12 fichiers passent par le mode
+  Annotation de l'Atelier
 - [x] **Ce que la production porte déjà est compté** — attendu : nombres de tags, de tags
   posés, d'attributs et d'affectations, sur la production. Des utilisateurs en ont posé ; peu,
   sans doute. Commande à préparer pour Hugo, qui seul a la main sur le serveur
@@ -473,8 +479,15 @@ Maquette https://claude.ai/artifact/Kq5QsjxMvj3RokM5u6k9z1, version 2, privée :
   IdRef… : A5, `GET/POST/DELETE /api/personnages/{id}/alignements`), comme dans l'Atelier, où
   il est seul aujourd'hui. Condition du retrait du mode
 
+### Le basculement — cadrage rendu le 2026-11-05 (`docs/ann7-tranche3-cadrage.md`)
+- [ ] **Hugo tranche I1 à I9** — attendu : une réponse à chacune des neuf questions en tête du cadrage (la tranche 3 seule ou avec la 4, le profil d'ici la cible « entité », qui écrit les grilles de tags libres et de situation, « annotée », la coupure de Ctrl+Z, l'index plein texte, les anciens chemins, le contrôle de la production, la vraie base v38), et un mot sur la liste « se tranchent en route »
+- [ ] **`tools/fabriquer_base_de_version.py` fabrique une vraie base v38** — attendu : lancé sur la tête de `dev`, il rend une base sans erreur. Vu par l'agent du cadrage le 2026-11-05 : son parcours s'arrête sur le 409 de `PUT /api/collections/2/acces` (« lea n'est pas du projet »), la règle F2 de la 3c de `COL-3`, arrivée avec la v38 ; il lui faut une branche `>= 38` qui fasse entrer le compte dans le projet d'abord. Préalable à la migration v39
+- [ ] **Les migrations d'avant la v35 survivent au retrait de `tags`** — attendu : une fois `tags` sortie de `SCHEMA_SQL`, une base v29 à v34 migre encore jusqu'au bout (les huit fichiers de test qui le jouent restent verts). Vu par l'agent du cadrage : la migration v35 (`database._tags_par_espace`) relit la table `tags` dans `SCHEMA_SQL` par une expression régulière, et planterait
+- [ ] **Le lexique situé d'une entrée est tranché** — attendu : oui ou non, une entrée de grille porte une note de portée et un état (`provisoire` → `défini`), comme un terme d'aujourd'hui ; la séance du 2026-10-14 promettait « définition, note de portée, état », et `grille_entree` n'a que la définition (vu par l'agent du cadrage)
+- [ ] **Les passes de QA que le basculement rend sans objet sont relues** — attendu : chacune archivée, réécrite ou gardée, avec sa raison : `import-bilan-refus`, `termes-illisibles`, `concordance-tags`, et en partie `lot-1` et `lot-1-suite` (liste de l'agent du cadrage)
+
 ### Au basculement — le texte du wizard
-- [ ] **Le wizard dit trois modes de l'Atelier le jour du basculement** — attendu : à la sortie d'`UX-6`, il dit quatre modes, dont « Annotation pour poser des tags et une note (les grilles sont dans la page Annotation) » ; le commit du basculement retire cette étape de son texte, et `UX-3` suit
+- [ ] **Le wizard dit trois modes de l'Atelier le jour du basculement** — attendu : à la sortie d'`UX-6`, il dit quatre modes, dont « Annotation pour poser des tags et une note (les grilles sont dans la page Annotation) » ; le commit du basculement retire cette étape de son texte, et `UX-3` suit. **Cinq zones** du wizard parlent du vocabulaire, pas seulement « Quatre modes » : `recherche-champ`, `recherche-tags` (dont l'élément porteur disparaît), `exploration-sous-corpus` et `exploration-lexique` aussi (vu par l'agent du cadrage le 2026-11-05)
 
 ### L'ordre
 
