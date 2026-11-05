@@ -238,17 +238,27 @@ def test_une_description_fautive_n_ecrit_rien(client, db_path, tmp_path, faute, 
     assert _sql(db_path, "SELECT * FROM jeu_document") == []
 
 
-def test_la_notice_du_jeu_suit_la_reference_et_ses_copies(client, db_path, tmp_path):
+def test_la_notice_du_jeu_suit_la_reference_et_ses_copies(client, db_path, tmp_path,
+                                                          derriere_proxy):
     """`notice` pose le reste de la notice sur la copie de référence (Hugo, 2026-11-05), et un
     bac à sable la reçoit avec sa copie ; ce qu'elle ne dit pas reste vide."""
     notice = {"tome": "11", "date_edition": "1959-04", "type_oeuvre": "périodique (mensuel)"}
     depot = ecrire_jeu(tmp_path / "dep", [{**DOC_PARCOURS, "notice": notice}],
                        images=("p1.png",))
     preparer(depot=depot)
+    attendu = [{"tome": "11", "date_edition": "1959-04",
+                "type_oeuvre": "périodique (mensuel)", "langue": None}]
     ref = _sql(db_path, "SELECT a.tome, a.date_edition, a.type_oeuvre, a.langue FROM albums a "
                         "JOIN jeu_document j ON j.album_reference = a.id")
-    assert ref == [{"tome": "11", "date_edition": "1959-04",
-                    "type_oeuvre": "périodique (mensuel)", "langue": None}]
+    assert ref == attendu
+    # La copie d'un bac à sable : la même notice, lue sur elle et non sur la référence.
+    client.get("/api/moi", headers=LEA)
+    vue = client.post("/api/bac-a-sable", headers=LEA).json()
+    copie = next(j for j in vue["jeu"] if j["role"] == "pas-a-pas")["album_id"]
+    assert copie != _jeu(db_path)["parcours"]["album_reference"]
+    lue = _sql(db_path, "SELECT tome, date_edition, type_oeuvre, langue FROM albums "
+                        "WHERE id = ?", (copie,))
+    assert lue == attendu
 
 
 def test_une_cle_decrite_deux_fois_est_refusee(client, db_path, tmp_path):
