@@ -39,6 +39,9 @@ from test_fonds import (COLLEGUE, IMPORTEUSE, _albums, decor,  # noqa: F401
     ("C:\\Users\\moi\\scans\\page 7.tif", "page 7.tif"),
     ("sharedocs:BD/dossier/", None),
     ("   ", None),
+    # Les deux origines de l'outil du jeu : la planche du parcours et celle d'essai (UX-6).
+    ("jeu:p1.png", "p1.png"),
+    ("jeu:essai/p1.png", "p1.png"),
 ])
 def test_le_nom_seul_sans_dossier_ni_prefixe(origine, nom):
     assert nom_du_fichier_d_origine(origine) == nom

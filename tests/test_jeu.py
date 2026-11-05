@@ -717,6 +717,8 @@ def test_une_planche_d_essai_suit_le_parcours_et_se_reconnait(client, db_path, t
     # Le nom du fichier d'origine, lui, reste le nom seul.
     from pipeline import ingest
     assert ingest.nom_du_fichier_d_origine(planches[1]["master_origine"]) == "p1.png"
+    # L'origine de l'essai est dans le préfixe que l'import de fichiers refuse.
+    assert database.ORIGINE_ESSAI.startswith(ingest.ORIGINE_JEU)
 
 
 @pytest.mark.parametrize("planches, mot", [

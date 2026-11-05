@@ -528,11 +528,17 @@ def _reserver(chemins) -> list[Path]:
 # chemin DISTANT, là où vit le master d'archive. Sans préfixe, c'est le NOM du fichier reçu
 # par l'import de fichiers — le seul fait que l'outil sache alors de son master.
 ORIGINE_SHAREDOCS = "sharedocs:"
+# Le préfixe que l'outil du jeu note sur les planches du jeu des bacs à sable
+# (`tools/preparer_jeu.py`) : `jeu:<fichier>`, et `jeu:essai/<fichier>` pour la planche
+# d'essai du parcours (`database.ORIGINE_ESSAI`), que la vue du bac à sable reconnaît à lui.
+# RÉSERVÉ : l'import de fichiers refuse un nom qui le porte (UX-6, relecture du 2026-11-05),
+# sans quoi un fichier nommé `jeu:essai/x.png` se faisait passer pour la planche d'essai.
+ORIGINE_JEU = "jeu:"
 
 
 def nom_du_fichier_d_origine(origine: str | None) -> str | None:
     """Le NOM seul du fichier d'origine d'une planche, tiré de `planches.master_origine` :
-    sans le préfixe `sharedocs:`, sans aucun dossier. None pour une planche d'avant la v34
+    sans le préfixe `sharedocs:` ni `jeu:`, sans aucun dossier. None pour une planche d'avant la v34
     (rien n'a été noté) ou une valeur qui ne nomme aucun fichier.
 
     UX-11 (Hugo, 2026-10-22) — c'est la SEULE part de `master_origine` qui sorte d'une route,
@@ -546,6 +552,8 @@ def nom_du_fichier_d_origine(origine: str | None) -> str | None:
         return None
     if origine.startswith(ORIGINE_SHAREDOCS):
         origine = origine[len(ORIGINE_SHAREDOCS):]
+    elif origine.startswith(ORIGINE_JEU):     # `jeu:p1.png` → `p1.png`, comme l'essai
+        origine = origine[len(ORIGINE_JEU):]
     nom = re.split(r"[/\\]", origine)[-1].strip()
     return nom or None
 

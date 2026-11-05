@@ -120,7 +120,7 @@ from pipeline import jobs
 from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import RESERVATION as RESERVATION_INTERROMPUE
-from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, chemin_de_miniature,
+from pipeline.ingest import (ORIGINE_JEU, ORIGINE_SHAREDOCS, NumeroPris, chemin_de_miniature,
                              ecarter_dossiers_d_album,
                              DecodeurAbsent, ecriture_ratee, ingest_image,
                              nom_du_fichier_d_origine, numero_occupe,
@@ -927,6 +927,13 @@ def import_planche(
     _refuser_le_jeu(conn, album_id=album_id)              # COL-4 : la référence ne bouge pas
     _exiger_le_plafond(conn, album_id)                    # COL-4 : un bac à sable est borné
     nom = file.filename or "planche.tif"
+    # UX-6 — le nom reçu devient `master_origine`, où le préfixe `jeu:` est RÉSERVÉ à l'outil
+    # du jeu : `jeu:essai/…` désigne la planche d'essai du parcours. Refusé, et sans égard à
+    # la casse, comme le `LIKE` qui la reconnaît (relecture du 2026-11-05).
+    if nom[:len(ORIGINE_JEU)].lower() == ORIGINE_JEU:
+        raise HTTPException(
+            400, f"Le nom « {nom} » commence par « {ORIGINE_JEU} », réservé aux planches du "
+                 "jeu des bacs à sable : renommez le fichier.")
     # IMG-1 — le NOM est filtré comme depuis ShareDocs. Sans ce contrôle, l'import rangeait
     # le master sous le suffixe reçu : un `planche_0001.dat` entrait dans `corpus/`. Le
     # contenu reste jugé par le décodeur borné (`PILLOW_FORMATS`), et les deux contrôles ne

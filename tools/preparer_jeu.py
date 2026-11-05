@@ -324,7 +324,7 @@ def _creer_une_reference(conn, d: dict) -> tuple[int, int]:
     conn.commit()
     for pl in d["planches"]:
         nom = Path(pl["fichier"]).name
-        origine = f"{database.ORIGINE_ESSAI}{nom}" if pl.get("essai") is True else f"jeu:{nom}"
+        origine = f"{database.ORIGINE_ESSAI}{nom}" if pl.get("essai") is True else f"{ingest.ORIGINE_JEU}{nom}"
         planche = ingest.ingest_image(conn, album_id, d["dossier"] / pl["fichier"],
                                       origine=origine)
         a_indexer = _poser_les_regions(conn, planche["id"], pl.get("regions"))

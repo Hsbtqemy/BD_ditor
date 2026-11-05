@@ -1607,3 +1607,37 @@ def test_la_vue_du_bac_a_sable_dit_la_planche_d_essai(client, tmp_path, derriere
     relue = client.get("/api/bac-a-sable", headers=LEA).json()
     assert next(j for j in relue["jeu"] if j["role"] == "pas-a-pas")["planche_essai"] \
         == parcours["planche_essai"]
+    # Le nom du fichier d'origine, sans le préfixe de l'outil du jeu, pour les deux planches.
+    pl = client.get(f"/api/albums/{parcours['album_id']}/planches", headers=LEA).json()
+    assert [p["nom_fichier_origine"] for p in pl] == ["p1.png", "p1.png"]
+
+
+@pytest.mark.parametrize("nom", ["jeu:essai/x.png", "JEU:Essai/x.png", "jeu:x.png"])
+def test_la_planche_d_essai_ne_s_imite_pas_par_un_nom_de_fichier(client, tmp_path,
+                                                                 derriere_proxy, nom):
+    """Le préfixe `jeu:` de `master_origine` est à l'outil du jeu : un fichier importé qui le
+    porte est refusé, et ne devient pas la planche d'essai (relecture du 2026-11-05 : le nom
+    reçu était recopié tel quel, et `planche_essai` le reconnaissait). Sans égard à la casse :
+    le `LIKE` qui la reconnaît n'en a pas."""
+    depot = ecrire_jeu(tmp_path / "jeu-depot", [DOC_PARCOURS], images=("p1.png",))
+    conn = database.get_connection()
+    try:
+        preparer_jeu.preparer(conn, depot=depot, appliquer_=True, dire=lambda _l: None)
+    finally:
+        conn.close()
+    client.get("/api/moi", headers=LEA)
+    vue = client.post("/api/bac-a-sable", headers=LEA).json()
+    parcours = next(j for j in vue["jeu"] if j["role"] == "pas-a-pas")
+    assert parcours["planche_essai"] is None
+    png = make_png(400, 500, "white")
+    r = client.post(f"/api/albums/{parcours['album_id']}/import", headers=LEA,
+                    files={"file": (nom, png, "image/png")})
+    assert r.status_code == 400 and "réservé aux planches du jeu" in r.json()["detail"], r.text
+    relue = client.get("/api/bac-a-sable", headers=LEA).json()
+    assert next(j for j in relue["jeu"] if j["role"] == "pas-a-pas")["planche_essai"] is None
+    # Un nom ordinaire entre, et ne change rien non plus.
+    r = client.post(f"/api/albums/{parcours['album_id']}/import", headers=LEA,
+                    files={"file": ("essai.png", png, "image/png")})
+    assert r.status_code == 201, r.text
+    relue = client.get("/api/bac-a-sable", headers=LEA).json()
+    assert next(j for j in relue["jeu"] if j["role"] == "pas-a-pas")["planche_essai"] is None
