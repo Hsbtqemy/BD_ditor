@@ -164,7 +164,10 @@
   const ETAPES = [
     { k: "corpus", titre: "Constituer le corpus", ou: "Bibliothèque", surface: "/corpus",
       zones: ["bibliotheque-catalogue", "bibliotheque-fiche"],
-      phrase: "Un album rassemble des planches. Le vôtre est déjà là : ouvrez {album}." },
+      // « en cliquant sur son image » : la carte de l'album, dans le catalogue en grille, qui
+      // est la vue d'un poste neuf (Hugo, 2026-11-05).
+      phrase: "Un album rassemble des planches. Le vôtre est déjà là : ouvrez {album} en "
+        + "cliquant sur son image." },
     { k: "decrire", titre: "Décrire l'album", ou: "Bibliothèque", surface: "/corpus",
       album: true, zones: ["bibliotheque-fiche"],
       phrase: "Une notice dit d'où vient l'album. Notez la source de numérisation." },

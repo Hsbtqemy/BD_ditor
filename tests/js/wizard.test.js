@@ -211,8 +211,9 @@ test("l'album du parcours : le rôle pas-à-pas, sinon la première copie qui a 
 test("la phrase de « Constituer le corpus » nomme l'album du parcours", () => {
   assert.equal(W.phraseEtape(W.ETAPES[0], VUE, W.moteurs({ ocr: true })),
                "Un album rassemble des planches. Le vôtre est déjà là : ouvrez "
-               + "Moustache et Trottinette.");
-  assert.match(W.phraseEtape(W.ETAPES[0], null, null), /ouvrez l'album du parcours\.$/);
+               + "Moustache et Trottinette en cliquant sur son image.");
+  assert.match(W.phraseEtape(W.ETAPES[0], null, null),
+               /ouvrez l'album du parcours en cliquant sur son image\.$/);
 });
 
 /* ── Ce qui sort d'un bac à sable (tranche 4) ─────────────────────────────────────────── */
