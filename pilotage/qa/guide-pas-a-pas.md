@@ -105,9 +105,9 @@ partie du foyer éclairé passe sous la fenêtre.
 - [x] En thème clair puis sombre, le texte de la fenêtre, « ✓ Fait » et la marque « optionnel ici » se lisent sur l'assombri
 
 ### Le lot du 5 novembre au soir, sous `arrivant`, dans un bac à sable remis à neuf
-- [ ] « Remettre à neuf… », puis « Par où commencer » : la carte du parcours complet liste, dans cet ordre, « Constituer le corpus », « Décrire l'album », « Tracer une zone », « Corriger le découpage », « Transcrire et relire », « Pré-remplir », « Annoter », « Chercher et explorer », « Exporter » ; la page 8 de l'album montre le même ordre
-- [ ] « Tracer une zone » : en y entrant, la planche se rapproche seule de la dernière rangée, ses deux cases ET le vide du milieu entiers à côté de la fenêtre, jamais dessous ; ✕ : la planche revient entière
-- [ ] « Corriger le découpage » : en y entrant, la planche cadre la CASE de la bulle à corriger — la bulle, sa voisine et la case entières, la bulle choisie avec ses poignées — et non la bulle seule grossie
+- [x] « Remettre à neuf… », puis « Par où commencer » : la carte du parcours complet liste, dans cet ordre, « Constituer le corpus », « Décrire l'album », « Tracer une zone », « Corriger le découpage », « Transcrire et relire », « Pré-remplir », « Annoter », « Chercher et explorer », « Exporter » ; la page 8 de l'album montre le même ordre
+- [x] « Tracer une zone » : en y entrant, la planche se rapproche seule de la dernière rangée, ses deux cases ET le vide du milieu entiers à côté de la fenêtre, jamais dessous ; ✕ : la planche revient entière
+- [x] « Corriger le découpage » : en y entrant, la planche cadre la CASE de la bulle à corriger — la bulle, sa voisine et la case entières, la bulle choisie avec ses poignées — et non la bulle seule grossie
 - [ ] « Chercher et explorer » : la fenêtre dit d'abord à quoi servent la Recherche et l'Exploration (« La Recherche retrouve un mot… L'Exploration met le corpus en chiffres… »), puis que le bac à sable n'y paraît pas
 - [ ] « Terminer » : « Parcours terminé » s'ouvre au milieu de l'écran, de la taille de l'album, les autres planches du jeu en vignettes titrées, « Revoir la présentation » et « Fermer ✕ » ; une vignette ouvre sa planche dans l'Atelier, sans guide
 - [ ] Visite, page Recherche : la ligne « Facettes grammaticales » dit « Chercher par la grammaire : la catégorie d'un mot (verbe, nom…), son lemme (« aller » trouve « va » et « irons »), un trait (le temps, le nombre). », et la choisir ouvre le dépliant
