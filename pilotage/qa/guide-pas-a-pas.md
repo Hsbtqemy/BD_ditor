@@ -7,15 +7,15 @@ duree: 50 min
 # QA — le guide pas à pas : chaque étape montre son foyer, et la fenêtre ne le cache jamais
 
 **Où** — la pile de recette locale, `https://bd.127-0-0-1.sslip.io`, reconstruite sur
-`b09a916` ou après, état `apres-ann7-j3` restauré (`C:\temp\bd-recette\etat-de-base.ps1
-restaurer apres-ann7-j3`). Les mots de passe sont dans `C:\temp\bd-recette\comptes.txt`,
+`fcc3d67` ou après, état `apres-moustache` restauré (`C:\temp\bd-recette\etat-de-base.ps1
+restaurer apres-moustache`). Les mots de passe sont dans `C:\temp\bd-recette\comptes.txt`,
 hors dépôt. Sous `arrivant`, qui n'a pas encore de bac à sable dans cet état, dans une fenêtre
 privée à 1 280 px de large, police ordinaire, sauf mention contraire.
 
-**La planche du parcours** est celle du rôle `pas-a-pas` du jeu des bacs à sable. Dans l'état
-restauré, c'est encore *Bibi Fricotin chez les Chinois*, que Hugo a retirée du parcours
-(représentation raciste) : la passe se joue après que le jeu de la recette a reçu *Moustache
-et Trottinette* découpée à ce rôle — un préalable à trancher, écrit dans `pilotage/UX-6.md`.
+**La planche du parcours** est celle du rôle `pas-a-pas` du jeu des bacs à sable : dans l'état
+restauré, *Moustache et Trottinette* (Calvo), sa dernière rangée découpée sauf la case du
+milieu — à gauche une case et ses deux bulles, à droite une case. *Bibi Fricotin chez les
+Chinois* reste au jeu pour s'exercer, hors du parcours (`pilotage/UX-6.md`, à valider).
 
 **Ce que la passe éprouve** — la tranche 3 d'`UX-6` et sa reprise (`8729427`, `977c833`) :
 chaque étape éclaire un FOYER précis, le reste assombri ; la fenêtre du guide se pose à droite
@@ -24,7 +24,7 @@ une étape faite se voit sur la planche, sans coche à déclarer. « Recouvrir �
 partie du foyer éclairé passe sous la fenêtre.
 
 **Ce que la passe ne joue pas.** L'album de présentation et la visite des pages : la tranche 2,
-déjà jouée. Les textes « Automatisez » et « Exporter » : la tranche 4. Les choix à confirmer
+déjà jouée. Les textes de la tranche 4 : dernière zone. Les choix à confirmer
 sont dans `pilotage/UX-6.md` : la passe les montre, elle ne les tranche pas.
 
 ### Prélude, sous `arrivant`
@@ -68,3 +68,10 @@ sont dans `pilotage/UX-6.md` : la passe les montre, elle ne les tranche pas.
 - [ ] Pendant une étape, Tab passe des zones jouables de l'étape aux gestes de la fenêtre et revient, sans s'arrêter sur ce qui est assombri et sans piège ; aucun `role="dialog"` modal n'enferme le focus
 - [ ] Quand une étape devient faite, un lecteur d'écran l'annonce une fois (« … : fait. »), sans répéter à chaque redessin
 - [ ] En thème clair puis sombre, le texte de la fenêtre, « ✓ Fait » et la marque « optionnel ici » se lisent sur l'assombri
+
+### Ce que la tranche 4 a changé, sous `arrivant`
+- [ ] Album « Bienvenue dans BéDéditeur », page « Automatisez la reconnaissance » : le texte dit que, sur la planche du parcours, les moteurs « trouvent 7 bulles sur 12 et lisent « reconnail » pour « reconnaît » » ; il ne promet ni « 3 cases, 3 bulles, 1 cartouche », ni « t0t »
+- [ ] Visite des pages, au repère « Traitement, Import / Export » de l'Atelier : son texte finit par « Sortir un album, hors d'un bac à sable. »
+- [ ] Parcours complet, étape 9 « Exporter » : la fenêtre dit d'abord « Ici, seuls … peuvent sortir, tant que vous n'y importez aucune planche. », en nommant les quatre albums du jeu de la part du dépôt (sur la recette : *L'École de Saint-Cyr*, les deux *Comics*, *Bibi Fricotin*), jamais *Moustache et Trottinette* ; puis « Ailleurs que dans un bac à sable, une collection sort… »
+- [ ] À l'étape 9, dans « Vos droits ici » de la fiche de *Moustache et Trottinette*, « exporter » est éteint ; dans la Bibliothèque du bac à sable, la fiche de *L'École de Saint-Cyr* le montre allumé
+- [ ] Fenêtre à 768 px, « Aa » → la plus grande police, visite des pages jusqu'à la Recherche puis l'Exploration : le message des résultats se lit en entier au-dessus de la feuille de la visite, jamais dessous

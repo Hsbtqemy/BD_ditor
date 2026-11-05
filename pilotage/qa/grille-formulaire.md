@@ -7,8 +7,8 @@ duree: 50 min
 # QA — construire une grille au formulaire, la publier, l'employer, la retoucher
 
 **Où** — la pile de recette locale, `https://bd.127-0-0-1.sslip.io`, reconstruite sur
-`b09a916` ou après, état `apres-ann7-j3` restauré (`C:\temp\bd-recette\etat-de-base.ps1
-restaurer apres-ann7-j3`). Les mots de passe sont dans `C:\temp\bd-recette\comptes.txt`,
+`fcc3d67` ou après, état `apres-moustache` restauré (`C:\temp\bd-recette\etat-de-base.ps1
+restaurer apres-moustache`). Les mots de passe sont dans `C:\temp\bd-recette\comptes.txt`,
 hors dépôt. Tout se joue sous `proprio`, responsable de « Projet principal », dans une
 fenêtre privée à 1 280 px de large, sauf mention contraire.
 
