@@ -1422,3 +1422,42 @@ def test_la_visite_revient_a_la_planche_du_parcours(page, jeu_deux_albums):
     # La Structure montre ses cases et ses bulles.
     expect(page.locator("#panel .tn-label", has_text="case").first).to_be_visible()
     expect(page.locator("#panel .tn-label", has_text="bulle")).to_have_count(2)
+
+
+# ── « Pré-remplir » montre ce que font les trois moteurs ───────────────────────────────
+
+@pytestmark_proxy
+def test_pre_remplir_montre_les_trois_moteurs_et_lui_seul(page, jeu):
+    """Hugo, 2026-11-05 : à l'étape « Pré-remplir », une bande de trois vignettes — Cases,
+    Bulles, Texte —, fixe et décrite ; à aucune autre étape."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _au_guide(page, jeu, "complet")
+    titre, bande = page.locator("#wizard-fenetre-titre"), page.locator("#wizard-fenetre .wf-visuel")
+    expect(titre).to_have_text("Constituer le corpus")
+    expect(bande).to_have_count(0)
+    page.locator("#wizard-guide-suiv").click()
+    expect(titre).to_have_text("Décrire l'album")
+    expect(bande).to_have_count(0)
+    page.locator("#wizard-guide-suiv").click()
+    expect(titre).to_have_text(re.compile(r"^Pré-remplir"), timeout=15000)
+    # Trois paragraphes : les trois moteurs, « jamais parfaits », puis le geste — la planche
+    # du jeu n'a pas de bulle, d'où la ligne générique.
+    phrases = page.locator("#wizard-fenetre .wf-phrase")
+    expect(phrases).to_have_count(3)
+    expect(phrases.nth(0)).to_contain_text("contours rouges")
+    expect(phrases.nth(1)).to_contain_text("jamais parfaits")
+    expect(phrases.nth(2)).to_contain_text("Essayez l'OCR")
+    expect(bande).to_be_visible()
+    expect(bande).to_have_attribute("role", "img")
+    assert (bande.get_attribute("aria-label") or "").strip()
+    expect(bande.locator(".wf-vig-titre")).to_have_text(["Cases", "Bulles", "Texte"])
+    expect(bande.locator(".wizard-zone-case")).to_have_count(1)
+    expect(bande.locator(".wizard-zone-bulle")).to_have_count(2)
+    expect(bande.locator(".wf-vig-lus li")).to_have_count(2)
+    srcs = bande.locator("img").evaluate_all("(is) => is.map((i) => i.getAttribute('src'))")
+    assert srcs and all(s.startswith("/static/wizard/") for s in srcs), srcs
+    page.wait_for_function("""() => [...document.querySelectorAll('.wf-visuel img')]
+      .every((i) => i.complete && i.naturalWidth > 0)""")
+    page.locator("#wizard-guide-suiv").click()
+    expect(titre).to_have_text("Tracer une zone")
+    expect(bande).to_have_count(0)

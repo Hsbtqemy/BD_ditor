@@ -161,6 +161,10 @@
      « Pré-remplir » et « Corriger le découpage ». Chaque étape nomme une SURFACE et un
      GESTE ; `dite` : une étape qu'on lit sans geste à faire sur la planche. La phrase de
      « Constituer le corpus » nomme l'album du parcours tel que le jeu l'a posé. */
+  // Le premier paragraphe de « Pré-remplir », écrit par Hugo (2026-11-05), avec ou sans
+  // moteur. « Contours bleus » : l'écran dessine les bulles en `--accent-cyan`.
+  const MOTEURS_FONT = "La segmentation trace les cases (contours rouges), la détection "
+    + "repère les bulles (contours bleus) et l'OCR reconnaît le texte présent dans les bulles.";
   const ETAPES = [
     { k: "corpus", titre: "Constituer le corpus", ou: "Bibliothèque", surface: "/corpus",
       zones: ["bibliotheque-catalogue", "bibliotheque-fiche"],
@@ -178,10 +182,19 @@
         + "écrivez « fr », puis enregistrez." },
     { k: "preremplir", titre: "Pré-remplir", ou: "Atelier, Traitement", surface: "/",
       facultatif: true, zones: ["atelier-actions", "atelier-planche"],
-      phrase: "Un moteur peut lire le texte des bulles à votre place : c'est l'OCR. "
-        + "Lancez-le, puis regardez ce qu'il propose.",
-      sansMoteur: "Aucun moteur n'est installé sur cette instance. Rien n'est cassé : le "
-        + "découpage et le texte se font à la main." },
+      // Les trois moteurs, et pas l'OCR seul (Hugo, 2026-11-05 : « pas spécialement pour
+      // qu'ils l'activent, mais pour comprendre ce que ça fait »), en deux paragraphes de
+      // Hugo, avec un visuel (`visuelEtape`). Une ligne vide sépare les paragraphes d'une
+      // phrase d'étape (`paragraphes`). La ligne du geste, en troisième paragraphe, dit ce
+      // que la planche porte (`ligneOcr`, `phraseGuide`) ; le geste reste l'OCR.
+      phrase: `${MOTEURS_FONT}\n\nCependant, ces pré-traitements et la reconnaissance ne `
+        + "sont jamais parfaits : ils proposent, vous corrigez, rectifiez, réduisez et "
+        + "définissez les différentes zones découvertes.",
+      // Dites quand l'OCR manque (`moteurs`) : aucun moteur, ou l'OCR seul.
+      sansMoteur: `${MOTEURS_FONT}\n\nCette instance n'en a pas : rien n'est cassé, le `
+        + "découpage et le texte se font à la main.",
+      sansOcr: `${MOTEURS_FONT}\n\nCette instance n'a pas l'OCR : rien n'est cassé, le texte `
+        + "se fait à la main." },
     { k: "tracer", titre: "Tracer une zone", ou: "Atelier, mode Édition", surface: "/",
       mode: "edition", zones: ["atelier-planche", "atelier-structure"],
       phrase: "Glissez sur le fond pour tracer une case. Dans une case, maintenez Maj et "
@@ -442,6 +455,26 @@
     },
   };
 
+  /* Le VISUEL d'une étape du guide, pour la seule étape « Pré-remplir » (Hugo, 2026-11-05) :
+     trois petites vignettes de la même case de *Moustache et Trottinette* — « Cases », les
+     cadres des cases ; « Bulles », ceux des bulles ; « Texte », deux lectures —, tirées des
+     illustrations de l'album, donc fixes et sans rien demander à l'instance. `null` pour
+     toute autre étape. */
+  function visuelEtape(e) {
+    if (!e || e.k !== "preremplir") return null;
+    const Z = ILLUSTRATIONS.zones, M = ILLUSTRATIONS.moteurs;
+    const de = (t) => Z.zones.filter((z) => z.type === t);
+    return {
+      description: "Ce que font les trois moteurs, sur une case de « Moustache et "
+        + "Trottinette » : la segmentation trace la case, la détection repère ses bulles, "
+        + "l'OCR lit leur texte.",
+      vignettes: [
+        { titre: "Cases", fichier: Z.fichier, cadre: Z.cadre, zones: de("case") },
+        { titre: "Bulles", fichier: Z.fichier, cadre: Z.cadre, zones: de("bulle") },
+        { titre: "Texte", lus: M.lus.slice(0, 2) },
+      ] };
+  }
+
   /* « 3 occurrences ». */
   function compteOccurrences(n) {
     return typo(`${n} occurrence${n > 1 ? "s" : ""}`);
@@ -556,7 +589,7 @@
 
   function phraseEtape(e, vue, m) {
     if (!e) return "";
-    if (e.sansMoteur && m && !m.ocr) return typo(e.sansMoteur);
+    if (e.sansMoteur && m && !m.ocr) return typo(m.aucun || !e.sansOcr ? e.sansMoteur : e.sansOcr);
     const a = albumDuParcours(vue);
     const p = e.phrase.replace("{album}", a && a.titre ? a.titre : "l'album du parcours");
     const ici = phraseExport(e, vue);
@@ -1185,7 +1218,34 @@
       if (regions.some((r) => !!r && r.source === "jeu")) return typo(PHRASES.tracerJeu);
     }
     if (e.k === "decoupage" && faite(e, d, parcours)) return typo(PHRASES.decoupageFait);
+    // « Pré-remplir » : la ligne du geste, tant que l'OCR n'a pas été lancé et qu'il existe.
+    if (e.k === "preremplir" && !(m && !m.ocr) && !faite(e, d, parcours)) {
+      const n = regions.filter((r) => r && r.type === "bulle").length;
+      return `${phraseEtape(e, vue, m)}\n\n${ligneOcr(n)}`;
+    }
     return phraseEtape(e, vue, m);
+  }
+
+  /* Un nombre de bulles en lettres jusqu'à dix (« une », « deux »…), en chiffres au-delà. */
+  const EN_LETTRES = ["zéro", "une", "deux", "trois", "quatre", "cinq", "six", "sept", "huit",
+                      "neuf", "dix"];
+
+  /* La ligne du geste de « Pré-remplir », tirée de la planche affichée (Hugo, 2026-11-05) :
+     combien de bulles le guide y lit déjà ; sans aucune, la ligne générique. */
+  function ligneOcr(n) {
+    if (!(n > 0)) {
+      return typo("Essayez l'OCR : dans « Traitement », lancez « OCR des bulles ».");
+    }
+    const nb = n <= 10 ? EN_LETTRES[n] : String(n);
+    const un = n === 1;
+    return typo(`Sur cette planche, ${nb} bulle${un ? " est" : "s sont"} déjà repérée${un ? "" : "s"} : `
+      + "dans « Traitement », lancez « OCR des bulles » pour que "
+      + `${un ? "son" : "leur"} texte soit reconnu.`);
+  }
+
+  /* Les paragraphes d'une phrase d'étape : séparés par une ligne vide. */
+  function paragraphes(t) {
+    return String(t == null ? "" : t).split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
   }
 
   /* Le bouton principal du guide : « Suivant → » quand l'étape est faite, dite, ou
@@ -1311,7 +1371,7 @@
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
            vocabulaire, initiale, compteOccurrences, apercuCarte, choixDuParcours,
            PERD_LE_FIL, menePlusLoin, gesteDuClic, menuOuvert, LANCE, aEteindre,
-           retourALaPlanche,
+           retourALaPlanche, visuelEtape, ligneOcr, paragraphes,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

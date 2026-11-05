@@ -1387,7 +1387,11 @@
       const marque = W.marqueEtape(e, S.moteurs);
       if (marque) h.appendChild(el("span", "wizard-marque", marque));
       fenetre.appendChild(h);
-      fenetre.appendChild(el("p", "wf-phrase", W.phraseGuide(e, vue(), S.moteurs, d, s.parcours)));
+      // Une phrase d'étape peut avoir plusieurs paragraphes (`BDWizard.paragraphes`).
+      W.paragraphes(W.phraseGuide(e, vue(), S.moteurs, d, s.parcours))
+        .forEach((t) => fenetre.appendChild(el("p", "wf-phrase", t)));
+      const visuel = W.visuelEtape(e);
+      if (visuel) fenetre.appendChild(visuelDeLEtape(visuel));
       const estFaite = W.faite(e, d, s.parcours);
       const fait = el("span", "wf-fait", estFaite ? "✓ Fait" : "");
       fait.id = "wizard-guide-fait";
@@ -1421,6 +1425,31 @@
     let f = focus ? fenetre.querySelector(focus) : null;
     if (focus && (!f || f.disabled)) f = h;
     if (f) f.focus({ preventScroll: true });
+  }
+
+  /* Le visuel d'une étape (`BDWizard.visuelEtape`) : une bande inerte et décrite, que la
+     fenêtre retire quand elle ne tient pas à côté du foyer (`poserFenetre`). */
+  function visuelDeLEtape(v) {
+    const d = el("div", "wf-visuel");
+    d.setAttribute("role", "img");
+    d.setAttribute("aria-label", W.typo(v.description));
+    v.vignettes.forEach((x) => {
+      const fig = el("div", "wf-vig");
+      fig.appendChild(el("span", "wf-vig-titre", x.titre));
+      if (x.fichier) fig.appendChild(scene(x, x.zones, false));
+      else {
+        const ul = el("ul", "wf-vig-lus");
+        x.lus.forEach((l) => {
+          const li = el("li");
+          W.lecture(l).morceaux.forEach((m) => li.appendChild(
+            m.faute ? el("mark", null, m.texte) : document.createTextNode(m.texte)));
+          ul.appendChild(li);
+        });
+        fig.appendChild(ul);
+      }
+      d.appendChild(fig);
+    });
+    return d;
   }
 
   /* Ouvrir le guide sur l'étape où l'on est, sur cette page : lire la planche, dessiner,
@@ -1604,11 +1633,17 @@
     // ce qui change la page, et la fenêtre n'en repartirait pas à côté pour revenir.
     let feuille = etroit() || !!(G.pose && G.pose.cle === cle && G.pose.feuille);
     if (!feuille) {
-      fenetre.classList.remove("feuille");
+      fenetre.classList.remove("feuille", "sans-visuel");
       reserver(0);
-      const w = fenetre.offsetWidth, h = fenetre.offsetHeight, m = 8;
-      const p = W.placerFenetre(foyerDeLEtape(), { w, h },
-        { l: m, t: m, r: window.innerWidth - m, b: window.innerHeight - m }, 14);
+      const placer = () => W.placerFenetre(foyerDeLEtape(),
+        { w: fenetre.offsetWidth, h: fenetre.offsetHeight },
+        { l: 8, t: 8, r: window.innerWidth - 8, b: window.innerHeight - 8 }, 14);
+      let p = placer();
+      // Le visuel d'une étape se retire plutôt que de pousser la fenêtre sur le foyer.
+      if (p.cote === "repli" && fenetre.querySelector(".wf-visuel")) {
+        fenetre.classList.add("sans-visuel");
+        p = placer();
+      }
       if (p.cote === "repli") feuille = true;
       else {
         fenetre.style.left = `${Math.round(p.x)}px`;

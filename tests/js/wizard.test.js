@@ -282,8 +282,8 @@ test("sans moteur, « Pré-remplir » se dit optionnel ici, et l'album le dit au
   assert.equal(W.marqueEtape(pre, avec), "facultatif");
   assert.equal(W.marqueEtape(pre, sans), "optionnel ici");
   assert.equal(W.marqueEtape(W.ETAPES[0], sans), null);
-  assert.match(W.phraseEtape(pre, VUE, sans), /^Aucun moteur n'est installé/);
-  assert.match(W.phraseEtape(pre, VUE, avec), /^Un moteur peut lire/);
+  assert.match(W.phraseEtape(pre, VUE, sans), /Cette instance n'en a pas/);
+  assert.match(W.phraseEtape(pre, VUE, avec), /^La segmentation trace les cases/);
   const page = W.PAGES.find((p) => p.k === "moteurs");
   assert.match(W.textePage(page, sans), /les moteurs ne sont pas installés/);
   assert.match(W.textePage(page, avec), /^Réalisez une première reconnaissance/);
@@ -1055,4 +1055,53 @@ test("la visite revient à la planche du parcours en arrivant sur l'Atelier ou l
     assert.equal(W.retourALaPlanche(W.pageDeLaSurface(s), "?album=5&planche=50", vue), null, s);
   }
   assert.equal(W.retourALaPlanche(atelier, "?album=5&planche=50", { jeu: [] }), null);
+});
+
+test("« Pré-remplir » dit les trois moteurs, et lui seul porte un visuel", () => {
+  const pre = W.ETAPES.find((e) => e.k === "preremplir");
+  const avec = W.moteurs({ kumiko: true, bulles: true, ocr: true });
+  const sansOcr = W.moteurs({ kumiko: true, bulles: true, ocr: false });
+  const aucun = W.moteurs({ kumiko: false, bulles: false, ocr: false });
+  // Le texte de Hugo : deux paragraphes ; sans moteur, le premier puis ce qui manque.
+  const p1 = "La segmentation trace les cases (contours rouges), la détection repère les "
+    + "bulles (contours bleus) et l'OCR reconnaît le texte présent dans les bulles.";
+  const p2 = "Cependant, ces pré-traitements et la reconnaissance ne sont jamais parfaits : "
+    + "ils proposent, vous corrigez, rectifiez, réduisez et définissez les différentes zones "
+    + "découvertes.";
+  const ps = (m) => W.paragraphes(W.phraseEtape(pre, null, m)).map(sp);
+  assert.deepEqual(ps(avec), [p1, p2]);
+  assert.deepEqual(ps(aucun), [p1, "Cette instance n'en a pas : rien n'est cassé, le découpage "
+    + "et le texte se font à la main."]);
+  assert.deepEqual(ps(sansOcr), [p1, "Cette instance n'a pas l'OCR : rien n'est cassé, le "
+    + "texte se fait à la main."]);
+  // Les espaces insécables de la typographie, devant « : ».
+  assert.ok(W.phraseEtape(pre, null, avec).includes("parfaits :"));
+  // Dans le guide : la ligne du geste en troisième paragraphe, comptée sur la planche.
+  const guide = (m, regions) => W.paragraphes(
+    W.phraseGuide(pre, null, m, { regions }, "complet")).map(sp);
+  const bulle = { type: "bulle", source: "manuel" }, kase = { type: "case", source: "manuel" };
+  assert.equal(guide(avec, [])[2], "Essayez l'OCR : dans « Traitement », lancez « OCR des bulles ».");
+  assert.equal(guide(avec, [kase, bulle])[2], "Sur cette planche, une bulle est déjà repérée : "
+    + "dans « Traitement », lancez « OCR des bulles » pour que son texte soit reconnu.");
+  assert.equal(guide(avec, [kase, bulle, bulle])[2], "Sur cette planche, deux bulles sont déjà "
+    + "repérées : dans « Traitement », lancez « OCR des bulles » pour que leur texte soit reconnu.");
+  // Sans moteur, pas de ligne du geste ; l'OCR lancé (une zone née d'un moteur), non plus.
+  assert.equal(guide(aucun, [bulle, bulle]).length, 2);
+  assert.equal(guide(sansOcr, [bulle]).length, 2);
+  assert.equal(guide(avec, [{ type: "bulle", activite_id: 3 }]).length, 2);
+  assert.ok(sp(W.ligneOcr(10)).startsWith("Sur cette planche, dix bulles"));
+  assert.ok(sp(W.ligneOcr(12)).startsWith("Sur cette planche, 12 bulles"));
+  assert.deepEqual(W.paragraphes("a\n\n b \n \nc"), ["a", "b", "c"]);
+  assert.deepEqual(W.paragraphes(null), []);
+  // Le visuel : trois vignettes titrées, les cadres filtrés par sorte, deux lectures.
+  const v = W.visuelEtape(pre);
+  assert.deepEqual(v.vignettes.map((x) => x.titre), ["Cases", "Bulles", "Texte"]);
+  assert.deepEqual(v.vignettes[0].zones.map((z) => z.type), ["case"]);
+  assert.ok(v.vignettes[1].zones.length >= 1 && v.vignettes[1].zones.every((z) => z.type === "bulle"));
+  assert.equal(v.vignettes[2].lus.length, 2);
+  assert.ok(v.description.trim());
+  // Fixe : aucune route ; et aucune autre étape n'en a.
+  assert.ok(!JSON.stringify(v).includes("/api/"));
+  for (const e of W.ETAPES.filter((x) => x.k !== "preremplir")) assert.equal(W.visuelEtape(e), null, e.k);
+  assert.equal(W.visuelEtape(null), null);
 });
