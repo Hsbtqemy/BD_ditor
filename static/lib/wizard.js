@@ -208,11 +208,16 @@
       // 2026-11-03).
       phrase: "Ailleurs que dans un bac à sable, une collection sort en fiche, en "
         + "enregistrements et en manifeste IIIF, et un album en JSON, CSV ou TEI.",
-      // Et elle dit, devant, ce qui sort VRAIMENT d'ici (`phraseExport`).
-      ici: { rien: "Ici, rien ne sort : l'export d'un bac à sable est fermé.",
-             un: "Ici, seul {titres} peut sortir, tant que vous n'y importez aucune planche.",
-             plusieurs: "Ici, seuls {titres} peuvent sortir, tant que vous n'y importez "
-               + "aucune planche." } },
+      // Et elle dit, devant, ce qui sort VRAIMENT d'ici (`phraseExport`), en mots d'arrivant :
+      // « l'export d'un bac à sable est fermé » ne disait rien à qui débute (Hugo, 2026-11-05).
+      // Le guide ne s'ouvre que dans SON bac à sable : « votre » est juste.
+      ici: { rien: "Vous êtes dans votre bac à sable, une zone pour vous exercer : ici, "
+               + "l'export n'est pas autorisé.",
+             un: "Vous êtes dans votre bac à sable, une zone pour vous exercer : ici, seul "
+               + "{titres} peut être exporté, tant que vous n'y importez aucune planche.",
+             plusieurs: "Vous êtes dans votre bac à sable, une zone pour vous exercer : ici, "
+               + "seuls {titres} peuvent être exportés, tant que vous n'y importez aucune "
+               + "planche." } },
   ];
   const RAPIDE = ["tracer", "decoupage", "transcrire", "annoter"];
 

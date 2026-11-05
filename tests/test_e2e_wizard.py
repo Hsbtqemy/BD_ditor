@@ -807,12 +807,12 @@ def test_l_etape_exporter_ne_promet_que_ce_qui_sort(page, live_server, tmp_path,
     acte = page.locator('#biblio-volet .droits [data-acte="exporter"]')
     expect(acte).to_be_visible()
     if exportable:
-        expect(phrase).to_contain_text("peut sortir, tant que vous n")
+        expect(phrase).to_contain_text("peut être exporté, tant que vous n")
         expect(acte).to_have_class("oui")
         # Et le serveur le confirme : l'album sort.
         assert _export(live_server, parcours["album_id"]).status_code == 200
     else:
-        expect(phrase).to_contain_text("Ici, rien ne sort")
+        expect(phrase).to_contain_text("pas autorisé")
         expect(acte).to_have_class("non")
         assert _export(live_server, parcours["album_id"]).status_code == 403
     # La phrase de Hugo suit, telle quelle.

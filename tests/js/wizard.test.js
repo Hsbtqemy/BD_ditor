@@ -221,21 +221,22 @@ test("« Exporter » dit ce qui sort VRAIMENT du bac à sable, d'après le jeu",
   const exp = W.ETAPES.find((e) => e.k === "exporter");
   const hugo = "Ailleurs que dans un bac à sable, une collection sort en fiche, en "
     + "enregistrements et en manifeste IIIF, et un album en JSON, CSV ou TEI.";
+  const ZONE = "Vous êtes dans votre bac à sable, une zone pour vous exercer : ici, ";
   // Le jeu de production : tout en part serveur — rien ne sort, et la phrase le dit d'abord.
   const ferme = { ...VUE, jeu: VUE.jeu.map((j) => ({ ...j, exportable: false })) };
   assert.equal(W.phraseEtape(exp, ferme, null),
-               W.typo(`Ici, rien ne sort : l'export d'un bac à sable est fermé. ${hugo}`));
+               W.typo(`${ZONE}l'export n'est pas autorisé. ${hugo}`));
   assert.equal(W.phraseEtape(exp, VUE, null), W.phraseEtape(exp, ferme, null),
                "exportable absent ne vaut pas ouvert");
   // La part du dépôt : la copie ouverte se nomme, et la planche importée la ferme.
   const un = { ...VUE, jeu: [VUE.jeu[0], { ...VUE.jeu[1], exportable: true }] };
   assert.equal(W.phraseEtape(exp, un, null),
-               W.typo("Ici, seul « Moustache et Trottinette » peut sortir, tant que vous n'y "
-                      + `importez aucune planche. ${hugo}`));
+               W.typo(`${ZONE}seul « Moustache et Trottinette » peut être exporté, tant que `
+                      + `vous n'y importez aucune planche. ${hugo}`));
   const deux = { ...VUE, jeu: VUE.jeu.map((j) => ({ ...j, exportable: true })) };
   assert.ok(W.phraseEtape(exp, deux, null).startsWith(
-    W.typo("Ici, seuls « Un exemple », « Moustache et Trottinette » et « Le stock » peuvent "
-           + "sortir")));
+    W.typo(`${ZONE}seuls « Un exemple », « Moustache et Trottinette » et « Le stock » `
+           + "peuvent être exportés")));
   // Sans la vue du bac à sable, rien n'est dit d'ici : la phrase de Hugo seule.
   assert.equal(W.phraseEtape(exp, null, null), W.typo(hugo));
   // Aucune autre étape ne parle de l'export d'ici.
