@@ -47,7 +47,8 @@
         <span class="dot"></span> <span class="mode-label">Transcription</span> <kbd aria-hidden="true">T</kbd>
       </button>
     </div>
-    <div class="header-actions" data-parcours="atelier-actions">
+    <!-- UX-6 : choisir la zone dans la visite ouvre « Traitement » (`data-parcours-menu`). -->
+    <div class="header-actions" data-parcours="atelier-actions" data-parcours-menu="#btn-traitement">
       <div class="dropdown">
         <button class="ghost" id="btn-traitement" data-parcours="atelier-traitement" title="Traitements automatiques sur l'album">⚙<span class="mode-label"> Traitement </span>▾</button>
         <div class="dropdown-menu" id="traitement-menu" data-parcours="atelier-traitement-menu">

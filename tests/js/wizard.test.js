@@ -972,8 +972,43 @@ test("un lien perd le fil quand il mène à une AUTRE page, pas à une autre adr
   assert.equal(W.menePlusLoin("/x", "pas une adresse"), false);
 });
 
-test("un clic dans une zone la choisit, et n'est empêché que s'il perdait le fil", () => {
-  assert.deepEqual(W.gesteDuClic({ perd: true }), { choisir: true, empecher: true });
-  assert.deepEqual(W.gesteDuClic({ perd: false }), { choisir: true, empecher: false });
-  assert.deepEqual(W.gesteDuClic(null), { choisir: true, empecher: false });
+test("un clic dans une zone la choisit, n'est empêché que s'il perdait le fil, et ouvre son menu", () => {
+  const g = (c) => W.gesteDuClic(c);
+  // Toujours choisie ; empêché seulement quand il perdait le fil.
+  assert.deepEqual(g({ perd: true }), { choisir: true, empecher: true, ouvrirMenu: false });
+  assert.deepEqual(g({ perd: false }), { choisir: true, empecher: false, ouvrirMenu: false });
+  assert.deepEqual(g(null), { choisir: true, empecher: false, ouvrirMenu: false });
+  // Le menu de la zone s'ouvre sur un clic qui ne visait aucune commande…
+  assert.equal(g({ menu: true }).ouvrirMenu, true);
+  // … ou qui a été empêché (il vaut le choix de la zone) ; jamais s'il est déjà ouvert.
+  assert.equal(g({ menu: true, perd: true, interactif: true }).ouvrirMenu, true);
+  assert.equal(g({ menu: true, ouvert: true }).ouvrirMenu, false);
+  // Une commande de la zone fait ce qu'elle fait : un mode, « Import / Export », le menu.
+  assert.equal(g({ menu: true, interactif: true }).ouvrirMenu, false);
+  assert.equal(g({ menu: false }).ouvrirMenu, false);
+});
+
+test("un menu est ouvert : son <details> pour un summary, aria-expanded pour un bouton", () => {
+  assert.equal(W.menuOuvert({ balise: "SUMMARY", ouvert: true }), true);
+  assert.equal(W.menuOuvert({ balise: "summary", ouvert: false, expanded: "true" }), false);
+  assert.equal(W.menuOuvert({ balise: "BUTTON", expanded: "true" }), true);
+  assert.equal(W.menuOuvert({ balise: "BUTTON", expanded: "false" }), false);
+  assert.equal(W.menuOuvert({ balise: "BUTTON" }), false);
+  assert.equal(W.menuOuvert(null), false);
+});
+
+/* Les menus que la visite ouvre au choix d'une zone se DÉCLARENT sur la zone, et chaque
+   déclaration nomme un déclencheur qui existe. */
+test("les zones à menu le déclarent, et leur déclencheur existe", () => {
+  const lire = (...p) => fs.readFileSync(path.join(__dirname, "..", "..", ...p), "utf8");
+  const index = lire("templates", "index.html"), recherche = lire("templates", "recherche.html");
+  const theme = lire("static", "theme.js");
+  assert.match(index, /data-parcours="atelier-actions" data-parcours-menu="#btn-traitement"/);
+  assert.match(index, /id="btn-traitement"/);
+  assert.match(recherche, /data-parcours="recherche-facettes" data-parcours-menu="summary"/);
+  assert.match(theme, /parcoursMenu = "\.btn-theme"/);
+  assert.match(theme, /parcoursMenu = "\.user-who"/);
+  assert.match(theme, /"ghost small user-who"/);
+  // Le projet est un <select> natif : il ne s'ouvre pas par script, et n'en déclare pas.
+  assert.ok(!/bande-projet.*parcoursMenu/.test(theme));
 });

@@ -875,12 +875,26 @@
     } catch (e) { return false; }
   }
 
-  /* Ce que fait un clic dans une zone de la visite ou des repères. `c.perd` : il vise un
-     geste qui fait perdre le fil. Toujours, le clic CHOISIT sa zone ; il est EMPÊCHÉ s'il
-     perdait le fil. */
+  /* Ce que fait un clic dans une zone de la visite ou des repères. `c` : `perd` (il vise un
+     geste qui fait perdre le fil), `interactif` (il vise une commande de la zone : un bouton,
+     un lien, un champ), `menu` (la zone déclare un menu, `data-parcours-menu`), `ouvert` (ce
+     menu est déjà ouvert). Toujours, le clic CHOISIT sa zone ; il est EMPÊCHÉ s'il perdait le
+     fil ; il OUVRE le menu de la zone quand il ne visait aucune commande — la commande, elle,
+     fait ce qu'elle fait — ou quand il est empêché : il vaut alors le choix de la zone, qui
+     ouvre son menu (Hugo, 2026-11-05). */
   function gesteDuClic(c) {
     const x = c || {};
-    return { choisir: true, empecher: !!x.perd };
+    const empecher = !!x.perd;
+    return { choisir: true, empecher,
+             ouvrirMenu: !!x.menu && !x.ouvert && (empecher || !x.interactif) };
+  }
+
+  /* Le menu d'une zone est-il ouvert ? Un `<summary>` : son `<details>` est ouvert ; un
+     bouton : `aria-expanded`. `d` : `{ balise, expanded, ouvert }`, lu sur l'écran. */
+  function menuOuvert(d) {
+    if (!d) return false;
+    if (String(d.balise || "").toUpperCase() === "SUMMARY") return !!d.ouvert;
+    return d.expanded === "true" || d.expanded === true;
   }
 
   /* Le « ? » rouvre les repères de la page où l'on est : la page de la visite de cette
@@ -1243,7 +1257,7 @@
            typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
            vocabulaire, initiale, compteOccurrences, apercuCarte, choixDuParcours,
-           PERD_LE_FIL, menePlusLoin, gesteDuClic,
+           PERD_LE_FIL, menePlusLoin, gesteDuClic, menuOuvert,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

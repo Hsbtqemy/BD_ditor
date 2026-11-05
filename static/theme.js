@@ -232,7 +232,8 @@
   // Transforme un bouton .btn-theme existant en déclencheur du menu « Affichage ».
   function buildMenu(btn) {
     var wrap = el("span", "display-menu");
-    wrap.dataset.parcours = "bande-affichage";   // UX-6 : une zone de la visite
+    wrap.dataset.parcours = "bande-affichage";   // UX-6 : une zone de la visite,
+    wrap.dataset.parcoursMenu = ".btn-theme";    // dont le choix ouvre ce menu
     btn.parentNode.insertBefore(wrap, btn);
     btn.textContent = "Aa";
     btn.title = "Affichage (thème, contraste, zoom)";
@@ -671,6 +672,7 @@
           wrap.appendChild(btn);
           wrap.appendChild(panel);
           menuDeroulant(wrap, btn, panel, "compte");
+          wrap.dataset.parcoursMenu = ".user-who";  // UX-6 : la visite l'ouvre au choix
         }
         // Ancre AVANT le menu « Aa ». buildMenu a déplacé .btn-theme DANS un
         // wrapper .display-menu (enfant direct de #site-nav) ; viser .btn-theme

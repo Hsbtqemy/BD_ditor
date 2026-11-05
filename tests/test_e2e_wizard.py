@@ -400,6 +400,97 @@ def test_dans_les_reperes_un_lien_vers_une_autre_page_choisit_sa_zone(page, jeu)
     _ligne_choisie(page, "annotation-lieu")
 
 
+# Choisir une zone ouvre son menu quand elle en a un (Hugo, 2026-11-05) : en clair, le focus
+# restant dans la fenêtre ; il se referme quand on choisit une autre zone, qu'on passe au
+# temps suivant ou qu'on ferme la fenêtre.
+
+MENU_EN_CLAIR = """(sel) => {
+  const m = document.querySelector(sel).getBoundingClientRect();
+  return [...document.querySelectorAll('#wizard-masque rect[fill="#000"]')].some((t) => {
+    const x = +t.getAttribute('x'), y = +t.getAttribute('y');
+    return x <= m.left && y <= m.top && x + +t.getAttribute('width') >= m.right
+      && y + +t.getAttribute('height') >= m.bottom; }); }"""
+
+
+@pytestmark_proxy
+def test_choisir_une_zone_ouvre_son_menu_et_une_autre_le_referme(page, jeu):
+    _commencer_la_visite(page, jeu)
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Visite 1 / 7")
+    aa = page.locator(".display-menu .btn-theme")
+    ligne = page.locator('#wizard-zones .wf-zone[data-zone="bande-affichage"]')
+    ligne.click()
+    expect(aa).to_have_attribute("aria-expanded", "true")
+    expect(page.locator(".display-panel")).to_be_visible()
+    page.wait_for_function(MENU_EN_CLAIR, arg=".display-panel")
+    expect(ligne).to_be_focused()
+    # Une autre ligne le referme.
+    page.locator('#wizard-zones .wf-zone[data-zone="bande-projet"]').click()
+    expect(aa).to_have_attribute("aria-expanded", "false")
+    # Au clavier : Entrée sur la ligne l'ouvre aussi ; le survol, lui, n'ouvre rien.
+    ligne.focus()
+    page.keyboard.press("Enter")
+    expect(aa).to_have_attribute("aria-expanded", "true")
+    expect(ligne).to_be_focused()
+    page.keyboard.press("Enter")
+    expect(aa).to_have_attribute("aria-expanded", "false")
+    ligne.hover()
+    page.wait_for_timeout(200)
+    expect(aa).to_have_attribute("aria-expanded", "false")
+    # Au second temps de l'Atelier, « Traitement » ; passer à la page suivante le referme.
+    page.locator("#wizard-visite-suiv").click()
+    page.locator("#wizard-visite-suiv").click()
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Visite 2 / 7 · 2 / 2")
+    page.locator('#wizard-zones .wf-zone[data-zone="atelier-actions"]').click()
+    expect(page.locator("#btn-traitement")).to_have_attribute("aria-expanded", "true")
+    page.wait_for_function(MENU_EN_CLAIR, arg="#traitement-menu")
+    page.locator("#wizard-visite-prec").click()
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Visite 2 / 7 · 1 / 2")
+    expect(page.locator("#btn-traitement")).to_have_attribute("aria-expanded", "false")
+
+
+@pytestmark_proxy
+def test_dans_les_reperes_choisir_une_zone_ouvre_son_menu(page, jeu):
+    """Les repères du « ? » suivent la même règle ; Échap ferme la fenêtre et le menu."""
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    _arriver(page, jeu["base"])
+    page.locator("#site-nav > .bande-aide").click()
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Cette page")
+    page.locator("#wizard-reperes-suiv").click()
+    page.locator('#wizard-zones .wf-zone[data-zone="atelier-actions"]').click()
+    expect(page.locator("#btn-traitement")).to_have_attribute("aria-expanded", "true")
+    expect(page.locator("#traitement-menu")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
+    expect(page.locator("#btn-traitement")).to_have_attribute("aria-expanded", "false")
+
+
+@pytestmark_proxy
+def test_un_depliant_ouvert_par_la_fenetre_est_referme_par_elle(page, jeu):
+    """Les « Facettes grammaticales » de la Recherche sont un dépliant (`<details>`), que
+    rien ne referme au clic ailleurs : seule la fenêtre, qui l'a ouvert, le referme — au choix
+    d'une autre zone, et quand elle se ferme."""
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    page.goto(jeu["base"] + "/recherche", wait_until="domcontentloaded")
+    page.wait_for_function("() => !!(window.BDWizardEcran && window.BDWizardEcran.decide)")
+    facettes = page.locator("#gram-facets")
+    expect(facettes).not_to_have_attribute("open", "")
+    page.locator("#site-nav > .bande-aide").click()
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Cette page")
+    ligne = page.locator('#wizard-zones .wf-zone[data-zone="recherche-facettes"]')
+    ligne.click()
+    expect(facettes).to_have_attribute("open", "")
+    expect(ligne).to_be_focused()
+    page.locator('#wizard-zones .wf-zone[data-zone="recherche-champ"]').click()
+    expect(facettes).not_to_have_attribute("open", "")
+    ligne.click()
+    expect(facettes).to_have_attribute("open", "")
+    page.keyboard.press("Escape")
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
+    expect(facettes).not_to_have_attribute("open", "")
+
+
 @pytestmark_proxy
 def test_la_fenetre_sur_la_zone_au_clavier_et_en_deux_temps(page, jeu):
     _commencer_la_visite(page, jeu)

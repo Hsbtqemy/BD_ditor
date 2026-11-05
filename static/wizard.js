@@ -580,7 +580,7 @@
      (`BDWizard.retenirVisite`), et la page suivante la reprend à son chargement. */
   const SVG = "http://www.w3.org/2000/svg";
   const F = { mode: null, pos: null, temps: [], choisie: null, survolee: null, declencheur: null,
-              inertes: new Set(), cle: "", obs: null, attente: 0 };
+              inertes: new Set(), cle: "", obs: null, attente: 0, menu: null, parScript: false };
   let foyer = null, voileSvg = null, fenetre = null;
 
   function chemin() { return location.pathname.replace(/\/+$/, "") || "/"; }
@@ -925,6 +925,7 @@
   function fermerFenetre(rendre) {
     if (!F.mode) return;
     const visite = F.mode === "visite", decl = F.declencheur;
+    fermerMenu();
     if (F.mode === "etape") sortirDuCadrage();
     G.fin = false;
     libererLaPose();
@@ -958,6 +959,7 @@
       return;
     }
     W.retenirVisite(S.login, S.bac, p);
+    fermerMenu();
     const pageNeuve = !F.pos || F.pos.page !== p.page;
     F.pos = p;
     F.choisie = null;
@@ -1027,10 +1029,67 @@
     dessinerVoile();
   }
 
-  /* `basculer` : un second clic sur la même ligne la libère ; un clic sur la page, non. */
-  function choisirZone(marque, basculer = true) {
-    if (!basculer && F.choisie === marque) return;
-    F.choisie = basculer && F.choisie === marque ? null : marque;
+  /* CHOISIR une zone ouvre son menu quand elle en a un (Hugo, 2026-11-05) : la zone le
+     DÉCLARE par `data-parcours-menu`, le sélecteur de son déclencheur — un bouton à
+     `aria-expanded` ou un `<summary>` —, que la fenêtre actionne comme on l'aurait fait :
+     sa logique reste à la page. Le menu s'ouvre en clair (`menusOuverts`), le focus reste
+     dans la fenêtre, et la fenêtre le referme quand on choisit une autre zone, qu'on passe
+     au temps ou à la page suivants, ou qu'on la ferme — celui-là seul, pas un menu que l'on
+     a ouvert soi-même. Une liste native (« Projet ») ne s'ouvre pas par script : elle n'en
+     déclare pas. */
+  function declencheurDe(marque) {
+    for (const z of zonesDe(marque)) {
+      const sel = z.dataset.parcoursMenu;
+      if (!sel) continue;
+      const d = z.matches(sel) ? z : z.querySelector(sel);
+      if (d && d.getClientRects().length) return d;
+    }
+    return null;
+  }
+
+  function estOuvert(d) {
+    return W.menuOuvert({ balise: d.tagName, expanded: d.getAttribute("aria-expanded"),
+                          ouvert: !!(d.parentElement && d.parentElement.open) });
+  }
+
+  /* Actionner le déclencheur sans que le clic soit lu comme un clic sur la zone, et sans
+     prendre le focus à la fenêtre. */
+  function actionner(d) {
+    const a = document.activeElement;
+    F.parScript = true;
+    try { d.click(); } finally { F.parScript = false; }
+    if (a && fenetre && fenetre.contains(a) && document.activeElement !== a) {
+      a.focus({ preventScroll: true });
+    }
+  }
+
+  /* Après le clic qui choisit : il remonte encore au document, où les menus de la page se
+     ferment au clic. */
+  function ouvrirMenu(marque) {
+    const d = declencheurDe(marque);
+    if (!d || estOuvert(d)) return;
+    setTimeout(() => {
+      if (!F.mode || F.choisie !== marque || !d.isConnected || estOuvert(d)) return;
+      actionner(d);
+      if (estOuvert(d)) F.menu = d;
+      planifier();
+    }, 0);
+  }
+
+  function fermerMenu() {
+    const d = F.menu;
+    F.menu = null;
+    if (d && d.isConnected && estOuvert(d)) actionner(d);
+  }
+
+  /* `basculer` : un second clic sur la même ligne la libère ; un clic sur la page, non.
+     `menu` : le choix ouvre le menu de la zone. */
+  function choisirZone(marque, basculer = true, menu = true) {
+    const avant = F.choisie;
+    F.choisie = basculer && avant === marque ? null : marque;
+    if (F.choisie !== avant) fermerMenu();
+    if (F.choisie && menu) ouvrirMenu(F.choisie);
+    if (F.choisie === avant) return;
     fenetre.querySelectorAll(".wf-zone").forEach((b) => {
       b.setAttribute("aria-pressed", String(b.dataset.zone === F.choisie));
       b.classList.toggle("ici", b.dataset.zone === montree());
@@ -1059,13 +1118,19 @@
   /* Un clic dans une zone de la visite ou des repères la CHOISIT ; s'il faisait perdre le
      fil, il ne fait rien d'autre (Hugo, 2026-11-05). */
   function clicPage(ev) {
-    if (!F.mode || F.mode === "etape" || !foyer || foyer.contains(ev.target)) return;
+    if (F.parScript || !F.mode || F.mode === "etape" || !foyer || foyer.contains(ev.target)) return;
     const m = marqueSous(ev.target);
     if (!m) return;
-    const g = W.gesteDuClic({ perd: perdLeFil(ev.target, zonesDe(m)) });
+    const d = declencheurDe(m);
+    const g = W.gesteDuClic({
+      perd: perdLeFil(ev.target, zonesDe(m)),
+      interactif: !!ev.target.closest(INTERACTIF),
+      menu: !!d, ouvert: !!d && estOuvert(d) });
     if (g.empecher) { ev.preventDefault(); ev.stopPropagation(); }
-    if (g.choisir) choisirZone(m, false);
+    if (g.choisir) choisirZone(m, false, g.ouvrirMenu);
   }
+  const INTERACTIF = "a, button, input, select, textarea, summary, label, [role='menuitem'], "
+    + "[tabindex], [contenteditable]";
 
   function clicFenetre(ev) {
     const z = ev.target.closest(".wf-zone");
@@ -1081,6 +1146,7 @@
     else if (g === "plan-prec" || g === "plan-suiv") {
       const i = F.temps.indexOf(F.pos.temps) + (g === "plan-suiv" ? 1 : -1);
       if (i < 0 || i >= F.temps.length) return;
+      fermerMenu();
       F.pos = { page: F.pos.page, temps: F.temps[i] };
       F.choisie = null;
       F.survolee = null;
@@ -1560,7 +1626,7 @@
   /* Un menu ouvert depuis une zone : sa liste déborde d'elle. */
   function menusOuverts(els) {
     const out = [];
-    els.forEach((e) => e.querySelectorAll(".dropdown-menu, .display-panel").forEach((m) => {
+    els.forEach((e) => e.querySelectorAll(".dropdown-menu, .display-panel, .compte-panel").forEach((m) => {
       const r = m.getBoundingClientRect();
       if (r.width >= 1 && r.height >= 1 && getComputedStyle(m).visibility !== "hidden") out.push(r);
     }));
