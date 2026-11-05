@@ -261,6 +261,36 @@ def _commencer_la_visite(page, jeu):
 
 
 @pytestmark_proxy
+def test_le_survol_d_une_ligne_cerne_sa_zone_et_inversement(page, jeu):
+    """Comme la maquette (Hugo, 2026-11-05) : le pointeur sur une ligne de la liste cerne sa
+    zone sur la page ; sur la zone, il surligne sa ligne ; en partant, rien ne reste cerné.
+    La fenêtre ne bouge pas."""
+    _commencer_la_visite(page, jeu)
+    fen = _visite(page)
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Visite 1 / 7")
+    place = fen.bounding_box()
+    ligne = page.locator('#wizard-zones .wf-zone[data-zone="bande-projet"]')
+    cerne = page.locator(".wizard-voile .wf-cadre.ici")
+    expect(cerne).to_have_count(0)
+    ligne.hover()
+    expect(ligne).to_have_class(re.compile(r"\bici\b"))
+    expect(cerne).to_have_count(1)
+    # Le cadre cerné est celui de la zone « Le projet » : il l'entoure.
+    zone = page.locator('[data-parcours="bande-projet"]').first.bounding_box()
+    cadre = cerne.bounding_box()
+    assert cadre["x"] <= zone["x"] + 1 and cadre["x"] + cadre["width"] >= zone["x"] + zone["width"] - 1
+    assert fen.bounding_box() == place
+    # Ailleurs, plus rien n'est cerné ; sur la zone de la page, sa ligne se surligne.
+    page.mouse.move(5, 600)
+    expect(cerne).to_have_count(0)
+    expect(ligne).not_to_have_class(re.compile(r"\bici\b"))
+    page.locator('[data-parcours="bande-projet"]').first.hover()
+    expect(ligne).to_have_class(re.compile(r"\bici\b"))
+    expect(cerne).to_have_count(1)
+    expect(ligne).to_have_attribute("aria-pressed", "false")
+
+
+@pytestmark_proxy
 def test_la_fenetre_sur_la_zone_au_clavier_et_en_deux_temps(page, jeu):
     _commencer_la_visite(page, jeu)
     fen = _visite(page)

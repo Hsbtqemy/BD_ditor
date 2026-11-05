@@ -418,7 +418,7 @@
      La visite traverse les pages : sa position vit dans le stockage de session
      (`BDWizard.retenirVisite`), et la page suivante la reprend à son chargement. */
   const SVG = "http://www.w3.org/2000/svg";
-  const F = { mode: null, pos: null, temps: [], choisie: null, declencheur: null,
+  const F = { mode: null, pos: null, temps: [], choisie: null, survolee: null, declencheur: null,
               inertes: new Set(), cle: "", obs: null, attente: 0 };
   let foyer = null, voileSvg = null, fenetre = null;
 
@@ -459,6 +459,8 @@
     fenetre.id = "wizard-fenetre";
     fenetre.addEventListener("keydown", clavierFenetre);
     fenetre.addEventListener("click", clicFenetre);
+    document.addEventListener("mouseover", survolPage);
+    document.addEventListener("focusin", survolPage);
     foyer.appendChild(voileSvg);
     foyer.appendChild(fenetre);
     document.body.appendChild(foyer);
@@ -517,6 +519,7 @@
       const b = bouton("wf-zone", null);
       b.dataset.zone = r.marque;
       b.setAttribute("aria-pressed", String(F.choisie === r.marque));
+      if (montree() === r.marque) b.classList.add("ici");
       const n = el("span", "wf-n", String(r.n));
       n.setAttribute("aria-hidden", "true");
       b.appendChild(n);
@@ -659,7 +662,7 @@
     const rayon = 11 * z;
     trous.forEach((t) => {
       voileSvg.appendChild(svg("rect", {
-        class: "wf-cadre" + (t.rep.marque === F.choisie ? " ici" : ""),
+        class: "wf-cadre" + (t.rep.marque && t.rep.marque === montree() ? " ici" : ""),
         x: t.l, y: t.t, width: t.r - t.l, height: t.b - t.t, rx: 6 }));
       if (t.rep.n == null) return;   // les zones du guide n'ont pas de numéro
       const cx = Math.max(t.l, rayon + 2), cy = Math.max(t.t, rayon + 2);
@@ -727,6 +730,7 @@
     F.mode = mode;
     F.pos = pos;
     F.choisie = null;
+    F.survolee = null;
     F.declencheur = declencheur || null;
     F.temps = mode === "plan" ? W.tempsVisibles(pos.page, voit) : [];
     foyer.hidden = false;
@@ -755,6 +759,7 @@
     F.mode = null;
     F.pos = null;
     F.choisie = null;
+    F.survolee = null;
     if (foyer) foyer.hidden = true;
     if (fenetre) fenetre.innerHTML = "";
     if (voileSvg) voileSvg.innerHTML = "";
@@ -782,6 +787,7 @@
     const pageNeuve = !F.pos || F.pos.page !== p.page;
     F.pos = p;
     F.choisie = premiereDuSecondTemps();
+    F.survolee = null;
     dessinerFenetre(pageNeuve ? "#wizard-fenetre-titre" : focus);
     mettreAJour();
   }
@@ -828,10 +834,39 @@
     return r ? r.marque : null;
   }
 
+  /* Le SURVOL, comme la maquette (Hugo, 2026-11-05, sur l'écran codé : il renverse « au clic,
+     jamais au survol ni au focus », un choix de la tranche 2 confirmé sans maquette). Le
+     pointeur ou le focus sur une ligne de la liste cerne sa zone sur la page ; sur une zone de
+     la page, il surligne sa ligne. En quittant, on revient à la zone choisie au clic. Rien ne
+     défile et la fenêtre ne bouge pas : seuls le cadre et la ligne changent. Le guide n'a pas
+     de liste : il n'est pas concerné. */
+  function montree() { return F.survolee || F.choisie; }
+
+  function marqueSous(cible) {
+    if (!cible || !cible.closest) return null;
+    const z = cible.closest(".wf-zone");
+    if (z) return z.dataset.zone || null;
+    if (foyer && foyer.contains(cible)) return null;
+    const r = zonesActives().find((x) => zonesDe(x.marque).some((e) => e.contains(cible)));
+    return r ? r.marque : null;
+  }
+
+  function survolPage(ev) {
+    if (!F.mode || F.mode === "etape" || !fenetre) return;
+    const m = marqueSous(ev.target);
+    if (m === F.survolee) return;
+    F.survolee = m;
+    fenetre.querySelectorAll(".wf-zone").forEach((b) =>
+      b.classList.toggle("ici", b.dataset.zone === montree()));
+    dessinerVoile();
+  }
+
   function choisirZone(marque) {
     F.choisie = F.choisie === marque ? null : marque;
-    fenetre.querySelectorAll(".wf-zone").forEach((b) =>
-      b.setAttribute("aria-pressed", String(b.dataset.zone === F.choisie)));
+    fenetre.querySelectorAll(".wf-zone").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.zone === F.choisie));
+      b.classList.toggle("ici", b.dataset.zone === montree());
+    });
     if (F.choisie) {
       const els = zonesDe(F.choisie);
       // Sur un écran étroit, la zone choisie remonte au-dessus de la feuille.
@@ -857,6 +892,7 @@
       if (i < 0 || i >= F.temps.length) return;
       F.pos = { page: F.pos.page, temps: F.temps[i] };
       F.choisie = premiereDuSecondTemps();
+      F.survolee = null;
       dessinerFenetre(g === "plan-suiv" ? "#wizard-reperes-suiv" : "#wizard-reperes-prec");
       mettreAJour();
     }
