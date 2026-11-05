@@ -691,6 +691,15 @@ kbd {
 .wizard-page { display: grid; gap: 1.2308rem; align-items: center; min-height: 20rem;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
 .wizard-page.sans-ill, .wizard-page.wizard-fin { grid-template-columns: minmax(0, 1fr); }
+/* La page qui arrive glisse de son côté (la maquette) ; rien ne bouge pour qui a demandé
+   moins d'animations. La boîte ne laisse pas déborder la page pendant qu'elle glisse. */
+.wizard-album { overflow-x: clip; }
+@media (prefers-reduced-motion: no-preference) {
+  .wizard-page.glisse-avant { animation: wizard-glisse-avant .22s ease-out; }
+  .wizard-page.glisse-arriere { animation: wizard-glisse-arriere .22s ease-out; }
+}
+@keyframes wizard-glisse-avant { from { transform: translateX(2.5rem); opacity: 0; } }
+@keyframes wizard-glisse-arriere { from { transform: translateX(-2.5rem); opacity: 0; } }
 .wizard-ill { min-width: 0; display: grid; place-items: center; overflow: hidden;
               padding: .4615rem .2308rem; min-height: 20rem; box-sizing: border-box; }
 .wizard-txt { display: grid; gap: .3846rem; align-content: center; min-width: 0; }

@@ -67,6 +67,28 @@ def _arriver(page, base):
 
 
 @pytestmark_proxy
+def test_les_pages_de_l_album_glissent_de_leur_cote(page, jeu, wizard_actif):
+    """Comme la maquette (Hugo, 2026-11-05) : la page qui arrive glisse de la droite quand on
+    avance, de la gauche quand on recule ; à l'ouverture, rien ne glisse ; et sous « moins
+    d'animations », la classe est posée mais aucune animation ne joue."""
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    _arriver(page, jeu["base"])
+    album = _album(page)
+    feuille = album.locator("#wizard-page")
+    expect(feuille).not_to_have_class(re.compile(r"\bglisse-"))
+    album.locator("#wizard-suiv").click()
+    expect(feuille).to_have_class(re.compile(r"\bglisse-avant\b"))
+    assert feuille.evaluate("(e) => getComputedStyle(e).animationName") == "wizard-glisse-avant"
+    album.locator("#wizard-prec").click()
+    expect(feuille).to_have_class(re.compile(r"\bglisse-arriere\b"))
+    page.emulate_media(reduced_motion="reduce")
+    album.locator("#wizard-suiv").click()
+    expect(feuille).to_have_class(re.compile(r"\bglisse-avant\b"))
+    assert feuille.evaluate("(e) => getComputedStyle(e).animationName") == "none"
+
+
+@pytestmark_proxy
 def test_l_album_s_ouvre_seul_et_se_feuillette(page, jeu, wizard_actif):
     bac = _ouvrir(jeu, CAMILLE)
     _sous(page, CAMILLE)
@@ -496,6 +518,8 @@ def test_a11y_l_album_et_la_carte(page, jeu, theme):
     la page du choix, la visite qui suit le choix, le guide qui la suit, puis la carte des
     étapes : aucune violation sérieuse ou critique."""
     from test_e2e_bac_a_sable import _audit_axe
+    # Une page de l'album qui glisse encore serait auditée à moitié transparente.
+    page.emulate_media(reduced_motion="reduce")
     page.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
     _ouvrir(jeu, CAMILLE)
     _sous(page, CAMILLE)
@@ -534,6 +558,7 @@ def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
     non plus."""
     if page.context.browser.browser_type.name != "chromium":
         pytest.skip("la préférence de police se pose par CDP")
+    page.emulate_media(reduced_motion="reduce")   # mesurer des pages posées, pas en vol
     from test_e2e_bac_a_sable import _perdus, _preference_police
     from tools.mesurer_reflow import ECRASEMENT, decrire_ecrasement
     _ouvrir(jeu, CAMILLE)

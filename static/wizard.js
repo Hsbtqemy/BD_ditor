@@ -297,6 +297,7 @@
 
     const page = el("div", "wizard-page");
     page.id = "wizard-page";
+    if (S.sens) { page.classList.add(`glisse-${S.sens}`); S.sens = null; }
     page.setAttribute("role", "group");
     page.setAttribute("aria-label", `Page ${i + 1} sur ${n}`);
     if (!derniere) {
@@ -368,6 +369,10 @@
     const n = nbPages();
     const j = Math.max(0, Math.min(n - 1, i));
     if (j === S.page && S.mode === "album") return;
+    // Le sens de la page qui arrive : elle glisse de la droite quand on avance, de la gauche
+    // quand on recule (la maquette, Hugo, 2026-11-05). Sans glissé au doigt (tranché le
+    // 2026-11-04) : un effet, pas un rail.
+    S.sens = S.mode === "album" ? (j > S.page ? "avant" : "arriere") : null;
     S.page = j;
     let cible = focus;
     if (j === n - 1 && (focus === "#wizard-suiv" || focus === "#wizard-passer")) {
