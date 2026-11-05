@@ -980,7 +980,7 @@ def test_la_transcription_ne_dit_pas_bulle_sur_un_cartouche(page, jeu_decoupe):
 # demande RIEN à l'instance, et chaque image arrive. Les miniatures de la première page,
 # elles, viennent du jeu et sont demandées avant.
 
-PAGES_ILLUSTREES = {2: "corpus", 3: "zones"}
+PAGES_ILLUSTREES = {2: "corpus", 3: "zones", 4: "moteurs"}
 
 
 @pytestmark_proxy
@@ -1064,3 +1064,27 @@ def test_reperez_dessine_les_zones_a_leur_place(page, jeu):
         b, nb = z["boite"], n["boite"]
         assert nb["l"] < b["r"] + 2 and nb["r"] > b["l"] - 2, (z["type"], n)
         assert nb["t"] < b["b"] + 6 and nb["b"] > b["t"] - 6, (z["type"], n)
+
+
+@pytestmark_proxy
+def test_sans_moteur_automatisez_montre_la_rangee_avant_tout_decoupage(page, jeu):
+    """La page 4 suit `GET /api/sante` (la seule lecture de l'album) : aucun moteur, la
+    rangée sans cadre ni lecture, et la page le dit."""
+    page.route("**/api/sante", lambda r: r.fulfill(
+        status=200, content_type="application/json",
+        body='{"kumiko": false, "bulles": false, "ocr": false}'))
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    _arriver(page, jeu["base"])
+    page.locator("#bac-commencer").click()
+    album = _album(page)
+    for _ in range(3):
+        album.locator("#wizard-suiv").click()
+    expect(album.locator("#wizard-compte")).to_have_text("4 / 8")
+    ill = album.locator(".wizard-fixe-moteurs")
+    expect(ill).to_be_visible()
+    expect(ill.locator(".wizard-legende")).to_have_text("La planche, avant tout découpage")
+    expect(ill.locator(".wizard-scene img")).to_be_visible()
+    expect(ill.locator(".wizard-zone")).to_have_count(0)
+    expect(ill.locator(".wizard-lus")).to_have_count(0)
+    expect(album.locator(".wizard-marque")).to_have_text("optionnel ici")

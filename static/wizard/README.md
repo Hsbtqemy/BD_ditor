@@ -24,6 +24,7 @@ sable (`tools/preparer_jeu.py`).
 | `corpus-saint-cyr.jpg` | Girin, *L'École de Saint-Cyr* (`girin-saint-cyr.jpg`) | le haut de la planche, 3:4, réduit à 120 × 160 | part dépôt du jeu, exportable |
 | `corpus-moustache.jpg` | Calvo, *Moustache et Trottinette*, « Le brigand de la Mare-Moussue », planche 3 (`calvo-moustache.jpg`) | le haut de la planche, 3:4, réduit à 120 × 160 | citation et illustration, cadre scientifique non commercial (Hugo, 2026-11-05), limitée à l'album de présentation |
 | `zones-moustache-case.jpg` | Calvo, *Moustache et Trottinette*, planche 3 : la case 1 de la dernière rangée (`calvo-moustache.jpg`) | x 8, y 964, 305 × 324 (scan 975 × 1296), taille d'origine | citation et illustration, cadre scientifique non commercial (Hugo, 2026-11-05), limitée à l'album de présentation |
+| `moteurs-moustache-rangee.jpg` | Calvo, *Moustache et Trottinette*, planche 3 : la dernière rangée (`calvo-moustache.jpg`) | x 0, y 962, 975 × 328, réduit à 660 × 222 | citation et illustration, cadre scientifique non commercial (Hugo, 2026-11-05), limitée à l'album de présentation |
 
 *Bibi Fricotin chez les Chinois*, de la part dépôt, n'est pas employé : ses caricatures n'ont
 pas leur place dans une page d'accueil. *Radar* reste hors du dépôt.

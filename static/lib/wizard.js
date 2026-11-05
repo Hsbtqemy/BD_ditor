@@ -331,12 +331,74 @@
         { type: "detail", nom: "détail : la coccinelle", x: 244, y: 1165, w: 44, h: 50 },
       ],
     },
+    // La dernière rangée de la même planche. Les cadres « trouvés » et les lectures sont
+    // INVENTÉS pour l'exemple, sur le vrai texte de la planche : un récitatif manqué, comme le
+    // font les moteurs ; « Pas Trop tat » et « reconnail » sont, eux, ce qu'EasyOCR 1.7.2 a
+    // vraiment lu sur cette planche le 2026-11-04 (la passe que résume la page). `faute` : la
+    // part de la lecture à corriger, surlignée.
+    moteurs: {
+      fichier: "moteurs-moustache-rangee.jpg",
+      cadre: { x: 0, y: 962, w: 975, h: 328 },
+      trouves: [
+        { type: "case", x: 14, y: 970, w: 293, h: 312 },
+        { type: "case", x: 322, y: 970, w: 274, h: 312 },
+        { type: "case", x: 608, y: 972, w: 349, h: 310 },
+        { type: "bulle", x: 26, y: 971, w: 100, h: 26 },
+        { type: "bulle", x: 147, y: 972, w: 120, h: 24 },
+        { type: "bulle", x: 325, y: 972, w: 270, h: 26 },
+        { type: "cartouche", x: 95, y: 1208, w: 210, h: 66 },
+        { type: "cartouche", x: 645, y: 1222, w: 310, h: 60 },
+      ],
+      lus: [
+        { lu: "On arrive !", etat: "corrige" },
+        { lu: "Pas Trop tat !", faute: "Trop tat", etat: "a_corriger" },
+        { lu: "On dirait qu'on vient par ici !…" },
+        { lu: "Dès qu'il reconnail nos trois amis…", faute: "reconnail", etat: "a_corriger" },
+      ],
+    },
   };
 
-  /* L'illustration d'une page de l'album, `null` pour une page qui n'en a pas ici. */
-  function illustrationDe(page) {
+  /* Ce que les moteurs ont trouvé, en mots : « 3 cases, 3 bulles, 2 cartouches ». */
+  const SORTES = [["case", "case", "cases"], ["bulle", "bulle", "bulles"],
+                  ["cartouche", "cartouche", "cartouches"]];
+
+  function compteTrouves(zones) {
+    const n = (t) => liste(zones).filter((z) => z && z.type === t).length;
+    return typo(SORTES.filter(([t]) => n(t) > 0)
+      .map(([t, un, plusieurs]) => `${n(t)} ${n(t) > 1 ? plusieurs : un}`).join(", "));
+  }
+
+  const MARQUES_LECTURE = { corrige: "✓ corrigé", a_corriger: "à corriger" };
+
+  /* Une lecture de l'OCR en morceaux, pour surligner sa faute : `[{ texte, faute }]`, et sa
+     marque (`null` pour une lecture juste qu'on n'a pas eu à toucher). */
+  function lecture(l) {
+    const lu = String((l && l.lu) || ""), f = l && l.faute ? String(l.faute) : "";
+    const i = f ? lu.indexOf(f) : -1;
+    const morceaux = i < 0 ? [{ texte: lu, faute: false }]
+      : [{ texte: lu.slice(0, i), faute: false }, { texte: f, faute: true },
+         { texte: lu.slice(i + f.length), faute: false }].filter((m) => m.texte);
+    return { morceaux: morceaux.map((m) => ({ texte: typo(m.texte), faute: m.faute })),
+             marque: (l && MARQUES_LECTURE[l.etat]) || null };
+  }
+
+  /* L'illustration d'une page de l'album, `null` pour une page qui n'en a pas ici ; `m` :
+     les moteurs de l'instance (`moteurs`), la seule chose qu'elle en lit. */
+  function illustrationDe(page, m) {
     const k = page && page.k;
     if (k === "corpus" || k === "zones") return { k, ...ILLUSTRATIONS[k] };
+    if (k === "moteurs") {
+      // Sans aucun moteur installé, la rangée telle qu'on la reçoit (`moteurs`).
+      const M = ILLUSTRATIONS.moteurs, sans = !!(m && m.aucun);
+      return { k, fichier: M.fichier, cadre: M.cadre,
+               trouves: sans ? [] : M.trouves, lus: sans ? [] : M.lus,
+               legende: sans ? "La planche, avant tout découpage"
+                 : `Trouvé automatiquement : ${compteTrouves(M.trouves)}`,
+               description: sans
+                 ? "Une rangée de « Moustache et Trottinette », avant tout découpage."
+                 : "Une rangée de « Moustache et Trottinette », les cadres que les moteurs y "
+                   + "ont trouvés, et ce que l'OCR a lu : chaque ligne corrigée ou à corriger." };
+    }
     return null;
   }
 
@@ -1024,7 +1086,7 @@
 
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
            typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
-           illustrationDe, placer, etiquette, placerNom,
+           illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

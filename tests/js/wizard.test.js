@@ -807,3 +807,46 @@ test("une zone se place en pourcents de son cadre, et son nom ne sort pas de l'i
                    [{ cote: "dedans", ancre: "gauche" }, { cote: "dessous", ancre: "gauche" },
                     { cote: "dessous", ancre: "droite" }, { cote: "dessous", ancre: "droite" }]);
 });
+
+// Les espaces insécables que `typo` pose, ramenées à des espaces pour comparer.
+const sp = (x) => String(x).replace(/ /g, " ");
+const spj = (o) => JSON.parse(sp(JSON.stringify(o)));
+
+test("« Automatisez » : la rangée, ses cadres trouvés et ses lectures ; sans moteur, la rangée seule", () => {
+  const page = W.PAGES.find((p) => p.k === "moteurs");
+  const avec = W.illustrationDe(page, { aucun: false, ocr: true });
+  const dans = (a, b) => a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w
+    && a.y + a.h <= b.y + b.h;
+  assert.ok(avec.trouves.length && avec.trouves.every((z) => dans(z, avec.cadre)));
+  assert.equal(sp(avec.legende), "Trouvé automatiquement : 3 cases, 3 bulles, 2 cartouches");
+  assert.ok(avec.lus.length >= 3);
+  // Chaque faute est dans sa lecture ; une lecture corrigée, au moins une à corriger.
+  for (const l of avec.lus) assert.ok(!l.faute || l.lu.includes(l.faute), l.lu);
+  const marques = avec.lus.map((l) => W.lecture(l).marque);
+  assert.ok(marques.includes("✓ corrigé") && marques.includes("à corriger"));
+  // Réponse illisible : l'instance équipée, comme le texte de la page.
+  assert.deepEqual(W.illustrationDe(page, null).trouves, avec.trouves);
+  // Aucun moteur : la même rangée, sans cadre ni lecture.
+  const sans = W.illustrationDe(page, { aucun: true, ocr: false });
+  assert.equal(sans.fichier, avec.fichier);
+  assert.deepEqual([sans.trouves, sans.lus], [[], []]);
+  assert.equal(sp(sans.legende), "La planche, avant tout découpage");
+  assert.notEqual(sans.description, avec.description);
+});
+
+test("ce que les moteurs ont trouvé se compte en mots, et une faute se surligne", () => {
+  assert.equal(sp(W.compteTrouves([{ type: "case" }, { type: "bulle" }, { type: "bulle" }])),
+               "1 case, 2 bulles");
+  assert.equal(sp(W.compteTrouves([{ type: "cartouche" }, { type: "detail" }])), "1 cartouche");
+  assert.equal(W.compteTrouves(null), "");
+  assert.deepEqual(spj(W.lecture({ lu: "Dès qu'il reconnail nos", faute: "reconnail",
+                                   etat: "a_corriger" })),
+                   { morceaux: [{ texte: "Dès qu'il ", faute: false },
+                                { texte: "reconnail", faute: true },
+                                { texte: " nos", faute: false }], marque: "à corriger" });
+  assert.deepEqual(spj(W.lecture({ lu: "On arrive !", etat: "corrige" })),
+                   { morceaux: [{ texte: "On arrive !", faute: false }], marque: "✓ corrigé" });
+  // Une faute absente de la lecture ne surligne rien.
+  assert.deepEqual(W.lecture({ lu: "abc", faute: "z" }).morceaux, [{ texte: "abc", faute: false }]);
+  assert.equal(W.lecture(null).marque, null);
+});

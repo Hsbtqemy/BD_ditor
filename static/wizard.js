@@ -227,6 +227,24 @@
     d.setAttribute("role", "img");
     d.setAttribute("aria-label", ill.description);
     if (ill.k === "zones") d.appendChild(scene(ill, ill.zones, true));
+    if (ill.k === "moteurs") {
+      d.appendChild(el("p", "wizard-legende", W.typo(ill.legende)));
+      d.appendChild(scene(ill, ill.trouves, false));
+      if (ill.lus.length) {
+        const ul = el("ul", "wizard-lus");
+        ill.lus.forEach((l) => {
+          const x = W.lecture(l);
+          const li = el("li");
+          const t = el("span", "wizard-lu");
+          x.morceaux.forEach((m) => t.appendChild(m.faute ? el("mark", null, m.texte)
+                                                          : document.createTextNode(m.texte)));
+          li.appendChild(t);
+          if (x.marque) li.appendChild(el("span", "marque-e", x.marque));
+          ul.appendChild(li);
+        });
+        d.appendChild(ul);
+      }
+    }
     if (ill.k === "corpus") {
       d.classList.add("wizard-collections");
       ill.collections.forEach((c) => {
@@ -251,9 +269,9 @@
       jeu.slice(0, 5).forEach((j) => d.appendChild(miniature(j.planche_ids[0])));
       return d;
     }
-    const ill = W.illustrationDe(page);
+    const ill = W.illustrationDe(page, S.moteurs);
     if (ill) return illustrationFixe(ill);
-    if (["moteurs", "analyse"].includes(page.k) && parcours) {
+    if (page.k === "analyse" && parcours) {
       const d = el("div", "wizard-planche");
       d.appendChild(miniature(parcours.planche_ids[0]));
       return d;
