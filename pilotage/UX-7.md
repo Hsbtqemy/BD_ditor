@@ -6,7 +6,11 @@ audit: AUDIT.md
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-11-03, `f490e88` : **la Transcription, l'aperçu de la Recherche et la case
+**Arrêté sur** — 2026-11-05, `072183b` : deux commentaires recomptés (« les seize cas »
+de la garde de police, le seuil de la bande 4 dans l'outil de mesure du reflow), vus en
+passant le 2026-10-09 et notés nulle part jusque-là. Rien d'autre n'a bougé.
+
+**Jusque-là** — 2026-11-03, `f490e88` : **la Transcription, l'aperçu de la Recherche et la case
 d'Annotation tiennent à l'étroit** (`0ac6d79`), puis le ✕ de l'aperçu et la saisie de la bulle
 suivante sur un écran bas (`f490e88`, ce dernier trouvé par la passe DANS l'image). Mesurés en
 simulation, Chromium émulé ; rien n'est rejoué sur un vrai appareil (cf. la zone du
