@@ -16,6 +16,8 @@ tranche 4 attend de lui, et dans quel ordre le faire sans casser ce qui marche.
 
 Le dépôt est public : aucune grille réelle n'est citée ici.
 
+**Mis à jour le 2026-11-05** : deux préalables sont faits — l'outil des vraies bases fabrique de nouveau une base v38 (`7d60faf`) et la migration v35 ne relit plus `tags` dans `SCHEMA_SQL` (`e19520d`). Les passages qui les disent à faire (« La migration v39 », « Ce que la migration doit tolérer », « Vu en passant », les commits 0 et 5 du découpage) se lisent comme faits ; reste la base `tests/bases/v38-*.sql`, à fabriquer depuis le commit qui précède la tranche (I9).
+
 ---
 
 ## Les questions pour Hugo
