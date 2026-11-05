@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 import autorisation
 import conflit
 from config import BAC_A_SABLE_PLAFOND_PLANCHES
-from database import ROLES_JEU, collection_de_base
+from database import ORIGINE_ESSAI, ROLES_JEU, collection_de_base
 from pipeline import nlp
 
 from socle import (_creer_bac_a_sable, _effacer_bac_a_sable, _planches_importees_du_bac,
@@ -82,6 +82,11 @@ def _carte_du_jeu(conn, projet_id: int) -> list[dict]:
         ligne["exportable"] = bool(ligne["exportable"])
         ligne["planche_ids"] = [r[0] for r in conn.execute(
             "SELECT id FROM planches WHERE album_id = ? ORDER BY numero", (ligne["album_id"],))]
+        # La planche d'essai du parcours (UX-6), reconnue à son origine ; `None` sans elle.
+        essai = conn.execute(
+            "SELECT id FROM planches WHERE album_id = ? AND master_origine LIKE ? "
+            "ORDER BY numero LIMIT 1", (ligne["album_id"], ORIGINE_ESSAI + "%")).fetchone()
+        ligne["planche_essai"] = essai[0] if essai else None
     return sorted(lignes, key=lambda x: (ROLES_JEU.index(x["role"])
                                          if x["role"] in ROLES_JEU else len(ROLES_JEU),
                                          x["rang"], x["album_id"]))

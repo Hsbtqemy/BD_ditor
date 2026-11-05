@@ -693,3 +693,52 @@ def test_les_corrections_du_jeu_s_ancrent_sur_les_mots(client, db_path, tmp_path
         pytest.skip("sans moteur de langue, aucun mot n'est découpé")
     assert _sql(db_path, "SELECT ordre, obsolete FROM token_correction") == [
         {"ordre": 0, "obsolete": 0}]
+
+
+# --------------------------------------------------------------------------- #
+# La planche d'ESSAI (UX-6, Hugo, 2026-11-05)
+# --------------------------------------------------------------------------- #
+# Le parcours peut porter une planche d'essai : la même image, sans zone, APRÈS la planche
+# du parcours, où l'étape « Pré-remplir » lance les moteurs sans toucher à celle-ci. Elle se
+# reconnaît à son origine, `jeu:essai/<fichier>` — aucune colonne neuve.
+DOC_AVEC_ESSAI = {**DOC_PARCOURS, "planches": [*DOC_PARCOURS["planches"],
+                                                {"fichier": "p1.png", "essai": True}]}
+
+
+def test_une_planche_d_essai_suit_le_parcours_et_se_reconnait(client, db_path, tmp_path):
+    depot = ecrire_jeu(tmp_path / "dep", [DOC_AVEC_ESSAI], images=("p1.png",))
+    preparer(depot=depot)
+    ref = _jeu(db_path)["parcours"]["album_reference"]
+    planches = _sql(db_path, "SELECT p.id, p.numero, p.master_origine, COUNT(r.id) AS n "
+                             "FROM planches p LEFT JOIN regions r ON r.planche_id = p.id "
+                             "WHERE p.album_id = ? GROUP BY p.id ORDER BY p.numero", (ref,))
+    assert [(p["numero"], p["master_origine"], p["n"]) for p in planches] == [
+        (1, "jeu:p1.png", 2), (2, f"{database.ORIGINE_ESSAI}p1.png", 0)]
+    # Le nom du fichier d'origine, lui, reste le nom seul.
+    from pipeline import ingest
+    assert ingest.nom_du_fichier_d_origine(planches[1]["master_origine"]) == "p1.png"
+
+
+@pytest.mark.parametrize("planches, mot", [
+    ([{"fichier": "p1.png", "essai": True}], "suit la planche du parcours"),
+    ([{"fichier": "p1.png"}, {"fichier": "p1.png", "essai": True},
+      {"fichier": "p1.png", "essai": True}], "au plus une"),
+    ([{"fichier": "p1.png"}, {"fichier": "p1.png", "essai": "oui"}], "vrai ou faux"),
+    ([{"fichier": "p1.png"}, {"fichier": "p1.png", "essai": True,
+                              "regions": [{"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}]}],
+     "aucune zone"),
+])
+def test_une_planche_d_essai_fautive_est_refusee(client, db_path, tmp_path, planches, mot):
+    depot = ecrire_jeu(tmp_path / "dep", [{**DOC_PARCOURS, "planches": planches}],
+                       images=("p1.png",))
+    with pytest.raises(preparer_jeu.DescriptionInvalide, match=mot):
+        preparer(depot=depot)
+    assert _sql(db_path, "SELECT * FROM jeu_document") == []
+
+
+def test_seul_le_parcours_a_une_planche_d_essai(client, db_path, tmp_path):
+    doc = {**DOC_EXEMPLE, "planches": [*DOC_EXEMPLE["planches"],
+                                       {"fichier": "p2.png", "essai": True}]}
+    depot = ecrire_jeu(tmp_path / "dep", [doc], images=("p1.png", "p2.png"))
+    with pytest.raises(preparer_jeu.DescriptionInvalide, match="pas-a-pas"):
+        preparer(depot=depot)

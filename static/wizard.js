@@ -1280,14 +1280,19 @@
   async function lireDonnees() {
     const a = W.albumDuParcours(vue());
     const n = ++G.lecture;
-    const d = { regions: [], releves: [], album: null, vues: S.guide.vues };
+    const d = { regions: [], releves: [], album: null, vues: S.guide.vues, essai: false,
+                regionsEssai: [] };
     if (a) {
       const pid = a.planche_ids[0];
-      const [regions, releves, albums] = await Promise.all([
+      // La planche d'essai, quand le jeu en a posé une : « Pré-remplir » s'y lit.
+      d.essai = Number.isInteger(a.planche_essai);
+      const [regions, releves, albums, essai] = await Promise.all([
         apiGet(`/api/planches/${pid}/regions`).catch(() => null),
         apiGet(`/api/planches/${pid}/releves`).catch(() => null),
-        apiGet("/api/albums").catch(() => null)]);
+        apiGet("/api/albums").catch(() => null),
+        d.essai ? apiGet(`/api/planches/${a.planche_essai}/regions`).catch(() => null) : null]);
       d.regions = Array.isArray(regions) ? regions : [];
+      d.regionsEssai = Array.isArray(essai) ? essai : [];
       d.releves = releves && Array.isArray(releves.releves) ? releves.releves : [];
       d.album = Array.isArray(albums) ? albums.find((x) => x.id === a.album_id) || null : null;
     }
@@ -1582,6 +1587,8 @@
       let sel = `[data-parcours="${m}"]`;
       if (m === "@album") {
         sel = a ? `[data-parcours="bibliotheque-catalogue"] [data-ouvrir-album="${a.album_id}"]` : null;
+      } else if (m === "@essai") {
+        sel = G.d && G.d.essai ? '[data-parcours="atelier-planche"]' : null;
       } else if (m === "@bulle") {
         const b = G.bulle != null ? G.bulle
           : ((G.d && G.d.regions) || []).filter((r) => r.type === "bulle" && r.source === "corrige")

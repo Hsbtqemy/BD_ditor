@@ -1576,3 +1576,65 @@ def test_pre_remplir_montre_les_trois_moteurs_et_lui_seul(page, jeu):
     page.locator("#wizard-guide-suiv").click()
     expect(titre).to_have_text("Annoter", timeout=15000)
     expect(bande).to_have_count(0)
+
+
+# ── La planche d'essai de « Pré-remplir » ──────────────────────────────────────────────
+#
+# Hugo, 2026-11-05 : « proposer de faire chaque étape de traitement, mais la planche d'après
+# n'est pas celle où les traitements ont été appliqués ». Le jeu pose une planche d'essai
+# après celle du parcours ; « Pré-remplir » s'y fait, la planche éclairée avec « Traitement »,
+# et les étapes suivantes reviennent à la planche du parcours, que rien n'a touchée.
+
+@pytest.fixture
+def jeu_essai(live_server, tmp_path):
+    from test_e2e_bac_a_sable import _outil
+    from test_jeu import ecrire_jeu
+    doc = dict(JEU_DECOUPE[0], planches=[*JEU_DECOUPE[0]["planches"],
+                                         {"fichier": "p1.png", "essai": True}])
+    depot = ecrire_jeu(tmp_path / "jeu-depot", [doc], images=("p1.png",))
+    _outil(tmp_path, "tools/preparer_jeu.py", "--depot", str(depot), "--appliquer")
+    _api(live_server, CAMILLE, "GET", "/api/moi")
+    return {"base": live_server, "tmp": tmp_path}
+
+
+@pytestmark_proxy
+def test_pre_remplir_se_fait_sur_la_planche_d_essai(page, jeu_essai):
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _au_guide_sur(page, jeu_essai, "complet", "preremplir")
+    vue = _api(jeu_essai["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    parcours = next(j for j in vue["jeu"] if j["role"] == "pas-a-pas")
+    essai, planche = parcours["planche_essai"], parcours["planche_ids"][0]
+    assert essai and essai != planche
+    titre = page.locator("#wizard-fenetre-titre")
+    expect(titre).to_have_text(re.compile(r"^Pré-remplir"))
+    assert re.search(rf"[?&]planche={essai}\b", page.url), page.url
+    phrases = page.locator("#wizard-fenetre .wf-phrase")
+    expect(phrases).to_have_count(3)
+    expect(phrases.nth(2)).to_contain_text("Sur cette planche d'essai, lancez dans l'ordre")
+    # Le foyer éclaire « Traitement » ET la planche, et la fenêtre ne recouvre ni l'un ni
+    # l'autre.
+    page.wait_for_timeout(600)
+    m = page.evaluate(MESURE_FOYER)
+    assert not m["recouvrent"], m
+    assert page.evaluate("""() => window.BDWizardEcran.elementsDuFoyer()
+      .some((e) => e.dataset.parcours === 'atelier-planche')""")
+    # Les entrées de « Traitement » sont actives dans le guide.
+    page.locator("#btn-traitement").click()
+    for sel in ("#btn-segmenter", "#btn-bulles", "#btn-ocr"):
+        expect(page.locator(sel)).to_be_visible()
+        assert page.locator(sel).get_attribute("aria-disabled") != "true", sel
+    page.keyboard.press("Escape")
+    # Les moteurs passent sur la planche d'essai (simulés : aucun moteur dans les tests).
+    avant = _api(jeu_essai["base"], CAMILLE, "GET", f"/api/planches/{planche}/regions")
+    case = _api(jeu_essai["base"], CAMILLE, "POST", f"/api/planches/{essai}/regions",
+                {"type": "case", "x": 10, "y": 10, "w": 200, "h": 200})
+    _api(jeu_essai["base"], CAMILLE, "POST", f"/api/planches/{essai}/regions",
+         {"type": "bulle", "x": 20, "y": 20, "w": 60, "h": 20, "parent_id": case["id"]})
+    # L'étape suivante revient à la planche du parcours, intacte.
+    page.locator("#wizard-guide-suiv").click()
+    expect(titre).to_have_text("Annoter", timeout=15000)
+    assert re.search(rf"[?&]planche={planche}\b", page.url), page.url
+    apres = _api(jeu_essai["base"], CAMILLE, "GET", f"/api/planches/{planche}/regions")
+    assert [(r["id"], r["x"], r["y"], r["w"], r["h"]) for r in apres] \
+        == [(r["id"], r["x"], r["y"], r["w"], r["h"]) for r in avant]
+    assert all(r["source"] == "jeu" for r in apres)

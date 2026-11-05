@@ -286,7 +286,10 @@ se font à la main, aux étapes 3 à 5.
 
 **Elle vient ici, après le travail à la main**, et non avant : on juge mieux ce que les moteurs
 proposent quand on a soi-même découpé et transcrit une planche. Sur un corpus réel, on lance
-souvent les passes d'abord, et les étapes 3 à 5 corrigent ce qu'elles ont produit.
+souvent les passes d'abord, et les étapes 3 à 5 corrigent ce qu'elles ont produit. Dans le
+bac à sable, l'étape les lance sur une **planche d'essai**, la même image que celle du
+parcours, placée juste après elle : on regarde ce que chaque moteur produit, et la planche du
+parcours, où l'on revient ensuite, garde le travail fait à la main.
 
 ### Étape 7 — Annoter
 **Page Annotation (`/annotation`) · Atelier, mode Annotation (`A`)**

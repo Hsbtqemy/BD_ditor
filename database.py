@@ -2840,6 +2840,13 @@ ROLES_JEU = (ROLE_PAS_A_PAS, ROLE_EXEMPLE, ROLE_STOCK)
 # main sur le serveur (scans sous droits). L'export suit la part, document par document.
 PART_DEPOT, PART_SERVEUR = "depot", "serveur"
 PARTS_JEU = (PART_DEPOT, PART_SERVEUR)
+# La planche d'ESSAI du parcours (UX-6, Hugo, 2026-11-05) : la même image que la planche
+# du parcours, sans zone, après elle, où l'étape « Pré-remplir » lance les moteurs sans
+# toucher au travail du parcours. Elle se reconnaît à l'origine que l'outil du jeu note sur
+# elle (`planches.master_origine`, `jeu:essai/<fichier>`, retenue de toute sortie, recopiée
+# avec la planche dans chaque copie : `PLANCHE_SCAN`) — aucune colonne neuve. Le nom seul
+# du fichier reste lisible (`ingest.nom_du_fichier_d_origine` coupe au dernier « / »).
+ORIGINE_ESSAI = "jeu:essai/"
 
 
 def nom_de_projet_reserve(nom: str) -> bool:

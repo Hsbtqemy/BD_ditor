@@ -1578,3 +1578,32 @@ def test_sharedocs_dans_un_bac_a_sable_sous_son_propre_compte(client, decor):
         r = client.post("/api/sharedocs/importer", headers=LEA,
                         json={"album_id": a, "chemins": ["x/p.png"], "compte": compte})
         assert r.status_code == 403 and "propre compte" in r.json()["detail"], r.text
+
+
+# --------------------------------------------------------------------------- #
+# La planche d'essai du parcours (UX-6, Hugo, 2026-11-05)
+# --------------------------------------------------------------------------- #
+def test_la_vue_du_bac_a_sable_dit_la_planche_d_essai(client, tmp_path, derriere_proxy):
+    """La vue dit quelle planche du parcours est d'essai ; `planche_ids` reste celui
+    d'aujourd'hui, la planche du parcours en tête. Les autres copies n'en ont pas."""
+    doc = {**DOC_PARCOURS, "cran": "decoupage",
+           "planches": [*DOC_PARCOURS["planches"], {"fichier": "p1.png", "essai": True}]}
+    depot = ecrire_jeu(tmp_path / "jeu-depot", [doc, DOC_EXEMPLE], images=("p1.png", "p2.png"))
+    conn = database.get_connection()
+    try:
+        preparer_jeu.preparer(conn, depot=depot, appliquer_=True, dire=lambda _l: None)
+    finally:
+        conn.close()
+    client.get("/api/moi", headers=LEA)
+    vue = client.post("/api/bac-a-sable", headers=LEA).json()
+    parcours = next(j for j in vue["jeu"] if j["role"] == "pas-a-pas")
+    assert len(parcours["planche_ids"]) == 2
+    assert parcours["planche_essai"] == parcours["planche_ids"][1]
+    # La planche du parcours garde ses zones ; celle d'essai n'en a aucune.
+    zones = lambda pid: client.get(f"/api/planches/{pid}/regions", headers=LEA).json()
+    assert len(zones(parcours["planche_ids"][0])) == 2 and zones(parcours["planche_essai"]) == []
+    assert all(j["planche_essai"] is None for j in vue["jeu"] if j["role"] != "pas-a-pas")
+    # Relue par GET, la même.
+    relue = client.get("/api/bac-a-sable", headers=LEA).json()
+    assert next(j for j in relue["jeu"] if j["role"] == "pas-a-pas")["planche_essai"] \
+        == parcours["planche_essai"]

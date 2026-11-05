@@ -669,13 +669,13 @@ test("chez un invité, la ligne du bac à sable ne promet que « Quitter »", ()
 
 /* ── Le foyer de l'étape et la place de la fenêtre (tranche 3, reprise de la maquette) ── */
 
-test("chaque étape a un foyer, et `@album`, `@bulle` seuls se résolvent à l'écran", () => {
+test("chaque étape a un foyer, et `@album`, `@bulle`, `@essai` seuls se résolvent à l'écran", () => {
   for (const e of W.ETAPES) assert.ok(W.foyer(e).length, `${e.k} sans foyer`);
   assert.deepEqual(W.foyer(etape("corpus")), ["@album"]);
   assert.deepEqual(W.foyer(etape("decoupage")), ["@bulle", "atelier-structure"]);
   assert.deepEqual(W.foyer(null), []);
   const dyn = W.ETAPES.flatMap((e) => W.foyer(e)).filter((m) => m[0] === "@");
-  assert.deepEqual([...new Set(dyn)].sort(), ["@album", "@bulle"]);
+  assert.deepEqual([...new Set(dyn)].sort(), ["@album", "@bulle", "@essai"]);
   // Les marques des foyers, sans les dynamiques, et chacune sur la surface de son étape.
   const m = W.marquesDesFoyers();
   assert.ok(m.every((x) => x.marque[0] !== "@"));
@@ -1169,4 +1169,49 @@ test("« Chercher et explorer » dit à quoi servent les deux pages, puis le bac
   assert.match(ps[0], /^La Recherche retrouve un mot dans tout le corpus/);
   assert.match(ps[0], /L'Exploration met le corpus en chiffres : fréquences/);
   assert.equal(ps[1], "Ces deux pages portent sur le vrai corpus : votre bac à sable n'y paraît pas.");
+});
+
+/* La planche d'ESSAI du parcours (Hugo, 2026-11-05) : « Pré-remplir » s'y fait, les autres
+   étapes restent sur la planche du parcours. */
+test("« Pré-remplir » mène à la planche d'essai, les autres étapes à celle du parcours", () => {
+  const vue = { jeu: [{ titre: "Parcours", role: "pas-a-pas", album_id: 6, planche_ids: [7, 8],
+                        planche_essai: 8 }] };
+  const e = (k) => W.ETAPES.find((x) => x.k === k);
+  assert.equal(W.plancheDeLEtape(e("preremplir"), vue), 8);
+  assert.equal(W.adresseEtape(e("preremplir"), vue), "/?album=6&planche=8");
+  for (const k of ["tracer", "decoupage", "transcrire"]) {
+    assert.equal(W.plancheDeLEtape(e(k), vue), 7, k);
+  }
+  assert.equal(W.adresseEtape(e("annoter"), vue), "/annotation?album=6&planche=7");
+  assert.equal(W.albumDuParcours(vue).planche_ids[0], 7);
+  // Sans planche d'essai (un jeu d'avant) : la planche du parcours, comme hier.
+  const avant = { jeu: [{ titre: "P", role: "pas-a-pas", album_id: 6, planche_ids: [7] }] };
+  assert.equal(W.plancheDeLEtape(e("preremplir"), avant), 7);
+  assert.equal(W.plancheDeLEtape(e("preremplir"), { jeu: [] }), null);
+  // Le foyer éclaire aussi la planche, quand l'écran la résout.
+  assert.deepEqual(W.foyer(e("preremplir")),
+                   ["atelier-traitement", "atelier-traitement-menu", "@essai"]);
+});
+
+test("sur la planche d'essai, l'étape est faite par un texte de l'OCR, et dit l'ordre des moteurs", () => {
+  const pre = W.ETAPES.find((x) => x.k === "preremplir");
+  const avec = W.moteurs({ kumiko: true, bulles: true, ocr: true });
+  const kumiko = { type: "case", source: "kumiko", activite_id: 4 };
+  const lue = { type: "bulle", source: "bulles", activite_id: 5, ocr_texte: "On arrive !" };
+  const d = (regionsEssai, regions = []) => ({ essai: true, regionsEssai, regions });
+  // La segmentation seule ne fait pas l'étape ; un texte de l'OCR, si.
+  assert.equal(W.faite(pre, d([kumiko]), "complet"), false);
+  assert.equal(W.faite(pre, d([kumiko, lue]), "complet"), true);
+  // Ce qui est sur la planche du parcours ne compte pas.
+  assert.equal(W.faite(pre, d([], [kumiko, lue]), "complet"), false);
+  // Le troisième paragraphe : l'ordre des moteurs, sur la planche d'essai.
+  const ps = W.paragraphes(W.phraseGuide(pre, null, avec, d([]), "complet")).map(sp);
+  assert.equal(ps.length, 3);
+  assert.match(ps[2], /^Vous avez découpé et transcrit à la main/);
+  assert.match(ps[2], /lancez dans l'ordre « Segmenter les cases », « Détecter les bulles », puis « OCR des bulles »/);
+  // Faite : plus de geste à dire.
+  assert.equal(W.paragraphes(W.phraseGuide(pre, null, avec, d([lue]), "complet")).length, 2);
+  // Sans planche d'essai, la ligne comptée d'hier.
+  assert.match(sp(W.paragraphes(W.phraseGuide(pre, null, avec, { regions: [] }, "complet"))[2]),
+               /^Essayez l'OCR/);
 });

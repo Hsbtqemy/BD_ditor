@@ -38,7 +38,11 @@ n'a pas la part du serveur (la recette) retirerait du jeu tout ce qui en vient.
                `corrections` (`[{"ordre", "forme", "lemme", "pos", "morph"}]`, la couche
                grammaticale de son texte : `forme` est le mot tel que l'analyse le
                découpe — en minuscules —, `ordre` son rang ; sans moteur de langue, aucun
-               mot n'est découpé et la correction reste inerte)
+               mot n'est découpé et la correction reste inerte) ; `"essai": true` fait
+               d'une planche la planche d'ESSAI du parcours (UX-6) : seulement au rôle
+               `pas-a-pas`, au plus une, jamais la première, sans zone — l'étape
+               « Pré-remplir » y lance les moteurs sans toucher à la planche du parcours. Son
+               origine se note `jeu:essai/<fichier>` (`database.ORIGINE_ESSAI`)
 
 Le travail du jeu n'est à PERSONNE : aucun événement par région, des corrections sans
 auteur. La naissance de chaque référence s'écrit sous son document (cible `document`,
@@ -205,6 +209,21 @@ def lire_description(dossier, part: str) -> list[dict]:
             h.update(image.read_bytes())
             for k, r in enumerate(pl.get("regions") or ()):
                 _region_valide(r, f"{o2}, région {k + 1}")
+            essai = pl.get("essai", False)
+            if not isinstance(essai, bool):
+                raise DescriptionInvalide(f"{o2} : `essai` est vrai ou faux.")
+            if essai:
+                if d["role"] != database.ROLE_PAS_A_PAS:
+                    raise DescriptionInvalide(f"{o2} : seul le parcours (`pas-a-pas`) a une "
+                                              "planche d'essai.")
+                if j == 0:
+                    raise DescriptionInvalide(f"{o2} : la planche d'essai suit la planche du "
+                                              "parcours, elle n'est pas la première.")
+                if pl.get("regions"):
+                    raise DescriptionInvalide(f"{o2} : une planche d'essai n'a aucune zone — "
+                                              "les moteurs y posent les leurs.")
+        if sum(1 for pl in planches if pl.get("essai") is True) > 1:
+            raise DescriptionInvalide(f"{ou} : au plus une planche d'essai.")
         exportable = part == database.PART_DEPOT and d.get("exportable", True) is not False
         sortie.append({**d, "cle": cle.strip(), "cran": cran, "rang": d.get("rang", 0),
                        "part": part, "dossier": dossier, "exportable": exportable,
@@ -304,8 +323,10 @@ def _creer_une_reference(conn, d: dict) -> tuple[int, int]:
     journal.journaliser_emploi(conn, "lien", album_id, collection)
     conn.commit()
     for pl in d["planches"]:
+        nom = Path(pl["fichier"]).name
+        origine = f"{database.ORIGINE_ESSAI}{nom}" if pl.get("essai") is True else f"jeu:{nom}"
         planche = ingest.ingest_image(conn, album_id, d["dossier"] / pl["fichier"],
-                                      origine=f"jeu:{Path(pl['fichier']).name}")
+                                      origine=origine)
         a_indexer = _poser_les_regions(conn, planche["id"], pl.get("regions"))
         if pl.get("regions"):
             database.avancer_statut(conn, planche["id"], "segmentee")

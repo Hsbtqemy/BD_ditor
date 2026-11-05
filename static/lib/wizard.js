@@ -37,7 +37,8 @@
      · Décrire l'album — sa notice porte une source de numérisation ;
      · Pré-remplir — une zone de la planche est née d'un moteur (`activite_id`), ou une zone
        de texte que personne n'a tracée ni retouchée porte un texte : celui de l'OCR. Si le
-       jeu posait lui-même des textes, l'étape se lirait faite d'emblée ;
+       jeu posait lui-même des textes, l'étape se lirait faite d'emblée. Quand le jeu a posé
+       une planche d'ESSAI, c'est sur elle seule qu'un texte de l'OCR fait l'étape ;
      · Tracer une zone — une case ET une bulle tracées à la main (`source` « manuel ») ;
      · Corriger le découpage — le cadre d'une zone que le jeu ou un moteur a posée a été
        repris à la main (`source` « corrige », que l'Atelier pose au premier déplacement ou
@@ -257,7 +258,9 @@
     tracer: ["atelier-planche", "atelier-structure"],
     decoupage: ["@bulle", "atelier-structure"],
     transcrire: ["atelier-transcription-texte"],
-    preremplir: ["atelier-traitement", "atelier-traitement-menu"],
+    // `@essai` : la planche, quand l'étape a sa planche d'essai — on y voit les cadres
+    // apparaître ; sans elle, rien de plus (l'écran le résout).
+    preremplir: ["atelier-traitement", "atelier-traitement-menu", "@essai"],
     annoter: ["annotation-case", "annotation-grille"],
     chercher: ["recherche-champ", "recherche-bac"],
     exporter: ["bibliotheque-actes"],
@@ -644,9 +647,20 @@
       return `/corpus?${p}`;
     }
     p.set("album", String(a.album_id));
-    p.set("planche", String(a.planche_ids[0]));
+    p.set("planche", String(plancheDeLEtape(e, vue)));
     if (e.mode) p.set("mode", e.mode);
     return `${e.surface}?${p}`;
+  }
+
+  /* La planche d'une étape : celle du parcours, sauf pour « Pré-remplir » quand le jeu a posé
+     une planche d'ESSAI (`planche_essai` de la vue du bac à sable, Hugo, 2026-11-05) — les
+     moteurs y travaillent sans toucher à la planche du parcours, où les étapes suivantes
+     reviennent. `null` sans album du parcours. */
+  function plancheDeLEtape(e, vue) {
+    const a = albumDuParcours(vue);
+    if (!a) return null;
+    if (e && e.k === "preremplir" && Number.isInteger(a.planche_essai)) return a.planche_essai;
+    return a.planche_ids[0];
   }
 
   /* ── La visite des pages ───────────────────────────────────────────────────────────
@@ -1197,6 +1211,13 @@
       case "corpus": return vues.includes("corpus");
       case "decrire": return !!(D.album && String(D.album.langue || "").trim());
       case "preremplir":
+        // Avec une planche d'essai (`D.essai`, ses zones `D.regionsEssai`), l'étape est faite
+        // quand l'OCR y a lu un texte : la segmentation et la détection, lancées d'abord,
+        // n'en écrivent pas ; la planche du parcours n'y compte pas.
+        if (D.essai) {
+          return liste(D.regionsEssai).some((r) => r && TYPES_TEXTE.includes(r.type)
+                                             && !aLaMain(r) && !r.touche && !!texteDe(r));
+        }
         return regions.some((r) => r && r.activite_id != null)
           || regions.some((r) => r && TYPES_TEXTE.includes(r.type) && !aLaMain(r)
                           && !r.touche && !!texteDe(r));
@@ -1233,6 +1254,11 @@
       + "lecture. Un détail d'image se trace dans la page Annotation.",
     decoupageFait: "Un cadre sélectionné se déplace en le glissant. Ses huit poignées le "
       + "redimensionnent, et Suppr le retire.",
+    // « Pré-remplir » sur la planche d'essai (la pilote, 2026-11-05) ; la première phrase,
+    // qui relie au travail fait à la main, est une PROPOSITION que Hugo relira.
+    essai: "Vous avez découpé et transcrit à la main ; voici ce que les moteurs proposent. "
+      + "Sur cette planche d'essai, lancez dans l'ordre « Segmenter les cases », « Détecter "
+      + "les bulles », puis « OCR des bulles », et regardez ce que chacun produit.",
   };
 
   function phraseGuide(e, vue, m, d, parcours) {
@@ -1246,6 +1272,7 @@
     if (e.k === "decoupage" && faite(e, d, parcours)) return typo(PHRASES.decoupageFait);
     // « Pré-remplir » : la ligne du geste, tant que l'OCR n'a pas été lancé et qu'il existe.
     if (e.k === "preremplir" && !(m && !m.ocr) && !faite(e, d, parcours)) {
+      if (d && d.essai) return `${phraseEtape(e, vue, m)}\n\n${typo(PHRASES.essai)}`;
       const n = regions.filter((r) => r && r.type === "bulle").length;
       return `${phraseEtape(e, vue, m)}\n\n${ligneOcr(n)}`;
     }
@@ -1430,7 +1457,7 @@
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
            vocabulaire, initiale, compteOccurrences, apercuCarte, choixDuParcours,
            PERD_LE_FIL, menePlusLoin, gesteDuClic, menuOuvert, LANCE, aEteindre,
-           retourALaPlanche, visuelEtape, ligneOcr, paragraphes,
+           retourALaPlanche, visuelEtape, ligneOcr, paragraphes, plancheDeLEtape,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,
