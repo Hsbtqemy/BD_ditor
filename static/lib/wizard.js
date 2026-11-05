@@ -835,6 +835,54 @@
     return t.length ? t : tempsDe(i).slice(0, 1);
   }
 
+  /* CE QUI FAIT PERDRE LE FIL pendant la visite et les repères (Hugo, 2026-11-05). Les zones
+     restent jouables — changer de mode, ouvrir un menu, trier, filtrer —, sauf les gestes qui
+     REMPLACENT la fenêtre ou mènent ailleurs : ceux-là ne font rien, et le clic CHOISIT la
+     zone qui les contient, comme un clic sur sa ligne. Deux sortes, et seulement deux :
+       · les gestes nommés ci-dessous, avec leur raison ;
+       · tout lien vers une AUTRE page, reconnu à sa cible (`menePlusLoin`) et non à une
+         liste — la barre des six pages, « Ouvrir dans l'Atelier ↗ », un résultat qui mène à
+         l'Atelier, la déconnexion.
+     Ce qui change de page autrement (Précédent du navigateur, une adresse tapée) garde la
+     règle du 2026-11-05 : la visite suit, à la page de la surface où l'on arrive. Le guide
+     pas à pas n'est pas concerné : ses zones sont l'endroit du geste. */
+  const PERD_LE_FIL = [
+    { selecteur: ".bande-aide",
+      raison: "Le « ? » ouvre les repères de la page à la place de la visite, sans retour." },
+    { selecteur: "#bac-commencer",
+      raison: "« Par où commencer » rouvre l'album ou la carte, qui prennent la place de la "
+        + "fenêtre." },
+    { selecteur: "#bac-inviter",
+      raison: "« Inviter… » ouvre un dialogue sur la page, qui couvre la fenêtre." },
+    { selecteur: "#bac-remettre",
+      raison: "« Remettre à neuf… » efface le bac à sable et recharge la page." },
+    { selecteur: "#bac-quitter",
+      raison: "« Quitter… » fait sortir du bac à sable, et donc de la visite." },
+  ];
+
+  function cheminNu(p) { return String(p || "").replace(/\/+$/, "") || "/"; }
+
+  /* Un lien mène-t-il hors de la page où l'on est ? Oui vers une autre origine ou un autre
+     chemin ; non vers la même page (une autre adresse de la même surface, une ancre), ni
+     pour ce qui n'est pas une page (`mailto:`, `javascript:`), ni pour une adresse
+     illisible. */
+  function menePlusLoin(href, ici) {
+    if (!href) return false;
+    try {
+      const u = new URL(href, ici), v = new URL(ici);
+      if (!/^https?:$/.test(u.protocol)) return false;
+      return u.origin !== v.origin || cheminNu(u.pathname) !== cheminNu(v.pathname);
+    } catch (e) { return false; }
+  }
+
+  /* Ce que fait un clic dans une zone de la visite ou des repères. `c.perd` : il vise un
+     geste qui fait perdre le fil. Toujours, le clic CHOISIT sa zone ; il est EMPÊCHÉ s'il
+     perdait le fil. */
+  function gesteDuClic(c) {
+    const x = c || {};
+    return { choisir: true, empecher: !!x.perd };
+  }
+
   /* Le « ? » rouvre les repères de la page où l'on est : la page de la visite de cette
      SURFACE, jamais celle de la barre du haut (qui vit sur toutes). `-1` hors des six. */
   function pageDeLaSurface(chemin) {
@@ -1195,6 +1243,7 @@
            typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
            vocabulaire, initiale, compteOccurrences, apercuCarte, choixDuParcours,
+           PERD_LE_FIL, menePlusLoin, gesteDuClic,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

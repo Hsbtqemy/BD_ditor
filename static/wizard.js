@@ -560,13 +560,16 @@
 
      Ce N'EST PAS une modale (la case « La fenêtre sur la zone se dessine au clavier ») :
        · les zones du temps sont jouables, tout le reste est `inert` — ni clic, ni focus, ni
-         lecteur d'écran ; l'assombri n'est qu'une image (`pointer-events: none`) ;
+         lecteur d'écran ; l'assombri n'est qu'une image (`pointer-events: none`). Jouables,
+         SAUF ce qui ferait perdre le fil (`BDWizard.PERD_LE_FIL`, Hugo, 2026-11-05) : le
+         « ? », la ligne du bac à sable, un lien vers une autre page ne font rien, et leur clic
+         choisit leur zone (`clicPage`) ;
        · aucun piège à focus. La fenêtre est posée en fin de document : Tab la quitte
          comme on quitte une page, et Maj+Tab depuis la fenêtre entre dans les zones, qui la
          précèdent ; depuis les zones, Tab revient à elle. Échap la ferme et rend le focus à
          qui l'avait ouverte ;
-       · une boîte de dialogue ouverte depuis une zone (« Remettre à neuf… ») reste jouable
-         au-dessus d'elle.
+       · une boîte de dialogue ouverte par la page reste jouable au-dessus d'elle (celles de
+         la ligne du bac à sable ne s'ouvrent plus pendant la visite : elles perdent le fil).
 
      Elle change de côté avec le TEMPS, au bouton « Suivant » — à droite au premier, à gauche
      au second —, jamais au survol (refusé par Hugo). Sa place est à la feuille : rien ne la
@@ -619,6 +622,8 @@
     fenetre.addEventListener("click", clicFenetre);
     document.addEventListener("mouseover", survolPage);
     document.addEventListener("focusin", survolPage);
+    // En capture, AVANT la page : un geste qui ferait perdre le fil n'arrive pas à elle.
+    document.addEventListener("click", clicPage, true);
     foyer.appendChild(voileSvg);
     foyer.appendChild(fenetre);
     document.body.appendChild(foyer);
@@ -1030,8 +1035,10 @@
     dessinerVoile();
   }
 
-  function choisirZone(marque) {
-    F.choisie = F.choisie === marque ? null : marque;
+  /* `basculer` : un second clic sur la même ligne la libère ; un clic sur la page, non. */
+  function choisirZone(marque, basculer = true) {
+    if (!basculer && F.choisie === marque) return;
+    F.choisie = basculer && F.choisie === marque ? null : marque;
     fenetre.querySelectorAll(".wf-zone").forEach((b) => {
       b.setAttribute("aria-pressed", String(b.dataset.zone === F.choisie));
       b.classList.toggle("ici", b.dataset.zone === montree());
@@ -1043,6 +1050,29 @@
       else if (els.length) els[0].scrollIntoView({ block: "nearest", inline: "nearest" });
     }
     dessinerVoile();
+  }
+
+  /* Ce qui, dans une zone jouable, ferait perdre le fil (`BDWizard.PERD_LE_FIL`) : un geste
+     nommé, ou un lien vers une autre page, de la cible jusqu'à la zone. */
+  function perdLeFil(cible, zones) {
+    for (let e = cible; e && e.nodeType === 1; e = e.parentElement) {
+      if (W.PERD_LE_FIL.some((x) => e.matches(x.selecteur))) return true;
+      if (e.tagName === "A" && e.hasAttribute("href")
+          && W.menePlusLoin(e.getAttribute("href"), location.href)) return true;
+      if (zones.includes(e)) return false;
+    }
+    return false;
+  }
+
+  /* Un clic dans une zone de la visite ou des repères la CHOISIT ; s'il faisait perdre le
+     fil, il ne fait rien d'autre (Hugo, 2026-11-05). */
+  function clicPage(ev) {
+    if (!F.mode || F.mode === "etape" || !foyer || foyer.contains(ev.target)) return;
+    const m = marqueSous(ev.target);
+    if (!m) return;
+    const g = W.gesteDuClic({ perd: perdLeFil(ev.target, zonesDe(m)) });
+    if (g.empecher) { ev.preventDefault(); ev.stopPropagation(); }
+    if (g.choisir) choisirZone(m, false);
   }
 
   function clicFenetre(ev) {

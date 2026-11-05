@@ -322,19 +322,82 @@ def test_le_survol_d_une_ligne_cerne_sa_zone_et_inversement(page, jeu):
 
 
 @pytestmark_proxy
-def test_un_lien_de_la_barre_suivi_pendant_la_visite_la_fait_suivre(page, jeu):
-    """« Annotation » dans la barre du haut, pendant la visite de la barre : on arrive sur la
-    page Annotation, et la visite y reprend à sa page, au lieu de se perdre."""
+def test_arrivee_sur_une_autre_page_pendant_la_visite_la_fait_suivre(page, jeu):
+    """Une autre page atteinte pendant la visite par une adresse tapée (ou Précédent) : la
+    visite y reprend à la page de cette surface, au lieu de se perdre. Un LIEN de la barre,
+    lui, ne mène plus ailleurs pendant la visite (test suivant)."""
     _commencer_la_visite(page, jeu)
     compte = page.locator("#wizard-visite-compte")
     expect(compte).to_have_text("Visite 1 / 7")
-    page.locator('.surf-nav a.surf-link[href^="/annotation"]').first.click()
-    page.wait_for_url(re.compile(r"/annotation"))
+    page.goto(page.url.split("/?")[0].rstrip("/") + "/annotation", wait_until="domcontentloaded")
     expect(compte).to_have_text("Visite 3 / 7 · 1 / 2")
     expect(page.locator("#wizard-fenetre-titre")).to_have_text("Annotation")
-    # « Suivant → » continue depuis là : la Bibliothèque.
+    # « Suivant → » continue depuis là.
     page.locator("#wizard-visite-suiv").click()
     expect(compte).to_have_text("Visite 3 / 7 · 2 / 2")
+
+
+# Ce qui fait perdre le fil (Hugo, 2026-11-05) : pendant la visite et les repères, le « ? »,
+# « Par où commencer », la ligne du bac à sable et tout lien vers une autre page ne font
+# rien ; le clic CHOISIT leur zone, comme un clic sur sa ligne.
+
+def _ligne_choisie(page, marque):
+    expect(page.locator(f'#wizard-zones .wf-zone[data-zone="{marque}"]')).to_have_attribute(
+        "aria-pressed", "true")
+    expect(page.locator(".wizard-voile .wf-cadre.ici")).to_have_count(1)
+
+
+@pytestmark_proxy
+def test_pendant_la_visite_ce_qui_perd_le_fil_choisit_sa_zone(page, jeu):
+    _commencer_la_visite(page, jeu)
+    compte = page.locator("#wizard-visite-compte")
+    expect(compte).to_have_text("Visite 1 / 7")
+    adresse = page.url
+    # Le « ? » n'ouvre pas les repères à la place de la visite.
+    page.locator("#site-nav > .bande-aide").click()
+    expect(compte).to_have_text("Visite 1 / 7")
+    expect(page.locator("#wizard-fenetre")).to_have_attribute("aria-label", "La visite des pages")
+    _ligne_choisie(page, "bande-aide")
+    # Un lien de la barre ne quitte pas la page.
+    page.locator('.surf-nav a.surf-link[href^="/annotation"]').first.click()
+    page.wait_for_timeout(400)
+    assert page.url == adresse
+    expect(compte).to_have_text("Visite 1 / 7")
+    _ligne_choisie(page, "bande-pages")
+    # « Par où commencer » ne rouvre ni l'album ni la carte.
+    page.locator("#bac-commencer").click()
+    expect(page.locator("#wizard-modal")).to_be_hidden()
+    _ligne_choisie(page, "bande-bac")
+    # « Remettre à neuf… » n'ouvre pas son dialogue.
+    page.locator("#bac-remettre").click()
+    page.wait_for_timeout(300)
+    assert not page.locator("#bac-modal").is_visible()
+    expect(compte).to_have_text("Visite 1 / 7")
+    # Au temps de l'Atelier, un mode reste jouable.
+    page.locator("#wizard-visite-suiv").click()
+    expect(compte).to_have_text("Visite 2 / 7 · 1 / 2")
+    page.locator('.mode-btn[data-mode="edition"]').click()
+    expect(page.locator('.mode-btn[data-mode="edition"]')).to_have_attribute("aria-pressed", "true")
+    _ligne_choisie(page, "atelier-modes")
+
+
+@pytestmark_proxy
+def test_dans_les_reperes_un_lien_vers_une_autre_page_choisit_sa_zone(page, jeu):
+    """Les repères du « ? » suivent la même règle : sur la page Annotation, « Ouvrir dans
+    l'Atelier ↗ » ne quitte pas la page, et choisit sa zone."""
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    page.goto(jeu["base"] + "/annotation", wait_until="domcontentloaded")
+    page.wait_for_function("() => !!(window.BDWizardEcran && window.BDWizardEcran.decide)")
+    expect(page.locator("#an-atelier")).to_be_visible()
+    page.locator("#site-nav > .bande-aide").click()
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Cette page")
+    adresse = page.url
+    page.locator("#an-atelier").click()
+    page.wait_for_timeout(400)
+    assert page.url == adresse
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Cette page")
+    _ligne_choisie(page, "annotation-lieu")
 
 
 @pytestmark_proxy

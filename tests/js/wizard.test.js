@@ -942,3 +942,38 @@ test("la dernière page : deux choix en cartes, durée, étapes numérotées et 
   // Le détail du parcours reste ce que le lecteur d'écran lit, tel quel.
   assert.deepEqual(c.map((x) => sp(x.detail)), W.FIN.parcours.map((x) => sp(W.typo(x.detail))));
 });
+
+/* Ce qui fait perdre le fil pendant la visite et les repères (Hugo, 2026-11-05) : UNE liste,
+   chaque entrée avec sa raison, et chaque sélecteur posé par un script de l'écran. */
+test("ce qui fait perdre le fil : une liste nommée, chaque geste avec sa raison", () => {
+  const sources = ["theme.js", "bac-a-sable.js", "wizard.js"].map((f) =>
+    fs.readFileSync(path.join(__dirname, "..", "..", "static", f), "utf8")).join("\n");
+  assert.deepEqual(W.PERD_LE_FIL.map((x) => x.selecteur),
+                   [".bande-aide", "#bac-commencer", "#bac-inviter", "#bac-remettre",
+                    "#bac-quitter"]);
+  for (const x of W.PERD_LE_FIL) {
+    assert.ok(x.raison && x.raison.length > 20, x.selecteur);
+    const nom = x.selecteur.slice(1);
+    // L'identifiant ou la classe est posé quelque part : une entrée morte se verrait.
+    assert.ok(sources.includes(`"${nom}"`) || sources.includes(` ${nom}"`), x.selecteur);
+  }
+});
+
+test("un lien perd le fil quand il mène à une AUTRE page, pas à une autre adresse de la même", () => {
+  const ici = "https://bd.exemple/?album=3&planche=7";
+  const cas = [
+    ["/annotation?album=3", true], ["/corpus", true], ["/recherche/", true],
+    ["https://auth.exemple/logout", true],               // la déconnexion, au portail
+    ["/?album=4", false], ["?planche=8", false], ["#zone", false], ["/", false],
+    ["mailto:quelqu@un.fr", false], ["javascript:void(0)", false], ["", false], [null, false],
+  ];
+  for (const [href, attendu] of cas) assert.equal(W.menePlusLoin(href, ici), attendu, String(href));
+  assert.equal(W.menePlusLoin("/corpus?collection=2", "https://bd.exemple/corpus/"), false);
+  assert.equal(W.menePlusLoin("/x", "pas une adresse"), false);
+});
+
+test("un clic dans une zone la choisit, et n'est empêché que s'il perdait le fil", () => {
+  assert.deepEqual(W.gesteDuClic({ perd: true }), { choisir: true, empecher: true });
+  assert.deepEqual(W.gesteDuClic({ perd: false }), { choisir: true, empecher: false });
+  assert.deepEqual(W.gesteDuClic(null), { choisir: true, empecher: false });
+});
