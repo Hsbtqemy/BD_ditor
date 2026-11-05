@@ -376,6 +376,11 @@ async function selectPlanche(id) {
   if (gen !== plancheGen) return;
   fitView();
   renderPanel();
+  // La même planche rechargée sous une vue cadrée (l'Atelier la resélectionne quand
+  // l'adresse demande un mode) : `fitView` vient de la défaire, le cadrage se repose.
+  if (CADRAGE.pose && !CADRAGE.voulu && CADRAGE.dernier && CADRAGE.dernier.planche === id) {
+    CADRAGE.voulu = CADRAGE.dernier;
+  }
   appliquerCadrage();
 }
 
@@ -383,39 +388,54 @@ async function selectPlanche(id) {
    Ce que le guide « Par où commencer » demande à l'Atelier (UX-6)
    =================================================================== */
 /* « Corriger le découpage » : l'Atelier cadre seul (Hugo, 2026-11-02). En entrant dans
-   l'étape, la planche se rapproche de la bulle à corriger, choisie pour que ses poignées se
-   voient ; en sortant, elle revient à la planche entière. Le cadre et la vue sont la règle
-   de `lib/wizard.js` (`cadreAutour`, `vueCadree`). Une demande faite avant que la planche
+   l'étape, la planche se rapproche de la CASE de la bulle à corriger (2026-11-05), la bulle
+   choisie pour que ses poignées se voient ; en sortant, elle revient à la planche entière.
+   Le cadre et la vue sont la règle de `lib/wizard.js` (`cadreDeLaBulle`, `vueCadree`, le
+   plafond `ZOOM_CADRAGE`). « Tracer une zone » de même, sur la rangée à tracer, un
+   rectangle de la planche (`cadreAvecMarge`). Une demande faite avant que la planche
    soit là attend qu'elle le soit. `libre` (coordonnées de l'écran) : la part de la scène
    où cadrer — celle que la fenêtre du guide ne recouvre pas ; la scène entière sinon. */
-const CADRAGE = { voulu: null, pose: false };
+const CADRAGE = { voulu: null, pose: false, dernier: null };
 
 function appliquerCadrage() {
   const v = CADRAGE.voulu;
   if (!v || !window.BDWizard || !state.planche || state.planche.id !== v.planche || !state.webW) return;
-  const r = state.regionsById.get(v.region);
-  if (!r) return;
+  // La cible : une région (« Corriger » : sa bulle, choisie), ou un rectangle de la planche
+  // en pixels master (« Tracer une zone » : la rangée à tracer, rien de choisi).
+  const rect = v.region && typeof v.region === "object" ? v.region : null;
+  const r = rect ? null : state.regionsById.get(v.region);
+  if (!r && !rect) return;
   CADRAGE.voulu = null;
   const s = stage.getBoundingClientRect();
   const z = v.libre || { l: s.left, t: s.top, r: s.right, b: s.bottom };
-  const cadre = BDWizard.cadreAutour(r, state.planche.largeur_px, state.planche.hauteur_px);
-  const vue = BDWizard.vueCadree(cadre, { w: z.r - z.l, h: z.b - z.t }, state.webScale);
+  const W = state.planche.largeur_px, H = state.planche.hauteur_px;
+  const cadre = rect ? BDWizard.cadreAvecMarge(rect, W, H)
+    : BDWizard.cadreDeLaBulle(r, state.regionsById.get(r.parent_id), W, H);
+  const vue = BDWizard.vueCadree(cadre, { w: z.r - z.l, h: z.b - z.t }, state.webScale,
+                                 BDWizard.ZOOM_CADRAGE);
   if (!vue) return;
   vue.tx += z.l - s.left;
   vue.ty += z.t - s.top;
-  if (state.selectedId !== r.id) selectRegion(r.id);
+  if (r && state.selectedId !== r.id) selectRegion(r.id);
   Object.assign(state, vue);
   applyTransform();
   CADRAGE.pose = true;
+  CADRAGE.dernier = v;
 }
 
 window.BDAtelierVue = {
-  cadrer(plancheId, regionId, libre) {
-    CADRAGE.voulu = { planche: plancheId, region: regionId, libre: libre || null };
+  // `cible` : l'identifiant d'une région, ou un rectangle `{ x, y, w, h }` de la planche.
+  cadrer(plancheId, cible, libre) {
+    CADRAGE.voulu = { planche: plancheId, region: cible, libre: libre || null };
     appliquerCadrage();
   },
+  // Une demande de cadrage attend la planche : le guide ne juge la vue qu'une fois posée.
+  enAttente() { return !!CADRAGE.voulu; },
+  // Une vue cadrée est posée (et pas encore rendue à la planche entière).
+  estCadree() { return CADRAGE.pose; },
   toutVoir() {
     CADRAGE.voulu = null;
+    CADRAGE.dernier = null;
     if (!CADRAGE.pose) return;
     CADRAGE.pose = false;
     if (state.planche) fitView();

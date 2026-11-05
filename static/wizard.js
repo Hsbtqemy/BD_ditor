@@ -1510,22 +1510,56 @@
     return true;
   }
 
-  /* « Corriger » : l'Atelier se rapproche de la bulle à corriger, si l'étape n'est pas
-     déjà faite et que la planche du parcours est celle qu'il montre. */
+  /* L'Atelier cadre seul, en ENTRANT dans l'étape, si elle n'est pas déjà faite et que la
+     planche du parcours est celle qu'il montre : « Corriger », la bulle à corriger ;
+     « Tracer une zone », la rangée à tracer (Hugo, 2026-11-05), le rectangle commun des
+     zones du jeu (`rangeeDuJeu`) — sans zone du jeu, rien. Une seule fois par entrée (puis
+     par mise en page, `garderLaBulleHorsDeLaFenetre`) : un zoom fait ensuite à la main reste
+     libre. */
   function entrerDansLeCadrage() {
     const e = etapeCourante(), a = W.albumDuParcours(vue());
-    if (!e || e.k !== "decoupage" || chemin() !== "/" || !window.BDAtelierVue || !a) return;
+    if (!e || chemin() !== "/" || !window.BDAtelierVue || !a) return;
+    if (e.k !== "decoupage" && e.k !== "tracer") return;
     if (W.faite(e, G.d, S.souvenir.parcours)) return;
-    const b = W.bulleACorriger(G.d && G.d.regions);
-    if (!b) return;
+    const regions = (G.d && G.d.regions) || [];
+    let cible = null, boite = null;
+    if (e.k === "tracer") {
+      cible = boite = W.rangeeDuJeu(regions);
+    } else {
+      // « Corriger » : la bulle reste choisie, et l'Atelier cadre SA CASE (Hugo,
+      // 2026-11-05 : la bulle seule grossie était « beaucoup trop gros »).
+      const b = W.bulleACorriger(regions);
+      if (b) {
+        cible = b.id;
+        boite = W.boiteDeLaBulle(b, regions.find((r) => r.id === b.parent_id));
+      }
+    }
+    if (cible == null || !boite) return;
     G.cadree = true;
-    G.bulle = b.id;
+    G.bulle = e.k === "decoupage" ? cible : null;
+    G.cible = cible;
+    G.boite = boite;
     G.recadre = null;
-    window.BDAtelierVue.cadrer(a.planche_ids[0], b.id);
+    suivreLaScene();
+    window.BDAtelierVue.cadrer(a.planche_ids[0], cible);
+  }
+
+  /* La scène de l'Atelier change de taille sans que la page le dise au guide — la hauteur
+     visible se relit après coup (`--svh-visible`), la feuille réserve sa place — : une
+     nouvelle mise en page, que le cadrage suit (`garderLaBulleHorsDeLaFenetre`). Sans cela,
+     la vue restait cadrée pour la scène d'avant (mesuré : 73 % au lieu de 214 %). */
+  let observeScene = null;
+  function suivreLaScene() {
+    const s = document.getElementById("stage");
+    if (observeScene || !s || typeof ResizeObserver !== "function") return;
+    observeScene = new ResizeObserver(() => { if (G.cadree) planifier(); });
+    observeScene.observe(s);
   }
 
   function sortirDuCadrage() {
     G.bulle = null;
+    G.cible = null;
+    G.boite = null;
     if (!G.cadree) return;
     G.cadree = false;
     if (window.BDAtelierVue) window.BDAtelierVue.toutVoir();
@@ -1687,27 +1721,38 @@
     else if (r.t < haut) window.scrollBy({ top: r.t - haut, behavior: "instant" });
   }
 
-  /* « Corriger » cadre la bulle de sorte qu'elle reste hors de la fenêtre : si la fenêtre
-     la recouvre, ou que la bulle n'est plus dans la scène (la feuille a réduit la page),
-     l'Atelier la recadre dans la part de la scène que la fenêtre laisse libre — une fois
-     par mise en page, sans boucle. */
+  /* Ce que l'étape cadre, à l'écran : son rectangle de la planche (`G.boite`, pixels master :
+     la rangée, ou la case de la bulle à corriger), rapporté à l'écran par la `viewBox` du
+     calque. */
+  function boiteDeLaCible() {
+    const c = G.boite, ov = document.getElementById("overlay");
+    if (!c || !ov || !ov.viewBox || !ov.viewBox.baseVal) return null;
+    const vb = ov.viewBox.baseVal, o = ov.getBoundingClientRect();
+    if (!(vb.width > 0) || !(vb.height > 0)) return null;
+    const kx = o.width / vb.width, ky = o.height / vb.height;
+    return { l: o.left + c.x * kx, t: o.top + c.y * ky,
+             r: o.left + (c.x + c.w) * kx, b: o.top + (c.y + c.h) * ky };
+  }
+
+  /* L'étape cadrée pose sa cible dans la part de la scène que la fenêtre laisse libre, une
+     fois par MISE EN PAGE — la fenêtre posée à côté du foyer ou en feuille, la taille de la
+     scène —, sans boucle : la fenêtre change de place après le premier cadrage (elle passe
+     en feuille, la page lui réserve sa hauteur), et le cadrage la suit. Entre deux mises en
+     page, rien n'est rejoué : un zoom fait à la main reste libre. */
   function garderLaBulleHorsDeLaFenetre() {
-    if (!G.cadree || G.bulle == null || !window.BDAtelierVue) return;
-    const bulle = document.querySelector(`#overlay rect.region[data-id="${G.bulle}"]`);
+    if (!G.cadree || G.cible == null || !window.BDAtelierVue) return;
+    if (window.BDAtelierVue.enAttente && window.BDAtelierVue.enAttente()) return;
     const scene = document.getElementById("stage");
-    if (!bulle || !scene) return;
-    const q = bulle.getBoundingClientRect(), s = scene.getBoundingClientRect();
-    const fq = fenetre.getBoundingClientRect();
-    const b = { l: q.left, t: q.top, r: q.right, b: q.bottom };
+    if (!scene || !boiteDeLaCible()) return;
+    const s = scene.getBoundingClientRect(), fq = fenetre.getBoundingClientRect();
     const sc = { l: s.left, t: s.top, r: s.right, b: s.bottom };
     const fen = { l: fq.left, t: fq.top, r: fq.right, b: fq.bottom };
-    const dedans = b.l >= sc.l && b.r <= sc.r && b.t >= sc.t && b.b <= sc.b;
-    if (dedans && !W.recouvre(b, fen)) return;
-    const cle = `${G.pose && G.pose.cle}:${Math.round(sc.r - sc.l)}x${Math.round(sc.b - sc.t)}`;
+    const arr = (z) => [z.l, z.t, z.r, z.b].map(Math.round).join(",");
+    const cle = `${G.pose && G.pose.cle}:${G.pose && G.pose.feuille}:${arr(sc)}:${arr(fen)}`;
     if (G.recadre === cle) return;
     G.recadre = cle;
     const a = W.albumDuParcours(vue());
-    if (a) window.BDAtelierVue.cadrer(a.planche_ids[0], G.bulle, W.zoneLibre(sc, fen, 14));
+    if (a) window.BDAtelierVue.cadrer(a.planche_ids[0], G.cible, W.zoneLibre(sc, fen, 14));
   }
 
 

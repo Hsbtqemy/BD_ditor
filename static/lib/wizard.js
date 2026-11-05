@@ -1270,15 +1270,48 @@
       || (b.w * b.h === a.w * a.h && b.id < a.id) ? b : a));
   }
 
-  /* Le cadre autour de la bulle, en pixels master : trois fois sa taille, et jamais moins
-     d'un quart de la largeur ni d'un huitième de la hauteur de la planche, pour qu'on la
-     voie dans sa case ; centré sur elle, ramené dans la planche. */
-  function cadreAutour(r, W, H) {
-    if (!r || !(W > 0) || !(H > 0)) return null;
-    const w = Math.min(W, Math.max(3 * r.w, W / 4)), h = Math.min(H, Math.max(3 * r.h, H / 8));
-    const x = Math.max(0, Math.min(W - w, r.x + r.w / 2 - w / 2));
-    const y = Math.max(0, Math.min(H - h, r.y + r.h / 2 - h / 2));
-    return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+  /* « Corriger » cadre la CASE de la bulle à corriger (Hugo, 2026-11-05 : la bulle, exprès
+     minuscule, grossie seule était « beaucoup trop gros » — ni sa case, ni l'autre bulle,
+     ni de marge pour tirer une poignée). Le rectangle à montrer, en pixels master : la case
+     (`parent`) ; sans case, la bulle et trois fois sa taille de chaque côté. */
+  function boiteDeLaBulle(b, parent) {
+    if (!b) return null;
+    if (parent && parent.w > 0 && parent.h > 0) {
+      return { x: parent.x, y: parent.y, w: parent.w, h: parent.h };
+    }
+    return { x: b.x - 3 * b.w, y: b.y - 3 * b.h, w: 7 * b.w, h: 7 * b.h };
+  }
+
+  /* Le cadre de « Corriger », marge comprise et ramené dans la planche. */
+  function cadreDeLaBulle(b, parent, W, H) {
+    return cadreAvecMarge(boiteDeLaBulle(b, parent), W, H);
+  }
+
+  /* Le zoom le plus fort d'un cadrage du guide : sur une petite planche, une case ou une
+     rangée cadrées ne se grossissent pas au-delà. */
+  const ZOOM_CADRAGE = 3;
+
+  /* « Tracer une zone » : l'Atelier cadre la rangée à tracer (Hugo, 2026-11-05 : « c'est
+     difficile de naviguer dans la planche et d'agrandir correctement »). La rangée est le
+     rectangle commun des zones que le JEU a posées sur la planche (`source` « jeu » : les
+     cases de la rangée et leurs bulles, ce qui englobe le vide où se trace la case qui
+     manque), lu sur la planche — aucune coordonnée écrite ici. `null` sans zone du jeu. */
+  function rangeeDuJeu(regions) {
+    const z = liste(regions).filter((r) => r && r.source === "jeu" && r.w > 0 && r.h > 0);
+    if (!z.length) return null;
+    const l = Math.min(...z.map((r) => r.x)), t = Math.min(...z.map((r) => r.y));
+    const r = Math.max(...z.map((q) => q.x + q.w)), b = Math.max(...z.map((q) => q.y + q.h));
+    return { x: l, y: t, w: r - l, h: b - t };
+  }
+
+  /* Le cadre autour d'un rectangle de la planche : une marge d'un vingt-cinquième de la
+     largeur de la planche de chaque côté, ramené dans la planche. */
+  function cadreAvecMarge(q, W, H) {
+    if (!q || !(W > 0) || !(H > 0)) return null;
+    const m = W / 25;
+    const x = Math.max(0, q.x - m), y = Math.max(0, q.y - m);
+    const r = Math.min(W, q.x + q.w + m), b = Math.min(H, q.y + q.h + m);
+    return { x: Math.round(x), y: Math.round(y), w: Math.round(r - x), h: Math.round(b - y) };
   }
 
   /* La vue de l'Atelier qui montre ce cadre au milieu de la scène : `{ zoom, tx, ty }` —
@@ -1378,7 +1411,8 @@
            CLE_VISITE, tempsDe, position, suivant, precedent, estFin, compteVisite, cote,
            reperes, phrasePage, bacDuProjet, tempsVisibles, pageDeLaSurface, adresseVisite, retenirVisite, lireVisite,
            oublierVisite, marquePage,
-           faite, phraseGuide, boutonGuide, bulleACorriger, cadreAutour, vueCadree, PHRASES,
+           faite, phraseGuide, boutonGuide, bulleACorriger, vueCadree, PHRASES,
+           rangeeDuJeu, cadreAvecMarge, boiteDeLaBulle, cadreDeLaBulle, ZOOM_CADRAGE,
            CLE_GUIDE, guideNeuf, lireGuide, retenirGuide, marquerVue, etapeIci,
            marquesDesEtapes, FOYERS, foyer, placerFenetre, recouvre, zoneLibre, marquesDesFoyers };
 });

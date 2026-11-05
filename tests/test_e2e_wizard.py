@@ -918,6 +918,16 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
     expect(page.locator("#wizard-fenetre .wf-phrase")).to_contain_text("Seule la dernière rangée")
     expect(fait).to_be_hidden()
     expect(suivant).to_have_text("Passer →")
+    # L'Atelier a cadré la rangée du jeu (test suivant) ; « Ajuster », un geste de la main,
+    # rend la planche entière, et le guide ne le défait pas.
+    _cadrage_pose(page)
+    zoom = page.locator("#zoom-level")
+    expect(zoom).not_to_have_text("")
+    cadre = zoom.inner_text()
+    page.locator("#zoom-fit").click()
+    expect(zoom).not_to_have_text(cadre)
+    page.wait_for_timeout(300)
+    assert int(zoom.inner_text().rstrip(" %")) < int(cadre.rstrip(" %"))
     # Pas une modale, et la planche est jouable : on y trace une case, à la souris…
     assert not page.evaluate(INERTE, "#stage") and page.evaluate(INERTE, "#sidebar")
     case = _glisser(page, (220, 40), (380, 260))
@@ -935,7 +945,6 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
     expect(titre).to_have_text("Tracer une zone")
 
     # « Corriger » : la planche se rapproche de la plus petite bulle du jeu, choisie.
-    zoom = page.locator("#zoom-level")
     entier = zoom.inner_text()
     suivant.click()
     expect(titre).to_have_text("Corriger le découpage")
@@ -981,6 +990,92 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
     page.reload(wait_until="domcontentloaded")
     page.wait_for_function("() => !!(window.BDWizardEcran && window.BDWizardEcran.decide)")
     expect(page.locator("#wizard-fenetre")).to_have_count(0)
+
+
+# « Tracer une zone » : l'Atelier cadre la rangée du jeu (Hugo, 2026-11-05) — grossie, en
+# entier dans la scène et à côté de la fenêtre du guide, jamais dessous ; la planche revient
+# entière en sortant de l'étape.
+
+def _cadrage_pose(page):
+    """Le cadrage du guide est posé : demandé, la planche là, et la mise en page faite."""
+    page.wait_for_function("""() => !!window.BDAtelierVue && window.BDAtelierVue.estCadree()
+      && !window.BDAtelierVue.enAttente()""")
+    page.wait_for_timeout(500)
+
+
+def _planche_du_parcours(jeu):
+    vue = _api(jeu["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    return next(j for j in vue["jeu"] if j["role"] == "pas-a-pas")["planche_ids"][0]
+
+
+RANGEE_A_L_ECRAN = """(q) => {
+  const ov = document.getElementById('overlay'), vb = ov.viewBox.baseVal;
+  const o = ov.getBoundingClientRect(), kx = o.width / vb.width, ky = o.height / vb.height;
+  const r = { l: o.left + q.x * kx, t: o.top + q.y * ky,
+              r: o.left + (q.x + q.w) * kx, b: o.top + (q.y + q.h) * ky };
+  const s = document.getElementById('stage').getBoundingClientRect();
+  const f = document.getElementById('wizard-fenetre').getBoundingClientRect();
+  return { r, dedans: r.l >= s.left - 1 && r.r <= s.right + 1 && r.t >= s.top - 1
+             && r.b <= s.bottom + 1,
+           recouvre: Math.min(r.r, f.right) - Math.max(r.l, f.left) > 1
+             && Math.min(r.b, f.bottom) - Math.max(r.t, f.top) > 1,
+           largeur: r.r - r.l };
+}"""
+
+
+@pytestmark_proxy
+@pytest.mark.parametrize("largeur", [1280, 768])
+def test_tracer_une_zone_cadre_la_rangee_du_jeu(page, jeu_decoupe, largeur):
+    page.set_viewport_size({"width": largeur, "height": 800})
+    _au_guide(page, jeu_decoupe)      # le parcours rapide : « Tracer » est la première étape
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Tracer une zone")
+    # La planche du parcours, lue dans la vue du bac à sable : l'adresse peut ne pas encore la dire.
+    pid = _planche_du_parcours(jeu_decoupe)
+    jeu = [r for r in _api(jeu_decoupe["base"], CAMILLE, "GET", f"/api/planches/{pid}/regions")
+           if r["source"] == "jeu"]
+    assert jeu
+    l, t = min(r["x"] for r in jeu), min(r["y"] for r in jeu)
+    rangee = {"x": l, "y": t, "w": max(r["x"] + r["w"] for r in jeu) - l,
+              "h": max(r["y"] + r["h"] for r in jeu) - t}
+    _cadrage_pose(page)
+    cadree = page.evaluate(RANGEE_A_L_ECRAN, rangee)
+    assert cadree["dedans"], cadree
+    assert not cadree["recouvre"], cadree
+    zoom = page.locator("#zoom-level")
+    z_cadre = int(zoom.inner_text().rstrip(" %"))
+    # En sortant de l'étape (✕), la planche revient entière : la rangée y est plus petite.
+    page.locator("#wizard-guide-quitter").click()
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
+    expect(zoom).not_to_have_text(f"{z_cadre} %")
+    assert int(zoom.inner_text().rstrip(" %")) < z_cadre
+    assert page.evaluate("""(q) => { const ov = document.getElementById('overlay');
+      return ov.getBoundingClientRect().width * q.w / ov.viewBox.baseVal.width; }""",
+                         rangee) < cadree["largeur"]
+
+
+@pytestmark_proxy
+@pytest.mark.parametrize("largeur", [1280, 768])
+def test_corriger_cadre_la_case_de_la_bulle(page, jeu_decoupe, largeur):
+    """Hugo, 2026-11-05 : « Corriger » ne grossit plus la bulle seule, « beaucoup trop
+    gros » — il cadre sa CASE : la bulle choisie et sa case se voient en entier, à côté de
+    la fenêtre, jamais dessous ; en revenant à « Tracer », la rangée reprend la vue."""
+    page.set_viewport_size({"width": largeur, "height": 800})
+    _au_guide(page, jeu_decoupe)
+    titre = page.locator("#wizard-fenetre-titre")
+    expect(titre).to_have_text("Tracer une zone")
+    page.locator("#wizard-guide-suiv").click()
+    expect(titre).to_have_text("Corriger le découpage")
+    # La planche du parcours, lue dans la vue du bac à sable : l'adresse peut ne pas encore la dire.
+    pid = _planche_du_parcours(jeu_decoupe)
+    regions = _api(jeu_decoupe["base"], CAMILLE, "GET", f"/api/planches/{pid}/regions")
+    petite = min((r for r in regions if r["type"] == "bulle"), key=lambda r: r["w"] * r["h"])
+    case = next(r for r in regions if r["id"] == petite["parent_id"])
+    expect(page.locator("#region-id")).to_have_text(f"#{petite['id']}")
+    _cadrage_pose(page)
+    for quoi in (petite, case):
+        m = page.evaluate(RANGEE_A_L_ECRAN, {k: quoi[k] for k in ("x", "y", "w", "h")})
+        assert m["dedans"], (largeur, quoi["type"], m)
+        assert not m["recouvre"], (largeur, quoi["type"], m)
 
 
 @pytestmark_proxy

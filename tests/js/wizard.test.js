@@ -596,14 +596,20 @@ test("« Corriger » cadre la plus petite bulle que personne n'a reprise", () =>
                                    w: 5, h: 5 }]), null);
   assert.equal(W.bulleACorriger([]), null);
   assert.equal(W.bulleACorriger(null), null);
-  // Le cadre : trois fois la bulle, au moins un quart de la largeur et un huitième de la
-  // hauteur, centré sur elle et ramené dans la planche.
-  const c = W.cadreAutour({ x: 146, y: 972, w: 72, h: 25 }, 975, 1296);
-  assert.deepEqual(c, { x: 60, y: 904, w: 244, h: 162 });
-  assert.ok(c.x <= 146 && c.x + c.w >= 146 + 72 && c.y <= 972 && c.y + c.h >= 972 + 25);
-  assert.deepEqual(W.cadreAutour({ x: 900, y: 1280, w: 70, h: 14 }, 975, 1296),
-                   { x: 731, y: 1134, w: 244, h: 162 });
-  assert.equal(W.cadreAutour(null, 975, 1296), null);
+  // Le cadre : la CASE de la bulle, avec la marge ; sans case, la bulle et trois fois sa
+  // taille de chaque côté, ramenées dans la planche.
+  const bulle = { x: 36, y: 977, w: 64, h: 15 }, kase = { x: 14, y: 970, w: 293, h: 312 };
+  assert.deepEqual(W.boiteDeLaBulle(bulle, kase), { x: 14, y: 970, w: 293, h: 312 });
+  assert.deepEqual(W.cadreDeLaBulle(bulle, kase, 975, 1296), { x: 0, y: 931, w: 346, h: 365 });
+  assert.deepEqual(W.boiteDeLaBulle(bulle, null), { x: -156, y: 932, w: 448, h: 105 });
+  const seule = W.cadreDeLaBulle(bulle, null, 975, 1296);
+  assert.deepEqual(seule, { x: 0, y: 893, w: 331, h: 183 });
+  assert.ok(seule.x <= bulle.x && seule.x + seule.w >= bulle.x + bulle.w);
+  assert.equal(W.boiteDeLaBulle(null, kase), null);
+  assert.deepEqual(W.boiteDeLaBulle(bulle, { x: 1, y: 1, w: 0, h: 9 }).w, 448);
+  // Le plafond du zoom d'un cadrage.
+  assert.equal(W.ZOOM_CADRAGE, 3);
+  assert.equal(W.vueCadree({ x: 0, y: 0, w: 10, h: 10 }, { w: 800, h: 600 }, 1, W.ZOOM_CADRAGE).zoom, 3);
   // La vue : le cadre au milieu de la scène, au plus grand zoom qui le montre entier.
   const v = W.vueCadree({ x: 60, y: 904, w: 244, h: 162 }, { w: 800, h: 600 }, 1);
   assert.ok(Math.abs(v.zoom - Math.min(800 / 244, 600 / 162)) < 1e-9);
@@ -1104,4 +1110,25 @@ test("« Pré-remplir » dit les trois moteurs, et lui seul porte un visuel", ()
   assert.ok(!JSON.stringify(v).includes("/api/"));
   for (const e of W.ETAPES.filter((x) => x.k !== "preremplir")) assert.equal(W.visuelEtape(e), null, e.k);
   assert.equal(W.visuelEtape(null), null);
+});
+
+test("« Tracer une zone » cadre la rangée du jeu : le rectangle commun de ses zones, avec marge", () => {
+  const jeu = (type, x, y, w, h) => ({ type, source: "jeu", x, y, w, h });
+  const regions = [jeu("case", 14, 970, 293, 312), jeu("bulle", 36, 977, 64, 15),
+                   jeu("case", 608, 972, 349, 310), jeu("detail", 244, 1165, 44, 50),
+                   { type: "case", source: "manuel", x: 330, y: 975, w: 250, h: 300 },
+                   { type: "case", source: "corrige", x: 0, y: 0, w: 900, h: 300 }];
+  // Les seules zones du jeu : le vide du milieu est dedans, la case tracée ne change rien.
+  assert.deepEqual(W.rangeeDuJeu(regions), { x: 14, y: 970, w: 943, h: 312 });
+  assert.equal(W.rangeeDuJeu([{ type: "case", source: "manuel", x: 0, y: 0, w: 9, h: 9 }]), null);
+  assert.equal(W.rangeeDuJeu([]), null);
+  assert.equal(W.rangeeDuJeu(null), null);
+  assert.equal(W.rangeeDuJeu([jeu("case", 1, 1, 0, 5)]), null);
+  // Une marge d'un vingt-cinquième de la largeur, ramenée dans la planche (975 × 1296).
+  assert.deepEqual(W.cadreAvecMarge({ x: 14, y: 970, w: 943, h: 312 }, 975, 1296),
+                   { x: 0, y: 931, w: 975, h: 365 });
+  assert.deepEqual(W.cadreAvecMarge({ x: 100, y: 100, w: 100, h: 50 }, 1000, 1000),
+                   { x: 60, y: 60, w: 180, h: 130 });
+  assert.equal(W.cadreAvecMarge(null, 975, 1296), null);
+  assert.equal(W.cadreAvecMarge({ x: 0, y: 0, w: 1, h: 1 }, 0, 10), null);
 });
