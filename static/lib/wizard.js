@@ -317,13 +317,64 @@
         { nom: "Humour", fichiers: ["corpus-moustache.jpg", "corpus-saint-cyr.jpg"] },
       ],
     },
+    // La case 1 de la dernière rangée de *Moustache et Trottinette*, comme la maquette. Le
+    // CADRE est le recadrage du fichier, en pixels du scan (975 × 1296), et chaque zone aussi.
+    zones: {
+      description: "Une case de « Moustache et Trottinette », ses zones encadrées et nommées : "
+        + "la case, deux bulles, et un détail, la coccinelle.",
+      fichier: "zones-moustache-case.jpg",
+      cadre: { x: 8, y: 964, w: 305, h: 324 },
+      zones: [
+        { type: "case", nom: "case 1", x: 14, y: 970, w: 293, h: 312 },
+        { type: "bulle", nom: "bulle 1", x: 26, y: 971, w: 100, h: 26 },
+        { type: "bulle", nom: "bulle 2", x: 147, y: 972, w: 120, h: 24 },
+        { type: "detail", nom: "détail : la coccinelle", x: 244, y: 1165, w: 44, h: 50 },
+      ],
+    },
   };
 
   /* L'illustration d'une page de l'album, `null` pour une page qui n'en a pas ici. */
   function illustrationDe(page) {
     const k = page && page.k;
-    if (k === "corpus") return { k, ...ILLUSTRATIONS.corpus };
+    if (k === "corpus" || k === "zones") return { k, ...ILLUSTRATIONS[k] };
     return null;
+  }
+
+  const arrondi = (v) => Math.round(v * 100) / 100;
+
+  /* Une zone posée sur l'image recadrée : sa place en POURCENTS du cadre, que l'image
+     garde quelle que soit sa taille à l'écran. */
+  function placer(zone, cadre) {
+    if (!zone || !cadre || !(cadre.w > 0) || !(cadre.h > 0)) return null;
+    return { left: arrondi((zone.x - cadre.x) / cadre.w * 100),
+             top: arrondi((zone.y - cadre.y) / cadre.h * 100),
+             width: arrondi(zone.w / cadre.w * 100),
+             height: arrondi(zone.h / cadre.h * 100) };
+  }
+
+  /* Où se lit le nom d'une zone : DEDANS, en bas, pour une zone qui remplit le cadre (la
+     case) ; sinon DESSOUS, ou DESSUS si elle touche le bas. Ancré à DROITE pour une zone
+     dont le centre est dans la moitié droite, sans quoi le nom sortirait de l'image. */
+  function etiquette(zone, cadre) {
+    if (!zone || !cadre) return null;
+    const pleine = zone.w >= 0.9 * cadre.w && zone.h >= 0.9 * cadre.h;
+    const bas = (zone.y + zone.h - cadre.y) / cadre.h;
+    return { cote: pleine ? "dedans" : (bas <= 0.8 ? "dessous" : "dessus"),
+             ancre: zone.x + zone.w / 2 > cadre.x + cadre.w / 2 ? "droite" : "gauche" };
+  }
+
+  /* La place du nom sur l'image, en pourcents du cadre : un bord horizontal (`left` ou
+     `right`) et un bord vertical (`top` ou `bottom`). Le nom est posé À CÔTÉ de sa zone et
+     non dedans, pour qu'un nom plus large que sa zone ne la fasse pas déborder. */
+  function placerNom(zone, cadre) {
+    const p = placer(zone, cadre), e = etiquette(zone, cadre);
+    if (!p || !e) return null;
+    const o = {};
+    if (e.ancre === "droite") o.right = arrondi(100 - p.left - p.width); else o.left = p.left;
+    if (e.cote === "dessous") o.top = arrondi(p.top + p.height);
+    else if (e.cote === "dessus") o.bottom = arrondi(100 - p.top);
+    else o.bottom = arrondi(100 - p.top - p.height);
+    return o;
   }
 
   function phraseEtape(e, vue, m) {
@@ -973,7 +1024,7 @@
 
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
            typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
-           illustrationDe,
+           illustrationDe, placer, etiquette, placerNom,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

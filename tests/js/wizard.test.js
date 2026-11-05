@@ -754,3 +754,56 @@ test("« Constituez votre corpus » : deux collections fixes, décrites", () => 
   }
   assert.equal(W.illustrationDe(null), null);
 });
+
+test("« Repérez, segmentez » : une case recadrée, ses zones dedans, chacune nommée", () => {
+  const ill = W.illustrationDe(W.PAGES.find((p) => p.k === "zones"));
+  assert.equal(ill.k, "zones");
+  assert.deepEqual(ill.zones.map((z) => z.type), ["case", "bulle", "bulle", "detail"]);
+  const dans = (a, b) => a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w
+    && a.y + a.h <= b.y + b.h;
+  const kase = ill.zones[0];
+  for (const z of ill.zones) {
+    assert.ok(dans(z, ill.cadre), `${z.nom} sort du recadrage`);
+    assert.ok(z === kase || dans(z, kase), `${z.nom} sort de la case`);
+    assert.ok(z.nom.trim());
+  }
+  // Le recadrage tient dans le scan de la planche (975 × 1296).
+  assert.ok(dans(ill.cadre, { x: 0, y: 0, w: 975, h: 1296 }));
+});
+
+test("une zone se place en pourcents de son cadre, et son nom ne sort pas de l'image", () => {
+  const cadre = { x: 100, y: 200, w: 400, h: 200 };
+  assert.deepEqual(W.placer({ x: 100, y: 200, w: 400, h: 200 }, cadre),
+                   { left: 0, top: 0, width: 100, height: 100 });
+  assert.deepEqual(W.placer({ x: 200, y: 250, w: 100, h: 30 }, cadre),
+                   { left: 25, top: 25, width: 25, height: 15 });
+  assert.deepEqual(W.placer({ x: 101, y: 200, w: 1, h: 3 }, cadre).left, 0.25);
+  assert.equal(W.placer({ x: 0, y: 0, w: 1, h: 1 }, { x: 0, y: 0, w: 0, h: 10 }), null);
+  assert.equal(W.placer(null, cadre), null);
+  // Qui remplit le cadre : dedans. Une bulle en haut à gauche : dessous, à gauche.
+  assert.deepEqual(W.etiquette({ x: 104, y: 204, w: 392, h: 192 }, cadre),
+                   { cote: "dedans", ancre: "gauche" });
+  assert.deepEqual(W.etiquette({ x: 110, y: 210, w: 60, h: 20 }, cadre),
+                   { cote: "dessous", ancre: "gauche" });
+  // À droite : ancré à droite. Contre le bas : dessus.
+  assert.deepEqual(W.etiquette({ x: 400, y: 210, w: 60, h: 20 }, cadre),
+                   { cote: "dessous", ancre: "droite" });
+  assert.deepEqual(W.etiquette({ x: 110, y: 360, w: 60, h: 35 }, cadre),
+                   { cote: "dessus", ancre: "gauche" });
+  assert.equal(W.etiquette(null, cadre), null);
+  // Le nom, à côté de sa zone : son bord et sa hauteur.
+  assert.deepEqual(W.placerNom({ x: 110, y: 210, w: 60, h: 20 }, cadre),
+                   { left: 2.5, top: 15 });
+  assert.deepEqual(W.placerNom({ x: 400, y: 210, w: 60, h: 20 }, cadre),
+                   { right: 10, top: 15 });
+  assert.deepEqual(W.placerNom({ x: 110, y: 360, w: 60, h: 35 }, cadre),
+                   { left: 2.5, bottom: 20 });
+  assert.deepEqual(W.placerNom({ x: 104, y: 204, w: 392, h: 192 }, cadre),
+                   { left: 1, bottom: 2 });
+  assert.equal(W.placerNom(null, cadre), null);
+  // Sur l'illustration : la case dedans, la bulle de droite et le détail ancrés à droite.
+  const ill = W.illustrationDe({ k: "zones" });
+  assert.deepEqual(ill.zones.map((z) => W.etiquette(z, ill.cadre)),
+                   [{ cote: "dedans", ancre: "gauche" }, { cote: "dessous", ancre: "gauche" },
+                    { cote: "dessous", ancre: "droite" }, { cote: "dessous", ancre: "droite" }]);
+});

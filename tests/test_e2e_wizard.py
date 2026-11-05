@@ -492,9 +492,9 @@ def test_le_point_d_interrogation_rouvre_les_reperes_sur_les_six_surfaces(page, 
 @pytestmark_proxy
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_l_album_et_la_carte(page, jeu, theme):
-    """axe (WCAG 2.1 AA), album ouvert sur sa première page, sur la page du choix, la
-    visite qui suit le choix, le guide qui la suit, puis la carte des étapes : aucune
-    violation sérieuse ou critique."""
+    """axe (WCAG 2.1 AA), album ouvert sur sa première page, sur ses pages illustrées, sur
+    la page du choix, la visite qui suit le choix, le guide qui la suit, puis la carte des
+    étapes : aucune violation sérieuse ou critique."""
     from test_e2e_bac_a_sable import _audit_axe
     page.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
     _ouvrir(jeu, CAMILLE)
@@ -504,6 +504,12 @@ def test_a11y_l_album_et_la_carte(page, jeu, theme):
     _album(page)
     rapports = []
     for quoi, geste in (("album, première page", None),
+                        # Les pages 2 à 5 et leurs illustrations fixes (leurs noms, en encre
+                        # du texte sur l'image).
+                        ("album, page 2", "#wizard-suiv"),
+                        ("album, page 3", "#wizard-suiv"),
+                        ("album, page 4", "#wizard-suiv"),
+                        ("album, page 5", "#wizard-suiv"),
                         ("album, choix du parcours", "#wizard-passer"),
                         ("visite, première page", "#wizard-choix-complet"),
                         ("visite, l'Atelier", "#wizard-visite-suiv"),
@@ -523,8 +529,8 @@ def test_a11y_l_album_et_la_carte(page, jeu, theme):
 
 @pytestmark_proxy
 def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
-    """À 320 px, sous des préférences de 16 et 24 : l'album, la fenêtre de la visite et la
-    carte ne perdent rien et ne s'écrasent pas, et la ligne qui porte « Par où commencer »
+    """À 320 px, sous des préférences de 16 et 24 : l'album et ses pages illustrées, la
+    fenêtre de la visite et la carte ne perdent rien et ne s'écrasent pas, et la ligne qui porte « Par où commencer »
     non plus."""
     if page.context.browser.browser_type.name != "chromium":
         pytest.skip("la préférence de police se pose par CDP")
@@ -547,6 +553,10 @@ def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
         page.locator("#bac-commencer").click()
         _album(page)
         for quoi, geste, boite in (("album", None, ".wizard-boite"),
+                                   ("album, page 2", "#wizard-suiv", ".wizard-boite"),
+                                   ("album, page 3", "#wizard-suiv", ".wizard-boite"),
+                                   ("album, page 4", "#wizard-suiv", ".wizard-boite"),
+                                   ("album, page 5", "#wizard-suiv", ".wizard-boite"),
                                    ("choix", "#wizard-passer", ".wizard-boite"),
                                    ("visite", "#wizard-choix-rapide", "#wizard-fenetre"),
                                    ("guide", "#wizard-visite-passer", "#wizard-fenetre"),
@@ -970,7 +980,7 @@ def test_la_transcription_ne_dit_pas_bulle_sur_un_cartouche(page, jeu_decoupe):
 # demande RIEN à l'instance, et chaque image arrive. Les miniatures de la première page,
 # elles, viennent du jeu et sont demandées avant.
 
-PAGES_ILLUSTREES = {2: "corpus"}
+PAGES_ILLUSTREES = {2: "corpus", 3: "zones"}
 
 
 @pytestmark_proxy
@@ -1003,3 +1013,54 @@ def test_les_illustrations_de_l_album_ne_demandent_rien_a_l_instance(page, jeu):
     # l'album qui le demande.
     vers_l_api = [u for u in demandes if "/api/" in u and "/empreinte" not in u]
     assert not vers_l_api, vers_l_api
+
+
+@pytestmark_proxy
+def test_reperez_dessine_les_zones_a_leur_place(page, jeu):
+    """La page 3 : une étiquette par zone, la bulle et le détail dans le cadre de la case,
+    et aucun nom coupé par le bord de l'image."""
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _arriver(page, jeu["base"])
+    page.locator("#bac-commencer").click()
+    album = _album(page)
+    album.locator("#wizard-suiv").click()
+    album.locator("#wizard-suiv").click()
+    expect(album.locator("#wizard-compte")).to_have_text("3 / 8")
+    ill = album.locator(".wizard-fixe-zones")
+    expect(ill).to_be_visible()
+    page.wait_for_function("""() => { const i = document.querySelector('.wizard-fixe-zones img');
+                                      return !!i && i.complete && i.naturalWidth > 0; }""")
+    mesure = page.evaluate("""() => {
+      const r = (e) => { const b = e.getBoundingClientRect();
+                         return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+      const s = document.querySelector('.wizard-fixe-zones .wizard-scene');
+      const zones = [...s.querySelectorAll('.wizard-zone')].map((z) => ({
+        type: [...z.classList].find((c) => c.startsWith('wizard-zone-')).slice(12),
+        boite: r(z) }));
+      const noms = [...s.querySelectorAll('.wizard-nom')].map((n) => ({
+        texte: n.textContent, boite: r(n) }));
+      return { scene: r(s), ill: r(s.closest('.wizard-ill')), zones, noms };
+    }""")
+    zones = mesure["zones"]
+    assert [z["type"] for z in zones] == ["case", "bulle", "bulle", "detail"], zones
+    noms = mesure["noms"]
+    assert len(noms) == len(zones) and all(n["texte"].strip() for n in noms), noms
+
+    def dans(a, b, marge=1):
+        return (a["l"] >= b["l"] - marge and a["t"] >= b["t"] - marge
+                and a["r"] <= b["r"] + marge and a["b"] <= b["b"] + marge)
+
+    case = zones[0]["boite"]
+    assert dans(case, mesure["scene"])
+    for z in zones[1:]:
+        assert dans(z["boite"], case), (z["type"], z["boite"], case)
+    # La case a une vraie taille : l'image est là, pas un cadre écrasé.
+    assert case["r"] - case["l"] > 150 and case["b"] - case["t"] > 150, case
+    # Chaque nom se lit en entier, et près de sa zone : il la touche ou la jouxte.
+    for z, n in zip(zones, noms):
+        assert dans(n["boite"], mesure["ill"]), (n, mesure["ill"])
+        b, nb = z["boite"], n["boite"]
+        assert nb["l"] < b["r"] + 2 and nb["r"] > b["l"] - 2, (z["type"], n)
+        assert nb["t"] < b["b"] + 6 and nb["b"] > b["t"] - 6, (z["type"], n)

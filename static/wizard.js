@@ -195,10 +195,38 @@
     return img;
   }
 
+  /* L'image recadrée et ses zones par-dessus, placées en pourcents (`BDWizard.placer`) ;
+     `avecNoms` : chaque zone dit son nom, posé à côté d'elle (`BDWizard.placerNom`). Le rapport de l'image est
+     celui de son cadre, posé par le CSSOM, que la politique de sécurité laisse passer. */
+  function scene(ill, zones, avecNoms) {
+    const s = el("div", "wizard-scene");
+    s.style.aspectRatio = `${ill.cadre.w} / ${ill.cadre.h}`;
+    s.appendChild(image(ill.fichier));
+    (zones || []).forEach((z) => {
+      const p = W.placer(z, ill.cadre);
+      if (!p) return;
+      const c = el("span", `wizard-zone wizard-zone-${z.type}`);
+      c.style.left = `${p.left}%`;
+      c.style.top = `${p.top}%`;
+      c.style.width = `${p.width}%`;
+      c.style.height = `${p.height}%`;
+      s.appendChild(c);
+      const o = avecNoms && W.placerNom(z, ill.cadre);
+      if (o) {
+        const e = W.etiquette(z, ill.cadre);
+        const n = el("i", `wizard-nom ${e.cote}`, W.typo(z.nom));
+        Object.keys(o).forEach((bord) => { n.style[bord] = `${o[bord]}%`; });
+        s.appendChild(n);
+      }
+    });
+    return s;
+  }
+
   function illustrationFixe(ill) {
     const d = el("div", `wizard-fixe wizard-fixe-${ill.k}`);
     d.setAttribute("role", "img");
     d.setAttribute("aria-label", ill.description);
+    if (ill.k === "zones") d.appendChild(scene(ill, ill.zones, true));
     if (ill.k === "corpus") {
       d.classList.add("wizard-collections");
       ill.collections.forEach((c) => {
@@ -225,7 +253,7 @@
     }
     const ill = W.illustrationDe(page);
     if (ill) return illustrationFixe(ill);
-    if (["zones", "moteurs", "analyse"].includes(page.k) && parcours) {
+    if (["moteurs", "analyse"].includes(page.k) && parcours) {
       const d = el("div", "wizard-planche");
       d.appendChild(miniature(parcours.planche_ids[0]));
       return d;
