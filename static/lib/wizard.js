@@ -170,7 +170,11 @@
         + "cliquant sur son image." },
     { k: "decrire", titre: "Décrire l'album", ou: "Bibliothèque", surface: "/corpus",
       album: true, zones: ["bibliotheque-fiche"],
-      phrase: "Une notice dit d'où vient l'album. Notez la source de numérisation." },
+      // Plus explicite (Hugo, 2026-11-05) : où l'on clique, ce que la notice décrit, ce qui
+      // fait l'étape — la source de numérisation (`faite`, cas « decrire »).
+      phrase: "Une notice dit d'où vient l'album. Dans sa fiche, cliquez sur « ✎ Modifier » : "
+        + "titre, auteur, édition, contributions… Regardez tout ce qu'elle peut décrire, et "
+        + "complétez au moins la source de numérisation." },
     { k: "preremplir", titre: "Pré-remplir", ou: "Atelier, Traitement", surface: "/",
       facultatif: true, zones: ["atelier-actions", "atelier-planche"],
       phrase: "Un moteur peut lire le texte des bulles à votre place : c'est l'OCR. "
