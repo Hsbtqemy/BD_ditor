@@ -615,6 +615,7 @@ const LIENS = {
 };
 const idLien = (lieu, quoi) => `#an-${LIENS[lieu].etat}-${quoi}`;
 const etatLien = (lieu) => S[LIENS[lieu].etat];
+const nomDuPersonnage = (p) => (p.serie ? `${p.nom} · ${p.serie}` : p.nom);
 
 async function rendreContexte() {
   const tour = ++tourContexte;
@@ -711,14 +712,67 @@ async function rendreContexte() {
 
 /* La puce d'un lien. `vu` : ce rendu est-il ce que le serveur porte — la lecture, ou la
    réponse d'un geste ? Il devient alors la valeur VUE que le prochain geste déclare.
-   `undefined` : pas encore lu (« … »). */
+   `undefined` : pas encore lu (« … »). « Fiche » ouvre la fiche du personnage montré, en
+   lecture comme en écriture. */
 function montrerLien(lieu, p, vu = true) {
-  if (vu) etatLien(lieu).vu = p ? p.id : null;
+  const st = etatLien(lieu);
+  if (vu) st.vu = p ? p.id : null;
+  st.p = p;
   const nom = $(idLien(lieu, "nom"));
-  nom.textContent = p === undefined ? "…"
-    : p ? (p.serie ? `${p.nom} · ${p.serie}` : p.nom) : "—";
+  nom.textContent = p === undefined ? "…" : p ? nomDuPersonnage(p) : "—";
   nom.classList.toggle("muted", !p);
-  $(idLien(lieu, "retirer")).hidden = !(p && ecrivable());
+  const retirer = $(idLien(lieu, "retirer"));
+  retirer.hidden = !(p && ecrivable());
+  const fiche = $(idLien(lieu, "fiche"));
+  fiche.hidden = !p;
+  if (p) fiche.setAttribute("aria-label", `Fiche de ${nomDuPersonnage(p)}`);
+}
+
+/* ───────────── LA FICHE D'UN PERSONNAGE (ANN-7) ─────────────
+   Une condition du retrait du mode Annotation de l'Atelier (Hugo, 2026-11-02) : depuis le
+   locuteur ou une boîte, on ouvre la fiche du personnage — son nom, sa série, ses
+   alignements d'autorité (A5 : Wikidata, VIAF, IdRef…), le module de l'Atelier
+   (`lib/alignements.js`). Dans une MODALE (`BDDialog`), pour que rien ne bouge pendant le
+   travail : ni le Contexte ni les colonnes ne changent de taille, et Échap ou « Fermer »
+   rendent le focus à « Fiche ». On n'y ajoute ou retire un alignement que sur un album où
+   l'on écrit, comme le reste du Contexte ; le serveur tranche le droit sur le registre. Le
+   profil du personnage n'y est pas : il deviendra une grille (Q3). */
+let FICHE = null;                     // le widget d'alignement, monté une fois
+
+function ouvrirFiche(lieu) {
+  const p = etatLien(lieu).p;
+  if (!p) return;
+  $("#an-fiche-titre").textContent = `Personnage — ${nomDuPersonnage(p)}`;
+  FICHE.load(p.id);
+  $("#an-fiche-modal").hidden = false;
+}
+
+function fermerFiche() {
+  $("#an-fiche-modal").hidden = true;
+  FICHE.load(null);                   // une lecture encore en route n'écrit plus rien
+}
+
+/* Une modale est ouverte : les raccourcis de la page se taisent. */
+function modaleOuverte() {
+  return !$("#an-guide-modal").hidden || !$("#an-fiche-modal").hidden;
+}
+
+function brancherFiche() {
+  FICHE = BDAlignements.monter({ section: "#an-align", current: "#an-align-liste",
+                                 input: "#an-align-input", saisie: "#an-align-saisie" },
+                               { ecrit: ecrivable });
+  for (const lieu of Object.keys(LIENS)) {
+    $(idLien(lieu, "fiche")).addEventListener("click", () => ouvrirFiche(lieu));
+  }
+  $("#an-fiche-fermer").addEventListener("click", fermerFiche);
+  const modale = $("#an-fiche-modal");
+  modale.addEventListener("mousedown", (e) => {
+    if (e.target.id === "an-fiche-modal") fermerFiche();
+  });
+  if (window.BDDialog) {
+    BDDialog.register(modale, { box: ".modal-box", labelledby: "an-fiche-titre",
+                                onClose: fermerFiche });
+  }
 }
 
 /* Le nom qu'une boîte porte SUR L'IMAGE suit son personnage : la réponse d'un geste, la
@@ -1884,7 +1938,7 @@ function brancherGrille() {
     if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target;
     if (t && (t.closest("input, textarea, select, [contenteditable]") || t.isContentEditable)) return;
-    if (!$("#an-guide-modal").hidden) return;
+    if (modaleOuverte()) return;
     e.preventDefault();
     champ.focus();
     champ.select();
@@ -3780,7 +3834,7 @@ function brancherEtroit() {
   });
   $("#an-grille-fermer").addEventListener("click", () => fermerFeuille(true));
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || !$("#an-guide-modal").hidden) return;
+    if (e.key !== "Escape" || modaleOuverte()) return;
     if (e.defaultPrevented) return;              // Échap a déjà vidé le filtre
     if (feuilleOuverte()) fermerFeuille(true);
     else if (tiroirOuvert()) fermerTiroir(true);
@@ -4082,7 +4136,7 @@ function brancherParcours() {
     S.aFaire = e.target.value === "afaire";
   });
   document.addEventListener("keydown", (e) => {
-    if (!$("#an-guide-modal").hidden) return;
+    if (modaleOuverte()) return;
     if (BDAnnulation.estRaccourci(e)) {
       e.preventDefault();
       annulerPage();
@@ -4105,6 +4159,7 @@ async function demarrer() {
   brancherParcours();
   brancherSynthese();
   brancherContexte();
+  brancherFiche();
   brancherZonesTracees();
   brancherEtroit();
   try {

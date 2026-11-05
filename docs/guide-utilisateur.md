@@ -1098,8 +1098,10 @@ et avance. Le parcours se déduit de ce que la grille vise, dans l'ordre de lect
 seulement* saute ce qui est terminé.
 
 **Le Contexte**, sous la minicarte, porte ce qui n'est pas du vocabulaire : le locuteur, le
-personnage d'une boîte, la note, le nom d'un détail, la transcription d'un texte hors bulle. Si
-quelqu'un d'autre a changé cette valeur entre-temps, le champ
+personnage d'une boîte, la note, le nom d'un détail, la transcription d'un texte hors bulle.
+*Fiche*, à côté d'un locuteur ou d'un personnage, ouvre la fiche de ce personnage : ses
+alignements sur Wikidata, VIAF, IdRef…, qu'on ajoute en collant une adresse et qu'on retire par
+leur ×, sur un album où l'on écrit. Si quelqu'un d'autre a changé une valeur entre-temps, le champ
 passe à l'encre d'alerte et dit *En attente de votre choix* : le bandeau, en bas de la grille,
 offre de remplacer par la vôtre ou de garder l'autre. Vous pouvez changer de zone pendant qu'il
 attend : votre saisie reste sur sa zone, retouches comprises, et le bandeau dit laquelle. Ce que

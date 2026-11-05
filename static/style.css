@@ -4384,7 +4384,7 @@ fieldset.fm-q { border: 0; padding: 0; margin: 1rem 0 0; min-width: 0; }
    prennent la largeur de la colonne, jamais plus (le patron de `.tag-input-wrap > input`). */
 .an-loc-puce { display: flex; align-items: center; gap: .3077rem; min-width: 0; }
 .an-loc-nom { overflow-wrap: anywhere; min-width: 0; }
-.an-loc-x { padding: 0 .4615rem; }
+.an-loc-x, .an-loc-fiche { padding: 0 .4615rem; }
 .an-loc-saisie { margin-top: .3077rem; }
 .an-loc-saisie > input { width: 100%; box-sizing: border-box; }
 .an-note { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit;
@@ -4778,6 +4778,12 @@ body.an-designer .an-mz-enfant.t-texte {
 #an-guide-modal { position: fixed; inset: 0; z-index: 100; background: var(--scrim);
                   display: flex; align-items: center; justify-content: center; }
 #an-guide-modal[hidden] { display: none; }
+/* La fiche d'un personnage (ANN-7) : la même modale, plus étroite. */
+#an-fiche-modal { position: fixed; inset: 0; z-index: 100; background: var(--scrim);
+                  display: flex; align-items: center; justify-content: center; }
+#an-fiche-modal[hidden] { display: none; }
+.an-fiche-box { width: min(32rem, 94%); }
+.an-fiche-box h3 { overflow-wrap: anywhere; }
 /* Le corps défile, la boîte garde son titre et « Fermer » : il est focalisable, pour se
    parcourir au clavier (une région qui défile doit l'être). */
 .an-guide-box { width: min(55.3846rem, 94%); overflow: hidden; }

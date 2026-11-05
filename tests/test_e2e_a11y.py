@@ -739,6 +739,28 @@ def test_a11y_visionneuse_alignement(page, seeded):
                for a in al)
 
 
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_annotation_fiche_personnage(page, seeded, theme):
+    """La fiche d'un personnage de la page Annotation (ANN-7) : la modale ouverte par « Fiche »
+    du locuteur, une puce-lien et le champ d'une URI, dans les deux thèmes."""
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ECRITURE)
+    try:
+        p = c.post("/api/personnages", json={"nom": "Tournesol"}).json()
+        c.put(f"/api/regions/{seeded['region']}/locuteur", json={"personnage_id": p["id"]})
+        c.post(f"/api/personnages/{p['id']}/alignements",
+               json={"uri": "https://www.wikidata.org/wiki/Q42"})
+    finally:
+        c.close()
+    _theme(page, theme)
+    page.goto(seeded["base"] + SURFACES_AUDITEES["/annotation"](seeded), wait_until="networkidle")
+    page.locator("#an-loc-fiche").click()
+    page.wait_for_selector("#an-align-liste a", timeout=5000)
+    assert page.locator("#an-align-saisie").is_visible()
+    viol = _audit(page)
+    assert not viol, f"Annotation/fiche d'un personnage ({theme}) :\n{_fmt(viol)}"
+
+
 def test_a11y_exploration_concordance(page, seeded):
     """Concordance (KWIC, B2) : passer en vue Concordance, chercher un lemme du corpus, puis
     auditer l'a11y des DEUX rendus (aligné + liste) et vérifier le deep-link Visionneuse.

@@ -2508,47 +2508,11 @@ function makeAttributsWidget(ids, cible) {
 }
 
 /* --- Alignement d'AUTORITÉ (A5) : widget réutilisable — relie l'ENTITÉ personnage à des
-   référentiels externes (Wikidata/VIAF/IdRef…) en `skos:exactMatch`. Saisir une URI l'ajoute
-   (source auto-détectée côté serveur) ; les puces ouvrent le référentiel / se retirent. --- */
+   référentiels externes (Wikidata/VIAF/IdRef…) en `skos:exactMatch`. Il vit dans
+   `static/lib/alignements.js`, commun avec la fiche d'un personnage de la page Annotation
+   (ANN-7) ; l'Atelier le monte tel qu'il était, l'écriture toujours offerte. --- */
 function makeAlignementWidget(ids) {
-  const sec = $(ids.section), cur = $(ids.current), input = $(ids.input);
-  let pid = null;
-  async function refresh() {
-    cur.innerHTML = "";
-    let items = [];
-    try { items = await apiGet(`/api/personnages/${pid}/alignements`); } catch (e) { return; }
-    if (!items.length) { cur.innerHTML = '<span class="muted small">Aucun</span>'; return; }
-    for (const a of items) {
-      const chip = document.createElement("span");
-      chip.className = "tag-chip";
-      const lbl = a.source ? escapeHtml(a.source) : "lien";
-      chip.innerHTML =
-        `<a href="${escapeHtml(a.uri)}" target="_blank" rel="noopener noreferrer" `
-        + `title="${escapeHtml(a.uri)}">${lbl} ↗</a>`
-        + `<span class="x" title="Retirer l'alignement">×</span>`;
-      chip.querySelector(".x").onclick = () => remove(a.id);
-      cur.appendChild(chip);
-    }
-  }
-  async function remove(aid) {
-    try { await apiSend("DELETE", `/api/personnages/${pid}/alignements/${aid}`); }
-    catch (e) { toast("Alignement : " + e.message, "error"); return; }
-    refresh();
-  }
-  async function add() {
-    const uri = input.value.trim();
-    if (!uri) return;
-    try { await apiSend("POST", `/api/personnages/${pid}/alignements`, { uri }); input.value = ""; refresh(); }
-    catch (e) { toast("Alignement : " + e.message, "error"); }
-  }
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
-  return {
-    load(personnageId) {
-      pid = personnageId;
-      if (!personnageId) { sec.hidden = true; return; }
-      sec.hidden = false; input.value = ""; refresh();
-    },
-  };
+  return BDAlignements.monter(ids);
 }
 
 let sitWidget = null, persoAttrWidget = null, persoBoxAttrWidget = null;

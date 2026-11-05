@@ -929,6 +929,8 @@ def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
                              "parent_id": case}).json()["id"]
         assert c.put(f"/api/regions/{boite}/personnage",
                      json={"personnage_id": perso}).status_code == 200
+        assert c.post(f"/api/personnages/{perso}/alignements",
+                      json={"uri": "https://www.wikidata.org/wiki/Q1"}).status_code == 201
     page.set_extra_http_headers({"Remote-User": "lectrice"})
     page.goto(f"{live_server}/annotation?album={aid}&planche={pid}&region={bulle}",
               wait_until="networkidle")
@@ -971,6 +973,12 @@ def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
     expect(page.locator("#an-perso-nom")).to_have_text("Haddock")
     expect(page.locator("#an-perso-saisie")).to_be_hidden()
     expect(page.locator("#an-perso-retirer")).to_be_hidden()
+    # Sa fiche se LIT : l'alignement, sans champ ni « × ».
+    page.locator("#an-perso-fiche").click()
+    expect(page.locator("#an-align-liste a")).to_have_text("wikidata ↗")
+    expect(page.locator("#an-align-liste .x")).to_have_count(0)
+    expect(page.locator("#an-align-saisie")).to_be_hidden()
+    page.locator("#an-fiche-fermer").click()
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30,
                       headers={**ECRITURE, **admin}) as c:
         assert len(c.get(f"/api/planches/{pid}/releves").json()["releves"]) == 1
@@ -1379,6 +1387,76 @@ def test_le_personnage_d_une_boite_se_choisit_et_se_retire_dans_le_contexte(page
     expect(sur_image.filter(has_text="Tournesol")).to_have_count(0)
     with _http(decor) as c:
         assert c.get(f"/api/regions/{decor['boite']}/personnage").json()["personnage"] is None
+
+
+def _rects_du_travail(page):
+    """Ce qui ne doit pas bouger quand la fiche s'ouvre : les trois colonnes et le Contexte."""
+    return page.evaluate("""() => ['.an-gauche', '.an-zone', '#an-grille', '.an-ctx', '#an-vue-case']
+      .map((s) => { const r = document.querySelector(s).getBoundingClientRect();
+                    return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; })""")
+
+
+def test_la_fiche_d_un_personnage_s_ouvre_du_locuteur_et_de_la_boite(page, decor):
+    """La seconde condition du retrait du mode Annotation de l'Atelier (Hugo, 2026-11-02) : la
+    fiche du personnage et ses alignements (A5), depuis le locuteur ET depuis la boîte, dans
+    une modale qui ne déplace rien."""
+    page.set_viewport_size({"width": 1600, "height": 900})
+    _ouvrir(page, decor, decor["bulle"])
+    fiche = page.locator("#an-loc-fiche")
+    expect(fiche).to_be_visible()
+    expect(fiche).to_have_attribute("aria-label", "Fiche de Haddock")
+    page.wait_for_function("() => !document.querySelector('#an-note').disabled")
+    avant = _rects_du_travail(page)
+    fiche.click()
+    modale = page.locator("#an-fiche-modal")
+    expect(modale).to_be_visible()
+    expect(page.locator("#an-fiche-titre")).to_have_text("Personnage — Haddock")
+    expect(page.locator("#an-align")).to_be_visible()
+    expect(page.locator("#an-align-liste")).to_have_text("Aucun")
+    assert _rects_du_travail(page) == avant, "la fiche a fait bouger la page"
+    # Une URI s'ajoute par Entrée : la puce mène au référentiel.
+    with _reponse_de(page, "/alignements", "POST"):
+        page.locator("#an-align-input").fill("https://www.wikidata.org/wiki/Q1")
+        page.locator("#an-align-input").press("Enter")
+    lien = page.locator("#an-align-liste a")
+    expect(lien).to_have_text("wikidata ↗")
+    expect(lien).to_have_attribute("href", "https://www.wikidata.org/wiki/Q1")
+    expect(page.locator("#an-align-input")).to_have_value("")
+    with _http(decor) as c:
+        haddock = c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["id"]
+        assert [a["uri"] for a in c.get(f"/api/personnages/{haddock}/alignements").json()] \
+            == ["https://www.wikidata.org/wiki/Q1"]
+    # Ctrl+Z se tait sous la modale : rien ne part vers l'annulation.
+    annulations = []
+    page.on("request", lambda r: annulations.append(r.url) if "/api/undo" in r.url else None)
+    page.locator("#an-fiche-fermer").focus()
+    page.keyboard.press("Control+z")
+    page.wait_for_timeout(500)
+    assert annulations == [], annulations
+    page.locator("#an-fiche-fermer").click()
+    expect(modale).to_be_hidden()
+    expect(fiche).to_be_focused()                  # le focus revient d'où l'on venait
+    # Depuis la BOÎTE : le même personnage, la même fiche ; on y retire l'alignement.
+    _zone(page, "boîte")
+    fiche_boite = page.locator("#an-perso-fiche")
+    expect(fiche_boite).to_have_attribute("aria-label", "Fiche de Haddock")
+    fiche_boite.click()
+    expect(page.locator("#an-fiche-titre")).to_have_text("Personnage — Haddock")
+    expect(lien).to_have_text("wikidata ↗")
+    with page.expect_response(lambda r: r.request.method == "DELETE"
+                              and "/alignements/" in r.url):
+        page.locator("#an-align-liste .tag-chip .x").click()
+    expect(page.locator("#an-align-liste")).to_have_text("Aucun")
+    with _http(decor) as c:
+        assert c.get(f"/api/personnages/{haddock}/alignements").json() == []
+    page.keyboard.press("Escape")
+    expect(modale).to_be_hidden()
+    expect(fiche_boite).to_be_focused()
+    expect(page.locator("#an-tete-zone")).to_contain_text("boîte")   # Échap n'a rien fermé d'autre
+    # Sans personnage, pas de fiche.
+    page.locator("#an-perso-retirer").click()
+    expect(page.locator("#an-perso-nom")).to_have_text("—")
+    expect(fiche_boite).to_be_hidden()
 
 
 def test_un_personnage_change_ailleurs_ouvre_le_bandeau(page, decor):

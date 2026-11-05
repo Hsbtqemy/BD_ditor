@@ -88,7 +88,9 @@
             <dd id="an-ctx-loc" data-ctx="locuteur" hidden>
               <span id="an-loc-puce" class="an-loc-puce"><span id="an-loc-nom" class="an-loc-nom"></span><button
                 id="an-loc-retirer" class="ghost small an-loc-x" type="button" hidden
-                aria-label="Retirer le locuteur" title="Retirer le locuteur">×</button></span>
+                aria-label="Retirer le locuteur" title="Retirer le locuteur">×</button><button
+                id="an-loc-fiche" class="ghost small an-loc-fiche" type="button" hidden
+                title="Sa fiche : ses alignements (Wikidata, VIAF, IdRef…)">Fiche</button></span>
               <div id="an-loc-saisie" class="tag-input-wrap an-loc-saisie" hidden>
                 <input type="text" id="an-loc-input" autocomplete="off" spellcheck="false"
                        placeholder="Attribuer un personnage…" aria-label="Attribuer un locuteur">
@@ -99,7 +101,9 @@
             <dd id="an-ctx-perso" data-ctx="personnage" hidden>
               <span id="an-perso-puce" class="an-loc-puce"><span id="an-perso-nom" class="an-loc-nom"></span><button
                 id="an-perso-retirer" class="ghost small an-loc-x" type="button" hidden
-                aria-label="Retirer le personnage" title="Retirer le personnage">×</button></span>
+                aria-label="Retirer le personnage" title="Retirer le personnage">×</button><button
+                id="an-perso-fiche" class="ghost small an-loc-fiche" type="button" hidden
+                title="Sa fiche : ses alignements (Wikidata, VIAF, IdRef…)">Fiche</button></span>
               <div id="an-perso-saisie" class="tag-input-wrap an-loc-saisie" hidden>
                 <input type="text" id="an-perso-input" autocomplete="off" spellcheck="false"
                        placeholder="Identifier le personnage…"
@@ -297,6 +301,27 @@
       </div>
     </div>
   </div>
+
+  <!-- La fiche d'un personnage (ANN-7), ouverte par « Fiche » du locuteur ou d'une boîte :
+       ses alignements d'autorité (A5), le module de l'Atelier (`lib/alignements.js`). Une
+       modale `BDDialog` : rien ne bouge derrière elle. -->
+  <div id="an-fiche-modal" hidden>
+    <div class="modal-box an-fiche-box">
+      <h3 id="an-fiche-titre">Personnage</h3>
+      <section id="an-align" class="an-align" aria-labelledby="an-align-titre" hidden>
+        <h4 id="an-align-titre" class="an-sous-titre"
+            title="Le même personnage dans un référentiel (skos:exactMatch)">Autorité (référentiels externes)</h4>
+        <div id="an-align-liste" class="loc-current"></div>
+        <div id="an-align-saisie" class="tag-input-wrap">
+          <input type="text" id="an-align-input" placeholder="URI Wikidata / VIAF / IdRef…"
+                 autocomplete="off" aria-label="Aligner le personnage sur une URI d'autorité">
+        </div>
+      </section>
+      <div class="modal-actions">
+        <button id="an-fiche-fermer" class="ghost small" type="button">Fermer</button>
+      </div>
+    </div>
+  </div>
 </div>
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
@@ -306,6 +331,7 @@
 <script src="/static/lib/conflit.js"></script><!-- les mots du bandeau de CONC-3 -->
 <script src="/static/lib/propositions.js"></script><!-- les homonymes du champ « personnage » -->
 <script src="/static/lib/champ-personnage.js"></script><!-- le locuteur et le personnage d'une boîte, communs avec l'Atelier -->
+<script src="/static/lib/alignements.js"></script><!-- la fiche d'un personnage, commune avec l'Atelier -->
 <script src="/static/lib/annulation.js"></script><!-- Ctrl+Z, commun avec l'Atelier -->
 <script src="/static/lib/signal-planche.js"></script><!-- « ⟳ Actualiser », commun avec l'Atelier -->
 <script src="/static/lib/annotation.js"></script>
