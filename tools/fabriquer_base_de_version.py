@@ -52,12 +52,20 @@ Ce que le parcours pose, et pourquoi :
   activée, un relevé, une passe, un doute ; des accès de collection donnés hors de tout
   projet ; une collection que la responsable de son projet ne lit pas ; des copies créées
   par une simple écrivaine et touchées par une autre (`geste_sur_copie`) ; des demandes
-  d'effacement en attente et une close ; un compte partagé responsable d'un projet.
+  d'effacement en attente et une close ; un compte partagé responsable d'un projet ;
+- à partir de la v38 (`_parcours_v38`, ANN-7, tranche 3) : le vocabulaire que le
+  basculement retire — un domaine, une dimension de personnage, sa valeur et un profil, un
+  tag local, un tag dans un bac à sable, un tag renommé et un fusionné, une annotation qui ne
+  porte que des tags —, et des actes annulables en dernier. Depuis la v38, un accès de
+  collection ne se donne qu'à qui est du projet de la collection : `_donner_acces` y fait
+  d'abord entrer le principal.
 
-Le parcours n'emploie que des routes stables depuis la v29. Si une version les change, il
-gagne une branche sur `database.SCHEMA_VERSION` plutôt que de perdre l'ancienne forme :
-chaque fichier de `tests/bases/` doit rester refabricable. Une réponse inattendue arrête
-tout en disant laquelle.
+Le parcours n'emploie que des routes stables depuis la v29, sauf le vocabulaire (tags,
+dimensions, valeurs, attributs, domaines), que la v39 retire : ses appels sont gardés
+`_VERSION < 39`. Si une version change une route, le parcours gagne une branche sur
+`database.SCHEMA_VERSION` plutôt que de perdre l'ancienne forme : chaque fichier de
+`tests/bases/` doit rester refabricable. Une réponse inattendue arrête tout en disant
+laquelle.
 
 Ce que l'outil ne fait pas : il ne lit ni n'écrit la base de l'instance, ni ses dossiers
 d'images. Tout vit dans le dossier temporaire, effacé à la fin. Les moteurs ML ne sont pas
@@ -136,6 +144,32 @@ def _png() -> bytes:
 _VERSION = 0
 
 
+def _donner_acces(c, cid: int, principal: str, niveau: str, *, genre: str = "utilisateur",
+                  qui=ADMIN) -> None:
+    """Un accès de collection, donné par `qui`. Depuis la v38 (COL-3, tranche 3c, F2), on
+    n'entre dans une collection que si l'on est du PROJET de la collection — 409 nommé
+    sinon : l'administrateur fait d'abord entrer le principal dans ce projet, au rôle de
+    membre, s'il n'en est pas déjà (un responsable le reste). C'est l'état que la migration
+    v38 donne à tout accès hors projet ; jusqu'à la v37, l'accès se donne seul, comme avant."""
+    if _VERSION >= 38:
+        projet = next(col["projet_id"]
+                      for col in _ok(c.get("/api/collections", headers=ADMIN), 200)
+                      if col["id"] == cid)
+        membres = _ok(c.get(f"/api/projets/{projet}/membres", headers=ADMIN), 200)
+        if not any(m["genre"] == genre and m["principal"] == principal for m in membres):
+            _ok(c.put(f"/api/projets/{projet}/membres", headers=ADMIN,
+                      json={"genre": genre, "principal": principal, "role": "membre"}), 200)
+    _ok(c.put(f"/api/collections/{cid}/acces", headers=qui,
+              json={"genre": genre, "principal": principal, "niveau": niveau}), 200)
+
+
+def _annotation(note: str, tags: list[str]) -> dict:
+    """Le corps d'un `PUT …/annotation`. Les TAGS ne se posent que jusqu'à la v38 : le
+    basculement d'ANN-7 (v39) retire le vocabulaire, et la route refuse alors la clé. La
+    note seule reste, pour que chaque fichier de `tests/bases/` reste refabricable."""
+    return {"note": note, "tags": tags} if _VERSION < 39 else {"note": note}
+
+
 def _collection_du_repli(c, qui, nom: str) -> int:
     """Une collection du projet de REPLI, possédée par `qui`. Jusqu'à la v35, tout compte
     identifié en créait une ; depuis la v36 (COL-3, tranche 3b), créer une collection revient
@@ -144,9 +178,7 @@ def _collection_du_repli(c, qui, nom: str) -> int:
     if _VERSION < 36:
         return _ok(c.post("/api/collections", headers=qui, json={"nom": nom}), 201)["id"]
     cid = _ok(c.post("/api/collections", headers=ADMIN, json={"nom": nom}), 201)["id"]
-    _ok(c.put(f"/api/collections/{cid}/acces", headers=ADMIN,
-              json={"genre": "utilisateur", "principal": qui["Remote-User"],
-                    "niveau": "proprietaire"}), 200)
+    _donner_acces(c, cid, qui["Remote-User"], "proprietaire")
     return cid
 
 
@@ -163,13 +195,15 @@ def _jouer_le_parcours(main, database, journal) -> dict:
         incub = _ok(c.post("/api/collections", json={"nom": "Incubateur"},
                            headers=ADMIN), 201)["id"]
         for cid, qui in ((principal, "lea"), (incub, "lea"), (principal, "sam")):
-            _ok(c.put(f"/api/collections/{cid}/acces", headers=ADMIN,
-                      json={"genre": "utilisateur", "principal": qui, "niveau": "ecriture"}),
-                200)
-        dim = _ok(c.post("/api/attributs/dimensions", headers=LEA,
-                         json={"cible": "case", "nom": "cadrage"}), 201)["id"]
-        valeur = _ok(c.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=LEA,
-                            json={"valeur": "gros plan"}), 201)["id"]
+            _donner_acces(c, cid, qui, "ecriture")
+        # Le vocabulaire facetté (dimensions, valeurs, attributs) ne vit que jusqu'à la v38 :
+        # le basculement d'ANN-7 (v39) le retire, ses routes avec lui.
+        valeur = None
+        if _VERSION < 39:
+            dim = _ok(c.post("/api/attributs/dimensions", headers=LEA,
+                             json={"cible": "case", "nom": "cadrage"}), 201)["id"]
+            valeur = _ok(c.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=LEA,
+                                json={"valeur": "gros plan"}), 201)["id"]
         persos = [_ok(c.post("/api/personnages", json={"nom": n}, headers=LEA), 200, 201)["id"]
                   for n in ("Tintin", "Haddock")]
         albums, planches, regions = [], [], []
@@ -193,7 +227,7 @@ def _jouer_le_parcours(main, database, journal) -> dict:
                           json={"ocr_texte": f"TINTIN ET LE OTAGE {i} {p}"}), 200)
                 if p == 0:
                     _ok(c.put(f"/api/regions/{bulle}/annotation", headers=qui,
-                              json={"note": "vu", "tags": ["dialogue"]}), 200)
+                              json=_annotation("vu", ["dialogue"])), 200)
                     _ok(c.put(f"/api/regions/{bulle}/locuteur", headers=qui,
                               json={"personnage_id": persos[0]}), 200)
                     # La présence d'un personnage se montre sur une BOÎTE personnage
@@ -207,8 +241,9 @@ def _jouer_le_parcours(main, database, journal) -> dict:
                                      201)["id"]
                     _ok(c.put(f"/api/regions/{montre}/personnage", headers=qui,
                               json={"personnage_id": persos[1]}), 200)
-                    _ok(c.put(f"/api/regions/{case}/attributs", headers=qui,
-                              json={"valeur_id": valeur}), 200)
+                    if valeur is not None:
+                        _ok(c.put(f"/api/regions/{case}/attributs", headers=qui,
+                                  json={"valeur_id": valeur}), 200)
                     _ok(c.patch(f"/api/planches/{pl}/validation", headers=qui,
                                 json={"validee": True}), 200)
         # Un Ctrl+Z, pour que le journal porte une annulation.
@@ -248,6 +283,8 @@ def _jouer_le_parcours(main, database, journal) -> dict:
             faits.update(_parcours_v36(c, faits))
         if database.SCHEMA_VERSION >= 37:
             faits.update(_parcours_v37(c, faits))
+        if database.SCHEMA_VERSION >= 38:
+            faits.update(_parcours_v38(c, faits))
     return faits
 
 
@@ -369,7 +406,7 @@ def _parcours_v31(c, principal: int, album_de_sam: int, faits: dict) -> dict:
     _ok(c.put(f"/api/regions/{bulle}", headers=LEA, json={"ocr_texte": "LE OTAGE SOEUR"}),
         200)
     _ok(c.put(f"/api/regions/{bulle}/annotation", headers=LEA,
-              json={"note": "source", "tags": ["dialogue"]}), 200)
+              json=_annotation("source", ["dialogue"])), 200)
     document = next(a["document_id"] for a in _ok(c.get("/api/albums", headers=ADMIN), 200)
                     if a["id"] == source)
     # La sœur vierge, prise par la responsable pour une autre collection de son projet.
@@ -522,7 +559,7 @@ def _parcours_v36(c, faits: dict) -> dict:
                        json={"type": "personnage", "x": 2, "y": 2, "w": 5, "h": 5,
                              "parent_id": case}), 201)["id"]
     _ok(c.put(f"/api/regions/{zones['bulle']}/annotation", headers=LEA,
-              json={"note": "à relever", "tags": ["dialogue"]}), 200)
+              json=_annotation("à relever", ["dialogue"])), 200)
     # Sa sœur AMORCÉE au cran `annotations`, dans la Collection C : la responsable tient les
     # deux collections, la copie naît tout de suite (`clause_rejoindre_directe`).
     document = next(a["document_id"] for a in _ok(c.get("/api/albums", headers=ADMIN), 200)
@@ -598,11 +635,12 @@ def _parcours_v37(c, faits: dict) -> dict:
                        json={"texte": "Un cri, ou une onomatopée ?"}), 201)["id"]
     # Les accès hors projet : un compte et un groupe sur une collection d'Étude B, un compte
     # sur une collection du repli. Aucun d'eux n'est d'un projet.
+    # Depuis la v38, ils entrent d'abord dans le projet de la collection (`_donner_acces`) :
+    # l'état que la migration v38 a donné à ces accès.
     for cid, genre, principal in ((collection_b, "utilisateur", "nora"),
                                   (collection_b, "groupe", "invites"),
                                   (faits["collection_de_lea"], "utilisateur", "omar")):
-        _ok(c.put(f"/api/collections/{cid}/acces", headers=LEA,
-                  json={"genre": genre, "principal": principal, "niveau": "ecriture"}), 200)
+        _donner_acces(c, cid, principal, "ecriture", genre=genre, qui=LEA)
     # Une collection d'Étude B que sa responsable ne lit pas, possédée par un membre (Sam),
     # avec un album dedans.
     carnet = _ok(c.post("/api/albums", headers=SAM,
@@ -646,14 +684,79 @@ def _parcours_v37(c, faits: dict) -> dict:
     _ok(c.put(f"/api/projets/{etude}/membres", headers=ADMIN,
               json={"genre": "utilisateur", "principal": "atelier", "role": "responsable"}),
         200)
+    acces = [[collection_b, "utilisateur", "nora"], [collection_b, "groupe", "invites"],
+             [faits["collection_de_lea"], "utilisateur", "omar"]]
     return {"grille": grille, "releve": releve, "doute": doute,
-            "acces_hors_projet": [[collection_b, "utilisateur", "nora"],
-                                  [collection_b, "groupe", "invites"],
-                                  [faits["collection_de_lea"], "utilisateur", "omar"]],
+            ("acces_hors_projet" if _VERSION < 38 else "acces_apres_entree_au_projet"): acces,
             "album_carnet_d_arrivant": carnet,
             "copies_de_nora": [carnet_nora, carnet_nora_2],
             "demandes_v37": {"en_attente": attente, "close": close},
             "compte_partage_responsable": "atelier"}
+
+
+def _parcours_v38(c, faits: dict) -> dict:
+    """Ce qu'une base v38 doit porter pour que la v39 ait de quoi se tromper (ANN-7, tranche
+    3 : le basculement retire le vocabulaire — `tags`, `annotation_tags`, `region_attribut`,
+    `personnage_attribut`, `attribut_valeur`, `attribut_dimension`, `domaine` — et la colonne
+    `tags_concat` de l'index plein texte). Le parcours de la v29 pose déjà un tag global
+    (« dialogue »), une dimension de case, sa valeur et une situation ; celui-ci ajoute ce
+    que la migration doit retirer sans rien perdre d'autre : un DOMAINE et une dimension de
+    PERSONNAGE rangée dessous, sa valeur, un PROFIL ; un tag LOCAL à la Collection B ; un tag
+    dans un BAC À SABLE (`tags.espace`) ; un tag RENOMMÉ et un tag FUSIONNÉ (le journal
+    `tags`) ; une annotation qui ne porte QUE des tags (elle disparaîtra) à côté de celles
+    qui portent une note et un tag ; et, en dernier, des actes annulables de Léa (Ctrl+Z ne
+    doit plus les rendre). Les relevés viennent de `_parcours_v37`. Par les routes du code
+    v38 ; rien à partir de la v39, qui n'a plus ces routes."""
+    if _VERSION >= 39:
+        return {}
+
+    def tag_id(label, qui=LEA):
+        return next(t["id"] for t in _ok(c.get("/api/tags", headers=qui), 200)
+                    if t["label"] == label)
+
+    zones = faits["regions_cinq_types"]
+    # Un domaine, une dimension de personnage rangée dessous, sa valeur, et un profil.
+    domaine = _ok(c.post("/api/domaines", headers=LEA, json={"nom": "Émotions"}), 201)["id"]
+    dim_perso = _ok(c.post("/api/attributs/dimensions", headers=LEA,
+                           json={"cible": "personnage", "nom": "humeur",
+                                 "domaine_id": domaine}), 201)["id"]
+    colere = _ok(c.post(f"/api/attributs/dimensions/{dim_perso}/valeurs", headers=LEA,
+                        json={"valeur": "colère"}), 201)["id"]
+    tintin = next(p["id"] for p in _ok(c.get("/api/personnages", headers=LEA), 200)
+                  if p["nom"] == "Tintin")
+    _ok(c.put(f"/api/personnages/{tintin}/attributs", headers=LEA,
+              json={"valeur_id": colere}), 200)
+    # Une annotation qui ne porte QUE des tags, sur le texte des cinq types (Collection B) ;
+    # son tag devient LOCAL à la Collection B, dont Léa est propriétaire.
+    _ok(c.put(f"/api/regions/{zones['texte']}/annotation", headers=LEA,
+              json={"tags": ["onomatopée"]}), 200)
+    local = tag_id("onomatopée")
+    _ok(c.patch(f"/api/tags/{local}/lexique", headers=LEA,
+                json={"collection_id": faits["collection_b"],
+                      "description": "Un bruit écrit."}), 200)
+    # Un tag RENOMMÉ, un tag FUSIONNÉ : posés, donc remaniés par une portée totale (un tag
+    # global). Le journal `tags` en garde les deux actes.
+    _ok(c.put(f"/api/regions/{zones['cartouche']}/annotation", headers=LEA,
+              json={"note": "récitatif", "tags": ["recitatf", "dialog"]}), 200)
+    _ok(c.put(f"/api/tags/{tag_id('recitatf')}", headers=ADMIN,
+              json={"label": "récitatif"}), 200)
+    _ok(c.post(f"/api/tags/{tag_id('dialog')}/fusion", headers=ADMIN,
+               json={"cible_id": tag_id("dialogue")}), 200)
+    # Un tag dans le bac à sable de Léa, posé par Sam, son invité, sur l'album qu'il y a
+    # importé : il vit dans l'espace du bac à sable.
+    planche_du_bac = _ok(c.get(f"/api/albums/{faits['album_du_bac']}/planches",
+                               headers=SAM), 200)[0]["id"]
+    bulle_du_bac = _ok(c.post(f"/api/planches/{planche_du_bac}/regions", headers=SAM,
+                              json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9}),
+                       201)["id"]
+    _ok(c.put(f"/api/regions/{bulle_du_bac}/annotation", headers=SAM,
+              json={"note": "au bac", "tags": ["essai"]}), 200)
+    # En dernier, des actes ANNULABLES de Léa : une note retouchée, un tag ajouté.
+    _ok(c.put(f"/api/regions/{zones['bulle']}/annotation", headers=LEA,
+              json={"note": "à relever, vu deux fois", "tags_ajoutes": ["cri"]}), 200)
+    return {"domaine": domaine, "dimension_personnage": dim_perso, "valeur_profil": colere,
+            "tag_local": local, "region_annotee_de_tags_seuls": zones["texte"],
+            "region_du_bac_taguee": bulle_du_bac}
 
 
 def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict) -> None:
@@ -713,6 +816,23 @@ def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict)
         faits["demandes_par_reponse"] = dict(conn.execute(
             "SELECT COALESCE(reponse, 'en attente'), COUNT(*) FROM demande "
             "GROUP BY 1 ORDER BY 1").fetchall())
+    if 38 <= version < 39:
+        # Le vocabulaire que le basculement d'ANN-7 (v39) retire : ce que sa migration doit
+        # trouver, et vider.
+        faits["comptes"].update({t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                                 for t in ("tags", "annotation_tags", "region_attribut",
+                                           "personnage_attribut", "attribut_dimension",
+                                           "attribut_valeur", "domaine")})
+        faits["tags_par_portee"] = dict(conn.execute(
+            "SELECT CASE WHEN espace <> 0 THEN 'bac à sable' WHEN collection_id IS NOT NULL "
+            "THEN 'local' ELSE 'global' END AS p, COUNT(*) FROM tags GROUP BY p "
+            "ORDER BY p").fetchall())
+        faits["annotations_sans_note"] = conn.execute(
+            "SELECT COUNT(*) FROM annotations "
+            "WHERE TRIM(COALESCE(note, '')) = ''").fetchone()[0]
+        faits["actes_sur_tags"] = dict(conn.execute(
+            "SELECT type, COUNT(*) FROM evenement WHERE cible_table = 'tags' "
+            "GROUP BY type ORDER BY type").fetchall())
     try:
         relatif = sortie.relative_to(RACINE).as_posix()
     except ValueError:
