@@ -370,7 +370,29 @@
       ],
       cochee: { rubrique: "Registre", entree: "familier" },
     },
+    // Trois membres INVENTÉS — aucun vrai compte —, et ce que l'outil leur permet vraiment :
+    // régler le projet, écrire, exporter (une case à côté du niveau). Puis un doute sur
+    // l'entrée cochée de la page précédente, discuté sur sa zone.
+    collab: {
+      description: "Trois membres d'un projet et ce que chacun y peut, puis un doute sur "
+        + "« familier », discuté à deux.",
+      membres: [
+        { nom: "Agathe", role: "responsable du projet" },
+        { nom: "Malik", role: "annote et exporte" },
+        { nom: "Lou", role: "annote" },
+      ],
+      doute: { sur: "familier", messages: [
+        { par: "Lou", texte: "Familier, ou plutôt moqueur ?" },
+        { par: "Agathe", texte: "Moqueur, oui : c'est le ton, pas le registre." },
+      ] },
+    },
   };
+
+  /* L'initiale d'un prénom, pour sa pastille : sa première lettre, en capitale. */
+  function initiale(nom) {
+    const c = Array.from(String(nom || "").trim())[0];
+    return c ? c.toLocaleUpperCase("fr") : "?";
+  }
 
   /* Le vocabulaire de « Analysez et annotez », rubrique par rubrique, chaque entrée avec
      sa coche : `[{ rubrique, entrees: [{ texte, cochee }] }]`. */
@@ -410,7 +432,7 @@
      les moteurs de l'instance (`moteurs`), la seule chose qu'elle en lit. */
   function illustrationDe(page, m) {
     const k = page && page.k;
-    if (k === "corpus" || k === "zones") return { k, ...ILLUSTRATIONS[k] };
+    if (k === "corpus" || k === "zones" || k === "collab") return { k, ...ILLUSTRATIONS[k] };
     if (k === "analyse") return { k, ...ILLUSTRATIONS.analyse,
                                   rubriques: vocabulaire(ILLUSTRATIONS.analyse) };
     if (k === "moteurs") {
@@ -1113,7 +1135,7 @@
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
            typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
-           vocabulaire,
+           vocabulaire, initiale,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

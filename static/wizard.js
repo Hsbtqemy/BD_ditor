@@ -262,6 +262,26 @@
       });
       d.appendChild(voc);
     }
+    if (ill.k === "collab") {
+      const ul = el("ul", "wizard-membres");
+      ill.membres.forEach((m) => {
+        const li = el("li");
+        li.appendChild(el("span", "wizard-avatar", W.initiale(m.nom)));
+        li.appendChild(el("b", null, m.nom));
+        li.appendChild(el("span", "wizard-role", W.typo(m.role)));
+        ul.appendChild(li);
+      });
+      d.appendChild(ul);
+      const fil = el("div", "wizard-doute");
+      fil.appendChild(el("p", "wizard-legende", W.typo(`Un doute sur « ${ill.doute.sur} »`)));
+      ill.doute.messages.forEach((m) => {
+        const p = el("p");
+        p.appendChild(el("b", null, m.par));
+        p.appendChild(document.createTextNode(` ${W.typo(m.texte)}`));
+        fil.appendChild(p);
+      });
+      d.appendChild(fil);
+    }
     if (ill.k === "corpus") {
       d.classList.add("wizard-collections");
       ill.collections.forEach((c) => {

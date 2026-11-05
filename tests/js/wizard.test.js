@@ -748,8 +748,8 @@ test("« Constituez votre corpus » : deux collections fixes, décrites", () => 
   assert.deepEqual(ill.collections.map((c) => [c.nom, c.fichiers.length]),
                    [["Récits d'aventure", 3], ["Humour", 2]]);
   assert.match(ill.description, /Récits d'aventure.*Humour/);
-  // La première page garde l'éventail du jeu ; les deux dernières n'ont pas d'illustration.
-  for (const k of ["outil", "collab", "sortir"]) {
+  // La première page garde l'éventail du jeu ; la dernière n'a pas d'illustration.
+  for (const k of ["outil", "sortir"]) {
     assert.equal(W.illustrationDe(W.PAGES.find((p) => p.k === k)), null, k);
   }
   assert.equal(W.illustrationDe(null), null);
@@ -868,4 +868,23 @@ test("« Analysez et annotez » : une bulle et un vocabulaire inventé, une seul
                    [{ rubrique: "A", entrees: [{ texte: "x", cochee: false }] },
                     { rubrique: "B", entrees: [{ texte: "x", cochee: true }] }]);
   assert.deepEqual(W.vocabulaire(null), []);
+});
+
+test("« Travaillez à plusieurs » : trois membres inventés, leurs rôles, un doute discuté", () => {
+  const ill = W.illustrationDe(W.PAGES.find((p) => p.k === "collab"));
+  assert.equal(ill.k, "collab");
+  assert.equal(ill.membres.length, 3);
+  assert.deepEqual(ill.membres.map((m) => m.role),
+                   ["responsable du projet", "annote et exporte", "annote"]);
+  // Ni les prénoms de la maquette, ni les comptes des tests.
+  for (const m of ill.membres) {
+    assert.ok(!["Paule", "Hélène", "Noé", "Camille", "Dominique"].includes(m.nom), m.nom);
+  }
+  // Le fil est signé par des membres, et porte sur l'entrée cochée de la page 5.
+  const noms = ill.membres.map((m) => m.nom);
+  assert.ok(ill.doute.messages.length >= 2);
+  assert.ok(ill.doute.messages.every((m) => noms.includes(m.par) && m.texte.trim()));
+  assert.equal(ill.doute.sur, W.illustrationDe({ k: "analyse" }).cochee.entree);
+  assert.deepEqual(["Agathe", "élise", "  lou", "", null].map(W.initiale),
+                   ["A", "É", "L", "?", "?"]);
 });

@@ -757,6 +757,18 @@ kbd {
 .wizard-lus mark { color: var(--text);
   background: color-mix(in srgb, var(--accent-amber) 35%, transparent); }
 .wizard-lus .marque-e { font-family: inherit; }
+/* « Travaillez à plusieurs » : les membres, une pastille et un rôle, puis un fil de doute,
+   filet ambre à gauche comme la maquette. */
+.wizard-fixe-collab { justify-items: stretch; }
+.wizard-membres { margin: 0; padding: 0; list-style: none; display: grid; gap: .3846rem; }
+.wizard-membres li { display: flex; flex-wrap: wrap; align-items: center; gap: .2308rem .6154rem; }
+.wizard-avatar { flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%; display: grid;
+  place-items: center; font-weight: 700; font-size: .9231rem; color: var(--text);
+  background: var(--bg-input); border: 1px solid var(--border); }
+.wizard-role { color: var(--text-muted); font-size: .9231rem; }
+.wizard-doute { display: grid; gap: .2308rem; padding: .4615rem .6154rem; border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-amber); border-radius: 6px; }
+.wizard-doute p { margin: 0; overflow-wrap: anywhere; }
 /* « Analysez et annotez » : la bulle, et le vocabulaire. L'entrée cochée se marque par sa
    coche, sa graisse et son filet ; l'encre reste celle du texte. */
 .wizard-fixe-analyse { justify-items: stretch; }

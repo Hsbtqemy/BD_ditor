@@ -528,12 +528,13 @@ def test_a11y_l_album_et_la_carte(page, jeu, theme):
     _album(page)
     rapports = []
     for quoi, geste in (("album, première page", None),
-                        # Les pages 2 à 5 et leurs illustrations fixes (leurs noms, en encre
+                        # Les pages illustrées (les noms de la page 3, en encre
                         # du texte sur l'image).
                         ("album, page 2", "#wizard-suiv"),
                         ("album, page 3", "#wizard-suiv"),
                         ("album, page 4", "#wizard-suiv"),
                         ("album, page 5", "#wizard-suiv"),
+                        ("album, page 6", "#wizard-suiv"),
                         ("album, choix du parcours", "#wizard-passer"),
                         ("visite, première page", "#wizard-choix-complet"),
                         ("visite, l'Atelier", "#wizard-visite-suiv"),
@@ -582,6 +583,7 @@ def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
                                    ("album, page 3", "#wizard-suiv", ".wizard-boite"),
                                    ("album, page 4", "#wizard-suiv", ".wizard-boite"),
                                    ("album, page 5", "#wizard-suiv", ".wizard-boite"),
+                                   ("album, page 6", "#wizard-suiv", ".wizard-boite"),
                                    ("choix", "#wizard-passer", ".wizard-boite"),
                                    ("visite", "#wizard-choix-rapide", "#wizard-fenetre"),
                                    ("guide", "#wizard-visite-passer", "#wizard-fenetre"),
@@ -1001,11 +1003,12 @@ def test_la_transcription_ne_dit_pas_bulle_sur_un_cartouche(page, jeu_decoupe):
 
 # ── Les illustrations fixes de l'album ─────────────────────────────────────────────────
 #
-# Des images du dépôt (`static/wizard/`, Hugo, 2026-11-05) : tourner les pages 2 à 5 ne
-# demande RIEN à l'instance, et chaque image arrive. Les miniatures de la première page,
+# Des images du dépôt (`static/wizard/`, Hugo, 2026-11-05) : tourner les pages illustrées
+# ne demande RIEN à l'instance, et chaque image arrive. Les miniatures de la première page,
 # elles, viennent du jeu et sont demandées avant.
 
-PAGES_ILLUSTREES = {2: "corpus", 3: "zones", 4: "moteurs", 5: "analyse"}
+PAGES_ILLUSTREES = {2: "corpus", 3: "zones", 4: "moteurs", 5: "analyse", 6: "collab"}
+SANS_IMAGE = {"collab"}  # des membres et un fil de doute : du texte seul
 
 
 @pytestmark_proxy
@@ -1031,7 +1034,8 @@ def test_les_illustrations_de_l_album_ne_demandent_rien_a_l_instance(page, jeu):
             '.wizard-fixe-' + k + ' img')].every((i) => i.complete && i.naturalWidth > 0)""",
                                arg=k)
         srcs = ill.locator("img").evaluate_all("(is) => is.map((i) => i.getAttribute('src'))")
-        assert srcs and all(s.startswith("/static/wizard/") for s in srcs), srcs
+        assert all(s.startswith("/static/wizard/") for s in srcs), srcs
+        assert srcs or k in SANS_IMAGE, k
         # Rien n'y est cliquable.
         assert ill.locator("a, button, input, [tabindex]").count() == 0
         if k == "moteurs":
@@ -1039,6 +1043,9 @@ def test_les_illustrations_de_l_album_ne_demandent_rien_a_l_instance(page, jeu):
         if k == "analyse":
             expect(ill.locator(".wizard-entree.cochee")).to_have_count(1)
             expect(ill.locator(".wizard-entree.cochee")).to_be_visible()
+        if k == "collab":
+            expect(ill.locator(".wizard-membres li")).to_have_count(3)
+            expect(ill.locator(".wizard-doute")).to_be_visible()
     # L'Atelier, dessous, compare sa planche à intervalles (`/empreinte`) : ce n'est pas
     # l'album qui le demande.
     vers_l_api = [u for u in demandes if "/api/" in u and "/empreinte" not in u]
