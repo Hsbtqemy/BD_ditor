@@ -157,8 +157,12 @@
   }
 
   /* ── Les neuf étapes ───────────────────────────────────────────────────────────────
-     Neuf et non huit (Hugo, 2026-11-02) : « Tracer une zone » s'ajoute entre
-     « Pré-remplir » et « Corriger le découpage ». Chaque étape nomme une SURFACE et un
+     Neuf et non huit (Hugo, 2026-11-02) : « Tracer une zone » s'ajoute avant « Corriger le
+     découpage ». Et la découverte des moteurs vient APRÈS le travail à la main (Hugo,
+     2026-11-05) : on apprend ce qu'est une case, une bulle, un texte en les faisant, puis on
+     juge ce que la machine propose en le comparant à son propre travail — « Pré-remplir »
+     suit « Transcrire et relire ». Les étapes se désignent par leur CLÉ, jamais par leur
+     rang. Chaque étape nomme une SURFACE et un
      GESTE ; `dite` : une étape qu'on lit sans geste à faire sur la planche. La phrase de
      « Constituer le corpus » nomme l'album du parcours tel que le jeu l'a posé. */
   // Le premier paragraphe de « Pré-remplir », écrit par Hugo (2026-11-05), avec ou sans
@@ -180,6 +184,18 @@
       phrase: "Une notice dit ce qu'est l'album. Dans sa fiche, cliquez sur « ✎ Modifier » : "
         + "titre, numéro, date, type… elle est presque complète. Il y manque la langue : "
         + "écrivez « fr », puis enregistrez." },
+    { k: "tracer", titre: "Tracer une zone", ou: "Atelier, mode Édition", surface: "/",
+      mode: "edition", zones: ["atelier-planche", "atelier-structure"],
+      phrase: "Glissez sur le fond pour tracer une case. Dans une case, maintenez Maj et "
+        + "glissez pour tracer une bulle." },
+    { k: "decoupage", titre: "Corriger le découpage", ou: "Atelier, mode Édition",
+      surface: "/", mode: "edition", zones: ["atelier-planche", "atelier-structure"],
+      phrase: "Le cadre d'une bulle est trop petit. Agrandissez-le par une de ses poignées : "
+        + "tout le texte doit tenir dedans." },
+    { k: "transcrire", titre: "Transcrire et relire", ou: "Atelier, mode Transcription",
+      surface: "/", mode: "transcription", zones: ["atelier-transcription"],
+      phrase: "Recopiez le texte de la bulle, tel qu'il est écrit. La touche Tab passe à la "
+        + "bulle suivante." },
     { k: "preremplir", titre: "Pré-remplir", ou: "Atelier, Traitement", surface: "/",
       facultatif: true, zones: ["atelier-actions", "atelier-planche"],
       // Les trois moteurs, et pas l'OCR seul (Hugo, 2026-11-05 : « pas spécialement pour
@@ -195,18 +211,6 @@
         + "découpage et le texte se font à la main.",
       sansOcr: `${MOTEURS_FONT}\n\nCette instance n'a pas l'OCR : rien n'est cassé, le texte `
         + "se fait à la main." },
-    { k: "tracer", titre: "Tracer une zone", ou: "Atelier, mode Édition", surface: "/",
-      mode: "edition", zones: ["atelier-planche", "atelier-structure"],
-      phrase: "Glissez sur le fond pour tracer une case. Dans une case, maintenez Maj et "
-        + "glissez pour tracer une bulle." },
-    { k: "decoupage", titre: "Corriger le découpage", ou: "Atelier, mode Édition",
-      surface: "/", mode: "edition", zones: ["atelier-planche", "atelier-structure"],
-      phrase: "Le cadre d'une bulle est trop petit. Agrandissez-le par une de ses poignées : "
-        + "tout le texte doit tenir dedans." },
-    { k: "transcrire", titre: "Transcrire et relire", ou: "Atelier, mode Transcription",
-      surface: "/", mode: "transcription", zones: ["atelier-transcription"],
-      phrase: "Recopiez le texte de la bulle, tel qu'il est écrit. La touche Tab passe à la "
-        + "bulle suivante." },
     { k: "annoter", titre: "Annoter", ou: "Page Annotation", surface: "/annotation",
       zones: ["annotation-case", "annotation-mots", "annotation-grille"],
       phrase: "Cliquez un mot de la bulle, puis une entrée de la grille, à droite : c'est le "
@@ -214,17 +218,21 @@
     { k: "chercher", titre: "Chercher et explorer", ou: "Recherche, Exploration",
       surface: "/recherche", dite: true, sansAlbum: true,
       zones: ["recherche-champ", "recherche-resultats"],
-      phrase: "Ces deux pages portent sur le vrai corpus : votre bac à sable n'y paraît pas." },
+      // Ce à quoi servent les deux pages, puis le bac à sable (Hugo, 2026-11-05). Le guide
+      // ne s'ouvre que dans un bac à sable : le second paragraphe y a toujours son sens.
+      phrase: "La Recherche retrouve un mot dans tout le corpus, dialogues et notes compris, "
+        + "et chaque résultat rouvre sa zone dans l'Atelier. L'Exploration met le corpus en "
+        + "chiffres : fréquences, emplois en contexte, croisements, comparaison de deux "
+        + "ensembles.\n\nCes deux pages portent sur le vrai corpus : votre bac à sable n'y "
+        + "paraît pas." },
     { k: "exporter", titre: "Exporter", ou: "Bibliothèque, Atelier", surface: "/corpus",
       album: true, dite: true, zones: ["bibliotheque-fiche"],
-      // La phrase de la maquette promettait des sorties qu'un bac à sable refuse (le jeu de
-      // production est en part serveur) ; celle-ci ne promet rien du bac à sable (Hugo,
-      // 2026-11-03).
-      phrase: "Ailleurs que dans un bac à sable, une collection sort en fiche, en "
-        + "enregistrements et en manifeste IIIF, et un album en JSON, CSV ou TEI.",
-      // Et elle dit, devant, ce qui sort VRAIMENT d'ici (`phraseExport`), en mots d'arrivant :
-      // « l'export d'un bac à sable est fermé » ne disait rien à qui débute (Hugo, 2026-11-05).
-      // Le guide ne s'ouvre que dans SON bac à sable : « votre » est juste.
+      phrase: "Vos données sortent aux formats de la recherche : une collection en fiche, en "
+        + "enregistrements et en manifeste IIIF, un album en JSON, CSV ou TEI.",
+      // D'abord qu'on PEUT exporter, puis que c'est limité ici (Hugo, 2026-11-05) : la
+      // phrase, puis, en second paragraphe, ce qui sort VRAIMENT d'ici (`phraseExport`), en
+      // mots d'arrivant — « l'export d'un bac à sable est fermé » ne disait rien à qui
+      // débute. Le guide ne s'ouvre que dans SON bac à sable : « votre » est juste.
       ici: { rien: "Vous êtes dans votre bac à sable, une zone pour vous exercer : ici, "
                + "l'export n'est pas autorisé.",
              un: "Vous êtes dans votre bac à sable, une zone pour vous exercer : ici, seul "
@@ -246,10 +254,10 @@
   const FOYERS = {
     corpus: ["@album"],
     decrire: ["bibliotheque-notice"],
-    preremplir: ["atelier-traitement", "atelier-traitement-menu"],
     tracer: ["atelier-planche", "atelier-structure"],
     decoupage: ["@bulle", "atelier-structure"],
     transcrire: ["atelier-transcription-texte"],
+    preremplir: ["atelier-traitement", "atelier-traitement-menu"],
     annoter: ["annotation-case", "annotation-grille"],
     chercher: ["recherche-champ", "recherche-bac"],
     exporter: ["bibliotheque-actes"],
@@ -593,7 +601,7 @@
     const a = albumDuParcours(vue);
     const p = e.phrase.replace("{album}", a && a.titre ? a.titre : "l'album du parcours");
     const ici = phraseExport(e, vue);
-    return typo(ici ? `${ici} ${p}` : p);
+    return typo(ici ? `${p}\n\n${ici}` : p);
   }
 
   /* Ce qui sort VRAIMENT du bac à sable (`pilotage/UX-6.md`, « “Exporter” dit ce qui sort
@@ -1091,8 +1099,24 @@
     const s = depuis === undefined ? stockage() : depuis;
     try {
       const v = tous(s)[login];
-      return memeBac(v, bac) ? normaliser(v) : neuf();
+      return memeBac(v, bac) ? normaliser(etapeRetenue(v)) : neuf();
     } catch (e) { return neuf(); }
+  }
+
+  /* L'étape retenue se relit par sa CLÉ (`k`, écrite avec son rang depuis le 2026-11-05) :
+     le rang d'une étape change quand l'ordre change. Un souvenir écrit avant, sans clé, est
+     d'avant le nouvel ordre du parcours complet — où « Pré-remplir » était troisième — : son
+     rang se relit dans cet ordre-là (`ANCIEN_COMPLET`). Le parcours rapide n'a pas changé. */
+  const ANCIEN_COMPLET = ["corpus", "decrire", "preremplir", "tracer", "decoupage",
+                          "transcrire", "annoter", "chercher", "exporter"];
+
+  function etapeRetenue(v) {
+    if (!v || typeof v !== "object" || !PARCOURS.includes(v.parcours)) return v;
+    const ks = etapes(v.parcours).map((e) => e.k);
+    let k = typeof v.k === "string" ? v.k : null;
+    if (!k && v.parcours === "complet" && Number.isInteger(v.etape)) k = ANCIEN_COMPLET[v.etape];
+    const i = k ? ks.indexOf(k) : -1;
+    return i >= 0 ? Object.assign({}, v, { etape: i }) : v;
   }
 
   function retenirSouvenir(login, bac, souvenir, dans) {
@@ -1103,8 +1127,10 @@
       let t;
       try { t = tous(s); } catch (e) { t = {}; }
       const n = normaliser(souvenir);
+      const e = etapes(n.parcours)[n.etape];
       t[login] = { bac: bac.id, efface_le: bac.efface_le || null,
-                   album_vu: n.album_vu, parcours: n.parcours, etape: n.etape };
+                   album_vu: n.album_vu, parcours: n.parcours, etape: n.etape,
+                   k: e ? e.k : null };
       s.setItem(CLE, JSON.stringify(t));
       return true;
     } catch (e) { return false; }

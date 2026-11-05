@@ -39,9 +39,9 @@ def sections_du_guide():
 def test_l_extraction_voit_les_neuf_etapes():
     # Une extraction qui rétrécirait en silence approuverait tout.
     assert titres_de_l_ecran() == [
-        "Constituer le corpus", "Décrire l'album", "Pré-remplir", "Tracer une zone",
-        "Corriger le découpage", "Transcrire et relire", "Annoter", "Chercher et explorer",
-        "Exporter"]
+        "Constituer le corpus", "Décrire l'album", "Tracer une zone",
+        "Corriger le découpage", "Transcrire et relire", "Pré-remplir", "Annoter",
+        "Chercher et explorer", "Exporter"]
 
 
 def test_chaque_etape_de_l_ecran_a_sa_section_dans_le_guide():

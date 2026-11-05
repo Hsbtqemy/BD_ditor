@@ -149,16 +149,17 @@ test("bacASoi : le sien seulement, avec sa date d'effacement", () => {
 
 test("neuf étapes au parcours complet, quatre gestes au parcours rapide", () => {
   assert.deepEqual(W.etapes("complet").map((e) => e.k),
-                   ["corpus", "decrire", "preremplir", "tracer", "decoupage", "transcrire",
+                   ["corpus", "decrire", "tracer", "decoupage", "transcrire", "preremplir",
                     "annoter", "chercher", "exporter"]);
   assert.deepEqual(W.etapes("rapide").map((e) => e.k),
                    ["tracer", "decoupage", "transcrire", "annoter"]);
   assert.deepEqual(W.etapes(null), []);
   assert.deepEqual(W.etapes("express"), []);
-  // « Tracer une zone » entre « Pré-remplir » et « Corriger le découpage » (2026-11-02).
+  // « Tracer une zone » avant « Corriger le découpage » (2026-11-02) ; les moteurs APRÈS le
+  // travail à la main (2026-11-05) : « Pré-remplir » suit « Transcrire et relire ».
   const k = W.ETAPES.map((e) => e.k);
-  assert.equal(k.indexOf("tracer"), k.indexOf("preremplir") + 1);
   assert.equal(k.indexOf("decoupage"), k.indexOf("tracer") + 1);
+  assert.equal(k.indexOf("preremplir"), k.indexOf("transcrire") + 1);
 });
 
 test("changer de parcours garde l'étape où l'on est, si elle y figure", () => {
@@ -218,28 +219,30 @@ test("la phrase de « Constituer le corpus » nomme l'album du parcours", () => 
 
 /* ── Ce qui sort d'un bac à sable (tranche 4) ─────────────────────────────────────────── */
 
-test("« Exporter » dit ce qui sort VRAIMENT du bac à sable, d'après le jeu", () => {
+test("« Exporter » dit ce qu'on peut exporter, puis ce qui sort VRAIMENT du bac à sable", () => {
   const exp = W.ETAPES.find((e) => e.k === "exporter");
-  const hugo = "Ailleurs que dans un bac à sable, une collection sort en fiche, en "
-    + "enregistrements et en manifeste IIIF, et un album en JSON, CSV ou TEI.";
+  const hugo = "Vos données sortent aux formats de la recherche : une collection en fiche, en "
+    + "enregistrements et en manifeste IIIF, un album en JSON, CSV ou TEI.";
   const ZONE = "Vous êtes dans votre bac à sable, une zone pour vous exercer : ici, ";
-  // Le jeu de production : tout en part serveur — rien ne sort, et la phrase le dit d'abord.
+  const ps = (vue) => W.paragraphes(W.phraseEtape(exp, vue, null));
+  // Deux paragraphes, dans cet ordre (Hugo, 2026-11-05) : ce qu'on peut exporter, puis la
+  // limite d'ici. Le jeu de production : tout en part serveur — rien ne sort.
   const ferme = { ...VUE, jeu: VUE.jeu.map((j) => ({ ...j, exportable: false })) };
-  assert.equal(W.phraseEtape(exp, ferme, null),
-               W.typo(`${ZONE}l'export n'est pas autorisé. ${hugo}`));
+  assert.deepEqual(ps(ferme), [W.typo(hugo), W.typo(`${ZONE}l'export n'est pas autorisé.`)]);
   assert.equal(W.phraseEtape(exp, VUE, null), W.phraseEtape(exp, ferme, null),
                "exportable absent ne vaut pas ouvert");
   // La part du dépôt : la copie ouverte se nomme, et la planche importée la ferme.
   const un = { ...VUE, jeu: [VUE.jeu[0], { ...VUE.jeu[1], exportable: true }] };
-  assert.equal(W.phraseEtape(exp, un, null),
-               W.typo(`${ZONE}seul « Moustache et Trottinette » peut être exporté, tant que `
-                      + `vous n'y importez aucune planche. ${hugo}`));
+  assert.deepEqual(ps(un), [W.typo(hugo),
+    W.typo(`${ZONE}seul « Moustache et Trottinette » peut être exporté, tant que `
+           + "vous n'y importez aucune planche.")]);
   const deux = { ...VUE, jeu: VUE.jeu.map((j) => ({ ...j, exportable: true })) };
-  assert.ok(W.phraseEtape(exp, deux, null).startsWith(
+  assert.ok(ps(deux)[1].startsWith(
     W.typo(`${ZONE}seuls « Un exemple », « Moustache et Trottinette » et « Le stock » `
            + "peuvent être exportés")));
   // Sans la vue du bac à sable, rien n'est dit d'ici : la phrase de Hugo seule.
   assert.equal(W.phraseEtape(exp, null, null), W.typo(hugo));
+  assert.ok(!/Ailleurs que dans un bac à sable/.test(W.phraseEtape(exp, ferme, null)));
   // Aucune autre étape ne parle de l'export d'ici.
   W.ETAPES.filter((e) => e !== exp).forEach((e) =>
     assert.doesNotMatch(W.phraseEtape(e, ferme, null), /^Ici/, e.k));
@@ -1131,4 +1134,39 @@ test("« Tracer une zone » cadre la rangée du jeu : le rectangle commun de ses
                    { x: 60, y: 60, w: 180, h: 130 });
   assert.equal(W.cadreAvecMarge(null, 975, 1296), null);
   assert.equal(W.cadreAvecMarge({ x: 0, y: 0, w: 1, h: 1 }, 0, 10), null);
+});
+
+test("l'étape retenue se relit par sa clé ; un souvenir d'avant le nouvel ordre suit son étape", () => {
+  const ecrit = (v) => memoire({ [W.CLE]: JSON.stringify({ camille: Object.assign(
+    { bac: 41, efface_le: BAC.efface_le, album_vu: true }, v) }) });
+  const ks = W.etapes("complet").map((e) => e.k);
+  // Retenu aujourd'hui : le rang ET la clé.
+  const s = memoire();
+  W.retenirSouvenir("camille", BAC, W.allerA(W.choisirParcours(W.neuf(), "complet"),
+                                            ks.indexOf("preremplir")), s);
+  assert.equal(JSON.parse(s.brut().get(W.CLE)).camille.k, "preremplir");
+  assert.equal(W.lireSouvenir("camille", BAC, s).etape, ks.indexOf("preremplir"));
+  // La clé l'emporte sur le rang écrit.
+  assert.equal(W.lireSouvenir("camille", BAC, ecrit({ parcours: "complet", etape: 0,
+                                                       k: "annoter" })).etape, ks.indexOf("annoter"));
+  // Sans clé, au parcours complet : l'ancien ordre, où « Pré-remplir » était 3e (rang 2)
+  // et « Tracer » 4e (rang 3).
+  assert.equal(W.lireSouvenir("camille", BAC, ecrit({ parcours: "complet", etape: 2 })).etape,
+               ks.indexOf("preremplir"));
+  assert.equal(W.lireSouvenir("camille", BAC, ecrit({ parcours: "complet", etape: 3 })).etape,
+               ks.indexOf("tracer"));
+  // Le parcours rapide n'a pas changé : son rang se relit tel quel.
+  assert.equal(W.lireSouvenir("camille", BAC, ecrit({ parcours: "rapide", etape: 2 })).etape, 2);
+  // Une clé inconnue retombe sur le rang écrit, borné.
+  assert.equal(W.lireSouvenir("camille", BAC, ecrit({ parcours: "rapide", etape: 1,
+                                                       k: "inconnue" })).etape, 1);
+});
+
+test("« Chercher et explorer » dit à quoi servent les deux pages, puis le bac à sable", () => {
+  const e = W.ETAPES.find((x) => x.k === "chercher");
+  const ps = W.paragraphes(W.phraseEtape(e, null, null)).map(sp);
+  assert.equal(ps.length, 2);
+  assert.match(ps[0], /^La Recherche retrouve un mot dans tout le corpus/);
+  assert.match(ps[0], /L'Exploration met le corpus en chiffres : fréquences/);
+  assert.equal(ps[1], "Ces deux pages portent sur le vrai corpus : votre bac à sable n'y paraît pas.");
 });

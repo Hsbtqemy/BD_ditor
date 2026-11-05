@@ -73,7 +73,7 @@ ici, et le parcours rapide en prend quatre — tracer, corriger, transcrire, ann
 de chaque page, et c'est de ce projet que la Bibliothèque vous montre les collections.
 
 C'est l'ordre à suivre pour un corpus qui part de zéro. **Sur un corpus déjà rempli**, on
-entre directement à l'une des étapes 4 à 7 selon ce qui reste à faire : la Bibliothèque affiche
+entre directement à l'une des étapes 3 à 7 selon ce qui reste à faire : la Bibliothèque affiche
 pour chaque planche son statut, sa validation et son avancement de relecture.
 
 ### Étape 1 — Constituer le corpus
@@ -189,28 +189,7 @@ collections*.
 Ce n'est pas de la paperasse : c'est ce qui rendra le corpus citable et déposable. Le faire
 maintenant coûte cinq minutes ; le faire deux ans plus tard suppose de retrouver l'exemplaire.
 
-### Étape 3 — Pré-remplir *(optionnel)*
-**Bibliothèque · cocher des albums ou des planches, puis `Segmenter` / `Bulles` / `OCR` et `▶ Lancer`**
-
-Trois passes, dans cet ordre : les **cases**, puis les **bulles** à l'intérieur des cases, puis
-le **texte** des bulles. Elles se lancent par lot, en tâche de fond, avec une barre de
-progression et un bouton d'annulation. Le lot apparaît **au-dessus de sa sélection** : cochez
-des albums dans l'onglet *Albums* d'une collection, ou des planches dans la fiche d'un album —
-un lot porte sur l'un ou l'autre, jamais sur un mélange. Chaque lot dit sur quoi il travaille —
-ses albums, ou « 3 planches de *Titre* » —, et ses erreurs se lisent sous sa barre, *Voir les
-erreurs*. On peut aussi les
-lancer planche par planche depuis l'Atelier (menu *⚙ Traitement*).
-
-L'ordre de lecture — rangées de haut en bas, gauche à droite, bulles groupées par case — est
-recalculé automatiquement après chaque passe.
-
-Une planche **verrouillée** (🔒) est sautée par les lots : c'est ainsi qu'on protège un travail
-manuel d'une repasse automatique.
-
-Si un moteur n'est pas installé, cette étape se saute entièrement — la suite fonctionne
-identiquement, avec plus de travail manuel à l'étape 4.
-
-### Étape 4 — Tracer une zone
+### Étape 3 — Tracer une zone
 **Atelier · mode Édition (`E`) : glisser sur la planche, ou `✎ Tracer`**
 
 Une zone se crée là où les moteurs n'en ont pas posé — ou partout, sans moteur. On ne fait
@@ -238,11 +217,11 @@ texte, cartouche. Une zone tracée à la main se range **en dernier** parmi ses 
 d'une rangée se citerait comme la dernière. Un **détail d'image** — un objet, un geste, qu'on veut annoter sans qu'il
 porte de texte — se trace dans la page *Annotation*, case par case (§4, *Annotation*).
 
-### Étape 5 — Corriger le découpage
+### Étape 4 — Corriger le découpage
 **Atelier · mode Édition (`E`)**
 
 Redimensionnez les régions par leurs poignées, ajustez au pixel près par saisie numérique,
-supprimez les fausses (`Suppr`) ; celles qui manquent se tracent (étape 4). Une région
+supprimez les fausses (`Suppr`) ; celles qui manquent se tracent (étape 3). Une région
 porte un **type** : case, bulle, personnage, texte, cartouche.
 
 **Cette étape conditionne la suivante, et c'est la raison de sa place ici.** Le crop
@@ -250,7 +229,7 @@ plein écran du mode Transcription est découpé dans la copie de travail **à p
 de la région** : une bulle mal détourée est illisible, donc intranscriptible. Elle reste taggable,
 en revanche — la géométrie contraint le texte, pas l'interprétation.
 
-### Étape 6 — Transcrire et relire
+### Étape 5 — Transcrire et relire
 **Atelier · mode Transcription (`T`), puis panneau Grammaire**
 
 Le mode Transcription est un plein écran bulle à bulle : le crop net à gauche, l'éditeur à
@@ -283,6 +262,31 @@ toute réindexation, y compris après un changement de modèle linguistique.
 
 La Bibliothèque affiche par planche un **statut de relecture** — à faire, en cours, faite —
 qui avance tout seul à mesure que les mots sont relus, et qu'on peut forcer si besoin.
+
+### Étape 6 — Pré-remplir *(optionnel)*
+**Bibliothèque · cocher des albums ou des planches, puis `Segmenter` / `Bulles` / `OCR` et `▶ Lancer`**
+
+Trois passes, dans cet ordre : les **cases**, puis les **bulles** à l'intérieur des cases, puis
+le **texte** des bulles. Elles se lancent par lot, en tâche de fond, avec une barre de
+progression et un bouton d'annulation. Le lot apparaît **au-dessus de sa sélection** : cochez
+des albums dans l'onglet *Albums* d'une collection, ou des planches dans la fiche d'un album —
+un lot porte sur l'un ou l'autre, jamais sur un mélange. Chaque lot dit sur quoi il travaille —
+ses albums, ou « 3 planches de *Titre* » —, et ses erreurs se lisent sous sa barre, *Voir les
+erreurs*. On peut aussi les
+lancer planche par planche depuis l'Atelier (menu *⚙ Traitement*).
+
+L'ordre de lecture — rangées de haut en bas, gauche à droite, bulles groupées par case — est
+recalculé automatiquement après chaque passe.
+
+Une planche **verrouillée** (🔒) est sautée par les lots : c'est ainsi qu'on protège un travail
+manuel d'une repasse automatique.
+
+Si un moteur n'est pas installé, cette étape se saute entièrement — le découpage et le texte
+se font à la main, aux étapes 3 à 5.
+
+**Elle vient ici, après le travail à la main**, et non avant : on juge mieux ce que les moteurs
+proposent quand on a soi-même découpé et transcrit une planche. Sur un corpus réel, on lance
+souvent les passes d'abord, et les étapes 3 à 5 corrigent ce qu'elles ont produit.
 
 ### Étape 7 — Annoter
 **Page Annotation (`/annotation`) · Atelier, mode Annotation (`A`)**

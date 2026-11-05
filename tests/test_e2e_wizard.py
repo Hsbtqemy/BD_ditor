@@ -160,7 +160,8 @@ def test_choisir_un_parcours_mene_a_la_carte_et_l_album_ne_revient_plus(page, je
     assert liens.nth(0).get_attribute("href") == attendu + "&mode=edition"
     assert liens.nth(3).get_attribute("href") == attendu.replace("/?", "/annotation?")
     assert _souvenir(page) == {"camille": {"bac": bac["id"], "efface_le": bac["efface_le"],
-                                           "album_vu": True, "parcours": "rapide", "etape": 0}}
+                                           "album_vu": True, "parcours": "rapide", "etape": 0,
+                                           "k": "tracer"}}
     # Une étape mène à sa surface et à son outil ; l'étape est retenue.
     liens.nth(2).click()
     page.wait_for_url(re.compile(r"mode=transcription"))
@@ -178,11 +179,11 @@ def test_choisir_un_parcours_mene_a_la_carte_et_l_album_ne_revient_plus(page, je
     album = _album(page)
     expect(album.locator("#wizard-titre")).to_have_text("Par où commencer")
     expect(album.locator(".wizard-etapes > li").nth(2)).to_have_attribute("aria-current", "step")
-    # Passer au parcours complet garde l'étape : « Transcrire et relire » est la 6e.
+    # Passer au parcours complet garde l'étape : « Transcrire et relire » est la 5e.
     album.locator("#wizard-changer").click()
     etapes = album.locator(".wizard-etapes > li")
     expect(etapes).to_have_count(9)
-    expect(etapes.nth(5)).to_have_attribute("aria-current", "step")
+    expect(etapes.nth(4)).to_have_attribute("aria-current", "step")
     expect(album.locator("#wizard-changer")).to_have_text("Passer au parcours rapide")
     album.locator("#wizard-fermer").click()
     expect(page.locator("#bac-commencer")).to_be_focused()
@@ -211,7 +212,8 @@ def test_ne_plus_afficher_tient_et_la_remise_a_neuf_fait_repartir_du_debut(page,
     page.locator("#wizard-passer").click()
     page.locator("#wizard-choix-complet").click()
     assert _souvenir(page)["camille"] == {"bac": neuf["id"], "efface_le": neuf["efface_le"],
-                                          "album_vu": True, "parcours": "complet", "etape": 0}
+                                          "album_vu": True, "parcours": "complet", "etape": 0,
+                                          "k": "corpus"}
 
 
 @pytestmark_proxy
@@ -527,12 +529,8 @@ def test_pendant_la_visite_ce_qui_lance_est_eteint_et_le_guide_le_fait(page, jeu
 def test_dans_le_guide_pre_remplir_lance_vraiment_l_ocr(page, jeu):
     ocr = []
     page.on("request", lambda r: ocr.append(r.url) if r.url.endswith("/ocr") else None)
-    _au_guide(page, jeu, "complet")
+    _au_guide_sur(page, jeu, "complet", "preremplir")
     titre = page.locator("#wizard-fenetre-titre")
-    expect(titre).to_have_text("Constituer le corpus")
-    page.locator("#wizard-guide-suiv").click()
-    expect(titre).to_have_text("Décrire l'album")
-    page.locator("#wizard-guide-suiv").click()
     expect(titre).to_have_text(re.compile(r"^Pré-remplir"), timeout=15000)
     page.locator("#btn-traitement").click()
     entree = page.locator("#btn-ocr")
@@ -886,6 +884,27 @@ def _au_guide(page, jeu, parcours="rapide"):
     return bac
 
 
+def _au_guide_sur(page, jeu, parcours, k):
+    """camille dans son bac à sable, le guide ouvert sur l'étape de clé `k` du parcours, sur
+    sa page — retenue comme l'écran la retient (le rang ET la clé)."""
+    bac = _ouvrir(jeu, CAMILLE)
+    vue = _api(jeu["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    _sous(page, CAMILLE)
+    _arriver(page, jeu["base"])
+    e = page.evaluate("""([p, k, vue]) => { const l = BDWizard.etapes(p);
+      const i = l.findIndex((x) => x.k === k);
+      return { i, adresse: BDWizard.adresseEtape(l[i], vue) }; }""", [parcours, k, vue])
+    page.evaluate("""([login, bac, p, i, k]) => {
+      localStorage.setItem('bd-wizard', JSON.stringify({ [login]: { bac: bac.id,
+        efface_le: bac.efface_le, album_vu: true, parcours: p, etape: i, k } }));
+      sessionStorage.setItem('bd-wizard-guide', JSON.stringify({ login, bac: bac.id,
+        efface_le: bac.efface_le, actif: true, vues: [] })); }""",
+                  ["camille", bac, parcours, e["i"], k])
+    page.goto(jeu["base"] + e["adresse"], wait_until="domcontentloaded")
+    expect(page.locator("#wizard-guide-compte")).to_be_visible(timeout=15000)
+    return bac
+
+
 def _ecran(page, mx, my):
     """Un point de la planche (pixels master, planche de 400 px de large) à l'écran."""
     b = page.locator("#planche-img").bounding_box()
@@ -1150,12 +1169,12 @@ def test_la_fenetre_du_guide_ne_recouvre_jamais_son_foyer(page, jeu_decoupe, lar
         _preference_police(page, police)
         page.set_viewport_size({"width": largeur, "height": 800})
         for e in plan:
-            page.evaluate("""([login, bac, p, i]) => {
+            page.evaluate("""([login, bac, p, i, k]) => {
               localStorage.setItem('bd-wizard', JSON.stringify({ [login]: { bac: bac.id,
-                efface_le: bac.efface_le, album_vu: true, parcours: p, etape: i } }));
+                efface_le: bac.efface_le, album_vu: true, parcours: p, etape: i, k } }));
               sessionStorage.setItem('bd-wizard-guide', JSON.stringify({ login, bac: bac.id,
                 efface_le: bac.efface_le, actif: true, vues: [] })); }""",
-                          ["camille", bac, e["parcours"], e["i"]])
+                          ["camille", bac, e["parcours"], e["i"], e["k"]])
             page.goto(jeu_decoupe["base"] + e["adresse"], wait_until="domcontentloaded")
             expect(page.locator("#wizard-guide-compte")).to_be_visible(timeout=15000)
             page.wait_for_timeout(600)          # le cadrage, la feuille et sa réserve
@@ -1202,25 +1221,28 @@ def test_l_etape_exporter_ne_promet_que_ce_qui_sort(page, live_server, tmp_path,
     i = complet.index("exporter")
     page.evaluate("""([login, bac, i]) => {
       localStorage.setItem('bd-wizard', JSON.stringify({ [login]: { bac: bac.id,
-        efface_le: bac.efface_le, album_vu: true, parcours: 'complet', etape: i } }));
+        efface_le: bac.efface_le, album_vu: true, parcours: 'complet', etape: i,
+        k: 'exporter' } }));
       sessionStorage.setItem('bd-wizard-guide', JSON.stringify({ login, bac: bac.id,
         efface_le: bac.efface_le, actif: true, vues: [] })); }""", ["camille", bac, i])
     page.goto(f"{live_server}/corpus?album={parcours['album_id']}", wait_until="domcontentloaded")
     expect(page.locator("#wizard-fenetre-titre")).to_have_text("Exporter", timeout=15000)
-    phrase = page.locator("#wizard-fenetre .wf-phrase")
+    # Deux paragraphes, dans cet ordre (Hugo, 2026-11-05) : ce qu'on PEUT exporter, puis
+    # ce qui sort d'ici.
+    phrases = page.locator("#wizard-fenetre .wf-phrase")
+    expect(phrases).to_have_count(2)
     acte = page.locator('#biblio-volet .droits [data-acte="exporter"]')
     expect(acte).to_be_visible()
+    expect(phrases.nth(0)).to_contain_text("Vos données sortent aux formats de la recherche")
     if exportable:
-        expect(phrase).to_contain_text("peut être exporté, tant que vous n")
+        expect(phrases.nth(1)).to_contain_text("peut être exporté, tant que vous n")
         expect(acte).to_have_class("oui")
         # Et le serveur le confirme : l'album sort.
         assert _export(live_server, parcours["album_id"]).status_code == 200
     else:
-        expect(phrase).to_contain_text("pas autorisé")
+        expect(phrases.nth(1)).to_contain_text("pas autorisé")
         expect(acte).to_have_class("non")
         assert _export(live_server, parcours["album_id"]).status_code == 403
-    # La phrase de Hugo suit, telle quelle.
-    expect(phrase).to_contain_text("Ailleurs que dans un bac à sable")
 
 
 # ── 768 px : la visite ne cache pas la dernière zone de la Recherche et de l'Exploration ──
@@ -1526,13 +1548,11 @@ def test_pre_remplir_montre_les_trois_moteurs_et_lui_seul(page, jeu):
     """Hugo, 2026-11-05 : à l'étape « Pré-remplir », une bande de trois vignettes — Cases,
     Bulles, Texte —, fixe et décrite ; à aucune autre étape."""
     page.set_viewport_size({"width": 1280, "height": 800})
-    _au_guide(page, jeu, "complet")
+    _au_guide_sur(page, jeu, "complet", "transcrire")
     titre, bande = page.locator("#wizard-fenetre-titre"), page.locator("#wizard-fenetre .wf-visuel")
-    expect(titre).to_have_text("Constituer le corpus")
+    expect(titre).to_have_text("Transcrire et relire", timeout=15000)
     expect(bande).to_have_count(0)
-    page.locator("#wizard-guide-suiv").click()
-    expect(titre).to_have_text("Décrire l'album")
-    expect(bande).to_have_count(0)
+    # « Pré-remplir » suit « Transcrire et relire » (Hugo, 2026-11-05).
     page.locator("#wizard-guide-suiv").click()
     expect(titre).to_have_text(re.compile(r"^Pré-remplir"), timeout=15000)
     # Trois paragraphes : les trois moteurs, « jamais parfaits », puis le geste — la planche
@@ -1554,5 +1574,5 @@ def test_pre_remplir_montre_les_trois_moteurs_et_lui_seul(page, jeu):
     page.wait_for_function("""() => [...document.querySelectorAll('.wf-visuel img')]
       .every((i) => i.complete && i.naturalWidth > 0)""")
     page.locator("#wizard-guide-suiv").click()
-    expect(titre).to_have_text("Tracer une zone")
+    expect(titre).to_have_text("Annoter", timeout=15000)
     expect(bande).to_have_count(0)
