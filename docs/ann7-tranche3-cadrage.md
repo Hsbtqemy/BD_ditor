@@ -16,6 +16,8 @@ tranche 4 attend de lui, et dans quel ordre le faire sans casser ce qui marche.
 
 Le dépôt est public : aucune grille réelle n'est citée ici.
 
+**Tranché par Hugo le 2026-11-05** : I1 la tranche 3 seule, puis la 4 ; I2 le profil part et revient avec la cible « entité » ; I3 aucune grille créée, chaque projet écrit les siennes ; I4 « annotée » = une note ou un relevé ; I5 un plancher de Ctrl+Z ; I6 **une réindexation complète par spaCy** (et non la recopie proposée) ; I7 rediriger `mode=annotation` et la touche A vers la page Annotation, refuser les anciens paramètres et champs par un 422 nommé ; I8 une vérification en lecture seule de la production avant de migrer ; I9 la vraie base v38 fabriquée depuis le commit qui précède la tranche. La liste « se tranchent en route » reste au plus prudent, comme le cadrage la propose. Conséquence d'I6 : la migration recrée l'index sans `tags_concat`, et la réindexation complète passe par le moteur de langue — hors de la migration de démarrage, qui ne doit pas charger spaCy sous une transaction d'écriture (§ Concurrence de `CLAUDE.md`) ; la forme exacte (`tools/reindex_nlp.py` au déploiement, ou un lot de fond) se décide au commit 5.
+
 **Mis à jour le 2026-11-05** : deux préalables sont faits — l'outil des vraies bases fabrique de nouveau une base v38 (`7d60faf`) et la migration v35 ne relit plus `tags` dans `SCHEMA_SQL` (`e19520d`). Les passages qui les disent à faire (« La migration v39 », « Ce que la migration doit tolérer », « Vu en passant », les commits 0 et 5 du découpage) se lisent comme faits ; reste la base `tests/bases/v38-*.sql`, à fabriquer depuis le commit qui précède la tranche (I9).
 
 ---
