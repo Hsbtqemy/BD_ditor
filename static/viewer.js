@@ -3206,6 +3206,21 @@ function majImportPlafond() {
     if (!b) continue;
     // Le NOM ne suit pas l'infobulle : ⤓ n'a pas de lettre, et son nom venait du titre.
     if (id === "btn-import") b.setAttribute("aria-label", titre);
+    // UX-6 — une entrée éteinte par la visite du guide (`data-wizard-eteint`, `wizard.js`) :
+    // le plafond GAGNE. Atteint, l'extinction devient la sienne — la visite n'a plus rien à
+    // rendre à la fermeture, qui la rallumait. Libre, l'entrée reste éteinte jusqu'à la
+    // fermeture, et c'est l'état d'aujourd'hui que la fermeture rendra.
+    if (b.dataset.wizardEteint) {
+      if (!raison) {
+        b.dataset.wizardTitre = titre;
+        delete b.dataset.wizardSansTitre;
+        b.removeAttribute("aria-describedby");
+        continue;
+      }
+      delete b.dataset.wizardEteint;
+      delete b.dataset.wizardTitre;
+      delete b.dataset.wizardSansTitre;
+    }
     b.title = raison || titre;
     if (raison) {
       b.setAttribute("aria-disabled", "true");

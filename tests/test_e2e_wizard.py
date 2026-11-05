@@ -526,6 +526,37 @@ def test_pendant_la_visite_ce_qui_lance_est_eteint_et_le_guide_le_fait(page, jeu
 
 
 @pytestmark_proxy
+def test_le_plafond_d_import_gagne_sur_la_visite(page, jeu):
+    """« Importer » éteint par la visite : relu pendant la visite (un album ouvert), il reste
+    éteint ; le plafond d'import atteint, c'est lui qui l'éteint, avec sa raison, et la
+    fermeture de la visite ne le rallume pas (relecture du 2026-11-05). Le plafond est
+    SIMULÉ — atteindre 50 planches importées coûterait cinquante imports — par la réponse de
+    `BDBacEcran.raisonImport`, la seule que lit `majImportPlafond`."""
+    _commencer_la_visite(page, jeu)
+    _visite(page)
+    entree = page.locator("#btn-import-menu")
+    expect(entree).to_have_attribute("data-wizard-eteint", "1")
+    guide = "Le guide pas à pas vous le fera faire."
+    # Un album ouvert pendant la visite relit le plafond : pas atteint, l'entrée reste
+    # éteinte par la visite.
+    page.evaluate("() => majImportPlafond()")
+    expect(entree).to_have_attribute("aria-disabled", "true")
+    expect(entree).to_have_attribute("title", guide)
+    expect(entree).to_have_attribute("data-wizard-eteint", "1")
+    # Le plafond atteint pendant la visite : sa raison prend la place.
+    raison = "Plafond atteint (simulé)"
+    page.evaluate("(r) => { BDBacEcran.raisonImport = () => r; majImportPlafond(); }", raison)
+    expect(entree).to_have_attribute("aria-disabled", "true")
+    expect(entree).to_have_attribute("title", raison)
+    # La visite fermée, il reste éteint, avec la raison du plafond.
+    page.locator("#wizard-fenetre-titre").focus()
+    page.keyboard.press("Escape")
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
+    expect(entree).to_have_attribute("aria-disabled", "true")
+    expect(entree).to_have_attribute("title", raison)
+
+
+@pytestmark_proxy
 def test_dans_le_guide_pre_remplir_lance_vraiment_l_ocr(page, jeu):
     ocr = []
     page.on("request", lambda r: ocr.append(r.url) if r.url.endswith("/ocr") else None)
