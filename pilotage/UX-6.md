@@ -5,7 +5,7 @@ statut: interrompu
 
 # UX-6 — écran « par où commencer » et guide utilisateur
 
-**Arrêté sur** — 2026-11-05, `f6361f0` : **les illustrations de l'album deviennent des images fixes** (Hugo, le jour même), confiées à un agent ; les cadres des collections calculés depuis le jeu (`f6361f0`) seront remplacés. Avant eux, **les six choix de la tranche 4 sont tranchés** — le
+**Arrêté sur** — 2026-11-05, `d7ab5ad` : **la visite cerne au survol la zone d'une ligne** (`d7ab5ad`, Hugo sur l'écran codé) ; et avant, **les illustrations de l'album deviennent des images fixes** (Hugo, le jour même), confiées à un agent ; les cadres des collections calculés depuis le jeu (`f6361f0`) seront remplacés. Avant eux, **les six choix de la tranche 4 sont tranchés** — le
 seul changé, « Exporter », dit le bac à sable en mots d'arrivant (`cde1e18`) — et l'étape
 « Tracer », faite, apprend ↻, la voie (c) du `c3 · b1` (`502227d`). Sur `dev`, pas poussés.
 La tranche 4 a été poussée le matin même.
@@ -124,7 +124,7 @@ Proposés par l'agent qui code la tranche 2, confirmés tous les sept par Hugo, 
 - [x] **Le compte de la visite s'écrit « Visite 2 / 7 · 1 / 2 »** — attendu : tranché, le second nombre suit les deux temps d'une page
 - [x] **Le « ? » est offert à tout compte, hors d'un bac à sable compris** — attendu : tranché ; hors d'un bac à sable, les repères de la Recherche et de l'Exploration ne parlent pas du bac à sable, et chez un invité ils disent « ce bac à sable » (`418055d`, un test Node balaie toute la visite)
 - [x] **Le « ? » ouvre la page de la surface, jamais celle de la barre du haut** — attendu : tranché, comme la maquette
-- [x] **Un repère se choisit au clic dans la liste, jamais au survol ni au focus** — attendu : tranché
+- [x] **Un repère se choisit au clic dans la liste, jamais au survol ni au focus** — attendu : tranché **Renversé par Hugo le 2026-11-05 sur l'écran codé** (« on avait un hover dans la maquette, et rien dans la version servie ») : le survol ou le focus d'une ligne cerne sa zone sur la page, et l'inverse, comme la maquette ; le clic choisit toujours, et la fenêtre ne bouge pas (`d7ab5ad`)
 - [x] **Échap ferme la visite sans ouvrir la carte** — attendu : tranché
 - [x] **Sous 40em, la fenêtre est une feuille en bas, pleine largeur, 55 % de haut au plus** — attendu : tranché, à revoir sur l'écran codé
 - [x] **Quand la bande passe à la ligne, le « ? » et « Aa » peuvent se séparer** — attendu : tranché
