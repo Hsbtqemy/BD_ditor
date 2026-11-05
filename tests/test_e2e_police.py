@@ -83,7 +83,7 @@ _PLANCHER = """() => {
 
 # La racine vaut 81,25 % de la préférence — c'est la règle du fichier, et la vérifier à
 # CHAQUE cas est la garde la plus tranchante du module : si `Page.setFontSizes` cessait
-# d'agir (changement de Chromium) ou si la racine repassait en px, les seize cas
+# d'agir (changement de Chromium) ou si la racine repassait en px, tous les cas
 # resteraient VERTS en mesurant la police par défaut.
 _RACINE = 0.8125
 

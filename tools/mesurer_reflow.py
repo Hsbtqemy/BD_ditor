@@ -63,7 +63,7 @@ SURFACES = [("Atelier", "/"), ("Annotation", "/annotation"), ("Recherche", "/rec
 # constat qui a déplacé le seuil de 400 à 560 px.
 LARGEURS = [(320, "téléphone"), (400, "petit téléphone"), (480, "téléphone paysage"),
             (560, "seuil de la bande 1"), (600, "entre les deux seuils"),
-            (660, "seuil de la bande 4"), (768, "tablette")]
+            (660, "ancien seuil de la bande 4"), (768, "tablette")]
 
 SONDE = """() => {
   const r = document.documentElement;
