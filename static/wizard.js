@@ -193,13 +193,25 @@
       jeu.slice(0, 5).forEach((j) => d.appendChild(miniature(j.planche_ids[0])));
       return d;
     }
-    if (page.k === "corpus" && jeu.length) {
-      const d = el("ul", "wizard-vignettes");
-      jeu.forEach((j) => {
-        const li = el("li");
-        li.appendChild(miniature(j.planche_ids[0]));
-        li.appendChild(el("span", "wizard-vignette-titre", j.titre || ""));
-        d.appendChild(li);
+    // Deux collections pour l'illustrer, comme la maquette (`BDWizard.collectionsIllustrees`) :
+    // un cadre titré par collection, les miniatures seules, le titre de l'album en infobulle.
+    const collections = page.k === "corpus" ? W.collectionsIllustrees(v) : [];
+    if (collections.length) {
+      const d = el("div", "wizard-collections");
+      collections.forEach((c) => {
+        const cadre = el("div", "wizard-collection");
+        cadre.appendChild(el("p", "wizard-collection-titre", `Collection « ${c.nom} »`));
+        const ul = el("ul", "wizard-vignettes");
+        c.jeu.forEach((j) => {
+          const li = el("li");
+          const img = miniature(j.planche_ids[0]);
+          img.alt = j.titre || "";
+          img.title = j.titre || "";
+          li.appendChild(img);
+          ul.appendChild(li);
+        });
+        cadre.appendChild(ul);
+        d.appendChild(cadre);
       });
       return d;
     }

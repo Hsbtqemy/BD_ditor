@@ -295,6 +295,27 @@
     return avec.find((j) => j.role === "pas-a-pas") || avec[0] || null;
   }
 
+  /* Les collections de la page « Constituez votre corpus » : une ILLUSTRATION, pas les
+     collections du bac à sable, qui n'en a qu'une (Hugo, 2026-11-05 : « c'est juste une
+     image »). Deux cadres, comme la maquette, sur les cinq premières copies du jeu qui ont
+     une planche — les mêmes que l'éventail de la première page : « Récits d'aventure » pour
+     les trois dernières, « Humour » pour les deux premières, ce que le jeu d'aujourd'hui
+     range dans cet ordre (*Moustache et Trottinette*, *L'École de Saint-Cyr*, puis les deux
+     comics et *Radar*). La page ne connaît pas le genre d'un album : un jeu réordonné
+     rendrait les noms faux, et c'est accepté. Un cadre sans copie ne se dessine pas. */
+  const COLLECTIONS_ILLUSTREES = [
+    { nom: "Récits d'aventure", de: 2, a: 5 },
+    { nom: "Humour", de: 0, a: 2 },
+  ];
+
+  function collectionsIllustrees(vue) {
+    const jeu = (Array.isArray(vue && vue.jeu) ? vue.jeu : [])
+      .filter((j) => j && Array.isArray(j.planche_ids) && j.planche_ids.length);
+    return COLLECTIONS_ILLUSTREES
+      .map((c) => ({ nom: c.nom, jeu: jeu.slice(c.de, c.a) }))
+      .filter((c) => c.jeu.length);
+  }
+
   function phraseEtape(e, vue, m) {
     if (!e) return "";
     if (e.sansMoteur && m && !m.ocr) return typo(e.sansMoteur);
@@ -941,7 +962,8 @@
   }
 
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
-           typo, moteurs, textePage, etapes, albumDuParcours, phraseEtape, marqueEtape,
+           typo, moteurs, textePage, etapes, albumDuParcours, collectionsIllustrees,
+           phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,
            CLE_VISITE, tempsDe, position, suivant, precedent, estFin, compteVisite, cote,

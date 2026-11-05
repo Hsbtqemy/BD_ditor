@@ -713,3 +713,19 @@ test("la part de la scène que la fenêtre laisse libre, pour cadrer « Corriger
   assert.equal(W.recouvre({ l: 0, t: 0, r: 10, b: 10 }, { l: 10, t: 0, r: 20, b: 10 }), false);
   assert.equal(W.recouvre({ l: 0, t: 0, r: 10, b: 10 }, null), false);
 });
+
+test("« Constituez votre corpus » illustre deux collections, sans toucher au bac à sable", () => {
+  const j = (titre, planches = [1]) => ({ titre, planche_ids: planches });
+  const vue = { jeu: [j("Moustache"), j("Saint-Cyr"), j("Sans planche", []), j("Lightning"),
+                      j("Modern"), j("Radar"), j("Bibi")] };
+  const noms = (cs) => cs.map((c) => [c.nom, c.jeu.map((x) => x.titre)]);
+  // Les cinq premières copies AVEC une planche, comme l'éventail : l'aventure d'abord.
+  assert.deepEqual(noms(W.collectionsIllustrees(vue)),
+                   [["Récits d'aventure", ["Lightning", "Modern", "Radar"]],
+                    ["Humour", ["Moustache", "Saint-Cyr"]]]);
+  // Un jeu court : le cadre sans copie ne se dessine pas.
+  assert.deepEqual(noms(W.collectionsIllustrees({ jeu: [j("Moustache")] })),
+                   [["Humour", ["Moustache"]]]);
+  assert.deepEqual(W.collectionsIllustrees({ jeu: [] }), []);
+  assert.deepEqual(W.collectionsIllustrees(null), []);
+});
