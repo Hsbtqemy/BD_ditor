@@ -9,7 +9,10 @@
   9 à 17 s sans rien afficher. La requête est tenue en vol par le test : l'attente est
   certaine, pas chronométrée.
 - **Annuler la suppression d'une case rend son locuteur et sa situation, à l'écran.** Le
-  serveur est mesuré par `tests/test_undo_liens.py` ; ici, ce que l'Atelier montre ensuite.
+  serveur est mesuré par `tests/test_undo_liens.py` ; ici, ce que l'Atelier montre ensuite —
+  la case revenue sur la planche — et, depuis le basculement d'ANN-7, le locuteur dans le
+  Contexte de la page Annotation, où il se lit désormais. La situation ne se lit plus sur
+  aucun écran : elle se mesure à la route.
 """
 import re
 
@@ -27,8 +30,8 @@ pytestmark = pytest.mark.e2e
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
     "/annotation": (
-        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : le verrou "
-        "d'une planche et l'annulation vit dans l'Atelier, que ce module audite"),
+        "la page Annotation n'a pas le verrou d'une planche ; elle n'est visitée ici que pour "
+        "lire le locuteur rendu par l'annulation de l'Atelier"),
     "/corpus": "le verrou y est un geste de liste (la planche dans la fiche d'un album), "
                "hors du panneau d'annotation que ce fichier lit",
     "/recherche": "ni verrou ni Ctrl+Z : la Recherche lit le corpus",
@@ -133,9 +136,13 @@ def test_annuler_la_suppression_d_une_case_rend_son_locuteur_a_l_ecran(page, dec
     assert rep.value.json()["liens_non_rendus"] == 0
     expect(page.locator("#toasts .toast", has_text="suppression d'une région")).to_be_visible()
 
-    _ouvrir(page, d, d["cartouche"])
-    page.locator('button[data-mode="annotation"]').click()
-    expect(page.locator("#loc-current")).to_contain_text("Tintin", timeout=15000)
-    _ouvrir(page, d, d["case"])
-    page.locator('button[data-mode="annotation"]').click()
-    expect(page.locator("#sit-current")).to_contain_text("falaise", timeout=15000)
+    # La case et son cartouche reviennent sur la planche ouverte, sans recharger.
+    expect(page.locator(f"#overlay [data-id='{d['case']}']")).to_have_count(1, timeout=15000)
+    expect(page.locator(f"#overlay [data-id='{d['cartouche']}']")).to_have_count(1)
+
+    page.goto(f"{d['base']}/annotation?album={d['album']}&planche={d['planche']}"
+              f"&region={d['cartouche']}", wait_until="networkidle")
+    expect(page.locator("#an-loc-nom")).to_have_text("Tintin", timeout=15000)
+    with httpx.Client(base_url=d["base"], trust_env=False, timeout=30) as c:
+        attrs = c.get(f"/api/regions/{d['case']}/attributs").json()
+    assert [(a["dimension"], a["valeur"]) for a in attrs] == [("lieu", "falaise")]

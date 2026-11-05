@@ -1,7 +1,9 @@
 /* L'ALIGNEMENT D'AUTORITÉ d'un personnage (A5) — COMMUN à l'Atelier (le panneau Personnage,
    atteint par le locuteur et par la boîte) et à la page Annotation (la fiche d'un personnage,
    ANN-7 : une condition du retrait du mode Annotation de l'Atelier). Sorti de `viewer.js`
-   (`makeAlignementWidget`) pour ne pas être recopié, comme `champ-personnage.js`.
+   (`makeAlignementWidget`) pour ne pas être recopié, comme `champ-personnage.js`. Depuis le
+   basculement d'ANN-7, l'Atelier n'a plus de panneau Personnage : la page Annotation est seule
+   à le monter.
    Chargé en <script> → `window.BDAlignements` ; require()-able par
    `tests/js/alignements.test.js`. Rien n'est lu au chargement : le document et les aides de
    `common.js` (`apiGet`, `apiSend`, `toast`, `escapeHtml`) ne servent qu'à l'appel — l'hôte

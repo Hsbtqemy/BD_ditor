@@ -460,19 +460,24 @@ def test_annulation_js_servi_et_charge_avant_le_script_de_page(client):
 
 def test_champ_personnage_js_servi_et_charge_avant_le_script_de_page(client):
     """Même garde-fou pour le champ « personnage » (static/lib/champ-personnage.js, ANN-7,
-    tranche 2, commit 8) : servi, et chargé AVANT le script des deux surfaces qui le montent
-    (l'Atelier pour le locuteur et l'identité d'une boîte, la page Annotation pour le
-    locuteur du Contexte) — et après `propositions.js`, dont il tire la règle des homonymes.
-    Sans lui, `BDChampPersonnage` est indéfini au démarrage, et la surface lève."""
+    tranche 2, commit 8) : servi, et chargé AVANT le script de la surface qui le monte (la
+    page Annotation, pour le locuteur et l'identité d'une boîte du Contexte) — et après
+    `propositions.js`, dont il tire la règle des homonymes. Sans lui, `BDChampPersonnage` est
+    indéfini au démarrage, et la surface lève.
+
+    L'Atelier ne le charge plus : son mode Annotation, qui le montait, est parti avec le
+    basculement d'ANN-7, et avec lui le panneau Personnage (`alignements.js`). Un script
+    chargé pour rien n'est pas une panne ; c'est le signe qu'un reste du mode a survécu."""
     js = client.get("/static/lib/champ-personnage.js")
     assert js.status_code == 200 and "monter" in js.text
-    for route, page_script in (("/", "/static/viewer.js"),
-                               ("/annotation", "/static/annotation.js")):
-        html = client.get(route).text
-        assert "/static/lib/champ-personnage.js" in html, route
-        assert (html.index("/static/lib/propositions.js")
-                < html.index("/static/lib/champ-personnage.js")
-                < html.index(page_script)), route
+    html = client.get("/annotation").text
+    assert "/static/lib/champ-personnage.js" in html
+    assert (html.index("/static/lib/propositions.js")
+            < html.index("/static/lib/champ-personnage.js")
+            < html.index("/static/annotation.js"))
+    atelier = client.get("/").text
+    for module in ("propositions.js", "champ-personnage.js", "alignements.js"):
+        assert f"/static/lib/{module}" not in atelier, module
 
 
 def test_casse_js_servi_et_charge_avant_le_script_de_page(client):

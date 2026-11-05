@@ -1,6 +1,8 @@
 /* LE CHAMP « PERSONNAGE » — le locuteur d'une zone de texte, l'identité d'une boîte
    personnage —, COMMUN à l'Atelier et à la page Annotation (ANN-7, tranche 2, commit 8 :
    sorti de `viewer.js` pour ne pas être recopié, `docs/ann7-tranche2-cadrage.md`, item 7).
+   Depuis le basculement d'ANN-7, l'Atelier n'a plus de mode Annotation : la page Annotation
+   est seule à le monter.
    Chargé en <script> → `window.BDChampPersonnage` ; require()-able par
    `tests/js/champ-personnage.test.js`. Rien n'est lu au chargement : le document, les
    aides de `common.js` (`apiGet`, `apiSend`, `toast`, `escapeHtml`) et `BDPropositions` ne

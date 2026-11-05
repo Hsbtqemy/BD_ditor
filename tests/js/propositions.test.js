@@ -4,8 +4,10 @@
    Ce que ces tables couvrent coûtait, chacune de leurs lignes, un test navigateur de cinq
    à dix secondes : ce qu'Entrée DÉCIDE dans un champ « dimension : valeur », où mène une
    flèche, et la clé d'un libellé de tag. Ce qui dépend du temps — la lecture tenue en vol,
-   la cible du geste — reste aux e2e de `test_e2e_atelier_propositions.py`, qui mesurent la
-   requête partie. */
+   la cible du geste — reste aux e2e de `test_e2e_annotation_propositions.py`, qui mesurent la
+   requête partie sur le champ « personnage » de la page Annotation. Les champs « dimension :
+   valeur » sont partis avec le mode Annotation de l'Atelier (ANN-7, le basculement) ; leurs
+   tables restent ici tant que le module porte leur règle. */
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");

@@ -124,26 +124,30 @@ def test_une_planche_changee_ailleurs_propose_actualiser_et_actualiser_la_rechar
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_ses_propres_gestes_ne_se_signalent_pas_ceux_d_un_autre_si(page, decor):
-    """Bob annote la première bulle (note, tag) et la transcrit pendant qu'Alice transcrit la
-    deuxième : seule celle d'Alice est signalée. L'écran n'adopte que ce qu'il a touché — une
-    empreinte unique, adoptée après chaque enregistrement de Bob, aurait absorbé celle
-    d'Alice."""
+    """Bob transcrit la première bulle, deux fois, pendant qu'Alice transcrit la deuxième :
+    seule celle d'Alice est signalée. L'écran n'adopte que ce qu'il a touché — une empreinte
+    unique, adoptée après chaque enregistrement de Bob, aurait absorbé celle d'Alice. (Bob
+    annotait la bulle — note, tag — jusqu'au basculement d'ANN-7, qui a retiré le mode
+    Annotation de l'Atelier ; la transcription est le geste qui reste, et le second
+    enregistrement, après celui d'Alice, est celui qui l'aurait absorbée.)"""
     s = decor
     un, deux, _ = s["bulles"]
     ctx, b = _ouvrir(page, s["url"] + f"&region={un}")
     try:
         bouton = b.locator("#planche-actualiser")
-        with b.expect_request(lambda r: r.url.endswith("/locuteur")):
-            b.click('.mode-btn[data-mode="annotation"]')
-        b.wait_for_load_state("networkidle")
-        b.fill("#note-input", "note de Bob")
-        expect(b.locator("#save-state")).to_have_text("Enregistré", timeout=15000)
+        b.click('.mode-btn[data-mode="transcription"]')
+        expect(b.locator("#tr-text")).to_have_value("PREMIÈRE", timeout=15000)
+        b.click("#tr-text")
+        b.keyboard.press("End")
+        with b.expect_response(lambda r: r.request.method == "PUT"
+                               and r.url.endswith(f"/api/regions/{un}")):
+            b.keyboard.type(" DE BOB")
         with _client(s["base"], ALICE) as c:
             assert c.put(f"/api/regions/{deux}", json={"ocr_texte": "PAR ALICE"}).status_code == 200
-        b.fill("#tag-input", "cri")
-        b.keyboard.press("Enter")
-        b.wait_for_load_state("networkidle")
-        expect(b.locator("#save-state")).to_have_text("Enregistré", timeout=15000)
+        with b.expect_response(lambda r: r.request.method == "PUT"
+                               and r.url.endswith(f"/api/regions/{un}")):
+            b.keyboard.type(" ENCORE")
+        expect(b.locator("#tr-save")).to_have_text("Enregistré", timeout=15000)
         _retour_sur_l_onglet(b)
         expect(bouton).to_be_visible()
         expect(bouton).to_have_attribute("title", "La planche a changé ailleurs : 1 région "
@@ -272,30 +276,10 @@ def test_la_verification_suit_l_intervalle_et_se_suspend_onglet_cache(page, deco
         ctx.close()
 
 
-@pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_actualiser_garde_le_nom_a_moitie_tape_d_un_personnage(page, decor):
-    """Relecture de CONC-4 : « Actualiser » vidait le champ du locuteur, où Bob avait commencé
-    de taper un nom. La saisie s'y garde, comme dans la note et le texte."""
-    s = decor
-    un, deux, _ = s["bulles"]
-    ctx, b = _ouvrir(page, s["url"] + f"&region={un}")
-    try:
-        with b.expect_request(lambda r: r.url.endswith("/locuteur")):
-            b.click('.mode-btn[data-mode="annotation"]')
-        b.wait_for_load_state("networkidle")
-        with _client(s["base"], ALICE) as c:
-            assert c.put(f"/api/regions/{deux}", json={"ocr_texte": "AILLEURS"}).status_code == 200
-        _retour_sur_l_onglet(b)
-        expect(b.locator("#planche-actualiser")).to_be_visible()
-        b.click("#loc-input")
-        b.keyboard.type("Hadd")
-        with b.expect_response(lambda r: r.url.endswith(f"/regions/{un}/locuteur")):
-            b.locator("#planche-actualiser").click()
-        expect(b.locator("#planche-actualiser")).to_be_hidden(timeout=15000)
-        b.wait_for_load_state("networkidle")
-        expect(b.locator("#loc-input")).to_have_value("Hadd")
-    finally:
-        ctx.close()
+# « Actualiser » garde le nom à moitié tapé d'un personnage : la garde vivait ici, dans le mode
+# Annotation de l'Atelier, parti au basculement d'ANN-7. Le locuteur s'écrit dans la page
+# Annotation, où elle a déménagé (`test_e2e_annotation_locuteur.test_actualiser_garde_le_nom_
+# a_moitie_tape`).
 
 
 # ── Se REPÉRER (Hugo, 2026-10-25) ─────────────────────────────────────────────────────────

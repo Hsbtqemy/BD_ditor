@@ -153,11 +153,12 @@ La base `bd_annotator.sqlite` et les dossiers `corpus/` (masters) et
 4. **Mode Édition (E)** : corriger les régions (poignées de redimensionnement,
    saisie numérique des coordonnées), dessiner de nouvelles régions au
    cliquer-glisser, supprimer (Suppr). Passer le statut à `corrigee`.
-5. **Mode Annotation (A)** : sélectionner une région, lui attribuer des tags
-   (vocabulaire cumulatif avec autocomplétion) et une note libre. Sauvegarde
-   automatique (debounce 500 ms). Pour une bulle, le panneau **analyse
-   grammaticale** liste ses mots (lemme / POS / morphologie) ; chaque token est
-   **corrigeable à la main** ou validable (geste « valider la grammaire »).
+5. **Annoter** : depuis une région sélectionnée, **Annoter ↗** (ou la touche A)
+   mène à la **page Annotation**, où l'on pose les relevés d'une grille, le
+   locuteur, le personnage d'une boîte et une note — l'Atelier n'a plus de mode
+   Annotation. Pour une bulle, le panneau **analyse grammaticale** de l'Atelier
+   liste ses mots (lemme / POS / morphologie) ; chaque token est **corrigeable à
+   la main** ou validable (geste « valider la grammaire »).
 6. **Mode Transcription (T)** : correction rapide de l'OCR bulle à bulle, en plein
    écran — crop net (résolution master) + éditeur, navigation Tab / Maj+Tab,
    enchaînement possible sur tout l'album. Sauvegarde automatique.
@@ -412,7 +413,7 @@ Variables d'environnement (cf. `config.py` / `pipeline/nlp.py`) :
 import → passe 1 : cases   (Kumiko)            → POST …/segmenter
        → passe 2 : bulles  (ogkalu YOLOv8)     → POST …/detecter-bulles
        → passe 3 : OCR fr  (EasyOCR, par bulle) → POST …/ocr  (pré-remplit ocr_texte)
-       → correction + annotation humaines (mode Annotation)
+       → correction (Atelier) + annotation humaines (page Annotation)
        → (option) lemmes + analyse grammaticale (spaCy) → recherche + Exploration
 ```
 

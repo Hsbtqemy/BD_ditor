@@ -283,7 +283,7 @@ TYPE_DETAIL = "detail"
 # `database._TYPES_TEXTE`, `TEXT_TYPES` dans `static/viewer.js`), et elle a pourtant son
 # nom : « porte du texte » et « quelqu'un y parle » sont deux questions, que rien n'oblige
 # à répondre pareil demain. La route la tient (`PUT /api/regions/{id}/locuteur`), l'écran
-# aussi, et `tests/test_e2e_atelier_annotation.py` mesure leur accord type par type.
+# aussi, et `tests/test_e2e_annotation_locuteur.py` mesure leur accord type par type.
 TYPES_LOCUTEUR = ("bulle", "cartouche", "texte")
 
 # Types de régions qui MONTRENT un personnage (§14, brique (a) : la boîte porte l'identité),

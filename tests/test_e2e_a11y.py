@@ -239,77 +239,18 @@ def test_a11y_chargement(page, seeded, surface, theme):
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_visionneuse_modes(page, seeded, theme):
-    """États interactifs de la Visionneuse (Édition → poignées, Annotation →
-    panneau grammaire)."""
+    """États interactifs de la Visionneuse (Édition → poignées). Le panneau de grammaire se
+    voit dès la Navigation, que `test_a11y_chargement` audite ; le mode Annotation, audité ici
+    jusqu'au basculement d'ANN-7, n'est plus — ses champs vivent dans la page Annotation, que
+    ce module audite à part (`test_a11y_annotation_*`)."""
     _theme(page, theme)
     page.goto(seeded["base"] + SURFACES_AUDITEES["/"](seeded), wait_until="networkidle")
     page.wait_for_timeout(700)
-    for sel, label in (('.mode-btn[data-mode="edition"]', "édition"),
-                       ('.mode-btn[data-mode="annotation"]', "annotation")):
+    for sel, label in (('.mode-btn[data-mode="edition"]', "édition"),):
         page.click(sel)
         page.wait_for_timeout(300)
         viol = _audit(page)
         assert not viol, f"Visionneuse/{label} [{theme}] :\n{_fmt(viol)}"
-
-
-@pytest.mark.parametrize("theme", ["dark", "light"])
-def test_a11y_visionneuse_situation(page, seeded, theme):
-    """ANN-6 — une CASE en mode Annotation : le bloc « Situation » et sa phrase d'aide.
-
-    L'audit des modes, juste au-dessus, sélectionne la BULLE du décor : le bloc Situation y
-    reste caché, et axe ne juge que ce qui s'affiche. La phrase — du petit texte, donc le
-    seuil de 4.5:1 — et le lien `aria-describedby` qui la rattache au champ n'étaient donc
-    devant aucun audit. On attend qu'elle soit VISIBLE avant d'auditer : sur une section
-    encore cachée, axe rendrait zéro violation pour la même raison.
-    """
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ECRITURE)
-    try:
-        case = c.post(f"/api/planches/{seeded['planche']}/regions",
-                      json={"type": "case", "x": 150, "y": 150, "w": 200, "h": 200}).json()["id"]
-    finally:
-        c.close()
-    _theme(page, theme)
-    page.goto(seeded["base"] + SURFACES_AUDITEES["/"]({**seeded, "region": case}),
-              wait_until="networkidle")
-    page.wait_for_timeout(700)
-    page.click('.mode-btn[data-mode="annotation"]')
-    page.wait_for_selector("#sit-aide", state="visible", timeout=5000)
-    viol = _audit(page)
-    assert not viol, f"Visionneuse/situation [{theme}] :\n{_fmt(viol)}"
-
-
-@pytest.mark.parametrize("theme", ["dark", "light"])
-def test_a11y_visionneuse_profil(page, seeded, theme):
-    """ANN-6 — les deux champs de PROFIL d'un personnage et leur phrase d'aide.
-
-    Même angle mort que pour « Situation », un cran plus loin : la bulle du décor n'a pas
-    de locuteur, donc le bloc de profil reste caché pendant l'audit des modes ; et aucune
-    boîte personnage n'y est. Les deux phrases — du petit texte, chacune reliée à SON
-    champ par `aria-describedby` — n'étaient donc devant aucun audit. On désigne le
-    personnage des deux côtés, et on attend chaque phrase VISIBLE avant d'auditer.
-    """
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ECRITURE)
-    try:
-        perso = c.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
-        boite = c.post(f"/api/planches/{seeded['planche']}/regions",
-                       json={"type": "personnage", "x": 150, "y": 150, "w": 200,
-                             "h": 200}).json()["id"]
-        for lien in (f"/api/regions/{seeded['region']}/locuteur",
-                     f"/api/regions/{boite}/personnage"):
-            assert c.put(lien, json={"personnage_id": perso}).status_code == 200
-    finally:
-        c.close()
-    _theme(page, theme)
-    for region, aide in ((seeded["region"], "#perso-attr-aide"), (boite, "#perso-profil-aide")):
-        page.goto(seeded["base"] + SURFACES_AUDITEES["/"]({**seeded, "region": region}),
-                  wait_until="networkidle")
-        page.wait_for_timeout(700)
-        page.click('.mode-btn[data-mode="annotation"]')
-        page.wait_for_selector(aide, state="visible", timeout=5000)
-        viol = _audit(page)
-        assert not viol, f"Visionneuse/profil {aide} [{theme}] :\n{_fmt(viol)}"
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # AUTH-1 : proxy déclaré
@@ -706,37 +647,6 @@ def test_a11y_exploration_lexique(page, seeded):
     defs = ([d["definition"] for d in lex["dimensions"]]
             + [v["definition"] for d in lex["dimensions"] for v in d["valeurs"]])
     assert "niveau de langue" in defs
-
-
-def test_a11y_visionneuse_alignement(page, seeded):
-    """Panneau Personnage → alignement d'autorité (A5) : audite l'a11y de la section ouverte
-    (puce-lien + champ) ET vérifie le round-trip (URI saisie dans l'UI → persistée)."""
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ECRITURE)
-    try:
-        p = c.post("/api/personnages", json={"nom": "Tournesol"}).json()
-        c.put(f"/api/regions/{seeded['region']}/locuteur", json={"personnage_id": p["id"]})
-    finally:
-        c.close()
-    page.goto(seeded["base"] + SURFACES_AUDITEES["/"](seeded), wait_until="networkidle")
-    page.wait_for_timeout(700)
-    page.click('.mode-btn[data-mode="annotation"]')
-    page.wait_for_selector("#loc-align-section:not([hidden])", timeout=3000)
-    viol = _audit(page)
-    assert not viol, f"Visionneuse/alignement :\n{_fmt(viol)}"
-    # Round-trip : saisir une URI dans l'UI → alignement persisté (source auto-détectée).
-    inp = page.locator("#loc-align-input")
-    inp.fill("https://www.wikidata.org/wiki/Q42")
-    inp.press("Enter")
-    page.wait_for_timeout(400)
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ECRITURE)
-    try:
-        al = c.get(f"/api/personnages/{p['id']}/alignements").json()
-    finally:
-        c.close()
-    assert any(a["uri"] == "https://www.wikidata.org/wiki/Q42" and a["source"] == "wikidata"
-               for a in al)
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

@@ -30,11 +30,15 @@ const INITIAL_QS = Nav.etatAvecLieu(location.search, Nav.stockageDeSession(windo
 // D'où l'on vient (drill Recherche/Exploration), validé (page interne seulement,
 // cf. static/lib/nav.js) : conservé toute la session pour le bouton « ← Retour ».
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));
-// UX-12 — le mode voyage dans l'adresse avec le reste (`?…&mode=annotation`), pour qu'un
+// UX-12 — le mode voyage dans l'adresse avec le reste (`?…&mode=edition`), pour qu'un
 // rechargement rouvre dans le mode où l'on était. La Navigation, mode d'arrivée, ne s'écrit
 // pas : les liens des autres surfaces n'en portent aucun, et n'ont pas à s'allonger.
-const MODES_ATELIER = ["navigation", "edition", "annotation", "transcription"];
+// ANN-7, le basculement — le mode Annotation n'est plus (Hugo, 2026-11-02 : on annote dans la
+// page Annotation). Une adresse d'hier qui le nomme, `?…&mode=annotation`, mène à la page
+// Annotation, sur la zone qu'elle désigne (I7, 2026-11-05 ; `MODE_D_HIER`, `applyDeepLink`).
+const MODES_ATELIER = ["navigation", "edition", "transcription"];
 const MODE_PAR_DEFAUT = "navigation";
+const MODE_D_HIER = "annotation";
 /* Le mode que nomme une adresse ; un mode inconnu, ou aucun, donne la Navigation. */
 function modeDeLAdresse(params) {
   const m = params.get("mode");
@@ -75,21 +79,10 @@ const state = {
   selectedId: null,
   mode: "navigation",
   zoom: 1, tx: 0, ty: 0,
-  tagVocab: [],            // [{label, couleur, frequence}]
-  currentTags: [],         // labels (string) de l'annotation en cours
-  annotSale: annotPropre(), // CONC-3 : ce qui a CHANGÉ depuis le dernier enregistrement
-  noteVue: "",             // CONC-3 : la note telle que le serveur l'a donnée ou acceptée
-  conflit: null,           // CONC-3 : { lieu: "note"|"transcription", regionId, conflit }
-                           // CONC-4 : lieu "locuteur"|"presence", plus `saisie` (le choix)
-  locVu: undefined,        // CONC-4 : le locuteur que l'écran a VU (id, null : aucun ;
-  persoVu: undefined,      //   undefined : pas encore lu) — de même le personnage montré
-  envoiLoc: null,          // CONC-4 : le geste de locuteur pas encore revenu (promesse)
-  envoiPerso: null,        // CONC-4 : de même pour le personnage montré
-  envoiNote: null,         // CONC-3 : l'enregistrement de note pas encore revenu (promesse)
-  envoiTr: null,           // CONC-3 : de même pour le texte transcrit
+  conflit: null,           // CONC-3 : { lieu: "transcription", regionId, conflit }
+  envoiTr: null,           // CONC-3 : l'enregistrement du texte transcrit pas encore revenu
   geste: null,             // CONC-3 : le geste retenu en attendant la réponse, { rejouer }
   partirQuandMeme: false,  // CONC-3 : après une attente vaine, le geste suivant part
-  saveTimer: null,
   trRegions: [],           // régions de texte à transcrire (ordre de lecture)
   trIndex: 0,
   trSaveTimer: null,
@@ -217,7 +210,6 @@ async function afficherAlbums(voulu, autoSelect = true, ouvrir = selectAlbum) {
     sel.appendChild(vide);
     // Une collection ou un projet sans album : l'album d'avant ne reste pas à l'écran.
     if (state.albumId != null) {
-      flushSave();
       state.albumId = null;
       state.planches = [];
       state.planche = null;
@@ -271,8 +263,6 @@ async function selectAlbum(id, autoSelect = true) {
 async function ouvrirAlbum(id, autoSelect = true) {
   state.albumId = id;
   majImportPlafond();
-  state.tagVocab = [];            // ANN-8 : les tags qui se posent sur CET album
-  refreshTagVocab();
   state.exportCols = null;        // DROIT-2 : à redemander pour cet album
   chargerExportables();
   state.planches = await apiGet(`/api/albums/${id}/planches`);
@@ -335,7 +325,6 @@ let plancheGen = 0;   // anti-course : invalide les chargements de planche péri
 async function selectPlanche(id) {
   if (conflitBloque()) return;
   if (!partirApresEnregistrement(() => selectPlanche(id))) return;
-  flushSave();
   const p = state.planches.find((x) => x.id === id);
   if (!p) return;
   const gen = ++plancheGen;   // seule la sélection la plus récente appliquera ses résultats
@@ -575,24 +564,16 @@ function afficherSignal(autres) {
    Il passe par les gardes d'un changement de planche (CONC-3) : un conflit ouvert attend un
    choix, et ce qui n'est pas encore enregistré part d'abord — avec sa valeur vue, si bien
    qu'un champ changé ailleurs entre-temps ouvre le bandeau au lieu d'être écrasé. Une saisie
-   reprise PENDANT la relecture reste dans son champ : la note n'est pas rechargée, et le
-   texte transcrit garde la valeur vue qu'il avait. */
+   reprise PENDANT la relecture reste dans son champ : le texte transcrit garde la valeur vue
+   qu'il avait. */
 async function actualiserPlanche() {
   if (!state.planche) return;
   if (conflitBloque()) return;
   if (!partirApresEnregistrement(actualiserPlanche)) return;
-  flushSave();
   const pid = state.planche.id;
   const trAvant = state.mode === "transcription" ? trCurrent() : null;
   await loadRegions(pid);                    // garde la sélection si elle existe encore
   if (!state.planche || state.planche.id !== pid) return;
-  if (state.mode === "annotation" && state.selectedId != null) {
-    const sale = state.annotSale;
-    const enCours = sale.note || sale.ajoutes.size || sale.retires.size
-      || state.saveTimer || state.envoiNote;
-    if (!enCours) loadAnnotation(state.selectedId, true);
-    else chargerBlocsDuType(state.selectedId, true);   // le locuteur, le personnage, la situation
-  }
   if (state.mode === "transcription") actualiserTranscription(trAvant);
 }
 
@@ -754,14 +735,12 @@ function selectRegion(id, reveal = true) {
   // le rechargement effacerait la saisie que le bandeau garde.
   if (state.conflit) { if (id !== state.selectedId) conflitBloque(); return; }
   if (!partirApresEnregistrement(() => selectRegion(id, reveal))) return;
-  flushSave();
   state.selectedId = id;
   // F6 : la navigation clavier (flèches) passe reveal=false → ne pas re-déplier l'arbre à
   // chaque cran (le repli manuel des cases est respecté). Un clic/deep-link, lui, révèle.
   if (reveal) revealInTree(id);
   renderOverlay();
   renderPanel();
-  if (state.mode === "annotation" && id != null) loadAnnotation(id);
 }
 
 /* Déplie les ancêtres d'une région dans l'arbre, pour qu'une sélection faite
@@ -833,15 +812,31 @@ function syncUrl() {
   if (state.mode !== MODE_PAR_DEFAUT) p.set("mode", state.mode);
   // « Annoter ↗ » : la zone courante dans la page Annotation, et son retour ici. Un `retour`
   // reçu ne s'y empile pas : il reste à l'Atelier, dont il dit d'où l'on vient.
-  const ici = p.toString();
-  $("#btn-annoter").href = Nav.lienAnnotation(
-    { album: state.albumId, planche: state.planche && state.planche.id,
-      region: state.selectedId, collection: state.collection },
-    location.pathname + (ici ? "?" + ici : ""));
+  $("#btn-annoter").href = lienVersAnnotation(p.toString());
   if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit au reload
   const qs = p.toString();
   history.replaceState(null, "", qs ? "?" + qs : location.pathname);
   Nav.retenirLieu(Nav.stockageDeSession(window), qs);   // partagé avec la page Annotation
+}
+
+/* « Annoter ↗ » : la zone courante dans la page Annotation, et le retour vers l'Atelier tel
+   qu'il est (`ici`, son adresse sans `retour`). Le même chemin pour le lien du panneau, la
+   touche `A` et une adresse d'hier en `mode=annotation` (ANN-7, I7). */
+function lienVersAnnotation(ici) {
+  return Nav.lienAnnotation(
+    { album: state.albumId, planche: state.planche && state.planche.id,
+      region: state.selectedId, collection: state.collection },
+    location.pathname + (ici ? "?" + ici : ""));
+}
+
+/* La touche `A` menait au mode Annotation ; elle mène à la page Annotation, sur la zone
+   courante (ANN-7, I7). Elle passe par les gardes d'un départ, comme un changement de mode :
+   un conflit ouvert attend son choix, un texte pas encore enregistré part d'abord. */
+function allerAnnoter() {
+  if (conflitBloque()) return;
+  if (!partirApresEnregistrement(allerAnnoter)) return;
+  syncUrl();   // le lien suit ce qui est à l'écran
+  location.assign($("#btn-annoter").href);
 }
 
 /* Bouton « ← Retour » : ramène à la surface d'analyse d'origine (Recherche /
@@ -903,7 +898,6 @@ function renderPanel() {
   rendreChampsDeRegion(r);
 
   $("#panel-edition").hidden = state.mode !== "edition";
-  $("#panel-annotation").hidden = state.mode !== "annotation";
 
   $("#panel-ocr").hidden = !r.ocr_texte;
   if (r.ocr_texte) $("#ocr-text").textContent = r.ocr_texte;
@@ -1350,7 +1344,6 @@ async function recalcOrder() {
 function deselect() {
   if (conflitBloque()) return;
   if (!partirApresEnregistrement(() => deselect())) return;
-  flushSave();
   state.selectedId = null;
   renderOverlay();
   renderPanel();
@@ -1403,7 +1396,7 @@ function majIndicateursDuCanevas(avant, apres) {
 function setMode(mode) {
   // CONC-3 : même garde que `selectRegion` — un clic sur le mode COURANT recharge le champ.
   if (state.conflit) { if (mode !== state.mode) conflitBloque(); return; }
-  // Ce qui attendait d'être enregistré, note ou texte, part ici — et le geste l'attend.
+  // Ce qui attendait d'être enregistré, le texte transcrit, part ici — et le geste l'attend.
   if (!partirApresEnregistrement(() => setMode(mode))) return;
   const avant = state.mode;
   state.mode = mode;
@@ -1418,204 +1411,14 @@ function setMode(mode) {
   majIndicateursDuCanevas(avant, mode);
   stage.classList.toggle("mode-edition", mode === "edition");
   const label = { navigation: "Navigation", edition: "Édition",
-                  annotation: "Annotation", transcription: "Transcription" }[mode];
+                  transcription: "Transcription" }[mode];
   $("#stat-mode").textContent = "Mode : " + label;
   $("#transcription").hidden = mode !== "transcription";
   majBoutonTracer();        // UX-6 : « ✎ Tracer » est un geste du mode Édition
   renderOverlay();
   renderPanel();
   syncUrl();   // UX-12 : le mode est dans l'adresse (renderPanel l'y met aussi, sans le promettre)
-  if (mode === "annotation" && state.selectedId != null) loadAnnotation(state.selectedId);
   if (mode === "transcription") enterTranscription();
-}
-
-/* ===================================================================
-   Annotation (tags + note, sauvegarde auto)
-   =================================================================== */
-/* `garder` : relire sans toucher à ce qui se tape dans les champs de personnage (CONC-4,
-   « Actualiser » sur la zone ouverte). */
-async function loadAnnotation(regionId, garder = false) {
-  try {
-    const ann = await apiGet(`/api/regions/${regionId}/annotation`);
-    state.currentTags = ann.tags.map((t) => t.label);
-    state.annotSale = annotPropre();
-    state.noteVue = ann.note || "";
-    $("#note-input").value = ann.note || "";
-    renderTagChips();
-    setSaveState("saved");
-  } catch (e) {
-    // F7 : sur échec, VIDER note + tags — sinon un scheduleSave ultérieur écrirait
-    // l'annotation de la région PRÉCÉDENTE (restée dans #note-input) sur celle-ci.
-    toast("Erreur chargement annotation : " + e.message, "error");
-    state.currentTags = [];
-    state.annotSale = annotPropre();
-    state.noteVue = "";
-    $("#note-input").value = "";
-    renderTagChips();
-    setSaveState("");
-  }
-  chargerBlocsDuType(regionId, garder);   // indépendants de l'annotation
-}
-
-/* Les trois blocs que le TYPE de la région décide, et dont un seul s'affiche. Appelée au
-   chargement de l'annotation ET quand le type change sous les yeux (ANN-6) : sans le second
-   appel, une bulle passée en case gardait son bloc Locuteur jusqu'à la prochaine sélection —
-   et le serveur, qui tient désormais la règle, y refuserait l'attribution. */
-function chargerBlocsDuType(regionId, garder = false) {
-  loadLocuteur(regionId, garder);   // Locuteur — zones de texte : bulle, cartouche, texte
-  loadPerso(regionId, garder);      // Personnage — boîtes personnage : identité + profil
-  loadSituation(regionId);  // Situation — cases
-}
-
-function renderTagChips() {
-  const box = $("#tag-chips");
-  box.innerHTML = "";
-  for (const label of state.currentTags) {
-    const chip = document.createElement("span");
-    chip.className = "tag-chip";
-    const v = state.tagVocab.find((t) => t.label === label);
-    if (v && v.couleur) chip.style.borderColor = v.couleur;
-    chip.innerHTML = `<span>${escapeHtml(label)}</span><span class="x">×</span>`;
-    chip.querySelector(".x").onclick = () => { removeTag(label); };
-    box.appendChild(chip);
-  }
-}
-
-/* CONC-3 — l'écran n'envoie que ce qu'il a CHANGÉ. Il renvoyait la note et la liste de tags
-   chargées à la sélection : mesuré le 2026-09-16 à deux navigateurs, la note de l'une
-   effaçait en silence le tag que l'autre venait de poser, et inversement. Les tags partent
-   donc en différences, que le serveur applique à ce qu'il a, pas à ce que l'écran a lu. */
-function annotPropre() {
-  return { note: false, ajoutes: new Set(), retires: new Set() };
-}
-
-/* ANN-8 — un libellé se compare par sa CLÉ (`BDPropositions.cleTag`, jumelle de
-   `database.cle_tag`) : « c’est pluriel » et « c'est pluriel » sont le même tag. Le libellé
-   posé est celui du vocabulaire s'il y est — un tag d'avant garde sa graphie —, sinon la
-   clé, celle sous laquelle le serveur le créera. */
-function addTag(saisi) {
-  const cle = BDPropositions.cleTag(saisi);
-  if (!cle || state.currentTags.some((t) => BDPropositions.cleTag(t) === cle)) return;
-  const connu = state.tagVocab.find((t) => BDPropositions.cleTag(t.label) === cle);
-  const label = connu ? connu.label : cle;
-  state.currentTags.push(label);
-  if (!state.annotSale.retires.delete(label)) state.annotSale.ajoutes.add(label);
-  renderTagChips();
-  scheduleSave();
-}
-function removeTag(label) {
-  state.currentTags = state.currentTags.filter((t) => t !== label);
-  if (!state.annotSale.ajoutes.delete(label)) state.annotSale.retires.add(label);
-  renderTagChips();
-  scheduleSave();
-}
-function noteModifiee() {
-  state.annotSale.note = true;
-  scheduleSave();
-}
-
-function setSaveState(kind) {
-  const el = $("#save-state");
-  el.className = "save-state " + kind;
-  el.textContent = { saving: "Enregistrement…", saved: "Enregistré",
-                     retenu: "Enregistrement en cours…",
-                     attente: "En attente de votre choix", "": "" }[kind] || "";
-}
-
-function scheduleSave() {
-  setSaveState("saving");
-  state.partirQuandMeme = false;           // on travaille de nouveau : plus de laissez-passer
-  clearTimeout(state.saveTimer);
-  const id = state.selectedId;
-  state.saveTimer = setTimeout(() => { state.saveTimer = null; envoyerNote(id); }, SAVE_DEBOUNCE);
-}
-function flushSave() {
-  if (state.saveTimer) {
-    clearTimeout(state.saveTimer); state.saveTimer = null; envoyerNote(state.selectedId);
-  }
-}
-
-/* Rend "conflit" (le bandeau est ouvert), "echec" (rien n'est parti, et c'est dit), ou rien. */
-async function saveAnnotation(prevu = state.selectedId) {
-  const id = state.selectedId;
-  // F8 : si le timer tombe hors mode annotation (ou sans sélection), NE PAS laisser
-  // l'indicateur bloqué sur « Enregistrement… ».
-  if (id == null || state.mode !== "annotation") { setSaveState(""); return; }
-  // CONC-3 : prévu pour une bulle qu'on a quittée depuis — ce qui est à l'écran ne la
-  // concerne plus, et ne doit pas s'écrire sur celle-ci.
-  if (id !== prevu) return;
-  // Ce qui part est retiré de « sale » AVANT l'aller-retour : un geste fait pendant qu'il
-  // court appartient à l'enregistrement suivant, pas à celui-ci.
-  const sale = state.annotSale;
-  const corps = {};
-  // CONC-3, second temps : la note part avec la valeur que l'écran avait VUE. Tant qu'un
-  // conflit sur la note attend un choix, elle ne part pas du tout — les tags, si.
-  const noteEnAttente = conflitSur("note", id);
-  if (sale.note && !noteEnAttente) {
-    corps.note = $("#note-input").value;
-    corps.note_vue = state.noteVue;
-  }
-  if (sale.ajoutes.size) corps.tags_ajoutes = [...sale.ajoutes];
-  if (sale.retires.size) corps.tags_retires = [...sale.retires];
-  state.annotSale = annotPropre();
-  if (sale.note && noteEnAttente) state.annotSale.note = true;
-  if (!Object.keys(corps).length) { setSaveState(noteEnAttente ? "attente" : "saved"); return; }
-  try {
-    const ann = await apiSend("PUT", `/api/regions/${id}/annotation`, corps);
-    if ("note" in corps && state.selectedId === id) state.noteVue = corps.note;
-    const r = state.regionsById.get(id);
-    if (r) { r.annotee = !!(ann.note || ann.tags.length); }
-    if (state.selectedId === id) {
-      // La réponse porte aussi les tags posés AILLEURS entre-temps : on les montre, sans
-      // défaire ce qu'on a changé soi-même pendant l'aller-retour.
-      const enCours = state.annotSale;
-      const serveur = ann.tags.map((t) => t.label).filter((l) => !enCours.retires.has(l));
-      state.currentTags = [...serveur, ...[...enCours.ajoutes].filter((l) => !serveur.includes(l))];
-      renderTagChips();
-    }
-    renderOverlay();
-    renderTree();                            // reflète l'état annoté dans l'arbre
-    setSaveState(conflitSur("note", id) ? "attente" : "saved");
-    await refreshTagVocab();
-    updateStatus();
-  } catch (e) {
-    if (regionDisparue(e, id)) return;
-    // Rien n'est perdu tant qu'on reste sur la bulle : ce qui n'est pas parti redevient à
-    // envoyer, sauf ce qu'un geste plus récent a contredit.
-    if (state.selectedId === id) {
-      const s = state.annotSale;
-      if ("note" in corps) s.note = true;
-      for (const l of corps.tags_ajoutes || []) if (!s.retires.has(l)) s.ajoutes.add(l);
-      for (const l of corps.tags_retires || []) if (!s.ajoutes.has(l)) s.retires.add(l);
-      // CONC-3 : la note a été changée ailleurs. Le serveur n'a RIEN écrit (ni la note ni
-      // les tags) ; le bandeau demande un choix, et les tags repartent aussitôt sans elle.
-      const c = conflitDe(e, "note");
-      if (c && state.mode === "annotation") {
-        ouvrirConflit("note", id, c);
-        if (s.ajoutes.size || s.retires.size) scheduleSave();
-        return "conflit";
-      }
-    }
-    // Filet : un geste qui quitte la bulle ATTEND l'enregistrement (`partirApresEnregistrement`),
-    // sauf quand on a insisté pour partir. Ouvrir alors le bandeau dans un panneau quitté
-    // piégerait l'écran — le blocage empêcherait d'y revenir. Le dire.
-    const c = conflitDe(e, "note");
-    if (c) { toast(BDConflit.messageNonEnregistre(c), "error", 8000); return "echec"; }
-    toast("Échec de sauvegarde : " + e.message, "error");
-    return "echec";
-  }
-}
-
-async function refreshTagVocab() {
-  // ANN-8 — un tag local ne se pose que sur les albums de sa collection : ne proposer que
-  // ceux qui se posent sur l'album OUVERT, et rien tant qu'aucun ne l'est. Une réponse
-  // arrivée après un changement d'album ne remplace pas la liste du nouveau.
-  const album = state.albumId;
-  if (album == null) { state.tagVocab = []; return; }
-  try {
-    const vocab = await apiGet(`/api/tags?album=${album}`);
-    if (state.albumId === album) state.tagVocab = vocab;
-  } catch (_) {}
 }
 
 /* ===================================================================
@@ -1637,7 +1440,6 @@ function partirApresEnregistrement(rejouer) {
   if (!envois) return true;
   const geste = { rejouer };
   state.geste = geste;
-  if (state.envoiNote) setSaveState("retenu");
   if (state.envoiTr) setTrSave("retenu");
   const delai = setTimeout(() => {
     if (state.geste !== geste) return;
@@ -1667,14 +1469,12 @@ function partirApresEnregistrement(rejouer) {
 /* Fait partir ce qui attendait son délai de frappe, et rend la promesse de TOUS les
    enregistrements pas encore revenus — null s'il n'y en a aucun. */
 function lancerEnvois() {
-  flushSave();
   if (state.mode === "transcription") {
     const r = trCurrent();
     const modifie = r && !state.envoiTr && $("#tr-text").value !== (r.ocr_texte || "");
     if (state.trSaveTimer || modifie) trSaveFlush();
   }
-  const envois = [state.envoiNote, state.envoiTr].filter(Boolean);
-  return envois.length ? Promise.all(envois) : null;
+  return state.envoiTr ? Promise.all([state.envoiTr]) : null;
 }
 
 /* Les enregistrements d'un même champ partent L'UN APRÈS L'AUTRE. En parallèle, le second
@@ -1690,7 +1490,6 @@ function enchainer(cle, envoyer) {
 }
 
 /* Chaque enregistrement vise la bulle d'où il est parti, jamais celle d'arrivée. */
-function envoyerNote(id) { return enchainer("envoiNote", () => saveAnnotation(id)); }
 function envoyerTexte(id) { return enchainer("envoiTr", () => trSaveCurrent(id)); }
 
 /* ===================================================================
@@ -1717,27 +1516,6 @@ function conflitDe(e, champ) {
   const c = e && e.statut === 409 && e.detail && e.detail.conflit;
   return c && c.champ === champ ? c : null;
 }
-
-/* CONC-4 — un lien (locuteur, personnage montré) refusé : le bandeau s'ouvre au-dessus de la
-   puce si l'on est encore sur cette zone ET dans le mode où elle se voit ; sinon le dire,
-   comme le filet de la note. Rend vrai si `e` était ce conflit-là. `saisie` : le choix
-   ({ id, nom }), ou null pour un retrait. */
-function conflitDeLien(e, lieu, regionId, saisie) {
-  const c = conflitDe(e, lieu);
-  if (!c) return false;
-  const ici = state.mode === "annotation"
-    && (lieu === "locuteur" ? state.locRegion : state.persoRegion) === regionId;
-  if (ici && !state.conflit) ouvrirConflit(lieu, regionId, c, saisie);
-  else toast(BDConflit.messageNonEnregistre(c), "error", 8000);
-  return true;
-}
-
-// CONC-4 — où le bandeau d'un lien s'ouvre (au-dessus de la puce), et le champ qui garde le
-// focus après un geste.
-const LIEUX_LIEN = {
-  locuteur: { puce: "#loc-current", champ: "#loc-input" },
-  presence: { puce: "#perso-current", champ: "#perso-input" },
-};
 
 /* Bloque un changement de bulle, de planche ou de mode pendant un conflit. */
 function conflitBloque() {
@@ -1775,18 +1553,18 @@ function annoncer(texte) {
   setTimeout(() => { zone.textContent = texte; }, 50);   // un changement, pour être relu
 }
 
-function ouvrirConflit(lieu, regionId, conflit, saisie = null) {
+/* ANN-7, le basculement — la note, le locuteur et le personnage montré s'écrivent dans la page
+   Annotation, qui a son bandeau : celui de l'Atelier ne sert plus qu'au texte transcrit. */
+function ouvrirConflit(lieu, regionId, conflit) {
   fermerConflit();
-  state.conflit = { lieu, regionId, conflit, saisie };
-  const lien = LIEUX_LIEN[lieu];
-  const champ = lien ? $(lien.puce) : lieu === "note" ? $("#note-input") : $("#tr-text");
+  state.conflit = { lieu, regionId, conflit };
+  const champ = $("#tr-text");
   const titre = BDConflit.titreConflit(conflit);
   const a = conflit.auteur;
   const deQui = !a ? "Version enregistrée"
     : a.meme_compte ? "Version de l'autre écran, enregistrée"
     : `Version de ${a.nom || a.login}, enregistrée`;
-  const quoi = lien ? BDConflit.texteLienNonEnregistre(saisie)
-    : lieu === "note" ? "Votre note n'est pas enregistrée." : "Votre texte n'est pas enregistré.";
+  const quoi = "Votre texte n'est pas enregistré.";
 
   const b = document.createElement("div");
   b.className = "bandeau-conflit";
@@ -1795,31 +1573,21 @@ function ouvrirConflit(lieu, regionId, conflit, saisie = null) {
   b.setAttribute("aria-labelledby", "bandeau-conflit-titre");
   b.innerHTML = `
     <p class="bandeau-titre" id="bandeau-conflit-titre"><span aria-hidden="true">⚠</span> ${escapeHtml(titre)}</p>
-    <p class="bandeau-texte">${escapeHtml(quoi)} Elle reste dans le champ ci-dessous.</p>
+    <p class="bandeau-texte">${escapeHtml(quoi)} Il reste dans le champ ci-dessous.</p>
     <p class="bandeau-sous">${escapeHtml(deQui)}</p>
     <div class="bandeau-version"></div>
     <div class="bandeau-gestes">
       <button type="button" class="ghost" data-geste="remplacer">${escapeHtml(BDConflit.GESTES.remplacer)}</button>
       <button type="button" class="ghost" data-geste="garder">${escapeHtml(BDConflit.GESTES.garderAutre)}</button>
     </div>`;
-  if (lieu === "transcription") {
-    b.querySelector(".bandeau-texte").textContent = quoi + " Il reste dans le champ ci-dessous.";
-  }
-  // Un lien n'a pas de champ où la saisie « reste » : le bandeau dit le choix, et montre la
-  // version de l'autre par son nom (`detail.conflit.personnage`), pas par un identifiant.
-  if (lien) b.querySelector(".bandeau-texte").textContent = quoi;
-  b.querySelector(".bandeau-version").textContent = lien
-    ? BDConflit.nomPersonnage(conflit.personnage, lieu) : conflit.valeur_actuelle ?? "";
+  b.querySelector(".bandeau-version").textContent = conflit.valeur_actuelle ?? "";
   b.querySelector('[data-geste="remplacer"]').onclick = remplacerParLaMienne;
   b.querySelector('[data-geste="garder"]').onclick = garderLAutre;
   champ.parentNode.insertBefore(b, champ);
 
-  if (lieu === "note") setSaveState("attente");
-  else if (!lien) {
-    setTrSave("attente");
-    $("#tr-prev").disabled = true;
-    $("#tr-next").disabled = true;
-  }
+  setTrSave("attente");
+  $("#tr-prev").disabled = true;
+  $("#tr-next").disabled = true;
   annoncer(`${titre}. ${quoi}`);
 }
 
@@ -1842,31 +1610,12 @@ function remplacerParLaMienne() {
   if (!c) return;
   const valeur = c.conflit.valeur_actuelle ?? "";
   fermerConflit();
-  if (LIEUX_LIEN[c.lieu]) {
-    // CONC-4 — la version de l'autre devient la valeur VUE, et le geste repart : le choix
-    // remplace la sienne, le retrait la retire. Un troisième entre-temps : nouveau bandeau.
-    const vu = c.conflit.valeur_actuelle ?? null;
-    const locuteur = c.lieu === "locuteur";
-    if (locuteur) state.locVu = vu; else state.persoVu = vu;
-    if (c.saisie) (locuteur ? setLocuteur : setPerso)(c.saisie.id, c.regionId, c.saisie.nom);
-    else (locuteur ? clearLocuteur : clearPerso)();
-    $(LIEUX_LIEN[c.lieu].champ).focus();
-    return;
-  }
-  if (c.lieu === "note") {
-    state.noteVue = valeur;
-    state.annotSale.note = true;
-    clearTimeout(state.saveTimer); state.saveTimer = null;
-    envoyerNote(c.regionId);
-    $("#note-input").focus();
-  } else {
-    const r = state.regionsById.get(c.regionId);
-    if (r) r.ocr_texte = valeur;
-    const t = state.trRegions.find((x) => x.id === c.regionId);
-    if (t) t.ocr_texte = valeur;
-    envoyerTexte(c.regionId);
-    $("#tr-text").focus();
-  }
+  const r = state.regionsById.get(c.regionId);
+  if (r) r.ocr_texte = valeur;
+  const t = state.trRegions.find((x) => x.id === c.regionId);
+  if (t) t.ocr_texte = valeur;
+  envoyerTexte(c.regionId);
+  $("#tr-text").focus();
 }
 
 /* « Garder l'autre » : conserver la version concurrente ; la saisie en cours est abandonnée. */
@@ -1875,30 +1624,14 @@ function garderLAutre() {
   if (!c) return;
   const valeur = c.conflit.valeur_actuelle ?? "";
   fermerConflit();
-  if (LIEUX_LIEN[c.lieu]) {
-    // CONC-4 — la puce montre la version de l'autre, qui devient la valeur vue ; le choix
-    // qu'on avait fait est abandonné.
-    if (c.lieu === "locuteur") renderLocuteur(c.conflit.personnage || null);
-    else renderPerso(c.conflit.personnage || null);
-    $(LIEUX_LIEN[c.lieu].champ).focus();
-    return;
-  }
-  if (c.lieu === "note") {
-    $("#note-input").value = valeur;
-    state.noteVue = valeur;
-    state.annotSale.note = false;
-    setSaveState("saved");
-    $("#note-input").focus();
-  } else {
-    const r = state.regionsById.get(c.regionId);
-    if (r) r.ocr_texte = valeur;
-    const t = state.trRegions.find((x) => x.id === c.regionId);
-    if (t) t.ocr_texte = valeur;
-    $("#tr-text").value = valeur;
-    setTrSave("saved");
-    majBoutonCasse();
-    $("#tr-text").focus();
-  }
+  const r = state.regionsById.get(c.regionId);
+  if (r) r.ocr_texte = valeur;
+  const t = state.trRegions.find((x) => x.id === c.regionId);
+  if (t) t.ocr_texte = valeur;
+  $("#tr-text").value = valeur;
+  setTrSave("saved");
+  majBoutonCasse();
+  $("#tr-text").focus();
 }
 
 /* ===================================================================
@@ -2114,7 +1847,7 @@ function trSaveFlush() {
   return envoyerTexte(r && r.id);
 }
 
-/* Rend "conflit", "echec" ou rien, comme `saveAnnotation`. Le délai de frappe se purge chez
+/* Rend "conflit", "echec" ou rien. Le délai de frappe se purge chez
    l'APPELANT : enchaîné, cet enregistrement court après une frappe plus récente, dont il
    effacerait le minuteur. */
 async function trSaveCurrent(prevu) {
@@ -2138,7 +1871,8 @@ async function trSaveCurrent(prevu) {
     if (regionDisparue(e, r.id)) return;
     const c = conflitDe(e, "ocr_texte");
     // Le bandeau ne s'ouvre que si l'on est encore sur CE texte ; sinon — on a insisté pour
-    // partir —, le conflit se dit par un toast (cf. `saveAnnotation`).
+    // partir —, le conflit se dit par un toast : ouvrir le bandeau dans un panneau quitté
+    // piégerait l'écran, le blocage empêchant d'y revenir.
     const ici = state.mode === "transcription" && trCurrent() && trCurrent().id === r.id;
     if (c && ici) { ouvrirConflit("transcription", r.id, c); return "conflit"; }
     if (c) { toast(BDConflit.messageNonEnregistre(c), "error", 8000); return "echec"; }
@@ -2200,421 +1934,6 @@ function setupTranscription() {
   $("#tr-prev").onclick = trPrev;
   $("#tr-casse").onclick = trNormaliserCasse;
   $("#tr-exit").onclick = () => setMode("navigation");
-}
-
-/* --- autocomplétion tags --- */
-function setupTagInput() {
-  const input = $("#tag-input");
-  const sug = $("#tag-suggest");
-  let activeIdx = -1;
-
-  function close() { sug.hidden = true; activeIdx = -1; }
-  /* La liste pour ce qui est tapé, comparée par la CLÉ des libellés (ANN-8). */
-  function liste() {
-    const q = BDPropositions.cleTag(input.value);
-    const poses = new Set(state.currentTags.map(BDPropositions.cleTag));
-    return state.tagVocab
-      .filter((t) => { const c = BDPropositions.cleTag(t.label); return !poses.has(c) && (!q || c.includes(q)); })
-      .slice(0, 12);
-  }
-  function render() {
-    const items = liste();
-    sug.innerHTML = "";
-    if (!items.length) { close(); return; }
-    items.forEach((t, i) => {
-      const d = document.createElement("div");
-      if (i === activeIdx) d.classList.add("active");
-      d.dataset.label = t.label;
-      d.innerHTML = `${escapeHtml(t.label)}<span class="freq">${escapeHtml(t.frequence)}</span>`;
-      d.onmousedown = (e) => { e.preventDefault(); addTag(t.label); input.value = ""; close(); };
-      sug.appendChild(d);
-    });
-    sug.hidden = false;
-  }
-
-  input.addEventListener("input", () => { activeIdx = -1; render(); });
-  input.addEventListener("focus", render);
-  input.addEventListener("blur", () => setTimeout(close, 150));
-  input.addEventListener("keydown", (e) => {
-    const items = sug.querySelectorAll("div");
-    // ANN-8 — la flèche compte la liste qui VA s'afficher, pas les lignes restées de la
-    // précédente : après un tag tapé sans proposition, la liste était vide, et la première
-    // ↓ la rouvrait sans rien surligner.
-    if (e.key === "ArrowDown") { activeIdx = BDPropositions.fleche(activeIdx, liste().length, "bas"); render(); e.preventDefault(); }
-    else if (e.key === "ArrowUp") { activeIdx = BDPropositions.fleche(activeIdx, liste().length, "haut"); render(); e.preventDefault(); }
-    else if (e.key === "Enter") {
-      e.preventDefault();
-      if (activeIdx >= 0 && items[activeIdx]) addTag(items[activeIdx].dataset.label);
-      else if (input.value.trim()) addTag(input.value);
-      input.value = ""; close();
-    } else if (e.key === "Backspace" && !input.value && state.currentTags.length) {
-      removeTag(state.currentTags[state.currentTags.length - 1]);
-    } else if (e.key === "Escape") { close(); }
-  });
-}
-
-/* --- Locuteur : qui parle dans la zone de texte (registre corpus + création à la volée).
-   ANN-6 — le bloc ne s'offrait qu'à la BULLE, alors qu'un cartouche a un narrateur et
-   qu'une zone de texte peut être une parole hors bulle. Il s'offre aux trois, et à elles
-   seules : les CLÉS de cette table sont la règle, la même que `config.TYPES_LOCUTEUR` côté
-   serveur, qui refuse désormais le reste (422). Les valeurs servent au nom accessible du
-   champ, qui disait « à la bulle » devant n'importe quoi. --- */
-const LOCUTEUR_DE = {
-  bulle: "à la bulle", cartouche: "au cartouche", texte: "à la zone de texte",
-};
-
-async function loadLocuteur(regionId, garder = false) {
-  const sec = $("#loc-section");
-  const r = state.regionsById.get(regionId);
-  if (!r || !Object.hasOwn(LOCUTEUR_DE, r.type)) {
-    sec.hidden = true; state.locRegion = null; return;
-  }
-  // CONC-4 — relue sur place (« Actualiser »), la zone garde le nom à moitié tapé.
-  const memeZone = garder && state.locRegion === regionId;
-  sec.hidden = false;
-  state.locRegion = regionId;
-  $("#loc-input").setAttribute("aria-label", "Attribuer un locuteur " + LOCUTEUR_DE[r.type]);
-  if (!memeZone) {
-    $("#loc-input").value = "";
-    $("#loc-suggest").hidden = true;
-  }
-  renderLocuteur(null, false);
-  state.locVu = undefined;            // CONC-4 : rien n'est VU tant que la lecture n'a pas répondu
-  try {
-    const { locuteur } = await apiGet(`/api/regions/${regionId}/locuteur`);
-    if (state.locRegion === regionId) renderLocuteur(locuteur);   // anti-course
-  } catch (e) { /* non bloquant */ }
-}
-
-/* `vu` : ce rendu est-il ce que le serveur porte — la lecture, ou la réponse d'un geste ?
-   Alors il devient la valeur VUE que le prochain geste déclare (CONC-4). */
-function renderLocuteur(loc, vu = true) {
-  if (vu) state.locVu = loc ? loc.id : null;
-  const box = $("#loc-current");
-  if (!box) return;
-  box.innerHTML = "";
-  if (loc) {
-    const chip = document.createElement("span");
-    chip.className = "tag-chip";
-    chip.innerHTML = `<span>${escapeHtml(loc.nom)}${loc.serie ? " · " + escapeHtml(loc.serie) : ""}</span>`
-      + `<span class="x" title="Retirer le locuteur">×</span>`;
-    chip.querySelector(".x").onclick = clearLocuteur;
-    box.appendChild(chip);
-  } else {
-    box.innerHTML = '<span class="muted small">Aucun locuteur</span>';
-  }
-  // profil du personnage : éditable dès qu'un locuteur est attribué (vaut pour tout le corpus)
-  if (persoAttrWidget) persoAttrWidget.load(loc ? `/api/personnages/${loc.id}` : null);
-  if (locAlignWidget) locAlignWidget.load(loc ? loc.id : null);   // alignement d'autorité (A5)
-}
-
-/* CONC-4 — le geste déclare le locuteur que l'écran VOYAIT (`personnage_vu`) : si quelqu'un
-   l'a changé depuis, le serveur refuse par le 409 nommé, et le bandeau de CONC-3 s'ouvre au-
-   dessus de la puce (`ouvrirConflit`), avec le choix qu'on venait de faire. La valeur vue
-   n'est déclarée que pour la zone ouverte, et une fois lue : sinon le dernier gagne. */
-/* Les gestes d'un même lien partent L'UN APRÈS L'AUTRE (`enchainer`, comme la note) : deux
-   choix coup sur coup déclaraient tous deux la valeur vue d'AVANT le premier, et le second
-   recevait un 409 contre soi-même (relecture de CONC-4). La valeur vue se lit donc au moment
-   où le geste PART, après la réponse du précédent. */
-function setLocuteur(pid, rid, nom) {   // `rid` : la zone du GESTE, pas celle du moment
-  if (rid == null) return;
-  if (conflitBloque()) return;        // un seul bandeau à la fois : il attend un choix
-  return enchainer("envoiLoc", () => envoyerLocuteur(pid, rid, nom));
-}
-
-async function envoyerLocuteur(pid, rid, nom) {
-  if (conflitBloque()) return;        // le geste précédent a ouvert le bandeau
-  const corps = { personnage_id: pid };
-  if (rid === state.locRegion && state.locVu !== undefined) corps.personnage_vu = state.locVu;
-  try {
-    const { locuteur } = await apiSend("PUT", `/api/regions/${rid}/locuteur`, corps);
-    if (state.locRegion === rid) renderLocuteur(locuteur);
-  } catch (e) {
-    if (conflitDeLien(e, "locuteur", rid, { id: pid, nom })) return;
-    toast("Locuteur : " + e.message, "error");
-  }
-}
-
-function clearLocuteur() {
-  const rid = state.locRegion;
-  if (rid == null) return;
-  if (conflitBloque()) return;
-  return enchainer("envoiLoc", () => retirerLocuteur(rid));
-}
-
-async function retirerLocuteur(rid) {
-  if (conflitBloque()) return;
-  const vu = rid === state.locRegion ? state.locVu : undefined;
-  const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
-  try { await apiSend("DELETE", `/api/regions/${rid}/locuteur${q}`); } catch (e) {
-    conflitDeLien(e, "locuteur", rid, null);
-    return;
-  }
-  if (state.locRegion === rid) renderLocuteur(null);
-}
-
-/* --- Personnage MONTRÉ : identité d'une boîte personnage (§14, brique (a)). Miroir du
-   locuteur, mais pour l'image — même entité, et le profil corpus se règle ICI aussi, donc
-   atteignable pour un personnage muet (sans bulle). --- */
-async function loadPerso(regionId, garder = false) {   // `garder` : cf. `loadLocuteur`
-  const sec = $("#perso-section");
-  const r = state.regionsById.get(regionId);
-  if (!r || r.type !== "personnage") { sec.hidden = true; state.persoRegion = null; return; }
-  const memeZone = garder && state.persoRegion === regionId;
-  sec.hidden = false;
-  state.persoRegion = regionId;
-  if (!memeZone) {
-    $("#perso-input").value = "";
-    $("#perso-suggest").hidden = true;
-  }
-  renderPerso(null, false);
-  state.persoVu = undefined;          // CONC-4, cf. `loadLocuteur`
-  try {
-    const { personnage } = await apiGet(`/api/regions/${regionId}/personnage`);
-    if (state.persoRegion === regionId) renderPerso(personnage);   // anti-course
-  } catch (e) { /* non bloquant */ }
-}
-
-function renderPerso(perso, vu = true) {   // `vu` : cf. `renderLocuteur`
-  if (vu) state.persoVu = perso ? perso.id : null;
-  const box = $("#perso-current");
-  if (!box) return;
-  box.innerHTML = "";
-  if (perso) {
-    const chip = document.createElement("span");
-    chip.className = "tag-chip";
-    chip.innerHTML = `<span>${escapeHtml(perso.nom)}${perso.serie ? " · " + escapeHtml(perso.serie) : ""}</span>`
-      + `<span class="x" title="Retirer l'identité">×</span>`;
-    chip.querySelector(".x").onclick = clearPerso;
-    box.appendChild(chip);
-  } else {
-    box.innerHTML = '<span class="muted small">Non identifié</span>';
-  }
-  // même profil corpus que par le locuteur, atteignable depuis la boîte (muets compris)
-  if (persoBoxAttrWidget) persoBoxAttrWidget.load(perso ? `/api/personnages/${perso.id}` : null);
-  if (persoAlignWidget) persoAlignWidget.load(perso ? perso.id : null);   // alignement d'autorité (A5)
-}
-
-function setPerso(pid, rid, nom) {      // `rid` : la boîte du GESTE, pas celle du moment
-  if (rid == null) return;
-  if (conflitBloque()) return;        // CONC-4, cf. `setLocuteur` : en file, et un bandeau à la fois
-  return enchainer("envoiPerso", () => envoyerPerso(pid, rid, nom));
-}
-
-async function envoyerPerso(pid, rid, nom) {
-  if (conflitBloque()) return;
-  const corps = { personnage_id: pid };
-  if (rid === state.persoRegion && state.persoVu !== undefined) corps.personnage_vu = state.persoVu;
-  try {
-    const { personnage } = await apiSend("PUT", `/api/regions/${rid}/personnage`, corps);
-    if (state.persoRegion === rid) renderPerso(personnage);
-  } catch (e) {
-    if (conflitDeLien(e, "presence", rid, { id: pid, nom })) return;
-    toast("Personnage : " + e.message, "error");
-  }
-}
-
-function clearPerso() {
-  const rid = state.persoRegion;
-  if (rid == null) return;
-  if (conflitBloque()) return;
-  return enchainer("envoiPerso", () => retirerPerso(rid));
-}
-
-async function retirerPerso(rid) {
-  if (conflitBloque()) return;
-  const vu = rid === state.persoRegion ? state.persoVu : undefined;
-  const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
-  try { await apiSend("DELETE", `/api/regions/${rid}/personnage${q}`); } catch (e) {
-    conflitDeLien(e, "presence", rid, null);
-    return;
-  }
-  if (state.persoRegion === rid) renderPerso(null);
-}
-
-/* Autocomplétion « personnage » : registre corpus + création à la volée (modèle
-   mentions→entités), pour le locuteur d'une zone de texte et l'identité d'une boîte
-   personnage. Le champ — ses lectures en vol, ses homonymes, ce que l'autre champ vient de
-   créer (ANN-6, ANN-8) — vit dans `static/lib/champ-personnage.js`, commun avec la page
-   Annotation (ANN-7, tranche 2) ; ce qu'on fait du choix (`setLocuteur`, `setPerso`) reste
-   ici. */
-function setupPersoInput(inputSel, sugSel, onPick, zone) {
-  BDChampPersonnage.monter(inputSel, sugSel, onPick, zone);
-}
-
-/* --- Attributs FACETTÉS & ÉMERGENTS : widget réutilisable (cible 'personnage' ou
-   'case'). Saisie « dimension : valeur » → find-or-create la dimension ET la valeur,
-   puis affecte. Le vocabulaire n'est pas figé : il émerge de la saisie.
-
-   ANN-6 — ENTRÉE AGIT SUR CE QUI EST TAPÉ. La liste se calculait 200 ms après la dernière
-   frappe, puis le temps d'une lecture, et Entrée la consultait telle qu'elle était : une
-   seule valeur au vocabulaire, « grotte » tapé vite, et c'est « lieu : falaise » qui
-   partait — depuis le champ vide aussi ; « lieu : phare » tapé vite ne partait pas du tout
-   (mesuré le 2026-10-12, sur les trois montages : sur un profil, l'erreur vaut pour tout
-   le corpus). Or la lecture rend TOUT le vocabulaire de la cible et c'est l'écran qui le
-   filtre : rien n'oblige la liste à attendre le réseau. Quatre règles tiennent le reste.
-
-   - Le vocabulaire lu est GARDÉ (`vocab`) et la liste se recalcule à chaque frappe, sur
-     place. Ce qui s'affiche vaut donc pour ce qui est tapé, et Entrée lit la même liste.
-     La lecture différée part toujours, aux mêmes moments : elle rafraîchit le
-     vocabulaire, elle ne décide plus de rien.
-   - Une lecture arrivée APRÈS une plus récente est écartée : la plus lente ne remet pas
-     un vocabulaire plus ancien sous une liste plus neuve.
-   - La forme complète « dimension : valeur » ne consulte PAS la liste. La valeur connue
-     est affectée ; sinon elle est créée — et « créée » veut dire trouvée-ou-créée, côté
-     serveur : tant qu'aucune lecture n'a abouti (`vocab` nul), c'est ce chemin qui prend
-     la valeur existante, au prix de deux requêtes de plus.
-   - Champ vide, Entrée n'affecte rien ; champ rempli et rien à faire, un message le dit.
-     Avant, « falaise » tapé seul restait dans le champ sans requête ni message.
-
-   Ce que cela NE ferme PAS : tant que la toute première lecture n'est pas revenue, un mot
-   sans deux-points ne peut désigner aucune proposition — Entrée répond par le message,
-   là où la même frappe, un instant plus tard, aurait pris l'unique résultat. Rien de faux
-   n'est posé ; la forme complète, elle, aboutit dès cet instant. --- */
-const RIEN_AJOUTE = "Rien n'est ajouté : écrivez « dimension : valeur », ou choisissez une proposition.";
-
-function makeAttributsWidget(ids, cible) {
-  const sec = $(ids.section), cur = $(ids.current), input = $(ids.input), sug = $(ids.suggest);
-  let target = null, timer = null, activeIdx = -1, items = [];
-  let vocab = null;               // le vocabulaire de la cible, tel que lu en dernier — nul tant qu'aucune lecture n'a abouti
-  let parties = 0, retenue = 0;   // rang de la dernière lecture partie, et de la dernière retenue
-
-  async function refresh() {
-    cur.innerHTML = "";
-    let attrs = [];
-    try { attrs = await apiGet(`${target}/attributs`); } catch (e) { return; }
-    if (!attrs.length) { cur.innerHTML = '<span class="muted small">Aucun</span>'; return; }
-    for (const a of attrs) {
-      const chip = document.createElement("span");
-      chip.className = "tag-chip";
-      chip.innerHTML = `<span><b>${escapeHtml(a.dimension)}</b> : ${escapeHtml(a.valeur)}</span>`
-        + `<span class="x" title="Retirer">×</span>`;
-      chip.querySelector(".x").onclick = () => remove(a.valeur_id);
-      cur.appendChild(chip);
-    }
-  }
-  async function remove(vid) {
-    try { await apiSend("DELETE", `${target}/attributs/${vid}`); } catch (e) { return; }
-    refresh();
-  }
-  /* `vers` : la cible du GESTE. Créer la dimension puis la valeur prend deux écritures,
-     et `target` change dès qu'on sélectionne autre chose : l'affectation partait alors
-     vers cette autre cible — ou vers « null/attributs » si elle n'en a pas. */
-  async function assign(vid, vers = target) {
-    try {
-      await apiSend("PUT", `${vers}/attributs`, { valeur_id: vid });
-      if (vers === target) refresh();
-    } catch (e) { toast("Attribut : " + e.message, "error"); }
-  }
-  async function createAndAssign(dim, val) {
-    const vers = target;
-    try {
-      const d = await apiSend("POST", "/api/attributs/dimensions", { cible, nom: dim });
-      const v = await apiSend("POST", `/api/attributs/dimensions/${d.id}/valeurs`, { valeur: val });
-      await assign(v.id, vers);
-    } catch (e) { toast("Attribut : " + e.message, "error"); }
-  }
-  function close() { sug.hidden = true; activeIdx = -1; }
-  /* La liste, pour la saisie telle qu'elle est MAINTENANT. Seul endroit où `items`
-     s'écrit : à chaque frappe, à chaque lecture retenue, et quand le script vide lui-même
-     le champ. Sans vocabulaire lu, aucune proposition. La règle est celle de
-     `BDPropositions.propositionsAttributs` (ANN-8 : module pur, testé sous Node). */
-  function calculer() { items = BDPropositions.propositionsAttributs(vocab, input.value); }
-  async function fetchList() {
-    const rang = ++parties;
-    let vals = [];
-    try { vals = await apiGet("/api/attributs/valeurs?cible=" + cible); } catch (e) { vals = []; }
-    if (rang < retenue) return;   // une lecture partie APRÈS celle-ci a déjà répondu : elle fait foi
-    retenue = rang;
-    vocab = vals;
-    calculer(); render();
-  }
-  function render() {
-    sug.innerHTML = "";
-    if (!items.length) { close(); return; }
-    items.forEach((it, k) => {
-      const d = document.createElement("div");
-      if (k === activeIdx) d.classList.add("active");
-      d.innerHTML = it.create ? escapeHtml(it.label)
-        : `${escapeHtml(it.dim)}<span class="freq">${escapeHtml(it.val)}</span>`;
-      d.onmousedown = (e) => { e.preventDefault(); choose(it); };
-      sug.appendChild(d);
-    });
-    sug.hidden = false;
-  }
-  /* Le script vide le champ lui-même — après un choix, en changeant de cible. Aucun
-     évènement `input` ne le dit : la liste se recalcule ici, sans quoi ↓ rouvrirait
-     celle de la saisie précédente, parfois sous un autre personnage. */
-  function vider() { input.value = ""; calculer(); close(); }
-  async function choose(it) {
-    vider();
-    if (it.create) await createAndAssign(it.dim, it.val);
-    else await assign(it.id);
-  }
-  input.addEventListener("input", () => {
-    activeIdx = -1; calculer(); render();                  // la liste suit la frappe, sans attendre
-    clearTimeout(timer); timer = setTimeout(fetchList, 200);
-  });
-  input.addEventListener("focus", fetchList);
-  input.addEventListener("blur", () => setTimeout(close, 150));
-  input.addEventListener("keydown", (e) => {
-    // ANN-8 — la flèche compte `items`, la liste pour ce qui est tapé — jamais les lignes
-    // restées dans le DOM de la précédente, vides quand elle n'avait rien proposé : après
-    // une validation, la première ↓ rouvrait alors la liste sans rien surligner.
-    if (e.key === "ArrowDown") { activeIdx = BDPropositions.fleche(activeIdx, items.length, "bas"); render(); e.preventDefault(); }
-    else if (e.key === "ArrowUp") { activeIdx = BDPropositions.fleche(activeIdx, items.length, "haut"); render(); e.preventDefault(); }
-    else if (e.key === "Enter") {
-      e.preventDefault();
-      // ANN-8 — la règle d'Entrée vit dans `BDPropositions.decisionEntree`, testée par table
-      // sous Node ; l'écran l'applique.
-      const d = BDPropositions.decisionEntree({ q: input.value, actif: activeIdx, items, vocab });
-      if (d.geste === "choisir") choose(d.item);
-      else if (d.geste === "affecter") { vider(); assign(d.id); }      // « dim : val » aboutit sans la liste
-      else if (d.geste === "creer") { vider(); createAndAssign(d.dim, d.val); }
-      else if (d.geste === "dire") toast(RIEN_AJOUTE, "");             // rien à faire : le dire
-      // « rien » : champ vide, Entrée n'affecte rien
-    } else if (e.key === "Escape") { close(); }
-  });
-
-  return {
-    load(path) {
-      target = path;
-      if (!path) { sec.hidden = true; return; }
-      sec.hidden = false; vider(); refresh();
-    },
-  };
-}
-
-/* --- Alignement d'AUTORITÉ (A5) : widget réutilisable — relie l'ENTITÉ personnage à des
-   référentiels externes (Wikidata/VIAF/IdRef…) en `skos:exactMatch`. Il vit dans
-   `static/lib/alignements.js`, commun avec la fiche d'un personnage de la page Annotation
-   (ANN-7) ; l'Atelier le monte tel qu'il était, l'écriture toujours offerte. --- */
-function makeAlignementWidget(ids) {
-  return BDAlignements.monter(ids);
-}
-
-let sitWidget = null, persoAttrWidget = null, persoBoxAttrWidget = null;
-let locAlignWidget = null, persoAlignWidget = null;
-function setupAttributs() {
-  sitWidget = makeAttributsWidget(
-    { section: "#situation-section", current: "#sit-current", input: "#sit-input", suggest: "#sit-suggest" }, "case");
-  persoAttrWidget = makeAttributsWidget(
-    { section: "#perso-attr-section", current: "#perso-attr-current",
-      input: "#perso-attr-input", suggest: "#perso-attr-suggest" }, "personnage");
-  // 2ᵉ instance : le MÊME profil corpus, mais piloté depuis la boîte personnage (§14 a).
-  persoBoxAttrWidget = makeAttributsWidget(
-    { section: "#perso-profil-section", current: "#perso-profil-current",
-      input: "#perso-profil-input", suggest: "#perso-profil-suggest" }, "personnage");
-  // Alignement d'autorité (A5) — deux instances (via le locuteur, via la boîte personnage).
-  locAlignWidget = makeAlignementWidget(
-    { section: "#loc-align-section", current: "#loc-align-current", input: "#loc-align-input" });
-  persoAlignWidget = makeAlignementWidget(
-    { section: "#perso-align-section", current: "#perso-align-current", input: "#perso-align-input" });
-}
-
-function loadSituation(regionId) {
-  const r = state.regionsById.get(regionId);
-  if (sitWidget) sitWidget.load(r && r.type === "case" ? `/api/regions/${regionId}` : null);
 }
 
 /* ===================================================================
@@ -2964,10 +2283,6 @@ stage.addEventListener("mousedown", (e) => {
 
   const hit = target.closest(".region");
   if (state.mode === "navigation") {
-    if (hit) selectRegion(Number(hit.dataset.id));
-    return;
-  }
-  if (state.mode === "annotation") {
     if (hit) selectRegion(Number(hit.dataset.id));
     return;
   }
@@ -4027,10 +3342,6 @@ function setupControls() {
     const id = state.selectedId;
     if (id == null) return;
     await patchRegion(id, { type: e.target.value });
-    // ANN-6 — les blocs d'annotation suivent le type qu'on vient de donner. Ils le relisent
-    // dans l'état, pas dans la liste déroulante : si l'écriture a échoué, la région a gardé
-    // son type, et donc ses blocs.
-    if (state.mode === "annotation" && state.selectedId === id) chargerBlocsDuType(id);
   };
   // UX-13 (Hugo, 2026-10-21) — « Rattaché à » reste un <select> NATIF : son menu ouvert est
   // rendu hors de la page, ses options n'ont pas de survol fiable. La case se surligne donc
@@ -4058,7 +3369,7 @@ function setupControls() {
       deleteRegion(state.selectedId);
   };
 
-  // Arbre : repli/dépli (escamote l'arbre pour dégager les champs Tags/Note/OCR)
+  // Arbre : repli/dépli (escamote l'arbre pour dégager le texte et la grammaire)
   $("#tree-header").onclick = () =>
     $("#panel-tree").classList.toggle("collapsed");
   // Boutons tout déplier / tout replier (sans déclencher le repli de la section)
@@ -4066,13 +3377,6 @@ function setupControls() {
   $("#tree-collapse").onclick = (e) => { e.stopPropagation(); collapseAllTree(); };
   $("#tree-recalc").onclick = (e) => { e.stopPropagation(); recalcOrder(); };
 
-  // Annotation : note
-  $("#note-input").addEventListener("input", noteModifiee);
-
-  setupTagInput();
-  setupPersoInput("#loc-input", "#loc-suggest", setLocuteur, () => state.locRegion);     // locuteur (zone de texte)
-  setupPersoInput("#perso-input", "#perso-suggest", setPerso, () => state.persoRegion);  // identité (boîte personnage)
-  setupAttributs();
   setupImport();
   setupMenus();
   setupTranscription();
@@ -4085,9 +3389,6 @@ function setupControls() {
    sont communs avec la page Annotation (`static/lib/annulation.js`) ; ici, on rafraîchit. */
 async function undoLast() {
   if (conflitBloque()) return;
-  // Ne pas laisser une sauvegarde différée re-appliquer un buffer périmé APRÈS l'annulation.
-  clearTimeout(state.saveTimer);
-  state.saveTimer = null;
   const res = await BDAnnulation.annuler({ apiSend, toast });
   if (!res) return;
   if (res.planche_id && state.planche && res.planche_id === state.planche.id) {
@@ -4096,7 +3397,6 @@ async function undoLast() {
       state.selectedId = res.region_id;      // montre la région touchée + son état restauré
       renderOverlay();
       renderPanel();
-      if (state.mode === "annotation") loadAnnotation(res.region_id);
     }
   } else if (res.planche_id && state.planches.some((p) => p.id === res.planche_id)) {
     selectPlanche(res.planche_id);           // l'action touchait une autre planche de l'album
@@ -4116,7 +3416,7 @@ function setupKeyboard() {
     if (typing) return;
 
     const k = e.key.toLowerCase();
-    const MODES = { n: "navigation", e: "edition", a: "annotation", t: "transcription" };
+    const MODES = { n: "navigation", e: "edition", t: "transcription" };
     // `preventDefault` AVANT de changer de mode, et ce qu'on arrête est le CARACTÈRE, pas
     // le raccourci. `setMode("transcription")` donne aussitôt le focus à la zone de saisie
     // (`renderTranscription`) : sans cela, le « t » du raccourci s'insérait dans la bulle
@@ -4124,13 +3424,19 @@ function setupKeyboard() {
     // attache `trScheduleSave` à l'événement `input`, si bien que la coquille partait en
     // base toute seule après le délai, sans le moindre `Tab`. Mesuré dans un Chromium le
     // 2026-09-14 : « BONJOURXYZt ».
-    // Les quatre touches sont traitées ensemble bien que `t` soit la seule à prendre le
-    // focus : aucune des quatre n'a de comportement natif à préserver ici, et laisser
-    // trois branches se comporter autrement que la quatrième invite le défaut à revenir
-    // par le premier mode qui focalisera un champ.
+    // Les touches sont traitées ensemble bien que `t` soit la seule à prendre le focus :
+    // aucune n'a de comportement natif à préserver ici, et laisser une branche se comporter
+    // autrement que les autres invite le défaut à revenir par le premier mode qui
+    // focalisera un champ.
     if (MODES[k]) {
       e.preventDefault();
       setMode(MODES[k]);
+      return;
+    }
+    // ANN-7, I7 — `a` menait au mode Annotation : elle mène à la page Annotation.
+    if (k === "a" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      allerAnnoter();
       return;
     }
     if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -4147,7 +3453,7 @@ function setupKeyboard() {
       if (dr) dr.remove();
       drag = null;
       if (TRACE.arme) renoncerAuTrace(false);
-      deselect();   // flushSave inclus : ne perd pas une annotation en attente
+      deselect();   // ses gardes incluses : un texte en attente part d'abord
     }
   });
 }
@@ -4156,7 +3462,10 @@ function setupKeyboard() {
    Démarrage
    =================================================================== */
 /* Ouvre la visionneuse pile sur une région (lien venant de la recherche) :
-   ?album=&planche=&region=, et `&mode=` (UX-12) — le mode d'un rechargement. */
+   ?album=&planche=&region=, et `&mode=` (UX-12) — le mode d'un rechargement. `mode=annotation`,
+   le mode d'hier, mène à la page Annotation une fois l'album, la planche et la région posés
+   (ANN-7, I7) : le même chemin qu'« Annoter ↗ », sans laisser l'adresse d'hier dans
+   l'historique. */
 async function applyDeepLink() {
   const p = new URLSearchParams(INITIAL_QS);   // URL d'origine (avant que syncUrl ne l'ait modifiée)
 
@@ -4171,7 +3480,7 @@ async function applyDeepLink() {
   if (p.get("sharedocs")) sdOpen();
 
   const album = p.get("album"), planche = p.get("planche"), region = p.get("region");
-  const mode = modeDeLAdresse(p);
+  const mode = p.get("mode") === MODE_D_HIER ? MODE_D_HIER : modeDeLAdresse(p);
   if (!planche && !region) {
     // Sans planche nommée, `loadAlbums` a ouvert la première sans l'attendre : le mode
     // l'attend, sans quoi la Transcription compterait les bulles d'une planche à demi chargée.
@@ -4208,10 +3517,11 @@ async function applyDeepLink() {
 }
 
 /* UX-12 — entre dans le mode que nomme l'adresse, par `setMode` et ses gardes, exactement
-   comme au clavier : l'Annotation charge celle de la région choisie, la Transcription prend
-   la planche (ou rend la main à la Navigation s'il n'y en a pas), s'ouvre sur la région que
-   le lien a sélectionnée (`bulleDArrivee`) et prend le focus de sa zone de saisie. */
+   comme au clavier : la Transcription prend la planche (ou rend la main à la Navigation s'il
+   n'y en a pas), s'ouvre sur la région que le lien a sélectionnée (`bulleDArrivee`) et prend
+   le focus de sa zone de saisie. Le mode d'hier mène à la page Annotation (ANN-7, I7). */
 function entrerDansLeModeDeLAdresse(mode) {
+  if (mode === MODE_D_HIER) { syncUrl(); location.replace($("#btn-annoter").href); return; }
   if (mode !== state.mode) setMode(mode);
 }
 
@@ -4345,7 +3655,6 @@ async function init() {
   // l'import suit.
   document.addEventListener("bd:bac-a-sable-maj", majImportPlafond);
   try {
-    await refreshTagVocab();
     await loadAlbums();
     await applyDeepLink();
   } catch (e) {

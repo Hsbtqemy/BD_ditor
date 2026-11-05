@@ -768,10 +768,9 @@
       zones: [
         ["atelier-planches", "Album et planches", "Choisissez la collection, l'album, puis "
           + "la planche."],
-        ["atelier-modes", "Quatre modes", "Navigation pour parcourir les planches, Édition "
-          + "pour tracer des zones et les modifier, Annotation pour poser des tags et une "
-          + "note (les grilles sont dans la page Annotation), Transcription pour travailler "
-          + "le texte."],
+        ["atelier-modes", "Trois modes", "Navigation pour parcourir les planches, Édition "
+          + "pour tracer des zones et les modifier, Transcription pour travailler le texte. "
+          + "On annote dans la page Annotation."],
         ["atelier-planche", "La planche", "Zoom à la molette, glissé pour la déplacer. "
           + "Chaque cadre est une zone."],
         ["atelier-structure", "Structure", "L'arbre des zones, et le détail de celle qui est "

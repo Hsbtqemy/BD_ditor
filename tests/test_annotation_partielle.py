@@ -3,8 +3,9 @@
 Mesuré le 2026-09-16 à deux navigateurs sur la même bulle : l'Atelier renvoyait la note ET
 les tags chargés à la sélection, si bien que la note de A effaçait en silence le tag que B
 venait de poser, et que le tag suivant de B effaçait la note de A. Ces tests tiennent la
-route (`main.put_annotation`) et l'annulation (`undo._inverser_annotation`) ; la garde à
-deux navigateurs vit dans `tests/test_e2e_annotation_a_deux.py`.
+route (`main.put_annotation`) et l'annulation (`undo._inverser_annotation`). La garde à
+deux navigateurs (`test_e2e_annotation_a_deux.py`) est partie avec le champ des tags de
+l'Atelier, au basculement d'ANN-7 : aucun écran ne pose plus de tag.
 """
 import sys
 from pathlib import Path

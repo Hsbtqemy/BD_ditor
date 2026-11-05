@@ -86,12 +86,12 @@ SURFACES_HORS_PERIMETRE = {}
 MODULES_MONTES = {
     "lib/membres-projet.js": "monté par l'Administration, dans la fiche d'un projet (COL-3), "
                              "et par la ligne du bac à sable, dans « Inviter… » (COL-4)",
-    "lib/champ-personnage.js": "monté par l'Atelier, pour le locuteur et l'identité d'une "
-                               "boîte, et par la page Annotation, pour le locuteur du Contexte "
-                               "(ANN-7, tranche 2, commit 8) et l'identité d'une boîte",
-    "lib/alignements.js": "monté par l'Atelier, deux fois dans le panneau Personnage (par le "
-                          "locuteur, par la boîte), et par la page Annotation, dans la fiche "
-                          "d'un personnage (ANN-7)",
+    "lib/champ-personnage.js": "monté par la page Annotation, pour le locuteur et l'identité "
+                               "d'une boîte du Contexte (ANN-7) ; l'Atelier le montait aussi "
+                               "jusqu'au basculement, qui a retiré son mode Annotation",
+    "lib/alignements.js": "monté par la page Annotation, dans la fiche d'un personnage (ANN-7) ; "
+                          "l'Atelier le montait aussi dans son panneau Personnage jusqu'au "
+                          "basculement",
 }
 
 # COL-4 — un script de surface PARTAGÉ par les cinq pages : la ligne du bac à sable, son
@@ -156,9 +156,9 @@ NON_RESOLUS = {
         "l'ouverture et CACHÉE après Échap."),
     ("lib/champ-personnage.js", "sug"): (
         "La liste des propositions du champ « personnage », que l'hôte CONFIE au montage "
-        "(`#loc-suggest` et `#perso-suggest` dans l'Atelier, `#an-loc-liste` et "
-        "`#an-perso-liste` sur la page Annotation) : la cible est un paramètre, pas un "
-        "identifiant écrit ici. `.tag-suggest` "
+        "(`#an-loc-liste` et `#an-perso-liste` sur la page Annotation ; `#loc-suggest` et "
+        "`#perso-suggest` dans l'Atelier jusqu'au basculement d'ANN-7) : la cible est un "
+        "paramètre, pas un identifiant écrit ici. `.tag-suggest` "
         "ne pose aucun `display`, l'attribut agit — vérifié le 2026-10-30 par "
         "`test_e2e_annotation_page.test_le_locuteur_se_choisit_et_se_retire_dans_le_contexte`, "
         "qui exige la liste VISIBLE pendant la saisie et CACHÉE après le choix. Dans "
@@ -199,17 +199,16 @@ NON_RESOLUS = {
         "test_la_fiche_d_un_personnage_s_ouvre_du_locuteur_et_de_la_boite`, qui l'exige "
         "VISIBLE avec un personnage et CACHÉ une fois le personnage retiré."),
     ("lib/alignements.js", "sec"): (
-        "La section de l'alignement d'autorité, que l'hôte CONFIE au montage "
-        "(`#loc-align-section` et `#perso-align-section` dans l'Atelier, `#an-align` dans la "
-        "fiche d'un personnage de la page Annotation) : un paramètre, pas un identifiant écrit "
-        "ici. Aucune des trois ne pose de `display`, l'attribut agit — vérifié le 2026-11-05 "
+        "La section de l'alignement d'autorité, que l'hôte CONFIE au montage (`#an-align` "
+        "dans la fiche d'un personnage de la page Annotation ; `#loc-align-section` et "
+        "`#perso-align-section` dans l'Atelier jusqu'au basculement d'ANN-7) : un paramètre, "
+        "pas un identifiant écrit ici. Elle ne pose pas de `display`, l'attribut agit — vérifié le 2026-11-05 "
         "par `test_e2e_annotation_page.test_la_fiche_d_un_personnage_s_ouvre_du_locuteur_et_"
         "de_la_boite`, qui exige `#an-align` VISIBLE une fois la fiche ouverte. Dans "
         "`viewer.js`, `sec.hidden` se rattachait jusque-là, par la définition la plus proche "
         "en amont, à `#perso-section` : un hasard de la résolution."),
     ("lib/alignements.js", "saisie"): (
-        "Ce qui porte le champ d'une URI, confié au montage — le champ lui-même par défaut "
-        "(`#loc-align-input`, `#perso-align-input` dans l'Atelier, qui écrit toujours), "
+        "Ce qui porte le champ d'une URI, confié au montage — le champ lui-même par défaut, "
         "`#an-align-saisie` dans la page Annotation. `.tag-input-wrap` et le champ ne posent "
         "aucun `display` — vérifié le 2026-11-05 dans les deux sens par "
         "`test_e2e_annotation_page`, qui l'exige VISIBLE sur un album où l'on écrit et CACHÉ "

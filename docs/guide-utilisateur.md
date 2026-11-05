@@ -34,7 +34,7 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
 | **Bibliothèque** | `/corpus` | un **catalogue** : à gauche les collections du **projet** où vous travaillez — la case d'une collection filtre les albums, son nom l'ouvre —, au centre ses albums et leurs couvertures, à droite la fiche de l'album ouvert. Créer et décrire les albums et les collections, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, **importer les planches d'un album en lot**, lancer les traitements par lot, suivre l'avancement planche par planche |
-| **Atelier** | `/` | tout ce qui se fait sur une planche : ajouter une image à l'album affiché, corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
+| **Atelier** | `/` | tout ce qui se fait sur une planche, sauf l'annoter : ajouter une image à l'album affiché, corriger le découpage, transcrire, relire la grammaire, exporter ; *Annoter ↗* mène à la page Annotation |
 | **Annotation** | `/annotation` | poser les **relevés** d'une grille sur une planche, case par case : désigner des mots ou une zone, choisir l'entrée, douter, marquer *terminée*, relire la planche dans la Synthèse |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
@@ -292,14 +292,13 @@ parcours, placée juste après elle : on regarde ce que chaque moteur produit, e
 parcours, où l'on revient ensuite, garde le travail fait à la main.
 
 ### Étape 7 — Annoter
-**Page Annotation (`/annotation`) · Atelier, mode Annotation (`A`)**
+**Page Annotation (`/annotation`)**
 
-C'est le cœur du travail, et il a deux écrans. Une **grille** se relève dans la **page
-Annotation** (§4, *Annotation*) ; on y arrive par la navigation, ou par **Annoter ↗** dans le
-panneau de droite de l'Atelier, qui ouvre la zone sélectionnée. Le mode Annotation de l'Atelier pose le
-reste, décrit ici : le locuteur, le personnage d'une boîte, la situation, les tags, la note.
-
-Sélectionnez une région ; le panneau de droite propose, selon son type :
+C'est le cœur du travail, et il se fait dans la **page Annotation** (§4, *Annotation*) : on y
+arrive par la navigation, ou par **Annoter ↗** dans le panneau de droite de l'Atelier, qui
+ouvre la zone sélectionnée — la touche `A` de l'Atelier y mène aussi. L'Atelier n'a plus de
+mode Annotation : une **grille** se relève dans la page, et son **Contexte**, sous la
+minicarte, porte le reste, sur un album où vous écrivez :
 
 - le **locuteur** d'une zone de texte — bulle, cartouche ou texte : quelle entité
   personnage y parle. Celui d'un cartouche se choisit dans le registre des personnages,
@@ -313,57 +312,50 @@ Sélectionnez une région ; le panneau de droite propose, selon son type :
   surlignée aux flèches n'est prise que si elle correspond encore à ce qui est tapé : si
   la liste n'a pas encore suivi votre frappe, Entrée ne prend rien et la liste se met à
   jour — choisissez dans celle-ci. Une zone de texte qu'on passe en case ou en boîte
-  personnage **perd son locuteur** — un message le dit —, et un seul Ctrl+Z rend le type
-  et le locuteur. Il en va de même de ce qu'un type ne montre pas : une boîte personnage
-  qui change de type perd son personnage montré, une case sa situation ;
-- la **présence** dans une boîte personnage — quelle entité y est montrée, choisie de la
+  personnage, dans l'Atelier, **perd son locuteur** — un message le dit —, et un seul Ctrl+Z
+  rend le type et le locuteur. Il en va de même de ce qu'un type ne montre pas : une boîte
+  personnage qui change de type perd son personnage montré ;
+- le **personnage** d'une boîte personnage — quelle entité y est montrée, choisie de la
   même façon ;
-- le **profil** du personnage (dimensions de cible `personnage`) ;
-- la **situation** d'une case (dimensions de cible `case`). Le champ attend la forme
-  « dimension : valeur », deux-points compris — `lieu : falaise` —, et la phrase sous le
-  champ le rappelle. Sous cette forme, Entrée suffit, sans attendre les propositions : la
-  valeur est reprise si elle existe, créée sinon. Un mot tapé seul, « falaise », ne crée
-  ni axe ni valeur : Entrée ne le prend que s'il désigne UNE seule proposition de la
-  liste, et répond sinon par un message. Le profil d'un personnage se saisit sous la même
-  forme — `registre : familier` —, avec la même phrase sous son champ ;
-- les **tags** — vocabulaire libre, cumulatif, avec autocomplétion ;
 - une **note** en texte libre. Pour y renvoyer à une autre région — l'autre bulle d'un
   chevauchement de paroles, par exemple —, écrivez son **identifiant**, « #123 » : le
-  panneau l'affiche à la ligne *Région* quand elle est sélectionnée, et l'arbre de
-  structure à côté de son type. Il ne change jamais. N'écrivez pas sa *Citation*
+  panneau de l'Atelier l'affiche à la ligne *Région* quand elle est sélectionnée, et l'arbre
+  de structure à côté de son type. Il ne change jamais. N'écrivez pas sa *Citation*
   (`pl·c·b`) : elle se dérive de l'ordre de lecture, et la même citation désigne une autre
   bulle dès qu'une case est ajoutée ou réordonnée.
 
 Les personnages sont des entités de corpus : le même personnage traverse les albums, et peut
-être **aligné** sur un référentiel externe (Wikidata, VIAF, IdRef) depuis son panneau.
+être **aligné** sur un référentiel externe (Wikidata, VIAF, IdRef) depuis sa fiche — *Fiche*,
+à côté du locuteur ou du personnage d'une boîte.
 
-Tout est sauvegardé automatiquement, une demi-seconde après la dernière frappe. **`Ctrl+Z`
-annule la dernière action d'annotation** — y compris une suppression de région, recréée avec
-tout ce qu'elle contenait et ses identifiants d'origine. Les actes des moteurs, eux, ne
-s'annulent pas. Sous un compte déclaré partagé, Ctrl+Z ne remonte que les cinq dernières
-minutes : au-delà, l'acte peut être celui d'un collègue qui tapait sous le même nom. **Et
-même dans ces cinq minutes**, l'application ne distingue pas deux personnes connectées sous
-le même nom : Ctrl+Z peut défaire le geste d'un collègue, dont l'écran continue de le
-montrer comme fait (mesuré le 2026-09-16). Sur un compte partagé, ne comptez pas sur Ctrl+Z
-pour ne défaire que vos propres gestes.
+Les tags, la situation d'une case et le profil d'un personnage ne se posent plus : ce sont
+désormais des grilles, qu'un projet écrit s'il en a besoin.
 
-**À plusieurs sur la même bulle, rien ne s'écrase en silence.** Si quelqu'un d'autre a modifié
-la note ou le texte d'une bulle depuis que vous l'avez ouverte, votre enregistrement est
-refusé et un **bandeau** s'ouvre au-dessus du champ : il dit qui a modifié et quand, montre sa
+Tout est sauvegardé automatiquement. **`Ctrl+Z` annule la dernière action d'annotation** —
+y compris une suppression de région, recréée avec tout ce qu'elle contenait et ses
+identifiants d'origine. Les actes des moteurs, eux, ne s'annulent pas. Sous un compte déclaré
+partagé, Ctrl+Z ne remonte que les cinq dernières minutes : au-delà, l'acte peut être celui
+d'un collègue qui tapait sous le même nom. **Et même dans ces cinq minutes**, l'application
+ne distingue pas deux personnes connectées sous le même nom : Ctrl+Z peut défaire le geste
+d'un collègue, dont l'écran continue de le montrer comme fait (mesuré le 2026-09-16). Sur un
+compte partagé, ne comptez pas sur Ctrl+Z pour ne défaire que vos propres gestes.
+
+**À plusieurs sur la même zone, rien ne s'écrase en silence.** Si quelqu'un d'autre a modifié
+la note, le locuteur ou le personnage d'une zone depuis que vous l'avez ouverte, la page
+Annotation refuse votre enregistrement et le dit (§4, *Annotation*). Dans l'Atelier, la
+**Transcription** suit la même règle pour le texte d'une bulle : votre enregistrement est
+refusé et un **bandeau** s'ouvre au-dessus du champ ; il dit qui a modifié et quand, montre sa
 version, et garde la vôtre dans le champ. **Remplacer par la mienne** enregistre votre version
 à la place de la sienne ; **Garder l'autre** reprend sa version et abandonne la vôtre. Tant
-que vous n'avez pas choisi, vous ne pouvez pas changer de bulle ni de mode — les tags, eux,
-continuent de s'enregistrer. Si vous changez de bulle, de mode ou de planche juste après avoir
-tapé, l'Atelier attend d'abord que votre saisie soit enregistrée : l'indicateur dit
-« Enregistrement en cours… », puis le geste se fait de lui-même, ou le bandeau s'ouvre si
-quelqu'un a modifié entre-temps. Si le serveur ne répond pas en quelques secondes, un message
-le dit, votre saisie reste dans le champ, et refaire le geste part sans attendre. Quand le
-bandeau dit « depuis un autre écran de ce même compte », c'est vous dans un autre onglet, ou un collègue sous le même compte partagé. Si c'est la position d'une
-région qui a changé ailleurs, elle se recharge simplement ; si la région a été supprimée, un
-message dit par qui, et elle disparaît de votre écran. Le **locuteur** d'une bulle et le
-**personnage** d'une boîte suivent la même règle : si quelqu'un l'a changé ou retiré depuis
-que vous l'avez vu, votre choix (ou votre ✕) est refusé, et le même bandeau s'ouvre au-dessus
-de la puce — il nomme votre choix, montre celui de l'autre, et offre les deux mêmes gestes.
+que vous n'avez pas choisi, vous ne pouvez pas changer de bulle ni de mode. Si vous changez de
+bulle, de mode ou de planche juste après avoir tapé, l'Atelier attend d'abord que votre
+saisie soit enregistrée : l'indicateur dit « Enregistrement en cours… », puis le geste se
+fait de lui-même, ou le bandeau s'ouvre si quelqu'un a modifié entre-temps. Si le serveur ne
+répond pas en quelques secondes, un message le dit, votre saisie reste dans le champ, et
+refaire le geste part sans attendre. Quand le bandeau dit « depuis un autre écran de ce même
+compte », c'est vous dans un autre onglet, ou un collègue sous le même compte partagé. Si
+c'est la position d'une région qui a changé ailleurs, elle se recharge simplement ; si la
+région a été supprimée, un message dit par qui, et elle disparaît de votre écran.
 
 **Quand la planche ouverte change ailleurs**, l'Atelier le remarque : il vérifie toutes les
 trente secondes (pas quand l'onglet est caché) et quand vous revenez sur l'onglet. Si une
@@ -372,14 +364,11 @@ automatique —, un bouton **⟳ Actualiser** apparaît à côté du nom de la p
 infobulle dit combien de régions ont changé. Rien ne se recharge tout seul. Actualiser
 enregistre d'abord ce que vous étiez en train de saisir (le bandeau s'ouvre si quelqu'un a
 modifié le même champ), puis relit la planche ; vos propres gestes ne font jamais apparaître
-le bouton. Ctrl+Z refuse de même de défaire un
+le bouton. La page Annotation fait de même. Ctrl+Z refuse aussi de défaire un
 geste que quelqu'un a modifié après vous. Le message porte alors **« Passer ce geste »** :
 votre geste reste fait, le travail de l'autre aussi, et le Ctrl+Z suivant défait votre geste
 d'avant. Ne retirez pas à la main ce que l'autre a fait pour pouvoir annuler : ce retrait
 serait votre geste le plus récent, et Ctrl+Z le déferait d'abord.
-
-Sur le choix « tag ou dimension ? », voir [`modele-et-droits.md`](modele-et-droits.md) §4 :
-un tag se cherche, un attribut se compte.
 
 ### Étape 8 — Chercher et explorer
 **Recherche (`/recherche`), puis Exploration (`/exploration`)**
@@ -1033,14 +1022,16 @@ règle d'accès (cf. §2).
 
 ### Atelier (`/`)
 
-Quatre modes, un sélecteur en haut, un raccourci chacun :
+Trois modes, un sélecteur en haut, un raccourci chacun :
 
 | Mode | Touche | Ce qu'on y fait |
 |---|:---:|---|
 | **Navigation** | `N` | lire : zoom molette, déplacement au cliquer-glisser, `←` `→` d'une région à l'autre |
 | **Édition** | `E` | tracer et corriger la géométrie : dessin, `✎ Tracer` (au clavier, au doigt), poignées, coordonnées, `Suppr` |
-| **Annotation** | `A` | locuteur, personnages, situation, tags, note |
 | **Transcription** | `T` | plein écran bulle à bulle, `Tab` / `Maj+Tab` |
+
+On annote dans la page Annotation : la touche `A` y mène, sur la zone sélectionnée, comme
+*Annoter ↗*.
 
 Les onglets sont un **sélecteur**, pas un parcours : leur ordre n'est pas celui des neuf
 étapes, et c'est assumé.

@@ -1,5 +1,7 @@
 /* Les CHAMPS À PROPOSITIONS du panneau d'annotation de l'Atelier — la logique pure, sans DOM.
-   Chargé en <script> par l'Atelier → expose `window.BDPropositions` ; aussi require()-able
+   Depuis le basculement d'ANN-7, l'Atelier n'a plus ce panneau : seul le champ « personnage »
+   de la page Annotation (`champ-personnage.js`) lit encore ce module, pour ses homonymes.
+   Chargé en <script> par la page Annotation → expose `window.BDPropositions` ; aussi require()-able
    par `tests/js/propositions.test.js`, qui la vérifie par tables de cas. Rien n'est lu au
    chargement : ni le document, ni le stockage, ni l'adresse.
 
@@ -9,7 +11,8 @@
    qui DÉCIDE n'a pourtant besoin que de ce qui est tapé, de la proposition surlignée, de la
    liste et du vocabulaire lu : une table de vérité sous Node la couvre en millisecondes.
    L'écran garde ce qui dépend du temps — quand la liste se lit, à qui le geste revient — ;
-   les e2e de `test_e2e_atelier_propositions.py` restent, et mesurent la requête partie.
+   les e2e de `test_e2e_annotation_propositions.py` (le champ « personnage », joué sur la page
+   Annotation depuis le basculement) mesurent la requête partie.
 
    Les règles qui y vivent :
    - `decisionEntree` : ce qu'Entrée fait dans un champ « dimension : valeur » ;
