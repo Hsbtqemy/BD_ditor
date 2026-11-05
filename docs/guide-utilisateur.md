@@ -233,7 +233,9 @@ déplace. La molette rapproche la planche, pour tracer au plus près d'une petit
 
 La règle est la même partout : tracé dans une case, le cadre devient une bulle ; ailleurs,
 une case. Le **type** se change ensuite dans le panneau de droite : case, bulle, personnage,
-texte, cartouche. Un **détail d'image** — un objet, un geste, qu'on veut annoter sans qu'il
+texte, cartouche. Une zone tracée à la main se range **en dernier** parmi ses voisines :
+`↻`, en tête de la structure, recalcule l'ordre de lecture — sans quoi la case du milieu
+d'une rangée se citerait comme la dernière. Un **détail d'image** — un objet, un geste, qu'on veut annoter sans qu'il
 porte de texte — se trace dans la page *Annotation*, case par case (§4, *Annotation*).
 
 ### Étape 5 — Corriger le découpage

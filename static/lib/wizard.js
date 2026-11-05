@@ -786,7 +786,11 @@
 
   /* Les phrases que Hugo a écrites pour une étape qui avance (maquette du 2026-11-02) :
      « Tracer une zone » dit ce qui reste à tracer, « Corriger » ce qu'on peut encore faire
-     une fois le cadre repris. La première suppose le jeu de la maquette — la dernière
+     une fois le cadre repris. Une fois la case et sa bulle tracées, elle apprend ↻ : une
+     région tracée à la main prend le dernier rang de ses sœurs (la règle de toute région
+     créée à la main), si bien que la case du milieu se citait `c3` jusqu'au recalcul —
+     Hugo a choisi le 2026-11-05 de l'apprendre plutôt que de changer la règle ou de
+     recalculer à la place de l'arrivant. La première suppose le jeu de la maquette — la dernière
      rangée découpée, sa case du milieu retirée — : elle ne se dit que si le jeu a posé des
      régions sur la planche ; sans elles, la phrase de l'étape. */
   const PHRASES = {
@@ -794,8 +798,9 @@
       + "n'a pas de cadre. Sur le fond de la planche, glissez pour la tracer.",
     tracerBulle: "Sa bulle non plus. Maintenez Maj et glissez autour d'elle : tracé dans une "
       + "case, un cadre devient une bulle. La molette rapproche la planche.",
-    tracerFait: "Le type se change à droite : case, bulle, personnage, texte, cartouche. Un "
-      + "détail d'image se trace dans la page Annotation.",
+    tracerFait: "Le type se change à droite : case, bulle, personnage, texte, cartouche. Une "
+      + "zone tracée se range en dernier : ↻, en tête de la structure, remet l'ordre de "
+      + "lecture. Un détail d'image se trace dans la page Annotation.",
     decoupageFait: "Un cadre sélectionné se déplace en le glissant. Ses huit poignées le "
       + "redimensionnent, et Suppr le retire.",
   };
