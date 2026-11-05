@@ -950,7 +950,7 @@ test("ce qui fait perdre le fil : une liste nommée, chaque geste avec sa raison
     fs.readFileSync(path.join(__dirname, "..", "..", "static", f), "utf8")).join("\n");
   assert.deepEqual(W.PERD_LE_FIL.map((x) => x.selecteur),
                    [".bande-aide", "#bac-commencer", "#bac-inviter", "#bac-remettre",
-                    "#bac-quitter"]);
+                    "#bac-quitter", ".user-logout"]);
   for (const x of W.PERD_LE_FIL) {
     assert.ok(x.raison && x.raison.length > 20, x.selecteur);
     const nom = x.selecteur.slice(1);
@@ -1011,4 +1011,20 @@ test("les zones à menu le déclarent, et leur déclencheur existe", () => {
   assert.match(theme, /"ghost small user-who"/);
   // Le projet est un <select> natif : il ne s'ouvre pas par script, et n'en déclare pas.
   assert.ok(!/bande-projet.*parcoursMenu/.test(theme));
+});
+
+test("ce qui lance s'éteint pendant la visite, sauf ce qui l'est déjà par soi-même", () => {
+  assert.equal(W.LANCE.selecteur, "[data-parcours-lance] button");
+  assert.equal(W.LANCE.titre, "Le guide pas à pas vous le fera faire.");
+  assert.ok(W.LANCE.raison.length > 20);
+  assert.equal(W.aEteindre({}), true);
+  assert.equal(W.aEteindre({ disabled: true }), false);          // un moteur qui manque
+  assert.equal(W.aEteindre({ ariaDisabled: "true" }), false);    // le plafond d'import
+  assert.equal(W.aEteindre({ ariaDisabled: "false" }), true);
+  assert.equal(W.aEteindre({ eteinte: true }), false);           // déjà éteinte par la visite
+  assert.equal(W.aEteindre(null), true);
+  // Les deux menus de l'Atelier qui lancent le déclarent.
+  const index = fs.readFileSync(path.join(__dirname, "..", "..", "templates", "index.html"), "utf8");
+  assert.match(index, /id="traitement-menu"[^>]*data-parcours-lance/);
+  assert.match(index, /id="donnees-menu"[^>]*data-parcours-lance/);
 });

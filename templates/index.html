@@ -51,7 +51,8 @@
     <div class="header-actions" data-parcours="atelier-actions" data-parcours-menu="#btn-traitement">
       <div class="dropdown">
         <button class="ghost" id="btn-traitement" data-parcours="atelier-traitement" title="Traitements automatiques sur l'album">⚙<span class="mode-label"> Traitement </span>▾</button>
-        <div class="dropdown-menu" id="traitement-menu" data-parcours="atelier-traitement-menu">
+        <!-- UX-6 : `data-parcours-lance`, des entrées qui LANCENT, éteintes pendant la visite. -->
+        <div class="dropdown-menu" id="traitement-menu" data-parcours="atelier-traitement-menu" data-parcours-lance>
           <button id="btn-segmenter" title="Détecter les cases (Kumiko)">Segmenter les cases</button>
           <button id="btn-bulles" title="Détecter les bulles (passe 2)">Détecter les bulles</button>
           <button id="btn-ocr" title="OCR des bulles → pré-remplissage (passe 3)">OCR des bulles</button>
@@ -59,7 +60,7 @@
       </div>
       <div class="dropdown">
         <button class="ghost" id="btn-donnees" title="Importer / exporter des données">⇅<span class="mode-label"> Import / Export </span>▾</button>
-        <div class="dropdown-menu" id="donnees-menu">
+        <div class="dropdown-menu" id="donnees-menu" data-parcours-lance>
           <div role="group" aria-label="Importer">
             <div class="dropdown-head" aria-hidden="true">Importer</div>
             <button id="btn-sharedocs" title="Explorer le corpus ShareDocs (Huma-Num)">🖼 Depuis ShareDocs…</button>

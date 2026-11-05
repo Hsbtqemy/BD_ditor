@@ -850,6 +850,32 @@
     });
   }
 
+  /* Éteindre ce qui lance (`BDWizard.LANCE`) pendant la visite et les repères, et le rendre :
+     l'infobulle d'origine est gardée sur l'entrée, et seule l'extinction de la visite est
+     défaite. */
+  function eteindreCeQuiLance() {
+    document.querySelectorAll(W.LANCE.selecteur).forEach((b) => {
+      if (!W.aEteindre({ disabled: b.disabled, ariaDisabled: b.getAttribute("aria-disabled"),
+                         eteinte: !!b.dataset.wizardEteint })) return;
+      b.dataset.wizardEteint = "1";
+      b.dataset.wizardTitre = b.hasAttribute("title") ? b.getAttribute("title") : "";
+      if (!b.hasAttribute("title")) b.dataset.wizardSansTitre = "1";
+      b.setAttribute("aria-disabled", "true");
+      b.title = W.LANCE.titre;
+    });
+  }
+
+  function rallumerCeQuiLance() {
+    document.querySelectorAll("[data-wizard-eteint]").forEach((b) => {
+      b.removeAttribute("aria-disabled");
+      if (b.dataset.wizardSansTitre) b.removeAttribute("title");
+      else b.title = b.dataset.wizardTitre || "";
+      delete b.dataset.wizardEteint;
+      delete b.dataset.wizardTitre;
+      delete b.dataset.wizardSansTitre;
+    });
+  }
+
   /* Une mise à jour par image au plus : la page qui se dessine, le défilement et la taille
      de la fenêtre en demandent en rafale. La liste ne se redessine que si les zones visibles
      ont changé — une zone qui arrive avec la page — et garde alors le focus qu'elle avait. */
@@ -864,7 +890,7 @@
         : a.dataset.zone ? `[data-zone="${a.dataset.zone}"]` : null) : null;
       if (F.mode === "etape") dessinerEtape(garde); else dessinerFenetre(garde);
     }
-    if (F.mode === "etape") poserFenetre(); else reserverLaVisite();
+    if (F.mode === "etape") poserFenetre(); else { reserverLaVisite(); eteindreCeQuiLance(); }
     dessinerVoile();
     appliquerInert();
   }
@@ -909,7 +935,7 @@
     F.temps = mode === "plan" ? W.tempsVisibles(pos.page, voit) : [];
     foyer.hidden = false;
     if (mode === "etape") dessinerEtape(); else dessinerFenetre();
-    if (mode === "etape") poserFenetre(); else reserverLaVisite();
+    if (mode === "etape") poserFenetre(); else { reserverLaVisite(); eteindreCeQuiLance(); }
     dessinerVoile();
     appliquerInert();
     observer();
@@ -926,6 +952,7 @@
     if (!F.mode) return;
     const visite = F.mode === "visite", decl = F.declencheur;
     fermerMenu();
+    rallumerCeQuiLance();
     if (F.mode === "etape") sortirDuCadrage();
     G.fin = false;
     libererLaPose();
@@ -1119,6 +1146,12 @@
      fil, il ne fait rien d'autre (Hugo, 2026-11-05). */
   function clicPage(ev) {
     if (F.parScript || !F.mode || F.mode === "etape" || !foyer || foyer.contains(ev.target)) return;
+    // Une entrée qui lance, éteinte par la visite : le clic est avalé.
+    if (ev.target.closest && ev.target.closest("[data-wizard-eteint]")) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }
     const m = marqueSous(ev.target);
     if (!m) return;
     const d = declencheurDe(m);

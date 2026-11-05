@@ -492,6 +492,57 @@ def test_un_depliant_ouvert_par_la_fenetre_est_referme_par_elle(page, jeu):
 
 
 @pytestmark_proxy
+def test_pendant_la_visite_ce_qui_lance_est_eteint_et_le_guide_le_fait(page, jeu):
+    """Hugo, 2026-11-05 : la visite montre le menu « Traitement » en entier, mais ses
+    entrées qui lancent sont éteintes (`aria-disabled`, l'infobulle du guide) et leur clic
+    ne lance rien ; rendues à la fermeture. Dans le guide, à « Pré-remplir », l'OCR se lance."""
+    ocr = []
+    page.on("request", lambda r: ocr.append(r.url) if r.url.endswith("/ocr") else None)
+    _commencer_la_visite(page, jeu)
+    page.locator("#wizard-visite-suiv").click()
+    page.locator("#wizard-visite-suiv").click()
+    expect(page.locator("#wizard-visite-compte")).to_have_text("Visite 2 / 7 · 2 / 2")
+    page.locator('#wizard-zones .wf-zone[data-zone="atelier-actions"]').click()
+    entree = page.locator("#btn-ocr")
+    expect(entree).to_be_visible()
+    expect(entree).to_have_text("OCR des bulles")
+    expect(entree).to_have_attribute("aria-disabled", "true")
+    expect(entree).to_have_attribute("title", "Le guide pas à pas vous le fera faire.")
+    for sel in ("#btn-segmenter", "#btn-bulles"):
+        expect(page.locator(sel)).to_have_attribute("aria-disabled", "true")
+    # Playwright tient une entrée `aria-disabled` pour éteinte : le clic est forcé, comme
+    # celui d'une souris qui ne demande rien.
+    entree.click(force=True)
+    page.wait_for_timeout(400)
+    assert not ocr, ocr
+    # La fenêtre fermée (Échap depuis elle), tout est rendu.
+    page.locator("#wizard-fenetre-titre").focus()
+    page.keyboard.press("Escape")
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
+    expect(entree).not_to_have_attribute("aria-disabled", "true")
+    expect(entree).to_have_attribute("title", re.compile(r"OCR des bulles"))
+
+
+@pytestmark_proxy
+def test_dans_le_guide_pre_remplir_lance_vraiment_l_ocr(page, jeu):
+    ocr = []
+    page.on("request", lambda r: ocr.append(r.url) if r.url.endswith("/ocr") else None)
+    _au_guide(page, jeu, "complet")
+    titre = page.locator("#wizard-fenetre-titre")
+    expect(titre).to_have_text("Constituer le corpus")
+    page.locator("#wizard-guide-suiv").click()
+    expect(titre).to_have_text("Décrire l'album")
+    page.locator("#wizard-guide-suiv").click()
+    expect(titre).to_have_text(re.compile(r"^Pré-remplir"), timeout=15000)
+    page.locator("#btn-traitement").click()
+    entree = page.locator("#btn-ocr")
+    expect(entree).to_be_visible()
+    assert entree.get_attribute("aria-disabled") != "true"
+    with page.expect_request(lambda r: r.url.endswith("/ocr")):
+        entree.click()
+
+
+@pytestmark_proxy
 def test_la_fenetre_sur_la_zone_au_clavier_et_en_deux_temps(page, jeu):
     _commencer_la_visite(page, jeu)
     fen = _visite(page)

@@ -815,6 +815,9 @@ kbd {
   border-radius: 4px; color: var(--text-muted); min-width: 0; overflow-wrap: anywhere; }
 .wizard-entree.cochee { color: var(--text); font-weight: 600; border-color: var(--accent-blue);
   background: color-mix(in srgb, var(--accent-blue) 16%, transparent); }
+/* Pendant la visite et les repères, une entrée qui LANCE (`data-parcours-lance`) est
+   éteinte par le wizard : lisible, au clavier, son infobulle dit pourquoi. */
+.dropdown-menu [data-wizard-eteint] { color: var(--text-muted); cursor: not-allowed; }
 /* La dernière page, en deux colonnes comme les autres (Hugo, 2026-11-05) : l'aperçu de la
    carte, puis les deux choix en cartes. À l'étroit, quand les colonnes s'empilent (moins de
    deux pistes de 16rem), l'aperçu se retire : les choix sont ce qu'on vient chercher. */

@@ -858,7 +858,33 @@
       raison: "« Remettre à neuf… » efface le bac à sable et recharge la page." },
     { selecteur: "#bac-quitter",
       raison: "« Quitter… » fait sortir du bac à sable, et donc de la visite." },
+    { selecteur: ".user-logout",
+      raison: "« Déconnexion » ferme la session, et la visite avec elle." },
   ];
+
+  /* Ce qui LANCE quelque chose, éteint pendant la visite et les repères (Hugo, 2026-11-05 :
+     « pas sûr qu'il faille laisser la possibilité de lancer la segmentation et tous les
+     moteurs à cet endroit, c'est un peu trop pour la présentation des pages »). Un menu
+     ouvert se lit en entier ; ses entrées qui lancent sont ÉTEINTES — `aria-disabled`, qui
+     les garde au clavier et laisse lire l'infobulle, le clic avalé — et rendues à la
+     fermeture de la fenêtre. Reconnues par leur FONCTION : le menu qui les porte la déclare,
+     `data-parcours-lance`. Le guide pas à pas n'est pas concerné : à « Pré-remplir », on
+     lance vraiment l'OCR. */
+  const LANCE = {
+    selecteur: "[data-parcours-lance] button",
+    titre: "Le guide pas à pas vous le fera faire.",
+    raison: "Les moteurs (segmenter, détecter les bulles, OCR), l'import, l'export et la "
+      + "sauvegarde agissent sur l'album : la visite montre, elle ne fait rien faire.",
+  };
+
+  /* Une entrée qui lance s'éteint-elle ? Pas si elle l'est déjà par elle-même (`disabled`,
+     un moteur qui manque ; `aria-disabled`, le plafond d'import d'un bac à sable) : son
+     état et son infobulle lui restent. `e` : `{ disabled, ariaDisabled, eteinte }`, où
+     `eteinte` dit que la visite l'a déjà éteinte. */
+  function aEteindre(e) {
+    const x = e || {};
+    return !x.disabled && !x.eteinte && String(x.ariaDisabled) !== "true";
+  }
 
   function cheminNu(p) { return String(p || "").replace(/\/+$/, "") || "/"; }
 
@@ -1257,7 +1283,7 @@
            typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
            vocabulaire, initiale, compteOccurrences, apercuCarte, choixDuParcours,
-           PERD_LE_FIL, menePlusLoin, gesteDuClic, menuOuvert,
+           PERD_LE_FIL, menePlusLoin, gesteDuClic, menuOuvert, LANCE, aEteindre,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,
