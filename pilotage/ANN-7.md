@@ -485,7 +485,7 @@ Maquette https://claude.ai/artifact/Kq5QsjxMvj3RokM5u6k9z1, version 2, privée :
   nom, série, alignements ; le widget d'alignement est sorti de `viewer.js` dans
   `static/lib/alignements.js`, monté par les deux surfaces. Le profil n'y est pas (il part au
   basculement, I2 du cadrage)
-- [ ] **Les choix de la fiche d'un personnage sont confirmés** — attendu : Hugo répond aux
+- [x] **Les choix de la fiche d'un personnage sont confirmés** — attendu : Hugo répond aux — **confirmés par Hugo le 2026-11-05**
   trois choix de l'agent du 2026-11-05 : (1) la fiche est une MODALE ouverte par « Fiche »,
   ni feuille ni bloc du Contexte (la forme qui ne déplace rien) ; (2) ajouter ou retirer un
   alignement n'est offert que sur un album où l'on écrit, alors que le serveur n'exige que
