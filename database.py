@@ -2132,11 +2132,44 @@ def _reconstruire_avec_autoincrement(conn: sqlite3.Connection) -> None:
     conn.executescript(_VIEWS_SQL)
 
 
+# La table `tags` telle que la v35 la RECONSTRUIT (COL-4), figée ici et non relue dans
+# `SCHEMA_SQL` : une étape de migration décrit l'état de SA version, pas celui du schéma
+# courant. Relue dans `SCHEMA_SQL` par une expression régulière, elle ne trouvait plus rien
+# le jour où le schéma cesserait de définir `tags` (le basculement d'ANN-7 retire le
+# vocabulaire), et toute base v29 à v34 tombait à la migration — loin de la faute. Le
+# texte est celui de `SCHEMA_SQL` à la v35, commentaires compris : la définition stockée
+# dans `sqlite_master` reste celle d'hier (`tests/test_migration_v35.py` le mesure tant que
+# le schéma définit `tags`).
+_TAGS_V35 = """CREATE TABLE tags__v35 (
+    id             INTEGER PRIMARY KEY,
+    label          TEXT NOT NULL,
+    couleur        TEXT DEFAULT '#1a4a8a',
+    description    TEXT,                          -- glose du tag = SKOS definition (A4 : déjà là)
+    -- Lexique situé (v17, A4) — couche définitionnelle SKOS partagée avec le vocabulaire
+    -- facetté. `note_portee` = SKOS scopeNote (le « situé ») ; `etat` = maturité
+    -- provisoire→défini (miroir auto→validé) ; `collection_id` = portée d'appartenance
+    -- (NULL = global, sinon local à une collection ; promotion → NULL, patron mentions→entités).
+    note_portee    TEXT,
+    etat           TEXT NOT NULL DEFAULT 'provisoire',   -- 'provisoire' | 'defini'
+    collection_id  INTEGER REFERENCES collection(id) ON DELETE SET NULL,
+    date_creation  TEXT DEFAULT (datetime('now')),
+    espace         INTEGER NOT NULL DEFAULT 0
+    -- v35 (COL-4) — l'ESPACE de libellés du tag : 0 pour l'instance, l'identifiant du BAC À
+    -- SABLE (`projet.id`, qui ne revient jamais) pour un tag né dans l'un d'eux. Le libellé
+    -- est UNIQUE PAR ESPACE (`idx_tags_espace_label`, posé par `_migrate`), et non plus dans
+    -- toute l'instance (Hugo, 2026-10-24) : un libellé tapé dans un bac à sable ne bloque
+    -- rien ailleurs, le vrai corpus peut avoir le même, et rien ne se voit d'un côté à
+    -- l'autre. Un tag d'un bac à sable y est toujours LOCAL (`collection_id`, une de ses
+    -- collections) ; l'espace se lit par `espace_d_album`. Commentaire SOUS la dernière
+    -- colonne (cf. celui de `collection.projet_id`).
+)"""
+
+
 def _tags_par_espace(conn: sqlite3.Connection) -> bool:
     """Reconstruit `tags` sans l'unicité de `label` sur toute l'instance, avec la colonne
     `espace` (0 pour tout l'existant). La forme de la v30 (`_reconstruire_avec_autoincrement`)
-    : table neuve d'après SCHEMA_SQL, lignes copiées avec leurs identifiants, ancienne
-    détruite, neuve renommée, index et vues recréés, clés étrangères SUSPENDUES — actives,
+    : table neuve d'après sa forme de la v35 (`_TAGS_V35`), lignes copiées avec leurs
+    identifiants, ancienne détruite, neuve renommée, index et vues recréés, clés étrangères SUSPENDUES — actives,
     détruire `tags` viderait `annotation_tags` par cascade — puis vérifiées. Sans effet sur
     une table qui porte déjà `espace`. Rend False sans table `tags` (un schéma minimal de
     test), True sinon."""
@@ -2145,8 +2178,6 @@ def _tags_par_espace(conn: sqlite3.Connection) -> bool:
         return False
     if "espace" in colonnes_avant:
         return True
-    corps = re.search(r"CREATE TABLE IF NOT EXISTS tags \((.*?)\n\);", SCHEMA_SQL, re.S)
-    neuf = f"CREATE TABLE tags__v35 ({corps.group(1)}\n)"
     conn.commit()
     conn.execute("PRAGMA foreign_keys = OFF")
     try:
@@ -2160,7 +2191,7 @@ def _tags_par_espace(conn: sqlite3.Connection) -> bool:
                 "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'tags' "
                 "AND sql IS NOT NULL")]
             colonnes = ", ".join(f'"{c[1]}"' for c in conn.execute("PRAGMA table_info(tags)"))
-            conn.execute(neuf)
+            conn.execute(_TAGS_V35)
             conn.execute(f"INSERT INTO tags__v35 ({colonnes}) SELECT {colonnes} FROM tags")
             conn.execute("DROP TABLE tags")
             conn.execute("ALTER TABLE tags__v35 RENAME TO tags")

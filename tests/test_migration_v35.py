@@ -275,3 +275,42 @@ def test_la_base_migree_sert_toujours(vraie_v34, monkeypatch):
         c.rollback()
     finally:
         c.close()
+
+
+# --------------------------------------------------------------------------- #
+# L'étape v35 porte SA forme de `tags` (ANN-7, tranche 3 : le basculement retire le
+# vocabulaire du schéma courant)
+# --------------------------------------------------------------------------- #
+_TAGS_DU_SCHEMA = re.compile(r"CREATE TABLE IF NOT EXISTS tags \((.*?)\n\);\n", re.S)
+
+
+def test_la_v35_ne_relit_pas_tags_dans_le_schema_courant(vraie_v34, monkeypatch):
+    """Le jour où `SCHEMA_SQL` ne définira plus `tags`, une vraie base v34 — qui la porte
+    encore, sans `espace` — migre toujours : l'étape v35 la reconstruit d'après sa propre
+    forme (`database._TAGS_V35`), et non d'après le schéma courant. Simulé ici : le schéma
+    sans la table, la migration jusqu'au bout, les tags et leurs poses intacts."""
+    sans_tags, n = _TAGS_DU_SCHEMA.subn("", database.SCHEMA_SQL)
+    if n:
+        monkeypatch.setattr(database, "SCHEMA_SQL", sans_tags)
+    assert "CREATE TABLE IF NOT EXISTS tags (" not in database.SCHEMA_SQL
+    avant = _sql(vraie_v34, "SELECT * FROM tags ORDER BY id")
+    poses = _sql(vraie_v34, "SELECT * FROM annotation_tags ORDER BY 1, 2")
+    assert avant and poses, "la vraie base porte des tags posés"
+    database.init_db()
+    assert _sql(vraie_v34, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
+    apres = _sql(vraie_v34, "SELECT * FROM tags ORDER BY id")
+    assert [{k: v for k, v in t.items() if k != "espace"} for t in apres] == avant
+    assert {t["espace"] for t in apres} == {0}
+    assert _sql(vraie_v34, "SELECT * FROM annotation_tags ORDER BY 1, 2") == poses
+    assert _sql(vraie_v34, "PRAGMA foreign_key_check") == []
+
+
+def test_la_forme_v35_de_tags_est_celle_du_schema_tant_qu_il_la_porte():
+    """La forme figée de l'étape v35 est, au caractère près, celle que `SCHEMA_SQL` donnait
+    à `tags` : la figer n'a rien changé à ce que la migration produit sur les bases
+    d'aujourd'hui (la définition stockée dans `sqlite_master` comprise, commentaires
+    compris). Sans objet une fois `tags` retirée du schéma."""
+    m = _TAGS_DU_SCHEMA.search(database.SCHEMA_SQL)
+    if m is None:
+        pytest.skip("SCHEMA_SQL ne définit plus `tags`")
+    assert database._TAGS_V35 == f"CREATE TABLE tags__v35 ({m.group(1)}\n)"
