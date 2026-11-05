@@ -707,13 +707,18 @@ kbd {
               font-variant-numeric: tabular-nums; }
 .wizard-page h3 { margin: 0; font-size: 1.3077rem; line-height: 1.2; overflow-wrap: anywhere; }
 .wizard-page p { margin: 0; max-width: 62ch; overflow-wrap: anywhere; }
-.wizard-eventail { display: flex; justify-content: center; padding: .4615rem 0; }
-.wizard-eventail img { flex: none; width: 23%; aspect-ratio: 3 / 4; object-fit: cover;
-  object-position: top; border-radius: 3px; background: var(--media-bg);
-  box-shadow: 0 4px 12px var(--shadow); margin-left: -4%; }
-.wizard-eventail img:first-child { margin-left: 0; transform: rotate(-6deg); }
-.wizard-eventail img:last-child { transform: rotate(6deg); }
-/* Les illustrations FIXES des pages 2 à 5 (`static/wizard/`) : inertes, et dans une boîte
+/* L'éventail de la première page, comme la maquette : cinq planches, cadrées en haut, qui
+   se chevauchent et s'ouvrent de -7° à 7°, celles du milieu un peu remontées. À 22 % et
+   non 23, sans l'écart des autres illustrations : tournées, elles débordaient de leur boîte
+   à 320 px. */
+.wizard-fixe.wizard-eventail { display: flex; justify-content: center; gap: 0; padding: .4615rem 0; }
+.wizard-eventail img { flex: none; width: 22%; aspect-ratio: 3 / 4; object-fit: cover;
+  object-position: top; border-radius: 3px; box-shadow: 0 4px 12px var(--shadow); margin-left: -4%; }
+.wizard-eventail img:first-child { margin-left: 0; transform: rotate(-7deg); }
+.wizard-eventail img:nth-child(2) { transform: rotate(-3deg) translateY(-4px); }
+.wizard-eventail img:nth-child(4) { transform: rotate(3deg) translateY(-4px); }
+.wizard-eventail img:nth-child(5) { transform: rotate(7deg); }
+/* Les illustrations FIXES de l'album (`static/wizard/`) : inertes, et dans une boîte
    de hauteur constante, pour que tourner la page ne fasse pas sauter l'album. */
 .wizard-fixe { pointer-events: none; user-select: none; width: 100%; display: grid;
   justify-items: center; gap: .4615rem; }

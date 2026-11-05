@@ -1005,11 +1005,11 @@ def test_la_transcription_ne_dit_pas_bulle_sur_un_cartouche(page, jeu_decoupe):
 
 # ── Les illustrations fixes de l'album ─────────────────────────────────────────────────
 #
-# Des images du dépôt (`static/wizard/`, Hugo, 2026-11-05) : tourner les pages illustrées
-# ne demande RIEN à l'instance, et chaque image arrive. Les miniatures de la première page,
-# elles, viennent du jeu et sont demandées avant.
+# Des images du dépôt (`static/wizard/`, Hugo, 2026-11-05) : ouvrir l'album et tourner ses
+# pages ne demande aucune image à l'instance, ni rien d'autre une fois l'album ouvert — il a
+# lu `GET /api/sante` en s'ouvrant, pour la page 4 —, et chaque image arrive.
 
-PAGES_ILLUSTREES = {2: "corpus", 3: "zones", 4: "moteurs", 5: "analyse", 6: "collab",
+PAGES_ILLUSTREES = {1: "outil", 2: "corpus", 3: "zones", 4: "moteurs", 5: "analyse", 6: "collab",
                     7: "sortir"}
 SANS_IMAGE = {"collab"}  # des membres et un fil de doute : du texte seul
 
@@ -1019,11 +1019,15 @@ def test_les_illustrations_de_l_album_ne_demandent_rien_a_l_instance(page, jeu):
     _ouvrir(jeu, CAMILLE)
     _sous(page, CAMILLE)
     _arriver(page, jeu["base"])
+    # Écoutée AVANT d'ouvrir l'album : la première page se dessine à l'ouverture. Aucune
+    # image n'y vient de l'instance — l'Atelier, dessous, finit peut-être de charger sa
+    # planche, d'où une seconde liste, partie une fois la page 1 posée.
+    images, demandes = [], []
+    page.on("request", lambda r: images.append(r.url) if r.resource_type == "image" else None)
     page.locator("#bac-commencer").click()
     album = _album(page)
     expect(album.locator("#wizard-compte")).to_have_text("1 / 8")
     page.wait_for_timeout(300)
-    demandes = []
     page.on("request", lambda r: demandes.append(r.url))
     for n, k in PAGES_ILLUSTREES.items():
         while album.locator("#wizard-compte").inner_text() != f"{n} / 8":
@@ -1057,6 +1061,7 @@ def test_les_illustrations_de_l_album_ne_demandent_rien_a_l_instance(page, jeu):
     # l'album qui le demande.
     vers_l_api = [u for u in demandes if "/api/" in u and "/empreinte" not in u]
     assert not vers_l_api, vers_l_api
+    assert not [u for u in images if "/api/" in u], images
 
 
 @pytestmark_proxy

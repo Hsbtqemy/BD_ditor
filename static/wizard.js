@@ -172,9 +172,9 @@
   /* ── L'album ─────────────────────────────────────────────────────────────────────── */
   function nbPages() { return W.PAGES.length + 1; }
 
-  /* L'éventail de la première page : les miniatures des planches que le jeu a posées dans
-     le bac à sable. Une miniature absente s'efface sans laisser de cadre. Les pages 2 à 5
-     ont des illustrations fixes (`illustrationFixe`). */
+  /* La miniature d'une planche du jeu, pour les vignettes de « Parcours terminé », qui
+     mènent à ces planches. Une miniature absente s'efface sans laisser de cadre. L'album,
+     lui, n'a que des illustrations fixes (`illustrationFixe`). */
   function miniature(plancheId, cls) {
     const img = el("img", cls);
     img.alt = "";
@@ -184,7 +184,7 @@
     return img;
   }
 
-  /* Les illustrations FIXES des pages 2 à 5 (`BDWizard.illustrationDe`) : des images du
+  /* Les illustrations FIXES de l'album (`BDWizard.illustrationDe`) : des images du
      dépôt, `static/wizard/`, et ce qu'on y pose, sans aucune requête vers l'instance. Une
      image inerte : rien n'y est cliquable, et le lecteur d'écran en lit la description
      (`role="img"`) — le texte de la page porte le sens. */
@@ -262,6 +262,10 @@
       });
       d.appendChild(voc);
     }
+    if (ill.k === "outil") {
+      d.classList.add("wizard-eventail");
+      ill.fichiers.forEach((f) => d.appendChild(image(f)));
+    }
     if (ill.k === "sortir") {
       const cherche = el("p", "wizard-cherche");
       const loupe = el("span", null, "🔍");
@@ -321,14 +325,6 @@
   }
 
   function illustration(page) {
-    const v = vue();
-    const jeu = (v && Array.isArray(v.jeu) ? v.jeu : [])
-      .filter((j) => Array.isArray(j.planche_ids) && j.planche_ids.length);
-    if (page.k === "outil" && jeu.length) {
-      const d = el("div", "wizard-eventail");
-      jeu.slice(0, 5).forEach((j) => d.appendChild(miniature(j.planche_ids[0])));
-      return d;
-    }
     const ill = W.illustrationDe(page, S.moteurs);
     return ill ? illustrationFixe(ill) : null;
   }

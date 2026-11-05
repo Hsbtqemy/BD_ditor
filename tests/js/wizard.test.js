@@ -725,6 +725,7 @@ function fichiersDe(ill) {
   if (!ill) return [];
   if (ill.collections) return ill.collections.flatMap((c) => c.fichiers);
   if (ill.occurrences) return ill.occurrences.map((o) => o.fichier);
+  if (ill.fichiers) return ill.fichiers;
   return ill.fichier ? [ill.fichier] : [];
 }
 
@@ -738,9 +739,12 @@ test("les illustrations ne nomment que des fichiers du dépôt, tous sourcés", 
     assert.ok(fs.statSync(path.join(DOSSIER, f)).size < 80 * 1024, `${f} est trop lourd`);
     assert.ok(README.includes(`\`${f}\``), `${f} n'est pas sourcé dans le README`);
   }
-  // Aucune image n'est servie par l'instance, et aucune de la part serveur hors décision.
+  // Aucune image n'est servie par l'instance ; Radar, permis pour l'éventail seul, n'est
+  // nulle part ailleurs.
   assert.ok(!JSON.stringify(W.ILLUSTRATIONS).includes("/api/"));
-  assert.ok(!/radar/i.test(JSON.stringify(W.ILLUSTRATIONS)));
+  const { outil, ...ailleurs } = W.ILLUSTRATIONS;
+  assert.ok(!/radar/i.test(JSON.stringify(ailleurs)));
+  assert.ok(outil.fichiers.some((f) => /radar/.test(f)));
 });
 
 test("« Constituez votre corpus » : deux collections fixes, décrites", () => {
@@ -749,10 +753,8 @@ test("« Constituez votre corpus » : deux collections fixes, décrites", () => 
   assert.deepEqual(ill.collections.map((c) => [c.nom, c.fichiers.length]),
                    [["Récits d'aventure", 3], ["Humour", 2]]);
   assert.match(ill.description, /Récits d'aventure.*Humour/);
-  // La première page garde l'éventail du jeu.
-  for (const k of ["outil"]) {
-    assert.equal(W.illustrationDe(W.PAGES.find((p) => p.k === k)), null, k);
-  }
+  // Chaque page de l'album a désormais son illustration fixe.
+  for (const p of W.PAGES) assert.ok(W.illustrationDe(p), p.k);
   assert.equal(W.illustrationDe(null), null);
 });
 
@@ -909,4 +911,13 @@ test("« Recherchez, exportez » : trois occurrences de « forêt », leur conte
   assert.match(ill.description, /forêt.*TEI, CSV, JSON-LD, IIIF/);
   assert.deepEqual([1, 2].map((n) => sp(W.compteOccurrences(n))),
                    ["1 occurrence", "2 occurrences"]);
+});
+
+test("la première page : un éventail fixe de cinq planches, aux teintes alternées", () => {
+  const ill = W.illustrationDe(W.PAGES.find((p) => p.k === "outil"));
+  assert.equal(ill.k, "outil");
+  assert.deepEqual(ill.fichiers, ["eventail-radar.jpg", "corpus-lightning-31.jpg",
+                                  "corpus-modern-76.jpg", "corpus-moustache.jpg",
+                                  "corpus-saint-cyr.jpg"]);
+  assert.ok(ill.description.trim());
 });

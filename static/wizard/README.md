@@ -1,7 +1,7 @@
 # Les illustrations de l'album de présentation (UX-6)
 
 Des images FIXES, que l'album « Bienvenue dans BéDéditeur » (`static/wizard.js`,
-`illustration(page)`) pose sur ses pages 2 à 5. Décidé par Hugo le 2026-11-05 : ce sont des
+`illustration(page)`) pose sur ses pages. Décidé par Hugo le 2026-11-05 : ce sont des
 illustrations d'un outil, pas des données ; elles ne lisent rien de l'instance. Les zones, les
 lectures d'OCR et le vocabulaire qu'on y dessine sont écrits dans `static/lib/wizard.js`
 (`ILLUSTRATIONS`) et INVENTÉS pour l'exemple.
@@ -18,6 +18,7 @@ sable (`tools/preparer_jeu.py`).
 
 | Fichier | Source (titre, page) | Recadrage, en pixels du scan | Fondement |
 |---|---|---|---|
+| `eventail-radar.jpg` | Stevson, *Radar* (`radar-stevson.jpg`) | le haut de la planche, 3:4, réduit à 120 × 160 | citation et illustration, cadre scientifique non commercial (Hugo, 2026-11-05), limitée à l'éventail de la première page de l'album |
 | `corpus-lightning-31.jpg` | *Lightning Comics* n° 6, page 31 (`lightning-31.jpg`) | le haut de la planche, 3:4, réduit à 120 × 160 | part dépôt du jeu, exportable |
 | `corpus-lightning-35.jpg` | *Lightning Comics* n° 6, page 35 (`lightning-35.jpg`) | le haut de la planche, 3:4, réduit à 120 × 160 | part dépôt du jeu, exportable |
 | `corpus-modern-76.jpg` | *Modern Comics* n° 76, page 1 (`modern-76-p1.jpg`) | le haut de la planche, 3:4, réduit à 120 × 160 | part dépôt du jeu, exportable |
@@ -31,4 +32,5 @@ sable (`tools/preparer_jeu.py`).
 | `sortir-moustache-foret-3.jpg` | Calvo, *Moustache et Trottinette*, planche 3 : le récitatif « Que vous dire encore… » (`calvo-moustache.jpg`) | x 706, y 868, 170 × 86 (autour du mot), taille d'origine | citation et illustration, cadre scientifique non commercial (Hugo, 2026-11-05), limitée à l'album de présentation |
 
 *Bibi Fricotin chez les Chinois*, de la part dépôt, n'est pas employé : ses caricatures n'ont
-pas leur place dans une page d'accueil. *Radar* reste hors du dépôt.
+pas leur place dans une page d'accueil. *Radar* n'est employé que dans l'éventail de la
+première page, qui reprend aussi quatre vignettes du corpus (`corpus-*.jpg`).

@@ -300,11 +300,19 @@
      illustrations d'un outil, pas des données, et elles ne lisent rien de l'instance — ni
      le jeu, ni les moteurs, ni une route. Les fichiers vivent dans `static/wizard/`, dont le
      README dit d'où vient chaque image et ce qui fonde son usage. Les zones, les lectures et
-     le vocabulaire qu'on y pose sont INVENTÉS pour l'exemple. La première page garde ses
-     miniatures du jeu (`static/wizard.js`). */
+     le vocabulaire qu'on y pose sont INVENTÉS pour l'exemple. */
   const DOSSIER_ILL = "/static/wizard/";
 
   const ILLUSTRATIONS = {
+    // Un éventail de cinq planches, comme la maquette : dans cet ordre, les teintes ALTERNENT
+    // — noir et blanc, couleur, couleur, noir et blanc, sépia — au lieu de se grouper.
+    // *Radar* est permis ici seulement (README).
+    outil: {
+      description: "Un éventail de cinq planches de bande dessinée, en noir et blanc, en "
+        + "couleur et en sépia.",
+      fichiers: ["eventail-radar.jpg", "corpus-lightning-31.jpg", "corpus-modern-76.jpg",
+                 "corpus-moustache.jpg", "corpus-saint-cyr.jpg"],
+    },
     // Deux collections, comme la maquette : trois albums d'aventure de la part dépôt du jeu,
     // et deux d'humour.
     corpus: {
@@ -458,7 +466,7 @@
      les moteurs de l'instance (`moteurs`), la seule chose qu'elle en lit. */
   function illustrationDe(page, m) {
     const k = page && page.k;
-    if (k === "corpus" || k === "zones" || k === "collab") return { k, ...ILLUSTRATIONS[k] };
+    if (["outil", "corpus", "zones", "collab"].includes(k)) return { k, ...ILLUSTRATIONS[k] };
     if (k === "sortir") {
       const S = ILLUSTRATIONS.sortir;
       return { k, ...S, compte: compteOccurrences(S.occurrences.length),
