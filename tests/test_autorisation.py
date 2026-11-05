@@ -86,7 +86,8 @@ A_CABLER = {
 # à un chemin parfaitement devinable — tout le corpus restait lisible en image quelle que
 # soit la rigueur des routes JSON. Il est devenu une route cloisonnée.
 MONTAGES_AUTORISES = {
-    "/static": "CSS/JS de l'application — aucune donnée de corpus",
+    "/static": ("CSS/JS de l'application, et les illustrations FIXES de l'album de "
+                "présentation (`static/wizard/`, UX-6) — aucune donnée de corpus"),
 }
 
 

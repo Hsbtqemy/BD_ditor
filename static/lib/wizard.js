@@ -295,25 +295,35 @@
     return avec.find((j) => j.role === "pas-a-pas") || avec[0] || null;
   }
 
-  /* Les collections de la page « Constituez votre corpus » : une ILLUSTRATION, pas les
-     collections du bac à sable, qui n'en a qu'une (Hugo, 2026-11-05 : « c'est juste une
-     image »). Deux cadres, comme la maquette, sur les cinq premières copies du jeu qui ont
-     une planche — les mêmes que l'éventail de la première page : « Récits d'aventure » pour
-     les trois dernières, « Humour » pour les deux premières, ce que le jeu d'aujourd'hui
-     range dans cet ordre (*Moustache et Trottinette*, *L'École de Saint-Cyr*, puis les deux
-     comics et *Radar*). La page ne connaît pas le genre d'un album : un jeu réordonné
-     rendrait les noms faux, et c'est accepté. Un cadre sans copie ne se dessine pas. */
-  const COLLECTIONS_ILLUSTREES = [
-    { nom: "Récits d'aventure", de: 2, a: 5 },
-    { nom: "Humour", de: 0, a: 2 },
-  ];
+  /* ── Les illustrations de l'album ──────────────────────────────────────────────────
+     Des images FIXES, dessinées une fois dans le dépôt (Hugo, 2026-11-05) : ce sont des
+     illustrations d'un outil, pas des données, et elles ne lisent rien de l'instance — ni
+     le jeu, ni les moteurs, ni une route. Les fichiers vivent dans `static/wizard/`, dont le
+     README dit d'où vient chaque image et ce qui fonde son usage. Les zones, les lectures et
+     le vocabulaire qu'on y pose sont INVENTÉS pour l'exemple. La première page garde ses
+     miniatures du jeu (`static/wizard.js`). */
+  const DOSSIER_ILL = "/static/wizard/";
 
-  function collectionsIllustrees(vue) {
-    const jeu = (Array.isArray(vue && vue.jeu) ? vue.jeu : [])
-      .filter((j) => j && Array.isArray(j.planche_ids) && j.planche_ids.length);
-    return COLLECTIONS_ILLUSTREES
-      .map((c) => ({ nom: c.nom, jeu: jeu.slice(c.de, c.a) }))
-      .filter((c) => c.jeu.length);
+  const ILLUSTRATIONS = {
+    // Deux collections, comme la maquette : trois albums d'aventure de la part dépôt du jeu,
+    // et deux d'humour.
+    corpus: {
+      description: "Deux collections, « Récits d'aventure » et « Humour », chacune avec "
+        + "des planches de ses albums.",
+      collections: [
+        { nom: "Récits d'aventure", fichiers: ["corpus-lightning-31.jpg",
+                                               "corpus-lightning-35.jpg",
+                                               "corpus-modern-76.jpg"] },
+        { nom: "Humour", fichiers: ["corpus-moustache.jpg", "corpus-saint-cyr.jpg"] },
+      ],
+    },
+  };
+
+  /* L'illustration d'une page de l'album, `null` pour une page qui n'en a pas ici. */
+  function illustrationDe(page) {
+    const k = page && page.k;
+    if (k === "corpus") return { k, ...ILLUSTRATIONS.corpus };
+    return null;
   }
 
   function phraseEtape(e, vue, m) {
@@ -962,7 +972,8 @@
   }
 
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
-           typo, moteurs, textePage, etapes, albumDuParcours, collectionsIllustrees,
+           typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
+           illustrationDe,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

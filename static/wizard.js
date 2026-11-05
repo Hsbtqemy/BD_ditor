@@ -183,6 +183,36 @@
     return img;
   }
 
+  /* Les illustrations FIXES des pages 2 à 5 (`BDWizard.illustrationDe`) : des images du
+     dépôt, `static/wizard/`, et ce qu'on y pose, sans aucune requête vers l'instance. Une
+     image inerte : rien n'y est cliquable, et le lecteur d'écran en lit la description
+     (`role="img"`) — le texte de la page porte le sens. */
+  function image(fichier) {
+    const img = el("img");
+    img.alt = "";
+    img.src = W.DOSSIER_ILL + fichier;
+    img.draggable = false;
+    return img;
+  }
+
+  function illustrationFixe(ill) {
+    const d = el("div", `wizard-fixe wizard-fixe-${ill.k}`);
+    d.setAttribute("role", "img");
+    d.setAttribute("aria-label", ill.description);
+    if (ill.k === "corpus") {
+      d.classList.add("wizard-collections");
+      ill.collections.forEach((c) => {
+        const cadre = el("div", "wizard-collection");
+        cadre.appendChild(el("p", "wizard-collection-titre", W.typo(`Collection « ${c.nom} »`)));
+        const vig = el("div", "wizard-vignettes");
+        c.fichiers.forEach((f) => vig.appendChild(image(f)));
+        cadre.appendChild(vig);
+        d.appendChild(cadre);
+      });
+    }
+    return d;
+  }
+
   function illustration(page) {
     const v = vue();
     const jeu = (v && Array.isArray(v.jeu) ? v.jeu : [])
@@ -193,28 +223,8 @@
       jeu.slice(0, 5).forEach((j) => d.appendChild(miniature(j.planche_ids[0])));
       return d;
     }
-    // Deux collections pour l'illustrer, comme la maquette (`BDWizard.collectionsIllustrees`) :
-    // un cadre titré par collection, les miniatures seules, le titre de l'album en infobulle.
-    const collections = page.k === "corpus" ? W.collectionsIllustrees(v) : [];
-    if (collections.length) {
-      const d = el("div", "wizard-collections");
-      collections.forEach((c) => {
-        const cadre = el("div", "wizard-collection");
-        cadre.appendChild(el("p", "wizard-collection-titre", `Collection « ${c.nom} »`));
-        const ul = el("ul", "wizard-vignettes");
-        c.jeu.forEach((j) => {
-          const li = el("li");
-          const img = miniature(j.planche_ids[0]);
-          img.alt = j.titre || "";
-          img.title = j.titre || "";
-          li.appendChild(img);
-          ul.appendChild(li);
-        });
-        cadre.appendChild(ul);
-        d.appendChild(cadre);
-      });
-      return d;
-    }
+    const ill = W.illustrationDe(page);
+    if (ill) return illustrationFixe(ill);
     if (["zones", "moteurs", "analyse"].includes(page.k) && parcours) {
       const d = el("div", "wizard-planche");
       d.appendChild(miniature(parcours.planche_ids[0]));

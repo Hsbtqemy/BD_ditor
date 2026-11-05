@@ -714,18 +714,43 @@ test("la part de la scène que la fenêtre laisse libre, pour cadrer « Corriger
   assert.equal(W.recouvre({ l: 0, t: 0, r: 10, b: 10 }, null), false);
 });
 
-test("« Constituez votre corpus » illustre deux collections, sans toucher au bac à sable", () => {
-  const j = (titre, planches = [1]) => ({ titre, planche_ids: planches });
-  const vue = { jeu: [j("Moustache"), j("Saint-Cyr"), j("Sans planche", []), j("Lightning"),
-                      j("Modern"), j("Radar"), j("Bibi")] };
-  const noms = (cs) => cs.map((c) => [c.nom, c.jeu.map((x) => x.titre)]);
-  // Les cinq premières copies AVEC une planche, comme l'éventail : l'aventure d'abord.
-  assert.deepEqual(noms(W.collectionsIllustrees(vue)),
-                   [["Récits d'aventure", ["Lightning", "Modern", "Radar"]],
-                    ["Humour", ["Moustache", "Saint-Cyr"]]]);
-  // Un jeu court : le cadre sans copie ne se dessine pas.
-  assert.deepEqual(noms(W.collectionsIllustrees({ jeu: [j("Moustache")] })),
-                   [["Humour", ["Moustache"]]]);
-  assert.deepEqual(W.collectionsIllustrees({ jeu: [] }), []);
-  assert.deepEqual(W.collectionsIllustrees(null), []);
+/* Les illustrations FIXES de l'album (Hugo, 2026-11-05) : des images du dépôt, rien de
+   l'instance. Chaque fichier nommé existe dans `static/wizard/`, et son README le source. */
+const fs = require("node:fs");
+const path = require("node:path");
+const DOSSIER = path.join(__dirname, "..", "..", "static", "wizard");
+const README = fs.readFileSync(path.join(DOSSIER, "README.md"), "utf8");
+
+function fichiersDe(ill) {
+  if (!ill) return [];
+  if (ill.collections) return ill.collections.flatMap((c) => c.fichiers);
+  return ill.fichier ? [ill.fichier] : [];
+}
+
+test("les illustrations ne nomment que des fichiers du dépôt, tous sourcés", () => {
+  assert.equal(W.DOSSIER_ILL, "/static/wizard/");
+  const tous = W.PAGES.flatMap((p) => fichiersDe(W.illustrationDe(p, { aucun: false }))
+    .concat(fichiersDe(W.illustrationDe(p, { aucun: true }))));
+  assert.ok(tous.length >= 5);
+  for (const f of new Set(tous)) {
+    assert.ok(fs.existsSync(path.join(DOSSIER, f)), `${f} manque dans static/wizard/`);
+    assert.ok(fs.statSync(path.join(DOSSIER, f)).size < 80 * 1024, `${f} est trop lourd`);
+    assert.ok(README.includes(`\`${f}\``), `${f} n'est pas sourcé dans le README`);
+  }
+  // Aucune image n'est servie par l'instance, et aucune de la part serveur hors décision.
+  assert.ok(!JSON.stringify(W.ILLUSTRATIONS).includes("/api/"));
+  assert.ok(!/radar/i.test(JSON.stringify(W.ILLUSTRATIONS)));
+});
+
+test("« Constituez votre corpus » : deux collections fixes, décrites", () => {
+  const ill = W.illustrationDe(W.PAGES.find((p) => p.k === "corpus"));
+  assert.equal(ill.k, "corpus");
+  assert.deepEqual(ill.collections.map((c) => [c.nom, c.fichiers.length]),
+                   [["Récits d'aventure", 3], ["Humour", 2]]);
+  assert.match(ill.description, /Récits d'aventure.*Humour/);
+  // La première page garde l'éventail du jeu ; les deux dernières n'ont pas d'illustration.
+  for (const k of ["outil", "collab", "sortir"]) {
+    assert.equal(W.illustrationDe(W.PAGES.find((p) => p.k === k)), null, k);
+  }
+  assert.equal(W.illustrationDe(null), null);
 });

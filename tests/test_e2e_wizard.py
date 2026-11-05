@@ -962,3 +962,44 @@ def test_la_transcription_ne_dit_pas_bulle_sur_un_cartouche(page, jeu_decoupe):
     assert {s for s, _ in vus} == {"bulle", "cartouche"}, vus
     for s, p in vus:
         assert re.fullmatch(r"Zone \d / 3", p), (s, p)
+
+
+# ── Les illustrations fixes de l'album ─────────────────────────────────────────────────
+#
+# Des images du dépôt (`static/wizard/`, Hugo, 2026-11-05) : tourner les pages 2 à 5 ne
+# demande RIEN à l'instance, et chaque image arrive. Les miniatures de la première page,
+# elles, viennent du jeu et sont demandées avant.
+
+PAGES_ILLUSTREES = {2: "corpus"}
+
+
+@pytestmark_proxy
+def test_les_illustrations_de_l_album_ne_demandent_rien_a_l_instance(page, jeu):
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    _arriver(page, jeu["base"])
+    page.locator("#bac-commencer").click()
+    album = _album(page)
+    expect(album.locator("#wizard-compte")).to_have_text("1 / 8")
+    page.wait_for_timeout(300)
+    demandes = []
+    page.on("request", lambda r: demandes.append(r.url))
+    for n, k in PAGES_ILLUSTREES.items():
+        while album.locator("#wizard-compte").inner_text() != f"{n} / 8":
+            album.locator("#wizard-suiv").click()
+        ill = album.locator(f".wizard-ill .wizard-fixe-{k}")
+        expect(ill).to_be_visible()
+        expect(ill).to_have_attribute("role", "img")
+        assert (ill.get_attribute("aria-label") or "").strip()
+        # Chaque image est arrivée, et vient du dossier des illustrations.
+        page.wait_for_function("""(k) => [...document.querySelectorAll(
+            '.wizard-fixe-' + k + ' img')].every((i) => i.complete && i.naturalWidth > 0)""",
+                               arg=k)
+        srcs = ill.locator("img").evaluate_all("(is) => is.map((i) => i.getAttribute('src'))")
+        assert srcs and all(s.startswith("/static/wizard/") for s in srcs), srcs
+        # Rien n'y est cliquable.
+        assert ill.locator("a, button, input, [tabindex]").count() == 0
+    # L'Atelier, dessous, compare sa planche à intervalles (`/empreinte`) : ce n'est pas
+    # l'album qui le demande.
+    vers_l_api = [u for u in demandes if "/api/" in u and "/empreinte" not in u]
+    assert not vers_l_api, vers_l_api
