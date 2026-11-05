@@ -137,13 +137,23 @@
 
   /* « Vos droits ici », en ACTES — jamais un nom de niveau à l'écran (fiche UX-18). Chacun
      est présent ou absent, lu dans ce que le serveur a calculé pour CETTE collection. Lire
-     est toujours présent : une collection qu'on ne lit pas ne s'affiche pas. */
+     est toujours présent : une collection qu'on ne lit pas ne s'affiche pas.
+     UX-6 — « exporter » d'une collection est l'export de dépôt de son onglet « Diffusion et
+     dépôt » (l'export d'un album se dit dans SA fiche). Dans un bac à sable, le serveur le
+     refuse pour toute portée (`deposable` faux) alors qu'`exportable` y reste vrai : l'acte
+     se barre et dit pourquoi (`raison`, en infobulle). Ne fait que FERMER : sans la clé, ou
+     hors d'un bac à sable, l'acte suit `exportable` comme avant. */
+  const RAISON_DEPOT_FERME = "Une collection de bac à sable ne se dépose pas : ce qui s'y fait "
+    + "s'efface chaque semaine. L'export d'un album se dit dans sa fiche.";
   function actesCollection(c) {
     const x = c || {};
+    const depotFerme = x.deposable === false;
+    const exporter = { cle: "exporter", libelle: "exporter", oui: !!x.exportable && !depotFerme };
+    if (depotFerme) exporter.raison = RAISON_DEPOT_FERME;
     return [
       { cle: "lire", libelle: "lire", oui: true },
       { cle: "ecrire", libelle: "annoter et organiser", oui: !!x.ecrivable },
-      { cle: "exporter", libelle: "exporter", oui: !!x.exportable },
+      exporter,
       { cle: "administrer", libelle: "décider qui entre", oui: !!x.administrable },
     ];
   }

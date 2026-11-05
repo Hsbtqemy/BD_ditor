@@ -763,6 +763,36 @@ def test_diffusion_et_depot_d_un_bac_n_offre_aucun_export_refuse(page, jeu):
 
 
 @pytestmark_proxy
+def test_vos_droits_ici_d_une_collection_de_bac_ne_dit_pas_exporter(page, jeu):
+    """UX-6 — en tête de la fiche d'une collection de bac à sable, « Vos droits ici » ne dit
+    pas « exporter » à son propriétaire (`exportable` vrai) : l'export de dépôt de la
+    collection est refusé pour toute portée (`deposable` faux), et l'acte le dit en
+    infobulle. Hors d'un bac à sable, sur une collection que lea possède, il reste acquis."""
+    bac = _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    page.goto(jeu["base"] + f"/corpus?collection={bac['base']['id']}&onglet=albums")
+    droits = page.locator('#cat-vue .droits[aria-label="Vos droits ici"]')
+    expect(droits).to_be_visible()
+    exporter = droits.locator('[data-acte="exporter"]')
+    expect(exporter).to_have_class("non")
+    expect(exporter).to_have_attribute("title", re.compile("bac à sable"))
+    expect(droits.locator('[data-acte="administrer"]')).to_have_class("oui")
+
+    pid = _projet_de_lea(jeu)
+    col = _api(jeu["base"], HUGO, "POST", "/api/collections",
+               {"nom": "La collection de lea, encore", "projet_id": pid})["id"]
+    _api(jeu["base"], HUGO, "PUT", f"/api/collections/{col}/acces",
+         {"genre": "utilisateur", "principal": "lea", "niveau": "proprietaire"})
+    _sous(page, LEA)
+    page.goto(jeu["base"] + f"/corpus?collection={col}&onglet=albums")
+    droits = page.locator('#cat-vue .droits[aria-label="Vos droits ici"]')
+    expect(droits).to_be_visible()
+    exporter = droits.locator('[data-acte="exporter"]')
+    expect(exporter).to_have_class("oui")
+    expect(exporter).not_to_have_attribute("title", re.compile("."))
+
+
+@pytestmark_proxy
 def test_hors_du_bac_les_chiffres_restent_ceux_du_corpus(page, jeu):
     """Les surfaces transverses restent aveugles : la Recherche ne demande jamais les
     chiffres d'un bac à sable."""

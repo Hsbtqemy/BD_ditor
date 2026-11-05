@@ -155,6 +155,29 @@ test("actes d'une collection — quatre actes, lus dans ce que le serveur a calc
   }
 });
 
+test("actes d'une collection — UX-6 : dans un bac à sable, « exporter » se ferme et dit pourquoi", () => {
+  const exporter = (c) => B.actesCollection(c).find((x) => x.cle === "exporter");
+  // Le propriétaire d'une collection de bac à sable : `exportable` vrai, le dépôt refusé.
+  const bac = exporter({ ecrivable: true, exportable: true, administrable: true, deposable: false });
+  assert.equal(bac.oui, false);
+  assert.match(bac.raison, /bac à sable/);
+  // Le reste des actes n'en est pas touché.
+  assert.deepEqual(B.actesCollection({ ecrivable: true, exportable: true, administrable: true,
+                                       deposable: false }).map((x) => `${x.cle}:${x.oui}`),
+                   ["lire:true", "ecrire:true", "exporter:false", "administrer:true"]);
+  // Ne fait que FERMER : déposable, ou la clé absente, l'acte suit `exportable`, sans raison.
+  for (const c of [{ exportable: true, deposable: true }, { exportable: true }]) {
+    assert.equal(exporter(c).oui, true, JSON.stringify(c));
+    assert.equal(exporter(c).raison, undefined, JSON.stringify(c));
+  }
+  assert.equal(exporter({ exportable: false, deposable: true }).oui, false);
+  assert.equal(exporter({ exportable: false, deposable: true }).raison, undefined,
+               "un droit manquant n'est pas un bac à sable");
+  // Sans `exportable`, le bac à sable ferme encore, et le dit.
+  assert.equal(exporter({ deposable: false }).oui, false);
+  assert.match(exporter({ deposable: false }).raison, /bac à sable/);
+});
+
 test("libellés — le total ne se dit qu'à une portée totale", () => {
   assert.equal(B.libelleAlbums(3, { total: true }), "3 albums");
   assert.equal(B.libelleAlbums(1, { total: true }), "1 album");

@@ -782,10 +782,12 @@ function rendreComparaison() {
 
 /* L'en-tête dit mes droits en ACTES, lus dans ce que `GET /api/collections` rend pour CETTE
    collection (`lib/bibliotheque.js`). Un acte absent se barre ET se marque d'un tiret, pas
-   seulement d'une couleur (WCAG 1.4.1) ; le lecteur d'écran entend « oui » ou « non ». */
+   seulement d'une couleur (WCAG 1.4.1) ; le lecteur d'écran entend « oui » ou « non ». Un
+   acte fermé pour une raison qui n'est pas un droit (UX-6, le bac à sable) la dit en
+   infobulle. */
 function htmlDroits(c) {
   return `<ul class="droits" aria-label="Vos droits ici">${BDBiblio.actesCollection(c).map((a) =>
-    `<li class="${a.oui ? "oui" : "non"}" data-acte="${a.cle}">${esc(a.libelle)}<span class="sr-only">${a.oui ? " : oui" : " : non"}</span></li>`).join("")}</ul>`;
+    `<li class="${a.oui ? "oui" : "non"}" data-acte="${a.cle}"${a.raison ? ` title="${esc(a.raison)}"` : ""}>${esc(a.libelle)}<span class="sr-only">${a.oui ? " : oui" : " : non"}</span></li>`).join("")}</ul>`;
 }
 
 function rendreFicheCollection(c, msg) {
