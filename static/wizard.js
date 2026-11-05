@@ -504,6 +504,7 @@
     boite.appendChild(el("p", "wizard-avertissement muted small", W.typo(
       "Les moteurs de reconnaissance ne font que pré-remplir : l'analyse reste la vôtre.")));
     const s = S.souvenir, liste = W.etapes(s.parcours), v = vue();
+    const m = W.moteursDuGuide(S.moteurs, G.d);
     const ol = el("ol", "wizard-etapes");
     ol.setAttribute("aria-label", s.parcours === "rapide" ? "Parcours rapide" : "Parcours complet");
     liste.forEach((e, i) => {
@@ -530,10 +531,10 @@
       });
       corps.appendChild(a);
       if (ok) corps.appendChild(el("span", "sr-only wizard-fait", " (fait)"));
-      const marque = W.marqueEtape(e, S.moteurs, true);
+      const marque = W.marqueEtape(e, m, true);
       if (marque) corps.appendChild(el("span", "wizard-marque", marque));
       corps.appendChild(el("span", "muted small", ` · ${W.typo(e.ou)}`));
-      corps.appendChild(el("p", "wizard-phrase", W.phraseEtape(e, v, S.moteurs)));
+      corps.appendChild(el("p", "wizard-phrase", W.phraseEtape(e, v, m)));
       li.appendChild(corps);
       ol.appendChild(li);
     });
@@ -1441,11 +1442,13 @@
       tete.appendChild(barre);
       fenetre.appendChild(tete);
       h.textContent = W.typo(e.titre);
-      const marque = W.marqueEtape(e, S.moteurs);
+      // Les moteurs tels que l'étape les voit (la planche d'essai demande les bulles).
+      const m = W.moteursDuGuide(S.moteurs, d);
+      const marque = W.marqueEtape(e, m);
       if (marque) h.appendChild(el("span", "wizard-marque", marque));
       fenetre.appendChild(h);
       // Une phrase d'étape peut avoir plusieurs paragraphes (`BDWizard.paragraphes`).
-      W.paragraphes(W.phraseGuide(e, vue(), S.moteurs, d, s.parcours))
+      W.paragraphes(W.phraseGuide(e, vue(), m, d, s.parcours))
         .forEach((t) => fenetre.appendChild(el("p", "wf-phrase", t)));
       const visuel = W.visuelEtape(e);
       if (visuel) fenetre.appendChild(visuelDeLEtape(visuel));
@@ -1468,7 +1471,7 @@
       quitter.textContent = "✕";
       quitter.setAttribute("aria-label", "Quitter le parcours");
       quitter.title = "Quitter : « Par où commencer » le rouvre";
-      const b = W.boutonGuide(e, d, S.moteurs, s.parcours, i === liste.length - 1);
+      const b = W.boutonGuide(e, d, m, s.parcours, i === liste.length - 1);
       const suiv = bouton(`${b.principal ? "primary" : "ghost"} small`, b.texte, "wizard-guide-suiv");
       suiv.dataset.geste = "guide-suiv";
       // L'ordre de la maquette : « ✓ Fait », ←, le geste principal (poussé à droite), ☰, ✕.

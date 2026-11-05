@@ -295,7 +295,7 @@ test("sans moteur, « Pré-remplir » se dit optionnel ici, et l'album le dit au
   assert.equal(sansOcr.aucun, false);
   assert.equal(W.marqueEtape(pre, sansOcr), "optionnel ici");
   // Une réponse illisible ne conclut pas à l'absence.
-  assert.deepEqual(W.moteurs(null), { aucun: false, ocr: true });
+  assert.deepEqual(W.moteurs(null), { aucun: false, ocr: true, bulles: true });
 });
 
 /* ── Les textes ───────────────────────────────────────────────────────────────────────── */
@@ -1214,4 +1214,34 @@ test("sur la planche d'essai, l'étape est faite par un texte de l'OCR, et dit l
   // Sans planche d'essai, la ligne comptée d'hier.
   assert.match(sp(W.paragraphes(W.phraseGuide(pre, null, avec, { regions: [] }, "complet"))[2]),
                /^Essayez l'OCR/);
+});
+
+test("sur la planche d'essai, sans détecteur de bulles, « Pré-remplir » se dit optionnel", () => {
+  // La planche d'essai n'a aucune zone : sans bulles détectées, l'OCR n'y lit rien, et
+  // « Détecter les bulles » répondrait 503 (relecture du 2026-11-05).
+  const pre = W.ETAPES.find((x) => x.k === "preremplir");
+  const sansBulles = W.moteurs({ kumiko: true, bulles: false, ocr: true });
+  const avec = W.moteurs({ kumiko: true, bulles: true, ocr: true });
+  const essai = { essai: true, regionsEssai: [], regions: [] };
+  const parcours = { regions: [] };
+  const m = W.moteursDuGuide(sansBulles, essai);
+  assert.equal(W.marqueEtape(pre, m), "optionnel ici");
+  assert.equal(W.marqueEtape(pre, m, true), "optionnel ici : moteur absent");
+  assert.deepEqual(W.boutonGuide(pre, essai, m, "complet", false),
+                   { texte: "Suivant →", principal: true });
+  const ps = W.paragraphes(W.phraseGuide(pre, null, m, essai, "complet")).map(sp);
+  assert.equal(ps.length, 2);
+  assert.match(ps[1], /^Cette instance n'a pas le détecteur de bulles/);
+  assert.ok(!ps.some((p) => /Détecter les bulles/.test(p)));
+  // Sur la planche du parcours, l'OCR lit les bulles du jeu : rien ne change.
+  assert.equal(W.moteursDuGuide(sansBulles, parcours), sansBulles);
+  assert.equal(W.marqueEtape(pre, W.moteursDuGuide(sansBulles, parcours)), "facultatif");
+  // Le détecteur là, ou l'OCR déjà absent : `m` tel quel.
+  assert.equal(W.moteursDuGuide(avec, essai), avec);
+  const sansOcr = W.moteurs({ kumiko: true, bulles: false, ocr: false });
+  assert.equal(W.moteursDuGuide(sansOcr, essai), sansOcr);
+  assert.match(W.paragraphes(W.phraseEtape(pre, null, sansOcr)).map(sp)[1],
+               /^Cette instance n'a pas l'OCR/);
+  // Une réponse illisible ne conclut pas à l'absence.
+  assert.equal(W.moteursDuGuide(W.moteurs(null), essai).ocr, true);
 });

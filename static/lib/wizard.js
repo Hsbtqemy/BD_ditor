@@ -138,11 +138,23 @@
 
   /* Ce que dit l'album d'une instance : la page des moteurs change de texte quand AUCUN des
      trois moteurs de reconnaissance n'est là. Une réponse illisible ne dit rien : le texte
-     de l'instance équipée, qui est celui de Hugo. */
+     de l'instance équipée, qui est celui de Hugo. `bulles` sert à la planche d'essai
+     (`moteursDuGuide`). */
   function moteurs(sante) {
-    if (!sante || typeof sante !== "object") return { aucun: false, ocr: true };
+    if (!sante || typeof sante !== "object") return { aucun: false, ocr: true, bulles: true };
     const k = !!sante.kumiko, b = !!sante.bulles, o = !!sante.ocr;
-    return { aucun: !k && !b && !o, ocr: o };
+    return { aucun: !k && !b && !o, ocr: o, bulles: b };
+  }
+
+  /* Les moteurs tels que « Pré-remplir » les voit là où il se joue (`d`, ce que le guide a
+     lu). Sur la planche d'essai, qui n'a aucune zone, l'OCR ne lit rien tant que le
+     détecteur n'a pas posé de bulles : sans détecteur, l'OCR y manque comme s'il n'était pas
+     installé — l'étape se dit optionnelle, au lieu de demander « Détecter les bulles », qui
+     répondrait 503 (relecture du 2026-11-05). Ailleurs, `m` tel quel : sur la planche du
+     parcours, l'OCR lit les bulles que le jeu a posées. */
+  function moteursDuGuide(m, d) {
+    if (!m || !(d && d.essai) || !m.ocr || m.bulles !== false) return m;
+    return Object.assign({}, m, { ocr: false, sansBulles: true });
   }
 
   function textePage(page, m) {
@@ -211,7 +223,11 @@
       sansMoteur: `${MOTEURS_FONT}\n\nCette instance n'en a pas : rien n'est cassé, le `
         + "découpage et le texte se font à la main.",
       sansOcr: `${MOTEURS_FONT}\n\nCette instance n'a pas l'OCR : rien n'est cassé, le texte `
-        + "se fait à la main." },
+        + "se fait à la main.",
+      // L'OCR là, le détecteur de bulles absent, sur la planche d'essai (`moteursDuGuide`).
+      sansBulles: `${MOTEURS_FONT}\n\nCette instance n'a pas le détecteur de bulles : sur `
+        + "la planche d'essai, qui n'a aucune zone, l'OCR n'aurait rien à lire. Rien n'est "
+        + "cassé, le texte se fait à la main." },
     { k: "annoter", titre: "Annoter", ou: "Page Annotation", surface: "/annotation",
       zones: ["annotation-case", "annotation-mots", "annotation-grille"],
       phrase: "Cliquez un mot de la bulle, puis une entrée de la grille, à droite : c'est le "
@@ -600,7 +616,11 @@
 
   function phraseEtape(e, vue, m) {
     if (!e) return "";
-    if (e.sansMoteur && m && !m.ocr) return typo(m.aucun || !e.sansOcr ? e.sansMoteur : e.sansOcr);
+    if (e.sansMoteur && m && !m.ocr) {
+      if (m.aucun) return typo(e.sansMoteur);
+      if (m.sansBulles && e.sansBulles) return typo(e.sansBulles);
+      return typo(e.sansOcr || e.sansMoteur);
+    }
     const a = albumDuParcours(vue);
     const p = e.phrase.replace("{album}", a && a.titre ? a.titre : "l'album du parcours");
     const ici = phraseExport(e, vue);
@@ -1456,7 +1476,7 @@
   }
 
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
-           typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
+           typo, moteurs, moteursDuGuide, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
            vocabulaire, initiale, compteOccurrences, apercuCarte, choixDuParcours,
            PERD_LE_FIL, menePlusLoin, gesteDuClic, menuOuvert, LANCE, aEteindre,
