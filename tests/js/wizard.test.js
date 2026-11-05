@@ -724,6 +724,7 @@ const README = fs.readFileSync(path.join(DOSSIER, "README.md"), "utf8");
 function fichiersDe(ill) {
   if (!ill) return [];
   if (ill.collections) return ill.collections.flatMap((c) => c.fichiers);
+  if (ill.occurrences) return ill.occurrences.map((o) => o.fichier);
   return ill.fichier ? [ill.fichier] : [];
 }
 
@@ -748,8 +749,8 @@ test("« Constituez votre corpus » : deux collections fixes, décrites", () => 
   assert.deepEqual(ill.collections.map((c) => [c.nom, c.fichiers.length]),
                    [["Récits d'aventure", 3], ["Humour", 2]]);
   assert.match(ill.description, /Récits d'aventure.*Humour/);
-  // La première page garde l'éventail du jeu ; la dernière n'a pas d'illustration.
-  for (const k of ["outil", "sortir"]) {
+  // La première page garde l'éventail du jeu.
+  for (const k of ["outil"]) {
     assert.equal(W.illustrationDe(W.PAGES.find((p) => p.k === k)), null, k);
   }
   assert.equal(W.illustrationDe(null), null);
@@ -887,4 +888,25 @@ test("« Travaillez à plusieurs » : trois membres inventés, leurs rôles, un 
   assert.equal(ill.doute.sur, W.illustrationDe({ k: "analyse" }).cochee.entree);
   assert.deepEqual(["Agathe", "élise", "  lou", "", null].map(W.initiale),
                    ["A", "É", "L", "?", "?"]);
+});
+
+test("« Recherchez, exportez » : trois occurrences de « forêt », leur contexte et leur citation", () => {
+  const ill = W.illustrationDe(W.PAGES.find((p) => p.k === "sortir"));
+  assert.equal(ill.k, "sortir");
+  assert.equal(ill.mot, "forêt");
+  assert.equal(sp(ill.compte), "3 occurrences");
+  const dans = (a, b) => a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w
+    && a.y + a.h <= b.y + b.h;
+  for (const o of ill.occurrences) {
+    assert.ok(dans(o.mot, o.cadre), o.citation);
+    assert.ok(dans(o.cadre, { x: 0, y: 0, w: 975, h: 1296 }), o.citation);
+    assert.match(o.citation, /^pl\.\d+ · c\d+ · b\d+$/);
+    assert.ok(o.gauche.trim() && o.droite.trim());
+    // Le contexte est celui d'une phrase qui CONTIENT le mot, pas le mot lui-même.
+    assert.ok(!o.gauche.includes(ill.mot) && !o.droite.includes(ill.mot));
+  }
+  assert.deepEqual(ill.formats, ["TEI", "CSV", "JSON-LD", "IIIF"]);
+  assert.match(ill.description, /forêt.*TEI, CSV, JSON-LD, IIIF/);
+  assert.deepEqual([1, 2].map((n) => sp(W.compteOccurrences(n))),
+                   ["1 occurrence", "2 occurrences"]);
 });

@@ -386,7 +386,33 @@
         { par: "Agathe", texte: "Moqueur, oui : c'est le ton, pas le registre." },
       ] },
     },
+    // « forêt », que la planche de *Moustache et Trottinette* porte trois fois, dans trois
+    // récitatifs. Le CADRE de chaque vignette est son récitatif recadré autour du mot, le MOT
+    // le cadre du mot, en pixels du scan ; les contextes sont tels que la planche les écrit (la coupure
+    // « abeil-le » recollée), et la citation est celle que l'outil dérive, la planche étant
+    // la seule de son album dans le jeu.
+    sortir: {
+      mot: "forêt",
+      occurrences: [
+        { fichier: "sortir-moustache-foret-1.jpg", cadre: { x: 366, y: 238, w: 170, h: 80 },
+          mot: { x: 430, y: 282, w: 43, h: 19 }, citation: "pl.1 · c1 · b3",
+          gauche: "dans le sentier qui mène à la", droite: ", combien il est doux" },
+        { fichier: "sortir-moustache-foret-2.jpg", cadre: { x: 255, y: 596, w: 170, h: 44 },
+          mot: { x: 328, y: 617, w: 50, h: 19 }, citation: "pl.1 · c3 · b2",
+          gauche: "Tout en marchant ainsi on gagne la", droite: "." },
+        { fichier: "sortir-moustache-foret-3.jpg", cadre: { x: 706, y: 868, w: 170, h: 86 },
+          mot: { x: 771, y: 920, w: 40, h: 21 }, citation: "pl.1 · c7 · b4",
+          gauche: "le silencieux mystère de la", droite: ": le vol d'une abeille" },
+      ],
+      legende: "Vos données, aux formats de la recherche",
+      formats: ["TEI", "CSV", "JSON-LD", "IIIF"],
+    },
   };
+
+  /* « 3 occurrences ». */
+  function compteOccurrences(n) {
+    return typo(`${n} occurrence${n > 1 ? "s" : ""}`);
+  }
 
   /* L'initiale d'un prénom, pour sa pastille : sa première lettre, en capitale. */
   function initiale(nom) {
@@ -433,6 +459,14 @@
   function illustrationDe(page, m) {
     const k = page && page.k;
     if (k === "corpus" || k === "zones" || k === "collab") return { k, ...ILLUSTRATIONS[k] };
+    if (k === "sortir") {
+      const S = ILLUSTRATIONS.sortir;
+      return { k, ...S, compte: compteOccurrences(S.occurrences.length),
+               description: `La recherche du mot « ${S.mot} » : ${S.occurrences.length} `
+                 + "occurrences dans « Moustache et Trottinette », chacune dans sa zone et son "
+                 + "contexte, avec sa citation ; puis les formats de sortie : "
+                 + `${S.formats.join(", ")}.` };
+    }
     if (k === "analyse") return { k, ...ILLUSTRATIONS.analyse,
                                   rubriques: vocabulaire(ILLUSTRATIONS.analyse) };
     if (k === "moteurs") {
@@ -1135,7 +1169,7 @@
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
            typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
-           vocabulaire, initiale,
+           vocabulaire, initiale, compteOccurrences,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

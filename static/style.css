@@ -757,6 +757,33 @@ kbd {
 .wizard-lus mark { color: var(--text);
   background: color-mix(in srgb, var(--accent-amber) 35%, transparent); }
 .wizard-lus .marque-e { font-family: inherit; }
+/* « Recherchez, exportez » : la recherche, la concordance — la vignette de la zone, le mot
+   encadré dessus, et sa citation dessous —, puis les formats. Le mot en encre du texte. */
+.wizard-fixe-sortir { justify-items: stretch; container: wizard-sortir / inline-size; }
+.wizard-cherche { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: .3846rem .6154rem;
+  padding: .2308rem .6154rem; background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 6px; }
+.wizard-cherche .wizard-legende { margin-left: auto; }
+.wizard-con { display: grid; align-items: center; gap: .3077rem .4615rem; font-size: .8462rem;
+  grid-template-columns: minmax(0, 6.8rem) minmax(0, 1fr) auto minmax(0, 1fr); }
+.wizard-con > * { min-width: 0; overflow-wrap: anywhere; }
+.wizard-gauche { text-align: right; }
+.wizard-vig { display: grid; gap: .0769rem; }
+.wizard-vig .wizard-scene { width: 100%; border-radius: 3px; }
+.wizard-vig .wizard-scene img { border-radius: 2px; }
+.wizard-vig small { font-size: .7692rem; color: var(--text-muted); white-space: nowrap; }
+/* À l'étroit (320 px sous une grande police), la vignette passe au-dessus de sa ligne :
+   à côté, les contextes n'avaient plus que 14 px. */
+@container wizard-sortir (max-width: 22rem) {
+  .wizard-con { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .wizard-vig { grid-column: 1 / -1; grid-template-columns: minmax(0, 9rem) auto; align-items: end;
+    gap: .4615rem; }
+}
+.wizard-zone-mot { border-color: var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 18%, transparent); }
+.wizard-sortie { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem .4615rem; }
+.wizard-format { font-size: .8462rem; font-weight: 600; padding: 0 .3846rem; color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; }
 /* « Travaillez à plusieurs » : les membres, une pastille et un rôle, puis un fil de doute,
    filet ambre à gauche comme la maquette. */
 .wizard-fixe-collab { justify-items: stretch; }

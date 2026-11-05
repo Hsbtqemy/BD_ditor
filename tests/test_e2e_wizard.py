@@ -535,6 +535,7 @@ def test_a11y_l_album_et_la_carte(page, jeu, theme):
                         ("album, page 4", "#wizard-suiv"),
                         ("album, page 5", "#wizard-suiv"),
                         ("album, page 6", "#wizard-suiv"),
+                        ("album, page 7", "#wizard-suiv"),
                         ("album, choix du parcours", "#wizard-passer"),
                         ("visite, première page", "#wizard-choix-complet"),
                         ("visite, l'Atelier", "#wizard-visite-suiv"),
@@ -584,6 +585,7 @@ def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
                                    ("album, page 4", "#wizard-suiv", ".wizard-boite"),
                                    ("album, page 5", "#wizard-suiv", ".wizard-boite"),
                                    ("album, page 6", "#wizard-suiv", ".wizard-boite"),
+                                   ("album, page 7", "#wizard-suiv", ".wizard-boite"),
                                    ("choix", "#wizard-passer", ".wizard-boite"),
                                    ("visite", "#wizard-choix-rapide", "#wizard-fenetre"),
                                    ("guide", "#wizard-visite-passer", "#wizard-fenetre"),
@@ -1007,7 +1009,8 @@ def test_la_transcription_ne_dit_pas_bulle_sur_un_cartouche(page, jeu_decoupe):
 # ne demande RIEN à l'instance, et chaque image arrive. Les miniatures de la première page,
 # elles, viennent du jeu et sont demandées avant.
 
-PAGES_ILLUSTREES = {2: "corpus", 3: "zones", 4: "moteurs", 5: "analyse", 6: "collab"}
+PAGES_ILLUSTREES = {2: "corpus", 3: "zones", 4: "moteurs", 5: "analyse", 6: "collab",
+                    7: "sortir"}
 SANS_IMAGE = {"collab"}  # des membres et un fil de doute : du texte seul
 
 
@@ -1043,6 +1046,10 @@ def test_les_illustrations_de_l_album_ne_demandent_rien_a_l_instance(page, jeu):
         if k == "analyse":
             expect(ill.locator(".wizard-entree.cochee")).to_have_count(1)
             expect(ill.locator(".wizard-entree.cochee")).to_be_visible()
+        if k == "sortir":
+            expect(ill.locator(".wizard-pivot")).to_have_count(3)
+            expect(ill.locator(".wizard-zone-mot")).to_have_count(3)
+            expect(ill.locator(".wizard-format")).to_have_count(4)
         if k == "collab":
             expect(ill.locator(".wizard-membres li")).to_have_count(3)
             expect(ill.locator(".wizard-doute")).to_be_visible()

@@ -262,6 +262,30 @@
       });
       d.appendChild(voc);
     }
+    if (ill.k === "sortir") {
+      const cherche = el("p", "wizard-cherche");
+      const loupe = el("span", null, "🔍");
+      loupe.setAttribute("aria-hidden", "true");
+      cherche.appendChild(loupe);
+      cherche.appendChild(el("b", null, ill.mot));
+      cherche.appendChild(el("span", "wizard-legende", ill.compte));
+      d.appendChild(cherche);
+      const con = el("div", "wizard-con");
+      ill.occurrences.forEach((o) => {
+        const vig = el("div", "wizard-vig");
+        vig.appendChild(scene(o, [{ type: "mot", ...o.mot }], false));
+        vig.appendChild(el("small", null, W.typo(o.citation)));
+        con.appendChild(vig);
+        con.appendChild(el("span", "wizard-gauche", W.typo(o.gauche)));
+        con.appendChild(el("b", "wizard-pivot", ill.mot));
+        con.appendChild(el("span", "wizard-droite", W.typo(o.droite)));
+      });
+      d.appendChild(con);
+      const sortie = el("p", "wizard-sortie");
+      sortie.appendChild(el("span", "wizard-legende", ill.legende));
+      ill.formats.forEach((f) => sortie.appendChild(el("span", "wizard-format", f)));
+      d.appendChild(sortie);
+    }
     if (ill.k === "collab") {
       const ul = el("ul", "wizard-membres");
       ill.membres.forEach((m) => {
