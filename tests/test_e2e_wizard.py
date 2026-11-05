@@ -322,6 +322,22 @@ def test_le_survol_d_une_ligne_cerne_sa_zone_et_inversement(page, jeu):
 
 
 @pytestmark_proxy
+def test_un_lien_de_la_barre_suivi_pendant_la_visite_la_fait_suivre(page, jeu):
+    """« Annotation » dans la barre du haut, pendant la visite de la barre : on arrive sur la
+    page Annotation, et la visite y reprend à sa page, au lieu de se perdre."""
+    _commencer_la_visite(page, jeu)
+    compte = page.locator("#wizard-visite-compte")
+    expect(compte).to_have_text("Visite 1 / 7")
+    page.locator('.surf-nav a.surf-link[href^="/annotation"]').first.click()
+    page.wait_for_url(re.compile(r"/annotation"))
+    expect(compte).to_have_text("Visite 3 / 7 · 1 / 2")
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Annotation")
+    # « Suivant → » continue depuis là : la Bibliothèque.
+    page.locator("#wizard-visite-suiv").click()
+    expect(compte).to_have_text("Visite 3 / 7 · 2 / 2")
+
+
+@pytestmark_proxy
 def test_la_fenetre_sur_la_zone_au_clavier_et_en_deux_temps(page, jeu):
     _commencer_la_visite(page, jeu)
     fen = _visite(page)
@@ -427,11 +443,13 @@ def test_la_visite_traverse_les_pages_et_finit_sur_la_carte(page, jeu):
     expect(compte).to_have_text("Visite 2 / 7 · 2 / 2")
     expect(page.locator("#wizard-fenetre")).to_have_class(re.compile(r"\bgauche\b"))
 
-    # Arrivé ailleurs que là où la visite mène — un lien suivi en route —, elle s'arrête.
+    # Arrivé sur une AUTRE des six pages — un lien suivi en route —, la visite SUIT : elle
+    # reprend à la page de cette surface, à son premier temps (Hugo, 2026-11-05).
     page.goto(jeu["base"] + "/recherche", wait_until="domcontentloaded")
     page.wait_for_function("() => !!(window.BDWizardEcran && window.BDWizardEcran.decide)")
-    expect(page.locator("#wizard-fenetre")).to_have_count(0)
-    assert page.evaluate(VISITE_SESSION) is None
+    expect(compte).to_have_text("Visite 5 / 7")
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Recherche")
+    assert '"page":4' in (page.evaluate(VISITE_SESSION) or "")
 
     # La dernière page : « Commencer → » mène aux gestes — le guide, sur la première étape
     # du parcours, sur sa page.

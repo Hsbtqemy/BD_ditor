@@ -1522,11 +1522,18 @@
     // La ligne se redessine — un projet changé, une invitation : le bouton la suit.
     document.addEventListener("bd:bac-a-sable-maj", () => { relire(); poserLeBouton(); });
     try {
-      // Une visite en cours reprend sur la page où elle mène ; arrivée ailleurs — un lien
-      // suivi pendant la visite —, elle s'arrête.
+      // Une visite en cours reprend sur la page où elle mène. Arrivée sur une AUTRE des six
+      // pages — un lien suivi pendant la visite, « Annotation » dans la barre —, elle SUIT :
+      // elle reprend à la page de cette surface, à son premier temps (Hugo, 2026-11-05 : la
+      // fenêtre ne se perd pas, comme dans la maquette). Ailleurs, elle s'arrête.
       const enCours = W.lireVisite(S.login, S.bac);
+      const ici = W.pageDeLaSurface(chemin());
       if (enCours && W.VISITE[enCours.page].surface === chemin()) {
         ouvrirFenetre("visite", enCours, null);
+      } else if (enCours && ici >= 0) {
+        const pos = { page: ici, temps: 0 };
+        W.retenirVisite(S.login, S.bac, pos);
+        ouvrirFenetre("visite", pos, null);
       } else {
         if (enCours) W.oublierVisite();
         if (window.BD_SANS_WIZARD !== true && W.ouvreSeul(S.login, S.E.courant, S.souvenir)) {
