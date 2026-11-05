@@ -5,7 +5,7 @@ statut: interrompu
 
 # UX-6 — écran « par où commencer » et guide utilisateur
 
-**Arrêté sur** — 2026-11-05, `cde1e18` : **les six choix de la tranche 4 sont tranchés** — le
+**Arrêté sur** — 2026-11-05, `f6361f0` : **les illustrations de l'album deviennent des images fixes** (Hugo, le jour même), confiées à un agent ; les cadres des collections calculés depuis le jeu (`f6361f0`) seront remplacés. Avant eux, **les six choix de la tranche 4 sont tranchés** — le
 seul changé, « Exporter », dit le bac à sable en mots d'arrivant (`cde1e18`) — et l'étape
 « Tracer », faite, apprend ↻, la voie (c) du `c3 · b1` (`502227d`). Sur `dev`, pas poussés.
 La tranche 4 a été poussée le matin même.
