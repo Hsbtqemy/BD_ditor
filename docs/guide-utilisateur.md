@@ -1041,7 +1041,7 @@ l'**arbre de structure** (planche → cases → bulles, avec l'avancement de l'O
 clic sélectionne et recentre, le survol surligne dans l'image, et l'ordre de lecture se
 réarrange à la main (`Alt+↑` / `Alt+↓`, ou le bouton de recalcul).
 
-Sur écran étroit, les deux panneaux deviennent des tiroirs, ouverts par les bascules ☰ et ▤.
+Sur écran étroit, les deux panneaux deviennent des tiroirs, ouverts par les bascules ☰ (*Planches*) et ▤ (*Structure et zone*).
 
 Autres raccourcis : **`Ctrl+Z`** annule la dernière action d'annotation ; **`Échap`** annule un
 tracé en cours et désélectionne (en sauvegardant ce qui était en attente).
