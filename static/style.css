@@ -679,6 +679,19 @@ kbd {
 .wizard-modal[hidden] { display: none; }
 .wizard-boite { width: min(40rem, 92%); }
 .wizard-boite.wizard-album { width: min(52rem, 92%); }
+/* « Parcours terminé » : la taille de l'album, ses planches en vraies vignettes. */
+.wizard-boite.wizard-termine { width: min(52rem, 92%); }
+.wizard-termine h2 { margin: 0; font-size: 1.3077rem; }
+.wizard-termine p { margin: 0; }
+.wizard-autres { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap;
+  gap: .9231rem; }
+.wizard-autre { display: grid; gap: .3077rem; width: 7rem; color: var(--text);
+  text-decoration: none; border-radius: 4px; }
+.wizard-autre img { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover;
+  object-position: top; border: 1px solid var(--border); border-radius: 3px;
+  background: var(--media-bg); box-shadow: 0 1px 3px var(--shadow); }
+.wizard-autre span { font-size: .9231rem; overflow-wrap: anywhere; }
+.wizard-autre:hover span, .wizard-autre:focus-visible span { text-decoration: underline; }
 /* La boîte défile ; ses parties ne se tassent pas. MESURÉ : à 320 px, l'illustration de la
    première page interceptait le clic sur « Passer » (`tests/test_e2e_wizard.py`, 2026-11-03).
    SUPPOSÉ, non rejoué : `.modal-box` est une colonne flexible, et la page de l'album, bornée

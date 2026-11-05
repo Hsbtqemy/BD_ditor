@@ -1638,3 +1638,68 @@ def test_pre_remplir_se_fait_sur_la_planche_d_essai(page, jeu_essai):
     assert [(r["id"], r["x"], r["y"], r["w"], r["h"]) for r in apres] \
         == [(r["id"], r["x"], r["y"], r["w"], r["h"]) for r in avant]
     assert all(r["source"] == "jeu" for r in apres)
+
+
+# ── « Parcours terminé » ───────────────────────────────────────────────────────────────
+#
+# Hugo, 2026-11-05 : la fin du parcours était « toute petite », dans la fenêtre du guide.
+# C'est une boîte centrée, de la taille de l'album, bâtie comme lui sur `dialog.js`.
+
+def _terminer(page, jeu):
+    _au_guide_sur(page, jeu, "rapide", "annoter")
+    suiv = page.locator("#wizard-guide-suiv")
+    expect(suiv).to_have_text("Terminer")
+    suiv.click()
+    boite = _album(page)
+    expect(boite.locator("#wizard-titre")).to_have_text("Parcours terminé")
+    return boite
+
+
+@pytestmark_proxy
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_parcours_termine_est_une_boite_et_ses_planches_s_ouvrent_sans_guide(page, jeu, theme):
+    from test_e2e_bac_a_sable import _audit_axe
+    page.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
+    page.set_viewport_size({"width": 1280, "height": 800})
+    boite = _terminer(page, jeu)
+    expect(boite.locator(".wizard-boite")).to_have_attribute("role", "dialog")
+    # Le voile du guide s'est retiré.
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
+    # Les autres planches du jeu, en vraies vignettes, leur titre dessous.
+    vue = _api(jeu["base"], CAMILLE, "GET", "/api/bac-a-sable")
+    autres = [j for j in vue["jeu"] if j["role"] != "pas-a-pas" and j["planche_ids"]]
+    vignettes = boite.locator(".wizard-autre")
+    expect(vignettes).to_have_count(len(autres))
+    expect(vignettes.first).to_be_focused()
+    assert vignettes.first.locator("img").bounding_box()["width"] >= 80
+    expect(vignettes.locator("span")).to_have_text([j["titre"] for j in autres])
+    expect(boite.locator("#wizard-revoir")).to_be_visible()
+    v, f = _audit_axe(page)
+    assert not v, f
+    # Échap la ferme et rend le focus à « Par où commencer ».
+    page.keyboard.press("Escape")
+    expect(page.locator("#wizard-modal")).to_be_hidden()
+    expect(page.locator("#bac-commencer")).to_be_focused()
+    # Rouverte, une vignette ouvre sa planche dans l'Atelier, sans guide.
+    boite = _terminer(page, jeu)
+    premiere = autres[0]
+    boite.locator(".wizard-autre").first.click()
+    page.wait_for_url(re.compile(rf"album={premiere['album_id']}&planche={premiere['planche_ids'][0]}"))
+    page.wait_for_function("() => !!(window.BDWizardEcran && window.BDWizardEcran.decide)")
+    page.wait_for_timeout(500)
+    expect(page.locator("#wizard-fenetre:visible")).to_have_count(0)
+    expect(page.locator("#wizard-modal:visible")).to_have_count(0)
+
+
+@pytestmark_proxy
+def test_parcours_termine_tient_a_320_px_sous_grande_police(page, jeu):
+    if page.context.browser.browser_type.name != "chromium":
+        pytest.skip("la préférence de police se pose par CDP")
+    from test_e2e_bac_a_sable import _perdus, _preference_police
+    from tools.mesurer_reflow import ECRASEMENT, decrire_ecrasement
+    _preference_police(page, 24)
+    page.set_viewport_size({"width": 320, "height": 800})
+    _terminer(page, jeu)
+    page.wait_for_timeout(300)
+    assert not _perdus(page), _perdus(page)[:3]
+    assert not decrire_ecrasement(page.evaluate(ECRASEMENT, ".wizard-boite"))

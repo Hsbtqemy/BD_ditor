@@ -118,6 +118,8 @@
   function fermer(reprendre = true) {
     if (!voile || voile.hidden) return;
     const carte = S.mode === "carte";
+    // Le parcours fini, sa boîte fermée : le guide ne se rouvre pas seul.
+    if (S.mode === "fin") retenirLeGuide({ actif: false, vues: S.guide.vues });
     voile.hidden = true;
     const b = document.getElementById("bac-commencer");
     if (b) b.setAttribute("aria-expanded", "false");
@@ -136,14 +138,17 @@
     voile.hidden = false;
     const b = document.getElementById("bac-commencer");
     if (b) b.setAttribute("aria-expanded", "true");
-    // La carte s'ouvre sur l'étape où l'on est.
-    const a = mode === "carte" && boite.querySelector('.wizard-etapes li[aria-current="step"] a');
+    // La carte s'ouvre sur l'étape où l'on est ; la fin, sur sa première planche.
+    const a = mode === "carte" ? boite.querySelector('.wizard-etapes li[aria-current="step"] a')
+      : mode === "fin" ? boite.querySelector(".wizard-autre, #wizard-fermer") : null;
     if (a) a.focus();
   }
 
   function dessiner(focus) {
     boite.innerHTML = "";
-    if (S.mode === "carte") dessinerCarte(); else dessinerAlbum();
+    if (S.mode === "carte") dessinerCarte();
+    else if (S.mode === "fin") dessinerFin();
+    else dessinerAlbum();
     if (focus) {
       const f = boite.querySelector(focus);
       if (f) f.focus();
@@ -547,6 +552,53 @@
     const visite = bouton("ghost small", "Revoir les pages", "wizard-revoir-visite");
     visite.addEventListener("click", () => { fermer(false); commencerVisite({ page: 0, temps: 0 }); });
     act.appendChild(visite);
+    boite.appendChild(act);
+  }
+
+  /* ── « Parcours terminé » ───────────────────────────────────────────────────────────
+     Une boîte centrée de la taille de l'album, et non plus la fenêtre du guide, toute petite
+     et qui n'avait plus de foyer à côté duquel se poser (Hugo, 2026-11-05). Les autres
+     planches du jeu en vraies vignettes, leur titre dessous, chacune ouvrant sa planche dans
+     l'Atelier, sans guide : ce sont de vraies planches du bac à sable, servies par
+     l'instance (`miniature`). « Revoir la présentation » et « Fermer ✕ » en bas. */
+  function dessinerFin() {
+    boite.classList.add("wizard-termine");
+    boite.classList.remove("wizard-album", "wizard-carte");
+    const h = el("h2", null, "Parcours terminé");
+    h.id = "wizard-titre";
+    boite.appendChild(h);
+    boite.appendChild(el("p", null, W.typo(
+      "Continuez sur une autre planche : rien ne vous guide, rien ne se perd avant lundi.")));
+    const v = vue(), parcours = W.albumDuParcours(v);
+    const autres = (v && Array.isArray(v.jeu) ? v.jeu : []).filter((j) =>
+      j !== parcours && Array.isArray(j.planche_ids) && j.planche_ids.length);
+    if (autres.length) {
+      const ul = el("ul", "wizard-autres");
+      ul.setAttribute("aria-label", "Les autres planches du jeu");
+      autres.forEach((j) => {
+        const li = el("li");
+        const lien = el("a", "wizard-autre");
+        lien.href = `/?album=${j.album_id}&planche=${j.planche_ids[0]}`;
+        lien.addEventListener("click", () => retenirLeGuide({ actif: false, vues: S.guide.vues }));
+        lien.appendChild(miniature(j.planche_ids[0]));
+        lien.appendChild(el("span", null, j.titre || "Une planche du jeu"));
+        li.appendChild(lien);
+        ul.appendChild(li);
+      });
+      boite.appendChild(ul);
+    }
+    const act = el("div", "modal-actions wizard-actions");
+    const revoir = bouton("ghost small", "Revoir la présentation", "wizard-revoir");
+    revoir.addEventListener("click", () => {
+      retenirLeGuide({ actif: false, vues: S.guide.vues });
+      S.mode = "album";
+      S.page = 0;
+      dessiner("#wizard-suiv");
+    });
+    act.appendChild(revoir);
+    const f = bouton("primary small", "Fermer ✕", "wizard-fermer");
+    f.addEventListener("click", () => fermer());
+    act.appendChild(f);
     boite.appendChild(act);
   }
 
@@ -1510,7 +1562,7 @@
     else if (g === "guide-prec" && i > 0) allerEtape(i - 1, "#wizard-guide-prec");
     else if (g === "guide-suiv") {
       if (i + 1 < l.length) allerEtape(i + 1, "#wizard-guide-suiv");
-      else { sortirDuCadrage(); G.fin = true; dessinerEtape("#wizard-guide-quitter"); mettreAJour(); }
+      else { sortirDuCadrage(); ouvrir("fin"); }        // le voile du guide se retire
     }
     return true;
   }
