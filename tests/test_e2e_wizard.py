@@ -442,9 +442,17 @@ def test_la_fenetre_sur_la_zone_au_clavier_et_en_deux_temps(page, jeu):
     expect(compte).to_have_text("Visite 2 / 7 · 2 / 2")
     expect(fen).to_have_class(re.compile(r"\bgauche\b"))
     expect(page.locator("#wizard-visite-suiv")).to_be_focused()
-    # Le second temps éclaire d'emblée sa première zone (la maquette).
-    expect(page.locator('#wizard-zones .wf-zone[data-zone="atelier-structure"]')).to_have_attribute(
-        "aria-pressed", "true")
+    # Aucune zone choisie d'office (Hugo, 2026-11-05 : « Traitement est un gros truc, à bien
+    # apprendre et repérer ») : « Structure » ET « Traitement, Import / Export » sont en
+    # clair, deux trous dans l'assombri, et aucune ligne n'est pressée. Le pointeur, resté
+    # où était « Suivant », est maintenant sur la Structure : il s'écarte, sans quoi le
+    # survol l'isolerait.
+    page.mouse.move(5, 5)
+    for m in ("atelier-structure", "atelier-actions"):
+        expect(page.locator(f'#wizard-zones .wf-zone[data-zone="{m}"]')).to_have_attribute(
+            "aria-pressed", "false")
+    expect(page.locator('#wizard-masque rect[fill="#000"]')).to_have_count(2)
+    expect(page.locator(".wizard-voile .wf-cadre.ici")).to_have_count(0)
     a_gauche = fen.bounding_box()
     assert a_gauche["x"] < a_droite["x"]
     assert not page.evaluate(INERTE, "#panel") and page.evaluate(INERTE, "#sidebar")

@@ -960,7 +960,7 @@
     W.retenirVisite(S.login, S.bac, p);
     const pageNeuve = !F.pos || F.pos.page !== p.page;
     F.pos = p;
-    F.choisie = premiereDuSecondTemps();
+    F.choisie = null;
     F.survolee = null;
     dessinerFenetre(pageNeuve ? "#wizard-fenetre-titre" : focus);
     mettreAJour();
@@ -998,14 +998,6 @@
     fermerFenetre(false);
     const t = W.tempsVisibles(i, voit);
     ouvrirFenetre("plan", { page: i, temps: t[0] }, declencheur);
-  }
-
-  /* Le second temps d'une page éclaire d'emblée sa première zone : la fenêtre vient de
-     passer à gauche pour elle (la maquette). Au premier temps, aucune. */
-  function premiereDuSecondTemps() {
-    if (!F.pos || F.pos.temps !== 1) return null;
-    const r = reperesDuTemps()[0];
-    return r ? r.marque : null;
   }
 
   /* Le SURVOL, comme la maquette (Hugo, 2026-11-05, sur l'écran codé : il renverse « au clic,
@@ -1090,7 +1082,7 @@
       const i = F.temps.indexOf(F.pos.temps) + (g === "plan-suiv" ? 1 : -1);
       if (i < 0 || i >= F.temps.length) return;
       F.pos = { page: F.pos.page, temps: F.temps[i] };
-      F.choisie = premiereDuSecondTemps();
+      F.choisie = null;
       F.survolee = null;
       dessinerFenetre(g === "plan-suiv" ? "#wizard-reperes-suiv" : "#wizard-reperes-prec");
       mettreAJour();
