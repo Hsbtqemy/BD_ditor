@@ -146,6 +146,9 @@
 
   function dessiner(focus) {
     boite.innerHTML = "";
+    // La boîte sert aux trois formes : chacune repart sans la classe des autres, sans quoi
+    // « Parcours terminé » laissait sa largeur et ses marges à la carte rouverte ensuite.
+    boite.classList.remove("wizard-album", "wizard-carte", "wizard-termine");
     if (S.mode === "carte") dessinerCarte();
     else if (S.mode === "fin") dessinerFin();
     else dessinerAlbum();
@@ -337,7 +340,6 @@
   function dessinerAlbum() {
     const n = nbPages(), i = S.page, derniere = i === n - 1;
     boite.classList.add("wizard-album");
-    boite.classList.remove("wizard-carte");
     boite.appendChild(tete(W.TITRE_ALBUM, !derniere));
 
     const page = el("div", "wizard-page");
@@ -498,7 +500,6 @@
   /* ── La carte des étapes ─────────────────────────────────────────────────────────── */
   function dessinerCarte() {
     boite.classList.add("wizard-carte");
-    boite.classList.remove("wizard-album");
     boite.appendChild(tete(W.TITRE_CARTE, false));
     boite.appendChild(el("p", "wizard-avertissement muted small", W.typo(
       "Les moteurs de reconnaissance ne font que pré-remplir : l'analyse reste la vôtre.")));
@@ -563,7 +564,6 @@
      l'instance (`miniature`). « Revoir la présentation » et « Fermer ✕ » en bas. */
   function dessinerFin() {
     boite.classList.add("wizard-termine");
-    boite.classList.remove("wizard-album", "wizard-carte");
     const h = el("h2", null, "Parcours terminé");
     h.id = "wizard-titre";
     boite.appendChild(h);

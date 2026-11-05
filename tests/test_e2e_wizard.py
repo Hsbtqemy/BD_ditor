@@ -1732,6 +1732,32 @@ def test_parcours_termine_est_une_boite_et_ses_planches_s_ouvrent_sans_guide(pag
 
 
 @pytestmark_proxy
+def test_parcours_termine_ne_laisse_pas_sa_forme_a_la_carte(page, jeu):
+    """La boîte sert à l'album, à la carte et à la fin : rouverte sur la carte après la
+    fin, elle reprend la largeur de la carte et non celle de la fin (52rem), qui lui restait
+    jusqu'au rechargement (relecture du 2026-11-05)."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _terminer(page, jeu)
+    page.keyboard.press("Escape")
+    expect(page.locator("#wizard-modal")).to_be_hidden()
+    page.locator("#bac-commencer").click()
+    boite = _album(page).locator(".wizard-boite")
+    expect(boite).to_have_class(re.compile(r"\bwizard-carte\b"))
+    expect(boite).not_to_have_class(re.compile(r"\bwizard-termine\b"))
+    # La largeur de la carte — celle de `.modal-box`, 43rem, qui l'emporte sur les 40rem de
+    # `.wizard-boite`, plus haut dans la feuille — et non celle de la fin (52rem).
+    largeur = boite.evaluate("""(b) => [parseFloat(getComputedStyle(b).width),
+      parseFloat(getComputedStyle(document.documentElement).fontSize)]""")
+    assert largeur[0] < 48 * largeur[1], largeur
+    # « Revoir la présentation » depuis la fin : l'album, sans les marges de la fin.
+    page.keyboard.press("Escape")
+    boite = _terminer(page, jeu).locator(".wizard-boite")
+    boite.locator("#wizard-revoir").click()
+    expect(boite).to_have_class(re.compile(r"\bwizard-album\b"))
+    expect(boite).not_to_have_class(re.compile(r"\bwizard-termine\b"))
+
+
+@pytestmark_proxy
 def test_parcours_termine_tient_a_320_px_sous_grande_police(page, jeu):
     if page.context.browser.browser_type.name != "chromium":
         pytest.skip("la préférence de police se pose par CDP")
