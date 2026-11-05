@@ -172,8 +172,9 @@
   /* ── L'album ─────────────────────────────────────────────────────────────────────── */
   function nbPages() { return W.PAGES.length + 1; }
 
-  /* Les illustrations ne viennent que de l'instance : les miniatures des planches que le
-     jeu a posées dans le bac à sable. Une miniature absente s'efface sans laisser de cadre. */
+  /* L'éventail de la première page : les miniatures des planches que le jeu a posées dans
+     le bac à sable. Une miniature absente s'efface sans laisser de cadre. Les pages 2 à 5
+     ont des illustrations fixes (`illustrationFixe`). */
   function miniature(plancheId, cls) {
     const img = el("img", cls);
     img.alt = "";
@@ -245,6 +246,22 @@
         d.appendChild(ul);
       }
     }
+    if (ill.k === "analyse") {
+      d.appendChild(scene(ill, [], false));
+      const voc = el("div", "wizard-voc");
+      voc.appendChild(el("p", "wizard-legende", "Votre vocabulaire"));
+      ill.rubriques.forEach((r) => {
+        const ligne = el("div", "wizard-rub");
+        ligne.appendChild(el("b", null, r.rubrique));
+        const es = el("span");
+        r.entrees.forEach((e) => es.appendChild(
+          el("span", `wizard-entree${e.cochee ? " cochee" : ""}`,
+             W.typo(e.cochee ? `✓ ${e.texte}` : e.texte))));
+        ligne.appendChild(es);
+        voc.appendChild(ligne);
+      });
+      d.appendChild(voc);
+    }
     if (ill.k === "corpus") {
       d.classList.add("wizard-collections");
       ill.collections.forEach((c) => {
@@ -263,20 +280,13 @@
     const v = vue();
     const jeu = (v && Array.isArray(v.jeu) ? v.jeu : [])
       .filter((j) => Array.isArray(j.planche_ids) && j.planche_ids.length);
-    const parcours = W.albumDuParcours(v);
     if (page.k === "outil" && jeu.length) {
       const d = el("div", "wizard-eventail");
       jeu.slice(0, 5).forEach((j) => d.appendChild(miniature(j.planche_ids[0])));
       return d;
     }
     const ill = W.illustrationDe(page, S.moteurs);
-    if (ill) return illustrationFixe(ill);
-    if (page.k === "analyse" && parcours) {
-      const d = el("div", "wizard-planche");
-      d.appendChild(miniature(parcours.planche_ids[0]));
-      return d;
-    }
-    return null;
+    return ill ? illustrationFixe(ill) : null;
   }
 
   function dessinerAlbum() {

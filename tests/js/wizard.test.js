@@ -850,3 +850,22 @@ test("ce que les moteurs ont trouvé se compte en mots, et une faute se surligne
   assert.deepEqual(W.lecture({ lu: "abc", faute: "z" }).morceaux, [{ texte: "abc", faute: false }]);
   assert.equal(W.lecture(null).marque, null);
 });
+
+test("« Analysez et annotez » : une bulle et un vocabulaire inventé, une seule entrée cochée", () => {
+  const ill = W.illustrationDe(W.PAGES.find((p) => p.k === "analyse"));
+  assert.equal(ill.k, "analyse");
+  assert.ok(ill.cadre.x >= 0 && ill.cadre.y >= 0 && ill.cadre.x + ill.cadre.w <= 975
+            && ill.cadre.y + ill.cadre.h <= 1296);
+  assert.ok(ill.rubriques.length >= 2 && ill.rubriques.length <= 3);
+  const cochees = ill.rubriques.flatMap((r) => r.entrees.filter((e) => e.cochee)
+    .map((e) => [r.rubrique, e.texte]));
+  assert.deepEqual(cochees, [["Registre", "familier"]]);
+  assert.ok(ill.rubriques.every((r) => r.entrees.length >= 2));
+  // La coche se lit sur la rubrique ET l'entrée : une entrée homonyme ailleurs ne l'est pas.
+  assert.deepEqual(W.vocabulaire({ vocabulaire: [{ rubrique: "A", entrees: ["x"] },
+                                                 { rubrique: "B", entrees: ["x"] }],
+                                   cochee: { rubrique: "B", entree: "x" } }),
+                   [{ rubrique: "A", entrees: [{ texte: "x", cochee: false }] },
+                    { rubrique: "B", entrees: [{ texte: "x", cochee: true }] }]);
+  assert.deepEqual(W.vocabulaire(null), []);
+});

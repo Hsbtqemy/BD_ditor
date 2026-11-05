@@ -356,7 +356,31 @@
         { lu: "Dès qu'il reconnail nos trois amis…", faute: "reconnail", etat: "a_corriger" },
       ],
     },
+    // Une bulle de la deuxième rangée, et un vocabulaire INVENTÉ pour l'exemple, neutre et
+    // court : aucune grille réelle. Une entrée cochée, celle qui convient à la bulle.
+    analyse: {
+      description: "Une bulle de « Moustache et Trottinette », et votre vocabulaire : trois "
+        + "rubriques et leurs entrées, « familier » coché.",
+      fichier: "analyse-moustache-bulle.jpg",
+      cadre: { x: 32, y: 336, w: 244, h: 72 },
+      vocabulaire: [
+        { rubrique: "Forme", entrees: ["parole", "pensée", "cri"] },
+        { rubrique: "Registre", entrees: ["courant", "familier", "soutenu"] },
+        { rubrique: "Adresse", entrees: ["à autrui", "au lecteur", "à soi"] },
+      ],
+      cochee: { rubrique: "Registre", entree: "familier" },
+    },
   };
+
+  /* Le vocabulaire de « Analysez et annotez », rubrique par rubrique, chaque entrée avec
+     sa coche : `[{ rubrique, entrees: [{ texte, cochee }] }]`. */
+  function vocabulaire(ill) {
+    const c = (ill && ill.cochee) || {};
+    return liste(ill && ill.vocabulaire).map((r) => ({
+      rubrique: r.rubrique,
+      entrees: liste(r.entrees).map((t) => ({
+        texte: t, cochee: r.rubrique === c.rubrique && t === c.entree })) }));
+  }
 
   /* Ce que les moteurs ont trouvé, en mots : « 3 cases, 3 bulles, 2 cartouches ». */
   const SORTES = [["case", "case", "cases"], ["bulle", "bulle", "bulles"],
@@ -387,6 +411,8 @@
   function illustrationDe(page, m) {
     const k = page && page.k;
     if (k === "corpus" || k === "zones") return { k, ...ILLUSTRATIONS[k] };
+    if (k === "analyse") return { k, ...ILLUSTRATIONS.analyse,
+                                  rubriques: vocabulaire(ILLUSTRATIONS.analyse) };
     if (k === "moteurs") {
       // Sans aucun moteur installé, la rangée telle qu'on la reçoit (`moteurs`).
       const M = ILLUSTRATIONS.moteurs, sans = !!(m && m.aucun);
@@ -1087,6 +1113,7 @@
   return { CLE, PAGES, FIN, TITRE_ALBUM, TITRE_CARTE, ETAPES, RAPIDE, PARCOURS, VISITE,
            typo, moteurs, textePage, etapes, albumDuParcours, DOSSIER_ILL, ILLUSTRATIONS,
            illustrationDe, placer, etiquette, placerNom, compteTrouves, lecture,
+           vocabulaire,
            phraseEtape, marqueEtape,
            adresseEtape, marques, neuf, lireSouvenir, retenirSouvenir, bacASoi, ouvreSeul,
            choisirParcours, allerA, neJamaisAfficher,

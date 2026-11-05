@@ -980,7 +980,7 @@ def test_la_transcription_ne_dit_pas_bulle_sur_un_cartouche(page, jeu_decoupe):
 # demande RIEN à l'instance, et chaque image arrive. Les miniatures de la première page,
 # elles, viennent du jeu et sont demandées avant.
 
-PAGES_ILLUSTREES = {2: "corpus", 3: "zones", 4: "moteurs"}
+PAGES_ILLUSTREES = {2: "corpus", 3: "zones", 4: "moteurs", 5: "analyse"}
 
 
 @pytestmark_proxy
@@ -1009,6 +1009,11 @@ def test_les_illustrations_de_l_album_ne_demandent_rien_a_l_instance(page, jeu):
         assert srcs and all(s.startswith("/static/wizard/") for s in srcs), srcs
         # Rien n'y est cliquable.
         assert ill.locator("a, button, input, [tabindex]").count() == 0
+        if k == "moteurs":
+            expect(ill.locator(".wizard-lus .marque-e").first).to_be_visible()
+        if k == "analyse":
+            expect(ill.locator(".wizard-entree.cochee")).to_have_count(1)
+            expect(ill.locator(".wizard-entree.cochee")).to_be_visible()
     # L'Atelier, dessous, compare sa planche à intervalles (`/empreinte`) : ce n'est pas
     # l'album qui le demande.
     vers_l_api = [u for u in demandes if "/api/" in u and "/empreinte" not in u]
