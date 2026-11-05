@@ -750,7 +750,10 @@
           + "votre bac à sable."],
         ["recherche-champ", "Le champ et ses filtres", "Dialogues, notes et tags ; par album, "
           + "par type de zone."],
-        ["recherche-facettes", "Facettes grammaticales", "Par catégorie, lemme ou trait."],
+        // Explicite (Hugo, 2026-11-05) : ce qu'on cherche par la grammaire, avec un exemple.
+        ["recherche-facettes", "Facettes grammaticales", "Chercher par la grammaire : la "
+          + "catégorie d'un mot (verbe, nom…), son lemme (« aller » trouve « va » et « irons »), "
+          + "un trait (le temps, le nombre)."],
         ["recherche-tags", "Le nuage de tags", "Un clic filtre par tag."],
         ["recherche-resultats", "Les résultats", "Un clic ouvre l'aperçu, qui mène à la zone "
           + "dans l'Atelier."],
