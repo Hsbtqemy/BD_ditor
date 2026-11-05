@@ -1468,6 +1468,43 @@ def test_l_export_se_decide_document_par_document(client, decor):
     assert r.status_code == 409
 
 
+_EXPORTS_DE_DEPOT = (("description", "json"), ("description", "csv"), ("metadonnees", "json"),
+                     ("metadonnees", "zip"), ("metadonnees", "xlsx"), ("iiif", "zip"))
+
+
+def test_deposable_dit_le_refus_des_exports_de_depot(client, decor):
+    """UX-6 — `deposable` de `GET /api/collections` dit ce que les exports de dépôt
+    répondent : faux sur toute collection d'un bac à sable — son propriétaire, qui l'exporte
+    d'office (`exportable`), comme son invité —, où chacun des six exports est refusé ; vrai
+    hors d'un bac à sable, où le même export sort."""
+    autre = client.post("/api/collections", headers=LEA,
+                        json={"nom": "La mienne", "projet_id": decor["bac"]["id"]})
+    assert autre.status_code == 201, autre.text
+    du_bac = (decor["base"], autre.json()["id"])
+
+    def vue(qui):
+        return {c["id"]: c for c in client.get("/api/collections", headers=qui).json()}
+
+    # L'invité ne lit que la base ; la collection que lea a créée n'est qu'à elle.
+    for qui, cids in ((LEA, du_bac), (SAM, du_bac[:1])):
+        lues = vue(qui)
+        for cid in cids:
+            assert lues[cid]["deposable"] is False, (qui, lues[cid])
+            for quoi, fmt in _EXPORTS_DE_DEPOT:
+                r = client.get(f"/api/collections/{cid}/depot/{quoi}", headers=qui,
+                               params={"format": fmt})
+                assert r.status_code == 409 and "bac à sable" in r.json()["detail"], r.text
+    assert vue(LEA)[decor["base"]]["exportable"] is True   # la clé ne suffisait pas
+    r = client.post(f"/api/collections/{decor['base']}/depot/deposer", headers=LEA,
+                    json={"quoi": "description", "format": "json"})
+    assert r.status_code == 409, r.text
+    # Hors d'un bac à sable, rien ne change : la collection se dépose.
+    hors = vue(RESP)[decor["col"]]
+    assert hors["deposable"] is True and hors["exportable"] is True
+    assert client.get(f"/api/collections/{decor['col']}/depot/description", headers=RESP,
+                      params={"format": "json"}).status_code == 200
+
+
 def test_le_plafond_d_import(client, decor, monkeypatch):
     monkeypatch.setattr(socle, "BAC_A_SABLE_PLAFOND_PLANCHES", 2)
     a = client.post("/api/albums", headers=LEA,

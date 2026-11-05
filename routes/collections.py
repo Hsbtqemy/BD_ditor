@@ -42,7 +42,7 @@ from database import (DEMANDE_REJOINDRE, LONGUEUR_MOTIF, NATURES,
                       clore_rejoindre_d_une_copie_au_fonds, noms_lisibles,
                       collection_row, collections,
                       document_d_album, est_bac_a_sable, est_du_projet_par_reference,
-                      etat_embargo,
+                      etat_embargo, nature_du_projet,
                       nom_reserve, poser_projet_de_copie,
                       projet_d_album, projet_de_collection,
                       collection_de_base, projet_de_jeu, projet_par_defaut, ranger_copie,
@@ -240,6 +240,7 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
     # est invitée : `peut_lire` d'une portée BORNÉE (Hugo, 2026-10-24).
     vues = [c for c in collections(conn)
             if portee.peut_lire(c["id"]) and (jeu is None or c["projet_id"] != jeu)]
+    natures: dict = {}
     for c in vues:
         c["mon_niveau"] = _niveau_dans(portee, c["id"])
         c["niveau_par_le_projet"] = _niveau_par_le_projet(portee, c["id"])
@@ -248,6 +249,15 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
         # qu'`administrable` : cacher un bouton d'export qu'on refuserait. La garde
         # reste celle du serveur, sur chaque porte ; ceci n'évite qu'un geste perdu.
         c["exportable"] = portee.peut_exporter(c["id"])
+        # UX-6 — une collection de bac à sable (ou du jeu) n'est pas une unité de dépôt :
+        # ses exports de dépôt sont refusés pour TOUTE portée (`routes.depot.produire`),
+        # alors qu'`exportable` y reste vrai — il gouverne aussi l'export d'un album, que le
+        # bac à sable décide document par document. La même nature de projet que ces refus.
+        p = c["projet_id"]
+        if p not in natures:
+            natures[p] = nature_du_projet(conn, p)
+        n = natures[p]
+        c["deposable"] = not (n and (n["bac_a_sable_de"] is not None or n["jeu"]))
         # AUTH-12 — la même raison pour ÉCRIRE : la modale d'album proposait des collections
         # qu'on ne fait que lire, et l'enregistrement répondait « Collection N introuvable ».
         # L'écran lit la réponse au lieu de recalculer l'ordre des niveaux ; la garde reste

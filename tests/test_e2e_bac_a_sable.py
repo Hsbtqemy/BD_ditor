@@ -733,6 +733,36 @@ def test_la_bibliotheque_d_un_bac_compte_ses_albums_et_n_offre_pas_le_fonds(page
 
 
 @pytestmark_proxy
+def test_diffusion_et_depot_d_un_bac_n_offre_aucun_export_refuse(page, jeu):
+    """UX-6 — l'onglet « Diffusion et dépôt » d'une collection de bac à sable n'offre ni les
+    exports de dépôt ni ShareDocs, que le serveur refuse (409) à son propriétaire même ; il
+    les dit fermés. Le régime reste modifiable : le serveur l'accepte. Hors d'un bac à
+    sable, sur une collection que lea possède, les six exports restent offerts."""
+    bac = _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    page.goto(jeu["base"] + f"/corpus?collection={bac['base']['id']}&onglet=diffusion")
+    panneau = page.locator("#panneau-diffusion")
+    ferme = panneau.locator(".col-export-manque")
+    expect(ferme).to_be_visible()
+    expect(ferme).to_have_text("Exporter : fermé dans un bac à sable.")
+    expect(ferme).to_have_attribute("title", re.compile("bac à sable"))
+    expect(panneau.locator("[data-dep], [data-depot], .dep-connexion")).to_have_count(0)
+    expect(panneau.locator('[data-modifier="diffusion"]')).to_be_visible()
+
+    pid = _projet_de_lea(jeu)
+    col = _api(jeu["base"], HUGO, "POST", "/api/collections",
+               {"nom": "La collection de lea", "projet_id": pid})["id"]
+    _api(jeu["base"], HUGO, "PUT", f"/api/collections/{col}/acces",
+         {"genre": "utilisateur", "principal": "lea", "niveau": "proprietaire"})
+    _sous(page, LEA)
+    page.goto(jeu["base"] + f"/corpus?collection={col}&onglet=diffusion")
+    panneau = page.locator("#panneau-diffusion")
+    expect(panneau.locator("[data-dep]")).to_have_count(6)
+    expect(panneau.locator("[data-dep]").first).to_be_visible()
+    expect(panneau).not_to_contain_text("fermé dans un bac à sable")
+
+
+@pytestmark_proxy
 def test_hors_du_bac_les_chiffres_restent_ceux_du_corpus(page, jeu):
     """Les surfaces transverses restent aveugles : la Recherche ne demande jamais les
     chiffres d'un bac à sable."""

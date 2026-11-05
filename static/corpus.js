@@ -1251,8 +1251,18 @@ function colBrancherExport(box) {
    réduit à une note qui dit ce qui manque — dans les deux branches, toujours. La garde
    reste sur l'acte, au serveur ; l'écran évite seulement de proposer un geste perdu.
    UX-18 : « Exporter : droit manquant » se lit sous l'intitulé, pour qu'une annotatrice sans
-   la case sache, d'un coup d'œil, ce qui lui manque. */
+   la case sache, d'un coup d'œil, ce qui lui manque.
+   UX-6 — une collection de bac à sable ne se dépose pas, pour personne (`deposable`, lu dans
+   `GET /api/collections`) : ni téléchargement ni ShareDocs, quel que soit `exportable`. Ne
+   fait que FERMER : sans la clé, le bloc reste ce qu'il était. */
 function colExport(c) {
+  if (c.deposable === false) {
+    return `
+    <div class="col-export">
+      <h4>Export de dépôt</h4>
+      <p class="col-export-manque" title="Ce qui se fait dans un bac à sable s'efface chaque semaine : rien n'en part au dépôt."><b>Exporter : fermé dans un bac à sable.</b></p>
+    </div>`;
+  }
   if (!c.exportable) {
     return `
     <div class="col-export">
