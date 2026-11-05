@@ -488,7 +488,7 @@ const avec = (...ajouts) => JEU.map((r) => ({ ...r })).concat(ajouts);
 const change = (id, champs) => JEU.map((r) => (r.id === id ? { ...r, ...champs } : { ...r }));
 
 test("un bac à sable neuf n'a aucune étape faite", () => {
-  const d = { regions: avec(), releves: [], album: { source_numerisation: null }, vues: [] };
+  const d = { regions: avec(), releves: [], album: { langue: null }, vues: [] };
   for (const p of ["rapide", "complet"]) {
     for (const e of W.etapes(p)) assert.equal(W.faite(e, d, p), false, `${p} · ${e.k}`);
   }
@@ -501,8 +501,10 @@ test("chaque étape se lit faite sur ce que la planche porte", () => {
   const f = (k, d, p = "complet") => W.faite(etape(k), d, p);
   // Constituer : la fiche de l'album ouverte ; décrire : une source de numérisation.
   assert.equal(f("corpus", { vues: ["corpus"] }), true);
-  assert.equal(f("decrire", { album: { source_numerisation: "  " } }), false);
-  assert.equal(f("decrire", { album: { source_numerisation: "Epson V850, 600 dpi" } }), true);
+  assert.equal(f("decrire", { album: { langue: "  " } }), false);
+  assert.equal(f("decrire", { album: { langue: "fr" } }), true);
+  // La source de numérisation ne fait plus l'étape : l'arrivant ne la connaît pas.
+  assert.equal(f("decrire", { album: { source_numerisation: "Epson V850" } }), false);
   // Pré-remplir : une zone née d'un moteur, ou un texte qu'aucune main n'a écrit.
   assert.equal(f("preremplir", { regions: avec({ id: 9, type: "case", source: "kumiko",
                                                  activite_id: 3 }) }), true);

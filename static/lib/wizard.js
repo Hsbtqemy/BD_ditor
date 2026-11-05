@@ -170,11 +170,12 @@
         + "cliquant sur son image." },
     { k: "decrire", titre: "Décrire l'album", ou: "Bibliothèque", surface: "/corpus",
       album: true, zones: ["bibliotheque-fiche"],
-      // Plus explicite (Hugo, 2026-11-05) : où l'on clique, ce que la notice décrit, ce qui
-      // fait l'étape — la source de numérisation (`faite`, cas « decrire »).
-      phrase: "Une notice dit d'où vient l'album. Dans sa fiche, cliquez sur « ✎ Modifier » : "
-        + "titre, auteur, édition, contributions… Regardez tout ce qu'elle peut décrire, et "
-        + "complétez au moins la source de numérisation." },
+      // Comprendre ce qu'est une notice sans rien chercher hors de l'outil (Hugo, 2026-11-05) :
+      // le jeu la pré-remplit (numéro, date, type), il n'y manque que la langue, et la phrase
+      // donne la réponse. L'étape est faite quand la langue est notée (`faite`, « decrire »).
+      phrase: "Une notice dit ce qu'est l'album. Dans sa fiche, cliquez sur « ✎ Modifier » : "
+        + "titre, numéro, date, type… elle est presque complète. Il y manque la langue : "
+        + "écrivez « fr », puis enregistrez." },
     { k: "preremplir", titre: "Pré-remplir", ou: "Atelier, Traitement", surface: "/",
       facultatif: true, zones: ["atelier-actions", "atelier-planche"],
       phrase: "Un moteur peut lire le texte des bulles à votre place : c'est l'OCR. "
@@ -1135,7 +1136,7 @@
     const D = d || {}, regions = liste(D.regions), vues = liste(D.vues);
     switch (e.k) {
       case "corpus": return vues.includes("corpus");
-      case "decrire": return !!(D.album && String(D.album.source_numerisation || "").trim());
+      case "decrire": return !!(D.album && String(D.album.langue || "").trim());
       case "preremplir":
         return regions.some((r) => r && r.activite_id != null)
           || regions.some((r) => r && TYPES_TEXTE.includes(r.type) && !aLaMain(r)

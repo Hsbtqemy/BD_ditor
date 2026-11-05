@@ -225,6 +225,9 @@ def test_la_part_du_serveur_ne_s_ouvre_pas_a_l_export(client, db_path, tmp_path)
     ({"planches": [{"fichier": "absent.png"}]}, "introuvable"),
     ({"planches": [{"fichier": "../p1.png"}]}, "sans « .. »"),
     ({"titre": ""}, "titre"),
+    ({"notice": {"lieu_masters": "disque"}}, "ne connaît pas"),
+    ({"notice": {"tome": 11}}, "une chaîne"),
+    ({"notice": "avril 1959"}, "est un objet"),
     ({"planches": [{"fichier": "p1.png", "regions": [{"type": "nuage", "x": 0, "y": 0,
                                                        "w": 1, "h": 1}]}]}, "type de région"),
 ])
@@ -233,6 +236,19 @@ def test_une_description_fautive_n_ecrit_rien(client, db_path, tmp_path, faute, 
     with pytest.raises(preparer_jeu.DescriptionInvalide, match=mot):
         preparer(depot=depot)
     assert _sql(db_path, "SELECT * FROM jeu_document") == []
+
+
+def test_la_notice_du_jeu_suit_la_reference_et_ses_copies(client, db_path, tmp_path):
+    """`notice` pose le reste de la notice sur la copie de référence (Hugo, 2026-11-05), et un
+    bac à sable la reçoit avec sa copie ; ce qu'elle ne dit pas reste vide."""
+    notice = {"tome": "11", "date_edition": "1959-04", "type_oeuvre": "périodique (mensuel)"}
+    depot = ecrire_jeu(tmp_path / "dep", [{**DOC_PARCOURS, "notice": notice}],
+                       images=("p1.png",))
+    preparer(depot=depot)
+    ref = _sql(db_path, "SELECT a.tome, a.date_edition, a.type_oeuvre, a.langue FROM albums a "
+                        "JOIN jeu_document j ON j.album_reference = a.id")
+    assert ref == [{"tome": "11", "date_edition": "1959-04",
+                    "type_oeuvre": "périodique (mensuel)", "langue": None}]
 
 
 def test_une_cle_decrite_deux_fois_est_refusee(client, db_path, tmp_path):

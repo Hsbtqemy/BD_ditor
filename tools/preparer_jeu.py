@@ -20,6 +20,11 @@ n'a pas la part du serveur (la recette) retirerait du jeu tout ce qui en vient.
     cle        identifiant STABLE (unique dans les deux sources) — c'est par lui qu'un
                document se reconnaît d'un passage à l'autre
     titre      requis ; `serie`, `auteur` facultatifs (la notice)
+    notice     facultatif : le reste de la notice de l'album, `{"tome": "11", "date_edition":
+               "1959-04", …}` — les colonnes de `NOTICE_DU_JEU`, des chaînes (`annee`, un
+               entier) ; chaque bac à sable la reçoit avec sa copie (`database.creer_copie`
+               recopie la notice). L'étape « Décrire l'album » du guide fait compléter ce qui
+               y manque, la phrase donnant la réponse (Hugo, 2026-11-05)
     role       `pas-a-pas` (le parcours où l'on suit toutes les étapes), `exemple`, `stock`
     rang       l'ordre dans son rôle (0 par défaut)
     cran       jusqu'où chaque bac à sable recopie le travail de la référence : `images`
@@ -97,6 +102,14 @@ class DescriptionInvalide(ValueError):
     """La description d'une source ne se lit pas : rien n'est écrit."""
 
 
+# Ce que `notice` peut poser sur la copie de référence : la notice d'un album, sans ce que
+# l'objet `document` dit déjà (`titre`, `serie`, `auteur` se décrivent à part) ni le lieu des
+# masters, qui est un lieu interne et RETENU de toute sortie (IMG-1).
+NOTICE_DU_JEU = ("tome", "annee", "editeur", "description", "date_edition", "date_originale",
+                 "langue", "type_oeuvre", "lieu_edition", "edition_tirage", "isbn",
+                 "format_physique", "source_numerisation")
+
+
 class PassageEnCours(RuntimeError):
     """Un autre passage `--appliquer` tient le verrou de l'outil."""
 
@@ -160,6 +173,16 @@ def lire_description(dossier, part: str) -> list[dict]:
                                       "tous les bacs à sable.")
         if not isinstance(d.get("rang", 0), int):
             raise DescriptionInvalide(f"{ou} : `rang` est un entier.")
+        notice = d.get("notice", {})
+        if not isinstance(notice, dict):
+            raise DescriptionInvalide(f"{ou} : `notice` est un objet.")
+        for k, v in notice.items():
+            if k not in NOTICE_DU_JEU:
+                raise DescriptionInvalide(f"{ou} : `notice` ne connaît pas `{k}` "
+                                          f"({' | '.join(NOTICE_DU_JEU)}).")
+            if not (isinstance(v, int) if k == "annee" else isinstance(v, str)):
+                raise DescriptionInvalide(f"{ou} : `notice.{k}` est "
+                                          f"{'un entier' if k == 'annee' else 'une chaîne'}.")
         planches = d.get("planches")
         if not isinstance(planches, list) or not planches:
             raise DescriptionInvalide(f"{ou} : au moins une planche.")
@@ -264,8 +287,13 @@ def _creer_une_reference(conn, d: dict) -> tuple[int, int]:
     projet = database.creer_projet_de_jeu(conn)
     collection = database.collection_de_base(conn, projet)
     conflit.verrouiller(conn)
-    album_id = conn.execute("INSERT INTO albums (titre, serie, auteur) VALUES (?, ?, ?)",
-                            (d["titre"].strip(), d.get("serie"), d.get("auteur"))).lastrowid
+    notice = d.get("notice") or {}
+    cles = [k for k in NOTICE_DU_JEU if k in notice]
+    album_id = conn.execute(
+        f"INSERT INTO albums (titre, serie, auteur{''.join(', ' + k for k in cles)}) "
+        f"VALUES (?, ?, ?{', ?' * len(cles)})",
+        (d["titre"].strip(), d.get("serie"), d.get("auteur"),
+         *[notice[k] for k in cles])).lastrowid
     ingest.ecarter_dossiers_d_album(album_id)
     conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
                  (collection, album_id))
