@@ -87,6 +87,7 @@ const S = {
   changer: null,               // le relevé dont « Changer… » montre les variantes
   // Le Contexte modifiable (commit 8)
   loc: { region: null, vu: undefined },        // le locuteur de la zone, et sa valeur VUE
+  perso: { region: null, vu: undefined },      // le personnage de la boîte, et sa valeur VUE
   note: { region: null, sale: false, minuterie: null },   // la note de la zone, à envoyer
   // Au doigt et sans souris (commit 12)
   tracer: false,               // « Tracer une zone » armé
@@ -95,7 +96,7 @@ const S = {
 let tourContexte = 0;          // la lecture du Contexte la plus récente gagne
 /* Les écritures PARTIES, par sorte. Une lecture commencée avant l'une d'elles peut revenir
    après sa réponse, avec l'état d'avant : elle ne dit plus ce que le serveur porte. */
-const ECRITS = { note: 0, loc: 0, precision: 0 };
+const ECRITS = { note: 0, loc: 0, perso: 0, precision: 0 };
 let tourPlanche = 0;           // idem pour une planche
 
 /* ───────────── Le projet, les collections, les albums ───────────── */
@@ -566,13 +567,14 @@ function rendreZones() {
 
 /* ───────────── Le Contexte (commit 1 en lecture, commit 8 modifiable) ─────────────
    Ce qui n'est pas du vocabulaire : le locuteur d'une zone de texte, le personnage d'une
-   boîte, la note de toute zone. Sur un album où l'on écrit, le LOCUTEUR et la NOTE s'écrivent
-   ici (`BDAnnotation.gestesDuContexte`) ; le personnage d'une boîte reste en lecture. Les
-   lignes sont fixes, dans le gabarit : la zone les montre ou les cache.
+   boîte, la note de toute zone. Sur un album où l'on écrit, tous trois s'écrivent ici
+   (`BDAnnotation.gestesDuContexte`). Les lignes sont fixes, dans le gabarit : la zone les
+   montre ou les cache.
 
-   CHAQUE ÉCRITURE PORTE CE QUE L'ÉCRAN VOYAIT, comme dans l'Atelier : le locuteur
-   `personnage_vu` (CONC-4), la note `note_vue` (CONC-3). Un 409 ouvre le bandeau de la page,
-   dans la boîte du guide, comme pour un relevé ; tant qu'il attend, aucun autre geste ne part.
+   CHAQUE ÉCRITURE PORTE CE QUE L'ÉCRAN VOYAIT, comme dans l'Atelier : le locuteur et le
+   personnage d'une boîte `personnage_vu` (CONC-4), la note `note_vue` (CONC-3). Un 409 ouvre
+   le bandeau de la page, dans la boîte du guide, comme pour un relevé ; tant qu'il attend,
+   aucun autre geste ne part.
    Les gestes d'un même champ partent L'UN APRÈS L'AUTRE (`enchainer`) : la valeur vue se lit
    au moment où le geste part, après la réponse du précédent — sans quoi deux choix coup sur
    coup déclaraient tous deux la valeur d'avant le premier (la leçon de CONC-4 dans
@@ -598,12 +600,27 @@ function montrer(id, oui) { $(id).hidden = !oui; }
 /* « au cartouche », « à la bulle », « à la zone de texte » : à qui l'on attribue. */
 const A_LA = { bulle: "à la bulle", cartouche: "au cartouche", texte: "à la zone de texte" };
 
+/* LES DEUX LIENS du Contexte (CONC-4) : le LOCUTEUR d'une zone de texte, le PERSONNAGE
+   MONTRÉ d'une boîte. Le même champ (`lib/champ-personnage.js`), la même garde
+   (`personnage_vu`), le même bandeau, la même file : la route et les mots changent. La clé
+   est le champ que nomme le 409 du serveur (`locuteur`, `presence`) ; `route` est aussi la
+   clé de sa réponse ; `etat` nomme l'état de la zone (`S.loc`, `S.perso`), son compteur
+   d'écritures (`ECRITS`), sa file (`ENVOIS`) et ses éléments (`#an-loc-…`, `#an-perso-…`) ;
+   `ligne`, la ligne du Contexte. */
+const LIENS = {
+  locuteur: { route: "locuteur", etat: "loc", ligne: "locuteur", mot: "Locuteur",
+              retire: "Locuteur retiré." },
+  presence: { route: "personnage", etat: "perso", ligne: "personnage", mot: "Personnage",
+              retire: "Personnage retiré." },
+};
+const idLien = (lieu, quoi) => `#an-${LIENS[lieu].etat}-${quoi}`;
+const etatLien = (lieu) => S[LIENS[lieu].etat];
+
 async function rendreContexte() {
   const tour = ++tourContexte;
   const z = zoneCourante();
   const gestes = A.gestesDuContexte(z, ecrivable());
   const id = z && !z.pseudo ? z.id : null;
-  const memeLoc = S.loc.region !== null && S.loc.region === id;
   const memeNote = S.note.region !== null && S.note.region === id;
   const lignes = new Set(A.contexte(z, {}).map((l) => l.cle));
   montrer("#an-ctx-loc-t", lignes.has("locuteur"));
@@ -612,12 +629,15 @@ async function rendreContexte() {
   montrer("#an-ctx-perso", lignes.has("personnage"));
   montrer("#an-ctx-note-t", lignes.has("note"));
   montrer("#an-ctx-note", lignes.has("note"));
-  // Le locuteur : la puce, et le champ quand on écrit. Relu sur la MÊME zone (« Actualiser »,
-  // Ctrl+Z), le champ garde le nom à moitié tapé.
-  S.loc = { region: lignes.has("locuteur") ? id : null, vu: undefined };
-  montrer("#an-loc-saisie", gestes.has("locuteur"));
-  if (!memeLoc) { $("#an-loc-input").value = ""; $("#an-loc-liste").hidden = true; }
-  montrerLocuteur(undefined, false);
+  // Le locuteur, le personnage d'une boîte : la puce, et le champ quand on écrit. Relus sur la
+  // MÊME zone (« Actualiser », Ctrl+Z), le champ garde le nom à moitié tapé.
+  for (const [lieu, L] of Object.entries(LIENS)) {
+    const meme = S[L.etat].region !== null && S[L.etat].region === id;
+    S[L.etat] = { region: lignes.has(L.ligne) ? id : null, vu: undefined };
+    montrer(idLien(lieu, "saisie"), gestes.has(L.ligne));
+    if (!meme) { $(idLien(lieu, "input")).value = ""; $(idLien(lieu, "liste")).hidden = true; }
+    montrerLien(lieu, undefined, false);
+  }
   $("#an-loc-input").setAttribute("aria-label",
     `Attribuer un locuteur ${(z && A_LA[z.type]) || ""}`.trim());
   // La note : le champ quand on écrit, sinon le texte. Une saisie pas encore partie sur la
@@ -641,8 +661,6 @@ async function rendreContexte() {
     champ.value = "";
     marquerNote("");
   }
-  $("#an-ctx-perso").textContent = "…";
-  $("#an-ctx-perso").classList.add("muted");
   // Le nom d'un détail, la transcription d'un texte hors bulle (commit 9) : ils se lisent sur
   // la région elle-même, sans requête.
   const detail = !!z && !z.pseudo && z.type === "detail";
@@ -669,15 +687,15 @@ async function rendreContexte() {
   ]);
   if (tour !== tourContexte) return;
   const val = new Map(A.contexte(z, { locuteur, personnage, note }).map((l) => [l.cle, l.valeur]));
-  if (lignes.has("locuteur")) {
-    // Un locuteur parti entre-temps : sa réponse a le dernier mot. Pas encore revenue, ou refusée,
+  for (const [lieu, lu] of [["locuteur", locuteur], ["presence", personnage]]) {
+    const L = LIENS[lieu];
+    if (!lignes.has(L.ligne)) continue;
+    // Un choix parti entre-temps : sa réponse a le dernier mot. Pas encore revenue, ou refusée,
     // la lecture montre ce qu'elle sait, sans en faire la valeur vue.
-    if (ecrits.loc === ECRITS.loc) montrerLocuteur(locuteur, locuteur !== undefined);
-    else if (S.loc.vu === undefined) montrerLocuteur(locuteur, false);
-  }
-  if (lignes.has("personnage")) {
-    $("#an-ctx-perso").textContent = val.get("personnage");
-    $("#an-ctx-perso").classList.toggle("muted", ["—", "…"].includes(val.get("personnage")));
+    if (ecrits[L.etat] === ECRITS[L.etat]) {
+      montrerLien(lieu, lu, lu !== undefined);
+      if (lieu === "presence" && lu !== undefined) personnageSurImage(id, lu);
+    } else if (S[L.etat].vu === undefined) montrerLien(lieu, lu, false);
   }
   $("#an-note-lu").textContent = val.get("note");
   $("#an-note-lu").classList.toggle("muted", ["—", "…"].includes(val.get("note")));
@@ -691,67 +709,84 @@ async function rendreContexte() {
   champ.disabled = false;
 }
 
-/* La puce du locuteur. `vu` : ce rendu est-il ce que le serveur porte — la lecture, ou la
+/* La puce d'un lien. `vu` : ce rendu est-il ce que le serveur porte — la lecture, ou la
    réponse d'un geste ? Il devient alors la valeur VUE que le prochain geste déclare.
    `undefined` : pas encore lu (« … »). */
-function montrerLocuteur(loc, vu = true) {
-  if (vu) S.loc.vu = loc ? loc.id : null;
-  const nom = $("#an-loc-nom");
-  nom.textContent = loc === undefined ? "…"
-    : loc ? (loc.serie ? `${loc.nom} · ${loc.serie}` : loc.nom) : "—";
-  nom.classList.toggle("muted", !loc);
-  $("#an-loc-retirer").hidden = !(loc && ecrivable());
+function montrerLien(lieu, p, vu = true) {
+  if (vu) etatLien(lieu).vu = p ? p.id : null;
+  const nom = $(idLien(lieu, "nom"));
+  nom.textContent = p === undefined ? "…"
+    : p ? (p.serie ? `${p.nom} · ${p.serie}` : p.nom) : "—";
+  nom.classList.toggle("muted", !p);
+  $(idLien(lieu, "retirer")).hidden = !(p && ecrivable());
+}
+
+/* Le nom qu'une boîte porte SUR L'IMAGE suit son personnage : la réponse d'un geste, la
+   version gardée d'un bandeau, une lecture. La case ne se redessine que s'il change et
+   qu'elle le montre. */
+function personnageSurImage(rid, p) {
+  const nom = p ? p.nom : null;
+  if (S.personnages.has(rid) && S.personnages.get(rid) === nom) return;
+  S.personnages.set(rid, nom);
+  const c = caseCourante();
+  if (c && c.zones.some((z) => z.id === rid)) rendreCase();
 }
 
 /* Le geste vaut pour la zone où il est FAIT (`rid`), pas celle du moment. */
-function choisirLocuteur(pid, rid, nom) {
+function choisirLien(lieu, pid, rid, nom) {
   if (rid === null || rid === undefined) return null;
   if (conflitOuvert()) return null;
-  return enchainer("loc", () => envoyerLocuteur(pid, rid, nom));
+  return enchainer(LIENS[lieu].etat, () => envoyerLien(lieu, pid, rid, nom));
 }
 
 /* `vuDit` : la valeur vue quand le geste la connaît sans la zone — la réponse à un bandeau, qui
    peut partir d'une autre zone. */
-async function envoyerLocuteur(pid, rid, nom, vuDit) {
+async function envoyerLien(lieu, pid, rid, nom, vuDit) {
   if (S.conflit) return;                          // le geste précédent a ouvert le bandeau
+  const L = LIENS[lieu];
   const corps = { personnage_id: pid };
-  const vu = vuDit !== undefined ? vuDit : rid === S.loc.region ? S.loc.vu : undefined;
+  const vu = vuDit !== undefined ? vuDit
+    : rid === etatLien(lieu).region ? etatLien(lieu).vu : undefined;
   if (vu !== undefined) corps.personnage_vu = vu;
-  ECRITS.loc += 1;
+  ECRITS[L.etat] += 1;
   try {
-    const { locuteur } = await apiSend("PUT", `/api/regions/${rid}/locuteur`, corps);
-    if (S.loc.region === rid) montrerLocuteur(locuteur);
-    annoncer(`Locuteur : ${locuteur ? locuteur.nom : "aucun"}.`);
+    const p = (await apiSend("PUT", `/api/regions/${rid}/${L.route}`, corps))[L.route];
+    if (etatLien(lieu).region === rid) montrerLien(lieu, p);
+    if (lieu === "presence") personnageSurImage(rid, p);
+    annoncer(`${L.mot} : ${p ? p.nom : "aucun"}.`);
   } catch (e) {
-    if (refusDuContexte(e, "locuteur", rid, { id: pid, nom })) return;
-    toast("Locuteur : " + e.message, "error");
+    if (refusDuContexte(e, lieu, rid, { id: pid, nom })) return;
+    toast(`${L.mot} : ` + e.message, "error");
   }
 }
 
-function retirerLocuteur() {
-  const rid = S.loc.region;
+function retirerLien(lieu) {
+  const rid = etatLien(lieu).region;
   if (rid === null) return null;
   if (conflitOuvert()) return null;
-  return enchainer("loc", () => envoyerRetraitLocuteur(rid));
+  return enchainer(LIENS[lieu].etat, () => envoyerRetraitLien(lieu, rid));
 }
 
-async function envoyerRetraitLocuteur(rid, vuDit) {
+async function envoyerRetraitLien(lieu, rid, vuDit) {
   if (S.conflit) return;
-  const vu = vuDit !== undefined ? vuDit : rid === S.loc.region ? S.loc.vu : undefined;
+  const L = LIENS[lieu];
+  const vu = vuDit !== undefined ? vuDit
+    : rid === etatLien(lieu).region ? etatLien(lieu).vu : undefined;
   const q = typeof vu === "number" ? `?personnage_vu=${vu}` : "";
-  ECRITS.loc += 1;
+  ECRITS[L.etat] += 1;
   try {
-    await apiSend("DELETE", `/api/regions/${rid}/locuteur${q}`);
+    await apiSend("DELETE", `/api/regions/${rid}/${L.route}${q}`);
   } catch (e) {
-    if (refusDuContexte(e, "locuteur", rid, null)) return;
-    toast("Locuteur : " + e.message, "error");
+    if (refusDuContexte(e, lieu, rid, null)) return;
+    toast(`${L.mot} : ` + e.message, "error");
     return;
   }
-  if (S.loc.region === rid) {
-    montrerLocuteur(null);
-    $("#an-loc-input").focus();
+  if (etatLien(lieu).region === rid) {
+    montrerLien(lieu, null);
+    $(idLien(lieu, "input")).focus();
   }
-  annoncer("Locuteur retiré.");
+  if (lieu === "presence") personnageSurImage(rid, null);
+  annoncer(L.retire);
 }
 
 /* La note : partie après le délai de frappe, à la sortie du champ, et avant tout départ de
@@ -838,8 +873,8 @@ function refusDuContexte(e, lieu, rid, saisie) {
   const c = e && e.statut === 409 && e.detail && e.detail.conflit;
   if (!c || c.champ !== lieu) return false;
   if (S.conflit) {
-    // Un autre conflit attend déjà : ce texte passera après lui. Un choix de locuteur n'a pas
-    // de champ où attendre : il se dit.
+    // Un autre conflit attend déjà : ce texte passera après lui. Un choix de personnage
+    // (locuteur, boîte) n'a pas de champ où attendre : il se dit.
     if (CHAMPS_DE_SAISIE[lieu]) retenir(lieu, rid, saisie);
     else toast(BDConflit.messageNonEnregistre(c), "error", 8000);
     return true;
@@ -938,12 +973,12 @@ function marquerConflit() {
 /* Le bandeau d'un conflit du Contexte : ce qui n'est pas enregistré, la version de l'autre. */
 function bandeauDuContexte(cf) {
   const c = cf.detail.conflit;
-  const locuteur = cf.lieu === "locuteur";
-  const quoi = locuteur ? BDConflit.texteLienNonEnregistre(cf.saisie)
+  const lien = Object.hasOwn(LIENS, cf.lieu);
+  const quoi = lien ? BDConflit.texteLienNonEnregistre(cf.saisie)
     : cf.lieu === "nom" ? "Votre nom n'est pas enregistré : il reste dans le Contexte."
     : cf.lieu === "ocr_texte" ? "Votre transcription n'est pas enregistrée : elle reste dans le Contexte."
     : "Votre note n'est pas enregistrée : elle reste dans le Contexte.";
-  const version = locuteur ? BDConflit.nomPersonnage(c.personnage, "locuteur")
+  const version = lien ? BDConflit.nomPersonnage(c.personnage, cf.lieu)
     : c.valeur_actuelle === null || c.valeur_actuelle === undefined || c.valeur_actuelle === ""
       ? "—" : String(c.valeur_actuelle);
   // Le bandeau suit d'une zone à l'autre : ailleurs, il dit où la saisie attend.
@@ -962,18 +997,19 @@ function bandeauDuContexte(cf) {
 async function resoudreConflitDuContexte(cf, garderMienne) {
   const c = cf.detail.conflit;
   const ici = cf.regionId === (zoneCourante() || {}).id;
-  if (cf.lieu === "locuteur") {
+  if (Object.hasOwn(LIENS, cf.lieu)) {
     if (garderMienne) {
       const vu = c.valeur_actuelle === undefined ? null : c.valeur_actuelle;
-      if (ici) S.loc.vu = vu;
-      await enchainer("loc", () => (cf.saisie
-        ? envoyerLocuteur(cf.saisie.id, cf.regionId, cf.saisie.nom, vu)
-        : envoyerRetraitLocuteur(cf.regionId, vu)));
+      if (ici) etatLien(cf.lieu).vu = vu;
+      await enchainer(LIENS[cf.lieu].etat, () => (cf.saisie
+        ? envoyerLien(cf.lieu, cf.saisie.id, cf.regionId, cf.saisie.nom, vu)
+        : envoyerRetraitLien(cf.lieu, cf.regionId, vu)));
     } else {
-      if (ici) montrerLocuteur(c.personnage || null);
+      if (ici) montrerLien(cf.lieu, c.personnage || null);
+      if (cf.lieu === "presence") personnageSurImage(cf.regionId, c.personnage || null);
       annoncer("La version enregistrée est gardée.");
     }
-    if (ici) $("#an-loc-input").focus();
+    if (ici) $(idLien(cf.lieu, "input")).focus();
     return;
   }
   if (cf.lieu === "nom" || cf.lieu === "ocr_texte") {
@@ -1318,8 +1354,13 @@ function brancherZonesTracees() {
 }
 
 function brancherContexte() {
-  BDChampPersonnage.monter("#an-loc-input", "#an-loc-liste", choisirLocuteur, () => S.loc.region);
-  $("#an-loc-retirer").addEventListener("click", retirerLocuteur);
+  // Deux montages du même champ : chacun sait ce que l'autre vient de créer (ANN-8).
+  for (const lieu of Object.keys(LIENS)) {
+    BDChampPersonnage.monter(idLien(lieu, "input"), idLien(lieu, "liste"),
+                             (pid, rid, nom) => choisirLien(lieu, pid, rid, nom),
+                             () => etatLien(lieu).region);
+    $(idLien(lieu, "retirer")).addEventListener("click", () => retirerLien(lieu));
+  }
   const champ = $("#an-note");
   champ.addEventListener("input", noteModifiee);
   // La note de la zone qu'on quitte part à la sortie du champ, avec son texte et sa zone :
@@ -3522,9 +3563,9 @@ function afficherSignal(autres) {
    planche qu'on QUITTE ; « Actualiser » les garde, eux, tant que leur relevé est là. */
 async function gardesDeSortie(quitter) {
   if (precisionEnVol) { try { await precisionEnVol; } catch (_) { /* dit par `ecrire` */ } }
-  // Le Contexte (commit 8) : la note pas encore partie part, le locuteur en vol revient ;
-  // le nom d'un détail et une transcription aussi (commit 9).
-  for (const envoi of [viderNote(), ENVOIS.loc, ENVOIS.nom, ENVOIS.ocr_texte]) {
+  // Le Contexte (commit 8) : la note pas encore partie part, le locuteur et le personnage en
+  // vol reviennent ; le nom d'un détail et une transcription aussi (commit 9).
+  for (const envoi of [viderNote(), ENVOIS.loc, ENVOIS.perso, ENVOIS.nom, ENVOIS.ocr_texte]) {
     if (envoi) { try { await envoi; } catch (_) { /* dit par l'envoi */ } }
   }
   // Un conflit ouvert — celui que la précision vient peut-être d'ouvrir — attend son choix.
@@ -4015,7 +4056,7 @@ async function annulerPage() {
   if (conflitOuvert()) return;
   // Ce qui n'est pas parti part d'abord : Ctrl+Z défait le DERNIER geste, et une note tapée
   // juste avant en est un (commit 8).
-  for (const envoi of [viderNote(), ENVOIS.loc, ENVOIS.nom, ENVOIS.ocr_texte]) {
+  for (const envoi of [viderNote(), ENVOIS.loc, ENVOIS.perso, ENVOIS.nom, ENVOIS.ocr_texte]) {
     if (envoi) { try { await envoi; } catch (_) { /* dit par l'envoi */ } }
   }
   if (conflitOuvert()) return;

@@ -1097,9 +1097,9 @@ rien marquer (Ctrl+Entrée), *Précédente* revient (Ctrl+Maj+Entrée), *Termin�
 et avance. Le parcours se déduit de ce que la grille vise, dans l'ordre de lecture ; *à faire
 seulement* saute ce qui est terminé.
 
-**Le Contexte**, sous la minicarte, porte ce qui n'est pas du vocabulaire : le locuteur, la
-note, le nom d'un détail, la transcription d'un texte hors bulle. Le personnage d'une boîte s'y
-lit et s'écrit dans l'Atelier. Si quelqu'un d'autre a changé cette valeur entre-temps, le champ
+**Le Contexte**, sous la minicarte, porte ce qui n'est pas du vocabulaire : le locuteur, le
+personnage d'une boîte, la note, le nom d'un détail, la transcription d'un texte hors bulle. Si
+quelqu'un d'autre a changé cette valeur entre-temps, le champ
 passe à l'encre d'alerte et dit *En attente de votre choix* : le bandeau, en bas de la grille,
 offre de remplacer par la vôtre ou de garder l'autre. Vous pouvez changer de zone pendant qu'il
 attend : votre saisie reste sur sa zone, retouches comprises, et le bandeau dit laquelle. Ce que

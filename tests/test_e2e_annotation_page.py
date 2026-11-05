@@ -136,7 +136,7 @@ def test_choisir_une_case_puis_une_zone_ne_change_la_taille_de_rien(page, decor)
 def test_la_boite_personnage_dit_son_personnage_sur_l_image(page, decor):
     _ouvrir(page, decor, decor["boite"])
     expect(page.locator("#an-vue-case text.an-vz-lbl", has_text="Haddock")).to_have_count(1)
-    expect(page.locator('#an-ctx-corps dd[data-ctx="personnage"]')).to_have_text("Haddock")
+    expect(page.locator('#an-ctx-corps dd[data-ctx="personnage"] #an-perso-nom')).to_have_text("Haddock")
     # Une étiquette lue à taille d'ÉCRAN constante, quelle que soit la case.
     taille = page.evaluate("""() => {
       const t = [...document.querySelectorAll('#an-vue-case text.an-vz-lbl')]
@@ -924,6 +924,11 @@ def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
         perso = c.post("/api/personnages", json={"nom": "Haddock"}).json()["id"]
         assert c.put(f"/api/regions/{bulle}/locuteur",
                      json={"personnage_id": perso}).status_code == 200
+        boite = c.post(f"/api/planches/{pid}/regions",
+                       json={"type": "personnage", "x": 300, "y": 400, "w": 150, "h": 300,
+                             "parent_id": case}).json()["id"]
+        assert c.put(f"/api/regions/{boite}/personnage",
+                     json={"personnage_id": perso}).status_code == 200
     page.set_extra_http_headers({"Remote-User": "lectrice"})
     page.goto(f"{live_server}/annotation?album={aid}&planche={pid}&region={bulle}",
               wait_until="networkidle")
@@ -961,6 +966,11 @@ def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
     expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
     expect(page.locator("#an-loc-saisie")).to_be_hidden()
     expect(page.locator("#an-loc-retirer")).to_be_hidden()
+    # Le personnage d'une boîte, de même : la puce, sans champ ni « × ».
+    _zone(page, "boîte")
+    expect(page.locator("#an-perso-nom")).to_have_text("Haddock")
+    expect(page.locator("#an-perso-saisie")).to_be_hidden()
+    expect(page.locator("#an-perso-retirer")).to_be_hidden()
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30,
                       headers={**ECRITURE, **admin}) as c:
         assert len(c.get(f"/api/planches/{pid}/releves").json()["releves"]) == 1
@@ -1321,14 +1331,141 @@ def test_le_locuteur_se_choisit_et_se_retire_dans_le_contexte(page, decor):
     expect(page.locator("#an-loc-nom")).to_have_text("—")
     with _http(decor) as c:
         assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"] is None
-    # Le CARTOUCHE a un locuteur ; la boîte personnage n'en a pas, son personnage se lit.
+    # Le CARTOUCHE a un locuteur ; la boîte personnage n'en a pas, son personnage s'écrit.
     page.locator('#an-mini .an-mz[data-case="1"]').click()
     page.locator(f'#an-vue-case rect[data-zone="{decor["cartouche"]}"]').click()
     expect(page.locator("#an-loc-input")).to_have_attribute("aria-label", "Attribuer un locuteur au cartouche")
     page.locator('#an-mini .an-mz[data-case="0"]').click()
     page.locator(f'#an-vue-case rect[data-zone="{decor["boite"]}"]').click()
     expect(page.locator("#an-ctx-loc")).to_be_hidden()
-    expect(page.locator("#an-ctx-perso")).to_have_text("Haddock")
+    expect(page.locator("#an-perso-nom")).to_have_text("Haddock")
+    expect(page.locator("#an-perso-input")).to_be_visible()
+
+
+def test_le_personnage_d_une_boite_se_choisit_et_se_retire_dans_le_contexte(page, decor):
+    """Une condition du retrait du mode Annotation de l'Atelier (Hugo, 2026-11-02) : l'identité
+    d'une boîte s'écrit ici, par le champ du locuteur, sous la même garde (CONC-4), et le nom
+    écrit sur l'image suit."""
+    _ouvrir(page, decor, decor["boite"])
+    expect(page.locator("#an-perso-nom")).to_have_text("Haddock")
+    sur_image = page.locator("#an-vue-case text.an-vz-lbl")
+    expect(sur_image.filter(has_text="Haddock")).to_have_count(1)
+    champ = page.locator("#an-perso-input")
+    expect(champ).to_have_attribute("aria-label", "Identifier le personnage de la boîte")
+    with _http(decor) as c:
+        haddock = c.get(f"/api/regions/{decor['boite']}/personnage").json()["personnage"]["id"]
+    champ.fill("Tournesol")
+    expect(page.locator("#an-perso-liste")).to_contain_text("Créer « Tournesol »")
+    with _reponse_de(page, f"/regions/{decor['boite']}/personnage") as rep:
+        champ.press("Enter")
+    assert rep.value.request.post_data_json["personnage_vu"] == haddock   # la valeur VUE part
+    expect(page.locator("#an-perso-nom")).to_have_text("Tournesol")
+    expect(page.locator("#an-perso-liste")).to_be_hidden()
+    expect(sur_image.filter(has_text="Tournesol")).to_have_count(1)
+    expect(sur_image.filter(has_text="Haddock")).to_have_count(0)
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['boite']}/personnage").json()["personnage"]["nom"] == "Tournesol"
+        # Deux liens, deux routes : le locuteur de la bulle n'a pas bougé.
+        assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["nom"] == "Haddock"
+        tournesol = c.get(f"/api/regions/{decor['boite']}/personnage").json()["personnage"]["id"]
+    # Retirer déclare aussi ce que l'écran voyait.
+    with page.expect_response(lambda r: r.request.method == "DELETE"
+                              and f"/regions/{decor['boite']}/personnage" in r.url) as rep:
+        page.locator("#an-perso-retirer").click()
+    assert rep.value.url.endswith(f"?personnage_vu={tournesol}")
+    expect(page.locator("#an-perso-nom")).to_have_text("—")
+    expect(page.locator("#an-perso-retirer")).to_be_hidden()
+    expect(page.locator("#an-perso-input")).to_be_focused()
+    expect(sur_image.filter(has_text="Tournesol")).to_have_count(0)
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['boite']}/personnage").json()["personnage"] is None
+
+
+def test_un_personnage_change_ailleurs_ouvre_le_bandeau(page, decor):
+    """Le 409 de CONC-4 sur une boîte : le bandeau de la page, le choix gardé dans le conflit,
+    « Remplacer par la mienne » qui écrit le sien sur la version qu'il a montrée."""
+    _ouvrir(page, decor, decor["boite"])
+    expect(page.locator("#an-perso-nom")).to_have_text("Haddock")
+    _conflit_de_personnage(page, decor, "Milou", "Tournesol")
+    expect(page.locator("#an-cf-titre")).to_contain_text("Personnage montré modifié")
+    expect(page.locator("#an-guide-contenu")).to_contain_text("Votre choix, Tournesol, n'est pas enregistré.")
+    expect(page.locator("#an-guide-contenu")).to_contain_text("Milou")
+    with _http(decor) as c:
+        milou = c.get(f"/api/regions/{decor['boite']}/personnage").json()["personnage"]
+    assert milou["nom"] == "Milou"
+    # Tant que le bandeau attend, un autre choix ne part pas : il le désigne.
+    page.locator("#an-perso-input").fill("Haddock")
+    expect(page.locator("#an-perso-liste")).to_contain_text("Haddock")
+    page.locator("#an-perso-input").press("Enter")
+    expect(page.locator("#toasts")).to_contain_text("Réglez d'abord le conflit")
+    # Répondu depuis une AUTRE zone, il déclare la version que le bandeau a montrée.
+    _zone(page, "bulle")
+    with _reponse_de(page, f"/regions/{decor['boite']}/personnage") as q:
+        page.locator("#an-cf-mienne").click()
+    assert q.value.request.post_data_json["personnage_vu"] == milou["id"]
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['boite']}/personnage").json()["personnage"]["nom"] == "Tournesol"
+    _zone(page, "boîte")
+    expect(page.locator("#an-perso-nom")).to_have_text("Tournesol")
+    expect(page.locator("#an-vue-case text.an-vz-lbl", has_text="Tournesol")).to_have_count(1)
+    # « Garder l'autre » : sa version revient sur la puce et sur l'image.
+    _conflit_de_personnage(page, decor, "Nestor", "Séraphin")
+    expect(page.locator("#an-cf-titre")).to_be_visible()
+    page.locator("#an-cf-autre").click()
+    expect(page.locator("#an-cf-titre")).to_have_count(0)
+    expect(page.locator("#an-perso-nom")).to_have_text("Nestor")
+    expect(page.locator("#an-vue-case text.an-vz-lbl", has_text="Nestor")).to_have_count(1)
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['boite']}/personnage").json()["personnage"]["nom"] == "Nestor"
+
+
+def test_ctrl_z_defait_le_personnage_d_une_boite(page, decor):
+    _ouvrir(page, decor, decor["boite"])
+    page.locator("#an-perso-input").fill("Tournesol")
+    expect(page.locator("#an-perso-liste")).to_contain_text("Créer « Tournesol »")
+    page.locator("#an-perso-input").press("Enter")
+    expect(page.locator("#an-perso-nom")).to_have_text("Tournesol")
+    page.locator("#an-zones [aria-pressed='true']").focus()     # hors d'un champ
+    page.keyboard.press("Control+z")
+    expect(page.locator("#toasts")).to_contain_text("Annulé :")
+    expect(page.locator("#an-perso-nom")).to_have_text("Haddock")
+    expect(page.locator("#an-vue-case text.an-vz-lbl", has_text="Haddock")).to_have_count(1)
+    with _http(decor) as c:
+        assert c.get(f"/api/regions/{decor['boite']}/personnage").json()["personnage"]["nom"] == "Haddock"
+
+
+def test_un_choix_de_personnage_en_vol_retient_la_planche(page, decor):
+    """Les gardes d'un départ attendent le personnage en vol, comme le locuteur : s'il revient
+    en 409, le bandeau s'ouvre sur la planche qu'il visait, et l'on y reste."""
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=180,
+                      headers=ECRITURE) as c:
+        p2 = c.post(f"/api/albums/{decor['album']}/import",
+                    files={"file": ("p2.png", make_png(800, 1000), "image/png")}).json()["id"]
+        c.post("/api/personnages", json={"nom": "Tournesol"})
+        milou = c.post("/api/personnages", json={"nom": "Milou"}).json()["id"]
+    _ouvrir(page, decor, decor["boite"])
+    expect(page.locator("#an-perso-nom")).to_have_text("Haddock")
+    retenues = []
+    page.route(f"**/api/regions/{decor['boite']}/personnage",
+               lambda route: retenues.append(route) if route.request.method == "PUT"
+               else route.continue_())
+    page.locator("#an-perso-input").fill("Tournesol")
+    expect(page.locator("#an-perso-liste")).to_contain_text("Tournesol")
+    page.locator("#an-perso-input").press("Enter")
+    for _ in range(50):
+        if retenues:
+            break
+        page.wait_for_timeout(100)
+    assert retenues, "le choix n'est pas parti"
+    with _http(decor) as c:                        # un autre écran, pendant l'aller-retour
+        assert c.put(f"/api/regions/{decor['boite']}/personnage",
+                     json={"personnage_id": milou}).status_code == 200
+    page.locator("#an-planche-choix").select_option(str(p2))
+    retenues[0].continue_()
+    expect(page.locator("#an-cf-titre")).to_contain_text("Personnage montré modifié")
+    expect(page.locator("#an-planche-choix")).to_have_value(str(decor["planche"]))
+    expect(page.locator("#an-tete-zone")).to_contain_text("boîte")
 
 
 def test_deux_personnages_du_meme_nom_se_departagent_dans_le_contexte(page, decor):
@@ -1755,6 +1892,17 @@ def _conflit_de_locuteur(page, d, ailleurs, mienne):
     page.locator("#an-loc-input").press("Enter")
 
 
+def _conflit_de_personnage(page, d, ailleurs, mienne):
+    with _http(d) as c:
+        pid = c.post("/api/personnages", json={"nom": ailleurs}).json()["id"]
+        c.post("/api/personnages", json={"nom": mienne})
+        assert c.put(f"/api/regions/{d['boite']}/personnage",
+                     json={"personnage_id": pid}).status_code == 200
+    page.locator("#an-perso-input").fill(mienne)
+    expect(page.locator("#an-perso-liste")).to_contain_text(mienne)
+    page.locator("#an-perso-input").press("Enter")
+
+
 def _conflit_de_nom(page, d, rid, ailleurs, mienne):
     with _http(d) as c:
         assert c.put(f"/api/regions/{rid}", json={"nom": ailleurs}).status_code == 200
@@ -1776,7 +1924,7 @@ def _plus_de_mention(mention, champ):
         expect(mention).to_be_hidden()
 
 
-@pytest.mark.parametrize("champ", ["note", "locuteur", "nom", "transcription"])
+@pytest.mark.parametrize("champ", ["note", "locuteur", "personnage", "nom", "transcription"])
 def test_un_conflit_du_contexte_se_voit_depuis_le_champ(page, decor, champ):
     """Hugo, sur la passe : le bandeau naît en bas à droite alors qu'on regarde à gauche. Le
     champ prend l'alerte, le bandeau la même couleur, la mention le dit en mots, RIEN ne
@@ -1789,6 +1937,9 @@ def test_un_conflit_du_contexte_se_voit_depuis_le_champ(page, decor, champ):
             "#an-note" if champ == "note" else "#an-loc-input"
         provoquer = (lambda a, m: _conflit_de_note(page, decor, a, m)) if champ == "note" \
             else (lambda a, m: _conflit_de_locuteur(page, decor, a, m))
+    elif champ == "personnage":
+        region, ligne, saisie = decor["boite"], "#an-ctx-perso", "#an-perso-input"
+        provoquer = lambda a, m: _conflit_de_personnage(page, decor, a, m)  # noqa: E731
     elif champ == "nom":
         region, ligne, saisie = _detail(decor, nom="la lampe"), "#an-ctx-nom", "#an-nom"
         provoquer = lambda a, m: _conflit_de_nom(page, decor, region, a, m)  # noqa: E731

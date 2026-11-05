@@ -283,9 +283,9 @@
 
   /* LE CONTEXTE MODIFIABLE (jalon 3, commit 8) : les lignes du Contexte qu'un geste écrit,
      sur un album où l'on écrit (`ecrit`) — le locuteur d'une zone de texte, la note de toute
-     zone. Le personnage d'une boîte reste EN LECTURE : il s'écrit dans l'Atelier (le cadrage
-     ne le met pas dans le Contexte modifiable). Rien sur un album qu'on ne fait que lire, ni
-     sur la case pseudo, qui n'est pas une région.
+     zone ; et le PERSONNAGE d'une boîte, par le même champ que le locuteur (une condition du
+     retrait du mode Annotation de l'Atelier, Hugo, 2026-11-02). Rien sur un album qu'on ne
+     fait que lire, ni sur la case pseudo, qui n'est pas une région.
      Commit 9 : le NOM d'un détail ; la TRANSCRIPTION d'une zone de texte hors bulle (le type
      `texte`, celui que la page trace ; une bulle et un cartouche se transcrivent dans
      l'Atelier) ; et « Supprimer cette zone » sur les deux sortes que la page TRACE — le
@@ -295,6 +295,7 @@
     const out = new Set();
     if (!ecrit || !zone || zone.pseudo) return out;
     if (estTexte(zone.type)) out.add("locuteur");
+    if (zone.type === "personnage") out.add("personnage");
     out.add("note");
     if (zone.type === "detail") out.add("nom");
     if (zone.type === "texte") out.add("transcription");
@@ -817,10 +818,12 @@
 
   /* Le CHAMP du Contexte qu'un conflit ouvert fait attendre (passe du jalon 3) : la ligne
      `data-ctx` à marquer, sur la zone qu'on regarde seulement. `null` ailleurs : un conflit
-     sur un relevé, ou sur une autre zone que celle qu'on a rejointe entre-temps. */
+     sur un relevé, ou sur une autre zone que celle qu'on a rejointe entre-temps. Le lieu est
+     le champ que nomme le 409 du serveur : `presence` pour le personnage d'une boîte. */
+  const LIGNE_DU_LIEU = { ocr_texte: "transcription", presence: "personnage" };
   function champEnConflit(conflit, zone) {
     if (!conflit || conflit.sorte !== "contexte" || !zone || zone.id !== conflit.regionId) return null;
-    return conflit.lieu === "ocr_texte" ? "transcription" : conflit.lieu;
+    return LIGNE_DU_LIEU[conflit.lieu] || conflit.lieu;
   }
 
   /* « PORTE SUR » : ce que la grille ouverte vise depuis la zone choisie — des mots d'une

@@ -78,11 +78,11 @@
           <div id="an-mini" class="an-mini" title="Choisir une case"></div>
         </div>
         <!-- Le Contexte (commit 8) : ce qui n'est pas du vocabulaire. Sur un album où l'on
-             écrit, le locuteur et la note s'écrivent ICI ; le personnage d'une boîte reste en
-             lecture. Les lignes sont FIXES : la zone choisie les montre ou les cache. -->
+             écrit, le locuteur, le personnage d'une boîte et la note s'écrivent ICI. Les
+             lignes sont FIXES : la zone choisie les montre ou les cache. -->
         <section class="an-ctx" aria-labelledby="an-ctx-titre">
           <h2 class="an-titre" id="an-ctx-titre"
-              title="Ce qui n'est pas du vocabulaire : le locuteur, la note">Contexte</h2>
+              title="Ce qui n'est pas du vocabulaire : le locuteur, le personnage, la note">Contexte</h2>
           <dl id="an-ctx-corps" class="an-ctx-corps">
             <dt id="an-ctx-loc-t" hidden>Locuteur</dt>
             <dd id="an-ctx-loc" data-ctx="locuteur" hidden>
@@ -96,8 +96,17 @@
               </div>
             </dd>
             <dt id="an-ctx-perso-t" hidden>Personnage</dt>
-            <dd id="an-ctx-perso" data-ctx="personnage" hidden
-                title="L'identité d'une boîte s'écrit dans l'Atelier"></dd>
+            <dd id="an-ctx-perso" data-ctx="personnage" hidden>
+              <span id="an-perso-puce" class="an-loc-puce"><span id="an-perso-nom" class="an-loc-nom"></span><button
+                id="an-perso-retirer" class="ghost small an-loc-x" type="button" hidden
+                aria-label="Retirer le personnage" title="Retirer le personnage">×</button></span>
+              <div id="an-perso-saisie" class="tag-input-wrap an-loc-saisie" hidden>
+                <input type="text" id="an-perso-input" autocomplete="off" spellcheck="false"
+                       placeholder="Identifier le personnage…"
+                       aria-label="Identifier le personnage de la boîte">
+                <div id="an-perso-liste" class="tag-suggest" hidden></div>
+              </div>
+            </dd>
             <dt id="an-ctx-note-t" hidden><label for="an-note" id="an-note-lbl">Note</label></dt>
             <dd id="an-ctx-note" data-ctx="note" hidden>
               <span id="an-note-lu" class="an-note-lu"></span>
@@ -296,7 +305,7 @@
 <script src="/static/lib/atelier.js"></script><!-- le filtre de collection, partagé avec l'Atelier -->
 <script src="/static/lib/conflit.js"></script><!-- les mots du bandeau de CONC-3 -->
 <script src="/static/lib/propositions.js"></script><!-- les homonymes du champ « personnage » -->
-<script src="/static/lib/champ-personnage.js"></script><!-- le locuteur, commun avec l'Atelier -->
+<script src="/static/lib/champ-personnage.js"></script><!-- le locuteur et le personnage d'une boîte, communs avec l'Atelier -->
 <script src="/static/lib/annulation.js"></script><!-- Ctrl+Z, commun avec l'Atelier -->
 <script src="/static/lib/signal-planche.js"></script><!-- « ⟳ Actualiser », commun avec l'Atelier -->
 <script src="/static/lib/annotation.js"></script>

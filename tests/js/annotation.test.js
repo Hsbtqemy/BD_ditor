@@ -206,7 +206,7 @@ test("le Contexte, en lecture : ce qui n'est pas du vocabulaire", () => {
   assert.deepEqual(A.contexte(null, {}), []);
 });
 
-test("le Contexte modifiable : le locuteur d'une zone de texte, la note de toute zone", () => {
+test("le Contexte modifiable : le locuteur d'une zone de texte, le personnage d'une boîte, la note", () => {
   const g = (z, e) => [...A.gestesDuContexte(z, e)].sort();
   assert.deepEqual(g(R(2, "bulle", 0, 0, 1, 1), true), ["locuteur", "note"]);
   assert.deepEqual(g(R(2, "cartouche", 0, 0, 1, 1), true), ["locuteur", "note"]);
@@ -215,8 +215,9 @@ test("le Contexte modifiable : le locuteur d'une zone de texte, la note de toute
   // Le détail : un nom, une note, et se supprime ; ni locuteur ni transcription.
   assert.deepEqual(g(R(4, "detail", 0, 0, 1, 1), true), ["nom", "note", "supprimer"]);
   assert.deepEqual(g(R(4, "detail", 0, 0, 1, 1), false), []);
-  // Le personnage d'une boîte reste en lecture ; la case n'a qu'une note.
-  assert.deepEqual(g(R(3, "personnage", 0, 0, 1, 1), true), ["note"]);
+  // Le personnage d'une boîte s'écrit ici, comme le locuteur ; la case n'a qu'une note.
+  assert.deepEqual(g(R(3, "personnage", 0, 0, 1, 1), true), ["note", "personnage"]);
+  assert.deepEqual(g(R(3, "personnage", 0, 0, 1, 1), false), []);
   assert.deepEqual(g(R(1, "case", 0, 0, 1, 1), true), ["note"]);
   // Rien en lecture, ni sur la case pseudo, ni sans zone.
   assert.deepEqual(g(R(2, "bulle", 0, 0, 1, 1), false), []);
@@ -532,6 +533,8 @@ test("le champ qu'un conflit fait attendre : sur la zone qu'on regarde, et sur e
   assert.equal(A.champEnConflit(cf("locuteur", 10), bulle), "locuteur");
   assert.equal(A.champEnConflit(cf("nom", 10), bulle), "nom");
   assert.equal(A.champEnConflit(cf("ocr_texte", 10), bulle), "transcription");
+  // Le personnage d'une boîte : le serveur nomme le champ `presence`, la ligne est « personnage ».
+  assert.equal(A.champEnConflit(cf("presence", 12), { id: 12, type: "personnage" }), "personnage");
   // Une autre zone, aucun conflit, un conflit sur un relevé, aucune zone : rien à marquer.
   assert.equal(A.champEnConflit(cf("note", 11), bulle), null);
   assert.equal(A.champEnConflit(null, bulle), null);
