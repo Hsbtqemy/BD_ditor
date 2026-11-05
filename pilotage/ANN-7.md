@@ -506,7 +506,7 @@ Maquette https://claude.ai/artifact/Kq5QsjxMvj3RokM5u6k9z1, version 2, privée :
 - [ ] **Les passes de QA que le basculement rend sans objet sont relues** — attendu : chacune archivée, réécrite ou gardée, avec sa raison : `import-bilan-refus`, `termes-illisibles`, `concordance-tags`, et en partie `lot-1` et `lot-1-suite` (liste de l'agent du cadrage)
 
 ### Au basculement — le texte du wizard
-- [ ] **Le wizard dit trois modes de l'Atelier le jour du basculement** — attendu : à la sortie d'`UX-6`, il dit quatre modes, dont « Annotation pour poser des tags et une note (les grilles sont dans la page Annotation) » ; le commit du basculement retire cette étape de son texte, et `UX-3` suit. **Cinq zones** du wizard parlent du vocabulaire, pas seulement « Quatre modes » : `recherche-champ`, `recherche-tags` (dont l'élément porteur disparaît), `exploration-sous-corpus` et `exploration-lexique` aussi (vu par l'agent du cadrage le 2026-11-05)
+- [ ] **Le wizard dit trois modes de l'Atelier le jour du basculement** — attendu : à la sortie d'`UX-6`, il dit quatre modes, dont « Annotation pour poser des tags et une note (les grilles sont dans la page Annotation) » ; le commit du basculement retire cette étape de son texte, et `UX-3` suit. **Cinq zones** du wizard parlent du vocabulaire, pas seulement « Quatre modes » : `recherche-champ`, `recherche-tags` (dont l'élément porteur disparaît), `exploration-sous-corpus` et `exploration-lexique` aussi (vu par l'agent du cadrage le 2026-11-05). **Hugo, 2026-11-05 : d'ici là, la visite montre ce qui est à l'écran** — « Quatre modes » tant que le bouton « Annotation » existe dans l'Atelier, ni anticipé ni caché avant le basculement ; c'est le commit du basculement qui passe aux trois modes
 
 ### L'ordre
 
