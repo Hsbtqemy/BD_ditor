@@ -351,6 +351,69 @@ def test_une_grille_de_travail_deja_nee_recoit_le_drapeau_sans_doubler(vraie_v38
     assert [g["nom"] for g in repli if g["travail"]] == [f"{GRILLE_DE_TRAVAIL_NOM} 2"]
 
 
+class _Panne(Exception):
+    pass
+
+
+@pytest.mark.parametrize("colonne, ecriture", [
+    ("etat", "UPDATE grille_entree"),
+    ("travail", "UPDATE grille SET travail"),
+])
+def test_une_panne_entre_la_colonne_et_ses_marques_ne_les_perd_pas(vraie_v38, monkeypatch,
+                                                                   colonne, ecriture):
+    """La colonne naît d'un `ALTER`, que le module `sqlite3` valide seul s'il n'y a pas de
+    transaction ouverte ; ses marques — l'état provisoire, le drapeau — d'un `UPDATE`. Une
+    migration qui tombe entre les deux laisse la colonne sans ses marques : la relance doit
+    les poser, et non les sauter parce que la colonne est là. La connexion de la panne VALIDE
+    chaque `ALTER` dès qu'il passe — le pire cas, celui où rien d'autre n'était ouvert — puis
+    lève sur l'`UPDATE` qui suit."""
+    d = _poser_une_grille_ouverte(vraie_v38)
+    f = _faits()
+    c = sqlite3.connect(vraie_v38)
+    try:
+        nee = c.execute("INSERT INTO grille (projet_id, nom, ouverte) "
+                        "VALUES (?, 'Mes étiquettes', 1)", (f["projet_etude"],)).lastrowid
+        c.execute("INSERT INTO evenement (type, cible_table, cible_id, agent_type, apres) "
+                  "VALUES ('creation', 'grille', ?, 'humain', ?)",
+                  (nee, json.dumps({"nom": GRILLE_DE_TRAVAIL_NOM, "travail": True})))
+        c.commit()
+    finally:
+        c.close()
+
+    class Conn(sqlite3.Connection):
+        def execute(self, sql, *a):
+            if sql.lstrip().startswith(ecriture):
+                raise _Panne(ecriture)
+            r = super().execute(sql, *a)
+            if f"ADD COLUMN {colonne}" in sql:
+                self.commit()
+            return r
+
+    vraie = database.get_connection
+
+    def en_panne():
+        conn = sqlite3.connect(database.DB_PATH, check_same_thread=False, factory=Conn)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.create_function("cle_tag", 1, database.cle_tag, deterministic=True)
+        return conn
+
+    monkeypatch.setattr(database, "get_connection", en_panne)
+    with pytest.raises(_Panne):
+        database.init_db()
+    monkeypatch.setattr(database, "get_connection", vraie)
+    assert _sql(vraie_v38, "PRAGMA user_version")[0]["user_version"] == 38
+    assert colonne in {r["name"] for r in _sql(
+        vraie_v38, "PRAGMA table_info(grille_entree)" if colonne == "etat"
+        else "PRAGMA table_info(grille)")}
+    database.init_db()
+    assert _sql(vraie_v38, "PRAGMA user_version")[0]["user_version"] == 39
+    assert _sql(vraie_v38, "SELECT etat FROM grille_entree WHERE version_id = ? "
+                           "AND cle = 'ironie'", (d["version"],)) == [{"etat": "provisoire"}]
+    assert _sql(vraie_v38, "SELECT id FROM grille WHERE projet_id = ? AND travail = 1",
+                (f["projet_etude"],)) == [{"id": nee}]
+
+
 def test_l_etat_des_entrees_existantes(vraie_v38):
     """J4 : défini pour tout l'existant — les grilles fermées comme une entrée ÉCRITE d'une
     grille ouverte —, provisoire pour la seule entrée que le journal dit née en posant."""

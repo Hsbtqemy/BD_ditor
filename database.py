@@ -1837,29 +1837,35 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # migration v39 » ; I5, I6, Hugo, 2026-11-05) :
     # 1. l'ÉTAT d'une entrée de grille, par PRÉSENCE (J4) : DÉFINI pour l'existant, sauf les
     #    entrées que le journal dit nées EN POSANT (`entree_neuve` sous `grille`, la version
-    #    et la clé de l'entrée), PROVISOIRES. Écrit avec la colonne, donc une fois ;
+    #    et la clé de l'entrée), PROVISOIRES. La colonne par présence, les marques par la
+    #    VERSION : l'`ALTER` se valide seul (le module `sqlite3` n'ouvre pas de transaction
+    #    pour lui), l'`UPDATE` dans la transaction suivante ; gardé par la colonne, il était
+    #    sauté à la relance d'une migration tombée entre les deux, et l'état était perdu ;
     if "grille_entree" in _tables and "etat" not in _cols("grille_entree"):
         conn.execute("ALTER TABLE grille_entree ADD COLUMN etat TEXT NOT NULL "
                      "DEFAULT 'defini'")
-        if {"grille_version", "evenement"} <= _tables:
-            conn.execute(
-                "UPDATE grille_entree SET etat = 'provisoire' WHERE id IN ("
-                "SELECT e.id FROM grille_entree e JOIN grille_version v ON v.id = e.version_id "
-                "JOIN evenement ev ON ev.cible_table = 'grille' AND ev.cible_id = v.grille_id "
-                "AND json_valid(ev.apres) "
-                "AND json_extract(ev.apres, '$.entree_neuve.cle') = e.cle "
-                "AND json_extract(ev.apres, '$.entree_neuve.version') = v.numero)")
-    # 2. le drapeau de LA grille de travail d'un projet (J2), par PRÉSENCE : posé sur celle
-    #    que le journal dit née grille de travail (sa création porte `travail`, depuis le
-    #    2026-11-05) — la plus ancienne par projet —, puis au plus une par projet ;
+    if version < 39 and {"grille_entree", "grille_version", "evenement"} <= _tables:
+        conn.execute(
+            "UPDATE grille_entree SET etat = 'provisoire' WHERE id IN ("
+            "SELECT e.id FROM grille_entree e JOIN grille_version v ON v.id = e.version_id "
+            "JOIN evenement ev ON ev.cible_table = 'grille' AND ev.cible_id = v.grille_id "
+            "AND json_valid(ev.apres) "
+            "AND json_extract(ev.apres, '$.entree_neuve.cle') = e.cle "
+            "AND json_extract(ev.apres, '$.entree_neuve.version') = v.numero)")
+    # 2. le drapeau de LA grille de travail d'un projet (J2) : la colonne par PRÉSENCE, le
+    #    drapeau par la VERSION (la même fenêtre que l'état) — posé sur celle que le journal
+    #    dit née grille de travail (sa création porte `travail`, depuis le 2026-11-05), la
+    #    plus ancienne par projet, et jamais dans un projet qui en porte déjà une : au plus
+    #    une par projet ;
     if "grille" in _tables and "travail" not in _cols("grille"):
         conn.execute("ALTER TABLE grille ADD COLUMN travail INTEGER NOT NULL DEFAULT 0")
-        if "evenement" in _tables:
-            conn.execute(
-                "UPDATE grille SET travail = 1 WHERE id IN (SELECT MIN(g.id) FROM grille g "
-                "JOIN evenement ev ON ev.cible_table = 'grille' AND ev.type = 'creation' "
-                "AND ev.cible_id = g.id AND json_valid(ev.apres) "
-                "AND json_extract(ev.apres, '$.travail') GROUP BY g.projet_id)")
+    if version < 39 and {"grille", "evenement"} <= _tables:
+        conn.execute(
+            "UPDATE grille SET travail = 1 WHERE id IN (SELECT MIN(g.id) FROM grille g "
+            "JOIN evenement ev ON ev.cible_table = 'grille' AND ev.type = 'creation' "
+            "AND ev.cible_id = g.id AND json_valid(ev.apres) "
+            "AND json_extract(ev.apres, '$.travail') GROUP BY g.projet_id) "
+            "AND projet_id NOT IN (SELECT projet_id FROM grille WHERE travail = 1)")
     if "grille" in _tables:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_grille_travail "
                      "ON grille(projet_id) WHERE travail = 1")
