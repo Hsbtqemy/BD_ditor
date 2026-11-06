@@ -8,7 +8,7 @@ duree: 50 min
 
 **Où** — la pile de recette locale, `https://bd.127-0-0-1.sslip.io`, reconstruite sur
 `ce90237` ou après, état `apres-moustache` restauré (`C:\temp\bd-recette\etat-de-base.ps1
-restaurer apres-moustache`). Les mots de passe sont dans `C:\temp\bd-recette\comptes.txt`,
+restaurer apres-moustache`), puis le jeu repréparé, qui y manque de sa planche d'essai (`docker exec bd-app python tools/preparer_jeu.py --depot /data/jeu-depot --serveur /data/jeu-serveur --appliquer`). Les mots de passe sont dans `C:\temp\bd-recette\comptes.txt`,
 hors dépôt. Sous `arrivant`, qui n'a pas encore de bac à sable dans cet état, dans une fenêtre
 privée à 1 280 px de large, police ordinaire, sauf mention contraire.
 
