@@ -16,7 +16,7 @@ import database
 import grilles
 from config import GRILLE_DE_TRAVAIL_NOM
 from conftest import ADMIN
-from grilles_decor import LEA, STAG, csv_de, grille_active
+from grilles_decor import LEA, STAG, csv_de, grille_active, importer
 from test_releves import bulle, decor, poser  # noqa: F401
 
 
@@ -255,7 +255,15 @@ def test_les_responsables_changent_l_etat_avec_la_valeur_vue(client, decor, db_p
                                                "vu": {"etat": "provisoire"}})
     assert r.status_code == 409, r.text
     assert _etats(db_path, t["grille_id"]) == {"ironie": "defini"}
-    # Réimporter la grille ne change pas l'état d'une entrée qu'elle porte déjà.
+    r = client.patch(url, headers=ADMIN, json={"etat": "provisoire", "vu": {"etat": "defini"}})
+    assert r.status_code == 200, r.text
+    # Réimporter la grille ne change pas l'état d'une entrée qu'elle porte déjà — provisoire,
+    # quand l'import écrit DÉFINI —, et une entrée neuve du fichier naît définie.
+    importer(client, decor["p"], LEA, grille_id=t["grille_id"], ouverte=True, porte_sur=None,
+             listes=None, entrees=csv_de([["cle", "forme", "libelle"],
+                                          ["ironie", "simple", "ironie"],
+                                          ["neuve", "simple", "neuve"]]))
+    assert _etats(db_path, t["grille_id"]) == {"ironie": "provisoire", "neuve": "defini"}
 
 
 def test_la_grille_de_travail_se_designe_par_son_drapeau(client, db_path):
