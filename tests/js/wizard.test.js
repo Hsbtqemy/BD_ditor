@@ -1193,6 +1193,31 @@ test("« Pré-remplir » mène à la planche d'essai, les autres étapes à cell
                    ["atelier-traitement", "atelier-traitement-menu", "@essai"]);
 });
 
+/* À « Annoter », la fenêtre se pose à la hauteur du texte (Hugo, 2026-11-06) : l'ANCRE de
+   l'étape, une marque de son foyer, donne le haut de la fenêtre posée à côté du foyer. */
+test("à « Annoter », la fenêtre se pose à la hauteur des mots, et la phrase les nomme", () => {
+  const ann = W.ETAPES.find((x) => x.k === "annoter");
+  assert.equal(W.ancre(ann), "annotation-mots");
+  assert.ok(W.foyer(ann).includes(W.ancre(ann)));
+  for (const e of W.ETAPES.filter((x) => x.k !== "annoter")) assert.equal(W.ancre(e), null, e.k);
+  assert.equal(W.ancre(null), null);
+  const FEN = { w: 300, h: 160 }, ECRAN = { l: 8, t: 8, r: 1432, b: 792 };
+  const f = { l: 333, t: 118, r: 1440, b: 800 };     // la case, les mots et la grille
+  const mots = { t: 564 };
+  // À gauche du foyer : son haut sans ancre, celui des mots avec.
+  assert.deepEqual(W.placerFenetre(f, FEN, ECRAN, 14), { cote: "gauche", x: 19, y: 118 });
+  assert.deepEqual(W.placerFenetre(f, FEN, ECRAN, 14, mots), { cote: "gauche", x: 19, y: 564 });
+  // Bornée à l'écran ; dessous et dessus, l'ancre ne change rien.
+  assert.equal(W.placerFenetre(f, FEN, ECRAN, 14, { t: 700 }).y, 632);
+  const large = { l: 100, t: 20, r: 1400, b: 300 };
+  assert.deepEqual(W.placerFenetre(large, FEN, ECRAN, 14, mots),
+                   W.placerFenetre(large, FEN, ECRAN, 14));
+  assert.deepEqual(W.placerFenetre(f, FEN, ECRAN, 14, null), W.placerFenetre(f, FEN, ECRAN, 14));
+  // La phrase de Hugo (2026-11-06) : le mot se clique dans le texte, sous l'image.
+  assert.equal(sp(W.phraseEtape(ann, VUE, null)), "Cliquez un mot du texte, sous l'image, puis "
+    + "une entrée de la grille, à droite : c'est le vocabulaire du projet.");
+});
+
 /* « Traitement » saute aux yeux à « Pré-remplir » (Hugo, 2026-11-06) : le foyer PRINCIPAL,
    une marque du foyer de l'étape, tant qu'il y a à y cliquer. */
 test("« Traitement » est le foyer principal de « Pré-remplir », tant que son menu est fermé", () => {

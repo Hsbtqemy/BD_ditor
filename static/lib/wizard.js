@@ -233,8 +233,10 @@
         + "cassé, le texte se fait à la main." },
     { k: "annoter", titre: "Annoter", ou: "Page Annotation", surface: "/annotation",
       zones: ["annotation-case", "annotation-mots", "annotation-grille"],
-      phrase: "Cliquez un mot de la bulle, puis une entrée de la grille, à droite : c'est le "
-        + "vocabulaire du projet." },
+      // « du texte, sous l'image » (Hugo, 2026-11-06) : c'est là que se désignent les mots,
+      // et non sur la bulle de la case agrandie.
+      phrase: "Cliquez un mot du texte, sous l'image, puis une entrée de la grille, à droite : "
+        + "c'est le vocabulaire du projet." },
     { k: "chercher", titre: "Chercher et explorer", ou: "Recherche, Exploration",
       surface: "/recherche", dite: true, sansAlbum: true,
       zones: ["recherche-champ", "recherche-resultats"],
@@ -280,12 +282,22 @@
     // `@essai` : la planche, quand l'étape a sa planche d'essai — on y voit les cadres
     // apparaître ; sans elle, rien de plus (l'écran le résout).
     preremplir: ["atelier-traitement", "atelier-traitement-menu", "@essai"],
-    annoter: ["annotation-case", "annotation-grille"],
+    // Les mots aussi (Hugo, 2026-11-06) : le geste s'y fait, la fenêtre ne doit pas les
+    // couvrir, et la feuille du bas les laisse en vue. Le rectangle commun ne change pas.
+    annoter: ["annotation-case", "annotation-mots", "annotation-grille"],
     chercher: ["recherche-champ", "recherche-bac"],
     exporter: ["bibliotheque-actes"],
   };
 
   function foyer(e) { return (e && FOYERS[e.k]) || []; }
+
+  /* L'ANCRE d'une étape (Hugo, 2026-11-06) : la marque du foyer à la hauteur de laquelle la
+     fenêtre se pose quand elle est à côté du foyer, au lieu de son haut — à « Annoter », le
+     bloc du texte, où l'on clique les mots, et non la case agrandie, où l'on cliquerait la
+     bulle. `null` : le haut du foyer. */
+  const ANCRES = { annoter: "annotation-mots" };
+
+  function ancre(e) { return (e && ANCRES[e.k]) || null; }
 
   /* Le foyer PRINCIPAL d'une étape (Hugo, 2026-11-06) : la commande où se fait le geste,
      marquée plus fort que le reste du foyer — « Traitement » à « Pré-remplir », que le
@@ -305,13 +317,16 @@
   /* Où poser la fenêtre du guide : à DROITE du foyer si elle y tient, sinon à GAUCHE,
      sinon DESSOUS, sinon DESSUS — bornée à l'écran, à `marge` du foyer ; `repli` si rien ne
      tient (l'écran la pose alors en feuille, en bas, et la page lui réserve sa hauteur).
-     `f` et `ecran` : `{ l, t, r, b }` ; `taille` : `{ w, h }`. Sans foyer, au centre. */
-  function placerFenetre(f, taille, ecran, marge) {
+     `f` et `ecran` : `{ l, t, r, b }` ; `taille` : `{ w, h }`. Sans foyer, au centre.
+     `a` (`{ t }`, facultatif) : l'ancre de l'étape (`ancre`), dont le haut donne celui de
+     la fenêtre posée à droite ou à gauche. */
+  function placerFenetre(f, taille, ecran, marge, a) {
     const e = marge === undefined ? 14 : marge, w = taille.w, h = taille.h, v = ecran;
     const borne = (x, a, b) => Math.max(a, Math.min(x, Math.max(a, b)));
     if (!f) return { cote: "centre", x: (v.l + v.r - w) / 2, y: (v.t + v.b - h) / 2 };
-    if (f.r + e + w <= v.r) return { cote: "droite", x: f.r + e, y: borne(f.t, v.t, v.b - h) };
-    if (f.l - e - w >= v.l) return { cote: "gauche", x: f.l - e - w, y: borne(f.t, v.t, v.b - h) };
+    const haut = a && Number.isFinite(a.t) ? a.t : f.t;
+    if (f.r + e + w <= v.r) return { cote: "droite", x: f.r + e, y: borne(haut, v.t, v.b - h) };
+    if (f.l - e - w >= v.l) return { cote: "gauche", x: f.l - e - w, y: borne(haut, v.t, v.b - h) };
     if (f.b + e + h <= v.b) return { cote: "dessous", x: borne(f.l, v.l, v.r - w), y: f.b + e };
     if (f.t - e - h >= v.t) return { cote: "dessus", x: borne(f.l, v.l, v.r - w), y: f.t - e - h };
     return { cote: "repli", x: v.l, y: v.b - h };
@@ -1508,6 +1523,6 @@
            faite, phraseGuide, boutonGuide, bulleACorriger, vueCadree, PHRASES,
            rangeeDuJeu, cadreAvecMarge, boiteDeLaBulle, cadreDeLaBulle, ZOOM_CADRAGE,
            CLE_GUIDE, guideNeuf, lireGuide, retenirGuide, marquerVue, etapeIci,
-           marquesDesEtapes, FOYERS, foyer, foyerPrincipal, placerFenetre, recouvre, zoneLibre,
+           marquesDesEtapes, FOYERS, foyer, foyerPrincipal, ancre, placerFenetre, recouvre, zoneLibre,
            marquesDesFoyers };
 });

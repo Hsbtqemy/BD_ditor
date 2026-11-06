@@ -1695,6 +1695,12 @@
              r: Math.max(...rs.map((r) => r.r)), b: Math.max(...rs.map((r) => r.b)) };
   }
 
+  /* L'élément de l'ANCRE de l'étape (`BDWizard.ancre`), s'il est sur la page. */
+  function ancreDeLEtape() {
+    const m = F.mode === "etape" && !G.fin ? W.ancre(etapeCourante()) : null;
+    return m ? document.querySelector(`[data-parcours="${m}"]`) : null;
+  }
+
   /* La part visible du foyer PRINCIPAL de l'étape (`BDWizard.foyerPrincipal`) — tant que
      son menu est fermé, l'étape pas faite et son moteur là —, `null` sinon. */
   function principalDeLEtape() {
@@ -1827,8 +1833,10 @@
       // Tout en pixels visibles : la taille de la fenêtre comme le foyer et l'écran.
       const placer = () => {
         const q = fenetre.getBoundingClientRect();
+        const a = ancreDeLEtape();
         return W.placerFenetre(foyerDeLEtape(), { w: q.width, h: q.height },
-          { l: 8, t: 8, r: window.innerWidth - 8, b: window.innerHeight - 8 }, 14);
+          { l: 8, t: 8, r: window.innerWidth - 8, b: window.innerHeight - 8 }, 14,
+          a ? partVisible(a) : null);
       };
       let p = placer();
       // Le visuel d'une étape se retire plutôt que de pousser la fenêtre sur le foyer.
@@ -1875,7 +1883,9 @@
     };
     let r = union();
     if (r.t >= haut && r.b <= bas()) return;
-    els[0].scrollIntoView({ block: "nearest", inline: "nearest" });
+    // L'ancre de l'étape d'abord, quand elle en a une : c'est là que se fait le geste.
+    const a = ancreDeLEtape();
+    (a && els.includes(a) ? a : els[0]).scrollIntoView({ block: "nearest", inline: "nearest" });
     r = union();
     if (r.b > bas()) window.scrollBy({ top: Math.min(r.t - haut, r.b - bas()), behavior: "instant" });
     else if (r.t < haut) window.scrollBy({ top: r.t - haut, behavior: "instant" });

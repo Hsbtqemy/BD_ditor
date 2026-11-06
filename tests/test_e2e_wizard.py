@@ -1895,6 +1895,49 @@ def test_a_pre_remplir_traitement_saute_aux_yeux(page, jeu_essai):
     expect(cadre).to_have_count(0)
 
 
+# Hugo, 2026-11-06 : à « Annoter », la fenêtre se posait à la hauteur de la case agrandie —
+# « les utilisateurs risquent de cliquer sur la bulle, et non sur la zone où se passe
+# l'action ». Posée à côté du foyer, elle s'aligne sur le bloc du texte ; en feuille, le
+# texte remonte au-dessus d'elle. Elle ne recouvre ni les mots ni la grille.
+
+PLACE_ANNOTER = """() => {
+  const r = (s) => { const q = document.querySelector(s).getBoundingClientRect();
+                     return { l: q.left, t: q.top, r: q.right, b: q.bottom }; };
+  const fen = document.getElementById('wizard-fenetre');
+  return { fen: r('#wizard-fenetre'), feuille: fen.classList.contains('feuille'),
+           mots: r('[data-parcours="annotation-mots"]'),
+           grille: r('[data-parcours="annotation-grille"]'), haut: innerHeight };
+}"""
+
+
+def _se_recouvrent(a, b):
+    return min(a["r"], b["r"]) - max(a["l"], b["l"]) > 1 and min(a["b"], b["b"]) - max(a["t"], b["t"]) > 1
+
+
+@pytestmark_proxy
+@pytest.mark.parametrize("largeur", [1440, 1280, 768])
+def test_a_annoter_la_fenetre_se_pose_a_la_hauteur_du_texte(page, jeu, largeur):
+    page.set_viewport_size({"width": largeur, "height": 800})
+    _au_guide_sur(page, jeu, "complet", "annoter")
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Annoter", timeout=15000)
+    expect(page.locator("#wizard-fenetre .wf-phrase").first).to_contain_text(
+        "Cliquez un mot du texte, sous l'image")
+    page.wait_for_timeout(1800)          # la feuille, sa réserve, et le texte amené en vue
+    m = page.evaluate(PLACE_ANNOTER)
+    if largeur == 1440:
+        # À côté du foyer : le haut de la fenêtre, celui du bloc du texte.
+        assert not m["feuille"], m
+        assert abs(m["fen"]["t"] - m["mots"]["t"]) <= 2, m
+        assert not _se_recouvrent(m["fen"], m["grille"]), m
+    else:
+        # En feuille : le bloc du texte se lit en entier, au-dessus d'elle.
+        assert m["feuille"], m
+        assert m["mots"]["t"] >= 0 and m["mots"]["b"] <= m["fen"]["t"] + 1, m
+    assert not _se_recouvrent(m["fen"], m["mots"]), m
+    f = page.evaluate(MESURE_FOYER)
+    assert f["n"] and not f["recouvrent"], f
+
+
 # ── « Parcours terminé » ───────────────────────────────────────────────────────────────
 #
 # Hugo, 2026-11-05 : la fin du parcours était « toute petite », dans la fenêtre du guide.
