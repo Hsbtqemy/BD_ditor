@@ -291,3 +291,72 @@ def test_la_grille_de_travail_se_designe_par_son_drapeau(client, db_path):
     r = client.delete(f"/api/projets/{pid}", headers=ADMIN)
     assert r.status_code in (200, 204), r.text
     assert _q(db_path, "SELECT COUNT(*) AS n FROM grille WHERE id = ?", (g["id"],))[0]["n"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# J2 : la grille de travail ne se désactive, ne se retire ni ne se supprime
+# --------------------------------------------------------------------------- #
+# Repris du test de reproduction de la relecture croisée de la v39 (Q4) : désactivée, une
+# grille de travail qui portait une étiquette se SUPPRIMAIT, et celle qui portait un relevé
+# se RETIRAIT ; rien ne rend ensuite une grille de travail au projet.
+def _sql(db_path, sql, p=()):
+    c = sqlite3.connect(db_path)
+    try:
+        r = c.execute(sql, p).fetchall()
+        c.commit()
+        return r
+    finally:
+        c.close()
+
+
+def test_la_grille_de_travail_ne_se_desactive_pas(client, decor, db_path):
+    from grilles_decor import LEA
+    t = _travail(client, decor, db_path)
+    r = client.delete(f"/api/projets/{decor['p']}/grilles/{t['grille_id']}/activation",
+                      headers=LEA)
+    assert r.status_code == 409 and "grille de travail" in r.json()["detail"], r.text
+    assert _sql(db_path, "SELECT COUNT(*) FROM projet_grille WHERE grille_id = ?",
+                (t["grille_id"],))[0][0] == 1
+    # Une autre grille, oui.
+    r = client.delete(f"/api/projets/{decor['p']}/grilles/{decor['grille_id']}/activation",
+                      headers=LEA)
+    assert r.status_code == 204, r.text
+
+
+def test_la_grille_de_travail_porteuse_d_une_etiquette_ne_se_supprime_pas(client, decor,
+                                                                           db_path):
+    """Désactivée par une base d'avant (la route le refuse désormais) : elle ne se supprime
+    pas pour autant, vide de relevés mais portant « ironie »."""
+    from grilles_decor import LEA
+    t = _travail(client, decor, db_path)
+    r = poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
+    assert client.delete(f"/api/releves/{r['id']}", headers=LEA).status_code in (200, 204)
+    gid, p = t["grille_id"], decor["p"]
+    _sql(db_path, "DELETE FROM projet_grille WHERE grille_id = ?", (gid,))
+    r = client.delete(f"/api/grilles/{gid}", headers=LEA)
+    assert r.status_code == 409 and "grille de travail" in r.json()["detail"], r.text
+    assert _sql(db_path, "SELECT COUNT(*) FROM grille WHERE projet_id = ? AND travail = 1",
+                (p,))[0][0] == 1
+
+
+def test_la_grille_de_travail_porteuse_de_releves_ne_se_retire_pas(client, decor, db_path):
+    from grilles_decor import LEA
+    t = _travail(client, decor, db_path)
+    poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
+    gid = t["grille_id"]
+    _sql(db_path, "DELETE FROM projet_grille WHERE grille_id = ?", (gid,))
+    r = client.post(f"/api/grilles/{gid}/retrait", headers=LEA)
+    assert r.status_code == 409 and "grille de travail" in r.json()["detail"], r.text
+    assert _sql(db_path, "SELECT retiree_le FROM grille WHERE id = ?", (gid,))[0][0] is None
+
+
+def test_une_grille_de_travail_vide_ne_se_supprime_pas_non_plus(client, db_path):
+    """Le plus prudent : vide aussi — rien ne la rendrait au projet. Elle part avec lui."""
+    pid = client.post("/api/projets", headers=ADMIN, json={"nom": "Vide"}).json()["id"]
+    gid = _sql(db_path, "SELECT id FROM grille WHERE projet_id = ? AND travail = 1",
+               (pid,))[0][0]
+    _sql(db_path, "DELETE FROM projet_grille WHERE grille_id = ?", (gid,))
+    assert client.delete(f"/api/grilles/{gid}", headers=ADMIN).status_code == 409
+    assert client.post(f"/api/grilles/{gid}/retrait", headers=ADMIN).status_code == 409
+    assert client.delete(f"/api/projets/{pid}", headers=ADMIN).status_code in (200, 204)
+    assert _sql(db_path, "SELECT COUNT(*) FROM grille WHERE id = ?", (gid,))[0][0] == 0

@@ -78,6 +78,22 @@ def _get_grille(conn, portee: autorisation.Portee, grille_id: int, *,
     return g
 
 
+# J2 (le cadrage du mode libre, tranché par Hugo le 2026-11-06) — LA grille de travail d'un
+# projet porte son mode libre : elle se renomme, elle ne se retire, ne se désactive ni ne se
+# supprime. La règle la plus prudente que le cadrage permet (« tant qu'elle porte quelque
+# chose ») : TOUJOURS, vide ou non — rien ne rend une grille de travail à un projet après sa
+# naissance et la migration, et un projet sans elle n'aurait plus de mode libre. Elle part
+# avec son projet (`grille_import.grille_sans_rien`), jamais seule.
+_MOTIF_TRAVAIL = ("C'est la grille de travail du projet, qui porte son mode libre : elle se "
+                  "renomme, mais ne se {geste} pas.")
+
+
+def _refuser_la_grille_de_travail(g: dict, geste: str) -> None:
+    """409 nommé sur la grille de travail (J2)."""
+    if g.get("travail"):
+        raise HTTPException(409, _MOTIF_TRAVAIL.format(geste=geste))
+
+
 def _get_version(conn, g: dict, numero: int) -> dict:
     """La version `numero` de la grille `g` ; un brouillon n'existe que pour qui gère le
     projet (404 sinon, comme une version qui n'existe pas)."""
@@ -344,9 +360,10 @@ def retirer_grille(grille_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
     """RETIRE une grille : elle ne s'active plus, ne reçoit plus de version ; ses relevés
     restent. Seule la retraite s'écrit sur la grille (« en usage » se dérive). 409 nommé sur
-    une grille encore active — la désactiver d'abord."""
+    une grille encore active — la désactiver d'abord —, et sur la grille de travail (J2)."""
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id, gerer=True)
+    _refuser_la_grille_de_travail(g, "retire")
     if conn.execute("SELECT 1 FROM projet_grille WHERE grille_id = ?",
                     (grille_id,)).fetchone():
         raise HTTPException(409, "Cette grille est active : désactivez-la d'abord dans son "
@@ -365,9 +382,11 @@ def supprimer_grille(grille_id: int, conn: sqlite3.Connection = Depends(db),
                      portee: autorisation.Portee = Depends(portee_courante)):
     """Supprime une grille que rien n'emploie — « la suppression suit l'emploi » : ni active,
     ni porteuse d'un relevé ou d'une passe (409 nommé sinon ; les relevés tiennent à leur
-    grille). Le chemin qui libère un projet qu'on veut supprimer (G18)."""
+    grille). Le chemin qui libère un projet qu'on veut supprimer (G18). Jamais la grille de
+    travail (J2, 409 nommé) : elle part avec son projet."""
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id, gerer=True)
+    _refuser_la_grille_de_travail(g, "supprime")
     if conn.execute("SELECT 1 FROM projet_grille WHERE grille_id = ?",
                     (grille_id,)).fetchone():
         raise HTTPException(409, "Cette grille est active : désactivez-la d'abord.")
@@ -534,12 +553,15 @@ def desactiver_grille(projet_id: int, grille_id: int, conn: sqlite3.Connection =
                       portee: autorisation.Portee = Depends(portee_courante)):
     """DÉSACTIVE une grille : ses relevés restent, en LECTURE (« Désactiver une grille dans un
     projet ne supprime aucun relevé », 2026-10-22) — toute écriture sur eux est alors
-    refusée par un 409 nommé. 404 si elle n'y est pas active."""
+    refusée par un 409 nommé. 404 si elle n'y est pas active. Jamais la grille de travail
+    (J2, 409 nommé) : sans elle, le projet n'aurait plus de mode libre."""
     _get_projet(conn, portee, projet_id, gerer=True, motif=_MOTIF_GERER)
     conflit.verrouiller(conn)
     act = grilles.activation(conn, projet_id, grille_id)
     if act is None:
         raise HTTPException(404, "Cette grille n'est pas active dans ce projet.")
+    travail = conn.execute("SELECT travail FROM grille WHERE id = ?", (grille_id,)).fetchone()
+    _refuser_la_grille_de_travail({"travail": bool(travail and travail[0])}, "désactive")
     conn.execute("DELETE FROM projet_grille WHERE projet_id = ? AND grille_id = ?",
                  (projet_id, grille_id))
     journal.journaliser(conn, "delien", "grille", grille_id,
