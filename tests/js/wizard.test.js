@@ -190,8 +190,8 @@ test("chaque étape mène à sa surface, à son outil et à la planche du parcou
     corpus: "/corpus",
     decrire: "/corpus?album=31",
     preremplir: "/?album=31&planche=310&mode=edition",
-    tracer: "/?album=31&planche=310&mode=edition",
-    decoupage: "/?album=31&planche=310&mode=edition",
+    tracer: "/?album=31&planche=310",
+    decoupage: "/?album=31&planche=310",
     transcrire: "/?album=31&planche=310&mode=transcription",
     annoter: "/annotation?album=31&planche=310",
     chercher: "/recherche",
@@ -1191,6 +1191,49 @@ test("« Pré-remplir » mène à la planche d'essai, les autres étapes à cell
   // Le foyer éclaire aussi la planche, quand l'écran la résout.
   assert.deepEqual(W.foyer(e("preremplir")),
                    ["atelier-traitement", "atelier-traitement-menu", "@essai"]);
+});
+
+/* « Tracer une zone » et « Corriger le découpage » apprennent le passage en Édition (Hugo,
+   2026-11-06) : le guide n'y passe pas de lui-même ; hors d'Édition, la barre des modes et
+   la phrase qui dit d'y passer ; en Édition, le foyer et la phrase d'aujourd'hui. La table :
+   chaque étape × chaque mode, plus le mode inconnu. « Pré-remplir » garde son passage. */
+test("Tracer et Corriger apprennent le passage en Édition, pour chaque mode", () => {
+  const e = (k) => W.ETAPES.find((x) => x.k === k);
+  const MODES = ["navigation", "edition", "annotation", "transcription", null, undefined];
+  const regions = [{ id: 6, type: "bulle", source: "jeu", parent_id: 5, x: 0, y: 0, w: 10, h: 10 },
+                   { id: 5, type: "case", source: "jeu", x: 0, y: 0, w: 100, h: 100 }];
+  for (const x of W.ETAPES) {
+    for (const mode of MODES) {
+      const hors = ["tracer", "decoupage"].includes(x.k) && mode != null && mode !== "edition";
+      assert.equal(W.horsEdition(x, mode), hors, `${x.k} × ${mode}`);
+      assert.deepEqual(W.foyer(x, mode), hors ? ["atelier-modes"] : W.foyer(x), `${x.k} × ${mode}`);
+      const p = W.phraseGuide(x, VUE, null, { regions }, "complet", mode);
+      if (hors) assert.equal(p, W.typo(W.PHRASES.passerEnEdition[x.k]), `${x.k} × ${mode}`);
+      else assert.equal(p, W.phraseGuide(x, VUE, null, { regions }, "complet"), `${x.k} × ${mode}`);
+    }
+  }
+  assert.equal(W.foyer(e("tracer"), "navigation"), W.FOYER_DES_MODES);
+  // Les phrases : ce que fait la Navigation, puis passer en Édition pour le geste.
+  assert.equal(sp(W.phraseGuide(e("tracer"), VUE, null, {}, "complet", "navigation")),
+               "La Navigation déplace et agrandit la planche. Pour tracer, passez en mode "
+               + "Édition, dans la barre des modes.");
+  assert.match(sp(W.phraseGuide(e("decoupage"), VUE, null, {}, "complet", "navigation")),
+               /Pour corriger le découpage, passez en mode Édition/);
+  // Faite, hors d'Édition : la phrase redit d'y repasser, et l'étape reste faite.
+  const fait = [{ id: 1, type: "case", source: "manuel" }, { id: 2, type: "bulle", source: "manuel" }];
+  assert.equal(W.faite(e("tracer"), { regions: fait }, "complet"), true);
+  assert.equal(W.phraseGuide(e("tracer"), VUE, null, { regions: fait }, "complet", "navigation"),
+               W.typo(W.PHRASES.passerEnEdition.tracer));
+  assert.equal(W.phraseGuide(e("tracer"), VUE, null, { regions: fait }, "complet", "edition"),
+               W.typo(W.PHRASES.tracerFait));
+  // Le guide ne passe pas l'Atelier en Édition de lui-même à Tracer et Corriger ; il le
+  // fait à « Pré-remplir ».
+  assert.ok(!/mode=/.test(W.adresseEtape(e("tracer"), VUE)));
+  assert.ok(!/mode=/.test(W.adresseEtape(e("decoupage"), VUE)));
+  assert.match(W.adresseEtape(e("preremplir"), VUE), /mode=edition/);
+  // La barre des modes reste jouable, et c'est une zone que la visite nomme sur l'Atelier.
+  for (const k of ["tracer", "decoupage"]) assert.ok(e(k).zones.includes("atelier-modes"), k);
+  assert.ok(W.marques().some((m) => m.surface === "/" && m.marque === "atelier-modes"));
 });
 
 /* À « Annoter », la fenêtre se pose à la hauteur du texte (Hugo, 2026-11-06) : l'ANCRE de

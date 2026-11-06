@@ -962,7 +962,7 @@
     if (!F.mode || !foyer) return;
     if (revenirALaPlanche()) return;
     if (F.mode === "etape") noterLaFiche();
-    const cle = zonesActives().map((r) => r.marque).join(" ");
+    const cle = cleDeLaFenetre();
     if (cle !== F.cle) {
       const a = document.activeElement;
       const garde = a && fenetre.contains(a) ? (a.id ? `#${a.id}`
@@ -1463,7 +1463,7 @@
       if (marque) h.appendChild(el("span", "wizard-marque", marque));
       fenetre.appendChild(h);
       // Une phrase d'étape peut avoir plusieurs paragraphes (`BDWizard.paragraphes`).
-      W.paragraphes(W.phraseGuide(e, vue(), m, d, s.parcours))
+      W.paragraphes(W.phraseGuide(e, vue(), m, d, s.parcours, modeDeLAtelier()))
         .forEach((t) => fenetre.appendChild(el("p", "wf-phrase", t)));
       const visuel = W.visuelEtape(e);
       if (visuel) fenetre.appendChild(visuelDeLEtape(visuel));
@@ -1492,7 +1492,7 @@
       // L'ordre de la maquette : « ✓ Fait », ←, le geste principal (poussé à droite), ☰, ✕.
       [fait, prec, suiv, carte, quitter].forEach((x) => act.appendChild(x));
       fenetre.appendChild(act);
-      F.cle = zonesActives().map((r) => r.marque).join(" ");
+      F.cle = cleDeLaFenetre();
     }
     // Son contenu a changé, donc sa taille : elle se repose (sans attendre une mutation de
     // la page, que l'observateur ne voit pas quand elle vient de la fenêtre).
@@ -1653,7 +1653,7 @@
     const e = etapeCourante();
     if (F.mode !== "etape" || G.fin || !e) return [];
     const a = W.albumDuParcours(vue()), out = [];
-    W.foyer(e).forEach((m) => {
+    W.foyer(e, modeDeLAtelier()).forEach((m) => {
       let sel = `[data-parcours="${m}"]`;
       if (m === "@album") {
         sel = a ? `[data-parcours="bibliotheque-catalogue"] [data-ouvrir-album="${a.album_id}"]` : null;
@@ -1693,6 +1693,24 @@
     if (!rs.length) return null;
     return { l: Math.min(...rs.map((r) => r.l)), t: Math.min(...rs.map((r) => r.t)),
              r: Math.max(...rs.map((r) => r.r)), b: Math.max(...rs.map((r) => r.b)) };
+  }
+
+  /* Le mode de l'Atelier, lu sur sa barre des modes (`aria-pressed`, que le gabarit pose sur
+     Navigation et que `setMode` règle) ; `null` hors de l'Atelier. */
+  function modeDeLAtelier() {
+    if (chemin() !== "/") return null;
+    const b = document.querySelector('.modes .mode-btn[aria-pressed="true"]');
+    return b ? b.dataset.mode || null : null;
+  }
+
+  /* Ce qui fait redessiner la fenêtre : les zones visibles, et, à une étape qui apprend le
+     passage en Édition (`enEdition`), le mode de l'Atelier — un changement de mode fait à
+     l'écran, au bouton ou au clavier, se voit à la mutation de la barre des modes, sans
+     recharger la page. */
+  function cleDeLaFenetre() {
+    const z = zonesActives().map((r) => r.marque).join(" ");
+    const e = F.mode === "etape" && !G.fin ? etapeCourante() : null;
+    return e && e.enEdition ? `${z}|${modeDeLAtelier()}` : z;
   }
 
   /* L'élément de l'ANCRE de l'étape (`BDWizard.ancre`), s'il est sur la page. */

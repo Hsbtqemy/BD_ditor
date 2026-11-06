@@ -146,7 +146,8 @@ def test_choisir_un_parcours_mene_a_la_carte_et_l_album_ne_revient_plus(page, je
     expect(page.locator("#wizard-modal")).to_be_hidden()
     page.locator("#wizard-visite-passer").click()
     expect(page.locator("#wizard-fenetre-titre")).to_have_text("Tracer une zone", timeout=15000)
-    expect(page).to_have_url(re.compile(r"mode=edition"))
+    # Le guide ne passe pas l'Atelier en Édition : il apprend à y passer (Hugo, 2026-11-06).
+    expect(page.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute("aria-pressed", "true")
     page.locator("#wizard-guide-carte").click()
     album = _album(page)
     expect(album.locator("#wizard-titre")).to_have_text("Par où commencer")
@@ -157,7 +158,7 @@ def test_choisir_un_parcours_mene_a_la_carte_et_l_album_ne_revient_plus(page, je
     expect(liens.nth(0)).to_be_focused()
     expect(liens.nth(0)).to_have_text("Tracer une zone")
     attendu = f"/?album={parcours['album_id']}&planche={parcours['planche_ids'][0]}"
-    assert liens.nth(0).get_attribute("href") == attendu + "&mode=edition"
+    assert liens.nth(0).get_attribute("href") == attendu
     assert liens.nth(3).get_attribute("href") == attendu.replace("/?", "/annotation?")
     assert _souvenir(page) == {"camille": {"bac": bac["id"], "efface_le": bac["efface_le"],
                                            "album_vu": True, "parcours": "rapide", "etape": 0,
@@ -706,7 +707,8 @@ def test_la_visite_traverse_les_pages_et_finit_sur_la_carte(page, jeu):
     suivant.click()
     titre = page.locator("#wizard-fenetre-titre")
     expect(titre).to_have_text("Tracer une zone", timeout=15000)
-    expect(page).to_have_url(re.compile(r"/\?album=.*mode=edition"))
+    expect(page).to_have_url(re.compile(r"/\?album="))
+    expect(page.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#wizard-guide-compte")).to_have_text("1 / 4")
     expect(titre).to_be_focused()
     assert page.evaluate(VISITE_SESSION) is None
@@ -943,6 +945,9 @@ def _ecran(page, mx, my):
     return b["x"] + mx * k, b["y"] + my * k
 
 
+MARQUES_DU_FOYER = "() => window.BDWizardEcran.elementsDuFoyer().map((e) => e.dataset.parcours)"
+
+
 def _glisser(page, de, a, maj=False):
     with page.expect_response(lambda r: r.url.endswith("/regions")
                               and r.request.method == "POST") as rep:
@@ -964,6 +969,17 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
     suivant = page.locator("#wizard-guide-suiv")
     expect(titre).to_have_text("Tracer une zone")
     expect(page.locator("#wizard-guide-compte")).to_have_text("1 / 4")
+    # Le guide ne passe pas l'Atelier en Édition (Hugo, 2026-11-06) : en Navigation, il
+    # éclaire la barre des modes et dit d'y passer ; au bouton, sans recharger la page, il
+    # rend la planche et la phrase du tracé.
+    page.evaluate("() => { window.__sansRecharge = true; }")
+    phrase = page.locator("#wizard-fenetre .wf-phrase")
+    expect(page.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute("aria-pressed", "true")
+    expect(phrase).to_contain_text("Pour tracer, passez en mode Édition")
+    assert page.evaluate(MARQUES_DU_FOYER) == ["atelier-modes"]
+    page.locator('.mode-btn[data-mode="edition"]').click()
+    expect(phrase).to_contain_text("Seule la dernière rangée")
+    assert "atelier-planche" in page.evaluate(MARQUES_DU_FOYER)
     # Le jeu a découpé une rangée : la phrase de Hugo le dit. Rien n'est fait.
     expect(page.locator("#wizard-fenetre .wf-phrase")).to_contain_text("Seule la dernière rangée")
     expect(fait).to_be_hidden()
@@ -1031,6 +1047,16 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
     assert rep.value.json()["source"] == "corrige"
     expect(fait).to_have_text("✓ Fait")
     expect(page.locator("#wizard-fenetre .wf-phrase")).to_contain_text("huit poignées")
+    # Repasser en Navigation n'est ni forcé ni empêché : au clavier, le guide rééclaire la
+    # barre des modes et redit d'y repasser ; l'étape reste faite. En Édition, la suite.
+    page.keyboard.press("n")
+    expect(page.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute("aria-pressed", "true")
+    expect(phrase).to_contain_text("Pour corriger le découpage, passez en mode Édition")
+    expect(fait).to_have_text("✓ Fait")
+    assert page.evaluate(MARQUES_DU_FOYER) == ["atelier-modes"]
+    page.keyboard.press("e")
+    expect(phrase).to_contain_text("huit poignées")
+    assert page.evaluate("() => window.__sansRecharge === true")
     # En sortant de l'étape, la planche revient entière.
     page.locator("#wizard-guide-prec").click()
     expect(titre).to_have_text("Tracer une zone")

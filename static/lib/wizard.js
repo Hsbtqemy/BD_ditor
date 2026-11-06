@@ -197,12 +197,16 @@
       phrase: "Une notice dit ce qu'est l'album. Dans sa fiche, cliquez sur « ✎ Modifier » : "
         + "titre, numéro, date, type… elle est presque complète. Il y manque la langue : "
         + "écrivez « fr », puis enregistrez." },
+    // `enEdition` : le geste se fait en mode Édition, mais le guide n'y passe pas l'Atelier
+    // de lui-même (Hugo, 2026-11-06) — il apprend à y passer (`horsEdition`). La barre des
+    // modes reste jouable : repasser en Navigation n'est jamais empêché.
     { k: "tracer", titre: "Tracer une zone", ou: "Atelier, mode Édition", surface: "/",
-      mode: "edition", zones: ["atelier-planche", "atelier-structure"],
+      enEdition: true, zones: ["atelier-planche", "atelier-structure", "atelier-modes"],
       phrase: "Glissez sur le fond pour tracer une case. Dans une case, maintenez Maj et "
         + "glissez pour tracer une bulle." },
     { k: "decoupage", titre: "Corriger le découpage", ou: "Atelier, mode Édition",
-      surface: "/", mode: "edition", zones: ["atelier-planche", "atelier-structure"],
+      surface: "/", enEdition: true,
+      zones: ["atelier-planche", "atelier-structure", "atelier-modes"],
       phrase: "Le cadre d'une bulle est trop petit. Agrandissez-le par une de ses poignées : "
         + "tout le texte doit tenir dedans." },
     { k: "transcrire", titre: "Transcrire et relire", ou: "Atelier, mode Transcription",
@@ -289,7 +293,19 @@
     exporter: ["bibliotheque-actes"],
   };
 
-  function foyer(e) { return (e && FOYERS[e.k]) || []; }
+  /* Le foyer d'une étape, selon le mode de l'Atelier (`mode`, lu sur l'écran ; absent : le
+     foyer de l'étape). Hors du mode Édition, une étape `enEdition` éclaire la barre des
+     modes (Hugo, 2026-11-06), et retrouve le sien dès qu'on y est. */
+  const FOYER_DES_MODES = ["atelier-modes"];
+
+  function horsEdition(e, mode) {
+    return !!(e && e.enEdition) && mode != null && mode !== "edition";
+  }
+
+  function foyer(e, mode) {
+    if (horsEdition(e, mode)) return FOYER_DES_MODES;
+    return (e && FOYERS[e.k]) || [];
+  }
 
   /* L'ANCRE d'une étape (Hugo, 2026-11-06) : la marque du foyer à la hauteur de laquelle la
      fenêtre se pose quand elle est à côté du foyer, au lieu de son haut — à « Annoter », le
@@ -1310,6 +1326,16 @@
       + "lecture. Un détail d'image se trace dans la page Annotation.",
     decoupageFait: "Un cadre sélectionné se déplace en le glissant. Ses huit poignées le "
       + "redimensionnent, et Suppr le retire.",
+    // Hors du mode Édition, à « Tracer » et « Corriger » (Hugo, 2026-11-06) : ce que fait la
+    // Navigation, puis où passer en Édition — dans l'esprit de la visite, « Navigation pour
+    // parcourir les planches, Édition pour tracer des zones et les modifier ». La phrase vaut
+    // quel que soit le mode d'où l'on vient, et redit d'y repasser.
+    passerEnEdition: {
+      tracer: "La Navigation déplace et agrandit la planche. Pour tracer, passez en mode "
+        + "Édition, dans la barre des modes.",
+      decoupage: "La Navigation déplace et agrandit la planche. Pour corriger le découpage, "
+        + "passez en mode Édition, dans la barre des modes.",
+    },
     // « Pré-remplir » sur la planche d'essai : la phrase de Hugo (2026-11-06), mot pour mot.
     essai: "Précédemment, vous avez découpé et transcrit à la main. Voyons maintenant comment "
       + "automatiser ce travail grâce aux moteurs embarqués. Cliquez sur « Traitement », et "
@@ -1317,8 +1343,11 @@
       + "bulles », et regardez ce que chacun produit.",
   };
 
-  function phraseGuide(e, vue, m, d, parcours) {
+  function phraseGuide(e, vue, m, d, parcours, mode) {
     if (!e) return "";
+    // Hors du mode Édition, l'étape dit d'y passer — faite ou non : le passage n'est jamais
+    // forcé, et l'étape est faite quel que soit le mode (`faite` ne le lit pas).
+    if (horsEdition(e, mode)) return typo(PHRASES.passerEnEdition[e.k]);
     const regions = liste(d && d.regions);
     if (e.k === "tracer") {
       if (faite(e, d, parcours)) return typo(PHRASES.tracerFait);
@@ -1523,6 +1552,7 @@
            faite, phraseGuide, boutonGuide, bulleACorriger, vueCadree, PHRASES,
            rangeeDuJeu, cadreAvecMarge, boiteDeLaBulle, cadreDeLaBulle, ZOOM_CADRAGE,
            CLE_GUIDE, guideNeuf, lireGuide, retenirGuide, marquerVue, etapeIci,
-           marquesDesEtapes, FOYERS, foyer, foyerPrincipal, ancre, placerFenetre, recouvre, zoneLibre,
+           marquesDesEtapes, FOYERS, foyer, foyerPrincipal, ancre, horsEdition,
+           FOYER_DES_MODES, placerFenetre, recouvre, zoneLibre,
            marquesDesFoyers };
 });
