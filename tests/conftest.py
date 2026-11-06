@@ -101,7 +101,8 @@ def sans_grille_de_travail(monkeypatch):
     (`pytest.mark.usefixtures` au niveau du module), pour que le projet de repli d'une base
     neuve naisse sans elle aussi."""
     import grille_import
-    monkeypatch.setattr(grille_import, "installer_grille_de_travail", lambda conn, pid: None)
+    monkeypatch.setattr(grille_import, "installer_grille_de_travail",
+                        lambda conn, pid, **_: None)
 
 
 @pytest.fixture

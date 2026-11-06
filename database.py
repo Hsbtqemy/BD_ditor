@@ -2197,6 +2197,12 @@ _FTS_V39 = """CREATE VIRTUAL TABLE recherche__v39 USING fts5(
 # journal au moment de la v39. `undo.derniere_action_annulable` ne remonte pas au-dessous.
 CLE_PLANCHER_ANNULATION = "plancher_annulation"
 
+# L'agent qui journalise ce que la v39 écrit elle-même — la grille de travail des projets
+# existants. Une migration n'est pas un humain : `agent_type = 'moteur'`, sous le nom du
+# logiciel, comme `tools/normaliser_casse.py` ; hors de Ctrl+Z, des pseudonymes et des comptes,
+# et `grille` est retenue de toute sortie.
+AGENT_MIGRATION_V39 = "migration-v39"
+
 
 def _basculer_le_vocabulaire(conn: sqlite3.Connection) -> None:
     """La v39 (ANN-7, le basculement ; cadrage, « La migration v39 »), dans l'ordre :
@@ -2276,7 +2282,8 @@ def _donner_les_grilles_de_travail(conn: sqlite3.Connection) -> None:
         return
     import grille_import                         # paresseux : il importe ce module
     for (pid,) in conn.execute("SELECT id FROM projet ORDER BY id").fetchall():
-        grille_import.installer_grille_de_travail(conn, pid)
+        grille_import.installer_grille_de_travail(conn, pid, agent=AGENT_MIGRATION_V39,
+                                                  agent_type="moteur")
 
 
 def _dedup_numeros_planches(conn: sqlite3.Connection) -> None:

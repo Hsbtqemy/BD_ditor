@@ -82,9 +82,8 @@ def _recherche_rows(conn, portee, q, album, type, pos, lemme, morph, provenance,
         # (1) PRÉFIXE échappé sur le texte brut (ET implicite) : « otage » → « otages ».
         #     Insensible aux accents (tokenizer FTS remove_diacritics).
         raw = " ".join('"' + t.replace('"', '""') + '"*' for t in q.split())
-        # ANN-7 — le préfixe ne cherche que dans les dialogues, les notes et les lemmes (le
-        # champ promet « dialogues, notes ») ; la v39 a retiré `tags_concat` de l'index, et
-        # le filtre de colonnes le dit encore, au cas où une colonne s'y ajouterait.
+        # ANN-7 — le préfixe ne cherche que dans les colonnes que nomme `COLONNES_CHERCHEES` :
+        # une colonne de l'index qu'elle ne nomme pas n'est pas cherchée.
         raw = f"{{{COLONNES_CHERCHEES}}} : ({raw})"
         # (2) LEMMES : on lemmatise aussi la requête et on la matche sur la colonne
         #     `lemmes` → attrape ce que le préfixe rate (cheval↔chevaux, conjugaisons,

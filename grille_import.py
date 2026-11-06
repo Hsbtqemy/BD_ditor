@@ -1466,7 +1466,9 @@ def installer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_li
     return gid
 
 
-def installer_grille_de_travail(conn: sqlite3.Connection, projet_id: int) -> int | None:
+def installer_grille_de_travail(conn: sqlite3.Connection, projet_id: int, *,
+                                agent: str | None = None,
+                                agent_type: str = "humain") -> int | None:
     """La grille de TRAVAIL d'un projet qui naît (ANN-7, le basculement ; Hugo, 2026-11-05) :
     OUVERTE, VIDE, sur toute zone (les types de `grilles.CIBLES_ZONE`), active dans sa
     version vivante 1, et à PERSONNE — aucun `cree_par`, comme la grille d'un bac à sable : le
@@ -1479,7 +1481,8 @@ def installer_grille_de_travail(conn: sqlite3.Connection, projet_id: int) -> int
     Jamais dans le projet de jeu ; rien si le projet a déjà la sienne (rejouée, elle ne double
     rien). Une autre grille du projet qui porterait déjà ce nom lui laisse le sien : la
     grille de travail prend « … 2 », « … 3 » (un nom est unique dans son projet). Ne commite
-    pas ; rend l'identifiant, ou None."""
+    pas ; rend l'identifiant, ou None. `agent`, `agent_type` : qui la journalise — par défaut
+    l'humain de la requête, qui fait naître le projet ; la migration v39 se nomme."""
     import database                              # import paresseux, cf. `importer`
     import journal
     from config import GRILLE_DE_TRAVAIL_NOM, GRILLE_DE_TRAVAIL_NOTE
@@ -1499,8 +1502,10 @@ def installer_grille_de_travail(conn: sqlite3.Connection, projet_id: int) -> int
     journal.journaliser(conn, "creation", "grille", gid,
                         apres={"projet_id": projet_id, "nom": nom,
                                "ouverte": True, "porte_sur": cible, "travail": True,
-                               "version": {"numero": 1, "etat": grilles.ETAT_VIVANTE}})
-    activer(conn, projet_id=projet_id, grille_id=gid, numero=1)
+                               "version": {"numero": 1, "etat": grilles.ETAT_VIVANTE}},
+                        agent=agent, agent_type=agent_type)
+    activer(conn, projet_id=projet_id, grille_id=gid, numero=1, agent=agent,
+            agent_type=agent_type)
     return gid
 
 
@@ -1531,7 +1536,7 @@ def version_activable(conn: sqlite3.Connection, grille_id: int):
 
 
 def activer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, numero: int,
-            par=None) -> bool:
+            par=None, agent: str | None = None, agent_type: str = "humain") -> bool:
     """ACTIVE la grille sur le projet dans la version `numero` (R4) — publiée pour une
     grille fermée, vivante pour une ouverte. Un projet n'active que SES grilles (le
     catalogue n'existe pas) ; une grille retirée ne s'active plus ; changer la version
@@ -1569,7 +1574,8 @@ def activer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, numero:
     journal.journaliser(conn, "lien", "grille", grille_id,
                         avant={"projet_id": projet_id, "version": act["numero"]}
                         if act else None,
-                        apres={"projet_id": projet_id, "version": v["numero"]})
+                        apres={"projet_id": projet_id, "version": v["numero"]},
+                        agent=agent, agent_type=agent_type)
     return True
 
 

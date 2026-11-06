@@ -311,6 +311,15 @@ def test_chaque_projet_recoit_sa_grille_de_travail_sauf_le_jeu(vraie_v38):
         GRILLE_DE_TRAVAIL_NOM, 1, None, 1) for g in travail), travail
     assert f["projet_de_jeu"] not in {r["projet_id"] for r in _sql(
         vraie_v38, "SELECT projet_id FROM grille")}
+    # Le journal les dit écrites par la MIGRATION, pas par un humain sans nom : leur
+    # naissance et leur activation, deux actes par grille, sous le nom du logiciel.
+    actes = _sql(vraie_v38, "SELECT type, agent, agent_type FROM evenement "
+                            "WHERE cible_table = 'grille' AND id > (SELECT valeur FROM meta "
+                            "WHERE cle = 'plancher_annulation') ORDER BY id")
+    assert len(actes) == 2 * len(travail)
+    assert {(a["agent"], a["agent_type"]) for a in actes} == {
+        (database.AGENT_MIGRATION_V39, "moteur")}
+    assert {a["type"] for a in actes} == {"creation", "lien"}
     # Au plus une par projet : la base le tient.
     c = sqlite3.connect(vraie_v38)
     try:
