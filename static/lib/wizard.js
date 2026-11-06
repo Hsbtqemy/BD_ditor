@@ -287,6 +287,21 @@
 
   function foyer(e) { return (e && FOYERS[e.k]) || []; }
 
+  /* Le foyer PRINCIPAL d'une étape (Hugo, 2026-11-06) : la commande où se fait le geste,
+     marquée plus fort que le reste du foyer — « Traitement » à « Pré-remplir », que le
+     rectangle commun, de la barre d'actions à la planche d'essai, noyait. Une marque du
+     foyer de l'étape. Elle ne se marque que tant qu'il y a à y cliquer : son menu fermé,
+     l'étape pas encore faite, et pas « optionnel ici » (le moteur manque, rien à lancer).
+     `x` : `{ ouvert, faite, optionnel }`, lu sur l'écran ; `null` sinon. */
+  const PRINCIPAUX = { preremplir: "atelier-traitement" };
+
+  function foyerPrincipal(e, x) {
+    const m = e && PRINCIPAUX[e.k];
+    if (!m) return null;
+    const s = x || {};
+    return s.ouvert || s.faite || s.optionnel ? null : m;
+  }
+
   /* Où poser la fenêtre du guide : à DROITE du foyer si elle y tient, sinon à GAUCHE,
      sinon DESSOUS, sinon DESSUS — bornée à l'écran, à `marge` du foyer ; `repli` si rien ne
      tient (l'écran la pose alors en feuille, en bas, et la page lui réserve sa hauteur).
@@ -1493,5 +1508,6 @@
            faite, phraseGuide, boutonGuide, bulleACorriger, vueCadree, PHRASES,
            rangeeDuJeu, cadreAvecMarge, boiteDeLaBulle, cadreDeLaBulle, ZOOM_CADRAGE,
            CLE_GUIDE, guideNeuf, lireGuide, retenirGuide, marquerVue, etapeIci,
-           marquesDesEtapes, FOYERS, foyer, placerFenetre, recouvre, zoneLibre, marquesDesFoyers };
+           marquesDesEtapes, FOYERS, foyer, foyerPrincipal, placerFenetre, recouvre, zoneLibre,
+           marquesDesFoyers };
 });

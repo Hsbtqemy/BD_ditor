@@ -1818,6 +1818,83 @@ def test_pre_remplir_se_fait_sur_la_planche_d_essai(page, jeu_essai):
     assert all(r["source"] == "jeu" for r in apres)
 
 
+# Hugo, 2026-11-06 : à « Pré-remplir », « cela ne saute pas aux yeux directement et on ignore
+# en partie que c'est là qu'il faut cliquer » — le foyer éclairait d'un seul rectangle la
+# barre d'actions et la planche. « Traitement » y est le foyer PRINCIPAL : un cadre plein et
+# plus épais, serré sur lui, tant que son menu est fermé ; immobile ; à 3:1 sur le fond de
+# la barre dans les quatre thèmes ; la fenêtre du guide ne le recouvre pas.
+
+CADRE_PRINCIPAL = """() => {
+  const c = document.querySelector('.wizard-voile .wf-cadre.principal');
+  if (!c) return null;
+  const q = c.getBoundingClientRect();
+  const b = document.getElementById('btn-traitement').getBoundingClientRect();
+  const f = document.getElementById('wizard-fenetre').getBoundingClientRect();
+  const st = getComputedStyle(c);
+  return { entoure: q.left <= b.left && q.top <= b.top && q.right >= b.right
+                    && q.bottom >= b.bottom,
+           recouvert: Math.min(q.right, f.right) - Math.max(q.left, f.left) > 0
+                      && Math.min(q.bottom, f.bottom) - Math.max(q.top, f.top) > 0,
+           trait: parseFloat(st.strokeWidth), opacite: parseFloat(st.strokeOpacity),
+           animation: st.animationName,
+           encre: st.stroke, fond: getComputedStyle(document.getElementById('header')).backgroundColor };
+}"""
+
+
+def _rgb(c):
+    return [int(float(x)) for x in re.findall(r"[\d.]+", c)[:3]]
+
+
+def _rapport(a, b):
+    def lum(rgb):
+        v = [x / 255 for x in rgb]
+        v = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in v]
+        return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]
+    la, lb = sorted((lum(_rgb(a)), lum(_rgb(b))), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+@pytestmark_proxy
+def test_a_pre_remplir_traitement_saute_aux_yeux(page, jeu_essai):
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _au_guide_sur(page, jeu_essai, "complet", "preremplir")
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text(re.compile(r"^Pré-remplir"))
+    cadre = page.locator(".wizard-voile .wf-cadre.principal")
+    expect(cadre).to_have_count(1)
+    page.wait_for_timeout(600)
+    m = page.evaluate(CADRE_PRINCIPAL)
+    assert m["entoure"] and not m["recouvert"], m
+    # Plus fort que le cadre du foyer : plus épais, et plein.
+    foyer = page.evaluate("""() => { const c = document.querySelector(
+      '.wizard-voile .wf-cadre:not(.principal)'); const s = getComputedStyle(c);
+      return { trait: parseFloat(s.strokeWidth), opacite: parseFloat(s.strokeOpacity) }; }""")
+    assert m["trait"] > foyer["trait"] and m["opacite"] == 1 > foyer["opacite"], (m, foyer)
+    # Immobile, avec ou sans « moins d'animations ».
+    assert m["animation"] == "none", m
+    page.emulate_media(reduced_motion="reduce")
+    assert page.evaluate(CADRE_PRINCIPAL)["animation"] == "none"
+    # 3:1 sur le fond de la barre, dans les quatre thèmes.
+    for theme in ("dark", "light"):
+        for eleve in (False, True):
+            page.evaluate("""([t, e]) => { const r = document.documentElement;
+              r.dataset.theme = t; if (e) r.dataset.contrast = 'high';
+              else delete r.dataset.contrast; }""", [theme, eleve])
+            m = page.evaluate(CADRE_PRINCIPAL)
+            assert _rapport(m["encre"], m["fond"]) >= 3, (theme, eleve, m)
+    # Le menu ouvert, le cadre s'efface ; refermé, il revient (deux moteurs restent à lancer).
+    page.locator("#btn-traitement").click()
+    expect(page.locator("#btn-segmenter")).to_be_visible()
+    expect(cadre).to_have_count(0)
+    page.locator("#btn-traitement").click()
+    expect(page.locator("#btn-segmenter")).to_be_hidden()
+    expect(cadre).to_have_count(1)
+    # Les autres étapes n'ont pas de foyer principal.
+    page.locator("#wizard-guide-suiv").click()
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Annoter", timeout=15000)
+    page.wait_for_timeout(400)
+    expect(cadre).to_have_count(0)
+
+
 # ── « Parcours terminé » ───────────────────────────────────────────────────────────────
 #
 # Hugo, 2026-11-05 : la fin du parcours était « toute petite », dans la fenêtre du guide.

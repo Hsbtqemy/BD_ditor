@@ -1193,6 +1193,24 @@ test("« Pré-remplir » mène à la planche d'essai, les autres étapes à cell
                    ["atelier-traitement", "atelier-traitement-menu", "@essai"]);
 });
 
+/* « Traitement » saute aux yeux à « Pré-remplir » (Hugo, 2026-11-06) : le foyer PRINCIPAL,
+   une marque du foyer de l'étape, tant qu'il y a à y cliquer. */
+test("« Traitement » est le foyer principal de « Pré-remplir », tant que son menu est fermé", () => {
+  const pre = W.ETAPES.find((x) => x.k === "preremplir");
+  assert.equal(W.foyerPrincipal(pre, {}), "atelier-traitement");
+  assert.equal(W.foyerPrincipal(pre), "atelier-traitement");
+  assert.ok(W.foyer(pre).includes(W.foyerPrincipal(pre, {})));
+  // Son menu ouvert, l'étape faite, ou le moteur absent : rien à marquer.
+  assert.equal(W.foyerPrincipal(pre, { ouvert: true }), null);
+  assert.equal(W.foyerPrincipal(pre, { faite: true }), null);
+  assert.equal(W.foyerPrincipal(pre, { optionnel: true }), null);
+  // Aucune autre étape n'en a.
+  for (const e of W.ETAPES.filter((x) => x.k !== "preremplir")) {
+    assert.equal(W.foyerPrincipal(e, {}), null, e.k);
+  }
+  assert.equal(W.foyerPrincipal(null, {}), null);
+});
+
 test("sur la planche d'essai, l'étape est faite par un texte de l'OCR, et dit l'ordre des moteurs", () => {
   const pre = W.ETAPES.find((x) => x.k === "preremplir");
   const avec = W.moteurs({ kumiko: true, bulles: true, ocr: true });

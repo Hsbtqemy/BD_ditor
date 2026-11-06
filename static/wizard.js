@@ -891,6 +891,15 @@
         class: "wf-cadre" + (t.rep.marque && t.rep.marque === seule ? " ici" : ""),
         x: t.l, y: t.t, width: t.r - t.l, height: t.b - t.t, rx: 6 }));
     });
+    // Le foyer PRINCIPAL de l'étape (`principalDeLEtape`) : un cadre plein et plus épais,
+    // serré sur sa commande — à 2 px, d'un trait de 3 —, donc tout entier dans le trou, sur
+    // le fond de la page et non sous l'assombri. Immobile : rien ne bouge, quelle que soit
+    // la préférence d'animation.
+    const p = F.mode === "etape" ? principalDeLEtape() : null;
+    if (p) {
+      voileSvg.appendChild(svg("rect", { class: "wf-cadre principal", x: p.l - 2, y: p.t - 2,
+                                         width: p.r - p.l + 4, height: p.b - p.t + 4, rx: 6 }));
+    }
     pastilles.forEach((t) => {
       if (t.rep.n == null) return;   // les zones du guide n'ont pas de numéro
       const cx = Math.max(t.l, rayon + 2), cy = Math.max(t.t, rayon + 2);
@@ -1684,6 +1693,20 @@
     if (!rs.length) return null;
     return { l: Math.min(...rs.map((r) => r.l)), t: Math.min(...rs.map((r) => r.t)),
              r: Math.max(...rs.map((r) => r.r)), b: Math.max(...rs.map((r) => r.b)) };
+  }
+
+  /* La part visible du foyer PRINCIPAL de l'étape (`BDWizard.foyerPrincipal`) — tant que
+     son menu est fermé, l'étape pas faite et son moteur là —, `null` sinon. */
+  function principalDeLEtape() {
+    const e = etapeCourante();
+    if (F.mode !== "etape" || G.fin || !e) return null;
+    const marque = W.foyerPrincipal(e, {});
+    const x = marque ? document.querySelector(`[data-parcours="${marque}"]`) : null;
+    if (!x) return null;
+    const m = W.moteursDuGuide(S.moteurs, G.d);
+    return W.foyerPrincipal(e, { ouvert: estOuvert(x), faite: W.faite(e, G.d, S.souvenir.parcours),
+                                 optionnel: W.marqueEtape(e, m) === "optionnel ici" })
+      ? partVisible(x) : null;
   }
 
   const ETROIT = "(max-width: 40em)";

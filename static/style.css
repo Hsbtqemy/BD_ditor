@@ -907,6 +907,11 @@ kbd {
 .wizard-voile .wf-cadre { fill: none; stroke: var(--accent-amber); stroke-width: 2;
                           stroke-opacity: .6; }
 .wizard-voile .wf-cadre.ici { stroke-width: 3; stroke-opacity: 1; }
+/* Le foyer principal d'une étape (« Traitement » à « Pré-remplir », Hugo, 2026-11-06) : un
+   cadre plein, plus épais que celui du foyer, serré sur sa commande et posé sur le fond de
+   la barre — l'ambre y passe 3:1 dans les quatre thèmes (6,5:1 au moins par le calcul ;
+   le seuil est vérifié par `tests/test_e2e_wizard.py`). Immobile. */
+.wizard-voile .wf-cadre.principal { stroke-width: 3; stroke-opacity: 1; }
 .wizard-voile .wf-pastille circle { fill: var(--accent-amber); stroke: var(--bg-deep);
                                     stroke-width: 2; }
 .wizard-voile .wf-pastille text { fill: var(--bg-deep); font-weight: 700; }
