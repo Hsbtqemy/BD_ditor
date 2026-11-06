@@ -473,7 +473,7 @@ def _poser_annotation(conn, region_id, note):
     lui reste rien à porter (`annotation_vide`). ANN-7, le basculement : une annotation ne
     porte plus que sa note — un instantané d'avant qui nommait des tags (`tags`, des
     libellés) les laisse : ils ne se lisent plus nulle part."""
-    if annotation_vide(note, 0):
+    if annotation_vide(note):
         _supprimer_annotation(conn, region_id)
         return
     conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, ?) "

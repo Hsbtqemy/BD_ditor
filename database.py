@@ -2235,12 +2235,16 @@ def _basculer_le_vocabulaire(conn: sqlite3.Connection) -> None:
         conn.execute(_FTS_V39)
         a_releves = {"releve", "grille", "grille_entree", "grille_variante",
                      "releve_qualificatif", "grille_qualificatif"} <= tables
+        # Ce qu'écrirait `reindex_region` : des étiquettes absentes valent '', jamais NULL, et
+        # une note qui n'est pas POSÉE (`SQL_NOTE_POSEE`, lu ici sur la colonne de l'index :
+        # son annotation vient de partir) ne garde ni sa valeur ni, à elle seule, sa ligne.
         etiquettes = sql_etiquettes("_v.region_id") if a_releves else "NULL"
         conn.execute(
             "INSERT INTO recherche__v39 (region_id, ocr_texte, note, etiquettes, lemmes) "
             "SELECT region_id, ocr_texte, note, etiquettes, lemmes FROM ("
-            f"SELECT _v.region_id, _v.ocr_texte, _v.note, {etiquettes} AS etiquettes, "
-            "_v.lemmes FROM recherche _v) "
+            f"SELECT _v.region_id, _v.ocr_texte, "
+            f"CASE WHEN {SQL_NOTE_POSEE} THEN _v.note ELSE '' END AS note, "
+            f"COALESCE({etiquettes}, '') AS etiquettes, _v.lemmes FROM recherche _v) "
             "WHERE COALESCE(ocr_texte, '') <> '' OR COALESCE(note, '') <> '' "
             "OR COALESCE(etiquettes, '') <> '' OR COALESCE(lemmes, '') <> ''")
         # Une région qui n'avait pas de ligne — ni texte ni note : une CASE qui porte
@@ -3405,7 +3409,14 @@ _SQL_NOM_POSE = "TRIM(COALESCE(nom, '')) <> ''"
 # croisée du commit des coutures, constat 2). Lue par `copier_le_travail`, l'aperçu,
 # `niveau_de_travail`, `repartir_de_zero` et son aperçu, `undo`, `pipeline/segmentation.py`
 # et `pipeline/bulles.py`. Une ligne nue jusqu'à la migration qui retire ces lignes.
-SQL_NOTE_POSEE = "TRIM(COALESCE(note, '')) <> ''"
+# Une note faite de ces seuls caractères — les espaces de `str.isspace()` : espace, tabulation,
+# saut de ligne, espace insécable… — est VIDE : UNE règle, que disent le SQL
+# (`SQL_NOTE_POSEE`) et Python (`annotation_vide`). `TRIM` seul n'ôte que l'espace, et
+# `str.strip()` toute espace Unicode : une note d'un saut de ligne était posée pour l'un, vide
+# pour l'autre. L'ensemble est celui de `str.strip()`, calculé : la route garde sa règle.
+ESPACES_DE_NOTE = "".join(chr(i) for i in range(0x3001) if chr(i).isspace())
+SQL_NOTE_POSEE = (f"TRIM(COALESCE(note, ''), "
+                  f"char({', '.join(str(ord(c)) for c in ESPACES_DE_NOTE)})) <> ''")
 
 
 def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran: str,
@@ -4784,12 +4795,12 @@ def unindex_region(conn: sqlite3.Connection, region_id: int) -> None:
     conn.execute("DELETE FROM recherche WHERE region_id = ?", (region_id,))
 
 
-def annotation_vide(note, nb_tags: int) -> bool:
-    """Une annotation qui n'a plus rien à porter — ni note (une note d'espaces est vide), ni
-    tag, cachés compris. Elle se SUPPRIME plutôt que de rester en coquille : elle fausserait
-    le compte des annotées et ferait garder la case à la re-segmentation. UNE règle, lue par
-    `put_annotation` et par la suppression d'un tag (ANN-8)."""
-    return not (note or "").strip() and not nb_tags
+def annotation_vide(note) -> bool:
+    """Une annotation qui n'a plus rien à porter : pas de note (une note faite d'espaces est
+    vide, `ESPACES_DE_NOTE` — la règle de `SQL_NOTE_POSEE`). Elle se SUPPRIME plutôt que de
+    rester en coquille : elle fausserait le compte des annotées et ferait garder la case à la
+    re-segmentation. Lue par `put_annotation` et par Ctrl+Z."""
+    return not (note or "").strip(ESPACES_DE_NOTE)
 
 
 if __name__ == "__main__":

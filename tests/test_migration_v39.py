@@ -351,6 +351,70 @@ def test_une_grille_de_travail_deja_nee_recoit_le_drapeau_sans_doubler(vraie_v38
     assert [g["nom"] for g in repli if g["travail"]] == [f"{GRILLE_DE_TRAVAIL_NOM} 2"]
 
 
+@pytest.mark.parametrize("note, posee", [
+    (None, False), ("", False), ("   ", False), ("\n", False), (" \t\r\n\v\f ", False),
+    ("\xa0 　", False), (" ironie ", True), ("\n?", True), ("\xa0?", True),
+])
+def test_une_note_posee_est_la_meme_en_sql_et_en_python(note, posee):
+    """Une seule règle de la note VIDE, des deux côtés : `SQL_NOTE_POSEE` (la migration, la
+    copie, Ctrl+Z, la re-segmentation) et `annotation_vide` (la route, Ctrl+Z). `TRIM` seul
+    disait posée une note d'un saut de ligne, que `str.strip()` disait vide."""
+    c = sqlite3.connect(":memory:")
+    try:
+        sql = bool(c.execute(f"SELECT {database.SQL_NOTE_POSEE} FROM (SELECT ? AS note)",
+                             (note,)).fetchone()[0])
+    finally:
+        c.close()
+    assert sql is posee
+    assert database.annotation_vide(note) is not posee
+
+
+def test_l_index_recopie_dit_ce_que_la_reindexation_ecrirait(vraie_v38):
+    """La recopie de l'index (sans moteur de langue) écrit, région par région, ce que
+    `reindex_region` écrirait hors lemmes : des étiquettes absentes à '', jamais NULL ; une
+    note qui n'est pas posée — d'espaces, d'un saut de ligne —, partie avec son annotation,
+    ne garde ni sa valeur ni sa ligne. Une grille ouverte porte des étiquettes."""
+    _poser_une_grille_ouverte(vraie_v38)
+    c = sqlite3.connect(vraie_v38)
+    try:
+        vides = [r[0] for r in c.execute(
+            "SELECT id FROM regions WHERE ocr_texte IS NULL AND id NOT IN "
+            "(SELECT region_id FROM annotations) AND id NOT IN (SELECT region_id FROM releve "
+            "WHERE region_id IS NOT NULL) ORDER BY id LIMIT 2")]
+        texte = c.execute("SELECT id FROM regions WHERE TRIM(COALESCE(ocr_texte, '')) <> '' "
+                          "AND id NOT IN (SELECT region_id FROM annotations) "
+                          "ORDER BY id LIMIT 1").fetchone()[0]
+        for rid, note in ((vides[0], "   "), (vides[1], "\n"), (texte, " \r\n")):
+            c.execute("INSERT INTO annotations (region_id, note) VALUES (?, ?)", (rid, note))
+            c.execute("DELETE FROM recherche WHERE region_id = ?", (rid,))
+            ocr = c.execute("SELECT COALESCE(ocr_texte, '') FROM regions WHERE id = ?",
+                            (rid,)).fetchone()[0]
+            c.execute("INSERT INTO recherche (region_id, ocr_texte, note, tags_concat, lemmes) "
+                      "VALUES (?, ?, ?, 'un-tag', '')", (rid, ocr, note))
+        c.commit()
+    finally:
+        c.close()
+    database.init_db()
+    assert _sql(vraie_v38, "SELECT COUNT(*) AS n FROM recherche WHERE etiquettes IS NULL") == [
+        {"n": 0}]
+    conn = database.get_connection()
+    try:
+        index = {r["region_id"]: (r["ocr_texte"] or "", r["note"] or "", r["etiquettes"])
+                 for r in conn.execute("SELECT * FROM recherche")}
+        ecarts = {}
+        for (rid,) in conn.execute("SELECT id FROM regions ORDER BY id").fetchall():
+            p = database._region_index_payload(conn, rid)
+            attendu = p if any(p) else None
+            if index.get(rid) != attendu:
+                ecarts[rid] = (index.get(rid), attendu)
+    finally:
+        conn.close()
+    assert not ecarts, ecarts
+    assert vides[0] not in index and vides[1] not in index
+    assert index[texte][1] == ""
+    assert any(e for _, _, e in index.values())
+
+
 def test_effacer_un_bac_a_sable_ne_passe_rien_sous_le_plancher(vraie_v38):
     """L'effacement d'un bac à sable PASSE les gestes encore annulables de ses régions (une
     trace `abandon` par acte) : ceux d'avant le plancher ne l'étaient plus, il n'y a rien à

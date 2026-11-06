@@ -1888,7 +1888,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
 
     # Vider la note = SUPPRIMER la ligne, pas laisser une coquille vide : sinon elle
     # ferait conserver à tort la case à la re-segmentation (préservation du travail humain).
-    if annotation_vide(note, 0):
+    if annotation_vide(note):
         if avant_annot is not None:
             conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))
             reindex_region(conn, region_id)
