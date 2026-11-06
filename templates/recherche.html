@@ -31,8 +31,8 @@
 
     <div class="search-bar" data-parcours="recherche-champ">
       <input type="search" id="q" autocomplete="off"
-             aria-label="Rechercher dans les dialogues et les notes"
-             placeholder="Rechercher dans les dialogues, notes…">
+             aria-label="Rechercher dans les dialogues, les notes et les étiquettes"
+             placeholder="Rechercher dans les dialogues, notes, étiquettes…">
       <select id="f-album" aria-label="Filtrer par album"><option value="">Tous les albums</option></select>
       <select id="f-type" aria-label="Filtrer par type de région">
         <option value="">Tous les types</option>
@@ -41,6 +41,14 @@
         <option value="texte">texte</option>
         <option value="case">case</option>
         <option value="personnage">personnage</option>
+      </select>
+      <!-- ANN-7 — « Porte… » : une étiquette du Mode libre, ou une entrée, une variante, une
+           rubrique de n'importe quelle grille active du projet courant (recherche.js). Choisir
+           AJOUTE un filtre (une puce, plus bas) ; la liste revient à « Porte… ». Cachée tant
+           qu'aucune grille n'est lue. -->
+      <select id="f-porte" aria-label="Filtrer par relevé" hidden
+              title="Les zones qui portent une étiquette du Mode libre, ou une entrée d'une grille active du projet">
+        <option value="">Porte…</option>
       </select>
     </div>
 
@@ -62,6 +70,10 @@
         </select>
       </div>
     </details>
+
+    <!-- ANN-7 — les filtres « porte » posés, en puces, chacune avec ✕ ; deux puces se
+         combinent par « et ». -->
+    <div id="filtres-porte" class="filtres-porte" hidden></div>
 
     <!-- COL-4 : dans un bac à sable, la phrase « … n'est ni cherché ni exploré » naît
          juste au-dessus (static/bac-a-sable.js) ; hors d'un bac à sable, rien. -->
@@ -93,6 +105,7 @@
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/projet.js"></script>
 <script src="/static/lib/resultats.js"></script>
+<script src="/static/lib/porte.js"></script>
 <script src="/static/lib/dialog.js"></script>
 <script src="/static/lib/membres-projet.js"></script>
 <script src="/static/lib/bac-a-sable.js"></script>

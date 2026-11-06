@@ -288,7 +288,10 @@ def test_recherche_resultat_apercu_et_lien_edition(page, seeded_ocr):
     assert f"region={s['region']}" in href and "retour=" in href
     # UX-6 — le lien nomme la page comme la navigation : « Atelier », jamais « Visionneuse ».
     expect(page.locator("#preview-edit")).to_have_text("✏️ Atelier")
-    expect(card).to_have_attribute("title", re.compile(r"dans l'Atelier$"))
+    # ANN-7 — la carte porte le bouton qui ouvre l'aperçu, et à côté la ligne de ses relevés :
+    # l'infobulle est celle du bouton.
+    expect(card.locator(".r-ouvrir")).to_have_attribute("title", re.compile(r"dans l'Atelier$"))
+    expect(card.locator(".r-ouvrir")).to_have_attribute("role", "button")
 
 
 def test_visionneuse_menu_import_export(page, live_server):
@@ -681,9 +684,12 @@ def test_filtres_recherche_ont_un_nom_accessible(page, live_server):
     le texte de l'option par défaut)."""
     page.goto(f"{live_server}/recherche", wait_until="networkidle")
     expect(page.locator("#q")).to_have_attribute(
-        "aria-label", "Rechercher dans les dialogues et les notes", timeout=15000)
+        "aria-label", "Rechercher dans les dialogues, les notes et les étiquettes",
+        timeout=15000)
     expect(page.locator("#f-album")).to_have_attribute("aria-label", "Filtrer par album")
     expect(page.locator("#f-type")).to_have_attribute("aria-label", "Filtrer par type de région")
+    # ANN-7 — « Porte… », cachée tant qu'aucune grille n'est lue : nommée aussi.
+    expect(page.locator("#f-porte")).to_have_attribute("aria-label", "Filtrer par relevé")
     # facettes grammaticales (dans un <details>) : nommées aussi
     expect(page.locator("#f-pos")).to_have_attribute(
         "aria-label", "Filtrer par catégorie grammaticale (POS)")

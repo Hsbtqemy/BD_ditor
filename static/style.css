@@ -2459,19 +2459,57 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
 
 .result-count { margin: .4615rem 0 .7692rem; }
 .results { display: flex; flex-direction: column; gap: .6154rem; }
+/* ANN-7 — la CARTE n'est plus le contrôle : elle porte la partie qui ouvre l'aperçu
+   (`.r-ouvrir`, vignette et texte, le bouton) puis la ligne des relevés, dont chaque relevé
+   est un bouton (un bouton ne se loge pas dans un autre). La ligne s'aligne sous le texte :
+   la largeur de la vignette est une variable, que la ligne lit pour son retrait. */
 .result {
-  display: flex; gap: .9231rem; padding: .7692rem; text-decoration: none; color: inherit;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
-}
-.result:hover { border-color: var(--accent-blue); background: var(--bg-input); }
-.r-thumb {
   /* 130 px fixes laissaient 116 px au texte sur un téléphone de 320 — une douzaine de
      caractères par ligne (mesuré le 2026-09-05). `clamp` ne change RIEN au-dessus de
      591 px de fenêtre, où 22vw dépasse déjà 130 : la vignette ne rétrécit que là où
      elle prend la place de ce qu'on est venu lire. */
-  width: clamp(72px, calc(22 * var(--vw-visible)), 130px); max-height: 96px; object-fit: contain; flex: 0 0 auto;
+  --r-vignette: clamp(72px, calc(22 * var(--vw-visible)), 130px);
+  display: flex; flex-direction: column; gap: .4615rem; padding: .7692rem;
+  text-decoration: none; color: inherit;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+}
+.result:hover { border-color: var(--accent-blue); background: var(--bg-input); }
+.r-ouvrir { display: flex; gap: .9231rem; min-width: 0; border-radius: 4px; }
+.r-thumb {
+  width: var(--r-vignette); max-height: 96px; object-fit: contain; flex: 0 0 auto;
   background: var(--media-bg); border-radius: 4px;
 }
+/* Les relevés EN LIGNE (ANN-7, tranché sur maquette le 2026-11-06) : le nom de la grille en
+   encre discrète, chaque relevé un bouton qui se lit comme du texte, souligné en pointillé
+   parce qu'il agit — un clic l'isole. */
+.r-releves {
+  margin-left: calc(var(--r-vignette) + .9231rem); min-width: 0;
+  line-height: 1.6; overflow-wrap: anywhere;
+}
+.result.sans-vignette .r-releves { margin-left: 0; }
+.r-gr, .r-sep { color: var(--text-muted); }
+.r-releve {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; color: var(--text);
+  cursor: pointer; text-align: start;
+  text-decoration: underline dotted; text-underline-offset: .15em;
+}
+.r-releve:hover { text-decoration-style: solid; }
+/* La liste « Porte… » (ANN-7) : une option peut être longue — une variante d'une rubrique
+   imbriquée — et un <select> prend la largeur de sa plus longue option ; bornée à la barre,
+   elle passe à la ligne au lieu de pousser la page de côté. */
+.search-bar #f-porte { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+/* Les filtres « porte » posés, en puces au-dessus des résultats ; « et » entre deux. */
+.filtres-porte {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .4615rem; margin-bottom: .6154rem;
+}
+.filtres-porte[hidden] { display: none; }
+.porte-puce {
+  display: inline-flex; align-items: center; gap: .3077rem; min-width: 0; max-width: 100%;
+  padding: .1538rem .3077rem .1538rem .6154rem; overflow-wrap: anywhere;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--bg-input);
+}
+.porte-puce .porte-retirer { padding: 0 .3846rem; border-radius: 999px; flex: 0 0 auto; }
+.porte-et { color: var(--text-muted); }
 .r-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: .3077rem; }
 .r-text { font-size: 1.0769rem; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
 .r-note { font-size: .9231rem; color: var(--text-muted); }
