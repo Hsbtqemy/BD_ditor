@@ -1185,3 +1185,233 @@ test("un départ ne perd quelque chose que si l'une des saisies attend, et chacu
   }
   assert.equal(A.departPerdrait({ ...rien, formDoute: { texte: " " } }), false);
 });
+
+/* ── Le MODE LIBRE : l'écran (maquette tranchée par Hugo le 2026-11-06) ── */
+
+const TOUT = { renommer: true, ajouter_valeur: true, ranger: true, fusionner: true,
+               retirer: true, etat: true };
+const ANNOTATEUR = { renommer: true, ajouter_valeur: true, ranger: true, fusionner: false,
+                     retirer: false, etat: false };
+const RIEN = { renommer: false, ajouter_valeur: false, ranger: true, fusionner: false,
+               retirer: false, etat: false };
+const LIBRE = {
+  grille: { id: 5, ouverte: true, travail: true },
+  porte_sur: ["bulle", "cartouche", "texte", "case"], rubriques: [],
+  entrees: [
+    { cle: "ironie", libelle: "ironie", forme: "simple", etat: "provisoire", rubrique_cle: null,
+      pose: "zone", cibles: ["bulle"], cardinalite: "une", variantes: [], remaniable: ANNOTATEUR },
+    { cle: "sentiment", libelle: "sentiment", forme: "variantes", etat: "provisoire",
+      rubrique_cle: null, pose: "zone", cibles: ["bulle"], cardinalite: "plusieurs",
+      variantes: [{ cle: "perte", libelle: "perte" }, { cle: "joie", libelle: "joie" }],
+      remaniable: ANNOTATEUR },
+    { cle: "vieux", libelle: "vieux", forme: "simple", etat: "provisoire", rubrique_cle: null,
+      retiree: true, variantes: [], remaniable: ANNOTATEUR },
+    { cle: "lieu", libelle: "Lieu", forme: "variantes", etat: "defini", rubrique_cle: null,
+      pose: "zone", cibles: ["bulle"], cardinalite: "plusieurs",
+      variantes: [{ cle: "foret", libelle: "forêt" }], remaniable: RIEN },
+  ],
+};
+const posees = (l) => (e) => l.filter((r) => r.entree_cle === e.cle);
+
+test("le Mode libre : l'onglet de la grille de travail vient en tête, et s'appelle ainsi", () => {
+  const actives = [{ id: 1, nom: "Signaux" }, { id: 2, nom: "Travail en cours", travail: true },
+                   { id: 3, nom: "Voix", masquee_dans: [7] }];
+  assert.deepEqual(A.grillesVisibles(actives, null).map((g) => g.id), [2, 1, 3]);
+  assert.deepEqual(A.grillesVisibles(actives, 7).map((g) => g.id), [2, 1]);
+  assert.equal(A.nomOnglet(actives[1]), "Mode libre");
+  assert.equal(A.nomOnglet(actives[0]), "Signaux");
+  assert.equal(A.nomOnglet(null), "");
+  // Un projet qui a activé une grille la retrouve ; le Mode libre s'ouvre quand il est seul.
+  assert.equal(A.grilleAOuvrir(A.grillesVisibles(actives, null), null), 1);
+  assert.equal(A.grilleAOuvrir(A.grillesVisibles(actives, null), 2), 2);
+  assert.equal(A.grilleAOuvrir([actives[1]], null), 2);
+  assert.match(A.infobulleGrille({ ...actives[1], ouverte: true, version: {} }, null),
+               /^Mode libre — « Travail en cours » · ouverte/);
+});
+
+test("une grille sans rubrique se lit à plat, sans « Sans rubrique »", () => {
+  const t = A.arbre(LIBRE);
+  assert.equal(t.length, 1);
+  assert.equal(t[0].plat, true);
+  assert.deepEqual(t[0].entrees.map((e) => e.cle), ["ironie", "sentiment", "lieu"]);
+  // Avec une rubrique, le groupe des orphelines garde son nom.
+  assert.equal(A.arbre(PLAN).find((n) => n.cle === "").plat, undefined);
+  assert.deepEqual(A.vuesAfficher(LIBRE), []);
+});
+
+test("une grille de travail vide dit sur quoi poser : jamais « Porte sur — »", () => {
+  const vide = { grille: { ouverte: true, travail: true }, porte_sur: ["bulle", "case"],
+                 rubriques: [], entrees: [] };
+  const bulle = { id: 3, type: "bulle" };
+  const laCase = { id: 2, type: "case" };
+  assert.deepEqual(A.optionsPorteSur(vide, bulle, laCase).map((o) => o.cle), ["zone", "case"]);
+  // Une grille fermée ne pose que ce que ses entrées visent.
+  assert.deepEqual(A.optionsPorteSur({ ...vide, grille: { ouverte: false } }, bulle, laCase), []);
+});
+
+test("la saisie : deux-points au premier, « ; » sépare les valeurs, vides et doublons tombent", () => {
+  assert.equal(A.lireSaisie("   "), null);
+  assert.deepEqual(A.lireSaisie(" ironie  mordante "), { nom: "ironie mordante", valeurs: [] });
+  assert.deepEqual(A.lireSaisie("sentiment : perte ; tristesse"),
+                   { nom: "sentiment", valeurs: ["perte", "tristesse"] });
+  assert.deepEqual(A.lireSaisie("heure : 10:30"), { nom: "heure", valeurs: ["10:30"] });
+  assert.deepEqual(A.lireSaisie("x : a ;; Perte ; perte ;"), { nom: "x", valeurs: ["a", "Perte"] });
+  assert.deepEqual(A.lireSaisie("lieu :"), { nom: "lieu", valeurs: [] });
+  assert.deepEqual(A.lireSaisie(": forêt"), { nom: "", valeurs: ["forêt"] });
+});
+
+test("ce qu'Entrée fera : la table de vérité des huit cas de la maquette", () => {
+  const f = (t, l = []) => A.ceQuEntreeFera(LIBRE, t, posees(l));
+  const cas = [
+    ["", [], null],
+    ["mélancolie", [], [true, "Créer « mélancolie » et poser", [{ nouvelle: "mélancolie" }]]],
+    ["deuil : perte ; colère", [],
+     [true, "Créer « deuil : perte, colère » et poser",
+      [{ nouvelle: "deuil : perte" }, { nouvelle: "deuil : colère" }]]],
+    ["IRONIE", [], [true, "Poser « ironie »", [{ entree_cle: "ironie" }]]],
+    ["ironie", [{ entree_cle: "ironie" }], [false, "« ironie » est déjà posée ici", []]],
+    ["ironie : fine", [], [false, "« ironie » n'a pas de valeurs", []]],
+    ["sentiment", [], [false, "Choisissez une valeur de « sentiment », ou tapez « sentiment : … »", []]],
+    ["sentiment : tristesse", [],
+     [true, "Ajouter « tristesse » à « sentiment » et poser",
+      [{ entree_cle: "sentiment", nouvelle: "sentiment : tristesse" }]]],
+    ["sentiment : Perte", [],
+     [true, "Poser « sentiment : perte »", [{ entree_cle: "sentiment", variante_cle: "perte" }]]],
+    ["sentiment : perte ; tristesse", [{ entree_cle: "sentiment", variante_cle: "perte" }],
+     [true, "Ajouter « tristesse » à « sentiment » et poser",
+      [{ entree_cle: "sentiment", nouvelle: "sentiment : tristesse" }]]],
+    ["sentiment : joie ; tristesse", [],
+     [true, "Poser « sentiment : joie, tristesse (nouvelle) »",
+      [{ entree_cle: "sentiment", variante_cle: "joie" },
+       { entree_cle: "sentiment", nouvelle: "sentiment : tristesse" }]]],
+    ["sentiment : perte ; joie",
+     [{ entree_cle: "sentiment", variante_cle: "perte" }, { entree_cle: "sentiment", variante_cle: "joie" }],
+     [false, "« sentiment : perte, joie » est déjà posée ici", []]],
+    [": forêt", [], [false, "Tapez un nom avant « : »", []]],
+    // Une étiquette retirée ne se reprend pas : son nom en fait naître une autre (le serveur
+    // dira qu'elle est retirée).
+    ["vieux", [], [true, "Créer « vieux » et poser", [{ nouvelle: "vieux" }]]],
+    // Ajouter une valeur à une étiquette DÉFINIE est aux responsables (J5) ; poser une valeur
+    // qui existe, non.
+    ["lieu : grotte", [], [false, "« Lieu » est définie : seuls les responsables la changent", []]],
+    ["lieu : foret", [], [true, "Poser « Lieu : forêt »", [{ entree_cle: "lieu", variante_cle: "foret" }]]],
+  ];
+  for (const [saisie, l, attendu] of cas) {
+    const a = f(saisie, l);
+    if (attendu === null) { assert.equal(a, null, saisie); continue; }
+    assert.deepEqual([a.ok, a.libelle, a.gestes], attendu, saisie);
+  }
+  // Une étiquette définie qu'un responsable remanie : la valeur s'ajoute.
+  const resp = { ...LIBRE, entrees: LIBRE.entrees.map((e) => ({ ...e, remaniable: TOUT })) };
+  assert.equal(A.ceQuEntreeFera(resp, "lieu : grotte", () => []).ok, true);
+});
+
+test("« Créer « … » dans Mode libre » : depuis une grille fermée seulement", () => {
+  const fermee = { id: 1, ouverte: false };
+  const travail = { id: 5, ouverte: true, travail: true };
+  const d = (g, t, res = []) => A.dansModeLibre(g, travail, t, res, LIBRE, posees([]));
+  assert.equal(d(fermee, "mélancolie").libelle, "Créer « mélancolie » dans Mode libre");
+  assert.deepEqual(d(fermee, "mélancolie").gestes, [{ nouvelle: "mélancolie" }]);
+  assert.equal(d(fermee, "ironie").libelle, "Poser « ironie » dans Mode libre");
+  assert.equal(d(fermee, "sentiment : deuil").libelle,
+               "Ajouter « deuil » à « sentiment » dans Mode libre");
+  assert.equal(d(fermee, "Cri", [{ libelle: "cri" }]), null);     // la grille fermée l'a
+  assert.equal(d(fermee, "origine par hors", [{ libelle: "origine du son par hors champ" }]),
+               null);                                            // elle y répond
+  assert.equal(d(fermee, "sentiment"), null);                      // Entrée n'y ferait rien
+  assert.equal(d({ id: 2, ouverte: true }, "mélancolie"), null);   // une ouverte crée chez elle
+  assert.equal(A.dansModeLibre(fermee, null, "x", [], LIBRE, null), null);
+  assert.equal(d(fermee, "   "), null);
+});
+
+test("les gestes offerts selon `remaniable`, et ce qui éteint ✎", () => {
+  const e = (remaniable, etat = "provisoire") => ({ libelle: "ironie", etat, remaniable });
+  const R = A.RAISON_RARE;
+  assert.deepEqual(A.gestesOfferts(e(TOUT, "defini")),
+                   { renommer: null, ajouter_valeur: null, etat: null, fusionner: null,
+                     passer: null, retirer: null });
+  assert.deepEqual(A.gestesOfferts(e(ANNOTATEUR)),
+                   { renommer: null, ajouter_valeur: null, etat: R, fusionner: R, passer: R,
+                     retirer: R });
+  const def = "« ironie » est définie : seuls les responsables la changent";
+  assert.deepEqual(A.gestesOfferts(e(RIEN, "defini")),
+                   { renommer: def, ajouter_valeur: def, etat: R, fusionner: R, passer: R,
+                     retirer: R });
+  assert.equal(A.raisonCrayon(e(ANNOTATEUR)), null);
+  assert.equal(A.raisonCrayon(e(TOUT, "defini")), null);
+  assert.equal(A.raisonCrayon(e(RIEN, "defini")), def);
+  // Qui n'annote pas : rien, et la raison ne parle pas de « définie ».
+  const lecteur = { ...RIEN, ranger: false };
+  assert.match(A.raisonCrayon(e(lecteur)), /annotateurs du projet/);
+  assert.match(A.raisonRemanier(e(lecteur), "ranger"), /annotateurs du projet/);
+  assert.equal(A.raisonRemanier(e(RIEN), "ranger"), null);
+  // Sans `remaniable` (un plan d'avant), rien n'est offert.
+  assert.equal(A.raisonRemanier({ libelle: "x", etat: "provisoire" }, "renommer"),
+               "Les étiquettes se renomment par les annotateurs du projet");
+  assert.equal(A.etatEnMots(e(TOUT)).mot, "provisoire");
+  assert.equal(A.etatEnMots(e(TOUT, "defini")).mot, "✓ définie");
+});
+
+test("l'ordre : « À la main » par défaut, A → Z, retenu sur le poste", () => {
+  const l = LIBRE.entrees.filter((e) => !e.retiree);
+  assert.equal(A.TRI_DEFAUT, "main");
+  assert.deepEqual(A.trierEntrees(l, "main").map((e) => e.cle), ["ironie", "sentiment", "lieu"]);
+  assert.deepEqual(A.trierEntrees(l, "alpha").map((e) => e.cle), ["ironie", "lieu", "sentiment"]);
+  assert.notEqual(A.trierEntrees(l, "alpha"), l);                   // une copie
+  const memoire = new Map();
+  const st = { getItem: (k) => memoire.get(k) ?? null, setItem: (k, v) => memoire.set(k, v) };
+  assert.equal(A.lireTri(st), "main");
+  assert.equal(A.retenirTri(st, "alpha"), true);
+  assert.equal(memoire.get(A.CLE_TRI), "alpha");
+  assert.equal(A.lireTri(st), "alpha");
+  assert.equal(A.retenirTri(st, "n'importe"), false);
+  memoire.set(A.CLE_TRI, "inconnu");
+  assert.equal(A.lireTri(st), "main");
+  const casse = { getItem: () => { throw new Error("x"); }, setItem: () => { throw new Error("x"); } };
+  assert.equal(A.lireTri(casse), "main");
+  assert.equal(A.retenirTri(casse, "alpha"), false);
+  assert.equal(A.lireTri(null), "main");
+});
+
+test("« ↕ Ranger » : la place parmi TOUTES les sœurs, l'ordre vu, et rien qui ne bouge pas", () => {
+  // Les sœurs : ironie, sentiment, vieux (retirée), lieu.
+  assert.deepEqual(A.deplacement(LIBRE, "lieu", -1),
+                   { quoi: "entree", cle: "lieu", place: 1,
+                     vu: ["ironie", "sentiment", "vieux", "lieu"] });
+  assert.deepEqual(A.deplacement(LIBRE, "sentiment", 1).place, 3);   // saute la retirée
+  assert.equal(A.deplacement(LIBRE, "ironie", -1), null);
+  assert.equal(A.deplacement(LIBRE, "lieu", 1), null);
+  assert.equal(A.deplacement(LIBRE, "inconnue", 1), null);
+  assert.deepEqual(A.deplacementAvant(LIBRE, "lieu", "ironie").place, 0);
+  assert.deepEqual(A.deplacementAvant(LIBRE, "ironie", null).place, 3);
+  assert.equal(A.deplacementAvant(LIBRE, "ironie", "sentiment"), null);  // déjà là
+  assert.equal(A.deplacementAvant(LIBRE, "lieu", null), null);           // déjà au bout
+  assert.equal(A.deplacementAvant(LIBRE, "lieu", "lieu"), null);
+  assert.equal(A.deplacementAvant(LIBRE, "lieu", "ailleurs"), null);
+  // Une autre rubrique n'est pas une sœur.
+  const rub = { entrees: [{ cle: "a", rubrique_cle: "r1" }, { cle: "b", rubrique_cle: "r2" },
+                          { cle: "c", rubrique_cle: "r1" }] };
+  assert.deepEqual(A.deplacement(rub, "c", -1), { quoi: "entree", cle: "c", place: 0, vu: ["a", "c"] });
+  assert.equal(A.deplacementAvant(rub, "c", "b"), null);
+});
+
+test("les phrases des confirmations sur place", () => {
+  const e = { libelle: "ironie" };
+  assert.equal(A.retraitEnMots(e, 0), "Retirer « ironie » : personne ne la pose, elle disparaît.");
+  assert.equal(A.retraitEnMots(e, 1), "Retirer « ironie » : elle ne se pose plus ; son relevé reste, à revoir.");
+  assert.equal(A.retraitEnMots(e, 3), "Retirer « ironie » : elle ne se pose plus ; ses 3 relevés restent, à revoir.");
+  assert.equal(A.fusionEnMots("humour", 1), "1 relevé passe à « humour ».");
+  assert.equal(A.fusionEnMots("humour", 2), "2 relevés passent à « humour ».");
+  assert.match(A.BILAN_J8, /tranche à part \(J8\)/);
+});
+
+test("une valeur d'une étiquette « plusieurs » s'ajoute à côté, et se retire seule (J3)", () => {
+  const s = LIBRE.entrees[1];
+  const p = rel(20, { entree_cle: "sentiment", variante_cle: "perte" });
+  assert.deepEqual(A.geste(s, [p], { variante: "joie" }),
+                   { action: "poser", corps: { variante_cle: "joie" } });
+  assert.equal(A.geste(s, [p], { variante: "perte" }).action, "retirer");
+  assert.equal(A.geste(s, [p], { variante: "perte" }).releve, p);
+  const j = rel(21, { entree_cle: "sentiment", variante_cle: "joie" });
+  assert.equal(A.geste(s, [p, j], { variante: "joie" }).releve, j);
+});
