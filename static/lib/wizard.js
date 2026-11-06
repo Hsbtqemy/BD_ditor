@@ -816,7 +816,7 @@
       zones: [
         ["recherche-corpus", "Ce que vous lisez", "Le corpus ouvert à votre compte, sans "
           + "votre bac à sable."],
-        ["recherche-champ", "Le champ et ses filtres", "Dialogues et notes ; par album, par "
+        ["recherche-champ", "Le champ et ses filtres", "Dialogues, notes et étiquettes ; par album, par "
           + "type de zone."],
         // Explicite (Hugo, 2026-11-05) : ce qu'on cherche par la grammaire, avec un exemple.
         ["recherche-facettes", "Facettes grammaticales", "Chercher par la grammaire : la "
