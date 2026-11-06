@@ -32,13 +32,6 @@ def _nb_actes(db_path, rid):
                         (rid,))[0]["n"]
 
 
-def _tags_en_base(db_path, rid):
-    return {r["label"] for r in direct_query(
-        db_path, "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-                 "JOIN annotations an ON an.id = at.annotation_id WHERE an.region_id = ?",
-        (rid,))}
-
-
 def test_l_annotation_ne_rend_plus_que_la_note(client, planche, db_path):
     rid = _bulle(client, planche["id"])
     poser_tags(db_path, rid, ["d-hier"])
@@ -67,16 +60,6 @@ def test_une_liste_vide_d_hier_est_refusee_aussi(client, planche):
     rid = _bulle(client, planche["id"])
     rep = client.put(f"/api/regions/{rid}/annotation", json={"note": "n", "tags": []})
     assert rep.status_code == 422, rep.text
-
-
-def test_une_note_ne_reecrit_pas_les_tags_d_hier(client, planche, db_path):
-    """Les tags d'une base d'avant le basculement restent tels quels jusqu'à la migration :
-    changer la note ne les réécrit pas."""
-    rid = _bulle(client, planche["id"])
-    poser_tags(db_path, rid, ["a", "b"], note="avant")
-    rep = client.put(f"/api/regions/{rid}/annotation", json={"note": "après"})
-    assert rep.status_code == 200, rep.text
-    assert _tags_en_base(db_path, rid) == {"a", "b"}
 
 
 def test_vider_la_note_supprime_l_annotation(client, planche, db_path):

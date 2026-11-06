@@ -59,17 +59,16 @@ def _planche_etat(db, pl):
 # correction, une annotation, un attribut visible et un caché — deux en base —, un
 # locuteur, une présence). Les tokens se régénèrent depuis le texte qui reste, au nombre
 # que donne le moteur : ils ne se comptent qu'où ils doivent être nuls. ANN-7, le
-# basculement : repartir ne touche plus aux attributs de case d'hier — ils ne se lisent plus,
-# et partent avec leur région (aux images seules) ou avec la migration.
+# basculement : les attributs de case d'hier n'ont plus de table (v39).
 RESTE = {
     "grammaire": {"regions": 2, "textes": 1, "corrections": 1, "annotations": 0,
-                  "attributs": 2, "locuteurs": 0, "presences": 0},
+                  "locuteurs": 0, "presences": 0},
     "transcription": {"regions": 2, "textes": 1, "corrections": 0, "annotations": 0,
-                      "attributs": 2, "locuteurs": 0, "presences": 0},
+                      "locuteurs": 0, "presences": 0},
     "decoupage": {"regions": 2, "textes": 0, "tokens": 0, "corrections": 0,
-                  "annotations": 0, "attributs": 2, "locuteurs": 0, "presences": 0},
+                  "annotations": 0, "locuteurs": 0, "presences": 0},
     "images": {"regions": 0, "textes": 0, "tokens": 0, "corrections": 0, "annotations": 0,
-               "attributs": 0, "locuteurs": 0, "presences": 0},
+               "locuteurs": 0, "presences": 0},
 }
 
 
@@ -91,9 +90,9 @@ def test_chaque_cran_retire_ce_qui_est_au_dessus_et_rien_d_autre(client, source,
         assert etat["statut"] == "segmentee"
     # L'index plein texte suit : plus de note ni de tag nulle part ; le texte seulement où
     # il reste.
-    lignes = _sql(db_path, "SELECT ocr_texte, note, tags_concat FROM recherche "
+    lignes = _sql(db_path, "SELECT ocr_texte, note, etiquettes FROM recherche "
                            "WHERE region_id IN (?, ?)", (source["case"], source["bulle"]))
-    assert all(not (l["note"] or l["tags_concat"]) for l in lignes)
+    assert all(not (l["note"] or l["etiquettes"]) for l in lignes)
     textes = [l["ocr_texte"] for l in lignes if l["ocr_texte"]]
     assert textes == (["TINTIN ET LES OTAGES"] if cran in ("grammaire", "transcription")
                       else [])
@@ -137,16 +136,13 @@ def test_une_copie_sans_rien_d_autre_qu_un_nom_repart(client, source, db_path):
 
 def test_une_ligne_aux_seuls_tags_d_hier_n_est_pas_du_travail(client, planche, db_path):
     """ANN-7, le basculement (relecture croisée du commit des coutures, constat 2). Une
-    ligne d'annotation qui ne porte que des tags d'hier, sans note, n'est rien qu'on
-    montre : elle ne fait pas monter le niveau de travail au cran des annotations, l'aperçu
+    ligne d'annotation sans note — ce que portait une ligne aux seuls tags d'hier, que la
+    v39 retire, et qu'une base retouchée peut encore porter — n'est rien qu'on montre : elle ne fait pas monter le niveau de travail au cran des annotations, l'aperçu
     ne la compte pas, et repartir de zéro ne dit pas « 1 annotation part » — mais la retire
     quand même. Comme la copie, qui ne recopie qu'une note posée (`SQL_NOTE_POSEE`)."""
-    from conftest import poser_tags
     rid = _ok(client.post(f"/api/planches/{planche['id']}/regions", headers=ADMIN,
                           json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}), 201)["id"]
-    poser_tags(db_path, rid, ["hier"])
-    assert _sql(db_path, "SELECT note FROM annotations WHERE region_id = ?",
-                (rid,)) == [{"note": None}], "le décor ne pose plus la ligne aux seuls tags"
+    _sql(db_path, "INSERT INTO annotations (region_id, note) VALUES (?, NULL)", (rid,))
     album = planche["album_id"]
     conn = database.get_connection()
     try:

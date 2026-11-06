@@ -426,23 +426,14 @@ _SQL_IMAGES_DU_JEU = ("SELECT _ij.chemin_tiff FROM planches _ij JOIN jeu_documen
 _SQL_IMAGES_EXPORTABLES = _SQL_IMAGES_DU_JEU + " WHERE _jj.exportable = 1"
 
 
-# La FRONTIÈRE d'un projet isolé, pour le vocabulaire (relecture croisée : un tag global
-# rangé dans la base d'un bac à sable partait avec lui, et la région du vrai corpus qui le
-# portait le perdait). Un terme a une RIVE : 0 s'il est global ou local à une collection
-# ordinaire, l'identifiant du projet isolé s'il est local à l'une de ses collections. Un
-# geste qui ferait passer un terme d'une rive à l'autre — le ranger, le fusionner, le
-# rattacher, le poser — est refusé, pour toute portée : c'est une propriété des données.
+# La FRONTIÈRE d'un projet isolé (relecture croisée de COL-4). Un objet a une RIVE : 0 hors
+# de tout projet isolé, l'identifiant du projet isolé sinon. Un geste qui ferait passer un
+# objet d'une rive à l'autre est refusé, pour toute portée : c'est une propriété des
+# données. Elle valait pour le vocabulaire d'hier, que la v39 d'ANN-7 retire avec ses
+# tables ; elle vaut pour les PERSONNAGES (`_rive_d_un_personnage`), et la phrase du refus
+# est restée la sienne.
 _MOTIF_TERME_FRONTIERE = ("Un terme ne passe pas la frontière d'un bac à sable : ce qui y naît "
                           "y reste, et rien du vrai corpus n'y entre.")
-
-
-def _rive_d_un_terme(conn, collection_id) -> int:
-    """0 pour un terme global ou d'une collection ordinaire ; l'id du projet ISOLÉ (bac à
-    sable, jeu) pour un terme local à l'une de ses collections."""
-    if collection_id is None:
-        return 0
-    projet = projet_de_collection(conn, collection_id)
-    return projet if est_isole(conn, projet) else 0
 
 
 def _rive_d_un_album(conn, album_id) -> int:
@@ -1121,9 +1112,9 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
                                  "projet ne se supprime que vide.")
     # ANN-7 (G18) — un projet qui POSSÈDE des grilles ne se supprime pas sans qu'on l'ait
     # décidé : ses grilles d'abord (les supprimer, ou elles portent des relevés et se
-    # retirent). La clé sans action de `grille.projet_id` est la ceinture. Une grille qui ne
-    # porte RIEN (`grille_import.grille_sans_rien` : la grille de travail née avec le projet,
-    # tant qu'on n'y a rien posé) ne compte pas, comme la base vide : elle part avec lui.
+    # retirent). La clé sans action de `grille.projet_id` est la ceinture. Sa grille de
+    # TRAVAIL qui ne porte RIEN (`grille_import.grille_sans_rien` : son drapeau, `travail`, et
+    # rien de posé) ne compte pas, comme la base vide : elle part avec lui.
     vides = [r[0] for r in conn.execute("SELECT id FROM grille WHERE projet_id = ?",
                                         (projet_id,)) if grille_import.grille_sans_rien(conn, r[0])]
     g = conn.execute("SELECT COUNT(*) FROM grille WHERE projet_id = ?",
@@ -1141,23 +1132,6 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
         raise HTTPException(409, f"Sa collection de base porte encore {habitees} album(s) : "
                                  "rangez-les ailleurs, ou supprimez-les d'abord de la "
                                  "collection. Un projet ne se supprime que vide.")
-    # Une base qui porte du VOCABULAIRE local n'est pas vide non plus (relecture croisée) —
-    # et ne l'est toujours pas après le basculement d'ANN-7, tant que ses tables existent :
-    # supprimée, ses termes deviendraient GLOBAUX (`ON DELETE SET NULL`), donc visibles de
-    # toute l'instance — une grille d'analyse qui fuit, ce qu'AUTH-2 (v24) ferme ailleurs.
-    # Le refus le nomme ; c'est à qui le tient de le promouvoir ou de le supprimer, en le
-    # sachant.
-    ids = [b["id"] for b in bases]
-    termes = sum(conn.execute(
-        f"SELECT COUNT(*) FROM {t} WHERE collection_id IN ({', '.join('?' * len(ids))})",
-        ids).fetchone()[0] for t in ("domaine", "attribut_dimension", "attribut_valeur",
-                                     "tags")) if ids else 0
-    if termes:
-        raise HTTPException(409, f"Sa collection de base porte {termes} terme(s) de "
-                                 "vocabulaire qui lui sont propres : supprimés avec elle, "
-                                 "ils deviendraient visibles de toute l'instance. Rendez-les "
-                                 "globaux, ou supprimez-les, d'abord. Un projet ne se "
-                                 "supprime que vide.")
     # Lu dans la colonne ÉCRITE, pas par la règle de lecture : c'est elle que la clé
     # étrangère garde, et c'est elle qui porte le projet d'une copie au fonds. Un album
     # encore rangé est déjà arrêté par le refus du dessus. Le compte ne dit rien de plus
@@ -1195,7 +1169,7 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
         conn.execute("DELETE FROM grille WHERE id = ?", (gid,))
         journal.journaliser(conn, "suppression", "grille", gid,
                             avant={"nom": nom, "projet_id": projet_id})
-    # Sa base VIDE — ni album ni vocabulaire à elle, refusés plus haut — part avec lui ;
+    # Sa base VIDE — aucun album, refusé plus haut — part avec lui ;
     # ses accès posés partent par cascade.
     for b in bases:
         _clore_demandes_vers(conn, portee, b["id"])
@@ -1214,72 +1188,6 @@ _MOTIF_PAS_UN_BAC = ("Ce projet n'est pas un bac à sable : seul un bac à sable
 # Combien de fois l'effacement relit les albums d'un bac à sable avant de renoncer : chaque
 # tour détruit tout ce qu'il a lu, et un tour sans album finit sous le verrou.
 _TOURS_D_EFFACEMENT = 20
-
-
-def _supprimer_le_vocabulaire_du_bac(conn, projet_id: int, collections: list) -> None:
-    """Supprime le vocabulaire LOCAL aux collections de ce bac à sable — SAUF ce qui est
-    employé hors de lui (relecture croisée : un terme du vrai corpus rangé là partait avec
-    le bac à sable, et les régions du corpus qui le portaient le perdaient). Les gestes qui
-    feraient passer un terme la frontière sont refusés (`_exiger_une_rive`) ; ceci est la
-    défense de l'état qu'aurait laissé une base retouchée. Ce qui reste devient GLOBAL quand
-    sa collection part (`ON DELETE SET NULL`) : employé dans le corpus, le détruire
-    détruirait du travail du corpus.
-
-    Employé dehors : un tag posé sur une région d'un album d'un autre projet ; une valeur
-    posée sur une telle région, ou sur un personnage qui n'est pas né dans ce bac à sable ;
-    une dimension qui porte une telle valeur (elle reste avec TOUTES ses valeurs) ; un
-    domaine qui porte une dimension qui n'est pas du bac à sable.
-    Les valeurs avant leurs dimensions, les dimensions avant leurs domaines.
-
-    ANN-7, le basculement : plus rien ne pose ni ne lit ce vocabulaire, mais ses tables
-    restent jusqu'à la migration qui les retire. Ce nettoyage reste jusque-là : sans lui,
-    la clé étrangère rendrait GLOBAL ce qu'un bac à sable laisse, et ce qui est global
-    sortait encore au dépôt d'une vraie collection (relecture croisée du basculement)."""
-    marques = ", ".join("?" * len(collections))
-    dehors = (f"EXISTS (SELECT 1 FROM regions _r JOIN planches _p ON _p.id = _r.planche_id "
-              f"JOIN albums _a ON _a.id = _p.album_id WHERE _r.id = {{region}} "
-              f"AND {sql_projet_d_album('_a')} IS NOT ?)")
-    valeurs_dehors = (
-        f"SELECT v.id FROM attribut_valeur v WHERE "
-        f"(EXISTS (SELECT 1 FROM region_attribut ra WHERE ra.valeur_id = v.id AND "
-        f"{dehors.format(region='ra.region_id')}) "
-        f"OR EXISTS (SELECT 1 FROM personnage_attribut pa JOIN personnages pe "
-        f"ON pe.id = pa.personnage_id WHERE pa.valeur_id = v.id "
-        f"AND pe.bac_a_sable_id IS NOT ?))")
-    dims_gardees = (f"SELECT d.id FROM attribut_dimension d WHERE d.collection_id IN "
-                    f"({marques}) AND d.id IN (SELECT dimension_id FROM attribut_valeur "
-                    f"WHERE id IN ({valeurs_dehors}))")
-    p_dims = [*collections, projet_id, projet_id]
-    conn.execute(f"DELETE FROM attribut_valeur WHERE collection_id IN ({marques}) "
-                 f"AND id NOT IN ({valeurs_dehors}) AND dimension_id NOT IN ({dims_gardees})",
-                 [*collections, projet_id, projet_id, *p_dims])
-    conn.execute(f"DELETE FROM attribut_dimension WHERE collection_id IN ({marques}) "
-                 f"AND id NOT IN ({dims_gardees})", [*collections, *p_dims])
-    conn.execute(f"DELETE FROM domaine WHERE collection_id IN ({marques}) AND NOT EXISTS "
-                 f"(SELECT 1 FROM attribut_dimension d WHERE d.domaine_id = domaine.id "
-                 f"AND (d.collection_id IS NULL OR d.collection_id NOT IN ({marques})))",
-                 [*collections, *collections])
-    # (Les dimensions gardées sont encore locales au bac à sable à cet instant : un domaine
-    # qui n'a qu'elles part, et elles deviennent « hors domaine » — leur portée suit, globale.)
-    employe_dehors = (f"EXISTS (SELECT 1 FROM annotation_tags at JOIN annotations an "
-                      f"ON an.id = at.annotation_id WHERE at.tag_id = tags.id "
-                      f"AND {dehors.format(region='an.region_id')})")
-    conn.execute(f"DELETE FROM tags WHERE (collection_id IN ({marques}) OR espace = ?) "
-                 f"AND NOT {employe_dehors}", [*collections, projet_id, projet_id])
-    # Un tag de l'ESPACE du bac à sable employé dehors rejoint celui de l'instance : fondu
-    # dans le tag de même libellé s'il y en a un (l'unicité par espace l'exige), sinon
-    # déplacé tel quel.
-    for tid, label in conn.execute("SELECT id, label FROM tags WHERE espace = ?",
-                                   (projet_id,)).fetchall():
-        autre = conn.execute("SELECT id FROM tags WHERE espace = 0 AND label = ?",
-                             (label,)).fetchone()
-        if autre is None:
-            conn.execute("UPDATE tags SET espace = 0 WHERE id = ?", (tid,))
-            continue
-        conn.execute("INSERT OR IGNORE INTO annotation_tags (annotation_id, tag_id) "
-                     "SELECT annotation_id, ? FROM annotation_tags WHERE tag_id = ?",
-                     (autre[0], tid))
-        conn.execute("DELETE FROM tags WHERE id = ?", (tid,))
 
 
 def _passer_les_gestes_du_bac(conn, projet_id: int) -> int:
@@ -1392,9 +1300,6 @@ def _effacer_bac_a_sable(conn, portee: autorisation.Portee, projet_id: int, *,
     collections = [(r[0], r[1]) for r in conn.execute(
         f"SELECT c.id, c.nom FROM collection c WHERE {sql_projet_de('c')} = ? ORDER BY c.id",
         (projet_id,))]
-    ids = [c for c, _nom in collections]
-    if ids:
-        _supprimer_le_vocabulaire_du_bac(conn, projet_id, ids)
     for collection_id, nom in collections:
         _clore_demandes_vers(conn, portee, collection_id)
         conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))

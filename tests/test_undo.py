@@ -64,7 +64,7 @@ def test_undo_suppression_region_cascade(client, planche, db_path):
     bulle = _creer_region(client, planche["id"], type="bulle", parent_id=case["id"],
                           ocr_texte="SALUT")
     client.put(f"/api/regions/{bulle['id']}/annotation", json={"note": "cri"})
-    poser_tags(db_path, bulle["id"], ["emotion"])          # un tag d'hier, en base (ANN-7)
+    poser_tags(db_path, bulle["id"], ["emotion"])          # un tag d'hier (ANN-7) : rien
     client.delete(f"/api/regions/{case['id']}")
     assert case["id"] not in _regions(db_path) and bulle["id"] not in _regions(db_path)
 
@@ -74,10 +74,6 @@ def test_undo_suppression_region_cascade(client, planche, db_path):
     assert case["id"] in regs and bulle["id"] in regs   # sous-arbre restauré, mêmes id
     ann = _un(db_path, "SELECT note FROM annotations WHERE region_id = ?", (bulle["id"],))
     assert ann["note"] == "cri"
-    tags = direct_query(db_path,
-        "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-        "JOIN annotations a ON a.id = at.annotation_id WHERE a.region_id = ?", (bulle["id"],))
-    assert tags == []
 
 
 # --------------------------------------------------------------------------- #
@@ -136,9 +132,8 @@ def test_des_tags_d_hier_seuls_n_empechent_pas_d_annuler_sa_creation(client, pla
     `{"note": None}`, pas `None`), et le second Ctrl+Z répondait le 409 de CONC-3 « modifié
     par anonyme » ; la copie, elle, ne la comptait déjà pas (une note posée)."""
     r = _creer_region(client, planche["id"], type="bulle")
+    # L'acte d'hier, au journal ; la ligne aux seuls tags, la v39 l'a retirée.
     poser_tags(db_path, r["id"], ["hier"], agent="anonyme")
-    assert _un(db_path, "SELECT note FROM annotations WHERE region_id = ?",
-               (r["id"],)) == {"note": None}, "le décor ne pose plus la ligne aux seuls tags"
     assert client.post("/api/undo").status_code == 409
     rep = client.post("/api/undo")
     assert rep.status_code == 200, rep.text

@@ -441,8 +441,10 @@ def _entree_par_nom(conn, grille_id: int, version, libelle: str, forme: str):
                                     quoi="entree")
     rang = conn.execute("SELECT COALESCE(MAX(rang), -1) + 1 FROM grille_entree "
                         "WHERE version_id = ?", (version["id"],)).fetchone()[0]
-    conn.execute("INSERT INTO grille_entree (version_id, cle, rang, forme, libelle) "
-                 "VALUES (?, ?, ?, ?, ?)", (version["id"], cle, rang, forme, libelle))
+    # Elle naît PROVISOIRE (v39, J4) : tapée en posant, ce qu'on ne sait pas encore nommer.
+    conn.execute("INSERT INTO grille_entree (version_id, cle, rang, forme, libelle, etat) "
+                 "VALUES (?, ?, ?, ?, ?, ?)", (version["id"], cle, rang, forme, libelle,
+                                               grilles.ENTREE_PROVISOIRE))
     _empreinte_et_journal(conn, grille_id, version,
                           {"entree_neuve": {"version": version["numero"], "cle": cle,
                                             "libelle": libelle, "forme": forme}})

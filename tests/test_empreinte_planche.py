@@ -104,8 +104,8 @@ def test_hors_portee_la_planche_est_introuvable(client, planche, monkeypatch):
 
 def test_le_vocabulaire_d_hier_ne_change_l_empreinte_de_personne(client, planche, db_path):
     """ANN-7, le basculement : les tags et la situation d'une case ne se montrent plus nulle
-    part, et l'empreinte ne les condense plus — un tag ou une valeur posés en base (une base
-    d'avant la migration v39 les porte encore) ne font proposer « Actualiser » à personne,
+    part, et l'empreinte ne les condense plus — la ligne sans note qu'ils laissaient ne fait
+    proposer « Actualiser » à personne,
     administrateur compris. (AUTH-11 les filtrait par la portée des termes : la question
     n'a plus d'objet.) Mutant tué : les tags ou la situation remis dans `empreinte.empreintes`."""
     pid = planche["id"]
@@ -113,17 +113,9 @@ def test_le_vocabulaire_d_hier_ne_change_l_empreinte_de_personne(client, planche
     avant = _empreinte(client, pid, ADMIN)
     conn = sqlite3.connect(db_path)
     try:
-        tag = conn.execute("INSERT INTO tags (label) VALUES ('hier')").lastrowid
-        ann = conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, '')",
-                           (rid,)).lastrowid
-        conn.execute("INSERT INTO annotation_tags (annotation_id, tag_id) VALUES (?, ?)",
-                     (ann, tag))
-        dim = conn.execute("INSERT INTO attribut_dimension (cible, nom) "
-                           "VALUES ('case', 'lieu')").lastrowid
-        val = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
-                           "VALUES (?, 'forêt')", (dim,)).lastrowid
-        conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-                     (rid, val))
+        # Ce qu'une base d'avant la v39 portait d'eux : une ligne sans note (les tags et la
+        # situation n'ont plus de table). Elle ne fait proposer « Actualiser » à personne.
+        conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, '')", (rid,))
         conn.commit()
     finally:
         conn.close()

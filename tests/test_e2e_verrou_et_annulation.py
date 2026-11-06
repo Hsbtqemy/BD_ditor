@@ -15,7 +15,6 @@
   lit nulle part, et l'instantané ne la porte plus.
 """
 import re
-import sqlite3
 
 import httpx
 import pytest
@@ -58,17 +57,6 @@ def decor(live_server, tmp_path):
         tintin = c.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
         assert c.put(f"/api/regions/{cartouche}/locuteur",
                      json={"personnage_id": tintin}).status_code == 200
-    conn = sqlite3.connect(tmp_path / "live.sqlite")
-    try:
-        dim = conn.execute("INSERT INTO attribut_dimension (cible, nom) VALUES ('case', 'lieu')"
-                           ).lastrowid
-        val = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
-                           "VALUES (?, 'falaise')", (dim,)).lastrowid
-        conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-                     (case, val))
-        conn.commit()
-    finally:
-        conn.close()
     return {"base": live_server, "base_sqlite": tmp_path / "live.sqlite", "album": aid,
             "planche": pid, "case": case, "cartouche": cartouche}
 
@@ -154,13 +142,3 @@ def test_annuler_la_suppression_d_une_case_rend_son_locuteur_a_l_ecran(page, dec
     page.goto(f"{d['base']}/annotation?album={d['album']}&planche={d['planche']}"
               f"&region={d['cartouche']}", wait_until="networkidle")
     expect(page.locator("#an-loc-nom")).to_have_text("Tintin", timeout=15000)
-    conn = sqlite3.connect(d["base_sqlite"])
-    try:
-        attrs = conn.execute(
-            "SELECT d.nom, v.valeur FROM region_attribut ra "
-            "JOIN attribut_valeur v ON v.id = ra.valeur_id "
-            "JOIN attribut_dimension d ON d.id = v.dimension_id WHERE ra.region_id = ?",
-            (d["case"],)).fetchall()
-    finally:
-        conn.close()
-    assert [tuple(a) for a in attrs] == []        # ANN-7 : la situation d'hier ne revient pas

@@ -27,6 +27,7 @@ import pytest
 
 import database
 import migration_v38
+import migration_v39
 from migration_v38 import COLONNES_V38
 
 BASE_V33 = Path(__file__).resolve().parent / "bases" / "v33-e5d2e73.sql"
@@ -86,7 +87,13 @@ def _etat(db):
         db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
             "AND name NOT LIKE 'recherche_%' ORDER BY name")]
     lignes = {}
+    # La v39 (ANN-7, le basculement) détruit le vocabulaire d'hier : ses tables ne se
+    # lisent plus après la migration (`migration_v39`).
+    presentes = {r["name"] for r in _sql(db, "SELECT name FROM sqlite_master "
+                                             "WHERE type = 'table'")}
     for t in LIGNES:
+        if t not in presentes:
+            continue
         retire = COLONNES_NEUVES.get(t, ())
         lignes[t] = sorted(json.dumps({k: v for k, v in r.items() if k not in retire},
                                       sort_keys=True, ensure_ascii=False)
@@ -138,7 +145,10 @@ def test_la_base_chargee_est_bien_une_v33_qui_a_vecu(vraie_v33):
 def test_une_vraie_base_v33_migre_sans_rien_perdre(vraie_v33):
     avant = _etat(vraie_v33)
     membres_avant = migration_v38.membres(vraie_v33)
+    v39 = migration_v39.avant_la_v39(vraie_v33)
     database.init_db()
+    migration_v39.defaire_la_v39(vraie_v33, v39)
+    avant = migration_v39.ramener_l_etat(avant, v39)
     migration_v38.retirer_les_membres_de_la_v38(vraie_v33, membres_avant)
     apres = _etat(vraie_v33)
     assert _sql(vraie_v33, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION

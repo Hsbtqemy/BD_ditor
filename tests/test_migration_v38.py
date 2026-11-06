@@ -23,6 +23,7 @@ import pytest
 
 import database
 import main
+import migration_v39
 
 BASE_V37 = Path(__file__).resolve().parent / "bases" / "v37-f6f53ed.sql"
 # Toutes les tables qui portent des lignes, sauf celles que la v38 change : écrites ICI À LA
@@ -34,6 +35,10 @@ LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet
           "evenement", "activite", "jeu_document", "region_attribut", "bulle_locuteur",
           "personnage_presence", "grille", "grille_version", "projet_grille", "releve",
           "passe", "doute", "doute_message", "retrait_vu", "utilisateur")
+# La v39 (ANN-7, le basculement) détruit le vocabulaire d'hier, retire les annotations sans
+# note, et écrit des grilles de travail et leurs actes (`migration_v39`, éprouvée par
+# `tests/test_migration_v39.py`) : ces tests-ci les comparent sans elle.
+LIGNES_APRES = tuple(t for t in LIGNES if t not in migration_v39.TABLES_V39)
 # Le projet d'une collection : NULL se lit « le projet de repli » (`database.sql_projet_de`),
 # écrit ici à la main pour la même raison.
 _PROJET_DE = "COALESCE(col.projet_id, (SELECT id FROM projet WHERE repli = 1))"
@@ -96,6 +101,7 @@ def _membres(db):
 
 
 def _lignes(db, t, sans=()):
+    sans = (*sans, *migration_v39.COLONNES_V39.get(t, ()))
     return sorted(json.dumps({k: v for k, v in r.items() if k not in sans}, sort_keys=True,
                              ensure_ascii=False) for r in _sql(db, f'SELECT * FROM "{t}"'))
 
@@ -143,14 +149,18 @@ def test_une_vraie_base_v37_migre_sans_rien_perdre(vraie_v37):
     hors = _hors_projet(vraie_v37)
     assert (repli, "utilisateur", "venue-par-le-repli") in hors
     membres_avant = _membres(vraie_v37)
-    lignes_avant = {t: _lignes(vraie_v37, t) for t in LIGNES}
+    v39 = migration_v39.avant_la_v39(vraie_v37)
+    lignes_avant = {t: _lignes(vraie_v37, t) for t in LIGNES_APRES}
+    sans_note = {r["id"] for r in _sql(vraie_v37, "SELECT id FROM annotations "
+                                                  "WHERE TRIM(COALESCE(note, '')) = ''")}
     demandes_avant = _lignes(vraie_v37, "demande")
     seq_avant = _seq(vraie_v37)
 
     database.init_db()
+    migration_v39.defaire_la_v39(vraie_v37, v39)
 
-    assert _sql(vraie_v37, "PRAGMA user_version")[0]["user_version"] == 38
-    assert database.SCHEMA_VERSION == 38
+    assert _sql(vraie_v37, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
+    assert database.SCHEMA_VERSION >= 38
     # 1. Les colonnes de la planche : NULL partout.
     cols = {c["name"] for c in _sql(vraie_v37, "PRAGMA table_info(demande)")}
     assert {"planche_id", "planche_numero"} <= cols
@@ -178,8 +188,11 @@ def test_une_vraie_base_v37_migre_sans_rien_perdre(vraie_v37):
     tables = {r["name"] for r in _sql(vraie_v37, "SELECT name FROM sqlite_master "
                                                  "WHERE type = 'table'")}
     assert "geste_sur_copie" not in tables
-    # Et rien d'autre : chaque autre table, ligne à ligne ; les compteurs.
-    assert {t: _lignes(vraie_v37, t) for t in LIGNES} == lignes_avant
+    # Et rien d'autre : chaque autre table, ligne à ligne (les annotations sans note, que la
+    # v39 retire, mises à part) ; les compteurs.
+    lignes_avant["annotations"] = [l for l in lignes_avant["annotations"]
+                                   if json.loads(l)["id"] not in sans_note]
+    assert {t: _lignes(vraie_v37, t) for t in LIGNES_APRES} == lignes_avant
     assert _seq(vraie_v37) == seq_avant
     assert _sql(vraie_v37, "PRAGMA foreign_key_check") == []
     assert _sql(vraie_v37, "PRAGMA integrity_check")[0]["integrity_check"] == "ok"
@@ -187,11 +200,11 @@ def test_une_vraie_base_v37_migre_sans_rien_perdre(vraie_v37):
 
 def test_rejouee_la_migration_ne_change_rien(vraie_v37):
     database.init_db()
-    etat = (_membres(vraie_v37), {t: _lignes(vraie_v37, t) for t in (*LIGNES, "demande")},
+    etat = (_membres(vraie_v37), {t: _lignes(vraie_v37, t) for t in (*LIGNES_APRES, "demande")},
             _sql(vraie_v37, "SELECT type, name, sql FROM sqlite_master ORDER BY name"))
     _sql(vraie_v37, "PRAGMA user_version = 37")
     database.init_db()
-    assert (_membres(vraie_v37), {t: _lignes(vraie_v37, t) for t in (*LIGNES, "demande")},
+    assert (_membres(vraie_v37), {t: _lignes(vraie_v37, t) for t in (*LIGNES_APRES, "demande")},
             _sql(vraie_v37, "SELECT type, name, sql FROM sqlite_master ORDER BY name")) == etat
 
 

@@ -170,15 +170,6 @@ def _presence(client, decor):
     assert r.status_code == 200, r.text
 
 
-def _valeur_de_case(client):
-    """Une valeur d'attribut de case d'HIER, posée en base : ses routes sont parties avec le
-    basculement d'ANN-7, et seule la base d'avant porte encore des situations."""
-    import database
-    from conftest import poser_attribut
-    return poser_attribut(database.DB_PATH, cible="case", dimension="émotion",
-                          valeur="colère")["valeur_id"]
-
-
 def _notice(client, decor):
     r = client.put(f"/api/albums/{decor['erreur']}", headers=COLLEGUE,
                    json={"isbn": "978-2-203-00101-0"})
@@ -258,16 +249,6 @@ def test_ses_propres_gestes_ne_sont_pas_le_travail_d_un_autre(client, decor):
     assert client.patch(f"/api/planches/{decor['planche']}/relecture", headers=IMPORTEUSE,
                         json={"relecture": "faite"}).status_code == 200
     assert _autres(client, decor) == set()
-
-
-def test_un_attribut_de_case_d_hier_ne_compte_plus(client, db_path, decor):
-    """La prudence de B3 comptait comme le travail d'un autre un attribut de case que rien
-    n'attribuait à l'importatrice. ANN-7, le basculement : ce qu'il a posé ne se lit plus
-    nulle part, et ne se compte plus (la deuxième source est retirée)."""
-    vid = _valeur_de_case(client)
-    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-         (decor["region"], vid))
-    assert None not in _autres(client, decor)
 
 
 def test_la_notice_la_paternite_et_la_relecture_s_ecrivent_sous_le_document(
@@ -817,16 +798,13 @@ def _detail(client, demande_id):
 def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor):
     """Qui (login, nom), combien de gestes de chaque sorte, et la date du dernier. Le
     demandeur n'y est pas, même s'il a travaillé ; l'importatrice y est, comme tout autre.
-    Un attribut de case d'hier, dont l'auteur n'était pas écrit, n'y est plus (ANN-7)."""
+    Un attribut de case d'hier n'a plus de table depuis la v39 (ANN-7)."""
     client.get("/api/moi", headers={**COLLEGUE, "Remote-Name": "Camille Zzcollegue"})
     r2 = _region(client, decor["planche"], COLLEGUE)
     assert client.put(f"/api/regions/{r2}/annotation", headers=COLLEGUE,
                       json={"note": "vu"}).status_code == 200
     _locuteur(client, decor)
     _region(client, decor["planche"], ATELIER)               # le demandeur aussi travaille
-    vid = _valeur_de_case(client)
-    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-         (decor["region"], vid))
     demande = _demander(client, decor["erreur"], ATELIER).json()["id"]
     # Les gestes de l'importatrice vieillis à la main, sauf son scan : « le dernier » est le
     # plus récent de TOUS, y compris dans une sorte qui en compte deux (la naissance du

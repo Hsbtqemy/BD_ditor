@@ -60,8 +60,8 @@ def source(client, derriere_proxy, data_dir, db_path):
                                   "parent_id": case}), 201)["id"]
     _ok(client.put(f"/api/regions/{bulle}", headers=LEA,
                    json={"ocr_texte": "TINTIN ET LES OTAGES"}))
-    # La note par la route ; les tags et les attributs de case, que plus aucune route ne pose
-    # (ANN-7, le basculement), en base et au nom de `lea`, comme leurs routes les écrivaient.
+    # La note par la route ; les tags et les attributs de case d'hier, que la v39 a détruits
+    # (ANN-7, le basculement) : il n'en reste que les actes, au journal, au nom de `lea`.
     _ok(client.put(f"/api/regions/{bulle}/annotation", headers=LEA, json={"note": "ironie"}))
     poser_tags(db_path, bulle, ["dialogue"], agent="lea")
     poser_tags(db_path, bulle, ["secret"], collection_id=principale, agent="lea")
@@ -120,7 +120,6 @@ def _travail(db_path, album_id):
         "corrections": n("SELECT COUNT(*) AS n FROM token_correction "
                          f"WHERE region_id IN ({regions})"),
         "annotations": n(f"SELECT COUNT(*) AS n FROM annotations WHERE region_id IN ({regions})"),
-        "attributs": n(f"SELECT COUNT(*) AS n FROM region_attribut WHERE region_id IN ({regions})"),
         "locuteurs": n(f"SELECT COUNT(*) AS n FROM bulle_locuteur WHERE region_id IN ({regions})"),
         "presences": n("SELECT COUNT(*) AS n FROM personnage_presence "
                        f"WHERE region_id IN ({regions})"),
@@ -142,7 +141,7 @@ def test_a_chaque_cran_ce_qui_doit_suivre_suit_et_rien_au_dessus(db_path, source
     zero = dict.fromkeys(_travail(db_path, source["a"]), 0)
     assert _travail(db_path, b) == {**zero, **ATTENDU[cran]}
     # La source n'a rien perdu.
-    assert _travail(db_path, source["a"]) == {**ATTENDU["annotations"], "attributs": 2}
+    assert _travail(db_path, source["a"]) == ATTENDU["annotations"]
 
 
 @pytest.mark.parametrize("cran", ["decoupage", "transcription", "grammaire", "annotations"])
@@ -237,14 +236,6 @@ def test_sous_la_transcription_la_region_n_a_que_sa_geometrie(db_path, source):
     assert (bulle["ocr_texte"], bulle["touche"]) == (None, 0)
 
 
-def _tags_de(db_path, album_id) -> int:
-    return _sql(db_path, "SELECT COUNT(*) AS n FROM annotation_tags at "
-                         "JOIN annotations an ON an.id = at.annotation_id "
-                         "JOIN regions r ON r.id = an.region_id "
-                         "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
-                (album_id,))[0]["n"]
-
-
 @pytest.mark.parametrize("arrivee", ["etude", "principale"])
 def test_le_vocabulaire_d_hier_ne_suit_aucune_copie(db_path, source, arrivee):
     """ANN-7, le basculement : ni tag ni attribut de case ne suit une copie, global ou local,
@@ -252,8 +243,6 @@ def test_le_vocabulaire_d_hier_ne_suit_aucune_copie(db_path, source, arrivee):
     de la naissance ne les compte plus, ni copiés ni laissés. Mutant tué : la recopie des
     tags ou des attributs remise dans `copier_le_travail`."""
     b = _copier(source, "annotations", collection=source[arrivee])
-    assert _tags_de(db_path, b) == 0
-    assert _travail(db_path, b)["attributs"] == 0
     assert _sql(db_path, "SELECT an.note FROM annotations an JOIN regions r "
                          "ON r.id = an.region_id JOIN planches p ON p.id = r.planche_id "
                          "WHERE p.album_id = ?", (b,)) == [{"note": "ironie"}]
@@ -263,9 +252,6 @@ def test_le_vocabulaire_d_hier_ne_suit_aucune_copie(db_path, source, arrivee):
     assert charge["copie"]["laisses"] == {"releves": 0}
     assert "tags" not in charge["copie"]["copies"]
     assert "attributs" not in charge["copie"]["copies"]
-    # La source garde ce qu'elle portait : le basculement n'efface rien par une copie.
-    assert _tags_de(db_path, source["a"]) == 2
-    assert _travail(db_path, source["a"])["attributs"] == 2
 
 
 def test_une_annotation_sans_note_ne_nait_pas(db_path, source):
@@ -286,21 +272,21 @@ def test_les_personnages_suivent(client, db_path, source):
 
 
 def test_l_index_suit_sans_rien_perdre(client, db_path, source):
-    """La copie se trouve comme sa source ; ses tags dans l'index sont les SIENS — aucun
-    depuis le basculement d'ANN-7 (la colonne part avec la migration)."""
+    """La copie se trouve comme sa source ; ses étiquettes dans l'index sont les SIENNES —
+    aucune ici (la v39 a remplacé `tags_concat` par `etiquettes`)."""
     b = _copier(source, "annotations")
     ligne = _sql(db_path, "SELECT rc.* FROM recherche rc JOIN regions r ON r.id = rc.region_id "
                           "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?", (b,))
     assert len(ligne) == 1
     assert ligne[0]["ocr_texte"] == "TINTIN ET LES OTAGES" and ligne[0]["note"] == "ironie"
-    assert ligne[0]["tags_concat"] == ""
+    assert ligne[0]["etiquettes"] == ""
 
 
 def test_sous_les_annotations_la_note_ne_passe_pas_dans_l_index(client, db_path, source):
     b = _copier(source, "transcription")
     ligne = _sql(db_path, "SELECT rc.* FROM recherche rc JOIN regions r ON r.id = rc.region_id "
                           "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?", (b,))
-    assert len(ligne) == 1 and ligne[0]["note"] == "" and ligne[0]["tags_concat"] == ""
+    assert len(ligne) == 1 and ligne[0]["note"] == "" and ligne[0]["etiquettes"] == ""
     assert "ironie" not in (ligne[0]["lemmes"] or "")
 
 

@@ -256,89 +256,56 @@ def direct_query(db_file: Path, sql: str, params=()):
         conn.close()
 
 
-# ANN-7, le basculement — le VOCABULAIRE D'HIER posé en base. Les routes des tags, des
-# dimensions et des valeurs sont parties ; leurs tables vivent jusqu'à la migration qui les
-# retire, et ce qui les lit encore (exports, copies, Ctrl+Z, « qui perd quoi ») se mesure sur
-# des lignes posées ici, comme une base d'avant le basculement les porte. Chaque helper
-# réindexe la région touchée, comme le faisait la route.
+# ANN-7, le basculement — ce qui RESTE du vocabulaire d'hier dans une base migrée : son
+# JOURNAL. La v39 a détruit les tables des tags, des dimensions, des valeurs et de leurs
+# affectations ; le journal, append-only, garde les actes qui les posaient, et c'est sur eux
+# que se mesure ce qui ne doit plus revenir (Ctrl+Z, « qui perd quoi », les sorties). Ces
+# deux aides écrivent ces actes tels que les routes d'hier les écrivaient, et la note si on la
+# donne ; elles ne posent plus aucune ligne de vocabulaire — il n'a plus de table.
 def poser_tags(db_file: Path, region_id: int, labels, *, collection_id=None, espace=0,
                note=None, agent=None):
-    """Pose ces tags (créés s'il le faut, globaux ou locaux à `collection_id`) sur la région,
-    et la note si elle est donnée. Rend {libellé: id}. `agent` : l'acte s'écrit au journal
-    sous son nom, comme la route d'hier l'écrivait (`annotations`, l'instantané entier)."""
+    """L'acte d'HIER qui posait ces tags sur la région (`annotations`, l'instantané entier,
+    tags compris, au nom d'`agent` s'il est donné), et la note si elle est donnée (alors
+    l'annotation vit, et la région est réindexée). Rend {libellé: None} : aucun tag n'a
+    d'identifiant depuis la v39. `collection_id` et `espace` ne disent plus rien."""
     import journal
     assert Path(db_file) == Path(database.DB_PATH), "la base du test, celle de `data_dir`"
-
-    def instantane(conn):
-        # L'instantané d'HIER, tags compris : `journal.snapshot_annotation` ne les nomme plus
-        # depuis le basculement d'ANN-7, et la route d'hier les écrivait dans ses charges.
-        a = conn.execute("SELECT id, note FROM annotations WHERE region_id = ?",
-                         (region_id,)).fetchone()
-        if a is None:
-            return None
-        return {"note": a["note"], "tags": [t[0] for t in conn.execute(
-            "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-            "WHERE at.annotation_id = ? ORDER BY t.label", (a["id"],))]}
     conn = database.get_connection()
     try:
-        avant = instantane(conn)
-        conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, ?) "
-                     "ON CONFLICT(region_id) DO UPDATE SET note = COALESCE(excluded.note, note)",
-                     (region_id, note))
-        ann = conn.execute("SELECT id FROM annotations WHERE region_id = ?",
-                           (region_id,)).fetchone()[0]
-        ids = {}
-        for label in labels:
-            conn.execute("INSERT OR IGNORE INTO tags (label, collection_id, espace) "
-                         "VALUES (?, ?, ?)", (label, collection_id, espace))
-            tid = conn.execute("SELECT id FROM tags WHERE espace = ? AND label = ?",
-                               (espace, label)).fetchone()[0]
-            conn.execute("INSERT OR IGNORE INTO annotation_tags (annotation_id, tag_id) "
-                         "VALUES (?, ?)", (ann, tid))
-            ids[label] = tid
+        a = conn.execute("SELECT note FROM annotations WHERE region_id = ?",
+                         (region_id,)).fetchone()
+        avant = None if a is None else {"note": a["note"], "tags": []}
+        if (note or "").strip():
+            conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, ?) "
+                         "ON CONFLICT(region_id) DO UPDATE SET note = excluded.note",
+                         (region_id, note))
+        apres = {"note": note if note is not None else (a["note"] if a else None),
+                 "tags": sorted(labels)}
         if agent is not None:
-            apres = instantane(conn)
             journal.journaliser(conn, "creation" if avant is None else "modification",
                                 "annotations", region_id, avant=avant, apres=apres,
                                 agent=agent)
         database.reindex_region(conn, region_id)
         conn.commit()
-        return ids
+        return {label: None for label in labels}
     finally:
         conn.close()
 
 
 def poser_attribut(db_file: Path, *, cible: str, dimension: str, valeur: str,
                    region_id=None, personnage_id=None, collection_id=None, agent=None):
-    """Pose une valeur d'attribut (dimension et valeur créées s'il le faut) sur une région
-    (situation d'une case) ou un personnage (profil). Rend {dimension_id, valeur_id}.
-    `agent` : la situation d'une case s'écrit au journal sous son nom (`lien` sous
-    `region_attribut`), comme la route d'hier l'écrivait."""
+    """L'acte d'HIER qui posait une situation sur une case (`lien` sous `region_attribut`,
+    au nom d'`agent`) ; un profil n'était pas journalisé, et ne laisse rien. Rend
+    {dimension_id: None, valeur_id: None}."""
     import journal
     conn = sqlite3.connect(db_file)
-    conn.execute("PRAGMA foreign_keys = ON")
     try:
-        d = conn.execute("SELECT id FROM attribut_dimension WHERE cible = ? AND nom = ?",
-                         (cible, dimension)).fetchone()
-        d = d[0] if d else conn.execute(
-            "INSERT INTO attribut_dimension (cible, nom, collection_id) VALUES (?, ?, ?)",
-            (cible, dimension, collection_id)).lastrowid
-        v = conn.execute("SELECT id FROM attribut_valeur WHERE dimension_id = ? AND valeur = ?",
-                         (d, valeur)).fetchone()
-        v = v[0] if v else conn.execute(
-            "INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) VALUES (?, ?, ?)",
-            (d, valeur, collection_id)).lastrowid
-        if region_id is not None:
-            pose = conn.execute("INSERT OR IGNORE INTO region_attribut (region_id, valeur_id) "
-                                "VALUES (?, ?)", (region_id, v)).rowcount
-            if pose and agent is not None:
-                journal.journaliser(conn, "lien", "region_attribut", region_id,
-                                    apres={"valeur_id": v}, agent=agent)
-        if personnage_id is not None:
-            conn.execute("INSERT OR IGNORE INTO personnage_attribut (personnage_id, valeur_id) "
-                         "VALUES (?, ?)", (personnage_id, v))
+        if region_id is not None and agent is not None:
+            journal.journaliser(conn, "lien", "region_attribut", region_id,
+                                apres={"valeur_id": 0, "dimension": dimension,
+                                       "valeur": valeur}, agent=agent)
         conn.commit()
-        return {"dimension_id": d, "valeur_id": v}
+        return {"dimension_id": None, "valeur_id": None}
     finally:
         conn.close()
 

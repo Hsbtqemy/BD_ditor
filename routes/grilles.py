@@ -96,7 +96,8 @@ def _vue_grille(conn, g: dict) -> dict:
                 if v["etat"] != grilles.ETAT_BROUILLON or g["gerable"]]
     act = grilles.activation(conn, g["projet_id"], g["id"])
     return {"id": g["id"], "nom": g["nom"], "projet_id": g["projet_id"],
-            "ouverte": bool(g["ouverte"]), "retiree_le": g["retiree_le"],
+            "ouverte": bool(g["ouverte"]), "travail": bool(g["travail"]),
+            "retiree_le": g["retiree_le"],
             "gerable": g["gerable"], "versions": versions,
             "active": {"numero": act["numero"], "etat": act["etat"]} if act else None}
 
@@ -123,6 +124,7 @@ def grilles_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
             "SELECT collection_id FROM collection_grille_masquee WHERE grille_id = ? "
             "ORDER BY collection_id", (r["id"],)) if portee.peut_lire(m["collection_id"])]
         actives.append({"id": r["id"], "nom": r["nom"], "ouverte": bool(r["ouverte"]),
+                        "travail": bool(r["travail"]),
                         "version": {"numero": r["numero"], "etat": r["etat"],
                                     "porte_sur": list(grilles.cibles_de(r["cible"]))},
                         "masquee_dans": masquee})
@@ -155,7 +157,8 @@ def plan_de_version(grille_id: int, numero: int, emplois: bool = Query(False),
     est absente pour les autres, qui n'écrivent pas la grille."""
     g = _get_grille(conn, portee, grille_id)
     v = _get_version(conn, g, numero)
-    corps = {"grille": {"id": g["id"], "nom": g["nom"], "ouverte": bool(g["ouverte"])},
+    corps = {"grille": {"id": g["id"], "nom": g["nom"], "ouverte": bool(g["ouverte"]),
+                        "travail": bool(g["travail"])},
              **grilles.plan(conn, v["id"])}
     if emplois and g["gerable"]:
         corps["emplois"] = grille_ecriture.emplois(conn, g, v, grilles.contenu(conn, v["id"]))
@@ -644,6 +647,7 @@ class _ChampsEntree(_Strict):
     cible: Cible = None
     cardinalite: Optional[str] = None
     liste_cle: Optional[str] = None
+    etat: Optional[str] = None
     variantes: Optional[list[VarianteIn]] = None
 
 
@@ -712,6 +716,12 @@ def _norme(champ: str, valeur, *, cle=None):
         return grille_ecriture.forme(valeur)
     if champ == "cardinalite":
         return grille_ecriture.cardinalite(valeur)
+    if champ == "etat":
+        e = grille_ecriture.etat(valeur)
+        if e is None:
+            raise _refus("etat_inconnu", f"« {valeur} » n'est pas un état d'entrée",
+                         "dites « provisoire » ou « defini »", cle=cle, colonne="etat")
+        return e
     if champ in ("cible", "porte_sur"):
         stockee, erreur = grille_ecriture.cibles(valeur)
         if erreur:
@@ -1034,7 +1044,8 @@ def creer_entree(grille_id: int, payload: EntreeIn, conn: sqlite3.Connection = D
         e = {"rubrique_cle": None, "rang": grille_ecriture.rang_suivant(apres["entrees"]),
              "forme": "simple", "libelle": libelle, "definition": None, "structure": None,
              "piege": None, "precision": None, "lien": False, "cible": None,
-             "cardinalite": None, "liste_cle": None, "retiree": False, "exemples": [],
+             "cardinalite": None, "liste_cle": None, "retiree": False,
+             "etat": grilles.ENTREE_DEFINIE, "exemples": [],
              "variantes": {}}
         e.update({c: _norme(c, d[c], cle=cle) for c in grille_ecriture.CHAMPS_ENTREE
                   if c in d and c != "libelle"})
@@ -1053,7 +1064,9 @@ def modifier_entree(grille_id: int, cle: str, payload: EntreePatch,
     lui AJOUTE des variantes (`variantes` : c'est ainsi qu'une entrée devient « à variantes »).
     Quitter « des cases d'une liste » délie sa liste ; quitter « une variante » demande
     d'avoir retiré ses variantes (422). Sur une grille ouverte, une entrée employée ne change
-    ni de forme ni de liste (409, la règle du réimport). `vu` : les champs de l'entrée."""
+    ni de forme ni de liste (409, la règle du réimport). Son ÉTAT (`etat` : « provisoire »
+    ou « defini », v39) se change ici aussi, 422 nommé pour un autre mot. `vu` : les champs
+    de l'entrée, l'état compris."""
     d = payload.model_dump(exclude_unset=True)
     vu = d.pop("vu", None)
     neuves = d.pop("variantes", None) or []

@@ -120,15 +120,17 @@ def test_redetecter_bulles_ne_garde_pas_une_bulle_aux_seuls_tags_d_hier(client, 
                                                                          monkeypatch):
     """ANN-7, le basculement (relecture croisée du commit des coutures, constat 2) : une
     ligne d'annotation qui ne porte que des tags d'hier, sans note, n'est plus du travail —
-    la bulle du moteur part à la re-détection, comme une bulle nue. Le décor est relu."""
+    la bulle du moteur part à la re-détection, comme une bulle nue (la v39 retire ces lignes ;
+    une base retouchée peut en porter). Le décor est relu."""
     import database
-    from conftest import direct_query, poser_tags
+    from conftest import direct_query
     _add_case(client, planche, 0, 0, 400, 500)
     monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(50, 60, 80, 40)]))
     client.post(f"/api/planches/{planche['id']}/detecter-bulles")
     b = next(r for r in client.get(
         f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle")
-    poser_tags(database.DB_PATH, b["id"], ["cri"])   # un tag d'hier, en base
+    with database.connect() as c:
+        c.execute("INSERT INTO annotations (region_id, note) VALUES (?, NULL)", (b["id"],))
     assert direct_query(database.DB_PATH, "SELECT note FROM annotations WHERE region_id = ?",
                         (b["id"],)) == [{"note": None}]
     monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(200, 200, 60, 30)]))

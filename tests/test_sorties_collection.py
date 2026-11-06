@@ -1197,43 +1197,13 @@ def test_le_semis_est_visible(client, seme):
     conn = sqlite3.connect(seme["db"])
     conn.row_factory = sqlite3.Row
     try:
-        portee = {}
-        for table, col in (("domaine", "nom"), ("attribut_dimension", "nom"),
-                           ("attribut_valeur", "valeur"), ("tags", "label")):
-            for r in conn.execute(f"SELECT {col} AS mot, collection_id FROM {table}"):
-                portee[r["mot"]] = r["collection_id"]
-        attendue = {**{m: None for m in seme["global"]},
-                    **{m: seme["alpha"]["id"] for m in seme["a"]},
-                    **{m: seme["bravo"]["id"] for m in seme["b"]}}
-        # La seule sentinelle de Bravo qui soit GLOBALE : elle vit sous un axe de Bravo.
-        attendue["valg-sous-bravo-9312"] = None
-        for mot, cid in sorted(attendue.items()):
-            assert mot in portee, f"« {mot} » n'est dans aucune table de vocabulaire"
-            assert portee[mot] == cid, f"« {mot} » : portée {portee[mot]}, attendu {cid}"
-
-        poses = {r[0] for r in conn.execute(
-            "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-            "JOIN annotations a ON a.id = at.annotation_id WHERE a.region_id = ?",
-            (seme["region_id"],))}
-        assert {"tag-bravo-9402", "tag-alpha-9401", "tag-global-9400"} <= poses, poses
-        situes = {r[0] for r in conn.execute(
-            "SELECT v.valeur FROM region_attribut ra JOIN attribut_valeur v "
-            "ON v.id = ra.valeur_id WHERE ra.region_id = ?", (seme["region_id"],))}
-        assert {"val-bravo-9302", "val-alpha-9301"} <= situes, situes
-        profil = {r[0] for r in conn.execute(
-            "SELECT v.valeur FROM personnage_attribut pa JOIN attribut_valeur v "
-            "ON v.id = pa.valeur_id")}
-        assert {"valp-bravo-9311", "valp-global-9310"} <= profil, profil
-        # L'axe GLOBAL rattaché au domaine de Bravo — l'état d'une base antérieure à
-        # v24, que le décor pose par SQL. C'est lui qui éprouve que le nom du domaine ne
-        # ressort pas en libellé d'un axe parfaitement lisible ; neutralisé, tout restait
-        # vert (relecture du 2026-10-07).
-        rattache = conn.execute(
-            "SELECT d.nom FROM attribut_dimension a JOIN domaine d ON d.id = a.domaine_id "
-            "WHERE a.nom = 'dim-global-9200'").fetchone()
-        assert rattache and rattache[0] == "dom-bravo-9102", (
-            "`dim-global-9200` n'est plus rattachée à `dom-bravo-9102` : la liaison "
-            "axe global → domaine d'ailleurs n'est plus dans le décor")
+        # ANN-7, la v39 : le vocabulaire d'hier n'a plus de table. Ce qui en reste, et que
+        # les sorties doivent taire, ce sont les CHARGES du journal qui nommaient les tags :
+        # chacun des trois y est.
+        for mot in (*seme["global"], *seme["a"], *seme["b"]):
+            assert conn.execute("SELECT COUNT(*) FROM evenement WHERE cible_table = "
+                                "'annotations' AND apres LIKE ?", (f"%{mot}%",)
+                                ).fetchone()[0], f"« {mot} » n'est dans aucune charge"
         # Le contenu de l'album de Bravo, que `seme` pose par l'API.
         bulle = conn.execute(
             "SELECT r.ocr_texte, a.titre, n.note FROM regions r "
@@ -1241,11 +1211,6 @@ def test_le_semis_est_visible(client, seme):
             "LEFT JOIN annotations n ON n.region_id = r.id WHERE r.id = ?",
             (seme["region_bravo"],)).fetchone()
         assert tuple(bulle) == (TEXTE_AILLEURS, ALBUM_AILLEURS, NOTE_AILLEURS), tuple(bulle)
-        poses_b = {r[0] for r in conn.execute(
-            "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-            "JOIN annotations a ON a.id = at.annotation_id WHERE a.region_id = ?",
-            (seme["region_bravo"],))}
-        assert poses_b == {"tag-bravo-9402"}, poses_b
 
         reelles = [r[0] for r in conn.execute(
             "SELECT apres FROM evenement WHERE agent = 'decor' AND apres LIKE "

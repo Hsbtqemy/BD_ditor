@@ -16,13 +16,13 @@ comptaient encore ailleurs. Le patron est celui du locuteur (`tests/test_undo.py
 
 ANN-7, le basculement : la situation d'une case ne se lit plus. Un changement de type ne la
 retire plus ni ne la photographie, Ctrl+Z ne la rend plus, et un acte d'avant qui l'avait
-retirée se défait sans elle (la ligne d'hier reste en base jusqu'à la migration v39).
+retirée se défait sans elle (la v39 a détruit sa table ; le journal garde ses actes).
 """
 import json
 
 import undo
 from conftest import ADMIN
-from test_undo_liens import _liens, _ok, _perso, _region, _situer, _sql, _valeur
+from test_undo_liens import _liens, _ok, _perso, _region, _situer, _sql
 
 ALICE = {"Remote-User": "alice", "Remote-Groups": "bd-admins"}
 BOB = {"Remote-User": "bob", "Remote-Groups": "bd-admins"}
@@ -43,12 +43,11 @@ def _n(db_path, sql):
 
 
 def _case_situee(client, planche):
-    """Une case et sa situation d'HIER, posée en base (ANN-7 : aucune route ne la pose plus,
-    ni ne la lit)."""
+    """Une case et sa situation d'HIER : l'acte qui la posait, au journal (ANN-7, la v39 a
+    détruit sa table). Rend aussi l'identifiant de la valeur d'hier qu'une charge nommait."""
     rid = _region(client, planche["id"], headers=ADMIN)
-    lieu = _valeur(client, "case", "lieu", "falaise")
-    _situer(rid, lieu)
-    return rid, lieu
+    _situer(rid, "lieu", "falaise")
+    return rid, 4242
 
 
 def _boite_montrant(client, planche, nom="Milou", headers=ADMIN):
@@ -64,13 +63,11 @@ def _boite_montrant(client, planche, nom="Milou", headers=ADMIN):
 # --------------------------------------------------------------------------- #
 def test_une_case_devenue_bulle_ne_lit_plus_sa_situation_d_hier(client, planche, db_path):
     """ANN-7, le basculement : la situation ne se retire plus avec le type, ne se
-    photographie plus et ne se dit plus — la ligne d'hier reste, invisible, jusqu'à la
-    migration. Mutant tué : la part situation remise dans `database.retirer_liens_caches`."""
+    photographie plus et ne se dit plus — la v39 a détruit sa table."""
     rid, lieu = _case_situee(client, planche)
     rep = _ok(client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=ADMIN), 200)
     assert "situation_retiree" not in rep.json()
     assert "locuteur_retire" not in rep.json() and "presence_retiree" not in rep.json()
-    assert _liens(db_path, rid)["attributs"] == [lieu]
     avant = json.loads(_dernier_acte(db_path, rid)["avant"])
     assert "attributs" not in avant and "attributs_dimensions" not in avant
     assert avant["liens_vus"] == {"locuteur": None, "presence": None}
@@ -99,7 +96,6 @@ def test_un_geste_qui_ne_change_pas_le_type_ne_retire_rien(client, planche, db_p
     for corps in ({"x": 7}, {"type": "case"}):
         rep = _ok(client.put(f"/api/regions/{case}", json=corps, headers=ADMIN), 200)
         assert "situation_retiree" not in rep.json()
-    assert _liens(db_path, case)["attributs"] == [lieu]
     boite, milou = _boite_montrant(client, planche)
     _ok(client.put(f"/api/regions/{boite}", json={"type": "personnage"}, headers=ADMIN), 200)
     assert _liens(db_path, boite)["presence"] == milou
@@ -120,14 +116,13 @@ def test_un_ctrl_z_d_avant_le_basculement_rend_la_case_sans_sa_situation(client,
     _sql(db_path, "UPDATE evenement SET avant = json_set(avant, '$.attributs', json(?), "
                   "'$.attributs_dimensions', json('[]'), '$.liens_vus.attributs', json(?)) "
                   "WHERE id = ?", (f"[{lieu}]", f"[{lieu}]", _dernier_acte(db_path, rid)["id"]))
-    _sql(db_path, "DELETE FROM region_attribut WHERE region_id = ?", (rid,))
     assert client.get("/api/undo/prochain", headers=ADMIN).json()["description"] == \
         "modification d'une région"
     n = _n(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'annulation'")
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert res["description"] == "modification d'une région"
     assert "liens_non_rendus" not in res
-    assert (_type(db_path, rid), _liens(db_path, rid)["attributs"]) == ("case", [])
+    assert _type(db_path, rid) == "case"
     assert _n(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'annulation'") == n + 1
 
 
@@ -203,18 +198,6 @@ def test_le_meme_personnage_remontre_par_un_autre_ne_bloque_pas(client, planche,
     assert _liens(db_path, rid)["presence"] == milou
 
 
-def test_une_situation_d_avant_ann8_ne_bloque_pas_son_auteure(client, planche, db_path):
-    """Le c3 de la situation : une bulle d'avant ANN-8 qui porte encore la situation de la
-    case qu'elle était ; seule, on la passe en case, puis Ctrl+Z. L'acte l'a vue : rien
-    n'a changé depuis, l'état d'avant revient tel qu'il était."""
-    rid = _region(client, planche["id"], type="bulle")
-    lieu = _valeur(client, "case", "lieu", "falaise")
-    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)", (rid, lieu))
-    _ok(client.put(f"/api/regions/{rid}", json={"type": "case"}, headers=ADMIN), 200)
-    _ok(client.post("/api/undo", headers=ADMIN), 200)
-    assert (_type(db_path, rid), _liens(db_path, rid)["attributs"]) == ("bulle", [lieu])
-
-
 def test_un_personnage_montre_d_avant_ann8_ne_bloque_pas_son_auteure(client, planche, db_path):
     """Le c3 du personnage montré : une bulle d'avant ANN-8 qui montre encore Milou ; seule,
     on la passe en boîte personnage, puis Ctrl+Z. L'acte l'a vu : l'annulation passe."""
@@ -287,7 +270,7 @@ def test_une_suppression_retablie_ne_rend_plus_la_situation(client, planche, db_
     assert "attributs" not in instantane
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert res["liens_non_rendus"] == 0
-    assert (_type(db_path, rid), _liens(db_path, rid)["attributs"]) == ("case", [])
+    assert _type(db_path, rid) == "case"
 
 
 def _bulle_de_bob(client, planche, chemin, type_):

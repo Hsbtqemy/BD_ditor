@@ -42,21 +42,13 @@ def _region(client, planche_id, headers=ADMIN, **kw):
                            headers=headers), 201).json()["id"]
 
 
-def _valeur(client, cible, dimension, valeur):
-    """Une valeur d'attribut d'HIER, posée EN BASE : ses routes sont parties avec le
-    basculement d'ANN-7, la table vit jusqu'à la migration qui la retire. `client` reste
-    dans la signature : les appelants le passent, comme avant."""
+def _situer(rid, dimension, valeur):
+    """La situation d'une case d'HIER : l'acte qui la posait, au journal (ANN-7, la v39 a
+    détruit sa table). Rien ne la montre, rien ne la rend."""
     import database
     from conftest import poser_attribut
-    return poser_attribut(database.DB_PATH, cible=cible, dimension=dimension,
-                          valeur=valeur)["valeur_id"]
-
-
-def _situer(rid, valeur_id):
-    """La situation d'une case, posée EN BASE (ANN-7 : aucune route ne la pose plus)."""
-    import database
-    _sql(database.DB_PATH, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-         (rid, valeur_id))
+    poser_attribut(database.DB_PATH, cible="case", dimension=dimension, valeur=valeur,
+                   region_id=rid, agent="admin")
 
 
 def _perso(client, nom, headers=ADMIN):
@@ -65,14 +57,11 @@ def _perso(client, nom, headers=ADMIN):
 
 
 def _liens(db_path, rid):
-    """Ce qui pend à une région : son locuteur, sa présence, ses attributs."""
+    """Ce qui pend à une région : son locuteur, sa présence."""
     def un(table):
         r = _sql(db_path, f"SELECT personnage_id FROM {table} WHERE region_id = ?", (rid,))
         return r[0]["personnage_id"] if r else None
-    return {"locuteur": un("bulle_locuteur"), "presence": un("personnage_presence"),
-            "attributs": [r["valeur_id"] for r in _sql(
-                db_path, "SELECT valeur_id FROM region_attribut WHERE region_id = ? "
-                         "ORDER BY valeur_id", (rid,))]}
+    return {"locuteur": un("bulle_locuteur"), "presence": un("personnage_presence")}
 
 
 def _decor(client, planche):
@@ -82,9 +71,8 @@ def _decor(client, planche):
     case = _region(client, pid)
     cartouche = _region(client, pid, type="cartouche", parent_id=case, w=20, h=10)
     boite = _region(client, pid, type="personnage", parent_id=case, x=25, w=20, h=20)
-    lieu = _valeur(client, "case", "lieu", "falaise")
     tintin, milou = _perso(client, "Tintin"), _perso(client, "Milou")
-    _situer(case, lieu)
+    _situer(case, "lieu", "falaise")
     _ok(client.put(f"/api/regions/{cartouche}/locuteur", json={"personnage_id": tintin},
                    headers=ADMIN), 200)
     _ok(client.put(f"/api/regions/{boite}/personnage", json={"personnage_id": milou},
@@ -93,8 +81,8 @@ def _decor(client, planche):
                    json={"note": "voix off"}, headers=ADMIN), 200)
     import database
     from conftest import poser_tags
-    poser_tags(database.DB_PATH, cartouche, ["récit"])        # un tag d'hier, en base
-    return {"case": case, "cartouche": cartouche, "boite": boite, "lieu": lieu,
+    poser_tags(database.DB_PATH, cartouche, ["récit"], agent="admin")   # l'acte d'hier
+    return {"case": case, "cartouche": cartouche, "boite": boite,
             "tintin": tintin, "milou": milou}
 
 
@@ -103,15 +91,11 @@ def test_annuler_la_suppression_rend_locuteur_et_presence(client, planche, db_pa
     montre plus."""
     d = _decor(client, planche)
     _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
-    assert _liens(db_path, d["cartouche"]) == {"locuteur": None, "presence": None, "attributs": []}
+    assert _liens(db_path, d["cartouche"]) == {"locuteur": None, "presence": None}
 
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert (res["acte"], res["cible_table"]) == ("suppression", "regions")
     assert res["liens_non_rendus"] == 0 and "tags_non_rendus" not in res
-    assert _liens(db_path, d["case"])["attributs"] == []
-    assert _sql(db_path, "SELECT COUNT(*) AS n FROM annotation_tags at JOIN annotations an "
-                         "ON an.id = at.annotation_id WHERE an.region_id = ?",
-                (d["cartouche"],))[0]["n"] == 0
     assert _liens(db_path, d["cartouche"])["locuteur"] == d["tintin"]
     assert _liens(db_path, d["boite"])["presence"] == d["milou"]
     # Ce qui revenait déjà revient toujours.
@@ -152,7 +136,7 @@ def test_un_lien_dont_l_objet_a_disparu_ne_revient_pas_et_se_compte(client, plan
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert res["acte"] == "suppression"
     assert res["liens_non_rendus"] == 1
-    assert _liens(db_path, d["case"]) == {"locuteur": None, "presence": None, "attributs": []}
+    assert _liens(db_path, d["case"]) == {"locuteur": None, "presence": None}
     assert _liens(db_path, d["cartouche"])["locuteur"] is None
     assert _liens(db_path, d["boite"])["presence"] == d["milou"]
 

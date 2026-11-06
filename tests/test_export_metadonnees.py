@@ -746,13 +746,8 @@ def isoles(client, decor, data_dir):
     # sable et local à sa base, comme la route d'hier le faisait naître.
     poser_tags(db, reg_bac, ["mot-du-bac"], collection_id=decor["base"],
                espace=decor["bac"]["id"], agent="lea")
-    # L'axe local à la base, posé en SQL : ce que les routes laissent créer dans un bac à
-    # sable n'est pas l'objet de ce test, seulement ce que les outils en laissent sortir.
-    conn = sqlite3.connect(db)
-    conn.execute("INSERT INTO attribut_dimension (cible, nom, collection_id) "
-                 "VALUES ('case', 'axe-du-bac', ?)", (decor["base"],))
-    conn.commit()
-    conn.close()
+    # L'axe d'hier « axe-du-bac » n'a plus de table où vivre (ANN-7, la v39) : son nom ne
+    # doit sortir de nulle part, et le test le cherche encore.
     pl = client.post(f"/api/albums/{decor['reel']}/import", headers=RESP,
                      files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
     reg_reel = client.post(f"/api/planches/{pl}/regions", headers=RESP,

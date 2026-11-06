@@ -9,8 +9,8 @@ la boîte qu'elles étaient. L'outil le dit, à blanc par défaut, et le retire 
 2. **Il ne touche qu'aux types qui ne montrent pas** : le personnage d'une boîte
    personnage reste.
 
-ANN-7, le basculement : la situation d'une case, qu'il retirait aussi, ne se lit plus ; il
-n'y touche plus (elle part avec la migration v39).
+ANN-7, le basculement : la situation d'une case, qu'il retirait aussi, ne se lit plus ; la
+v39 a détruit sa table.
 3. **Le retrait est un acte MACHINE**, journalisé, hors de Ctrl+Z.
 
 `tools/` est hors couverture (`.coveragerc`) : sans ce fichier, une divergence y donnerait un
@@ -42,17 +42,14 @@ def conn(data_dir):
 
 
 def _semer(conn):
-    """Une planche ; une région de chaque type, chacune montrant Milou et située « nuit »,
-    posés à la main — comme une base d'avant les porte. Rend {type: region_id}, le
-    personnage et la valeur."""
+    """Une planche ; une région de chaque type, chacune montrant Milou, posés à la main —
+    comme une base d'avant les porte. Rend {type: region_id}, le personnage, et None (la
+    valeur d'une situation, qui n'a plus de table depuis la v39)."""
     aid = conn.execute("INSERT INTO albums (titre) VALUES ('Album')").lastrowid
     pid = conn.execute("INSERT INTO planches (album_id, numero, chemin_web) "
                        "VALUES (?, 1, 'x.jpg')", (aid,)).lastrowid
     perso = conn.execute("INSERT INTO personnages (nom) VALUES ('Milou')").lastrowid
-    dim = conn.execute("INSERT INTO attribut_dimension (cible, nom) "
-                       "VALUES ('case', 'moment')").lastrowid
-    val = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
-                       "VALUES (?, 'nuit')", (dim,)).lastrowid
+    val = None
     ids = {}
     for i, t in enumerate(TYPES):
         ids[t] = conn.execute(
@@ -60,18 +57,12 @@ def _semer(conn):
             "VALUES (?, ?, 0, 0, 10, 10, ?, 'manuel')", (pid, t, i)).lastrowid
         conn.execute("INSERT INTO personnage_presence (region_id, personnage_id) VALUES (?, ?)",
                      (ids[t], perso))
-        conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-                     (ids[t], val))
     conn.commit()
     return ids, perso, val
 
 
 def _presences(conn):
     return {r["region_id"] for r in conn.execute("SELECT region_id FROM personnage_presence")}
-
-
-def _situees(conn):
-    return {r["region_id"] for r in conn.execute("SELECT region_id FROM region_attribut")}
 
 
 def _evenements(conn):
@@ -95,7 +86,7 @@ def test_a_blanc_l_outil_dit_et_n_ecrit_rien(conn, capsys):
     assert "personnage montré « Milou »" in sortie
     assert "situation" not in sortie and "nuit" not in sortie and "moment" not in sortie
     assert "À BLANC" in sortie
-    assert _presences(conn) == set(ids.values()) and _situees(conn) == set(ids.values())
+    assert _presences(conn) == set(ids.values())
     assert _evenements(conn) == avant
     assert conn.execute("SELECT COUNT(*) FROM activite").fetchone()[0] == 0
 
@@ -116,7 +107,6 @@ def test_appliquer_retire_les_seuls_liens_caches_et_journalise_en_machine(conn, 
     assert outil.main(["--appliquer"]) == 0
     assert "4 personnage(s) montré(s) retiré(s)" in capsys.readouterr().err
     assert _presences(conn) == {ids["personnage"]}
-    assert _situees(conn) == set(ids.values())       # la situation d'hier : plus touchée
 
     act = conn.execute("SELECT * FROM activite WHERE type = 'retrait_liens_caches'").fetchone()
     assert act is not None and act["agent_type"] == "moteur" and act["agent"] == outil.AGENT

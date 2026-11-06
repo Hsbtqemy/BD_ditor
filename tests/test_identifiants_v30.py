@@ -21,6 +21,7 @@ import pytest
 
 import database
 import migration_v38
+import migration_v39
 import main
 
 TABLES = ("albums", "planches", "regions", "personnages")
@@ -361,10 +362,15 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
     avant = _etat(vraie_v29)
     assert avant["recherche"] and avant["tokens"], "la base chargée n'a rien à comparer"
     membres_avant = migration_v38.membres(vraie_v29)
+    v39 = migration_v39.avant_la_v39(vraie_v29)
     database.init_db()
     # La v38 (COL-3, tranche 3c) fait entrer dans leur projet les accès hors projet :
-    # éprouvée par `tests/test_migration_v38.py`, elle sort de la comparaison.
+    # éprouvée par `tests/test_migration_v38.py`, elle sort de la comparaison. La v39
+    # (ANN-7, le basculement) aussi, par `migration_v39` : le vocabulaire d'hier détruit,
+    # les grilles de travail nées.
     migration_v38.retirer_les_membres_de_la_v38(vraie_v29, membres_avant)
+    migration_v39.defaire_la_v39(vraie_v29, v39)
+    avant = migration_v39.ramener_l_etat(avant, v39)
     apres = _etat(vraie_v29)
     # La v31 (COL-3, tranche 3) passe aussi, et pose la provenance de chaque copie.
     neuves = {"document", "demande", "demande_document", "copie"}

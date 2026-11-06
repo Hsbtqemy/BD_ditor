@@ -168,10 +168,6 @@ def test_un_detail_ne_sort_d_aucun_artefact(client, db_path, tmp_path, png_bytes
     assert det["type"] == "detail" and det["nom"] == NOM
     ann = client.get(f"/api/regions/{s['detail']}/annotation").json()
     assert ann["note"] == NOTE
-    assert [r["label"] for r in database.get_connection().execute(
-        "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-        "JOIN annotations an ON an.id = at.annotation_id WHERE an.region_id = ?",
-        (s["detail"],))] == [TAG]                    # le tag d'hier, posé en base
     assert any(r["region_id"] == s["detail"]
                for r in client.get(f"/api/planches/{s['planche']}/releves").json()["releves"])
     d, x, nu = s["detail"], s["parti"], s["nu"]

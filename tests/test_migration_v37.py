@@ -23,6 +23,7 @@ import pytest
 
 import database
 import migration_v38
+import migration_v39
 import main
 
 BASE_V36 = Path(__file__).resolve().parent / "bases" / "v36-b9183c0.sql"
@@ -76,7 +77,13 @@ def _etat(db, *, sans=frozenset()):
         db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
             "AND name NOT LIKE 'recherche_%' ORDER BY name") if r["name"] not in sans]
     lignes = {}
+    # La v39 (ANN-7, le basculement) détruit le vocabulaire d'hier : ses tables ne se
+    # lisent plus après la migration (`migration_v39`).
+    presentes = {r["name"] for r in _sql(db, "SELECT name FROM sqlite_master "
+                                             "WHERE type = 'table'")}
     for t in LIGNES:
+        if t not in presentes:
+            continue
         lignes[t] = sorted(json.dumps({k: v for k, v in r.items()
                                        if not (t == "regions" and k == "nom")
                                        and k not in migration_v38.COLONNES_V38.get(t, ())},
@@ -133,7 +140,10 @@ def test_une_vraie_base_v36_migre_sans_rien_perdre(vraie_v36):
     avant["comptes"].pop("geste_sur_copie")
     seq_avant = _seq(vraie_v36)
     membres_avant = migration_v38.membres(vraie_v36)
+    v39 = migration_v39.avant_la_v39(vraie_v36)
     database.init_db()
+    migration_v39.defaire_la_v39(vraie_v36, v39)
+    avant = migration_v39.ramener_l_etat(avant, v39)
     migration_v38.retirer_les_membres_de_la_v38(vraie_v36, membres_avant)
     assert _sql(vraie_v36, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     assert database.SCHEMA_VERSION >= 37
@@ -173,8 +183,11 @@ def test_la_base_migree_a_la_forme_d_une_base_neuve(vraie_v36, tmp_path):
     def forme(db):
         objets = {r["name"]: r["sql"] for r in _sql(
             db, "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL")}
+        # `idx_grille_travail` (v39) se pose dans `_migrate`, après la colonne qu'il lit — une
+        # base faite du seul `SCHEMA_SQL` ne l'a pas (`tests/test_migration_v39.py`).
         neufs = {n: s for n, s in objets.items()
-                 if n in TABLES_V37 or any(f" ON {t}" in s for t in TABLES_V37)}
+                 if (n in TABLES_V37 or any(f" ON {t}" in s for t in TABLES_V37))
+                 and n != "idx_grille_travail"}
         regions = [(c["name"], c["type"], c["notnull"], c["dflt_value"])
                    for c in _sql(db, "PRAGMA table_info(regions)")]
         return neufs, regions

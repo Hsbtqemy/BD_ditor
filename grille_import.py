@@ -1168,7 +1168,9 @@ def ecrire_version(conn: sqlite3.Connection, grille_id: int, c: dict, *, numero:
 
 
 def ecrire_plan(conn: sqlite3.Connection, vid: int, c: dict) -> None:
-    """Les lignes du plan d'une version, depuis un contenu normalisé."""
+    """Les lignes du plan d'une version, depuis un contenu normalisé. Une entrée qui ne dit
+    pas son ÉTAT (un tableur ne le porte pas) est ÉCRITE, donc DÉFINIE (J4) — même dans une
+    grille ouverte : seule une entrée née en posant naît provisoire."""
     conn.executemany(
         "INSERT INTO grille_rubrique (version_id, cle, libelle, parent_cle, rang) "
         "VALUES (?, ?, ?, ?, ?)",
@@ -1177,10 +1179,11 @@ def ecrire_plan(conn: sqlite3.Connection, vid: int, c: dict) -> None:
         conn.execute(
             "INSERT INTO grille_entree (version_id, cle, rubrique_cle, rang, forme, libelle, "
             "definition, structure, piege, precision, lien, cible, cardinalite, liste_cle, "
-            "retiree) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "retiree, etat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (vid, k, e["rubrique_cle"], e["rang"], e["forme"], e["libelle"], e["definition"],
              e["structure"], e["piege"], e["precision"], int(bool(e["lien"])), e["cible"],
-             e["cardinalite"], e["liste_cle"], int(bool(e.get("retiree")))))
+             e["cardinalite"], e["liste_cle"], int(bool(e.get("retiree"))),
+             e.get("etat") or grilles.ENTREE_DEFINIE))
         for i, texte in enumerate(e["exemples"]):
             conn.execute("INSERT INTO grille_exemple (version_id, entree_cle, variante_cle, "
                          "rang, texte) VALUES (?, ?, NULL, ?, ?)", (vid, k, i, texte))
@@ -1390,6 +1393,13 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
     else:
         gid = g["id"]
     etat = grilles.ETAT_VIVANTE if ouverte else grilles.ETAT_BROUILLON
+    # Une entrée que le fichier porte DÉJÀ garde son état (v39) : le tableur ne le dit pas,
+    # et réimporter ne change pas ce qu'elle était — une étiquette née en posant reste
+    # provisoire tant qu'un responsable ne l'a pas définie. Une entrée neuve est définie
+    # (`ecrire_plan`).
+    for k, e in c["entrees"].items():
+        if "etat" not in e and avant is not None and k in avant["entrees"]:
+            e["etat"] = avant["entrees"][k]["etat"]
     trace = {}
     en_place = reference if vivante else brouillon
     if en_place is not None:
@@ -1464,21 +1474,30 @@ def installer_grille_de_travail(conn: sqlite3.Connection, projet_id: int) -> int
     la posant (G14), « lieu : forêt » compris (`routes/releves._entree_neuve`).
 
     Rien d'une grille n'est dans le code : une grille vide et nommée n'est pas un vocabulaire,
-    et son nom vit dans `config.GRILLE_DE_TRAVAIL_NOM`. Jamais dans le projet de jeu ; rien
-    si une grille du projet porte déjà ce nom (rejouée, elle ne double rien). Ne commite pas ;
-    rend l'identifiant, ou None."""
+    et son nom vit dans `config.GRILLE_DE_TRAVAIL_NOM`. Elle se DÉSIGNE par son drapeau
+    (`grille.travail`, J2, v39 : au plus une par projet), et non par ce nom, qui se change.
+    Jamais dans le projet de jeu ; rien si le projet a déjà la sienne (rejouée, elle ne double
+    rien). Une autre grille du projet qui porterait déjà ce nom lui laisse le sien : la
+    grille de travail prend « … 2 », « … 3 » (un nom est unique dans son projet). Ne commite
+    pas ; rend l'identifiant, ou None."""
     import database                              # import paresseux, cf. `importer`
     import journal
     from config import GRILLE_DE_TRAVAIL_NOM, GRILLE_DE_TRAVAIL_NOTE
-    if database.est_jeu(conn, projet_id) or nom_pris(conn, projet_id, GRILLE_DE_TRAVAIL_NOM):
+    if database.est_jeu(conn, projet_id) or conn.execute(
+            "SELECT 1 FROM grille WHERE projet_id = ? AND travail = 1",
+            (projet_id,)).fetchone():
         return None
+    nom, n = GRILLE_DE_TRAVAIL_NOM, 1
+    while nom_pris(conn, projet_id, nom):
+        n += 1
+        nom = f"{GRILLE_DE_TRAVAIL_NOM} {n}"
     cible = grilles.ecrire_cibles(grilles.CIBLES_ZONE)
-    gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte) VALUES (?, ?, 1)",
-                       (projet_id, GRILLE_DE_TRAVAIL_NOM)).lastrowid
+    gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte, travail) "
+                       "VALUES (?, ?, 1, 1)", (projet_id, nom)).lastrowid
     ecrire_version(conn, gid, {"cible": cible, "rubriques": {}, "entrees": {}, "listes": {}},
                    numero=1, etat=grilles.ETAT_VIVANTE, note=GRILLE_DE_TRAVAIL_NOTE, par=None)
     journal.journaliser(conn, "creation", "grille", gid,
-                        apres={"projet_id": projet_id, "nom": GRILLE_DE_TRAVAIL_NOM,
+                        apres={"projet_id": projet_id, "nom": nom,
                                "ouverte": True, "porte_sur": cible, "travail": True,
                                "version": {"numero": 1, "etat": grilles.ETAT_VIVANTE}})
     activer(conn, projet_id=projet_id, grille_id=gid, numero=1)
@@ -1486,15 +1505,18 @@ def installer_grille_de_travail(conn: sqlite3.Connection, projet_id: int) -> int
 
 
 def grille_sans_rien(conn: sqlite3.Connection, grille_id: int) -> bool:
-    """Une grille qui ne porte RIEN : aucune entrée dans aucune de ses versions, aucun relevé,
-    aucune passe. Elle n'est pas un vocabulaire — la grille de travail d'un projet qui naît,
-    tant qu'on n'y a rien posé — et part avec son projet (`socle._supprimer_projet`)."""
+    """La grille de TRAVAIL d'un projet (`grille.travail`, J2) qui ne porte RIEN : aucune
+    entrée dans aucune de ses versions, aucun relevé, aucune passe. Elle n'est pas un
+    vocabulaire — née avec le projet, on n'y a rien posé — et part avec son projet
+    (`socle._supprimer_projet`). Toute AUTRE grille, même vide, a été créée exprès : elle
+    retient son projet (G18)."""
     porte = conn.execute(
-        "SELECT EXISTS (SELECT 1 FROM grille_entree e JOIN grille_version v "
+        "SELECT NOT COALESCE((SELECT travail FROM grille WHERE id = ?), 0), "
+        "       EXISTS (SELECT 1 FROM grille_entree e JOIN grille_version v "
         "               ON v.id = e.version_id WHERE v.grille_id = ?), "
         "       EXISTS (SELECT 1 FROM releve WHERE grille_id = ?), "
         "       EXISTS (SELECT 1 FROM passe WHERE grille_id = ?)",
-        (grille_id, grille_id, grille_id)).fetchone()
+        (grille_id, grille_id, grille_id, grille_id)).fetchone()
     return not any(porte)
 
 

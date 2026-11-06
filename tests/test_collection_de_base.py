@@ -514,27 +514,17 @@ def test_la_migration_n_ouvre_pas_la_collection_de_repli_a_ses_responsables(vrai
 
 
 # --------------------------------------------------------------------------- #
-# Une base qui porte du vocabulaire n'est pas vide (relecture croisée, constat 8). Le
-# vocabulaire se pose en base depuis le basculement d'ANN-7 ; la règle tient jusqu'à la
-# migration qui retire ses tables.
+# Une base qui portait du vocabulaire n'était pas vide (relecture croisée, constat 8). La
+# v39 (ANN-7, le basculement) a retiré ses tables : il n'y a plus rien du vocabulaire à
+# décider, et une base vide part avec son projet.
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("table", ["tags", "domaine", "attribut_dimension",
-                                   "attribut_valeur"])
-def test_tout_terme_local_a_la_base_retient_son_projet(client, derriere_proxy, db_path,
-                                                       table):
+def test_un_projet_a_base_vide_n_a_plus_de_vocabulaire_a_decider(client, derriere_proxy,
+                                                                 db_path):
     pid = _projet(client, nom="Lexique propre")
     base = _base(db_path, pid)["id"]
-    if table == "tags":
-        _sql(db_path, "INSERT INTO tags (label, collection_id) VALUES ('local', ?)", (base,))
-    elif table == "domaine":
-        _sql(db_path, "INSERT INTO domaine (nom, collection_id) VALUES ('local', ?)", (base,))
-    else:
-        dim = _sql(db_path, "INSERT INTO attribut_dimension (cible, nom, collection_id) "
-                            "VALUES ('case', 'local', ?) RETURNING id",
-                   (base if table == "attribut_dimension" else None,))[0]["id"]
-        if table == "attribut_valeur":
-            _sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
-                          "VALUES (?, 'local', ?)", (dim, base))
+    tables = {r["name"] for r in _sql(db_path, "SELECT name FROM sqlite_master "
+                                               "WHERE type = 'table'")}
+    assert not tables & {"tags", "domaine", "attribut_dimension", "attribut_valeur"}
     r = client.delete(f"/api/projets/{pid}", headers=ADMIN)
-    assert r.status_code == 409 and "1 terme" in r.json()["detail"], r.text
-    assert _base(db_path, pid)["id"] == base
+    assert r.status_code == 204, r.text
+    assert _sql(db_path, "SELECT 1 FROM collection WHERE id = ?", (base,)) == []

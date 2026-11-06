@@ -632,16 +632,14 @@ def test_ce_qu_on_fait_dans_un_bac_ne_retient_personne(client, decor, monkeypatc
     assert _fiche(client, "resp")["actes"] == avant + 1
 
 
-def test_une_collection_supprimee_dans_un_bac_y_garde_ses_termes(client, decor):
-    """Ses termes ne deviennent pas globaux (`ON DELETE SET NULL`) : ils rejoignent la base."""
+def test_une_collection_supprimee_dans_un_bac_n_a_plus_de_termes_a_decider(client, decor):
+    """La v39 (ANN-7) a détruit le vocabulaire d'hier : supprimer une collection d'un bac à
+    sable n'a plus de termes à rendre à la base, et réussit."""
     pid = decor["bac"]["id"]
     chez_lea = client.post("/api/collections", headers=LEA,
                            json={"nom": "Chez Léa", "projet_id": pid}).json()["id"]
-    _sql(decor["db"], "INSERT INTO tags (label, collection_id) VALUES ('a-moi', ?)",
-         (chez_lea,))
     assert client.delete(f"/api/collections/{chez_lea}", headers=LEA).status_code == 204
-    assert _sql(decor["db"], "SELECT collection_id FROM tags WHERE label = 'a-moi'") == [
-        {"collection_id": decor["base"]}]
+    assert _sql(decor["db"], "SELECT 1 FROM collection WHERE id = ?", (chez_lea,)) == []
 
 
 # --------------------------------------------------------------------------- #

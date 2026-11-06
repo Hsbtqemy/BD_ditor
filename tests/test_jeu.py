@@ -454,13 +454,10 @@ def _empreinte(db, album):
                   "SELECT * FROM planches WHERE album_id = ? ORDER BY id",
                   "SELECT r.* FROM regions r JOIN planches p ON p.id = r.planche_id "
                   "WHERE p.album_id = ? ORDER BY r.id",
-                  "SELECT an.*, at.tag_id FROM annotations an JOIN regions r ON r.id = "
-                  "an.region_id JOIN planches p ON p.id = r.planche_id LEFT JOIN "
-                  "annotation_tags at ON at.annotation_id = an.id WHERE p.album_id = ?",
+                  "SELECT an.* FROM annotations an JOIN regions r ON r.id = "
+                  "an.region_id JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
                   "SELECT * FROM contribution WHERE album_id = ? ORDER BY id",
                   "SELECT tc.* FROM token_correction tc JOIN regions r ON r.id = tc.region_id "
-                  "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
-                  "SELECT x.* FROM region_attribut x JOIN regions r ON r.id = x.region_id "
                   "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
                   "SELECT x.* FROM bulle_locuteur x JOIN regions r ON r.id = x.region_id "
                   "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",

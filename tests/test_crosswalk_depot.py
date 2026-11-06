@@ -98,7 +98,7 @@ def test_les_notices_ne_portent_plus_aucun_sujet(client, album, db_path, data_di
     pas laissée vide — un `subjects: []` dirait « ce corpus n'a aucun sujet ».
 
     Le contrôle passe par la CLI en sous-processus, comme le reste de ce fichier : on mesure
-    ce que l'outil ÉMET. Le décor pose les trois portées d'hier ; anti-vacuité, la notice de
+    ce que l'outil ÉMET. Les tables d'hier sont détruites (v39) ; anti-vacuité, la notice de
     la collection est là.
     """
     _checkpoint(db_path)
@@ -107,21 +107,8 @@ def test_les_notices_ne_portent_plus_aucun_sujet(client, album, db_path, data_di
     assert creer.returncode == 0, creer.stderr
     cid = creer.stdout.strip()
 
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute("INSERT INTO tags (label) VALUES ('sujet-global-9500')")
-        conn.execute("INSERT INTO tags (label, collection_id) VALUES ('sujet-ici-9501', ?)",
-                     (cid,))
-        conn.execute("INSERT INTO tags (label, collection_id) VALUES "
-                     "('sujet-ailleurs-9502', "
-                     " (SELECT id FROM collection WHERE nom = 'Collection par défaut'))")
-        dim = conn.execute("INSERT INTO attribut_dimension (cible, nom) "
-                           "VALUES ('case', 'axe-9503')").lastrowid
-        conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
-                     "VALUES (?, 'valeur-9504')", (dim,))
-        conn.commit()
-    finally:
-        conn.close()
+    # Le vocabulaire d'hier n'a plus de table depuis la v39 : il ne reste qu'à vérifier que
+    # la clé est retirée, et qu'aucun libellé d'hier ne revient.
     _checkpoint(db_path)
 
     for args in (("--collection", cid), ()):

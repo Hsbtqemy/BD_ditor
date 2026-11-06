@@ -26,6 +26,7 @@ import pytest
 
 import database
 import migration_v38
+import migration_v39
 import main
 from conftest import ADMIN
 
@@ -79,7 +80,13 @@ def _etat(db):
         db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
             "AND name NOT LIKE 'recherche_%' ORDER BY name") if r["name"] not in neuves]
     lignes = {}
+    # La v39 (ANN-7, le basculement) détruit le vocabulaire d'hier : ses tables ne se
+    # lisent plus après la migration (`migration_v39`).
+    presentes = {r["name"] for r in _sql(db, "SELECT name FROM sqlite_master "
+                                             "WHERE type = 'table'")}
     for t in LIGNES:
+        if t not in presentes:
+            continue
         lignes[t] = sorted(json.dumps({k: v for k, v in r.items()
                                        if not (t == "projet"
                                                and k == "membres_creent_collections")
@@ -132,7 +139,10 @@ def test_une_vraie_base_v35_migre_sans_rien_perdre(vraie_v35):
     avant = _etat(vraie_v35)
     seq_avant = _seq(vraie_v35)
     membres_avant = migration_v38.membres(vraie_v35)
+    v39 = migration_v39.avant_la_v39(vraie_v35)
     database.init_db()
+    migration_v39.defaire_la_v39(vraie_v35, v39)
+    avant = migration_v39.ramener_l_etat(avant, v39)
     migration_v38.retirer_les_membres_de_la_v38(vraie_v35, membres_avant)
     apres = _etat(vraie_v35)
     assert _sql(vraie_v35, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
@@ -160,7 +170,7 @@ def test_tout_l_existant_passe_a_non_bacs_a_sable_et_jeu_compris(vraie_v35):
     c.close()
 
 
-def test_les_couches_recopiees_d_avant_se_marquent_par_la_date(vraie_v35):
+def test_les_couches_recopiees_d_avant_se_marquent_par_la_date(vraie_v35, monkeypatch):
     """Les copies amorcées d'avant la v36 n'ont rien marqué : la migration tient pour recopiée
     une ligne d'une région copiée qui n'a pas bougé depuis la naissance de sa copie, et
     laisse à 0 celle d'après. Un attribut de case n'a pas de date : il n'est tenu pour
@@ -176,6 +186,10 @@ def test_les_couches_recopiees_d_avant_se_marquent_par_la_date(vraie_v35):
                     "(?, 1, 'B', 'corrige', datetime(?, '+1 hour'))", (rid, ne, rid, ne))
     _sql(vraie_v35, "INSERT INTO annotations (region_id, note, date_modification) "
                     "VALUES (?, 'avant', datetime(?, '-1 hour'))", (rid, ne))
+    # La v39 (ANN-7, le basculement) détruit ensuite le vocabulaire d'hier : ce que l'étape
+    # de la v36 en fait se lit migration arrêtée avant elle (`_basculer_le_vocabulaire`
+    # neutralisé ; la v39 est éprouvée par `tests/test_migration_v39.py`).
+    monkeypatch.setattr(database, "_basculer_le_vocabulaire", lambda conn: None)
     database.init_db()
     assert _sql(vraie_v35, "SELECT forme, recopiee FROM token_correction WHERE region_id = ? "
                            "ORDER BY ordre", (rid,)) == [{"forme": "A", "recopiee": 1},

@@ -2,7 +2,8 @@
 
 Vérifie le schéma v17 et sa migration. L'édition par l'API, le « % défini », la promotion et
 le panneau 📖 Lexique sont partis avec le basculement d'ANN-7 (ni écran ni route) ; leurs
-tests avec eux. Les tables restent jusqu'à la migration qui les retire.
+tests avec eux ; la migration v39 a détruit leurs tables. Reste à vérifier qu'une base
+neuve ne les porte plus, et que l'étape v17 tolère d'aller jusqu'au bout.
 """
 import sqlite3
 import sys
@@ -24,19 +25,17 @@ def _lire(db_path):
 # --------------------------------------------------------------------------- #
 # Schéma & migration
 # --------------------------------------------------------------------------- #
-def test_schema_lexique(db_path):
+def test_schema_sans_lexique(db_path):
     conn = _lire(db_path)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
-    for t in ("attribut_dimension", "attribut_valeur"):
-        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({t})")}
-        assert {"definition", "note_portee", "etat", "collection_id"} <= cols
-    tcols = {r["name"] for r in conn.execute("PRAGMA table_info(tags)")}
-    assert {"note_portee", "etat", "collection_id"} <= tcols   # description EST la définition
+    for t in ("attribut_dimension", "attribut_valeur", "tags"):
+        assert not list(conn.execute(f"PRAGMA table_info({t})")), t
 
 
 def test_migration_v16_vers_v17(tmp_path):
     """Depuis un schéma pré-v17 (vocabulaire sans couche définitionnelle, `collection`
-    présente pour la FK), `_migrate` ajoute les colonnes et passe en v17."""
+    présente pour la FK), `_migrate` passe l'étape v17 (les colonnes), puis la v39 détruit
+    les tables."""
     db = tmp_path / "v16.sqlite"
     conn = sqlite3.connect(db)
     conn.row_factory = sqlite3.Row
@@ -53,7 +52,6 @@ def test_migration_v16_vers_v17(tmp_path):
         "PRAGMA user_version = 16;")
     database._migrate(conn)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
-    for t in ("attribut_dimension", "attribut_valeur"):
-        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({t})")}
-        assert {"definition", "note_portee", "etat", "collection_id"} <= cols
+    for t in ("attribut_dimension", "attribut_valeur", "tags"):
+        assert not list(conn.execute(f"PRAGMA table_info({t})")), t
     conn.close()

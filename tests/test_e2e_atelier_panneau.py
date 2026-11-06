@@ -94,35 +94,6 @@ def _sql(decor):
     return conn
 
 
-def _attributs(decor, rid):
-    """La situation d'une région, lue EN BASE : ses routes sont parties avec le basculement
-    d'ANN-7 ; la table vit jusqu'à la migration qui la retire."""
-    conn = _sql(decor)
-    try:
-        return [tuple(x) for x in conn.execute(
-            "SELECT d.nom, v.valeur FROM region_attribut ra "
-            "JOIN attribut_valeur v ON v.id = ra.valeur_id "
-            "JOIN attribut_dimension d ON d.id = v.dimension_id WHERE ra.region_id = ?",
-            (rid,))]
-    finally:
-        conn.close()
-
-
-def _poser_une_situation(decor, rid):
-    """Une situation d'HIER, posée EN BASE : aucune route ne la pose plus (ANN-7)."""
-    conn = _sql(decor)
-    try:
-        d = conn.execute("INSERT INTO attribut_dimension (cible, nom) VALUES ('case', 'lieu')"
-                         ).lastrowid
-        v = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
-                         "VALUES (?, 'falaise')", (d,)).lastrowid
-        conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-                     (rid, v))
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def _est(methode, chemin):
     """Prédicat de requête OU de réponse : cette méthode, sur ce chemin exact."""
     def predicat(objet):
@@ -166,12 +137,10 @@ def test_une_bulle_devenue_case_perd_son_locuteur_et_un_ctrl_z_rend_les_deux(pag
 
 
 def test_une_case_devenue_bulle_ne_dit_rien_de_sa_situation_d_hier(page, atelier):
-    """ANN-8, le miroir, puis ANN-7, le basculement : la situation d'une case ne se lit plus.
-    Une case qui en porte une d'hier (posée EN BASE, sa table vit jusqu'à la migration)
-    passe en bulle sans qu'aucun message en parle, la ligne reste, et UN Ctrl+Z rend la
-    case."""
+    """ANN-8, le miroir, puis ANN-7, le basculement : la situation d'une case n'existe plus
+    (la v39 a détruit sa table). Une case passe en bulle sans qu'aucun message en parle, et
+    UN Ctrl+Z rend la case."""
     rid = atelier["case"]
-    _poser_une_situation(atelier, rid)
     _ouvrir(page, atelier, "case")
 
     with page.expect_response(_est("PUT", f"/api/regions/{rid}")) as reponse:
@@ -180,11 +149,9 @@ def test_une_case_devenue_bulle_ne_dit_rien_de_sa_situation_d_hier(page, atelier
     assert "situation_retiree" not in reponse.value.json()
     expect(page.locator("#region-type")).to_have_value("bulle", timeout=15000)
     expect(page.locator("#toasts .toast", has_text=re.compile("ituation"))).to_have_count(0)
-    assert _attributs(atelier, rid) == [("lieu", "falaise")]
 
     _annuler(page)
     expect(page.locator("#region-type")).to_have_value("case", timeout=15000)
-    assert _attributs(atelier, rid) == [("lieu", "falaise")]
 
 
 def test_une_boite_devenue_bulle_dit_que_son_personnage_part(page, atelier):

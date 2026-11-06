@@ -199,8 +199,6 @@ def test_resegmentation_transfere_annotation_case(client, planche, monkeypatch):
         f"/api/planches/{planche['id']}/regions").json() if x["type"] == "case")
     client.put(f"/api/regions/{case['id']}/annotation", json={"note": "SCENENUIT"})
     import database
-    from conftest import poser_tags
-    poser_tags(database.DB_PATH, case["id"], ["nuit"])     # un tag d'hier, en base (ANN-7)
     # re-segmentation : une nouvelle case recouvrant l'ancienne → annotation transférée
     monkeypatch.setattr(seg, "run_kumiko",
                         lambda path: {"size": [400, 500], "panels": [[0, 0, 400, 480]]})
@@ -210,10 +208,6 @@ def test_resegmentation_transfere_annotation_case(client, planche, monkeypatch):
         f"/api/planches/{planche['id']}/regions").json() if x["type"] == "case")
     ann = client.get(f"/api/regions/{new_case['id']}/annotation").json()
     assert ann["note"] == "SCENENUIT"
-    assert [r["label"] for r in database.get_connection().execute(
-        "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-        "JOIN annotations an ON an.id = at.annotation_id WHERE an.region_id = ?",
-        (new_case["id"],))] == ["nuit"]                  # le tag d'hier suit l'annotation
     res2 = client.get("/api/recherche", params={"q": "SCENENUIT"}).json()["results"]
     assert any(r["region_id"] == new_case["id"] for r in res2)   # cherchable, sur la nouvelle case
 
@@ -222,17 +216,19 @@ def test_resegmentation_ne_garde_pas_une_case_aux_seuls_tags_d_hier(client, plan
                                                                     monkeypatch):
     """ANN-7, le basculement (relecture croisée du commit des coutures, constat 2) : une
     case que la nouvelle segmentation ne recouvre pas, et qui ne porte qu'une ligne
-    d'annotation aux seuls tags d'hier (sans note), n'est plus du travail — elle part, comme
-    une case nue, au lieu d'être conservée. Le décor est relu."""
+    d'annotation sans note (ce que laissait une ligne aux seuls tags d'hier, que la v39
+    retire ; une base retouchée peut en porter), n'est plus du travail — elle part, comme une
+    case nue, au lieu d'être conservée. Le décor est relu."""
     import database
-    from conftest import direct_query, poser_tags
+    from conftest import direct_query
     monkeypatch.setattr("main.kumiko_available", lambda: True)
     monkeypatch.setattr(seg, "run_kumiko",
                         lambda path: {"size": [400, 500], "panels": [[0, 0, 50, 50]]})
     client.post(f"/api/planches/{planche['id']}/segmenter")
     case = next(x for x in client.get(
         f"/api/planches/{planche['id']}/regions").json() if x["type"] == "case")
-    poser_tags(database.DB_PATH, case["id"], ["nuit"])
+    with database.connect() as c:
+        c.execute("INSERT INTO annotations (region_id, note) VALUES (?, NULL)", (case["id"],))
     assert direct_query(database.DB_PATH, "SELECT note FROM annotations WHERE region_id = ?",
                         (case["id"],)) == [{"note": None}]
     monkeypatch.setattr(seg, "run_kumiko",

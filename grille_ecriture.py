@@ -34,10 +34,11 @@ import grilles
 from grille_import import Refus, _faute
 from grilles import CARDINALITES, FORMES, propre
 
-# Les champs d'une entrée que le formulaire écrit (les six questions du catalogue et « ce que
-# lit l'annotateur »), et ceux d'une variante, d'une rubrique, d'une liste, d'une case.
+# Les champs d'une entrée que le formulaire écrit (les six questions du catalogue, « ce que
+# lit l'annotateur » et son ÉTAT, provisoire ou défini — v39), et ceux d'une variante, d'une
+# rubrique, d'une liste, d'une case.
 CHAMPS_ENTREE = ("libelle", "rubrique_cle", "forme", "definition", "structure", "piege",
-                 "exemples", "precision", "lien", "cible", "cardinalite", "liste_cle")
+                 "exemples", "precision", "lien", "cible", "cardinalite", "liste_cle", "etat")
 CHAMPS_VARIANTE = ("libelle", "definition", "structure", "piege", "exemples")
 CHAMPS_RUBRIQUE = ("libelle", "parent_cle")
 CHAMPS_LISTE = ("libelle",)
@@ -109,6 +110,12 @@ def cibles(valeur) -> tuple[str | None, str | None]:
 
 def forme(valeur) -> str | None:
     return grille_tableur.forme_lue(valeur) if valeur is not None else None
+
+
+def etat(valeur) -> str | None:
+    """L'état d'une entrée (`grilles.ETATS_ENTREE`), ou None s'il n'en est pas un."""
+    v = propre(valeur)
+    return v if v in grilles.ETATS_ENTREE else None
 
 
 def cardinalite(valeur) -> str | None:

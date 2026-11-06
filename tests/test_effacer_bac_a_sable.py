@@ -121,12 +121,10 @@ def _effacer(projet_id, portee=autorisation.TOTALE, motif="effacement"):
 # --------------------------------------------------------------------------- #
 def test_le_vocabulaire_d_un_bac_efface_ne_sort_pas_au_depot_d_une_vraie_collection(
         client, decor):
-    """ANN-7, le basculement (relecture croisée du commit des coutures, constat 1). Tant que
-    les tables du vocabulaire d'hier existent, l'effacement d'un bac à sable doit encore les
-    nettoyer : sans cela, la clé étrangère (`ON DELETE SET NULL`) rend GLOBAL le tag né
-    dans le bac, et ce qui est global sortait au dépôt d'une VRAIE collection — une écriture
-    en base, sans retour. Mesuré sur la base ET sur la notice de dépôt de la collection du
-    vrai projet ; anti-vacuité, la notice nomme sa collection."""
+    """ANN-7, le basculement (relecture croisée du commit des coutures, constat 1). La v39
+    a détruit les tables du vocabulaire d'hier : l'effacement d'un bac à sable n'a plus rien
+    à en décider, et rien du tag né dans le bac — que le journal nomme encore — ne sort au
+    dépôt d'une VRAIE collection. Anti-vacuité, la notice nomme sa collection."""
     def notice():
         conn = database.get_connection()
         try:
@@ -137,9 +135,6 @@ def test_le_vocabulaire_d_un_bac_efface_ne_sort_pas_au_depot_d_une_vraie_collect
     avant = notice()
     assert "Corpus" in avant and "mot-de-sam" not in avant
     _effacer(decor["bac"]["id"])
-    assert _sql(decor["db"], "SELECT collection_id, espace FROM tags "
-                             "WHERE label = 'mot-de-sam'") == [], (
-        "le tag né dans le bac à sable a survécu à son effacement")
     assert "mot-de-sam" not in notice(), "le tag du bac effacé sort au dépôt"
 
 
@@ -154,8 +149,6 @@ def test_effacer_un_bac_a_sable_emporte_tout_ce_qu_il_porte(client, decor):
     assert _sql(db, "SELECT COUNT(*) AS n FROM projet_acces WHERE projet_id = ?",
                 (pid,)) == [{"n": 0}]
     assert _sql(db, f"SELECT id FROM collection WHERE projet_id = ?", (pid,)) == []
-    # Le tag né local part avec lui ; il ne devient pas global.
-    assert _sql(db, "SELECT id FROM tags WHERE label = 'mot-de-sam'") == []
     # Le document importé part avec sa dernière copie, et ses images.
     assert _sql(db, "SELECT id FROM albums WHERE id = ?", (decor["importe"],)) == []
     assert images_importees and not any((decor["data"] / c).exists()

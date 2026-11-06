@@ -1424,12 +1424,13 @@ def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, dat
                        (cartouche["id"], {"note": PUBLIES["sa note, sans tag"]})):
         rep = client.put(f"/api/regions/{rid}/annotation", json=corps)
         assert rep.status_code == 200, rep.text
-    # ANN-7 — le tag d'hier, posé en base : aucune route ne le pose plus, et aucun export
-    # ne le porte plus (le basculement, commit des sorties).
+    # ANN-7 — le tag d'hier : la v39 a détruit sa table ; il ne reste que l'acte qui le
+    # posait, au journal, et aucun export ne le porte (le basculement, commit des sorties).
     import database
     from conftest import direct_query, poser_tags
-    poser_tags(database.DB_PATH, bulle["id"], [TAG_RETIRE])
-    assert direct_query(db_path, "SELECT label FROM tags WHERE label = ?", (TAG_RETIRE,))
+    poser_tags(database.DB_PATH, bulle["id"], [TAG_RETIRE], agent="admin")
+    assert direct_query(db_path, "SELECT 1 FROM evenement WHERE apres LIKE ?",
+                        (f"%{TAG_RETIRE}%",))
     rep = client.patch(f"/api/planches/{paratexte['id']}/role", json={"role": "paratexte"})
     assert rep.status_code == 200, rep.text
     ids = [recit["id"], paratexte["id"], vide["id"]]

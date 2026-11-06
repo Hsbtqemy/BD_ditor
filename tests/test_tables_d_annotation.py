@@ -34,9 +34,6 @@ HORS_ANNOTATION = {
     "region_origine": "La provenance d'une région recopiée (E2) : elle part avec la région, "
                       "et la règle « travail d'autrui » la LIT pour remonter la chaîne.",
     "recherche": "L'index plein texte, dénormalisé, maintenu par `reindex_region`.",
-    "region_attribut": "La situation d'une case, le vocabulaire d'hier (ANN-7, le basculement) : "
-                       "plus aucune route ne la pose ni ne la lit, « qui perd quoi » ne la "
-                       "compte plus, et sa table part avec la migration v39.",
 }
 
 
@@ -168,19 +165,17 @@ def test_le_travail_d_un_autre_dans_cette_table_se_lit_avant_d_effacer(client, d
 
 def test_la_situation_d_hier_ne_se_lit_plus_sous_qui_perd_quoi(client, decor):
     """ANN-7, le basculement (« se tranchent en route », au plus prudent) : une situation
-    posée par un autre — son `lien` au journal comme sa ligne — ne compte plus sous « qui
-    perd quoi » : ce qu'elle a posé ne se lit plus nulle part. Les deux anciennes voies sont
-    éprouvées : l'acte humain (première source) et la ligne sans acte (la deuxième, retirée).
-    Mutant tué : `region_attribut` remis dans `autorisation._CIBLES_DE_REGION`."""
+    posée par un autre — son `lien` au journal, ce qui reste d'elle depuis la v39 — ne compte
+    plus sous « qui perd quoi » : ce qu'elle a posé n'existe plus. Mutant tué :
+    `region_attribut` remis dans `autorisation._CIBLES_DE_REGION`."""
     from conftest import poser_attribut
     z = decor["zones"]
     poser_attribut(decor["db"], cible="case", dimension="lieu", valeur="cuisine",
                    region_id=z["case"], agent=STAG["Remote-User"])
-    poser_attribut(decor["db"], cible="case", dimension="lieu", valeur="grotte",
-                   region_id=z["case"])
     c = database.get_connection()
     try:
-        assert _compte(c, "region_attribut", decor["album"]) == 2
+        assert c.execute("SELECT COUNT(*) FROM evenement WHERE cible_table = "
+                         "'region_attribut' AND cible_id = ?", (z["case"],)).fetchone()[0] == 1
         assert not _travail_d_un_autre(c, decor)
     finally:
         c.close()

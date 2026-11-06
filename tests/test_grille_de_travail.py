@@ -207,3 +207,79 @@ def test_une_grille_ouverte_importee_recoit_aussi_ses_variables(client, decor, d
     r = poser(client, d, region_id=bulle(d), nouvelle_entree={"libelle": "ton : ironique"},
               mots=[0])
     assert r["entree_cle"] == "ton" and r["variante_cle"] == "ironique", r
+
+
+# --------------------------------------------------------------------------- #
+# L'ÉTAT d'une entrée (v39 ; J4, Hugo, 2026-11-06) et le drapeau de la grille de travail (J2)
+# --------------------------------------------------------------------------- #
+def _etats(db_path, grille_id):
+    return {r["cle"]: r["etat"] for r in _q(
+        db_path, "SELECT e.cle, e.etat FROM grille_entree e JOIN grille_version v "
+                 "ON v.id = e.version_id WHERE v.grille_id = ?", (grille_id,))}
+
+
+def test_une_entree_nee_en_posant_est_provisoire_une_entree_ecrite_definie(client, decor,
+                                                                           db_path):
+    """J4 : provisoire SEULEMENT pour ce qu'on a tapé en posant (« nom : valeur » compris) ;
+    ce qu'on importe ou écrit au formulaire est défini, même dans une grille OUVERTE."""
+    t = _travail(client, decor, db_path)
+    poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
+    poser(client, t, region_id=t["zones"]["cartouche"],
+          nouvelle_entree={"libelle": "lieu : forêt"})
+    r = client.post(f"/api/grilles/{t['grille_id']}/entrees", headers=ADMIN,
+                    json={"libelle": "écrite au formulaire"})
+    assert r.status_code == 201, r.text
+    assert _etats(db_path, t["grille_id"]) == {
+        "ironie": "provisoire", "lieu": "provisoire", "ecrite-au-formulaire": "defini"}
+    # Importée dans une grille ouverte : définie.
+    g = grille_active(client, decor["p"], entrees=csv_de([["cle", "forme", "libelle"],
+                                                          ["vu", "simple", "vu"]]),
+                      listes=None, nom="Libre", ouverte=True)
+    assert _etats(db_path, g["grille_id"]) == {"vu": "defini"}
+    # Le plan le rend.
+    plan = client.get(f"/api/grilles/{t['grille_id']}/versions/1", headers=ADMIN).json()
+    assert {e["cle"]: e["etat"] for e in plan["entrees"]}["ironie"] == "provisoire"
+
+
+def test_les_responsables_changent_l_etat_avec_la_valeur_vue(client, decor, db_path):
+    t = _travail(client, decor, db_path)
+    poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
+    url = f"/api/grilles/{t['grille_id']}/entrees/ironie"
+    r = client.patch(url, headers=ADMIN, json={"etat": "fini"})
+    assert r.status_code == 422 and "état" in r.text, r.text
+    r = client.patch(url, headers=ADMIN, json={"etat": "defini", "vu": {"etat": "provisoire"}})
+    assert r.status_code == 200, r.text
+    assert _etats(db_path, t["grille_id"]) == {"ironie": "defini"}
+    # Une valeur vue périmée : le 409 de CONC-3.
+    r = client.patch(url, headers=ADMIN, json={"etat": "provisoire",
+                                               "vu": {"etat": "provisoire"}})
+    assert r.status_code == 409, r.text
+    assert _etats(db_path, t["grille_id"]) == {"ironie": "defini"}
+    # Réimporter la grille ne change pas l'état d'une entrée qu'elle porte déjà.
+
+
+def test_la_grille_de_travail_se_designe_par_son_drapeau(client, db_path):
+    """J2 : renommée, elle reste LA grille de travail — rejouée, l'installation ne double
+    rien —, et part encore avec son projet vide ; une AUTRE grille vide retient son projet."""
+    pid = client.post("/api/projets", headers=ADMIN, json={"nom": "Drapeau"}).json()["id"]
+    g = _grille_de_travail(db_path, pid)
+    r = client.patch(f"/api/grilles/{g['id']}", headers=ADMIN, json={"nom": "Mes étiquettes"})
+    assert r.status_code == 200, r.text
+    actives = client.get(f"/api/projets/{pid}/grilles", headers=ADMIN).json()["actives"]
+    assert [(a["nom"], a["travail"]) for a in actives] == [("Mes étiquettes", True)]
+    conn = database.get_connection()
+    try:
+        import grille_import
+        assert grille_import.installer_grille_de_travail(conn, pid) is None
+    finally:
+        conn.close()
+    autre = client.post(f"/api/projets/{pid}/grilles", headers=ADMIN,
+                        json={"nom": "Vide", "ouverte": True, "porte_sur": "case"})
+    assert autre.status_code == 201, autre.text
+    r = client.delete(f"/api/projets/{pid}", headers=ADMIN)
+    assert r.status_code == 409 and "grille" in r.json()["detail"], r.text
+    assert client.delete(f"/api/grilles/{autre.json()['grille_id']}",
+                         headers=ADMIN).status_code == 204
+    r = client.delete(f"/api/projets/{pid}", headers=ADMIN)
+    assert r.status_code in (200, 204), r.text
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille WHERE id = ?", (g["id"],))[0]["n"] == 0

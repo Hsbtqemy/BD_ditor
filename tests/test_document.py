@@ -26,6 +26,7 @@ import pytest
 import comptes
 import database
 import migration_v38
+import migration_v39
 import journal
 import pipeline.sharedocs as sd
 from conftest import du_projet
@@ -213,10 +214,13 @@ def test_la_migration_fait_de_chaque_album_la_copie_d_un_document(base_v29):
     — ni le travail, ni les rangements, ni le journal, où la migration n'écrit rien."""
     avant = _photographie(base_v29)
     membres_avant = migration_v38.membres(base_v29)
+    v39 = migration_v39.avant_la_v39(base_v29)
     database.init_db()                                   # upgrade réel v29 → v30
     # La v38 (COL-3, tranche 3c) fait entrer les accès hors projet dans leur projet :
-    # éprouvée par `tests/test_migration_v38.py`, elle sort de la comparaison.
+    # éprouvée par `tests/test_migration_v38.py`, elle sort de la comparaison ; la v39
+    # (ANN-7, le basculement) aussi, par `migration_v39`.
     migration_v38.retirer_les_membres_de_la_v38(base_v29, membres_avant)
+    migration_v39.defaire_la_v39(base_v29, v39)
     assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
 
     albums = _sql(base_v29, "SELECT id, document_id, projet_id FROM albums ORDER BY id")

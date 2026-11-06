@@ -30,8 +30,8 @@ from typing import Optional
 import conflit
 import journal
 from config import TYPE_DETAIL, TYPES_LOCUTEUR, TYPES_PRESENCE
-from database import (NATURE_COLLECTIF, SQL_NOTE_POSEE, annotation_vide, reindex_region,
-                      unindex_region)
+from database import (CLE_PLANCHER_ANNULATION, NATURE_COLLECTIF, SQL_NOTE_POSEE,
+                      annotation_vide, reindex_region, unindex_region)
 
 # Types d'événements et tables que l'undo sait inverser (le reste est ignoré : ni annulé,
 # ni bloquant — l'undo « saute » un acte non annulable et remonte au précédent).
@@ -164,6 +164,16 @@ def est_borne(conn: sqlite3.Connection, agent) -> bool:
     return _borne(conn, agent) is not None
 
 
+def plancher(conn: sqlite3.Connection) -> int:
+    """Le PLANCHER de Ctrl+Z (I5, Hugo, 2026-11-05) : le plus grand identifiant du journal au
+    basculement d'ANN-7 (v39, `database.CLE_PLANCHER_ANNULATION`). Les actes d'avant — de
+    toute sorte, relevés compris — ne sont plus offerts : leurs inverses touchaient un
+    vocabulaire que la migration a détruit. 0 sans plancher écrit."""
+    r = conn.execute("SELECT valeur FROM meta WHERE cle = ?",
+                     (CLE_PLANCHER_ANNULATION,)).fetchone()
+    return int(r[0]) if r is not None and r[0] is not None else 0
+
+
 def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
     """Événement HUMAIN le plus récent, d'un type/table annulable, non encore annulé
     (aucun événement `annulation` ne le référence). None si rien à annuler.
@@ -178,11 +188,14 @@ def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
     annuler est justement une SUPPRESSION, dont la cible n'existe plus. Le journal survit à
     sa cible (`cible_id` n'est pas une FK) ; un filtre par album rendrait donc l'annulation
     d'une suppression impossible, c'est-à-dire l'inverse du service rendu.
+
+    Elle ne remonte pas au-dessous du PLANCHER (`plancher`, la v39 d'ANN-7) : rien de ce
+    qui le précède n'est offert, et Ctrl+Z dit « rien à annuler ».
     """
-    ou, params = "", []
+    ou, params = "  AND id > ? ", [plancher(conn)]
     if agent is not TOUS:
-        ou = "  AND agent IS ? "                # `IS` et non `=` : gère l'agent NULL
-        params = [agent]
+        ou += "  AND agent IS ? "               # `IS` et non `=` : gère l'agent NULL
+        params.append(agent)
     borne = _borne(conn, agent)
     if borne is not None:
         ou += "  AND date >= ? "                # même format que la colonne : comparaison de chaînes

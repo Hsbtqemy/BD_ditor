@@ -284,72 +284,21 @@ def vocabulaire_cloisonne(client, db_path, derriere_proxy):
     reg = client.post(f"/api/planches/{pl['id']}/regions", headers=ADMIN,
                       json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}).json()
 
-    # Le vocabulaire d'hier, que plus aucune route ne crée ni ne pose (ANN-7, le
-    # basculement) : écrit en base, comme une base d'avant le basculement le porte.
-    conn = sqlite3.connect(db_path)
-    try:
-        for nom in ("dom-global-9100", "dom-alpha-9101", "dom-bravo-9102"):
-            conn.execute("INSERT INTO domaine (nom) VALUES (?)", (nom,))
-        # `dim-perso-9203` : un axe de PERSONNAGE, celui que porte `personnage_attribut`.
-        dims = {nom: conn.execute("INSERT INTO attribut_dimension (cible, nom) VALUES (?, ?)",
-                                  (cible, nom)).lastrowid
-                for nom, cible in (("dim-global-9200", "case"), ("dim-alpha-9201", "case"),
-                                   ("dim-bravo-9202", "case"),
-                                   ("dim-perso-9203", "personnage"))}
-        vals = {nom: conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
-                                  "VALUES (?, ?)", (dims[dim], nom)).lastrowid
-                for dim, nom in (
-                    ("dim-global-9200", "val-global-9300"),
-                    ("dim-alpha-9201", "val-alpha-9301"),
-                    ("dim-bravo-9202", "val-bravo-9302"),
-                    # Une valeur restée GLOBALE sous un axe devenu local à Bravo : l'état
-                    # d'une base où v24 n'a fait descendre la portée qu'à la création.
-                    ("dim-bravo-9202", "valg-sous-bravo-9312"),
-                    ("dim-perso-9203", "valp-global-9310"),
-                    ("dim-perso-9203", "valp-bravo-9311"))}
-        conn.commit()
-    finally:
-        conn.close()
+    # Le vocabulaire d'hier n'a plus de table (ANN-7, la v39) : ses libellés ne vivent plus
+    # que dans le JOURNAL, où les actes qui le posaient restent (`conftest.poser_tags`). Ce
+    # que ces tests mesurent désormais : aucun de ces libellés ne sort, d'où qu'il vienne.
     # Un personnage, entité de CORPUS : il porte une valeur de chaque côté.
     perso = client.post("/api/personnages", json={"nom": "Témoin"}, headers=ADMIN).json()
     # La région d'Alpha porte une note, trois tags et deux valeurs.
     r = client.put(f"/api/regions/{reg['id']}/annotation", headers=ADMIN,
                    json={"note": "note"})
     assert r.status_code == 200, r.text
-    poser_tags(db_path, reg["id"], ["tag-global-9400", "tag-alpha-9401", "tag-bravo-9402"])
-    conn = sqlite3.connect(db_path)
-    try:
-        for v in ("valp-global-9310", "valp-bravo-9311"):
-            conn.execute("INSERT INTO personnage_attribut (personnage_id, valeur_id) "
-                         "VALUES (?, ?)", (perso["id"], vals[v]))
-        for v in ("val-alpha-9301", "val-bravo-9302"):
-            conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-                         (reg["id"], vals[v]))
-        # Un axe GLOBAL rattaché à un domaine LOCAL à Bravo (l'état d'avant v24).
-        conn.execute("UPDATE attribut_dimension SET domaine_id = "
-                     "(SELECT id FROM domaine WHERE nom = 'dom-bravo-9102') "
-                     "WHERE nom = 'dim-global-9200'")
-        conn.commit()
-    finally:
-        conn.close()
-
-    for table, col, libelle, cid in (
-            ("domaine", "nom", "dom-alpha-9101", alpha["id"]),
-            ("domaine", "nom", "dom-bravo-9102", bravo["id"]),
-            ("attribut_dimension", "nom", "dim-alpha-9201", alpha["id"]),
-            ("attribut_dimension", "nom", "dim-bravo-9202", bravo["id"]),
-            ("attribut_valeur", "valeur", "val-alpha-9301", alpha["id"]),
-            ("attribut_valeur", "valeur", "val-bravo-9302", bravo["id"]),
-            ("attribut_valeur", "valeur", "valp-bravo-9311", bravo["id"]),
-            ("tags", "label", "tag-alpha-9401", alpha["id"]),
-            ("tags", "label", "tag-bravo-9402", bravo["id"])):
-        _terme_local(db_path, table, col, libelle, cid)
+    poser_tags(db_path, reg["id"], ["tag-global-9400", "tag-alpha-9401", "tag-bravo-9402"],
+               agent="admin")
     return {"alpha": alpha, "bravo": bravo, "perso": perso, "region_id": reg["id"],
-            "global": ["dom-global-9100", "dim-global-9200", "val-global-9300",
-                       "dim-perso-9203", "valp-global-9310", "tag-global-9400"],
-            "a": ["dom-alpha-9101", "dim-alpha-9201", "val-alpha-9301", "tag-alpha-9401"],
-            "b": ["dom-bravo-9102", "dim-bravo-9202", "val-bravo-9302",
-                  "valg-sous-bravo-9312", "valp-bravo-9311", "tag-bravo-9402"]}
+            # Depuis la v39, seuls les libellés des TAGS vivent encore quelque part : dans les
+            # charges du journal. Les domaines, axes et valeurs n'ont plus de trace.
+            "global": ["tag-global-9400"], "a": ["tag-alpha-9401"], "b": ["tag-bravo-9402"]}
 
 
 def _tout_le_vocabulaire(v) -> list:
@@ -475,33 +424,6 @@ def test_sans_collection_les_outils_n_exportent_aucun_vocabulaire_non_plus(
         "le corpus entier ne nomme plus ses albums : le test ne mesure rien")
 
 
-def test_un_terme_d_une_collection_supprimee_ne_sort_pas_devenu_global(
-        client, db_path, vocabulaire_cloisonne):
-    """Le trou que ce commit ferme. Un terme LOCAL à une collection qu'on supprime devient
-    GLOBAL par sa clé étrangère (`ON DELETE SET NULL`) : depuis le commit des coutures plus
-    rien ne retient ni ne range ce vocabulaire, et tant que les exports suivaient la règle
-    d'appartenance (« global ⊕ local »), ce tag d'une collection DISPARUE sortait avec
-    l'export de toutes les autres. Il ne sort plus, parce que plus rien d'hier ne sort.
-
-    Le décor est relu : sans la bascule vers NULL, le test ne mesurerait rien."""
-    v = vocabulaire_cloisonne
-    gamma = _collection(client, "Corpus Gamma")
-    poser_tags(db_path, v["region_id"], ["tag-gamma-9450"], collection_id=gamma["id"])
-    r = client.delete(f"/api/collections/{gamma['id']}", headers=ADMIN)
-    assert r.status_code in (200, 204), r.text
-    ligne = direct_query(db_path, "SELECT collection_id FROM tags WHERE label = ?",
-                         ("tag-gamma-9450",))
-    assert [l["collection_id"] for l in ligne] == [None], (
-        "le tag de la collection supprimée n'est pas devenu global : le décor ne pose "
-        "plus l'état que ce test ferme")
-    textes = _textes_de_depot(client, db_path, v["alpha"]["id"])
-    for fmt in ("json", "csv", "tei"):
-        textes[f"export {fmt}"] = _export_album(
-            client, fmt, _album_d_alpha(db_path), ADMIN, v["alpha"]["id"]).decode("utf-8")
-    for quoi, texte in textes.items():
-        assert "tag-gamma-9450" not in texte, f"{quoi} : le tag devenu global sort"
-
-
 # --------------------------------------------------------------------------- #
 # 2 ter. L'export d'un ALBUM (AUTH-11, puis ANN-7, le basculement)
 # --------------------------------------------------------------------------- #
@@ -541,16 +463,11 @@ def album_partage(client, db_path, vocabulaire_cloisonne):
                     json={"type": "bulle", "x": 1, "y": 1, "w": 3, "h": 3})
     assert r.status_code in (200, 201), r.text
     bulle_id = r.json()["id"]
-    # Le tag de Bravo, posé en base (ANN-7 : plus aucune route ne pose un tag).
-    poser_tags(db_path, bulle_id, [T_BRAVO])
-    # Le décor est RELU : sans la ligne d'annotation, « elle n'est pas dite annotée » ne
-    # mesurerait rien.
-    lignes = direct_query(db_path,
-                          "SELECT a.note, t.label FROM annotations a "
-                          "JOIN annotation_tags at ON at.annotation_id = a.id "
-                          "JOIN tags t ON t.id = at.tag_id WHERE a.region_id = ?",
-                          (bulle_id,))
-    assert [(l["note"] or "", l["label"]) for l in lignes] == [("", T_BRAVO)], lignes
+    # Le tag de Bravo : l'acte d'hier qui le posait, au journal (ANN-7, la v39 a retiré la
+    # ligne aux seuls tags avec la table) ; la bulle n'a plus d'annotation.
+    poser_tags(db_path, bulle_id, [T_BRAVO], agent="admin")
+    assert direct_query(db_path, "SELECT 1 FROM annotations WHERE region_id = ?",
+                        (bulle_id,)) == []
 
     a, b = v["alpha"]["id"], v["bravo"]["id"]
     _acces(db_path, a, "proprio-des-deux", "proprietaire")

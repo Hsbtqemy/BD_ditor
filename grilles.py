@@ -45,6 +45,14 @@ TYPES_TEXTE = ("bulle", "cartouche", "texte")
 CARDINALITES = ("une", "plusieurs")
 ETAT_BROUILLON, ETAT_PUBLIEE, ETAT_VIVANTE = "brouillon", "publiee", "vivante"
 ETATS_VERSION = (ETAT_BROUILLON, ETAT_PUBLIEE, ETAT_VIVANTE)
+# L'ÉTAT d'une entrée (v39, ANN-7 ; « les étiquettes de travail », Hugo, 2026-11-05 ; J4,
+# 2026-11-06) : ce qu'on ne sait pas encore nommer est PROVISOIRE — une entrée née EN LA
+# TAPANT, en posant (G14, « nom : valeur » compris : `routes/releves._entree_par_nom`) — ; ce
+# qui est ÉCRIT, par l'import ou le formulaire, est DÉFINI, même dans une grille ouverte. Les
+# responsables le changent (`PATCH …/entrees/{cle}`, avec `vu`) ; l'empreinte d'une version
+# ne le lit pas, et il ne gouverne encore rien d'autre.
+ENTREE_PROVISOIRE, ENTREE_DEFINIE = "provisoire", "defini"
+ETATS_ENTREE = (ENTREE_PROVISOIRE, ENTREE_DEFINIE)
 ISSUES_DOUTE = ("garde", "change", "retire")
 
 # Le séparateur de plusieurs cibles, dans une cellule du tableur (« bulle | cartouche |
@@ -198,6 +206,7 @@ def contenu(conn: sqlite3.Connection, version_id: int) -> dict:
             "structure": e["structure"], "piege": e["piege"], "precision": e["precision"],
             "lien": bool(e["lien"]), "cible": e["cible"], "cardinalite": e["cardinalite"],
             "liste_cle": e["liste_cle"], "retiree": bool(e["retiree"]),
+            "etat": e["etat"],
             "exemples": exemples.get((e["cle"], None), []), "variantes": {}}
     for x in conn.execute("SELECT * FROM grille_variante WHERE version_id = ?",
                           (version_id,)):
@@ -219,14 +228,15 @@ def contenu(conn: sqlite3.Connection, version_id: int) -> dict:
 
 
 def _sans_rangs(objet):
-    """Le contenu sans ce qui ne fait pas une version : les rangs, et le drapeau `retiree`
+    """Le contenu sans ce qui ne fait pas une version : les rangs, l'ÉTAT d'une entrée (un
+    état de travail, que le tableur ne porte pas : v39), et le drapeau `retiree`
     quand il est FAUX. Vrai, il compte (ANN-7, 2026-11-03) : retirer une entrée d'une grille
     ouverte change la version, et la remettre aussi — sans quoi la même empreinte dirait
     « aucun changement » et laisserait l'entrée retirée. Faux, il est absent, ce qui garde
     intactes les empreintes écrites avant lui."""
     if isinstance(objet, dict):
         return {k: _sans_rangs(v) for k, v in objet.items()
-                if k != "rang" and not (k == "retiree" and not v)}
+                if k not in ("rang", "etat") and not (k == "retiree" and not v)}
     if isinstance(objet, list):
         return [_sans_rangs(v) for v in objet]
     return objet
@@ -293,7 +303,7 @@ def plan(conn: sqlite3.Connection, version_id: int) -> dict:
             "pose": sorte_de_pose(cibles),
             "cardinalite": cardinalite_effective(e, cibles),
             "cardinalite_declaree": e["cardinalite"],
-            "liste_cle": e["liste_cle"], "retiree": e["retiree"],
+            "liste_cle": e["liste_cle"], "retiree": e["retiree"], "etat": e["etat"],
             "variantes": [{"cle": vc, "libelle": x["libelle"], "definition": x["definition"],
                            "structure": x["structure"], "piege": x["piege"],
                            "exemples": x["exemples"]}

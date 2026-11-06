@@ -479,8 +479,6 @@ def test_l_export_csv_de_recherche_suit_la_meme_regle(client, db_path, deux_albu
 def test_les_compteurs_du_corpus_sont_cloisonnes(client, db_path, deux_albums,
                                                  derriere_proxy):
     """La composition du corpus fuit par les NOMBRES aussi bien que par les titres."""
-    _poser_tag(db_path, "commun")
-    _poser_tag(db_path, "prive", deux_albums["c2"])
     _ouvrir(db_path, deux_albums["c1"], "bob")
     c = client.get("/api/corpus", headers={"Remote-User": "bob"}).json()
     assert c["albums"] == 1 and c["planches"] == 1
@@ -628,36 +626,6 @@ def test_le_chemin_d_image_ne_traverse_pas_les_repertoires(client, deux_albums):
 # --------------------------------------------------------------------------- #
 # Le vocabulaire — une règle différente, et voulue
 # --------------------------------------------------------------------------- #
-def _poser_tag(db_path, label, collection_id=None):
-    import sqlite3
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute("INSERT INTO tags (label, collection_id) VALUES (?, ?)",
-                     (label, collection_id))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _lignes_tags(db_path, region_id):
-    """Les tags RÉELLEMENT posés sur une région, lus en base — pas ce que l'API montre.
-
-    C'est la seule lecture qui distingue « rien ne s'est attaché » de « quelque chose
-    s'est attaché et l'écran le cache » : les deux rendent `tags: []` à l'appelant, et
-    c'est précisément l'écart que la garde ferme.
-    """
-    import sqlite3
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        return [dict(r) for r in conn.execute(
-            "SELECT t.id, t.label, t.collection_id FROM annotation_tags at "
-            "JOIN annotations an ON an.id = at.annotation_id "
-            "JOIN tags t ON t.id = at.tag_id WHERE an.region_id = ?", (region_id,))]
-    finally:
-        conn.close()
-
-
 def _case_export(db_path, collection_id, principal):
     """DROIT-2 — coche la case d'export d'un accès existant."""
     import sqlite3
@@ -679,14 +647,12 @@ def tag_illisible(client, db_path, deux_albums, derriere_proxy):
     import sqlite3
     from conftest import poser_tags
     # ANN-8 (2026-10-22) — un tag local ne se POSE plus hors de sa collection : l'état se
-    # fabrique comme il naît, un tag global posé puis rendu local à c2. ANN-7 — aucune route
-    # ne pose plus de tag : celui d'hier se pose en base, où les exports le lisent encore.
+    # fabrique comme il naît, un tag global posé puis rendu local à c2. ANN-7 — la v39 a
+    # détruit les tags : il ne reste d'eux que l'acte qui les posait, au journal.
     r1 = deux_albums["r1"]["id"]
-    poser_tags(db_path, r1, ["prive", "commun"])
+    poser_tags(db_path, r1, ["prive", "commun"], agent="admin")
     conn = sqlite3.connect(db_path)                      # APRÈS l'annotation : elle réindexe
     try:
-        conn.execute("UPDATE tags SET collection_id = ? WHERE label = 'prive'",
-                     (deux_albums["c2"],))
         conn.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
                      "VALUES (?, 0, 'DIS', 'dire', 'VERB', '')", (r1,))
         conn.commit()
@@ -741,7 +707,7 @@ def test_annuler_une_note_ne_touche_aux_tags_d_hier_que_comme_la_route(client, d
     voit pas — n'a plus d'objet : ANN-7, le basculement, l'annulation ne lit plus de tag.
     Elle fait ce que fait la route (`PUT …/annotation`) : rendre l'annotation à « sans
     note », c'est la vider, et elle part entière, avec ce qu'elle portait encore du
-    vocabulaire d'hier — jusqu'à la migration qui retire ses tables."""
+    vocabulaire d'hier — la v39 a retiré ses tables."""
     from conftest import direct_query
     _ouvrir(db_path, tag_illisible["c1"], "bob", niveau="ecriture")
     bob, r1 = tag_illisible["bob"], tag_illisible["r1"]["id"]
@@ -749,7 +715,6 @@ def test_annuler_une_note_ne_touche_aux_tags_d_hier_que_comme_la_route(client, d
     assert rep.status_code == 200, rep.text
     rep = client.post("/api/undo", headers=bob)
     assert rep.status_code == 200, rep.text
-    assert _lignes_tags(db_path, r1) == []
     assert not direct_query(db_path, "SELECT 1 FROM annotations WHERE region_id = ?", (r1,))
 
 
@@ -1133,7 +1098,7 @@ def test_hors_proxy_la_question_des_groupes_ne_se_pose_pas(client):
 # --------------------------------------------------------------------------- #
 # Migration v23 → v24
 # --------------------------------------------------------------------------- #
-def test_migration_v23_vers_v24_recolle_la_portee_des_termes(tmp_path):
+def test_migration_v23_vers_v24_recolle_la_portee_des_termes(tmp_path, monkeypatch):
     """La ceinture côté lecture MASQUE le terme incohérent ; elle ne le répare pas, et le
     « % défini » continue de le compter (il compte par appartenance). L'étape v24 fait
     descendre la portée du domaine vers ses dimensions, puis vers leurs valeurs.
@@ -1163,6 +1128,9 @@ def test_migration_v23_vers_v24_recolle_la_portee_des_termes(tmp_path):
         "     VALUES (100, 10, NULL), (101, 11, NULL), (102, 12, NULL);"
         "PRAGMA user_version = 23;")
     conn.commit()
+    # La v39 (ANN-7) détruit ensuite ces tables : l'étape v24 se lit migration arrêtée avant
+    # elle (la v39 est éprouvée par `tests/test_migration_v39.py`).
+    monkeypatch.setattr(database, "_basculer_le_vocabulaire", lambda conn: None)
     database._migrate(conn)
     dims = dict(conn.execute("SELECT id, collection_id FROM attribut_dimension"))
     vals = dict(conn.execute("SELECT id, collection_id FROM attribut_valeur"))
