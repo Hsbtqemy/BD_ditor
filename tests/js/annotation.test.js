@@ -687,6 +687,20 @@ test("la cardinalité : « Remplacer par la mienne » modifie le relevé existan
   assert.equal(A.remplacementCardinalite({ message: "x" }, {}), null);
 });
 
+test("« Remplacer » après « nom : valeur » envoie la valeur TAPÉE, par son libellé", () => {
+  // Vu sur la recette le 2026-11-06 : « sentiment : tristesse » sur une bulle qui porte
+  // « sentiment : perte » (une entrée « une »), puis « Remplacer par la mienne » — le corps
+  // ne portait rien à changer, et « perte » restait.
+  const det = { releve_existant: { id: 7, variante_cle: "perte", qualificatifs: [],
+                                   auteur: "proprio", auteur_nom: null } };
+  assert.deepEqual(A.remplacementCardinalite(det, {}, "sentiment :  tristesse "),
+                   { releve_id: 7, corps: { nouvelle_variante: "tristesse",
+                                            vu: { variante_cle: "perte" } },
+                     auteur: "proprio" });
+  // Sans deux-points (une entrée simple), rien de plus : il n'y a pas de valeur à changer.
+  assert.deepEqual(A.remplacementCardinalite(det, {}, "ironie").corps, { vu: {} });
+});
+
 test("« Créer « … » » dans une grille ouverte seulement, sans doublon", () => {
   assert.equal(A.creerDansLeFiltre({ ouverte: true }, " Paris ", []), "Paris");
   assert.equal(A.creerDansLeFiltre({ ouverte: true }, "paris", [{ libelle: "Paris" }]), null);

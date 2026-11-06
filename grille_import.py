@@ -989,6 +989,19 @@ def reconcilier_ouverte(conn, grille_id: int, version_id: int, avant: dict, apre
                     "gardez sa forme et sa liste ; pour changer, écrivez une autre entrée "
                     "et fusionnez-y celle-ci", cle=cle_,
                     colonne="forme" if champ == "forme" else "liste"))
+        if (_cardinalite_de(x, apres) == "une" and _cardinalite_de(e, avant) != "une"):
+            # J3 (« se tranchent en route », le plus prudent) : passer à « une seule fois »
+            # une entrée dont deux relevés vivent sur une même cible les ferait se contredire
+            # — la règle de `_fusion_en_double`. Sans contradiction, ses relevés suivent
+            # (`reporter_cardinalites`).
+            n = _cibles_en_double(conn, grille_id, version_id, cle_)
+            if n:
+                fautes.append(_faute(
+                    "cardinalite_contredite",
+                    f"« {e['libelle']} » passerait à « une seule fois » alors que {n} cible(s) "
+                    "en portent déjà plusieurs relevés",
+                    "retirez d'abord les relevés en trop, ou gardez « plusieurs »", cle=cle_,
+                    colonne="cardinalite"))
         for vc, n in employes.items():
             if vc is not None and vc not in x["variantes"]:
                 fautes.append(_faute(
@@ -1126,13 +1139,52 @@ def employes_qui_disparaissent(conn, grille_id: int, avants, apres: dict) -> lis
 
 def _fusion_en_double(conn, grille_id: int, version_id: int, de: str, dans: str) -> bool:
     """Reporter les relevés de `de` sur `dans` poserait-il deux relevés « une seule fois »
-    de la même entrée sur la même cible ? L'index de la cardinalité le refuserait."""
+    de la même entrée sur la même cible ? L'index de la cardinalité le refuserait. Ou la
+    même VARIANTE deux fois sur une même cible entière — le doublon que la pose refuse (J3,
+    `routes/releves._doublon`), qu'une fusion ne doit pas fabriquer."""
     return conn.execute(
         "SELECT 1 FROM releve a JOIN releve b ON COALESCE(a.region_id, 0) = "
         "COALESCE(b.region_id, 0) AND COALESCE(a.planche_id, 0) = COALESCE(b.planche_id, 0) "
-        "AND b.grille_id = a.grille_id AND b.entree_cle = ? AND b.une = 1 "
-        "WHERE a.grille_id = ? AND a.version_id = ? AND a.entree_cle = ? AND a.une = 1 "
+        "AND b.grille_id = a.grille_id AND b.entree_cle = ? "
+        "WHERE a.grille_id = ? AND a.version_id = ? AND a.entree_cle = ? "
+        "AND ((a.une = 1 AND b.une = 1) OR (a.variante_cle IS NOT NULL "
+        "AND a.variante_cle = b.variante_cle "
+        "AND NOT EXISTS (SELECT 1 FROM releve_mot m WHERE m.releve_id IN (a.id, b.id)))) "
         "LIMIT 1", (dans, grille_id, version_id, de)).fetchone() is not None
+
+
+def _cardinalite_de(e: dict, c: dict) -> str:
+    """La cardinalité EFFECTIVE d'une entrée du contenu `c` (`grilles.cardinalite_effective`,
+    sa cible ou celle de la version)."""
+    return grilles.cardinalite_effective(
+        e, grilles.cibles_de(e.get("cible")) or grilles.cibles_de(c.get("cible")))
+
+
+def _cibles_en_double(conn, grille_id: int, version_id: int, entree_cle: str) -> int:
+    """Le nombre de cibles qui portent PLUSIEURS relevés de cette entrée, dans la version."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM releve WHERE grille_id = ? AND version_id = ? "
+        "AND entree_cle = ? GROUP BY COALESCE(region_id, 0), COALESCE(planche_id, 0) "
+        "HAVING COUNT(*) > 1)", (grille_id, version_id, entree_cle)).fetchone()[0]
+
+
+def reporter_cardinalites(conn, grille_id: int, version_id: int, avant: dict,
+                          apres: dict) -> None:
+    """Après l'écriture d'une version VIVANTE : les relevés d'une entrée dont la cardinalité
+    EFFECTIVE a changé — déclarée, ou « Porte sur » qui change le défaut — suivent (`une`,
+    figé à la pose). Sans quoi, passée à « une seule fois », l'entrée gardait des relevés
+    `une = 0` que ni la relecture de la pose ni l'index ne voyaient, et recevait un second
+    relevé sur la même cible (mesuré par le cadrage du mode libre). `reconcilier_ouverte` a
+    refusé le passage à `une` d'une entrée qui se contredirait : l'index ne lève pas ici."""
+    for cle_, x in apres["entrees"].items():
+        e = avant["entrees"].get(cle_)
+        if e is None:
+            continue
+        neuve = _cardinalite_de(x, apres)
+        if neuve == _cardinalite_de(e, avant):
+            continue
+        conn.execute("UPDATE releve SET une = ? WHERE grille_id = ? AND version_id = ? "
+                     "AND entree_cle = ?", (int(neuve == "une"), grille_id, version_id, cle_))
 
 
 def _fusionner(conn, grille_id: int, version_id: int, fusion: dict) -> list:
@@ -1415,6 +1467,8 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
                      "importee_par = ?, importee_le = datetime('now') WHERE id = ?",
                      (c["cible"], note, emp, par, en_place["id"]))
         ecrire_plan(conn, en_place["id"], c)
+        if vivante:
+            reporter_cardinalites(conn, gid, en_place["id"], avant, c)
         numero = en_place["numero"]
     else:
         derniere = grilles.derniere_version(conn, gid)

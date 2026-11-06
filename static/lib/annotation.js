@@ -1058,13 +1058,22 @@
 
   /* LE BANDEAU de la cardinalité (un second relevé d'une entrée « une ») : le relevé déjà
      là, et ce que « Remplacer par la mienne » enverrait — un `PUT` de CE relevé avec `vu`
-     égal à ce qu'il porte. `null` si le refus n'est pas celui-là. */
-  function remplacementCardinalite(detail, corps) {
+     égal à ce qu'il porte. `null` si le refus n'est pas celui-là.
+     `nouvelle` : le libellé TAPÉ quand le refus vient de « Créer « … » » — « sentiment :
+     tristesse » sur une bulle qui porte « sentiment : perte ». Sa valeur part par son
+     libellé (`nouvelle_variante`) : elle n'existe peut-être pas encore, et sans elle le
+     remplacement n'envoyait rien à changer — la valeur tapée se perdait (vu sur la recette
+     le 2026-11-06). */
+  function remplacementCardinalite(detail, corps, nouvelle) {
     const ex = detail && detail.releve_existant;
     if (!ex) return null;
     const changer = {};
     const vu = {};
-    if (corps && corps.variante_cle !== undefined) {
+    const nv = nouvelle ? nomEtValeur(nouvelle) : null;
+    if (nv && nv.valeur) {
+      changer.nouvelle_variante = nv.valeur;
+      vu.variante_cle = ex.variante_cle || null;
+    } else if (corps && corps.variante_cle !== undefined) {
       changer.variante_cle = corps.variante_cle;
       vu.variante_cle = ex.variante_cle || null;
     }

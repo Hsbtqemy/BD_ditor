@@ -399,6 +399,8 @@ def ecrire(conn: sqlite3.Connection, g, v: dict, avant: dict, apres: dict, *,
         raise Refus(409, "Une fusion ne s'écrit que dans une grille ouverte.")
     grille_import.effacer_plan(conn, v["id"])
     grille_import.ecrire_plan(conn, v["id"], apres)
+    if v["etat"] == grilles.ETAT_VIVANTE:
+        grille_import.reporter_cardinalites(conn, g["id"], v["id"], avant, apres)
     conn.execute("UPDATE grille_version SET cible = ?, note = ? WHERE id = ?",
                  (apres["cible"], note, v["id"]))
     conn.execute("UPDATE grille_version SET empreinte = ? WHERE id = ?",

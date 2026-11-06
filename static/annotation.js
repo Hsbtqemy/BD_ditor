@@ -2317,7 +2317,10 @@ async function ecrire(g, e, cible, gst, nouvelle) {
       const vue = await apiSend("PUT", `/api/releves/${gst.releve.id}`,
                                 { ...gst.corps, vu: gst.vu });
       remplacerReleve(vue);
-      annoncer(`Changé : ${A.libelleReleve(vue, plan)}`);
+      // Une valeur nommée par son libellé a pu NAÎTRE (« Remplacer » après « nom : valeur ») :
+      // le plan la porte désormais.
+      if (gst.corps && gst.corps.nouvelle_variante !== undefined) await rechargerPlan(g);
+      annoncer(`Changé : ${A.libelleReleve(vue, planDe(g))}`);
     } else if (gst.action === "retirer") {
       await apiSend("DELETE", `/api/releves/${gst.releve.id}`, { vu: gst.vu });
       oterReleve(gst.releve.id);
@@ -2354,7 +2357,8 @@ function refus(err, contexte) {
   }
   if (err.statut === 409 && d && d.releve_existant) {
     S.conflit = { sorte: "cardinalite", detail: d, ...contexte,
-                  remplacement: A.remplacementCardinalite(d, contexte.gst.corps) };
+                  remplacement: A.remplacementCardinalite(d, contexte.gst.corps,
+                                                          contexte.nouvelle) };
     rendreGuide();
     annoncer(d.message);
     focusAuBandeau();
