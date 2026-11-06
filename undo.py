@@ -855,11 +855,42 @@ def _entree_existe(conn, snap, *, posable: bool = False) -> bool:
                         (snap["version_id"], snap["entree_cle"])).fetchone() is not None
 
 
+def _une_aujourd_hui(conn, snap) -> tuple[bool, bool]:
+    """La cardinalité de l'entrée du relevé AUJOURD'HUI — pas celle que l'instantané a figée :
+    un responsable a pu la changer depuis l'acte — et si elle se pose sur des MOTS. Rend
+    `(une, sur_des_mots)`. L'appelant a vérifié que l'entrée existe."""
+    import grilles
+    entree = grilles.entree(conn, snap["version_id"], snap["entree_cle"])
+    cibles = grilles.cibles_effectives(entree, grilles.version_par_id(conn, snap["version_id"]))
+    return (grilles.cardinalite_effective(entree, cibles) == "une",
+            grilles.sorte_de_pose(cibles) == "mots")
+
+
+def _refus_releve_en_place(conn, e, autre) -> conflit.Perime:
+    """Le 409 de CONC-3 quand l'état rendu contredirait un relevé `autre` déjà là sur la
+    cible : il nomme qui l'y a mis — le dernier acte sur `autre` depuis celui qu'on défait
+    (sa pose, ou la retouche qui lui a donné cette valeur) —, « ailleurs » sinon. « Passer ce
+    geste » le franchit (ANN-8)."""
+    acte = conn.execute(
+        "SELECT * FROM evenement WHERE cible_table IN ('releve', 'releve_planche') "
+        "AND type IN ('creation', 'modification') AND id > ? "
+        "AND json_extract(COALESCE(apres, avant), '$.releve_id') = ? ORDER BY id DESC LIMIT 1",
+        (e["id"], autre["id"])).fetchone()
+    return conflit.Perime(e["cible_table"], e["cible_id"], "releve", autre["id"],
+                          conflit.auteur(conn, acte) if acte else None)
+
+
 def _inverser_releve(conn, e, avant, apres) -> None:
     """Défait la pose, la modification ou le retrait d'un relevé. Les gardes passent avant
     toute écriture : la grille active dans la version du relevé, l'entrée encore là ; puis,
     comme pour une région, ce qu'un AUTRE a changé depuis n'est pas écrasé (CONC-3) — le 409
-    nommé, que « Passer ce geste » franchit (ANN-8)."""
+    nommé, que « Passer ce geste » franchit (ANN-8).
+
+    Et l'état rendu tient les règles de la pose, sur la cardinalité d'AUJOURD'HUI (relecture
+    croisée du mode libre) : un relevé rétabli ne fait pas un second relevé d'une entrée
+    `une` — passée à « une seule fois » depuis l'acte, comprise —, et, sur une cible entière,
+    une valeur rendue n'est pas celle qu'un autre relevé de l'entrée y porte déjà (le doublon
+    de J3, `releves.doublon`) : le 409 de CONC-3, qui nomme qui l'y a mise."""
     import releves
     t = e["type"]
     snap = apres if t == "creation" else (avant or {})
@@ -871,20 +902,29 @@ def _inverser_releve(conn, e, avant, apres) -> None:
         if not (_activation_du_releve(conn, snap) and _entree_existe(conn, snap,
                                                                      posable=True)):
             raise Irretablissable()
-        if snap.get("une"):
+        une, sur_des_mots = _une_aujourd_hui(conn, snap)
+        cible = {"region_id": snap.get("region_id"), "planche_id": snap.get("planche_id"),
+                 "grille_id": snap["grille_id"], "entree_cle": snap["entree_cle"]}
+        if une:
+            # Tout autre relevé de l'entrée sur la cible la contredirait, quel que soit le
+            # drapeau qu'il porte.
             autre = conn.execute(
                 "SELECT * FROM releve WHERE COALESCE(region_id, 0) = ? "
                 "AND COALESCE(planche_id, 0) = ? AND grille_id = ? AND entree_cle = ? "
-                "AND une = 1", (snap.get("region_id") or 0, snap.get("planche_id") or 0,
-                                snap["grille_id"], snap["entree_cle"])).fetchone()
-            if autre is not None:
-                pose = conn.execute(
-                    "SELECT * FROM evenement WHERE cible_table IN ('releve', 'releve_planche') "
-                    "AND type = 'creation' AND id > ? AND json_extract(apres, '$.releve_id') = ? "
-                    "ORDER BY id DESC LIMIT 1", (e["id"], autre["id"])).fetchone()
-                raise conflit.Perime(e["cible_table"], e["cible_id"], "releve", autre["id"],
-                                     conflit.auteur(conn, pose) if pose else None)
-        releves.rendre(conn, snap)              # réindexe ses étiquettes (J6)
+                "ORDER BY une DESC, id DESC LIMIT 1",
+                (cible["region_id"] or 0, cible["planche_id"] or 0, cible["grille_id"],
+                 cible["entree_cle"])).fetchone()
+        elif not (sur_des_mots or snap.get("mots")):
+            autre = releves.doublon(conn, **cible, variante_cle=snap.get("variante_cle"),
+                                    qualificatifs=snap.get("qualificatifs"),
+                                    precision=snap.get("precision"),
+                                    lien_region_id=snap.get("lien_region_id"))
+        else:
+            autre = None
+        if autre is not None:
+            raise _refus_releve_en_place(conn, e, autre)
+        # Le drapeau `une` suit la cardinalité d'aujourd'hui (`reporter_cardinalites`).
+        releves.rendre(conn, {**snap, "une": int(une)})   # réindexe ses étiquettes (J6)
         return
     if not actuel:
         raise Irretablissable()                  # retiré depuis : il n'y a rien à défaire
@@ -918,6 +958,16 @@ def _inverser_releve(conn, e, avant, apres) -> None:
         conflit.verifier(conn, e["cible_table"], e["cible_id"], champ, vu=apres.get(champ),
                          actuel=actuel[champ], nouveau=avant.get(champ), depuis=e["id"],
                          objet=objet)
+    une, sur_des_mots = _une_aujourd_hui(conn, actuel)
+    if (not une and not (sur_des_mots or actuel["mots"])
+            and {"variante_cle", "qualificatifs", "precision", "lien_region_id"} & set(changes)):
+        rendu = {c: (avant.get(c) if c in changes else actuel[c])
+                 for c in ("variante_cle", "qualificatifs", "precision", "lien_region_id")}
+        autre = releves.doublon(conn, region_id=actuel["region_id"],
+                                planche_id=actuel["planche_id"], grille_id=actuel["grille_id"],
+                                entree_cle=actuel["entree_cle"], sauf=rid, **rendu)
+        if autre is not None:
+            raise _refus_releve_en_place(conn, e, autre)
     if "variante_cle" in changes:
         conn.execute("UPDATE releve SET variante_cle = ? WHERE id = ?",
                      (avant.get("variante_cle"), rid))

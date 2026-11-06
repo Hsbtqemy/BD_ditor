@@ -1219,7 +1219,9 @@ def supprimer_entree(grille_id: int, cle: str, conn: sqlite3.Connection = Depend
                     "SELECT DISTINCT variante_cle FROM releve WHERE grille_id = ? "
                     "AND version_id = ? AND entree_cle = ? AND variante_cle IS NOT NULL",
                     (g["id"], v["id"], cle))}
-                vers = grille_import._vers_possibles(avant, sans, cle, employees)
+                vers = grille_import.vers_sans_double(
+                    conn, g["id"], v["id"], avant, cle,
+                    grille_import._vers_possibles(avant, sans, cle, employees))
                 choix.append(grille_import.FUSIONNER)
             raise grille_import.Refus(
                 409, f"{n} relevé(s) portent « {e['libelle']} » : elle ne se supprime pas. "

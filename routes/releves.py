@@ -58,7 +58,7 @@ import grille_ecriture
 import grilles
 import journal
 import mots
-from releves import instantane, qualificatifs_de
+from releves import doublon, existant_une, instantane, qualificatifs_de
 from database import cle_tag, noms_lisibles, projet_d_album, reindex_etiquettes
 from socle import _get_planche, _get_region, db, portee_courante
 
@@ -377,37 +377,6 @@ def verifier_valeur(conn, releve, champ, vu, nouveau, actuel) -> None:
         raise HTTPException(409, exc.detail())
 
 
-def _existant_une(conn, *, region_id, planche_id, grille_id, entree_cle):
-    return conn.execute(
-        "SELECT * FROM releve WHERE COALESCE(region_id, 0) = ? AND COALESCE(planche_id, 0) = ? "
-        "AND grille_id = ? AND entree_cle = ? AND une = 1",
-        (region_id or 0, planche_id or 0, grille_id, entree_cle)).fetchone()
-
-
-def _doublon(conn, *, region_id, planche_id, grille_id, entree_cle, variante_cle, qualificatifs,
-             precision, lien_region_id, sauf=None):
-    """Le relevé qui porte DÉJÀ cette valeur sur cette cible ENTIÈRE (J3, Hugo, 2026-11-06 :
-    « jamais la même valeur deux fois sur une zone »), ou None. Une valeur, c'est la variante
-    quand il y en a une ; sans variante, le relevé à l'identique — ses qualificatifs (UN
-    ensemble), sa précision, son lien. Un relevé sur des MOTS n'est jamais une cible
-    entière : l'appelant ne pose pas la question. `sauf` : le relevé qu'on modifie. Lu sous
-    le verrou de l'appelant, comme la cardinalité."""
-    lignes = conn.execute(
-        "SELECT * FROM releve WHERE COALESCE(region_id, 0) = ? AND COALESCE(planche_id, 0) = ? "
-        "AND grille_id = ? AND entree_cle = ? AND id IS NOT ? "
-        "AND NOT EXISTS (SELECT 1 FROM releve_mot m WHERE m.releve_id = releve.id) "
-        "ORDER BY id", (region_id or 0, planche_id or 0, grille_id, entree_cle, sauf)).fetchall()
-    voulus = sorted(set(qualificatifs or []))
-    for r in lignes:
-        if variante_cle:
-            if r["variante_cle"] == variante_cle:
-                return r
-        elif (r["variante_cle"] is None and qualificatifs_de(conn, r["id"]) == voulus
-              and r["precision"] == precision and r["lien_region_id"] == lien_region_id):
-            return r
-    return None
-
-
 def _refus_doublon(conn, existant, entree) -> HTTPException:
     """Le 409 du doublon : il nomme la valeur et rend le relevé déjà là (`releve_doublon`) —
     un refus STRUCTURÉ, dont l'écran lit le message. Ce n'est pas celui de la cardinalité
@@ -624,13 +593,13 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
     lien_id, lien_texte = _lien(conn, entree, payload.lien_region_id, cible)
     une = grilles.cardinalite_effective(entree, cibles) == "une"
     if une:
-        existant = _existant_une(conn, region_id=payload.region_id,
+        existant = existant_une(conn, region_id=payload.region_id,
                                  planche_id=payload.planche_id, grille_id=payload.grille_id,
                                  entree_cle=entree["cle"])
         if existant is not None:
             raise _refus_cardinalite(conn, existant)
     elif grilles.sorte_de_pose(cibles) != "mots":
-        double = _doublon(conn, region_id=payload.region_id, planche_id=payload.planche_id,
+        double = doublon(conn, region_id=payload.region_id, planche_id=payload.planche_id,
                           grille_id=payload.grille_id, entree_cle=entree["cle"],
                           variante_cle=variante_cle or None,
                           qualificatifs=payload.qualificatifs, precision=precision,
@@ -649,7 +618,7 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
         # La ceinture : l'index unique partiel de la cardinalité. Sous le verrou, la relecture
         # ci-dessus l'a déjà vu ; une base retouchée, ou un chemin qui oublierait le verrou,
         # tombe ici, jamais sur deux relevés.
-        existant = _existant_une(conn, region_id=payload.region_id,
+        existant = existant_une(conn, region_id=payload.region_id,
                                  planche_id=payload.planche_id, grille_id=payload.grille_id,
                                  entree_cle=entree["cle"])
         raise _refus_cardinalite(conn, existant)
@@ -767,7 +736,7 @@ def modifier_releve(releve_id: int, payload: ReleveUpdate,
                                                  "lien_region_id"} & set(change):
         # Le doublon (J3) : la valeur NEUVE ne doit pas être déjà là, sur la même cible
         # entière, portée par un autre relevé de l'entrée.
-        double = _doublon(conn, region_id=r["region_id"], planche_id=r["planche_id"],
+        double = doublon(conn, region_id=r["region_id"], planche_id=r["planche_id"],
                           grille_id=r["grille_id"], entree_cle=r["entree_cle"],
                           variante_cle=nouveau.get("variante_cle", r["variante_cle"]),
                           qualificatifs=nouveau.get("qualificatifs", actuel["qualificatifs"]),

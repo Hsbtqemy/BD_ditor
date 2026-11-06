@@ -199,7 +199,8 @@ def emplois(conn, g, v: dict, c: dict) -> dict:
     Rend `{"entrees": {cle: n}, "variantes": {cle: {vc: n}}, "cases": {qc: n},
     "fusionner_dans": {cle: [...]}}` — les seuls objets employés ; `fusionner_dans` (dans une
     version VIVANTE seulement) : les entrées où la fusion se ferait, la règle du refus de
-    `routes/grilles.supprimer_entree` (`grille_import._vers_possibles`)."""
+    `routes/grilles.supprimer_entree` (`grille_import._vers_possibles`), sans celles où ses
+    relevés se contrediraient (`grille_import.vers_sans_double`)."""
     entrees, variantes = {}, {}
     for r in conn.execute("SELECT entree_cle, variante_cle, COUNT(*) AS n FROM releve "
                           "WHERE grille_id = ? GROUP BY entree_cle, variante_cle", (g["id"],)):
@@ -220,7 +221,9 @@ def emplois(conn, g, v: dict, c: dict) -> dict:
                 "AND version_id = ? AND entree_cle = ? AND variante_cle IS NOT NULL",
                 (g["id"], v["id"], cle))}
             sans = {**c, "entrees": {k: x for k, x in c["entrees"].items() if k != cle}}
-            fusionner[cle] = grille_import._vers_possibles(c, sans, cle, employees)
+            fusionner[cle] = grille_import.vers_sans_double(
+                conn, g["id"], v["id"], c, cle,
+                grille_import._vers_possibles(c, sans, cle, employees))
     return {"entrees": entrees, "variantes": variantes, "cases": cases,
             "fusionner_dans": fusionner}
 

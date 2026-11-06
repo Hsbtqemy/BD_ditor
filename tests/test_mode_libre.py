@@ -111,6 +111,56 @@ def test_une_fusion_ne_fabrique_pas_de_doublon(client, decor, db_path):
     assert len(_releves(db_path, t["grille_id"], b)) == 2
 
 
+def _emotion(client, t):
+    """« émotion », écrite au formulaire : à variantes, sans cardinalité — donc « une » sur
+    une zone, le défaut de sa cible."""
+    r = client.post(f"/api/grilles/{t['grille_id']}/entrees", headers=ADMIN,
+                    json={"libelle": "émotion", "forme": "variantes",
+                          "variantes": [{"libelle": "perte"}, {"libelle": "tristesse"},
+                                        {"libelle": "joie"}]})
+    assert r.status_code == 201, r.text
+    assert _plan(client, t)["emotion"]["cardinalite"] == "une"
+
+
+def test_une_etiquette_plusieurs_ne_se_fond_pas_dans_une_entree_une(client, decor, db_path):
+    """Relecture croisée du mode libre : « sentiment » (née « nom : valeur », donc
+    « plusieurs », J3) portait deux relevés sur une bulle ; fusionnée dans « émotion »
+    (« une »), elle lui laissait deux relevés `une = 0`, et la pose en acceptait un troisième.
+    La fusion est refusée par un refus nommé, et « Fusionner dans… » ne l'offre pas."""
+    t = _travail(client, decor, db_path)
+    g, b = t["grille_id"], bulle(t)
+    _emotion(client, t)
+    poser(client, t, region_id=b, nouvelle_entree={"libelle": "sentiment : perte"})
+    poser(client, t, region_id=b, nouvelle_entree={"libelle": "sentiment : tristesse"})
+    em = client.get(f"/api/grilles/{g}/versions/1?emplois=1", headers=ADMIN).json()["emplois"]
+    assert "emotion" not in em["fusionner_dans"]["sentiment"], em
+    r = client.post(f"/api/grilles/{g}/entrees/sentiment/fusion", headers=ADMIN,
+                    json={"dans": "emotion"})
+    assert r.status_code == 409, r.text
+    assert [a["code"] for a in r.json()["detail"]["anomalies"]] == ["fusion_en_double"], r.text
+    assert [x["entree_cle"] for x in _releves(db_path, g, b)] == ["sentiment", "sentiment"]
+
+
+def test_une_fusion_dans_une_entree_une_lui_donne_son_drapeau(client, decor, db_path):
+    """Sans contradiction (un relevé par cible), la fusion se fait, et les relevés reportés
+    prennent la cardinalité de l'entrée d'arrivée : une seconde valeur sur la même bulle
+    reçoit alors le 409 de la cardinalité."""
+    t = _travail(client, decor, db_path)
+    g, b = t["grille_id"], bulle(t)
+    _emotion(client, t)
+    poser(client, t, region_id=b, nouvelle_entree={"libelle": "sentiment : perte"})
+    poser(client, t, region_id=t["zones"]["case"],
+          nouvelle_entree={"libelle": "sentiment : tristesse"})
+    em = client.get(f"/api/grilles/{g}/versions/1?emplois=1", headers=ADMIN).json()["emplois"]
+    assert "emotion" in em["fusionner_dans"]["sentiment"], em
+    r = client.post(f"/api/grilles/{g}/entrees/sentiment/fusion", headers=ADMIN,
+                    json={"dans": "emotion"})
+    assert r.status_code == 200, r.text
+    assert [(x["entree_cle"], x["une"]) for x in _releves(db_path, g, b)] == [("emotion", 1)]
+    r = poser(client, t, attendu=(409,), region_id=b, entree_cle="emotion", variante_cle="joie")
+    assert "releve_existant" in r["detail"], r
+
+
 # --------------------------------------------------------------------------- #
 # « plusieurs » → « une » : refusé sur des relevés qui se contredisent ; sinon ils suivent
 # --------------------------------------------------------------------------- #

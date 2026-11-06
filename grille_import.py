@@ -967,13 +967,18 @@ def reconcilier_ouverte(conn, grille_id: int, version_id: int, avant: dict, apre
                 "fusionnez dans une entrée du fichier de même forme, posée de la même façon "
                 "(et qui porte ses variantes) : " + (", ".join(vers) or "aucune ici")
                 + " ; ou retirez-la", cle=cle_))
-        elif _fusion_en_double(conn, grille_id, version_id, cle_, reponse[1]):
-            fautes.append(_faute(
-                "fusion_en_double", f"fusionner « {e['libelle']} » dans « {reponse[1]} » "
-                "poserait deux fois, sur une même cible, une entrée qui ne s'y pose qu'une fois",
-                "retirez-la plutôt, ou retirez d'abord l'un des deux relevés", cle=cle_))
         else:
-            fusions.append({"de": cle_, "dans": reponse[1], "releves": n})
+            # `une` : la cardinalité EFFECTIVE de l'entrée d'arrivée, telle que la version
+            # l'écrira — ses relevés reportés la prennent (`_fusionner`).
+            une = _cardinalite_de(apres["entrees"][reponse[1]], apres) == "une"
+            if _fusion_en_double(conn, grille_id, version_id, cle_, reponse[1], une=une):
+                fautes.append(_faute(
+                    "fusion_en_double", f"fusionner « {e['libelle']} » dans « {reponse[1]} » "
+                    "poserait deux fois, sur une même cible, une entrée qui ne s'y pose qu'une "
+                    "fois — ou la même valeur deux fois",
+                    "retirez-la plutôt, ou retirez d'abord les relevés en trop", cle=cle_))
+            else:
+                fusions.append({"de": cle_, "dans": reponse[1], "releves": n, "une": une})
     # Ce qui change SOUS des relevés posés, dans une version vivante.
     for cle_, x in apres["entrees"].items():
         e = avant["entrees"].get(cle_)
@@ -1137,20 +1142,42 @@ def employes_qui_disparaissent(conn, grille_id: int, avants, apres: dict) -> lis
     return fautes
 
 
-def _fusion_en_double(conn, grille_id: int, version_id: int, de: str, dans: str) -> bool:
-    """Reporter les relevés de `de` sur `dans` poserait-il deux relevés « une seule fois »
-    de la même entrée sur la même cible ? L'index de la cardinalité le refuserait. Ou la
-    même VARIANTE deux fois sur une même cible entière — le doublon que la pose refuse (J3,
-    `routes/releves._doublon`), qu'une fusion ne doit pas fabriquer."""
+def _fusion_en_double(conn, grille_id: int, version_id: int, de: str, dans: str, *,
+                      une: bool) -> bool:
+    """Reporter les relevés de `de` sur `dans` ferait-il se contredire une cible ?
+
+    - `une` (la cardinalité EFFECTIVE de `dans`, telle que la version l'écrira) : une cible
+      qui porte un relevé de `de` en porterait alors PLUSIEURS de `dans` — ceux de `de`
+      entre eux compris : une étiquette « plusieurs » (« sentiment : perte », « sentiment :
+      tristesse » sur une même bulle, J3) ne se fond pas dans une entrée « une seule fois »
+      (relecture croisée du mode libre ; le refus d'un passage à « une », sur une fusion) ;
+    - sinon, la même VARIANTE deux fois sur une même cible entière — le doublon que la pose
+      refuse (J3, `releves.doublon`), qu'une fusion ne doit pas fabriquer."""
+    if une:
+        return conn.execute(
+            "SELECT 1 FROM releve WHERE grille_id = ? AND version_id = ? AND entree_cle IN "
+            "(?, ?) GROUP BY COALESCE(region_id, 0), COALESCE(planche_id, 0) "
+            "HAVING COUNT(*) > 1 AND SUM(entree_cle = ?) > 0 LIMIT 1",
+            (grille_id, version_id, de, dans, de)).fetchone() is not None
     return conn.execute(
         "SELECT 1 FROM releve a JOIN releve b ON COALESCE(a.region_id, 0) = "
         "COALESCE(b.region_id, 0) AND COALESCE(a.planche_id, 0) = COALESCE(b.planche_id, 0) "
-        "AND b.grille_id = a.grille_id AND b.entree_cle = ? "
+        "AND b.grille_id = a.grille_id AND b.version_id = a.version_id AND b.entree_cle = ? "
         "WHERE a.grille_id = ? AND a.version_id = ? AND a.entree_cle = ? "
-        "AND ((a.une = 1 AND b.une = 1) OR (a.variante_cle IS NOT NULL "
-        "AND a.variante_cle = b.variante_cle "
-        "AND NOT EXISTS (SELECT 1 FROM releve_mot m WHERE m.releve_id IN (a.id, b.id)))) "
+        "AND a.variante_cle IS NOT NULL AND a.variante_cle = b.variante_cle "
+        "AND NOT EXISTS (SELECT 1 FROM releve_mot m WHERE m.releve_id IN (a.id, b.id)) "
         "LIMIT 1", (dans, grille_id, version_id, de)).fetchone() is not None
+
+
+def vers_sans_double(conn, grille_id: int, version_id: int, c: dict, cle_: str,
+                     vers: list) -> list:
+    """Parmi les entrées `vers` (`_vers_possibles`, une règle du contenu seul), celles où la
+    fusion de `cle_` ne serait pas refusée sur ses relevés (`_fusion_en_double`, la
+    cardinalité lue dans le contenu `c`) : ce que l'écran offre dans « Fusionner dans… »,
+    pour ne pas offrir ce que le serveur refuserait."""
+    return [k for k in vers
+            if not _fusion_en_double(conn, grille_id, version_id, cle_, k,
+                                     une=_cardinalite_de(c["entrees"][k], c) == "une")]
 
 
 def _cardinalite_de(e: dict, c: dict) -> str:
@@ -1230,17 +1257,22 @@ def reindexer_libelles(conn, grille_id: int, version_id: int, avant: dict, apres
 def _fusionner(conn, grille_id: int, version_id: int, fusion: dict) -> list:
     """Reporte les relevés d'une entrée sur une autre (« fusionner dans… »), et rend leurs
     identifiants. `reconcilier_ouverte` a dit le doublon d'une cardinalité `une` ; relu ici
-    sous le verrou de l'appelant, il refuse encore, au lieu de tomber sur l'index."""
+    sous le verrou de l'appelant, il refuse encore, au lieu de tomber sur l'index. Les relevés
+    reportés prennent le drapeau `une` de l'entrée d'arrivée (`fusion["une"]`, sa cardinalité
+    effective) : sans quoi, née « plusieurs », l'étiquette fondue laissait à une entrée « une
+    seule fois » des relevés `une = 0`, que ni la pose ni l'index ne voyaient."""
     ids = [r[0] for r in conn.execute(
         "SELECT id FROM releve WHERE grille_id = ? AND version_id = ? AND entree_cle = ? "
         "ORDER BY id", (grille_id, version_id, fusion["de"]))]
-    if _fusion_en_double(conn, grille_id, version_id, fusion["de"], fusion["dans"]):
+    if _fusion_en_double(conn, grille_id, version_id, fusion["de"], fusion["dans"],
+                         une=fusion["une"]):
         raise Refus(409, f"Fusionner « {fusion['de']} » dans « {fusion['dans']} » poserait "
                          "deux fois une entrée qui ne se pose qu'une fois sur la même cible. "
                          "Retirez-la plutôt, ou retirez d'abord l'un des deux relevés. Rien "
                          "n'est importé.")
-    conn.execute("UPDATE releve SET entree_cle = ? WHERE grille_id = ? AND version_id = ? "
-                 "AND entree_cle = ?", (fusion["dans"], grille_id, version_id, fusion["de"]))
+    conn.execute("UPDATE releve SET entree_cle = ?, une = ? WHERE grille_id = ? "
+                 "AND version_id = ? AND entree_cle = ?",
+                 (fusion["dans"], int(fusion["une"]), grille_id, version_id, fusion["de"]))
     return ids
 
 
