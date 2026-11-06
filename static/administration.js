@@ -2043,7 +2043,8 @@ function pgListe(p) {
           >Publier la v${e.publier}…</button>` : "")
       + (e.activer ? `<button type="button" class="ghost small" data-gr-activer="${g.id}"
           data-gr-version="${e.activer}">Activer la v${e.activer}</button>` : "")
-      + (e.desactiver ? `<button type="button" class="ghost small" data-gr-desactiver="${g.id}"
+      + (e.desactiver ? `<button type="button" class="ghost small" data-gr-desactiver="${g.id}"${
+          e.desactiverRaison ? ` aria-disabled="true" title="${esc(e.desactiverRaison)}"` : ""}
           >Désactiver</button>` : "");
     const confirme = GR.publier === g.id && e.publier ? `<div class="pg-confirme">
         <p class="small">Publiée, la version ${e.publier} ne change plus, hors d'une coquille.
@@ -2326,6 +2327,11 @@ function pgClic(b) {
     return true;
   }
   if (d.grDesactiver) {
+    // Éteint sur la grille de travail : le clic dit pourquoi, et rien ne part.
+    if (b.getAttribute("aria-disabled") === "true") {
+      pjMsg($("#pj-grilles-msg"), b.title);
+      return true;
+    }
     pgGeste(Number(d.grDesactiver),
             (p, g) => apiSend("DELETE", `/api/projets/${p.id}/grilles/${g.id}/activation`),
             (g) => `« ${g.nom} » n'est plus active : ses relevés restent, en lecture.`);

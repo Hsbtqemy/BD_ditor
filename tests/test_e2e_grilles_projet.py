@@ -12,6 +12,7 @@ Trois parcours, dans un vrai navigateur, sur la vraie route :
 Chaque fois, l'état est RELU par l'API : un bilan affiché ne prouve pas ce qui s'est écrit.
 La grille est FICTIVE (`tools/grille-modele.csv`)."""
 import io
+import re
 import sys
 from pathlib import Path
 
@@ -241,3 +242,28 @@ def test_le_bilan_se_lit_sans_violation_ni_defilement_de_cote(page, live_server,
     expect(page.locator(".pg-faute")).to_be_visible()
     assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth"), \
         "le bloc « Grilles » fait défiler la page de côté à 320 px"
+
+
+def test_la_grille_de_travail_ne_s_offre_pas_a_desactiver(page, live_server):
+    """ANN-7, le mode libre (J2) : la grille de travail ne se désactive pas — le serveur le
+    refuse par un 409. « Désactiver » s'y montre ÉTEINT, focalisable, sa raison en infobulle,
+    et le clic la dit sans rien envoyer ; une autre grille active, elle, s'offre."""
+    base = live_server
+    with _http(base) as c:
+        projet = c.post("/api/projets", json={"nom": "Étude travail"}).json()["id"]
+        grille_active_vivante(c, projet_id=projet)
+    _ouvrir(page, base, projet)
+    travail = page.locator(".pg-grille", has_text=GRILLE_DE_TRAVAIL_NOM)
+    bouton = travail.locator("[data-gr-desactiver]")
+    expect(bouton).to_have_attribute("aria-disabled", "true")
+    expect(bouton).to_have_attribute("title", re.compile("grille de travail du projet"))
+    envois = []
+    page.on("request", lambda r: envois.append(r.url) if "/activation" in r.url else None)
+    bouton.focus()
+    expect(bouton).to_be_focused()
+    page.keyboard.press("Enter")
+    expect(page.locator("#pj-grilles-msg")).to_contain_text("grille de travail du projet")
+    page.wait_for_timeout(300)
+    assert envois == []
+    autre = page.locator(".pg-grille", has_text="Signaux").locator("[data-gr-desactiver]")
+    expect(autre).not_to_have_attribute("aria-disabled", "true")

@@ -75,9 +75,14 @@
      - `telecharger` : les versions dont on offre le classeur — la référence (la vivante, ou
        la dernière publiée) et le brouillon ;
      - `reimporter`, `desactiver` : vrai ou faux ;
+     - `desactiverRaison` : la grille de TRAVAIL (le mode libre, J2) ne se désactive pas — le
+       serveur le refuse par un 409 : « Désactiver » s'y montre ÉTEINT, et voici pourquoi ;
+       `null` ailleurs ;
      - `publier` : le numéro du brouillon qui se publierait (grille fermée), ou null ;
      - `activer` : le numéro de la version qui s'activerait, ou null — la vivante d'une
        ouverte, la dernière publiée d'une fermée, si elle n'est pas déjà celle active. */
+  const RAISON_TRAVAIL = "C'est la grille de travail du projet, qui porte son mode libre : "
+    + "elle ne se désactive, ne se retire ni ne se supprime.";
   function etat(g) {
     const versions = g.versions || [];
     const brouillon = derniere(versions, "brouillon");
@@ -114,6 +119,7 @@
       activer: activable && !(active && active.numero === activable.numero)
         ? activable.numero : null,
       desactiver: !!active,
+      desactiverRaison: active && g.travail ? RAISON_TRAVAIL : null,
     };
   }
 
