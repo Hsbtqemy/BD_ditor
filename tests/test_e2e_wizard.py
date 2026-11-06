@@ -1784,7 +1784,11 @@ def test_pre_remplir_se_fait_sur_la_planche_d_essai(page, jeu_essai):
     expect(page.locator('.mode-btn[data-mode="edition"]')).to_have_attribute("aria-pressed", "true")
     phrases = page.locator("#wizard-fenetre .wf-phrase")
     expect(phrases).to_have_count(3)
-    expect(phrases.nth(2)).to_contain_text("Sur cette planche d'essai, lancez dans l'ordre")
+    # La phrase de Hugo (2026-11-06).
+    expect(phrases.nth(2)).to_contain_text("Précédemment, vous avez découpé et transcrit à la "
+                                           "main. Voyons maintenant comment automatiser ce "
+                                           "travail grâce aux moteurs embarqués.")
+    expect(phrases.nth(2)).to_contain_text("et lancez dans l'ordre")
     # Le foyer éclaire « Traitement » ET la planche, et la fenêtre ne recouvre ni l'un ni
     # l'autre.
     page.wait_for_timeout(600)

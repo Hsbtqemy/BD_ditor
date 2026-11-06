@@ -1207,7 +1207,13 @@ test("sur la planche d'essai, l'étape est faite par un texte de l'OCR, et dit l
   // Le troisième paragraphe : l'ordre des moteurs, sur la planche d'essai.
   const ps = W.paragraphes(W.phraseGuide(pre, null, avec, d([]), "complet")).map(sp);
   assert.equal(ps.length, 3);
-  assert.match(ps[2], /^Vous avez découpé et transcrit à la main/);
+  // La phrase de Hugo (2026-11-06), mot pour mot, passée par `typo`.
+  assert.equal(ps[2], "Précédemment, vous avez découpé et transcrit à la main. Voyons "
+    + "maintenant comment automatiser ce travail grâce aux moteurs embarqués. Cliquez sur "
+    + "« Traitement », et lancez dans l'ordre « Segmenter les cases », « Détecter les "
+    + "bulles », puis « OCR des bulles », et regardez ce que chacun produit.");
+  assert.equal(W.paragraphes(W.phraseGuide(pre, null, avec, d([]), "complet"))[2],
+               W.typo(W.PHRASES.essai));
   assert.match(ps[2], /lancez dans l'ordre « Segmenter les cases », « Détecter les bulles », puis « OCR des bulles »/);
   // Faite : plus de geste à dire.
   assert.equal(W.paragraphes(W.phraseGuide(pre, null, avec, d([lue]), "complet")).length, 2);

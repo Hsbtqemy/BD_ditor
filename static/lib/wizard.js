@@ -1280,11 +1280,11 @@
       + "lecture. Un détail d'image se trace dans la page Annotation.",
     decoupageFait: "Un cadre sélectionné se déplace en le glissant. Ses huit poignées le "
       + "redimensionnent, et Suppr le retire.",
-    // « Pré-remplir » sur la planche d'essai (la pilote, 2026-11-05) ; la première phrase,
-    // qui relie au travail fait à la main, est une PROPOSITION que Hugo relira.
-    essai: "Vous avez découpé et transcrit à la main ; voici ce que les moteurs proposent. "
-      + "Sur cette planche d'essai, lancez dans l'ordre « Segmenter les cases », « Détecter "
-      + "les bulles », puis « OCR des bulles », et regardez ce que chacun produit.",
+    // « Pré-remplir » sur la planche d'essai : la phrase de Hugo (2026-11-06), mot pour mot.
+    essai: "Précédemment, vous avez découpé et transcrit à la main. Voyons maintenant comment "
+      + "automatiser ce travail grâce aux moteurs embarqués. Cliquez sur « Traitement », et "
+      + "lancez dans l'ordre « Segmenter les cases », « Détecter les bulles », puis « OCR des "
+      + "bulles », et regardez ce que chacun produit.",
   };
 
   function phraseGuide(e, vue, m, d, parcours) {
