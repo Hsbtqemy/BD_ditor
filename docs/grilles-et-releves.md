@@ -11,6 +11,10 @@ discussion, qui vit dans les deux fiches.*
 validation est dit sur place, daté. Le format du tableur, pour qui le remplit :
 `docs/import-grille.md`.*
 
+*Mise à jour le 2026-11-06, avec le basculement (la v39 : le vocabulaire d'hier retiré) et le
+mode libre (`docs/ann7-mode-libre-cadrage.md`, J1 à J9) : la grille de travail, l'état d'une
+entrée, la cardinalité d'une entrée née en posant, qui remanie.*
+
 Le dépôt est public : aucune grille réelle n'y figure, ni ici, ni dans les tests, ni dans les
 exemples. Les grilles citées sont fictives.
 
@@ -106,7 +110,13 @@ Un relevé porte sur exactement une de ces choses :
 **La cardinalité se déclare dans le tableur** (Q6, 2026-10-22) : `une` ou `plusieurs` ; vide,
 `plusieurs` sur des mots, `une` sur une région entière, la planche ou l'entité. Un second
 relevé d'une entrée `une` sur la même cible est refusé ; à l'écran, en choisir une autre
-remplace.
+remplace. **Une entrée née « nom : valeur » en posant naît `plusieurs`** (J3, 2026-11-06) :
+« sentiment : perte » puis « sentiment : tristesse » laissent deux relevés sur la bulle ; une
+entrée née simple garde le défaut de sa cible. **Le doublon est refusé** : sur une cible
+entière, une entrée `plusieurs` ne reçoit pas deux fois la même valeur — la même variante,
+ou sans variante le même relevé —, à la pose comme à la modification (un 409 qui rend le
+relevé déjà là) ; des mots, eux, se désignent chacun. Repasser une entrée de `plusieurs` à
+`une` est refusé tant que deux de ses relevés vivent sur une même cible.
 
 **Le détail devient un type de région** (`regions.type = 'detail'`), avec un nom libre
 (`regions.nom`, née avec la v37, NULL pour les autres types ; le type lui-même vient avec
@@ -171,13 +181,24 @@ de ses mots est aujourd'hui, et un Ctrl+Z du texte le rend normal sans rien écr
 - **Une coquille** (définition, exemple, piège) se corrige sans nouvelle version, par un
   responsable, au journal (tranché le 2026-10-22 ; sa route dès la tranche 1, G15) : elle ne
   touche aucun relevé.
-- **Une grille ouverte** (les tags libres) n'a qu'une version, vivante, qui s'enrichit en
-  posant (G14) ; elle n'est pas partageable tant qu'on ne la fige pas en grille fermée. **Elle
+- **Une grille ouverte** (les étiquettes libres) n'a qu'une version, vivante, qui s'enrichit
+  en posant (G14) ; elle n'est pas partageable tant qu'on ne la fige pas en grille fermée. **Elle
   se réimporte** (Hugo, 2026-11-03, qui renverse le refus d'avant) : la version est récrite en
   place, et **une entrée employée ne se supprime jamais** — le bilan demande « retirer » (elle
   ne se pose plus, ses relevés restent, « à revoir ») ou « fusionner dans… » (ses relevés
   passent à une autre entrée compatible), et l'import attend la réponse. Une entrée que
   personne n'emploie part.
+- **L'état d'une entrée** (J4, v39) : PROVISOIRE pour une entrée née en la tapant (« nom :
+  valeur » compris), DÉFINIE pour ce qu'écrivent l'import et le formulaire, même dans une
+  grille ouverte. Réimporter garde l'état d'une entrée que le fichier porte déjà ; seul qui
+  gère le projet le change.
+- **La grille de TRAVAIL** (J2, v39) : chaque projet naît avec une grille ouverte, vide, sur
+  toute zone, active dans sa version vivante — « Travail en cours », que la page Annotation
+  appelle « Mode libre » quel que soit son nom, et montre en premier onglet. Elle se désigne
+  par un drapeau (`grille.travail`, au plus une par projet), jamais par son nom ; elle se
+  renomme, ne se désactive, ne se retire ni ne se supprime, vide ou non ; elle ne part qu'avec
+  son projet, et restée vide. Les projets d'avant l'ont reçue de la migration v39, le jeu
+  jamais. Ses entrées se RANGENT à la main : l'ordre de la grille (`rang`), commun au projet.
 
 ## 7. Le tableur
 
@@ -272,6 +293,12 @@ retenu est la VALEUR vue (G1, 2026-10-25), qui donne le même refus sans colonne
   brouillon reste chez qui gère le projet.
 - **Poser, modifier, retirer un relevé** : écrire dans l'album (`clause_album(ecriture=True)`,
   par l'accesseur gardé de la région). Lire un relevé : lire l'album.
+- **Remanier une entrée depuis la page Annotation** (J5 (c), 2026-11-06 ;
+  `Portee.peut_remanier_entree`, et la clé `remaniable` de chaque entrée du plan) : qui gère
+  le projet, tout ; un ANNOTATEUR du projet — il écrit dans l'un de ses albums — renomme une
+  entrée PROVISOIRE d'une grille ouverte ou l'une de ses valeurs, et lui ajoute une valeur ; il
+  range les entrées de la grille de travail, définies comprises. Fusionner, retirer, changer
+  l'état : qui gère.
 - **Créer une zone `detail` ou `texte`** depuis la page Annotation : écrire dans l'album, comme
   tracer une région dans l'Atelier.
 - Le cliquet de `tests/test_autorisation.py` s'applique à chaque route neuve, celui des sorties
@@ -281,8 +308,10 @@ retenu est la VALEUR vue (G1, 2026-10-25), qui donne le même refus sans colonne
 
 - Chaque acte sur un relevé, un message de doute, une levée, une passe, une zone tracée est
   **journalisé** (A3, l'agent courant).
-- **Ctrl+Z** annule poser, modifier et retirer un relevé, et tracer une zone ; un message de
-  doute ne s'annule pas (il se lève ou se répond).
+- **Ctrl+Z** annule poser, modifier et retirer un relevé, tracer une zone, et ranger les
+  entrées de la grille de travail ; un message de doute ne s'annule pas (il se lève ou se
+  répond), ni rien d'autre du plan d'une grille. Il ne remonte pas au-dessous du plancher de la
+  v39 : aucun acte d'avant le basculement n'est plus offert.
 - **Supprimer une région supprime ses relevés** (CASCADE), et l'annuler les rend : l'instantané
   profond de l'annulation les emporte, avec leurs doutes et les passes de la région.
 - **Jamais de CASCADE sur la planche** (Q5, 2026-10-22) : un relevé de surface fait échouer la
@@ -307,15 +336,16 @@ que l'image montre, ce qui est déjà de l'interprétation. Un détail sans nom 
 ## 12. Ce qui n'existe pas encore
 
 La page Annotation (tranche 2 ; ses gestes : `guide-utilisateur.md`, § Annotation) pose, doute,
-parcourt et relit. Restent à venir :
+parcourt et relit ; le bloc « Grilles » de la fiche d'un projet importe, avec son bilan,
+publie et active ; le basculement a retiré les tags et les attributs, sans conversion ; la
+Recherche cherche les étiquettes des grilles ouvertes, rend les relevés de chaque zone et les
+filtre (« Porte… »). Restent à venir :
 
-- Le bilan d'import à l'écran, et l'écran des grilles dans la fiche du projet : importer,
-  publier et activer passent par l'outil en ligne de commande et par une route, comme
-  `tools/importer_vocabulaire.py`.
 - Ni le catalogue, ni la montée de version d'un projet, ni la dérivation.
-- Ni le basculement des tags et des attributs, ni la conversion.
-- Rien dans la Recherche, l'Exploration ou les exports : un relevé ne SORT par aucune voie avant
-  la tranche 4, et le cliquet des sorties le vérifie.
+- « Passer dans une grille… » (structurer, J8) : une tranche à part.
+- Rien dans l'Exploration ni dans les exports : un relevé ne SORT par aucune voie avant la
+  tranche 4 — l'export CSV de la Recherche suit son filtre, sans porter les relevés —, et le
+  cliquet des sorties le vérifie.
 
 ## 13. Ce qui est tranché, et ce qui reste ouvert
 

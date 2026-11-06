@@ -36,7 +36,7 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 | **Bibliothèque** | `/corpus` | un **catalogue** : à gauche les collections du **projet** où vous travaillez — la case d'une collection filtre les albums, son nom l'ouvre —, au centre ses albums et leurs couvertures, à droite la fiche de l'album ouvert. Créer et décrire les albums et les collections, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, **importer les planches d'un album en lot**, lancer les traitements par lot, suivre l'avancement planche par planche |
 | **Atelier** | `/` | tout ce qui se fait sur une planche, sauf l'annoter : ajouter une image à l'album affiché, corriger le découpage, transcrire, relire la grammaire, exporter ; *Annoter ↗* mène à la page Annotation |
 | **Annotation** | `/annotation` | poser les **relevés** d'une grille sur une planche, case par case : désigner des mots ou une zone, choisir l'entrée, douter, marquer *terminée*, relire la planche dans la Synthèse |
-| **Recherche** | `/recherche` | interroger les dialogues et les notes ; chaque résultat rouvre l'Atelier pile sur la région |
+| **Recherche** | `/recherche` | interroger les dialogues, les notes et les étiquettes ; chaque résultat dit ses relevés, et son aperçu rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus |
 | **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels projets existent et qui y entre, ce que l'instance détient (**le fonds**, et les suppressions qu'on lui demande), quels comptes et quels groupes existent — et, pour un administrateur, qui entre dans quelle collection —, la version servie, l'état des moteurs |
 
@@ -226,7 +226,7 @@ porte un **type** : case, bulle, personnage, texte, cartouche.
 
 **Cette étape conditionne la suivante, et c'est la raison de sa place ici.** Le crop
 plein écran du mode Transcription est découpé dans la copie de travail **à partir du cadre
-de la région** : une bulle mal détourée est illisible, donc intranscriptible. Elle reste taggable,
+de la région** : une bulle mal détourée est illisible, donc intranscriptible. Elle reste annotable,
 en revanche — la géométrie contraint le texte, pas l'interprétation.
 
 ### Étape 5 — Transcrire et relire
@@ -329,8 +329,9 @@ Les personnages sont des entités de corpus : le même personnage traverse les a
 à côté du locuteur ou du personnage d'une boîte.
 
 Les tags, la situation d'une case et le profil d'un personnage ne se posent plus : ce sont
-désormais des grilles. Chaque projet en a une, ouverte, « Travail en cours », où l'on pose une
-étiquette en la tapant, « lieu : forêt » compris ; il en écrit d'autres s'il en a besoin.
+désormais des grilles. Chaque projet en a une, le **Mode libre** — le premier onglet de la
+page Annotation —, où l'on crée une étiquette en la tapant, « lieu : forêt » compris (§4,
+*Annotation*) ; ses responsables en écrivent d'autres, s'il le faut.
 
 Tout est sauvegardé automatiquement. **`Ctrl+Z` annule la dernière action d'annotation** —
 y compris une suppression de région, recréée avec tout ce qu'elle contenait et ses
@@ -374,11 +375,12 @@ serait votre geste le plus récent, et Ctrl+Z le déferait d'abord.
 ### Étape 8 — Chercher et explorer
 **Recherche (`/recherche`), puis Exploration (`/exploration`)**
 
-La **Recherche** interroge en plein texte les dialogues et les notes — et les lemmes si
-l'analyse linguistique est active, auquel cas « otage » trouve « otages ». Les accents sont
-ignorés. Filtres par album et type de région, export CSV des résultats.
-Chaque résultat montre un extrait surligné et une vignette, et **rouvre l'Atelier
-exactement sur la région**.
+La **Recherche** interroge en plein texte les dialogues, les notes et les étiquettes des
+grilles ouvertes — le Mode libre en est une — et les lemmes si l'analyse linguistique est
+active, auquel cas « otage » trouve « otages ». Les accents sont ignorés. Filtres par album,
+type de région et **Porte…** (ce que portent les zones), export CSV des résultats.
+Chaque résultat montre un extrait surligné, une vignette et les relevés de sa zone ; un clic
+ouvre son aperçu, d'où ✏️ **rouvre l'Atelier exactement sur la région**.
 
 L'**Exploration** mesure au lieu de retrouver, en quatre vues :
 
@@ -416,12 +418,9 @@ de l'une d'elles, et l'export dit laquelle ; l'Atelier vous demande laquelle dè
 pouvez l'exporter au titre de plusieurs — à tout le monde, administrateur et mono-poste
 compris.
 
-**Le fichier ne porte que le vocabulaire de cette collection, plus le vocabulaire global :
-l'Atelier peut en montrer davantage.** Un tag propre à une *autre* collection, que vous
-voyez sur une région parce que vous lisez aussi cette autre collection, ne figure pas dans
-l'export — la région sort, avec sa note et ses autres tags, sans celui-là. C'est vrai pour
-tout le monde, propriétaire et administrateur compris : deux personnes qui exportent le même
-album au titre de la même collection obtiennent le même fichier (depuis le 2026-10-07).
+**Le fichier ne porte aucun vocabulaire** : les tags qu'il portait n'existent plus, et rien
+d'une grille ni d'un relevé n'en sort encore — ce qu'un export emportera des relevés n'est
+pas encore décidé.
 
 Pour citer une image dans un article, utilisez plutôt le bouton **`＋ Figure`** du panneau de
 région : il constitue un lot de figures, exporté en archive avec, pour chacune, le crop, sa
@@ -713,10 +712,9 @@ albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit o
     ici. *Copie…* déplie sous la ligne **l'échelle des cinq crans**, en tableau : une ligne par
     cran — *Images seules*, *+ le découpage*, *+ la transcription*, *+ la grammaire relue*, *+
     les annotations* —, et ce que chacun **ajoute** en nombres (régions, textes, corrections,
-    annotations, tags, attributs, locuteurs) ; une ligne grise dit *rien : la source n'a pas
-    ce travail*. Au cran des annotations, la phrase sous le tableau compte les tags et
-    attributs qui **restent** (locaux à une collection que la vôtre ne voit pas : ils ne
-    suivent pas, et ne sont pas nommés) et les fiches de personnage qui deviennent lisibles.
+    annotations, locuteurs, présences, noms de détail) ; une ligne grise dit *rien : la source
+    n'a pas ce travail*. Au cran des annotations, la phrase sous le tableau compte les fiches
+    de personnage qui deviennent lisibles.
     *Images seules* est cochée : c'est la copie vierge, immédiate — *Copier les images*. Un
     cran au-dessus est immédiat si vous possédez toutes les collections de l'autre copie
     (*Copier jusqu'à …*) ; sinon *Son propriétaire doit l'accepter* (ou *Un administrateur*) et
@@ -935,7 +933,7 @@ règle d'accès (cf. §2).
     et ne se rétrograde pas : désignez-en un autre d'abord. Le *projet de repli* se
     renomme, il ne se supprime pas — le bouton n'y est pas offert. *Un projet ne se
     supprime que vide* : tant qu'une autre collection que sa base lui appartient, c'est
-    refusé, en disant combien, et sa base doit être sans album ni vocabulaire propre — vide,
+    refusé, en disant combien, et sa base doit être sans album — vide,
     elle part avec lui, et la confirmation le dit. Et tant que des albums de ce projet sont **gardés au fonds**, aussi : il faut
     d'abord les détruire depuis le fonds.
 
@@ -1078,6 +1076,20 @@ entrée à variantes attend une variante, et une autre variante remplace la prem
 guide dit la définition, la structure, les exemples, les pièges de ce que vous survolez ; *Guide
 ▾* la replie, *Guide complet ▸* ouvre tout le guide.
 
+**Le Mode libre** est le premier onglet : la grille de travail du projet, où l'on écrit ses
+propres étiquettes. Tapez dans **+ Nouvelle étiquette…** un nom, « nom : valeur », ou
+plusieurs valeurs séparées par « ; » ; la ligne dessous dit ce qu'Entrée fera, et chaque
+valeur se pose et se défait à part. Depuis une autre grille, un nom qu'elle n'a pas propose
+*Créer « … » dans Mode libre* ; la touche `+` ouvre le champ depuis n'importe quel onglet. Les
+valeurs d'une étiquette sont des puces qui se cochent une à une, la même jamais deux fois sur
+la même zone. L'ordre est *À la main* ou *A → Z*, retenu sur votre poste ; **↕ Ranger** change
+l'ordre *À la main*, celui de tout le projet (la poignée ⠿, ou ↑ ↓), et *Fini* le referme.
+**✎** renomme l'étiquette et ses valeurs sur place et en ajoute (*+ valeur*) ; dessous,
+*Définir*, *Fusionner dans…* et *Retirer…* sont aux responsables du projet. Une étiquette née
+en la tapant est *provisoire* : tout annotateur du projet la renomme et lui ajoute des valeurs ;
+une étiquette *définie* ne se renomme et ne reçoit de valeur que par les responsables. Un geste qu'on n'a pas reste
+visible, éteint, et dit pourquoi au clic.
+
 **Ce qui est posé** se lit en bas de la grille — sur les mots désignés, sinon sur la zone, et
 en dernier *Sur la planche* —, et en traits sous les mots, un couloir par relevé, à la couleur
 de sa rubrique. *Relevés ▾* règle les grilles montrées. Un clic sur une ligne redésigne son
@@ -1122,11 +1134,12 @@ dont un mot a disparu, avec *Rattacher aux mots désignés*, ce qui reste à com
 levés), *Décompte* (par grille, rubrique, entrée, variante, qualificatif, et les zones
 terminées).
 
-**À plusieurs.** Si la planche a changé ailleurs, **⟳ Actualiser** paraît dans la bande : il
+**À plusieurs.** Si la planche — ou une étiquette d'une grille ouverte — a changé ailleurs,
+**⟳ Actualiser** paraît dans la bande : il
 garde votre zone, vos mots désignés et ce que vous écriviez. Si quelqu'un a modifié la valeur
 que vous changez, un bandeau prend la place du guide : *Remplacer par la mienne* ou *Garder
 l'autre*. **Ctrl+Z**, hors d'un champ, défait votre dernier geste : poser, retirer, le texte,
-le nom, la note, le locuteur, une zone tracée.
+le nom, la note, le locuteur, une zone tracée, un rangement du Mode libre.
 
 **Sur une tablette, sur un téléphone.** La colonne de gauche — la planche, le Contexte, la
 Synthèse — passe dans un tiroir : **☰ Planche et contexte**, *Fermer ✕* ou Échap ; choisir une
@@ -1139,10 +1152,21 @@ revient.
 
 ### Recherche (`/recherche`)
 
-Un champ, deux filtres (album, type de région), des facettes grammaticales, un export CSV. La
-recherche porte sur les dialogues et les notes — plus les lemmes si
-l'analyse linguistique est installée ; sans elle, elle retombe proprement sur la recherche par
-préfixe, toujours insensible aux accents.
+Un champ, trois filtres (album, type de région, **Porte…**), des facettes grammaticales, un
+export CSV. La recherche porte sur les dialogues, les notes et les étiquettes des grilles
+ouvertes — plus les lemmes si l'analyse linguistique est installée ; sans elle, elle retombe
+proprement sur la recherche par préfixe, toujours insensible aux accents.
+
+**Les relevés de chaque zone** se lisent en ligne sous son repère, grille par grille, le Mode
+libre d'abord : « Mode libre : silence, sentiment : surprise · Sons et paroles : ton de voix :
+crié ». Le mot cherché y est surligné comme dans le texte ; une zone sans texte dit ce qu'elle
+est (« Case c3, sans texte »). Un clic sur un relevé **isole** les zones qui le portent ; la
+liste **Porte…** propose de même, dans les grilles actives du projet courant, une étiquette,
+une entrée, une variante ou une rubrique. Chaque choix devient une puce au-dessus des
+résultats, que ✕ retire ; deux puces se cumulent (« et »). L'adresse porte les filtres, et
+l'export CSV les suit. Le champ ne trouve que les étiquettes des grilles ouvertes ; les
+relevés d'une grille fermée s'isolent d'un clic ou par *Porte…*. Les relevés de la planche entière
+n'y paraissent pas : la Recherche rend des zones.
 
 **Un document dont vous lisez deux copies compte deux fois** — une copie vierge prise dans le
 même projet, ou deux projets que vous lisez : la Recherche porte sur tout ce que vous lisez,
@@ -1156,8 +1180,7 @@ privée, où la page repart simplement vide).
 
 Les tags et les attributs n'existent plus (le vocabulaire d'un projet est une grille) : un
 lien d'hier qui filtrait par tag ou par attribut ne cherche pas sans son filtre, il le dit.
-Ce que posent les grilles — les relevés — ne se cherche pas encore : la Recherche et
-l'Exploration le liront à l'étape suivante.
+L'Exploration ne lit pas encore les relevés.
 
 ### Exploration (`/exploration`)
 
@@ -1296,14 +1319,18 @@ Quelqu'un a basculé une planche en `paratexte`, ou l'inverse. Le numéro édito
 parmi les seules planches de récit, recalculé à chaque lecture.
 
 **Ctrl+Z ne fait rien.**
-Quatre cas : le curseur est dans un champ de saisie (c'est alors l'annulation du
+Cinq cas : le curseur est dans un champ de saisie (c'est alors l'annulation du
 navigateur) ; la dernière action était le fait d'un moteur, et les actes machine ne
 s'annulent pas ; vous travaillez sous un compte déclaré PARTAGÉ (un groupe, une démonstration), où
-Ctrl+Z ne remonte que les cinq dernières minutes — le message le dit ; ou il n'y a plus rien
-à annuler.
+Ctrl+Z ne remonte que les cinq dernières minutes — le message le dit ; la dernière action date
+d'avant le passage aux grilles, la mise à jour qui a retiré les tags, et Ctrl+Z ne remonte pas
+au-delà ; ou il n'y a plus rien à annuler.
 
-**J'ai créé un tag et il n'apparaît pas chez un collègue.**
-Il est probablement local à une collection. Cf. [`modele-et-droits.md`](modele-et-droits.md) §4.
+**J'ai créé une étiquette et elle n'apparaît pas chez un collègue.**
+Une étiquette du Mode libre est celle de votre projet : un collègue d'un autre projet ne la
+voit pas. Dans le même projet, sa page Annotation affiche **⟳ Actualiser**, qui la fait
+paraître ; et une collection peut masquer le Mode libre. Cf.
+[`modele-et-droits.md`](modele-et-droits.md) §4.
 
 **L'application répond « réessayez » pendant un traitement.**
 Un lot en cours occupe brièvement la base. C'est attendu, et le message le dit plutôt que de

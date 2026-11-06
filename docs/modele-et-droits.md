@@ -35,14 +35,12 @@ RÉGION          une zone rectangulaire, en PIXELS MASTER
     │           types : case · bulle · personnage · texte · cartouche
     │           arborescente : une bulle a sa case pour parent
     │
-    ├──▶ ANNOTATION ......... une note libre + des TAGS (N-N)
+    ├──▶ ANNOTATION ......... une note libre
+    ├──▶ RELEVÉS ............ des entrées de GRILLE posées sur la zone ou sur ses mots (§4)
     ├──▶ TEXTE OCR ..........▶ TOKENS (lemme, catégorie, morphologie) — NLP optionnel
-    ├──▶ LOCUTEUR (bulle, cartouche, texte) ─┐
-    ├──▶ PRÉSENCE (boîte personnage) .......─┼──▶ PERSONNAGE   entité de corpus, transverse
-    └──▶ SITUATION (case) ..................─┘     │           aux albums (+ alignements
-                                                   │           Wikidata / VIAF / IdRef)
-                                                   └──▶ VALEURS D'ATTRIBUTS
-                                                        (domaine → dimension → valeur)
+    ├──▶ LOCUTEUR (bulle, cartouche, texte) ─┬──▶ PERSONNAGE   entité de corpus, transverse
+    └──▶ PRÉSENCE (boîte personnage) .......─┘                 aux albums (+ alignements
+                                                               Wikidata / VIAF / IdRef)
 ```
 
 Trois objets ne sont dans aucune boîte, et c'est voulu.
@@ -52,13 +50,12 @@ Trois objets ne sont dans aucune boîte, et c'est voulu.
   un **locuteur** (qui parle), une boîte personnage par une **présence** (qui est montré).
   Un locuteur ne s'attribue ni à une case ni à une boîte personnage : la route le refuse,
   une zone de texte qui devient l'une ou l'autre le perd, et Ctrl+Z ne l'y repose pas. Le
-  miroir vaut pour la présence et la situation : une boîte personnage qui change de type
-  perd son personnage montré, une case sa situation, et Ctrl+Z ne les repose que sur une
-  boîte ou une case ; et, comme pour le locuteur, la route refuse de montrer un personnage
-  hors d'une boîte, ou de situer autre chose qu'une case.
+  miroir vaut pour la présence : une boîte personnage qui change de type perd son
+  personnage montré, et Ctrl+Z ne le repose que sur une boîte ; et, comme pour le locuteur,
+  la route refuse de montrer un personnage hors d'une boîte.
   L'entité est le moyeu où la parole et l'image se rejoignent.
-- **Le vocabulaire** (tags, domaines, dimensions, valeurs) vit au niveau du corpus, avec sa
-  propre règle de portée — cf. §4.
+- **Le vocabulaire** est fait de GRILLES, chacune propriété d'un projet et non d'une
+  collection : ce qu'on pose sur une zone est un relevé de l'une de leurs entrées — cf. §4.
 - **Le journal de provenance** enregistre chaque acte (qui, quoi, avant/après) sans jamais
   être modifié. C'est lui que remonte l'annulation (Ctrl+Z), et il **survit à la suppression**
   de ce qu'il décrit. C'est aussi lui qu'on lit pour savoir si **quelqu'un d'autre** a
@@ -90,16 +87,15 @@ que ce que vous mesureriez à l'écran.
 
 ---
 
-## 2. La collection : un objet, trois métiers
+## 2. La collection : un objet, deux métiers
 
-La collection est le seul objet qui remplit **trois rôles à la fois**, et c'est la source
+La collection est le seul objet qui remplit **deux rôles à la fois**, et c'est la source
 de la plupart des malentendus.
 
 | Rôle | Ce que ça veut dire | Où ça se voit |
 |---|---|---|
 | **Espace de travail** | c'est elle qui porte les accès : donner un droit sur une collection le donne sur tous ses albums | *Qui entre*, onglet de la fiche de la collection, dans la Bibliothèque ; et, pour un administrateur, dans la fiche de la collection, *👥 Comptes et groupes* de l'Administration — le même panneau, à deux endroits (cf. *Où vit quoi*, plus bas) |
 | **Unité de dépôt** | 1 collection = 1 dépôt Nakala/HAL = 1 DOI ; elle porte licence, base légale, régime de diffusion, responsables scientifiques | fiche de la collection dans la Bibliothèque, onglets *Description* et *Diffusion et dépôt* ; les responsables scientifiques par `tools/gerer_collections.py`, cf. [`export-metadonnees.md`](export-metadonnees.md) |
-| **Portée d'appartenance du vocabulaire** | un terme peut être *global* ou *local à une collection* | panneau *📖 Lexique* de l'Exploration |
 
 Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer.
 
@@ -197,10 +193,9 @@ pas, et ne change pas de projet : elle part avec lui, s'il est supprimé vide.
   personne sans qu'on l'ait décidé ; seuls les responsables d'un projet deviennent
   propriétaires de sa base neuve, vide.
 - **Ce qu'on reçoit par la base est un accès comme un autre**, avec tout ce qui s'y lit.
-  Un membre d'une base **ouverte en écriture** écrit quelque part : il peut donc enrichir
-  le vocabulaire commun à toute l'instance, et ouvrir la mesure de l'accord entre
-  annotateurs sur les albums de la base — ce que, jusque-là, être membre d'un projet ne
-  donnait pas. Et un responsable, propriétaire de la base, y peut tout ce que peut un
+  Un membre d'une base **ouverte en écriture** écrit quelque part : il peut donc ouvrir la
+  mesure de l'accord entre annotateurs sur les albums de la base — ce que, jusque-là,
+  être membre d'un projet ne donnait pas. Et un responsable, propriétaire de la base, y peut tout ce que peut un
   propriétaire : la décrire, régler sa diffusion et son référent, faire entrer d'autres
   personnes, l'exporter, la déposer sur ShareDocs.
 
@@ -302,8 +297,8 @@ l'administrateur en décide au fonds. Pas dans un bac à sable, où rien ne part
 
 **Ce que d'autres y ont fait** — ce que l'on lit avant d'effacer ; jusqu'au 2026-10-26, la règle exigeait que ce soit rien — se lit dans le journal de l'instance, sur ce qui
 existe encore. Compte comme travail tout geste d'une autre personne sur l'album : dessiner
-ou modifier une case ou une bulle, transcrire, annoter (note, tags), poser un locuteur, une
-présence ou un attribut de case, corriger la grammaire, valider une planche, ajouter ou
+ou modifier une case ou une bulle, transcrire, annoter (note, relevés, doutes, passes),
+poser un locuteur ou une présence, corriger la grammaire, valider une planche, ajouter ou
 retirer une planche, modifier la notice ou la paternité, forcer le statut de relecture.
 Ne comptent pas : un travail supprimé depuis ; une passe automatique, même lancée par un
 collègue — elle est attribuée à son moteur, pas à une personne ; ranger l'album dans une
@@ -428,9 +423,8 @@ attend sa maquette). *En partir*, c'est prendre une copie à soi **amorcée** av
 d'une autre jusqu'à un cran de l'échelle — le découpage, puis la transcription, puis la
 grammaire relue, puis les annotations ; la validation ne suit jamais. Le travail recopié
 reste celui de ses auteurs : la copie dit, région par région, d'où elle vient, et la règle de
-suppression le compte. Seuls les termes de vocabulaire visibles depuis la collection
-d'arrivée suivent ; les autres restent, et un aperçu dit combien, sans les nommer. Les
-personnages suivent.
+suppression le compte. Les relevés suivent si leur grille est active dans le projet
+d'arrivée, sinon non. Les personnages suivent.
 
 - **Dans le projet**, la règle de *rejoindre* : immédiat si vous possédez chacune des
   collections où vit la copie dont vous partez, sinon une demande à leur propriétaire.
@@ -505,11 +499,8 @@ effacement se lit dans le bac à sable.
   sable seul, sur laquelle la page Annotation s'exerce sans rien régler. Elle part avec lui,
   relevés compris, et revient neuve à la remise à neuf. Son fichier manquant, le bac à sable
   naît quand même, sans elle : la page Annotation dit « Aucune grille ».
-- **Ses tags ont leurs propres libellés** : un libellé tapé dans un bac à sable n'y prend
-  rien au vrai corpus, qui peut avoir le même, et rien ne se voit d'un côté à l'autre. On
-  les lit, les renomme, les fusionne et les supprime dans le 📖 Lexique, comme ailleurs —
-  chacun y voit ceux de ses bacs à sable, pas ceux des autres ; les chiffres du Lexique, eux,
-  restent ceux du vrai corpus.
+- **Il a son Mode libre**, comme tout projet (§4) : ses étiquettes sont à lui, et partent
+  avec lui ; un bac à sable remis à neuf repart avec un Mode libre vide.
 
 **Un bac à sable est un cul-de-sac**, et c'est sa nature qui le tient, pour tout le monde,
 administrateur compris :
@@ -521,16 +512,15 @@ administrateur compris :
   dont les images vivent dans le dépôt, et qu'on n'y a importé aucune planche — les scans
   sous droits du jeu, et toute image importée, ne s'exportent jamais ;
 - **rien n'y entre** : aucun document du fonds n'y est pris ni rangé, pas même par un
-  administrateur, et un terme du vrai corpus ne s'y range pas (ni n'en sort) ;
+  administrateur ;
 - **rien ne s'y demande** : aucune demande, d'aucun genre, n'y naît — ni à un
   administrateur, ni à son propriétaire ; ce qui demanderait un consentement, son
   propriétaire le fait lui-même ;
 - **rien n'en part au fonds** : une copie ne se sort pas de sa dernière collection ; elle se
   supprime définitivement, ou part avec le bac à sable ;
 - **il ne compte pour rien ailleurs** : en être responsable n'ouvre pas les notices du
-  fonds ; y écrire ne permet ni de toucher au vocabulaire global, ni au registre des
-  personnages, ni de compter comme « écrire quelque part » ; le bandeau « vous n'avez accès
-  à aucune collection » reste dû à qui n'a que lui — il se masque à l'écran tant que le
+  fonds ; y écrire ne permet ni de toucher au registre des personnages, ni de compter comme
+  « écrire quelque part » ; le bandeau « vous n'avez accès à aucune collection » reste dû à qui n'a que lui — il se masque à l'écran tant que le
   projet courant est le bac à sable, dont la ligne en tient lieu, et revient ailleurs ;
 - **la Recherche et l'Exploration ne le voient pour personne**, ni son propriétaire ni un
   administrateur : leurs mesures restent celles du vrai corpus.
@@ -597,10 +587,7 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 | **Exporter** le contenu — un album (JSON-LD / CSV / TEI), les CSV de la Recherche et de l'Exploration, les figures, les exports de dépôt | avec la case | avec la case | ✅ | ✅ |
 | Transcrire, corriger le découpage, annoter, relire la grammaire | — | ✅ | ✅ | ✅ |
 | Lancer les passes automatiques (cases, bulles, OCR) | — | ✅ | ✅ | ✅ |
-| Créer et documenter du vocabulaire local à la collection | — | ✅ | ✅ | ✅ |
-| **Renommer ou supprimer un tag** que plus aucune région ne porte, sur tout le corpus (local à la collection, ou global) | — | ✅ | ✅ | ✅ |
-| **Fusionner un tag, ou renommer ou supprimer un tag encore posé** — tag local à la collection ; retirer ou fusionner seulement s'il n'est posé que dans des albums où l'on écrit | — | — | ✅ | ✅ |
-| … un tag **global** | — | — | — | ✅ |
+| Créer une étiquette du Mode libre en la tapant ; renommer une étiquette provisoire, lui ajouter une valeur, ranger le Mode libre — le vocabulaire est au projet, cf. §4 | — | ✅ | ✅ | ✅ |
 | **Supprimer un album de la collection** — même la dernière : il est alors gardé au fonds | — | ✅ | ✅ | ✅ |
 | **Effacer** sans rien demander — supprimer définitivement un album ou une planche, ou repartir de zéro —, même si d'autres y ont travaillé, en possédant *toutes* ses collections — sauf supprimer la dernière copie d'un document, ou l'une de ses planches, qui se demande ; repartir de zéro s'y fait (depuis le 2026-10-26 : l'avoir créé ne suffit plus, §2, *Le fonds*) | — | — | ✅ | ✅ |
 | Lire, avant d'effacer, ce que d'autres ont fait sur l'album (qui, combien de gestes, quand) | — | si l'on peut effacer | si l'on peut effacer | ✅ |
@@ -630,11 +617,8 @@ un relecteur en lecture peut recevoir la case. Un propriétaire exporte d'office
 - Un album rangé dans plusieurs collections sort **au titre de l'une d'elles**, où vous
   avez la case ; si vous l'avez sur plusieurs, il faut dire laquelle, et l'export le dit.
   Cela vaut pour tout le monde depuis le 2026-10-07, administrateur et mono-poste compris.
-- Cet export d'album (JSON-LD, CSV, TEI) ne porte que **le vocabulaire de cette
-  collection et le vocabulaire global** — **quel que soit qui exporte** (décidé le
-  2026-10-07). Un tag propre à une autre collection, posé sur une région de l'album, n'y
-  figure pas, même si vous avez aussi le droit d'exporter l'autre : la région sort, avec sa
-  note et ses autres tags, sans celui-là. C'est la règle des exports de dépôt (§ Le vocabulaire).
+- Cet export d'album (JSON-LD, CSV, TEI) ne porte **aucun vocabulaire** : les tags sont
+  retirés, et rien d'une grille ni d'un relevé n'en sort encore (§ Le vocabulaire).
 - Sans la case, l'export est **refusé en le disant**, jamais rendu vide.
 
 Une seule mesure d'analyse est **réservée**, et c'est l'accord inter-annotateurs : toutes les
@@ -721,8 +705,7 @@ un droit qui manque, c'est un état que le geste fabriquerait.
   aucun projet.
 - *Un projet qui porte encore une collection* ne se supprime pas : un projet ne se supprime
   que vide. Sa collection de base ne compte pas tant qu'elle est vide — elle part avec lui ;
-  si elle porte un album, ou du vocabulaire qui lui est propre — que sa suppression rendrait
-  visible de toute l'instance —, le refus le dit.
+  si elle porte un album, le refus le dit.
 - *La collection de base* ne se supprime pas seule : elle part avec son projet.
 - *Un projet dont des albums sont gardés au fonds* ne se supprime pas non plus : un album
   gardé emporte son projet, et le supprimer le laisserait désigner un projet qui n'existe
@@ -789,8 +772,8 @@ collection, donc aucun référent de collection.
 ### Un écran peut sembler ouvert et refuser quand on agit
 
 Le serveur distingue finement ce que vous pouvez faire : lire, écrire, administrer, et
-plusieurs questions plus étroites sur le vocabulaire. **Le navigateur, lui, n'en reçoit
-qu'une** — « puis-je administrer cette collection ? ». Le droit d'**écrire** ne traverse pas.
+plusieurs questions plus étroites — sur les grilles, par exemple. **Le navigateur, lui,
+n'en reçoit qu'une** — « puis-je administrer cette collection ? ». Le droit d'**écrire** ne traverse pas.
 
 La conséquence est visible et vaut d'être connue : sur une collection où vous n'avez que la
 lecture, les écrans ne se ferment pas. Le panneau d'annotation s'ouvre, les champs
@@ -839,156 +822,75 @@ portée vide puisse lire, puisqu'elle ne voit aucune collection.
 
 ## 4. Le vocabulaire
 
-Aucune taxonomie n'est imposée. Les catégories **émergent du corpus** : on crée le terme
-quand on en a besoin, et on le documente ensuite. Ce qui suit décrit les deux familles de
-termes, et la couche de définition qu'elles partagent.
+Aucune taxonomie n'est imposée. Le vocabulaire d'un projet est fait de **grilles** : des
+**entrées** — ce qu'on pose —, rangées ou non en rubriques, avec leurs variantes et leurs
+qualificatifs. Un **relevé** applique une entrée à des mots, à une zone ou à la planche, dans
+la page Annotation. Le modèle complet : [`grilles-et-releves.md`](grilles-et-releves.md) ; le
+tableur : [`import-grille.md`](import-grille.md).
 
-### Deux familles, deux usages
+### Deux sortes de grilles
 
-| | **Tags** | **Attributs facettés** |
-|---|---|---|
-| Forme | une étiquette à plat | un axe et ses valeurs canoniques |
-| Structure | aucune | **domaine → dimension → valeur** |
-| S'applique à | n'importe quelle région, via son annotation | un **personnage** (profil) ou une **case** (situation de scène) |
-| Bon pour | repérer, marquer, retrouver | **compter, croiser, comparer** |
-| Où on l'écrit | panneau *Tags* de l'Atelier | panneaux *Personnage* et *Situation (scène)* de l'Atelier |
-| Où on le documente | panneau *📖 Lexique* de l'Exploration | panneau *📖 Lexique* de l'Exploration |
+- **Une grille fermée** s'écrit d'avance — un tableur importé, ou le formulaire de la fiche
+  du projet —, puis se publie ; une version publiée ne change plus, on en prépare une
+  suivante. C'est la grille d'une étude.
+- **Une grille ouverte** n'a qu'une version, vivante, qui s'enrichit en posant : taper un nom
+  qu'elle n'a pas fait naître l'entrée, « nom : valeur » l'entrée et sa valeur.
 
-La règle de choix tient en une phrase : **un tag se cherche, un attribut se compte.** « scène
-de nuit » en tag vous rendra les régions concernées ; la même chose en dimension `moment` avec
-les valeurs `jour` / `nuit` / `indéterminé` vous rendra un tableau — et un croisement avec une
-autre dimension.
+Une grille appartient à UN projet, et s'y **active** : les grilles actives d'un album sont
+celles de son projet. Une collection peut en **masquer** une — un filtre de ce qu'on propose,
+pas une garde : ce qui est posé reste lisible.
 
-Les tags sont insensibles à la casse et stockés en minuscules.
+### Le Mode libre : la grille de travail du projet
 
-### Domaine → dimension → valeur
+Chaque projet naît avec une grille ouverte et vide, sa **grille de travail** — *Travail en
+cours* à sa naissance —, que la page Annotation appelle **Mode libre** quel que soit son nom,
+et montre en premier onglet. C'est là qu'on écrit ses propres étiquettes, sans liste donnée
+d'avance. Elle se renomme ; elle ne se désactive, ne se retire ni ne se supprime — un projet
+sans elle n'aurait plus de mode libre. Restée vide, elle part avec son projet.
 
-```
-DOMAINE       un champ analytique          « émotions »
-   │                                        (regroupe des dimensions ; facultatif)
-   ▼
-DIMENSION     un AXE, avec une cible        « type d'émotion » (cible : case)
-   │                                        « milieu social »  (cible : personnage)
-   ▼
-VALEUR        une valeur canonique          « colère » · « joie » · « peur »
-```
+Une étiquette née « nom : valeur » se pose **plusieurs fois** : « sentiment : perte » puis
+« sentiment : tristesse » laissent deux relevés sur la bulle — jamais deux fois la même valeur
+sur la même zone. L'ordre des étiquettes, *↕ Ranger*, est celui de tout le projet.
 
-Trois précisions qui évitent des impasses :
+### Provisoire ou défini
 
-- **Le domaine est facultatif.** Une dimension peut vivre sans domaine ; on regroupe le jour
-  où le regroupement dit quelque chose.
-- **Le domaine est orthogonal à la cible** : un même domaine peut réunir des dimensions qui
-  s'appliquent aux personnages **et** aux cases. Les émotions ne sont qu'un domaine parmi
-  d'autres, pas un module figé de l'outil.
-- **La valeur est canonique** : « rural » est une entrée, pas trois orthographes. C'est ce qui
-  rend l'agrégation possible — sans quoi le comptage compterait des variantes.
+Une entrée née en la tapant est **provisoire** ; une entrée écrite — par un tableur ou par le
+formulaire — est **définie**, même dans une grille ouverte. Réimporter une grille garde l'état
+des entrées qu'elle porte déjà. Rien n'empêche de poser une entrée provisoire : l'état dit ce
+qui est stabilisé, et décide qui peut encore changer l'entrée (ci-dessous). Seuls les
+responsables du projet le changent.
 
-Supprimer un domaine ne supprime pas ses dimensions : elles remontent simplement « hors
-domaine ». Supprimer une dimension, en revanche, emporte ses valeurs.
+### Qui peut quoi
 
-### Le lexique situé : quatre champs par terme
+| Geste | Qui |
+|---|---|
+| Importer une grille ou une nouvelle version, la publier, corriger une coquille, l'activer, la désactiver, la retirer, la supprimer quand rien ne l'emploie — sauf la grille de travail, qui ne se désactive, ne se retire ni ne se supprime | qui **gère** le projet : son responsable, un administrateur |
+| Lire un brouillon | les mêmes, et personne d'autre — une grille qui n'a encore qu'un brouillon n'existe pas pour les autres, pas même son nom |
+| Lire le plan d'une version publiée | les membres du projet ; quiconque lit un album d'un projet où la grille est active ; quiconque lit un album qui porte un de ses relevés, même désactivée |
+| La masquer dans une collection | qui **administre** la collection (son propriétaire) — un filtre de ce qu'on propose, pas une garde |
+| Poser, modifier, retirer un relevé ; ouvrir un doute, y répondre, le lever ; marquer une passe « terminée » ou la rouvrir ; dans une grille ouverte, créer une entrée en la tapant | quiconque **écrit** dans l'album, sur une grille active de son projet |
+| Renommer une entrée **provisoire** d'une grille ouverte, ou l'une de ses valeurs ; lui ajouter une valeur | tout annotateur du projet — qui écrit dans l'un de ses albums —, et qui gère le projet |
+| Ranger les entrées de la grille de travail (*↕ Ranger* : l'ordre de tout le projet), définies comprises | les mêmes |
+| Fusionner une entrée dans une autre, la retirer, la dire provisoire ou définie ; renommer une entrée définie ; ranger une autre grille | qui **gère** le projet |
+| Tracer une zone dans une case — un détail d'image, un texte hors bulle —, la nommer, la transcrire, la supprimer | quiconque **écrit** dans l'album ; un détail ne sort d'aucun export avant la tranche 4 |
 
-Chaque terme — domaine, dimension, valeur **et** tag — porte la même couche définitionnelle,
-au format SKOS, éditable dans le panneau *📖 Lexique*.
+Un relevé n'a pas de collection : il vit sur une zone ou sur une planche, donc dans l'album,
+et se lit comme lui. Désactiver une grille ne supprime aucun relevé : ils restent, en
+lecture. Masquer une grille dans une collection ne cache rien de ce qui est posé. Le
+brouillon n'est pas montré, parce que le plan d'une grille peut révéler une étude en cours.
+Un geste que vous n'avez pas reste visible dans la page Annotation, éteint, et dit pourquoi.
 
-| Champ | Ce qu'on y met | Pourquoi |
-|---|---|---|
-| **Définition** | ce que le terme veut dire | sans elle, deux personnes annotent deux choses sous le même mot |
-| **Note de portée** | le cadre d'emploi : quand l'appliquer, quand ne pas l'appliquer | c'est le « **situé** » — la partie qui se perd le plus vite et qu'on ne retrouve jamais |
-| **État** | `provisoire` → `défini` | même geste que `auto` → `validé` sur la grammaire : dit ce qui est stabilisé |
-| **Portée** | globale, ou locale à une collection | cf. ci-dessous |
+### Ce qui se cherche, ce qui sort
 
-Le panneau affiche un **« % défini »**, qui mesure la part du vocabulaire documenté. Il est
-calculé sur ce que vous voyez, pas sur le corpus entier.
+La Recherche trouve les **étiquettes des grilles ouvertes** — l'entrée, sa variante, ses
+qualificatifs — comme le texte et la note. Une grille fermée n'est pas dans l'index : ses
+libellés y vieilliraient d'une version à l'autre ; ses relevés s'isolent d'un clic ou par le
+filtre *Porte…*. Qui lit une zone lit le plan des grilles de ses relevés : la Recherche ne
+fait donc sortir une zone que pour ce que vous pouvez lire. La limite écrite le 2026-09-24
+— un tag que vous ne lisiez pas pouvait faire sortir une région — est partie avec les tags.
 
-### Global ou local à une collection
-
-Un terme est soit **global** (visible partout), soit **local** à une collection (visible de
-ceux qui lisent cette collection). Un terme local peut être **promu** global ; c'est un geste,
-pas un accident.
-
-Deux règles gouvernent cette portée, et la seconde n'est pas intuitive.
-
-1. **Un terme n'est jamais plus global que celui dont il dépend.** Une dimension hérite de la
-   portée de son domaine, une valeur de celle de sa dimension. Sans cette règle, une valeur
-   créée sous un axe privé naîtrait globale — et ce qui fuirait ne serait pas le mot, mais le
-   **nom de l'axe**, c'est-à-dire une grille d'analyse. **Rattacher une dimension à un domaine
-   ne change jamais sa portée** (décidé le 2026-09-24 ; avant, elle descendait avec lui, ou
-   devenait globale sous un domaine global) : sous un domaine global ou de sa collection, le
-   rattachement passe ; sous un domaine propre à une autre collection, il est refusé, et
-   l'écran dit de ranger d'abord la dimension dans la collection du domaine (menu *Portée*).
-   L'en **détacher ne la promeut pas** non plus, parce que ranger n'est pas publier. Et
-   **ranger un terme dans une collection ne le sépare pas de ses termes liés** (décidé le
-   2026-09-25) : c'est refusé si son parent, ou un terme qui en dépend, est propre à une
-   autre collection — l'écran dit lequel, s'il vous est lisible. Un parent global convient,
-   et les termes globaux qui en dépendent suivent. Ranger la **racine** d'une branche (un
-   terme sans parent local) d'une collection à une autre **emporte** ses termes restés dans
-   l'ancienne, d'un seul geste (décidé le même jour) ; un terme d'une troisième collection
-   la retient toujours.
-2. **Le vocabulaire ne suit pas la même règle que les données.** Vous voyez un terme s'il est
-   global **ou** local à une collection que vous lisez. En revanche ses **compteurs**
-   (fréquences, usages) sont filtrés comme des données : un nuage de tags doit refléter le
-   sous-corpus qu'on regarde, pas le corpus entier.
-
-**Voir n'est pas modifier.** Un terme *local* se modifie si vous écrivez dans **sa**
-collection ; un terme *global* se modifie si vous écrivez **quelque part**. Un refus de
-modification sur un terme est un **403** — il vient d'être listé, un 404 mentirait.
-
-**Modifier un tag n'est pas le remanier** (décidé par Hugo le 2026-10-22, en attendant les
-grilles d'`ANN-7`). Le panneau *📖 Lexique* offre trois gestes sur un tag — **Renommer**,
-**Fusionner** dans un autre, **Supprimer** — et deux questions décident qui les fait.
-
-- **Renommer ou supprimer un tag que plus aucune région ne porte** — sur tout le corpus,
-  pas seulement sur ce que vous lisez — est l'affaire de qui modifie déjà le tag : rien de ce
-  que d'autres ont posé ne change. Un tag qui compte 0 pour vous peut être posé dans une
-  collection que vous ne lisez pas : il ne se renomme ni ne se supprime alors, et le refus
-  le dit sans dire où.
-- **Le fusionner, ou le renommer ou le supprimer quand des régions le portent**, c'est changer
-  ce que d'autres ont posé : un tag **local** se remanie par le propriétaire de sa collection
-  et l'administrateur, un tag **global** par l'administrateur seul (et en mono-poste).
-
-**Un tag local ne se pose que sur les albums de sa collection** (décidé par Hugo le
-2026-10-22). L'Atelier ne le propose pas ailleurs, et le taper sur un album qu'elle ne range
-pas est refusé par un message qui nomme le tag et sa collection — pour tout le monde,
-administrateur compris. Ce qui a été posé avant reste (un tag rendu local après avoir servi,
-un album retiré de la collection, en laissent aussi), et l'outil
-`tools/tags_hors_collection.py` le dit. Pour cet existant, le propriétaire ne retire ou ne
-fusionne le tag que s'il écrit dans tous les albums où il est posé ; sinon, c'est un
-administrateur qui le fait, et le refus dit seulement que le tag est posé là où vous
-n'écrivez pas. Le renommage n'y est pas soumis : il change le mot, pas les régions, qui
-suivent.
-
-Avant de confirmer, le navigateur dit **combien de régions** le geste touchera ; ce nombre
-ne compte jamais au-delà de ce que vous lisez — quand il le devrait, le geste vous est refusé
-avant. Une **fusion** porte le tag choisi sur chaque région du premier (une seule fois si
-elle le portait déjà), puis le premier disparaît ; elle ne se fait que vers un tag global
-ou de la même collection, pour ne cacher le tag à personne. **Renommer** vers le libellé
-d'un autre tag est refusé : c'est une fusion, et le message le dit. Ces gestes sont écrits
-au journal, ne partent pas au dépôt, et **Ctrl+Z ne les défait pas**. Ctrl+Z d'un geste
-d'annotation fait AVANT eux ne recrée jamais un tag : un tag renommé ou fusionné revient sous
-son nom d'aujourd'hui, un tag supprimé ne revient pas. Fusionner dans un tag global un tag
-local posé hors de sa collection montre aux lecteurs de ces régions qu'un tag y était posé —
-la cible, jamais l'ancien libellé.
-
-**Voir n'est pas non plus ce qui SORT, et il y a deux règles de sortie** (mis au vrai le
-2026-10-07).
-
-- **Ce qui sort au titre d'UNE collection suit la collection, pas la personne.** Les exports
-  de dépôt (depuis le 2026-09-23) et l'export d'un album en JSON-LD, CSV ou TEI (depuis le
-  2026-10-07) ne portent que le vocabulaire *global* et celui *propre à cette collection*.
-  Deux personnes qui exportent le même album au titre de la même collection obtiennent le
-  même fichier — un propriétaire de cette seule collection, un propriétaire de plusieurs,
-  un administrateur. Avant cette date, l'export d'album suivait ce que la personne avait le
-  droit d'exporter : le même fichier, étiqueté A, portait un tag propre à B pour qui
-  exportait aussi B. Ce n'était pas un accès indu ; c'était un fichier qui variait selon
-  qui cliquait, sous une étiquette qui ne variait pas.
-  Une région dont le **seul** tag est propre à une autre collection, et qui n'a pas de note,
-  sort sans être dite annotée : il n'en reste rien à montrer. Les données de l'album —
-  régions, texte, notes — sortent toujours entières.
-- **Ce qui traverse plusieurs collections suit la personne.** Les CSV de la Recherche et de
-  l'Exploration ne sortent au titre d'aucune collection : leur vocabulaire est celui des
-  collections que **vous** avez le droit d'exporter, même quand vous les filtrez sur un seul
-  album. Deux personnes n'y obtiennent donc pas forcément le même fichier, et c'est voulu.
+**Rien d'une grille ni d'un relevé ne sort encore d'un export**, ni de la voie du dépôt : ce
+qui en sortira n'est pas encore décidé.
 
 **Aucun album ne sort sans titre** (décidé le 2026-10-07). S'il n'y a qu'une collection
 au titre de laquelle **vous** pouvez l'exporter, il sort au titre de celle-là sans qu'on ait
@@ -1003,88 +905,16 @@ son titre : le JSON dans `exporte_au_titre_de`, le CSV et le TEI dans leur nom
 (`album_<id>_c<N>.csv`, `album_<id>_c<N>_tei.xml`), et le TEI dans son bloc `availability`
 (« Exporté au titre de la collection … »).
 
-**Une limite connue, et assumée : l'index plein texte.** La Recherche interroge un index qui
-agrège le dialogue, la note **et les tags** d'une région. Les tags y sont indexés tous, sans
-distinction de portée : un mot tapé dans le champ de recherche peut donc faire sortir une
-région **parce qu'elle porte un tag que vous ne lisez pas**, sans que ce tag vous soit jamais
-montré. Décision du 2026-09-24 : on garde l'index tel quel, et on écrit la limite.
+### Le vocabulaire d'hier
 
-Ce que la mesure dit exactement, parce que c'est elle qui rend la décision tenable (mesuré le
-2026-09-23, revérifié le 2026-09-24) :
-
-- c'est un canal de **confirmation**, pas d'énumération. Il faut **déjà connaître le mot** —
-  rien ne le donne — et il n'en revient qu'un bit : « oui, une de vos régions porte ce mot » ;
-- il ne porte que sur des régions **que vous lisez déjà**. Cherché sur une région hors de
-  votre portée, le même mot ne rend **rien** : le cloisonnement des données tient ;
-- **le libellé n'est jamais rendu.** Le résultat sort avec ses tags filtrés comme partout
-  ailleurs — c'est-à-dire sans celui-là — et la Recherche ne produit aucun extrait depuis
-  l'index. Vous voyez une région qui a répondu, sans savoir à quoi.
-
-**Ce qui rouvrirait la question.** Aujourd'hui les tags sont massivement globaux, et l'oracle
-ne porte donc presque sur rien. Si le vocabulaire d'étude naît **local** (chantier `ANN-1`),
-la proportion de tags cachés monte et la valeur de ce canal avec elle. Le remède — retirer
-les tags de l'index, au profit du seul filtre par tag, qui lui est déjà cloisonné — coûte une
-migration de schéma **et une réindexation complète du corpus** : le bon moment est la
-**prochaine migration FTS forcée**, pour ne payer la réindexation qu'une fois. Retirer les
-tags de l'index ferait aussi mentir la promesse du champ de recherche, qui annonce
-« dialogues, notes, tags » ; c'est à réécrire le même jour.
-
-**Une seconde limite assumée : ranger un terme global.** Un terme ne se range pas hors de la
-collection de ses dépendants. Ranger dans votre collection un terme **global** qui porte, sous
-lui, un terme rangé dans une collection que vous ne lisez pas est donc refusé — et le refus
-dit « un terme lié que vous ne lisez pas ». Il vous apprend ainsi qu'**une autre collection a
-précisé ce terme** : un bit par terme global, sans nom ni collection, mais la sorte du terme
-tu se déduit de la structure (sous une dimension, ce ne peut être qu'une valeur). Quiconque
-écrit quelque part peut poser la question. Décision du 2026-09-25 : on garde le refus — le
-retirer recréerait un terme séparé de ce qui en dépend — et on écrit la limite. **Ce qui la
-fermerait** : que rendre privé un terme partagé demande davantage que d'écrire quelque part,
-question ouverte avec le chantier `COL-1`.
-
-### Amorcer le vocabulaire en lot
-
-On peut charger une taxonomie entière depuis un tableur CSV (séparateur `;`), colonnes :
-
-```
-domaine ; domaine_definition ; cible ; dimension ; dimension_definition ;
-dimension_note_portee ; valeur ; valeur_definition
-```
-
-L'import **pré-remplit sans écraser** — exactement comme l'OCR : un terme qui existe déjà
-garde sa définition. Il est donc rejouable sans risque. Deux portes, le même cœur : le bouton
-*Importer un tableur…* du panneau *📖 Lexique* (avec un sélecteur de portée), et
-`tools/importer_vocabulaire.py` en ligne de commande (`--collection`, `--dry-run`, modèle dans
-`tools/vocabulaire-modele.csv`). Cf. [`import-vocabulaire.md`](import-vocabulaire.md).
-Depuis l'écran, l'import s'applique avec vos droits : le menu propose les collections où
-l'on écrit, et *Global* à quiconque écrit quelque part — un choix lourd, puisque les termes
-ainsi créés sont visibles de toute l'instance (sauf sous un parent propre à une collection,
-dont un terme neuf hérite de la portée, comme dans l'app). Une ligne qui nomme un terme que vous ne
-lisez pas (« libellé déjà pris », sans dire où), qui écrirait sur un terme en lecture
-seule pour vous, ou qui rangerait un terme hors de la collection de son parent (« hors de la
-collection de son parent ») est refusée entière, et comptée par motif dans le bilan.
-
-### Les grilles d'annotation : qui peut quoi (ANN-7, tranche 1)
-
-*Le modèle depuis le 2026-10-25, sans écran encore — la page Annotation vient avec la tranche
-2. Le détail : [`grilles-et-releves.md`](grilles-et-releves.md) ; le tableur :
-[`import-grille.md`](import-grille.md).*
-
-Une **grille** est le vocabulaire d'une étude : des rubriques, des entrées, leurs variantes et
-leurs qualificatifs. Elle appartient à UN projet, et c'est à ce projet que tout se règle.
-
-| Geste | Qui |
-|---|---|
-| Importer une grille ou une nouvelle version, la publier, corriger une coquille, l'activer, la désactiver, la retirer, la supprimer quand rien ne l'emploie | qui **gère** le projet : son responsable, un administrateur |
-| Lire un brouillon | les mêmes, et personne d'autre — une grille qui n'a encore qu'un brouillon n'existe pas pour les autres, pas même son nom |
-| Lire le plan d'une version publiée | les membres du projet ; quiconque lit un album d'un projet où la grille est active ; quiconque lit un album qui porte un de ses relevés, même désactivée |
-| La masquer dans une collection | qui **administre** la collection (son propriétaire) — un filtre de ce qu'on propose, pas une garde |
-| Poser, modifier, retirer un relevé ; ouvrir un doute, y répondre, le lever ; marquer une passe « terminée » ou la rouvrir | quiconque **écrit** dans l'album, sur une grille active de son projet |
-| Tracer une zone dans une case — un détail d'image, un texte hors bulle —, la nommer, la transcrire, la supprimer | quiconque **écrit** dans l'album ; un détail ne sort d'aucun export avant la tranche 4 |
-
-Un relevé n'a pas de collection : il vit sur une zone ou sur une planche, donc dans l'album,
-et se lit comme lui. Désactiver une grille ne supprime aucun relevé : ils restent, en
-lecture. Masquer une grille dans une collection ne cache rien de ce qui est posé. Le
-brouillon n'est pas montré, parce que le plan d'une grille peut révéler une étude en cours.
-Rien d'une grille ni d'un relevé ne sort encore d'un export.
+Jusqu'au passage aux grilles (la migration v39 d'`ANN-7`), le vocabulaire était fait de
+**tags** — des étiquettes à plat, posées sur une région — et d'**attributs facettés** — domaine
+→ dimension → valeur, posés sur un personnage ou une case —, documentés dans un panneau
+*📖 Lexique* et bornés par une portée, globale ou locale à une collection. Tout cela est
+**retiré, sans conversion** : les tables sont détruites, le panneau et ses routes n'existent
+plus, un ancien tag ne se cherche plus, et Ctrl+Z ne remonte pas avant cette mise à jour. Le
+pourquoi : [`ann7-tranche3-cadrage.md`](ann7-tranche3-cadrage.md) ; l'histoire :
+[`lexique-situe.md`](lexique-situe.md), [`domaines.md`](domaines.md).
 
 ---
 
@@ -1278,18 +1108,15 @@ annoter ; posséder, c'est décider du cercle.
 Un membre du groupe `bd-admins` peut se rendre propriétaire ou désigner quelqu'un d'autre.
 C'est exactement le cas pour lequel ce recours existe.
 
-**Tag ou dimension ?**
-Un tag se cherche, un attribut se compte. Si vous voulez un jour un tableau, une comparaison
-ou un croisement là-dessus, c'est une dimension.
+**J'ai créé une étiquette et un collègue ne la voit pas.**
+Une étiquette du Mode libre est celle de votre projet : un collègue d'un autre projet ne la
+voit pas. Dans le même projet, sa page Annotation affiche *⟳ Actualiser*, qui la fait
+paraître ; et une collection peut masquer le Mode libre (§4).
 
-**J'ai créé une valeur et un collègue ne la voit pas.**
-Elle est probablement locale à votre collection — soit parce que vous l'y avez créée, soit
-parce que sa dimension ou son domaine l'était (§4, règle 1). Promouvez-la en portée globale
-depuis le panneau *📖 Lexique*.
-
-**À quoi sert l'état `provisoire` / `défini` ?**
-À dire ce qui est stabilisé. Rien n'est empêché tant qu'un terme est provisoire : c'est une
-information pour les humains qui annotent, et un indicateur dans le « % défini ».
+**À quoi sert l'état *provisoire* / *défini* ?**
+À dire ce qui est stabilisé, et qui peut encore changer une entrée : une étiquette provisoire
+se renomme et reçoit des valeurs de tout annotateur du projet ; une définie, de ses
+responsables seulement. Rien n'empêche de poser une entrée provisoire.
 
 **Ma collection est en `restreint`. Mes collègues peuvent-ils voir les scans ?**
 Oui, s'ils ont accès à la collection. Le régime ne borde que la **sortie** — publication IIIF,
