@@ -406,16 +406,18 @@ function appliquerCadrage() {
   const r = rect ? null : state.regionsById.get(v.region);
   if (!r && !rect) return;
   CADRAGE.voulu = null;
-  const s = stage.getBoundingClientRect();
+  // La scène et la part libre sont mesurées à l'écran : la vue s'écrit en pixels de la
+  // page, divisée par le zoom d'interface (`sceneEnPage`).
+  const s = stage.getBoundingClientRect(), k = zoomDeLaScene();
   const z = v.libre || { l: s.left, t: s.top, r: s.right, b: s.bottom };
   const W = state.planche.largeur_px, H = state.planche.hauteur_px;
   const cadre = rect ? BDWizard.cadreAvecMarge(rect, W, H)
     : BDWizard.cadreDeLaBulle(r, state.regionsById.get(r.parent_id), W, H);
-  const vue = BDWizard.vueCadree(cadre, { w: z.r - z.l, h: z.b - z.t }, state.webScale,
-                                 BDWizard.ZOOM_CADRAGE);
+  const vue = BDWizard.vueCadree(cadre, { w: (z.r - z.l) / k, h: (z.b - z.t) / k },
+                                 state.webScale, BDWizard.ZOOM_CADRAGE);
   if (!vue) return;
-  vue.tx += z.l - s.left;
-  vue.ty += z.t - s.top;
+  vue.tx += (z.l - s.left) / k;
+  vue.ty += (z.t - s.top) / k;
   if (r && state.selectedId !== r.id) selectRegion(r.id);
   Object.assign(state, vue);
   applyTransform();
@@ -602,6 +604,24 @@ function actualiserTranscription(avant) {
 /* ===================================================================
    Transform (pan / zoom)
    =================================================================== */
+/* UX-6 — le zoom d'interface (« Aa », `theme.js`) est un `zoom` CSS sur la racine. Les
+   mesures de l'écran (`getBoundingClientRect`, `clientX`) sont en pixels VISIBLES ; la
+   `transform` du canevas s'écrit en pixels de la page, que le zoom multiplie. Sans la
+   division, sous un zoom de 150 %, « ajuster » posait une planche une fois et demie trop
+   grande, la molette ne gardait pas le point sous le pointeur et le guide cadrait la rangée
+   hors de la scène, sous sa fenêtre (relecture du 2026-11-05, mesuré). `zoomDeLaScene` dit
+   le zoom effectif de la scène, 1 sans lui ; `sceneEnPage` rend la boîte de la scène en
+   pixels de la page, son coin compris (pour les écarts à un point de l'écran). */
+function zoomDeLaScene() {
+  const z = stage.currentCSSZoom;
+  return typeof z === "number" && z > 0 ? z : 1;
+}
+
+function sceneEnPage() {
+  const r = stage.getBoundingClientRect(), k = zoomDeLaScene();
+  return { left: r.left, top: r.top, width: r.width / k, height: r.height / k, k };
+}
+
 function applyTransform() {
   canvas.style.transform =
     `translate(${state.tx}px, ${state.ty}px) scale(${state.zoom})`;
@@ -611,7 +631,7 @@ function applyTransform() {
 }
 
 function fitView() {
-  const r = stage.getBoundingClientRect();
+  const r = sceneEnPage();
   if (!state.webW) return;
   state.zoom = Math.min(r.width / state.webW, r.height / state.webH) * 0.95;
   state.tx = (r.width - state.webW * state.zoom) / 2;
@@ -1255,7 +1275,7 @@ function selectAndCenter(id) {
 function centerOnRegion(id) {
   const r = state.regionsById.get(id);
   if (!r || !state.webW) return;
-  const rect = stage.getBoundingClientRect();
+  const rect = sceneEnPage();
   // Zoom pour que la région occupe ~55 % du stage, borné (pas de sur-zoom).
   const fit = Math.min(rect.width / (r.w * state.webScale),
                        rect.height / (r.h * state.webScale)) * 0.55;
@@ -2785,7 +2805,7 @@ function bornesDuTrace() {
   const r = selectedRegion();
   if (r && r.type === "case") return { x: r.x, y: r.y, w: r.w, h: r.h };
   const W = state.planche.largeur_px, H = state.planche.hauteur_px;
-  const s = stage.getBoundingClientRect(), k = state.zoom * state.webScale;
+  const s = sceneEnPage(), k = state.zoom * state.webScale;
   const x1 = Math.max(0, -state.tx / k), y1 = Math.max(0, -state.ty / k);
   const x2 = Math.min(W, (s.width - state.tx) / k), y2 = Math.min(H, (s.height - state.ty) / k);
   const min = BDAnnotation.TRACE_MIN || 8;
@@ -2905,8 +2925,8 @@ let drag = null;  // { kind, ... }
 
 stage.addEventListener("wheel", (e) => {
   e.preventDefault();
-  const r = stage.getBoundingClientRect();
-  zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+  const r = sceneEnPage();
+  zoomAt((e.clientX - r.left) / r.k, (e.clientY - r.top) / r.k, e.deltaY < 0 ? 1.12 : 1 / 1.12);
 }, { passive: false });
 
 stage.addEventListener("mousedown", (e) => {
@@ -2975,8 +2995,9 @@ window.addEventListener("mousemove", (e) => {
   if (!drag) return;
 
   if (drag.kind === "pan") {
-    state.tx = drag.tx + (e.clientX - drag.sx);
-    state.ty = drag.ty + (e.clientY - drag.sy);
+    const k = zoomDeLaScene();       // un écart à l'écran, écrit en pixels de la page
+    state.tx = drag.tx + (e.clientX - drag.sx) / k;
+    state.ty = drag.ty + (e.clientY - drag.sy) / k;
     applyTransform();
     return;
   }
@@ -3986,8 +4007,8 @@ function setupControls() {
     BDDialog.register($("#export-modal"),
       { box: ".modal-box", labelledby: "export-title", onClose: fermerChoixExport,
         retour: () => $("#btn-donnees") });   // le déclencheur vit dans ce menu, replié
-  $("#zoom-in").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
-  $("#zoom-out").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
+  $("#zoom-in").onclick = () => { const r = sceneEnPage(); zoomAt(r.width / 2, r.height / 2, 1.2); };
+  $("#zoom-out").onclick = () => { const r = sceneEnPage(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
   $("#zoom-fit").onclick = fitView;
   $("#zoom-reset").onclick = () => { state.zoom = 1; applyTransform(); };
 

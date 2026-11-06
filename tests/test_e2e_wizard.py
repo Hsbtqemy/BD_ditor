@@ -1103,6 +1103,68 @@ def test_tracer_une_zone_cadre_la_rangee_du_jeu(page, jeu_decoupe, largeur):
                          rangee) < cadree["largeur"]
 
 
+PLANCHE_DANS_LA_SCENE = """() => {
+  const s = document.getElementById('stage').getBoundingClientRect();
+  const i = document.getElementById('planche-img').getBoundingClientRect();
+  return { zoom: document.getElementById('stage').currentCSSZoom,
+           dedans: i.left >= s.left - 1 && i.right <= s.right + 1 && i.top >= s.top - 1
+             && i.bottom <= s.bottom + 1,
+           s: [s.left, s.top, s.right, s.bottom], i: [i.left, i.top, i.right, i.bottom] };
+}"""
+POINT_DE_LA_PLANCHE = """([x, y]) => {
+  const q = document.getElementById('planche-img').getBoundingClientRect();
+  return [(x - q.left) / q.width, (y - q.top) / q.height];
+}"""
+
+
+@pytestmark_proxy
+def test_sous_le_zoom_d_interface_le_cadrage_tient(page, jeu_decoupe):
+    """Le zoom de « Aa » est un `zoom` CSS sur la racine : la scène se mesure en pixels
+    visibles, la `transform` de la planche s'écrit en pixels de la page. Mesuré le
+    2026-11-06 sous `bd-zoom = 2` (borné à 151 % par la fenêtre de 1 280 px) : la rangée
+    cadrée sortait de la scène et passait sous la fenêtre du guide, « ajuster » posait la
+    planche une fois et demie trop grande, et la molette déplaçait le point sous le
+    pointeur. Les trois tiennent, comme à 100 %."""
+    page.add_init_script("try { localStorage.setItem('bd-zoom', '2'); } catch (e) {}")
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _au_guide(page, jeu_decoupe)
+    expect(page.locator("#wizard-fenetre-titre")).to_have_text("Tracer une zone")
+    pid = _planche_du_parcours(jeu_decoupe)
+    jeu = [r for r in _api(jeu_decoupe["base"], CAMILLE, "GET", f"/api/planches/{pid}/regions")
+           if r["source"] == "jeu"]
+    l, t = min(r["x"] for r in jeu), min(r["y"] for r in jeu)
+    rangee = {"x": l, "y": t, "w": max(r["x"] + r["w"] for r in jeu) - l,
+              "h": max(r["y"] + r["h"] for r in jeu) - t}
+    _cadrage_pose(page)
+    assert page.evaluate("() => document.getElementById('stage').currentCSSZoom") > 1.2
+    cadree = page.evaluate(RANGEE_A_L_ECRAN, rangee)
+    assert cadree["dedans"], cadree
+    assert not cadree["recouvre"], cadree
+    # Hors du guide : « ajuster » pose la planche entière dans la scène.
+    page.locator("#wizard-guide-quitter").click()
+    expect(page.locator("#wizard-fenetre")).to_be_hidden()
+    page.wait_for_timeout(300)
+    vue = page.evaluate(PLANCHE_DANS_LA_SCENE)
+    assert vue["dedans"], vue
+    # La molette garde le point de la planche sous le pointeur.
+    s = vue["s"]
+    x, y = s[0] + (s[2] - s[0]) * 0.4, s[1] + (s[3] - s[1]) * 0.4
+    avant = page.evaluate(POINT_DE_LA_PLANCHE, [x, y])
+    page.mouse.move(x, y)
+    page.mouse.wheel(0, -100)
+    page.wait_for_timeout(300)
+    apres = page.evaluate(POINT_DE_LA_PLANCHE, [x, y])
+    assert abs(avant[0] - apres[0]) < 0.003 and abs(avant[1] - apres[1]) < 0.003, (avant, apres)
+    # Le glissé (bouton du milieu) suit le pointeur : 60 px à l'écran, 60 px de planche.
+    g0 = page.locator("#planche-img").bounding_box()["x"]
+    page.mouse.down(button="middle")
+    page.mouse.move(x + 60, y, steps=4)
+    page.mouse.up(button="middle")
+    page.wait_for_timeout(200)
+    g1 = page.locator("#planche-img").bounding_box()["x"]
+    assert abs((g1 - g0) - 60) < 2, (g0, g1)
+
+
 @pytestmark_proxy
 @pytest.mark.parametrize("largeur", [1280, 768])
 def test_corriger_cadre_la_case_de_la_bulle(page, jeu_decoupe, largeur):
