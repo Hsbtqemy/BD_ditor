@@ -39,7 +39,7 @@ build) · auto-hébergé, traitement 100 % local.
 ### Données
 
 - **SQLite** — fichier unique, mode **WAL**, `foreign_keys=ON` + `ON DELETE CASCADE`
-- Recherche plein texte **SQLite FTS5** (table `recherche` : OCR + note + tags + lemmes)
+- Recherche plein texte **SQLite FTS5** (table `recherche` : OCR + note + étiquettes + lemmes)
 - **Pillow** ≥ 10 — copies de travail JPEG + dérivés web **JPEG 25 % du scan (au moins 1 600 px de large, jamais agrandi) / qualité 82**
 - Régions stockées en **pixels MASTER** (indépendantes du dérivé)
 - Sauvegarde par **`VACUUM INTO`** (snapshot cohérent) → **zip** horodaté
@@ -187,8 +187,8 @@ La base `bd_annotator.sqlite` et les dossiers `corpus/` (masters) et
 
 ## Modèle de données
 
-`albums → planches → regions` (arbre via `parent_id`) `→ annotations → tags`
-(N-N). Coordonnées **toujours en pixels master** ; la conversion master↔web est
+`albums → planches → regions` (arbre via `parent_id`) `→ annotations` (la note),
+et sur une région, ses relevés de grille. Coordonnées **toujours en pixels master** ; la conversion master↔web est
 faite côté frontend (`web_scale = web_width / master_width`).
 
 Une **planche** porte un `role` (`recit` / `paratexte`), un horodatage de
@@ -197,8 +197,9 @@ validation (`validee`) et de verrou (`verrouillee`). Le **numéro éditorial** e
 `pl·c` / `pl·c·b` le sont aussi (`database.numeros_editoriaux()` /
 `citations_regions()`, cf. `docs/numerotation-et-citation.md`).
 
-La table FTS5 `recherche` agrège texte OCR + note + tags + **lemmes** ; elle est
-maintenue explicitement par `database.reindex_region()` / `unindex_region()`.
+La table FTS5 `recherche` agrège texte OCR + note + étiquettes (les libellés des
+relevés des grilles ouvertes) + **lemmes** ; elle est maintenue explicitement par
+`database.reindex_region()` / `unindex_region()`.
 
 **Couche linguistique** (NLP optionnel) : la table `tokens` (un mot du dialogue :
 lemme / POS / morph) est **régénérée à chaque réindexation** ; la correction
@@ -423,9 +424,8 @@ humaine) — la qualité finale vient de la relecture humaine.
   phrase (sigles pointés préservés, noms propres laissés en bas de casse) ;
   `tools/normaliser_casse.py --dry-run` rattrape un corpus déjà océrisé. Une ligne qui
   n'est pas intégralement capitale n'est jamais touchée. Cf. `docs/normalisation-casse.md`.
-- Les tags sont insensibles à la casse et stockés en minuscules ; un tag
-  s'applique à n'importe quel niveau de la hiérarchie. Aucune taxonomie n'est
-  imposée — les catégories émergent du corpus.
+- Aucune taxonomie n'est imposée : chaque projet a son Mode libre, une grille où
+  les étiquettes naissent en les tapant — les catégories émergent du corpus.
 - Déploiement multi-comptes (HTTPS, 2FA) via Docker Compose + Authelia :
   `deploy/` et `docs/deploiement-docker.md`. Par défaut, l'app n'a **aucune
   authentification** (usage local mono-utilisateur, cf. `docs/hebergement-securite.md`).
