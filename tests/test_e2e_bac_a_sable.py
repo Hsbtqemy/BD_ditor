@@ -40,7 +40,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 import database  # noqa: E402
 import main  # noqa: E402
-from config import GRILLE_DE_TRAVAIL_NOM, GRILLE_DU_BAC_NOM  # noqa: E402
+from config import GRILLE_DU_BAC_NOM  # noqa: E402
 from conftest import make_png  # noqa: E402
 from test_jeu import ecrire_jeu  # noqa: E402
 from tools.mesurer_reflow import ECRASEMENT, SONDE, decrire_ecrasement  # noqa: E402
@@ -209,11 +209,12 @@ def test_la_page_annotation_s_y_sert_sans_aucune_autre_action(page, jeu_a_annote
     page.locator('a[href="/annotation"]').first.click()
     page.wait_for_url(re.compile(r"/annotation"))
     page.wait_for_load_state("networkidle")
-    # La grille du bac à sable, et la grille de travail de tout projet (ANN-7) ; la page
-    # s'ouvre sur la première.
+    # La grille de travail de tout projet (ANN-7), l'onglet « Mode libre », en tête ; puis
+    # la grille du bac à sable, sur laquelle la page s'ouvre (la première qui n'est pas le
+    # Mode libre).
     onglets = page.locator("#an-onglets [role=tab]")
-    expect(onglets).to_contain_text([GRILLE_DU_BAC_NOM, GRILLE_DE_TRAVAIL_NOM])
-    expect(onglets.first).to_have_attribute("aria-selected", "true")
+    expect(onglets).to_contain_text(["Mode libre", GRILLE_DU_BAC_NOM])
+    expect(onglets.nth(1)).to_have_attribute("aria-selected", "true")
     page.locator('.an-zone-btn[title="AAAH ! OUILLE"]').click()
     mot = page.locator("#an-mot-0")
     expect(mot).to_have_text("AAAH")

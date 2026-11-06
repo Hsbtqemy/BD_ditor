@@ -4832,6 +4832,77 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-conflit .an-bandeau-titre { color: var(--ink-red); }
 .an-bandeau-gestes { display: flex; flex-wrap: wrap; gap: .4615rem; }
 
+/* Le MODE LIBRE (ANN-7, maquette tranchée par Hugo le 2026-11-06) : l'onglet de la grille de
+   travail. Le champ de création, et ce qu'Entrée fera, qui FLOTTE au-dessus de la liste (rien ne
+   bouge pendant la frappe) ; la rangée de l'ordre garde sa place même vide, pour que la
+   première étiquette ne fasse rien sauter ; ✎ et sa ligne d'édition, ses confirmations sur
+   place ; « ↕ Ranger », sa poignée et ↑ ↓. Au doigt, des cibles de 44 px, et rien qui ne passe
+   que par le survol. */
+.an-libre { display: flex; flex-direction: column; gap: .4615rem; }
+.an-libre[hidden] { display: none; }
+.an-creer-bloc { position: relative; }
+.an-creer-wrap { display: flex; align-items: center; gap: .3077rem; min-width: 0; }
+.an-creer-wrap input { flex: 1 1 auto; min-width: 0; padding: .3846rem .6154rem;
+                       background: var(--bg-input); color: var(--text);
+                       border: 1px solid var(--accent-green); border-radius: 5px; font: inherit; }
+.an-quoi { position: absolute; left: 0; right: 0; top: calc(100% + .1538rem); z-index: 30;
+           margin: 0; padding: .2308rem; background: var(--bg-panel);
+           border: 1px solid var(--border); border-radius: 6px;
+           box-shadow: 0 6px 18px var(--shadow); }
+.an-res.an-res-off { cursor: default; color: var(--text-muted); }
+.an-res.an-res-off:hover { background: none; }
+.an-res.an-res-off .an-res-chemin { color: var(--text-muted); }
+.an-libre-ordre.vide { visibility: hidden; }
+.an-libre-ordre select { flex: 0 1 auto; }
+#an-ranger { flex: 0 0 auto; margin-left: auto; }
+#an-ranger[aria-pressed="true"] { border-color: var(--accent-blue); font-weight: 600; }
+#an-ranger[aria-disabled="true"] { color: var(--text-muted); border-style: dashed; }
+.an-libre-ligne { display: flex; align-items: center; gap: .1538rem; min-width: 0; }
+.an-libre-ligne > .an-ent-btn { flex: 1 1 auto; width: auto; min-width: 0; }
+.an-crayon { flex: 0 0 auto; min-width: 1.9rem; padding: .0769rem .3846rem; line-height: 1.2; }
+#an-plan .an-crayon[aria-disabled="true"], #an-plan .an-gestes-rares [aria-disabled="true"],
+#an-plan .an-plusv[aria-disabled="true"], #an-plan .an-conf [aria-disabled="true"] {
+  border-style: dashed; }
+.an-edition { background: var(--hover); outline: 1px solid var(--border); border-radius: 5px;
+              padding: .1538rem 0; }
+.an-edition > .an-libre-ligne { padding: 0 .3077rem; gap: .4615rem; }
+.an-renom { flex: 1 1 auto; min-width: 0; font: inherit; font-weight: 600;
+            padding: .1538rem .4615rem; background: var(--bg-input); color: var(--text);
+            border: 1px solid var(--accent-blue); border-radius: 4px; }
+.an-renomv, .an-addv { width: 8rem; max-width: 100%; font: inherit; font-size: .9231rem;
+                       padding: .1538rem .5385rem; border-radius: 12px; background: var(--bg-input);
+                       color: var(--text); border: 1px solid var(--accent-green); }
+.an-renom[readonly], .an-renomv[readonly] { border-style: dashed; border-color: var(--border); }
+.an-etat-ent { font-size: .8462rem; color: var(--text-muted); white-space: nowrap; }
+.an-plusv { border-style: dashed; color: var(--text-muted); }
+.an-gestes-rares { display: flex; flex-wrap: wrap; gap: .3077rem;
+                   margin: .3077rem .4615rem .3077rem 1.4615rem; }
+.an-conf { display: flex; flex-direction: column; gap: .3077rem;
+           margin: .3077rem .4615rem .3077rem 1.4615rem; padding: .4615rem .6154rem;
+           border: 1px solid var(--border); border-left: 3px solid var(--text-muted);
+           border-radius: 5px; }
+.an-conf.an-conf-danger { border-left-color: var(--danger); }
+.an-conf p { margin: 0; overflow-wrap: anywhere; }
+.an-conf-l { display: flex; flex-wrap: wrap; gap: .3077rem; align-items: center; }
+.an-conf select { max-width: 100%; min-width: 0; padding: .2308rem .3846rem;
+                  background: var(--bg-input); color: var(--text);
+                  border: 1px solid var(--border); border-radius: 5px; }
+.an-btn-danger { border-color: var(--danger); color: var(--danger); }
+.an-rangee { display: flex; align-items: center; gap: .4615rem; padding: .1538rem .4615rem;
+             border: 1px solid transparent; border-radius: 5px; cursor: grab; }
+.an-rangee:hover { background: var(--hover); }
+.an-rangee .nav-spacer { flex: 1; }
+.an-poignee { color: var(--text-muted); font-size: 1.1rem; line-height: 1; }
+.an-rangee.an-glisse { opacity: .45; }
+.an-rangee.an-cible-avant { box-shadow: inset 0 2px 0 var(--accent-blue); }
+.an-rangee.an-cible-apres { box-shadow: inset 0 -2px 0 var(--accent-blue); }
+@media (any-pointer: coarse) {
+  .an-crayon, .an-plusv, .an-gestes-rares button, .an-conf button, .an-conf select, #an-ranger,
+  #an-tri, #an-creer, .an-libre-ent .an-var, .an-renom, .an-renomv, .an-addv {
+    min-height: 3.3846rem; }          /* 44 px à la police de base (13 px) */
+  .an-crayon { min-width: 3.3846rem; }
+}
+
 .an-guide { flex: 0 0 auto; height: 12.3077rem; border-top: 1px solid var(--border);
             background: var(--bg-deep); display: flex; flex-direction: column;
             padding: .6154rem .9231rem; gap: .3077rem; font-size: .9231rem; }
