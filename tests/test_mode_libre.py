@@ -281,6 +281,35 @@ def test_une_etiquette_definie_ne_se_renomme_que_par_les_responsables(client, de
     assert r.status_code == 403 and "est définie" in r.text, r.text
 
 
+def test_une_valeur_ne_s_ajoute_pas_en_posant_a_une_etiquette_definie(client, decor, db_path):
+    """J5 (confirmée le 2026-11-06), relecture croisée du mode libre : faire NAÎTRE une valeur
+    est le geste `ajouter_valeur`, la même réponse partout — la route des variantes la
+    refusait à l'annotatrice, la pose (« nom : valeur ») et `nouvelle_variante` la lui
+    accordaient. Poser une valeur qui existe reste à tout annotateur."""
+    t = _travail(client, decor, db_path)
+    g, b = t["grille_id"], bulle(t)
+    r = client.post(f"/api/grilles/{g}/entrees", headers=ADMIN,
+                    json={"libelle": "sentiment", "forme": "variantes",
+                          "variantes": [{"libelle": "perte"}]})
+    assert r.status_code == 201, r.text
+    refus = poser(client, t, region_id=b, attendu=(403,),
+                  nouvelle_entree={"libelle": "sentiment : joie"})
+    assert "est définie" in refus["detail"], refus
+    r = poser(client, t, region_id=b, nouvelle_entree={"libelle": "sentiment : perte"})
+    m = client.put(f"/api/releves/{r['id']}", headers=STAG,
+                   json={"nouvelle_variante": "colère", "vu": {"variante_cle": "perte"}})
+    assert m.status_code == 403 and "est définie" in m.text, m.text
+    assert [v["libelle"] for v in _plan(client, t)["sentiment"]["variantes"]] == ["perte"]
+    # Un responsable, lui, l'ajoute en posant ; l'annotatrice la pose ensuite, elle existe.
+    poser(client, t, qui=ADMIN, region_id=t["zones"]["case"],
+          nouvelle_entree={"libelle": "sentiment : joie"})
+    m = client.put(f"/api/releves/{r['id']}", headers=STAG,
+                   json={"nouvelle_variante": "Joie", "vu": {"variante_cle": "perte"}})
+    assert m.status_code == 200 and m.json()["variante_cle"] == "joie", m.text
+    assert [v["libelle"] for v in _plan(client, t)["sentiment"]["variantes"]] == [
+        "perte", "joie"]
+
+
 def test_qui_n_annote_pas_le_projet_ne_renomme_rien(client, decor, db_path):
     from grilles_decor import ANA, SAM, ZOE
     t = _travail(client, decor, db_path)
@@ -304,6 +333,39 @@ def test_qui_n_annote_pas_le_projet_ne_renomme_rien(client, decor, db_path):
                   {"etat": "provisoire"}).status_code == 200
     r = _patch(client, STAG, f"/api/grilles/{s}/entrees/cri", {"libelle": "hurlement"})
     assert r.status_code == 403, r.text
+
+
+def test_le_brouillon_d_une_grille_fermee_ne_se_lit_par_aucun_geste_sur_place(client, decor,
+                                                                              db_path):
+    """Relecture croisée du mode libre : un `PATCH` au corps VIDE sur une entrée rendait le
+    plan du BROUILLON d'une grille fermée à une lectrice et à une annotatrice, que sa route
+    (`GET …/versions/2`) leur refuse ; et un 404 contre un 403 disait quelles clés le
+    brouillon porte. La garde passe avant la version et la clé, sur les trois routes du
+    remaniement sur place."""
+    from grilles_decor import ANA, LEA, ZOE
+    g = decor["grille_id"]                       # la grille FERMÉE « Signaux », publiée en 1
+    r = _patch(client, LEA, f"/api/grilles/{g}/entrees/cri",
+               {"libelle": "SECRET DU BROUILLON", "definition": "pas encore publiée"})
+    assert r.status_code == 200 and r.json()["version"]["etat"] == "brouillon", r.text
+    assert client.post(f"/api/grilles/{g}/entrees", headers=LEA,
+                       json={"libelle": "Clé secrète"}).status_code == 201
+    refus = []
+    for qui in (ANA, STAG):                      # lectrice de C ; annotatrice du projet
+        assert client.get(f"/api/grilles/{g}/versions/2", headers=qui).status_code == 404
+        for cle in ("cri", "cle-secrete", "n-existe-pas"):
+            for r in (_patch(client, qui, f"/api/grilles/{g}/entrees/{cle}", {}),
+                      _patch(client, qui, f"/api/grilles/{g}/entrees/{cle}", {"libelle": "x"}),
+                      _patch(client, qui, f"/api/grilles/{g}/entrees/{cle}/variantes/v",
+                             {"libelle": "x"}),
+                      client.post(f"/api/grilles/{g}/entrees/{cle}/variantes", headers=qui,
+                                  json={"libelle": "x"}),
+                      client.put(f"/api/grilles/{g}/ordre", headers=qui,
+                                 json={"quoi": "entree", "cle": cle, "place": 0})):
+                assert "SECRET" not in r.text, r.text
+                refus.append((r.status_code, r.json()["detail"]))
+    assert {s for s, _d in refus} == {403} and len({d for _s, d in refus}) == 1, refus
+    # Qui ne voit pas la grille : 404, comme avant.
+    assert _patch(client, ZOE, f"/api/grilles/{g}/entrees/cri", {}).status_code == 404
 
 
 def test_le_plan_dit_ce_que_l_appelant_peut_remanier(client, decor, db_path):

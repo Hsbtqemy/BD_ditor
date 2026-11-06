@@ -730,6 +730,32 @@ test("« Créer « … » » dans une grille ouverte seulement, sans doublon", (
   assert.equal(A.entreeNeuve({ porte_sur: ["case"] }, "Paris").forme, "simple");
 });
 
+test("la ligne « Créer » du filtre n'ajoute pas une valeur à une étiquette définie (J5)", () => {
+  // Relecture croisée du mode libre : sur une étiquette DÉFINIE, le champ de création refusait
+  // « sentiment : joie », et la ligne « Créer » du filtre d'une grille ouverte l'offrait.
+  // Une règle, écrite une fois : celle du serveur, que le plan dit par `remaniable`.
+  const defini = { cle: "sentiment", libelle: "sentiment", forme: "variantes", etat: "defini",
+                   variantes: [{ cle: "perte", libelle: "perte" }],
+                   remaniable: { renommer: false, ajouter_valeur: false, ranger: true,
+                                 fusionner: false, retirer: false, etat: false } };
+  const plan = { grille: { ouverte: true }, porte_sur: ["bulle"], rubriques: [],
+                 entrees: [defini] };
+  const o = { ouverte: true };
+  assert.equal(A.ceQuEntreeFera(plan, "sentiment : joie", () => []).ok, false);
+  assert.equal(A.creerDansLeFiltre(o, "sentiment : joie", [], plan), null);
+  assert.equal(A.raisonValeurNouvelle(defini), "« sentiment » est définie : seuls les responsables la changent");
+  // Poser une valeur qui EXISTE reste offert ; à qui peut ajouter (un responsable), la ligne
+  // revient ; sans `remaniable` (le plan ne dit rien), rien n'est éteint.
+  assert.equal(A.ceQuEntreeFera(plan, "sentiment : perte", () => []).ok, true);
+  const resp = { ...defini, remaniable: { ...defini.remaniable, ajouter_valeur: true } };
+  assert.equal(A.creerDansLeFiltre(o, "sentiment : joie", [], { ...plan, entrees: [resp] }),
+               "sentiment : joie");
+  assert.equal(A.raisonValeurNouvelle(resp), null);
+  const muet = { ...defini, remaniable: undefined };
+  assert.equal(A.creerDansLeFiltre(o, "sentiment : joie", [], { ...plan, entrees: [muet] }),
+               "sentiment : joie");
+});
+
 test("l'entrée qui naît en la posant suit la cible de la version", () => {
   assert.deepEqual(A.entreeNeuve({ porte_sur: ["mots"] }, "Paris").pose, "mots");
   assert.deepEqual(A.entreeNeuve({ porte_sur: ["case"] }, "Paris").pose, "zone");

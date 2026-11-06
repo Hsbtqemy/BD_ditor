@@ -1119,7 +1119,9 @@
      nomme exactement aucun résultat ; `null` sinon, et toujours pour une grille fermée.
      « nom : valeur » se crée — ou s'AJOUTE comme variante à l'entrée « nom » à variantes
      qui existe — si ses deux côtés sont écrits, si « nom » n'est pas une entrée sans
-     variantes et si la variante n'existe pas déjà (`plan`, la version affichée). */
+     variantes, si la variante n'existe pas déjà (`plan`, la version affichée) et si
+     l'appelant peut lui ajouter une valeur (`raisonValeurNouvelle`, J5) : la ligne n'offre
+     pas ce que le serveur refuserait. */
   function creerDansLeFiltre(grille, requete, resultats, plan) {
     const t = String(requete || "").trim();
     if (!grille || !grille.ouverte || !t) return null;
@@ -1130,6 +1132,7 @@
       if (e && e.forme !== "variantes") return null;
       const v = normaliser(nv.valeur);
       if (e && (e.variantes || []).some((x) => normaliser(x.libelle) === v)) return null;
+      if (raisonValeurNouvelle(e)) return null;
       return `${nv.nom} : ${nv.valeur}`;
     }
     const n = normaliser(t);
@@ -1589,6 +1592,16 @@
     return "Les étiquettes se renomment par les annotateurs du projet";
   }
 
+  /* Une valeur NOUVELLE sous l'entrée `e` : l'ajouter est un remaniement (J5), aux
+     responsables sur une étiquette définie — la règle du serveur, que le plan dit entrée par
+     entrée (`remaniable`). La raison qui l'éteint, `null` si elle est offerte, ou si le plan
+     ne dit rien. Lue par le champ de création (`ceQuEntreeFera`) et par la ligne « Créer »
+     du filtre d'une grille ouverte (`creerDansLeFiltre`) : une règle, écrite une fois. */
+  function raisonValeurNouvelle(e) {
+    return e && e.remaniable && !e.remaniable.ajouter_valeur
+      ? raisonRemanier(e, "ajouter_valeur") : null;
+  }
+
   /* Les gestes de ✎ et ce qui les éteint, en une table : `{ geste: raison | null }`. */
   const GESTES_DU_CRAYON = ["renommer", "ajouter_valeur", "etat", "fusionner", "passer", "retirer"];
   function gestesOfferts(e) {
@@ -1655,8 +1668,8 @@
     }
     const neuves = aPoser.filter((i) => !i.variante);
     // Ajouter une valeur est un remaniement (J5) : sur une étiquette définie, aux responsables.
-    if (neuves.length && e.remaniable && !e.remaniable.ajouter_valeur) {
-      return off("valeur nouvelle", raisonRemanier(e, "ajouter_valeur"));
+    if (neuves.length && raisonValeurNouvelle(e)) {
+      return off("valeur nouvelle", raisonValeurNouvelle(e));
     }
     const libelle = aPoser.length === 1 && neuves.length === 1
       ? `Ajouter « ${neuves[0].saisie} » à « ${e.libelle} » et poser`
@@ -1794,6 +1807,7 @@
            relevesParCase, decompte, zonesTerminees, nomDuLien, relevesDeSurface, ciblePosee,
            CLE_GUIDE, lireGuideReplie, retenirGuideReplie,
            NOM_MODE_LIBRE, nomOnglet, lireSaisie, RAISON_RARE, raisonRemanier, gestesOfferts,
+           raisonValeurNouvelle,
            raisonCrayon, etatEnMots, ceQuEntreeFera, dansModeLibre, TRIS, TRI_DEFAUT, CLE_TRI,
            lireTri, retenirTri, trierEntrees, deplacement, deplacementAvant, retraitEnMots,
            fusionEnMots, BILAN_J8 };

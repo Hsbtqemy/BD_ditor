@@ -508,15 +508,38 @@ def _entree_par_nom(conn, grille_id: int, version, libelle: str, forme: str):
     return grilles.entree(conn, version["id"], cle)
 
 
-def _variante_par_nom(conn, grille_id: int, version, entree, valeur: str) -> str:
+def _exiger_ajout_de_valeur(conn, portee, grille_id: int, entree) -> None:
+    """J5 (confirmée par Hugo le 2026-11-06) : faire NAÎTRE une variante sous une entrée — par
+    la pose (« nom : valeur »), par `nouvelle_variante` — est le geste `ajouter_valeur` de
+    `Portee.peut_remanier_entree`, la réponse même de la route des variantes : sur une entrée
+    DÉFINIE, aux responsables du projet seulement (403 nommé, la phrase du formulaire).
+    L'appelant a vérifié la grille ouverte et sa version vivante. Sans quoi une annotatrice
+    ajoutait, en posant, la valeur que le formulaire lui refusait (relecture croisée du mode
+    libre). Poser une variante qui EXISTE reste à tout annotateur : la question ne se pose
+    qu'à la naissance."""
+    g = conn.execute("SELECT projet_id, travail FROM grille WHERE id = ?",
+                     (grille_id,)).fetchone()
+    if portee.peut_remanier_entree(
+            g["projet_id"], "ajouter_valeur",
+            annotateur=autorisation.ecrit_dans_le_projet(conn, portee, g["projet_id"]),
+            ouverte=True, provisoire=entree["etat"] == grilles.ENTREE_PROVISOIRE,
+            travail=bool(g["travail"])):
+        return
+    raise HTTPException(403, grille_ecriture.MOTIF_ENTREE_DEFINIE.format(
+        libelle=entree["libelle"]))
+
+
+def _variante_par_nom(conn, portee, grille_id: int, version, entree, valeur: str) -> str:
     """La variante de ce NOM sous l'entrée (par la clé d'un libellé), reprise ; sinon elle
-    NAÎT, sa `cle` dérivée de son libellé parmi celles de l'entrée. Rend sa `cle`."""
+    NAÎT, sa `cle` dérivée de son libellé parmi celles de l'entrée, si l'appelant peut lui
+    ajouter une valeur (`_exiger_ajout_de_valeur`). Rend sa `cle`."""
     variantes = {r["cle"]: r for r in conn.execute(
         "SELECT * FROM grille_variante WHERE version_id = ? AND entree_cle = ? "
         "ORDER BY rang, id", (version["id"], entree["cle"]))}
     v = next((r for r in variantes.values() if cle_tag(r["libelle"]) == cle_tag(valeur)), None)
     if v is not None:
         return v["cle"]
+    _exiger_ajout_de_valeur(conn, portee, grille_id, entree)
     vc = grille_ecriture.cle_neuve(valeur, deja=variantes, ref=None, defaut="variante",
                                    quoi="variante")
     rang = max((r["rang"] for r in variantes.values()), default=-1) + 1
@@ -529,14 +552,15 @@ def _variante_par_nom(conn, grille_id: int, version, entree, valeur: str) -> str
     return vc
 
 
-def _entree_neuve(conn, grille_id: int, version, libelle: str):
+def _entree_neuve(conn, portee, grille_id: int, version, libelle: str):
     """Une entrée qui naît EN LA POSANT, dans la version vivante d'une grille OUVERTE (G14,
     le patron des tags libres). Rend `(entrée, cle de variante ou None)`.
 
     « nom : valeur » (ANN-7, « les variables aussi », Hugo, 2026-11-05) fait naître — ou
     retrouve — l'entrée « nom » À VARIANTES et sa variante « valeur » : « lieu : forêt » pose
     l'entrée « lieu » avec sa variante « forêt » ; une valeur nouvelle tapée sur une entrée à
-    variantes qui existe (« lieu : grotte ») s'y ajoute comme variante. Les deux-points
+    variantes qui existe (« lieu : grotte ») s'y ajoute comme variante — si l'entrée est
+    PROVISOIRE, ou par qui gère le projet (J5, `_exiger_ajout_de_valeur`). Les deux-points
     séparent au PREMIER ; un côté vide est refusé (422 nommé), comme un nom déjà pris par une
     entrée qui n'est pas à variantes. Sans deux-points : une entrée simple, comme avant."""
     libelle = grilles.propre(libelle)
@@ -554,7 +578,7 @@ def _entree_neuve(conn, grille_id: int, version, libelle: str):
         raise HTTPException(422, f"« {e['libelle']} » est déjà une entrée de la grille, sans "
                                  "variantes : posez-la telle quelle, ou donnez un autre nom à "
                                  "celle-ci.")
-    return e, _variante_par_nom(conn, grille_id, version, e, valeur)
+    return e, _variante_par_nom(conn, portee, grille_id, version, e, valeur)
 
 
 @router.post("/api/releves", status_code=201)
@@ -581,7 +605,7 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
         if not ouverte or version["etat"] != grilles.ETAT_VIVANTE:
             raise HTTPException(422, "Une entrée ne naît en posant que dans une grille "
                                      "ouverte.")
-        entree, variante_neuve = _entree_neuve(conn, payload.grille_id, version,
+        entree, variante_neuve = _entree_neuve(conn, portee, payload.grille_id, version,
                                                payload.nouvelle_entree.libelle)
         if variante_neuve is not None:
             if payload.variante_cle and payload.variante_cle != variante_neuve:
@@ -706,7 +730,7 @@ def modifier_releve(releve_id: int, payload: ReleveUpdate,
         raise HTTPException(409, "L'entrée de ce relevé n'existe plus dans sa version : il se "
                                  "retire, il ne se modifie plus.")
     if "nouvelle_variante" in champs:
-        champs["variante_cle"] = _variante_nommee(conn, r, version, entree,
+        champs["variante_cle"] = _variante_nommee(conn, portee, r, version, entree,
                                                   champs.pop("nouvelle_variante"))
     actuel = instantane(conn, releve_id)
     nouveau = {}
@@ -789,10 +813,10 @@ def modifier_releve(releve_id: int, payload: ReleveUpdate,
     return vue_de(conn, portee, releve_id)
 
 
-def _variante_nommee(conn, r, version, entree, libelle) -> str:
+def _variante_nommee(conn, portee, r, version, entree, libelle) -> str:
     """La variante que nomme `nouvelle_variante` (un libellé) : reprise, ou née sous l'entrée
     — dans la version vivante d'une grille OUVERTE seulement (422 nommé sinon), la règle de
-    « nom : valeur » à la pose. Rend sa clé."""
+    « nom : valeur » à la pose, et par qui peut lui ajouter une valeur (J5). Rend sa clé."""
     libelle = grilles.propre(libelle)
     if not libelle:
         raise HTTPException(422, "Une variante a besoin d'un libellé.")
@@ -803,7 +827,7 @@ def _variante_nommee(conn, r, version, entree, libelle) -> str:
     if not ouverte or version["etat"] != grilles.ETAT_VIVANTE:
         raise HTTPException(422, "Une variante ne naît en posant que dans une grille ouverte : "
                                  "choisissez l'une de celles de l'entrée.")
-    return _variante_par_nom(conn, r["grille_id"], version, entree, libelle)
+    return _variante_par_nom(conn, portee, r["grille_id"], version, entree, libelle)
 
 
 def retirer(conn, r) -> None:

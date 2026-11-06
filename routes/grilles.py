@@ -838,9 +838,17 @@ def _ecrire(conn, portee, grille_id: int, geste, *, gerer: bool = True) -> dict:
     version, la relecture entière (`grille_ecriture.ecrire`), le journal, le commit.
 
     `gerer=False` (J5 (c)) : la grille n'a qu'à être LISIBLE ; le geste pose alors sa question
-    sur l'acte et l'entrée (`_exiger_remaniement`), avant d'écrire quoi que ce soit."""
+    sur l'acte et l'entrée (`_exiger_remaniement`), avant d'écrire quoi que ce soit. Mais qui
+    ne gère pas le projet n'atteint ainsi que la version VIVANTE d'une grille OUVERTE, et
+    seulement s'il y pose (`ecrit_dans_le_projet`) : ailleurs, le 403 de la gestion, AVANT de
+    chercher la version ou la clé — sans quoi un corps vide rendait le plan du BROUILLON d'une
+    grille fermée à qui ne le lit pas, et un 404 contre un 403 disait quelles clés il porte
+    (relecture croisée du mode libre)."""
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id, gerer=gerer)
+    if not gerer and not g["gerable"] and not (
+            g["ouverte"] and autorisation.ecrit_dans_le_projet(conn, portee, g["projet_id"])):
+        raise HTTPException(403, _MOTIF_GERER)
     conn.execute("SAVEPOINT geste")       # ce qu'on défait si rien ne change, et rien d'autre
     try:
         v, cree = grille_ecriture.version_en_ecriture(conn, g, par=portee.utilisateur)
@@ -899,8 +907,8 @@ def _exiger_remaniement(conn, portee, g, v, entree: dict, geste: str, champs=())
                                  "du projet ; une autre grille se range au formulaire, par "
                                  "ses responsables." if annotateur else _MOTIF_GERER)
     if annotateur and ouverte and not provisoire:
-        raise HTTPException(403, f"« {entree['libelle']} » est définie : seuls les responsables "
-                                 "du projet la renomment ou lui ajoutent une valeur.")
+        raise HTTPException(403, grille_ecriture.MOTIF_ENTREE_DEFINIE.format(
+            libelle=entree["libelle"]))
     raise HTTPException(403, _MOTIF_GERER)
 
 

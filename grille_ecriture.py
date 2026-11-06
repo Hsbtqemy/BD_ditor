@@ -45,6 +45,12 @@ CHAMPS_LISTE = ("libelle",)
 CHAMPS_CASE = ("libelle", "definition")
 CHAMPS_VERSION = ("porte_sur", "note")
 
+# Le refus d'un remaniement sur place (J5) sur une entrée DÉFINIE, à un annotateur : la même
+# phrase par la route des variantes (`routes/grilles.py`) et par la pose qui ferait naître une
+# valeur (`routes/releves.py`).
+MOTIF_ENTREE_DEFINIE = ("« {libelle} » est définie : seuls les responsables du projet la "
+                        "renomment ou lui ajoutent une valeur.")
+
 
 # --------------------------------------------------------------------------- #
 # Où l'on écrit
