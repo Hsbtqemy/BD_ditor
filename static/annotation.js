@@ -1671,8 +1671,9 @@ function rendreResultats(plan, filtre) {
   const res = $("#an-resultats");
   const champ = $("#an-filtre");
   const trouves = A.chercher(plan, filtre);
-  const aCreer = ecrivable() ? A.creerDansLeFiltre(grilleOuverte(), filtre, trouves) : null;
-  if (aCreer) trouves.push({ creer: aCreer, libelle: `Créer « ${aCreer} »`,
+  const aCreer = ecrivable() ? A.creerDansLeFiltre(grilleOuverte(), filtre, trouves, plan)
+    : null;
+  if (aCreer) trouves.push({ creer: aCreer, libelle: A.libelleDeCreation(plan, aCreer),
                              chemin: `dans ${grilleOuverte().nom}`, exemple: null });
   S.resultats = trouves;
   if (S.actif >= trouves.length) S.actif = 0;

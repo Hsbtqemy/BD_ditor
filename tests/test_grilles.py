@@ -22,6 +22,10 @@ from grilles_decor import (ADM, ANA, BEA, IVAN, LEA, MODELE, MODELE_LISTES, OLGA
                            STAG, ZOE, bac_de_bea, csv_de, flux, grille_active, importer,
                            monter, ok)
 
+# La grille de travail de chaque projet (ANN-7) n'est pas l'objet de ce fichier : cf.
+# `conftest.sans_grille_de_travail`.
+pytestmark = pytest.mark.usefixtures("sans_grille_de_travail")
+
 ENTETE = ["cle", "rubrique", "rubrique_cle", "forme", "libelle", "variante_cle", "variante",
           "structure", "definition", "exemples", "piege", "liste", "precision", "lien", "cible",
           "cardinalite"]

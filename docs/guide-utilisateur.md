@@ -329,7 +329,8 @@ Les personnages sont des entités de corpus : le même personnage traverse les a
 à côté du locuteur ou du personnage d'une boîte.
 
 Les tags, la situation d'une case et le profil d'un personnage ne se posent plus : ce sont
-désormais des grilles, qu'un projet écrit s'il en a besoin.
+désormais des grilles. Chaque projet en a une, ouverte, « Travail en cours », où l'on pose une
+étiquette en la tapant, « lieu : forêt » compris ; il en écrit d'autres s'il en a besoin.
 
 Tout est sauvegardé automatiquement. **`Ctrl+Z` annule la dernière action d'annotation** —
 y compris une suppression de région, recréée avec tout ce qu'elle contenait et ses

@@ -24,6 +24,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 from playwright.sync_api import expect  # noqa: E402
+from config import GRILLE_DE_TRAVAIL_NOM  # noqa: E402
 
 from conftest import ECRITURE, du_projet, make_png  # noqa: E402
 from grilles_decor import grille_active_vivante  # noqa: E402
@@ -529,6 +530,29 @@ def test_creer_une_entree_dans_une_grille_ouverte_et_releves(page, decor):
                                                                                     timeout=15000)
 
 
+def test_lieu_foret_se_pose_dans_la_grille_de_travail(page, decor):
+    """ANN-7, le basculement (« Les variables aussi », Hugo, 2026-11-05) : dans la grille de
+    travail du projet, « lieu : forêt » se crée en le tapant, puis « lieu : grotte »
+    s'ajoute à l'entrée qui existe ; « lieu : forêt » retapé ne propose plus de créer."""
+    with _http(decor) as c:
+        actives = c.get(f"/api/projets/{decor['projet']}/grilles").json()["actives"]
+    travail = next(g["id"] for g in actives if g["nom"] == GRILLE_DE_TRAVAIL_NOM)
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f"#an-onglet-{travail}").click()
+    page.locator("#an-filtre").fill("lieu : forêt")
+    expect(page.locator("#an-resultats .an-res-creer")).to_contain_text(
+        "Créer « lieu : forêt »")
+    page.locator("#an-filtre").press("Enter")
+    expect(page.locator("#an-annonce")).to_contain_text("Posé")
+    poses = [x for x in _releves(decor) if x["grille_id"] == travail]
+    assert [(x["entree_cle"], x["variante_cle"]) for x in poses] == [("lieu", "foret")]
+    page.locator("#an-filtre").fill("lieu : grotte")
+    expect(page.locator("#an-resultats .an-res-creer")).to_contain_text(
+        "Ajouter « grotte » à « lieu »")
+    page.locator("#an-filtre").fill("lieu : Forêt")
+    expect(page.locator("#an-resultats .an-res-creer")).to_have_count(0)
+
+
 # --------------------------------------------------------------------------- #
 # « Terminée », le parcours, Ctrl+Z (commit 4)
 # --------------------------------------------------------------------------- #
@@ -866,15 +890,17 @@ def test_synthese_releves_par_case_puis_decompte(page, decor):
     expect(_mot(page, 0)).to_have_attribute("aria-selected", "true")
     # Le Décompte : toute la planche, par rubrique, entrée, variante ; zones terminées.
     page.locator('#an-syn-vues [data-syn="decompte"]').click()
-    expect(corps.locator(".an-dc-titre")).to_contain_text("Signaux · 4")
-    expect(corps.locator(".an-dc-titre")).to_contain_text("zones terminées 0 / 5")
+    # Une grille par titre : « Signaux », et la grille de travail du projet (ANN-7), vide.
+    titre = corps.locator(".an-dc-titre", has_text="Signaux")
+    expect(titre).to_contain_text("Signaux · 4")
+    expect(titre).to_contain_text("zones terminées 0 / 5")
     lignes = corps.locator(".an-dc-l")
     expect(lignes.filter(has_text="crié")).to_contain_text("1")
     expect(lignes.filter(has_text="A. Sons")).to_contain_text("2")
     # Cette zone : la bulle, sa case et la planche — le regard de c2 n'y est pas.
     corps.locator('[data-portee="zone"]').click()
-    expect(corps.locator(".an-dc-titre")).to_contain_text("Signaux · 3")
-    expect(corps.locator(".an-dc-titre")).to_contain_text("zones terminées 0 / 3")
+    expect(titre).to_contain_text("Signaux · 3")
+    expect(titre).to_contain_text("zones terminées 0 / 3")
     expect(lignes.filter(has_text="regard caméra")).to_have_count(0)
     # Le retour à la planche : la minicarte est là, la Synthèse cachée.
     page.locator("#an-ong-planche").click()
@@ -2729,8 +2755,10 @@ def _deuxieme_grille(d, nom="Lexique"):
 def test_un_onglet_de_grille_non_ouvert_garde_le_focus(page, decor, touche):
     _deuxieme_grille(decor)
     _ouvrir(page, decor, decor["bulle"])
-    fermee = page.locator('#an-onglets [aria-selected="false"]').get_attribute("data-grille")
-    onglet = page.locator(f"#an-onglet-{fermee}")
+    # « Lexique » s'ouvre (l'ordre des noms) ; le projet a aussi sa grille de travail
+    # (ANN-7) : l'onglet non ouvert se désigne par sa grille, « Signaux ».
+    onglet = page.locator(f"#an-onglet-{decor['grille']}")
+    expect(onglet).to_have_attribute("aria-selected", "false")
     _au_clavier(page, page.locator('#an-onglets [aria-selected="true"]'))
     onglet.focus()                                 # tabindex="-1" : un non-ouvert n'a pas de Tab
     page.keyboard.press(touche)
@@ -2750,7 +2778,8 @@ def test_les_cases_de_releves_gardent_le_focus(page, decor, touche):
     _deuxieme_grille(decor)
     _ouvrir(page, decor, decor["bulle"])
     page.locator("#an-releves-btn").click()
-    autre = page.locator("#an-releves-pop [data-voir]:not([disabled])").get_attribute("data-voir")
+    autre = page.locator("#an-releves-pop [data-voir]:not([disabled])").first.get_attribute(
+        "data-voir")
     case = page.locator(f'#an-releves-pop [data-voir="{autre}"]')
     expect(case).to_be_visible()
     _au_clavier(page, case)

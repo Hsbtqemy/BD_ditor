@@ -692,6 +692,28 @@ test("« Créer « … » » dans une grille ouverte seulement, sans doublon", (
   assert.equal(A.creerDansLeFiltre({ ouverte: true }, "paris", [{ libelle: "Paris" }]), null);
   assert.equal(A.creerDansLeFiltre({ ouverte: false }, "Paris", []), null);
   assert.equal(A.creerDansLeFiltre({ ouverte: true }, "  ", []), null);
+  // « nom : valeur » (ANN-7, les variables) : créée, ajoutée à l'entrée à variantes qui
+  // existe, ou rien quand un côté manque, que l'entrée n'a pas de variantes ou que la
+  // variante existe déjà.
+  const plan = { entrees: [
+    { cle: "lieu", libelle: "Lieu", forme: "variantes",
+      variantes: [{ cle: "foret", libelle: "Forêt" }] },
+    { cle: "ironie", libelle: "Ironie", forme: "simple", variantes: [] }] };
+  const o = { ouverte: true };
+  assert.equal(A.creerDansLeFiltre(o, "  heure :  nuit ", [], plan), "heure : nuit");
+  assert.equal(A.creerDansLeFiltre(o, "lieu : grotte", [], plan), "lieu : grotte");
+  assert.equal(A.creerDansLeFiltre(o, "LIEU : foret", [], plan), null);
+  assert.equal(A.creerDansLeFiltre(o, "ironie : mordante", [], plan), null);
+  assert.equal(A.creerDansLeFiltre(o, "lieu :", [], plan), null);
+  assert.equal(A.creerDansLeFiltre(o, ": forêt", [], plan), null);
+  assert.equal(A.creerDansLeFiltre(o, "heure : 10:30", [], plan), "heure : 10:30");
+  assert.equal(A.libelleDeCreation(plan, "lieu : grotte"), "Ajouter « grotte » à « Lieu »");
+  assert.equal(A.libelleDeCreation(plan, "heure : nuit"), "Créer « heure : nuit »");
+  assert.equal(A.libelleDeCreation(plan, "Paris"), "Créer « Paris »");
+  assert.deepEqual(A.nomEtValeur("Paris"), null);
+  assert.equal(A.entreeNeuve({ porte_sur: ["case"] }, "lieu : forêt").libelle, "lieu");
+  assert.equal(A.entreeNeuve({ porte_sur: ["case"] }, "lieu : forêt").forme, "variantes");
+  assert.equal(A.entreeNeuve({ porte_sur: ["case"] }, "Paris").forme, "simple");
 });
 
 test("l'entrée qui naît en la posant suit la cible de la version", () => {

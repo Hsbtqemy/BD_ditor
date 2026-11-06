@@ -505,8 +505,9 @@ def _creer_bac_a_sable(conn, login: str) -> int:
     sable », la date de son effacement), son propriétaire RESPONSABLE dans `projet_acces` —
     pour que tout ce qui lit les membres marche sans branche —, sa collection de base
     OUVERTE en écriture à ses membres (l'invité écrit là où est le jeu), une copie de chaque
-    document du jeu, jusqu'à son cran (`database.creer_copie` : aucune image copiée), et une
-    grille fictive active (`_poser_la_grille_du_bac`). S'écrit au journal comme une création
+    document du jeu, jusqu'à son cran (`database.creer_copie` : aucune image copiée), une
+    grille fictive active (`_poser_la_grille_du_bac`) et la grille de TRAVAIL de tout projet
+    (ANN-7, `grille_import.installer_grille_de_travail`). S'écrit au journal comme une création
     de projet. À appeler SOUS le verrou d'écriture, après avoir relu qu'il n'en a pas ; ne
     commite pas."""
     efface_le = prochain_effacement()
@@ -534,6 +535,7 @@ def _creer_bac_a_sable(conn, login: str) -> int:
             "ORDER BY jd.rang, jd.document_id").fetchall():
         creer_copie(conn, document_id, base, par=login, depuis=reference, cran=cran)
     _poser_la_grille_du_bac(conn, pid)
+    grille_import.installer_grille_de_travail(conn, pid)   # ANN-7 : ses étiquettes de travail
     return pid
 
 
@@ -1149,9 +1151,13 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
                                  "projet ne se supprime que vide.")
     # ANN-7 (G18) — un projet qui POSSÈDE des grilles ne se supprime pas sans qu'on l'ait
     # décidé : ses grilles d'abord (les supprimer, ou elles portent des relevés et se
-    # retirent). La clé sans action de `grille.projet_id` est la ceinture.
+    # retirent). La clé sans action de `grille.projet_id` est la ceinture. Une grille qui ne
+    # porte RIEN (`grille_import.grille_sans_rien` : la grille de travail née avec le projet,
+    # tant qu'on n'y a rien posé) ne compte pas, comme la base vide : elle part avec lui.
+    vides = [r[0] for r in conn.execute("SELECT id FROM grille WHERE projet_id = ?",
+                                        (projet_id,)) if grille_import.grille_sans_rien(conn, r[0])]
     g = conn.execute("SELECT COUNT(*) FROM grille WHERE projet_id = ?",
-                     (projet_id,)).fetchone()[0]
+                     (projet_id,)).fetchone()[0] - len(vides)
     if g:
         raise HTTPException(409, f"Ce projet possède {g} grille(s) d'annotation : "
                                  "supprimez-les d'abord. Un projet ne se supprime que vide.")
@@ -1209,6 +1215,15 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     _clore_demandes(conn, portee, [r[0] for r in conn.execute(
         "SELECT id FROM demande WHERE genre = ? AND projet_id = ? AND reponse IS NULL",
         (DEMANDE_SUPPRESSION_PROJET, projet_id))], REPONSE_ACCEPTEE)
+    # Ses grilles qui ne portent RIEN (la grille de travail née avec lui) partent avec lui,
+    # leurs versions par cascade ; leur activation et leurs masques d'abord.
+    for gid in vides:
+        nom = conn.execute("SELECT nom FROM grille WHERE id = ?", (gid,)).fetchone()[0]
+        conn.execute("DELETE FROM collection_grille_masquee WHERE grille_id = ?", (gid,))
+        conn.execute("DELETE FROM projet_grille WHERE grille_id = ?", (gid,))
+        conn.execute("DELETE FROM grille WHERE id = ?", (gid,))
+        journal.journaliser(conn, "suppression", "grille", gid,
+                            avant={"nom": nom, "projet_id": projet_id})
     # Sa base VIDE — ni album ni vocabulaire à elle, refusés plus haut — part avec lui ;
     # ses accès posés partent par cascade.
     for b in bases:

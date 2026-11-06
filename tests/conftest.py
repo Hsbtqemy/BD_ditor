@@ -91,6 +91,20 @@ def derriere_proxy(monkeypatch):
 
 
 @pytest.fixture
+def sans_grille_de_travail(monkeypatch):
+    """Les projets naissent SANS leur grille de travail (ANN-7, le basculement, commit 2 bis).
+
+    Pour les fichiers qui éprouvent l'import, l'écriture et l'activation d'AUTRES grilles :
+    ils comptent les grilles d'un projet, en désignent par leur identifiant, et la grille de
+    travail, ajoutée à chaque naissance, s'y lirait comme une grille de plus sans rien
+    éprouver. Elle a ses tests (`test_grille_de_travail.py`). À demander AVANT `data_dir`
+    (`pytest.mark.usefixtures` au niveau du module), pour que le projet de repli d'une base
+    neuve naisse sans elle aussi."""
+    import grille_import
+    monkeypatch.setattr(grille_import, "installer_grille_de_travail", lambda conn, pid: None)
+
+
+@pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     """Redirige base + dossiers data vers un tmp jetable et init la base."""
     db_file = tmp_path / "test.sqlite"

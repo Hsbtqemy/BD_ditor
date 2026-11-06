@@ -38,6 +38,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import _commun  # noqa: E402
 import preparer_jeu  # noqa: E402
 
+# La grille de travail de chaque projet (ANN-7) n'est pas l'objet de ce fichier : cf.
+# `conftest.sans_grille_de_travail`.
+pytestmark = pytest.mark.usefixtures("sans_grille_de_travail")
+
 LEA = {"Remote-User": "lea", "Remote-Groups": ""}
 SAM = {"Remote-User": "sam", "Remote-Groups": ""}
 RITA = {"Remote-User": "rita", "Remote-Groups": ""}

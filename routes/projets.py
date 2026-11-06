@@ -36,6 +36,7 @@ from fastapi.responses import Response
 
 import autorisation
 import conflit
+import grille_import
 import journal
 from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET,
                       collection_de_base,
@@ -315,7 +316,8 @@ def list_projets(bacs_a_sable: bool = False, conn: sqlite3.Connection = Depends(
 def create_projet(payload: ProjetIn, conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     """Crée un projet, sans membre ni responsable, avec sa collection de BASE (D10) — la
-    seule qu'il ait en naissant, vide, de son nom. Qui le crée n'y entre pas pour autant —
+    seule qu'il ait en naissant, vide, de son nom — et sa grille de TRAVAIL, ouverte et vide
+    (ANN-7, `grille_import.installer_grille_de_travail`). Qui le crée n'y entre pas pour autant —
     un administrateur règle tout projet sans en être, et lui inventer un rôle fausserait la
     liste de ceux qui y travaillent (la raison écrite sur `create_collection`).
 
@@ -337,6 +339,7 @@ def create_projet(payload: ProjetIn, conn: sqlite3.Connection = Depends(db),
                                                    (base,)).fetchone()[0],
                                "proprietaire": None, "base": True, "projet_id": pid,
                                "acces_membres": position})
+    grille_import.installer_grille_de_travail(conn, pid)   # ANN-7 : ses étiquettes de travail
     conn.commit()
     return _vue(conn, portee, _get_projet(conn, portee, pid))
 

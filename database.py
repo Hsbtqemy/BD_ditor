@@ -2714,6 +2714,17 @@ def projet_par_defaut(conn: sqlite3.Connection) -> int:
             c[1] for c in conn.execute("PRAGMA table_info(collection)")}:
         creer_collection_de_base(conn, cur.lastrowid, nom=NOM_PROJET_DEFAUT,
                                  acces_membres=None)
+    # ANN-7 — sa grille de TRAVAIL, comme tout projet qui naît : sur une base NEUVE
+    # (`user_version` 0, toutes les tables posées par `SCHEMA_SQL`) ou à jour. Sur une base
+    # d'avant la v29 qu'on migre, le projet de repli naît à l'étape v29, au milieu des
+    # migrations : sa grille lui vient de celle qui la donne aux projets existants.
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if (version in (0, SCHEMA_VERSION)
+            and {"grille", "grille_version", "projet_grille", "releve"} <= tables
+            and "jeu" in {c[1] for c in conn.execute("PRAGMA table_info(projet)")}):
+        import grille_import                     # paresseux : il importe ce module
+        grille_import.installer_grille_de_travail(conn, cur.lastrowid)
     return cur.lastrowid
 
 

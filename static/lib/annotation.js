@@ -910,14 +910,35 @@
              ...(motsDuReleve(x).length ? { mots: motsDuReleve(x) } : {}) };
   }
 
+  /* « nom : valeur » (ANN-7, « les variables aussi », Hugo, 2026-11-05) : le nom d'une
+     entrée à variantes et sa variante, séparés au PREMIER deux-points, chacun sans ses
+     espaces ; `null` sans deux-points. Un côté peut revenir vide : à l'appelant de refuser. */
+  function nomEtValeur(libelle) {
+    const t = String(libelle || "");
+    const i = t.indexOf(":");
+    if (i < 0) return null;
+    return { nom: t.slice(0, i).replace(/\s+/g, " ").trim(),
+             valeur: t.slice(i + 1).replace(/\s+/g, " ").trim() };
+  }
+
+  /* L'entrée de ce NOM dans le plan (comparée comme le filtre compare), retirée exceptée. */
+  function entreeDeNom(plan, nom) {
+    const n = normaliser(nom);
+    return ((plan && plan.entrees) || []).find((e) => !e.retiree && normaliser(e.libelle) === n)
+      || null;
+  }
+
   /* L'entrée qui NAÎT en la posant dans une grille ouverte (G14) : simple, sans rubrique,
-     sur la cible de la version — pour savoir où la poser avant qu'elle existe. */
+     sur la cible de la version — pour savoir où la poser avant qu'elle existe. « nom :
+     valeur » la fait naître À VARIANTES, sous son nom (le serveur fait naître la variante). */
   function entreeNeuve(plan, libelle) {
     const cibles = (plan && plan.porte_sur) || [];
     const pose = cibles.includes("mots") ? "mots" : cibles.includes("planche") ? "planche"
       : cibles.includes("entite") ? "entite" : "zone";
-    return { cle: null, libelle, forme: "simple", cibles, pose, cardinalite: "plusieurs",
-             cible_declaree: [], rubriques: [], variantes: [] };
+    const nv = nomEtValeur(libelle);
+    return { cle: null, libelle: nv ? nv.nom : libelle, forme: nv ? "variantes" : "simple",
+             cibles, pose, cardinalite: "plusieurs", cible_declaree: [], rubriques: [],
+             variantes: [] };
   }
 
   /* LE GESTE d'un clic dans la grille, sur une entrée (`choix` vide), une variante
@@ -1055,12 +1076,32 @@
   }
 
   /* « Créer « … » » dans une grille OUVERTE (G14) : le libellé à créer, si la requête ne
-     nomme exactement aucun résultat ; `null` sinon, et toujours pour une grille fermée. */
-  function creerDansLeFiltre(grille, requete, resultats) {
+     nomme exactement aucun résultat ; `null` sinon, et toujours pour une grille fermée.
+     « nom : valeur » se crée — ou s'AJOUTE comme variante à l'entrée « nom » à variantes
+     qui existe — si ses deux côtés sont écrits, si « nom » n'est pas une entrée sans
+     variantes et si la variante n'existe pas déjà (`plan`, la version affichée). */
+  function creerDansLeFiltre(grille, requete, resultats, plan) {
     const t = String(requete || "").trim();
     if (!grille || !grille.ouverte || !t) return null;
+    const nv = nomEtValeur(t);
+    if (nv) {
+      if (!nv.nom || !nv.valeur) return null;
+      const e = entreeDeNom(plan, nv.nom);
+      if (e && e.forme !== "variantes") return null;
+      const v = normaliser(nv.valeur);
+      if (e && (e.variantes || []).some((x) => normaliser(x.libelle) === v)) return null;
+      return `${nv.nom} : ${nv.valeur}`;
+    }
     const n = normaliser(t);
     return (resultats || []).some((r) => normaliser(r.libelle) === n) ? null : t;
+  }
+
+  /* Ce que dit la ligne « Créer » du filtre : « Ajouter « forêt » à « lieu » » quand
+     l'entrée à variantes existe, « Créer « … » » sinon. */
+  function libelleDeCreation(plan, libelle) {
+    const nv = nomEtValeur(libelle);
+    const e = nv ? entreeDeNom(plan, nv.nom) : null;
+    return e ? `Ajouter « ${nv.valeur} » à « ${e.libelle} »` : `Créer « ${libelle} »`;
   }
 
   /* ── Commit 4 : « terminée », le parcours ── */
@@ -1490,6 +1531,7 @@
            teinteDeRubrique, champEnConflit, optionsPorteSur, cibleDePose, porteApresPose, relevesSurLaCible, geste, libelleReleve, motEtat,
            listeSurLaZone, lireReglage, retenirReglage, grillesMontrees,
            remplacementCardinalite, creerDansLeFiltre, vuDuReleve, entreeNeuve,
+           nomEtValeur, libelleDeCreation,
            ciblesVisees, visePlanche, assurerPlanche, parcours, rangDansParcours,
            suivanteDuParcours, cibleDePasse, passesSurLaCible, rubriquesDeTete, terminee,
            signataires, aRouvrir, caseTerminee, casesEnDoute, CAUSES, causesEnMots,

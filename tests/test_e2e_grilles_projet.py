@@ -28,6 +28,7 @@ import grille_import  # noqa: E402
 import grille_tableur  # noqa: E402
 from conftest import ECRITURE, make_png  # noqa: E402
 from grilles_decor import MODELE, MODELE_LISTES, flux, grille_active_vivante  # noqa: E402
+from config import GRILLE_DE_TRAVAIL_NOM  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -42,6 +43,12 @@ SURFACES_HORS_PERIMETRE = {
 }
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+
+def _autres(grilles):
+    """Les grilles du projet hors sa grille de travail (ANN-7), née avec lui."""
+    return [g for g in grilles if g["nom"] != GRILLE_DE_TRAVAIL_NOM]
 
 
 def _http(base):
@@ -99,7 +106,9 @@ def test_un_classeur_fautif_dit_ou_et_quoi_puis_le_juste_fait_naitre_la_grille(p
     fautif = _retouche(juste, libre)
 
     _ouvrir(page, base, projet)
-    expect(page.locator("#pg-liste-zone")).to_contain_text("Aucune grille")
+    # Le projet n'a, en naissant, que sa grille de travail (ANN-7), ouverte et active.
+    expect(page.locator(".pg-grille")).to_have_count(1)
+    expect(page.locator(".pg-grille")).to_contain_text(GRILLE_DE_TRAVAIL_NOM)
     page.get_by_role("button", name="⤒ Importer un classeur…").click()
     expect(page.locator("#pg-fichier")).to_be_focused()
     page.set_input_files("#pg-fichier", _fichier("signaux.xlsx", fautif))
@@ -118,7 +127,7 @@ def test_un_classeur_fautif_dit_ou_et_quoi_puis_le_juste_fait_naitre_la_grille(p
     importer.click(force=True)                 # éteint : rien ne part
     expect(page.locator("#pj-grilles-msg")).to_contain_text("à corriger")
     with _http(base) as c:
-        assert c.get(f"/api/projets/{projet}/grilles").json()["grilles"] == []
+        assert _autres(c.get(f"/api/projets/{projet}/grilles").json()["grilles"]) == []
 
     # Le classeur juste : le bilan d'avant s'efface, le nouveau dit ce qui va naître.
     page.set_input_files("#pg-fichier", _fichier("signaux.xlsx", juste))
@@ -129,16 +138,17 @@ def test_un_classeur_fautif_dit_ou_et_quoi_puis_le_juste_fait_naitre_la_grille(p
         "La grille : « Signaux », fermée, porte sur des mots")
     expect(page.locator(".pg-bilan")).to_contain_text("10 entrées")
     with _http(base) as c:                     # vérifier n'écrit rien
-        assert c.get(f"/api/projets/{projet}/grilles").json()["grilles"] == []
+        assert _autres(c.get(f"/api/projets/{projet}/grilles").json()["grilles"]) == []
     expect(importer).not_to_have_attribute("aria-disabled", "true")
     importer.click()
     expect(verdict).to_have_text("Le fichier est juste, et la grille est importée.")
     expect(page.locator("#pj-grilles-msg")).to_have_text("« Signaux » est importée.")
     ligne = page.locator(".pg-grille", has_text="Signaux")
     expect(ligne.locator(".pj-puce")).to_have_text("brouillon v1")
-    expect(page.locator("#pj-grilles-titre")).to_have_text("Grilles · 1")
+    # « Signaux » et la grille de travail du projet.
+    expect(page.locator("#pj-grilles-titre")).to_have_text("Grilles · 2")
     with _http(base) as c:
-        (g,) = c.get(f"/api/projets/{projet}/grilles").json()["grilles"]
+        (g,) = _autres(c.get(f"/api/projets/{projet}/grilles").json()["grilles"])
     assert [(v["numero"], v["etat"]) for v in g["versions"]] == [(1, "brouillon")]
     assert ligne.locator(".pg-telecharger").get_attribute("href") == \
         f"/api/grilles/{g['id']}/versions/1/tableur"
@@ -220,7 +230,7 @@ def test_le_bilan_se_lit_sans_violation_ni_defilement_de_cote(page, live_server,
         ws.cell(row=n, column=titres["4. Ce qu'on choisit"] + 1, value="libre")
     _theme(page, theme)
     _ouvrir(page, base, projet)
-    expect(page.locator(".pg-grille")).to_have_count(1)
+    expect(page.locator(".pg-grille")).to_have_count(2)   # « Libre » et la grille de travail
     page.get_by_role("button", name="⤒ Importer un classeur…").click()
     page.set_input_files("#pg-fichier", _fichier("signaux.xlsx", _retouche(_classeur(), libre)))
     page.get_by_role("button", name="Vérifier").click()

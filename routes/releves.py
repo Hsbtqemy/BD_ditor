@@ -414,17 +414,21 @@ class ReleveIn(BaseModel):
     mots: list[int] = []
 
 
-def _entree_neuve(conn, grille_id: int, version, libelle: str):
-    """Une entrée qui naît EN LA POSANT, dans la version vivante d'une grille OUVERTE (G14,
-    le patron des tags libres) : une entrée de même NOM — comparé par la clé d'un libellé
-    (`database.cle_tag` : casse, apostrophes, espaces) — est reprise ; sinon sa `cle` se
-    DÉRIVE de son libellé comme à l'import et au formulaire (`grille_ecriture.cle_neuve` :
-    sans accents, minuscules, tirets, 48 caractères, `-2` à la collision). Simple, sans
-    rubrique ; sa cible est celle de la version. Au journal, sous la grille, et l'empreinte
-    de la version suit."""
-    libelle = grilles.propre(libelle)
-    if not libelle:
-        raise HTTPException(422, "Une entrée neuve a besoin d'un libellé.")
+def _empreinte_et_journal(conn, grille_id: int, version, charge: dict) -> None:
+    """Ce qu'écrit toute naissance en posant : l'empreinte de la version suit, et l'acte va
+    au journal, sous la grille."""
+    conn.execute("UPDATE grille_version SET empreinte = ? WHERE id = ?",
+                 (grilles.empreinte(grilles.contenu(conn, version["id"])), version["id"]))
+    journal.journaliser(conn, "modification", "grille", grille_id, apres=charge)
+
+
+def _entree_par_nom(conn, grille_id: int, version, libelle: str, forme: str):
+    """L'entrée de ce NOM dans la version — comparé par la clé d'un libellé
+    (`database.cle_tag` : casse, apostrophes, espaces) —, reprise ; sinon elle NAÎT, sous la
+    forme demandée (`simple`, ou `variantes` pour « nom : valeur »). Sa `cle` se DÉRIVE de
+    son libellé comme à l'import et au formulaire (`grille_ecriture.cle_neuve` : sans
+    accents, minuscules, tirets, 48 caractères, `-2` à la collision). Sans rubrique ; sa
+    cible est celle de la version."""
     entrees = {r["cle"]: r for r in conn.execute(
         "SELECT * FROM grille_entree WHERE version_id = ? ORDER BY rang, id", (version["id"],))}
     e = next((r for r in entrees.values() if cle_tag(r["libelle"]) == cle_tag(libelle)), None)
@@ -438,13 +442,60 @@ def _entree_neuve(conn, grille_id: int, version, libelle: str):
     rang = conn.execute("SELECT COALESCE(MAX(rang), -1) + 1 FROM grille_entree "
                         "WHERE version_id = ?", (version["id"],)).fetchone()[0]
     conn.execute("INSERT INTO grille_entree (version_id, cle, rang, forme, libelle) "
-                 "VALUES (?, ?, ?, 'simple', ?)", (version["id"], cle, rang, libelle))
-    conn.execute("UPDATE grille_version SET empreinte = ? WHERE id = ?",
-                 (grilles.empreinte(grilles.contenu(conn, version["id"])), version["id"]))
-    journal.journaliser(conn, "modification", "grille", grille_id,
-                        apres={"entree_neuve": {"version": version["numero"], "cle": cle,
-                                                "libelle": libelle}})
+                 "VALUES (?, ?, ?, ?, ?)", (version["id"], cle, rang, forme, libelle))
+    _empreinte_et_journal(conn, grille_id, version,
+                          {"entree_neuve": {"version": version["numero"], "cle": cle,
+                                            "libelle": libelle, "forme": forme}})
     return grilles.entree(conn, version["id"], cle)
+
+
+def _variante_par_nom(conn, grille_id: int, version, entree, valeur: str) -> str:
+    """La variante de ce NOM sous l'entrée (par la clé d'un libellé), reprise ; sinon elle
+    NAÎT, sa `cle` dérivée de son libellé parmi celles de l'entrée. Rend sa `cle`."""
+    variantes = {r["cle"]: r for r in conn.execute(
+        "SELECT * FROM grille_variante WHERE version_id = ? AND entree_cle = ? "
+        "ORDER BY rang, id", (version["id"], entree["cle"]))}
+    v = next((r for r in variantes.values() if cle_tag(r["libelle"]) == cle_tag(valeur)), None)
+    if v is not None:
+        return v["cle"]
+    vc = grille_ecriture.cle_neuve(valeur, deja=variantes, ref=None, defaut="variante",
+                                   quoi="variante")
+    rang = max((r["rang"] for r in variantes.values()), default=-1) + 1
+    conn.execute("INSERT INTO grille_variante (version_id, entree_cle, cle, libelle, rang) "
+                 "VALUES (?, ?, ?, ?, ?)", (version["id"], entree["cle"], vc, valeur, rang))
+    _empreinte_et_journal(conn, grille_id, version,
+                          {"variante_neuve": {"version": version["numero"],
+                                              "entree": entree["cle"], "cle": vc,
+                                              "libelle": valeur}})
+    return vc
+
+
+def _entree_neuve(conn, grille_id: int, version, libelle: str):
+    """Une entrée qui naît EN LA POSANT, dans la version vivante d'une grille OUVERTE (G14,
+    le patron des tags libres). Rend `(entrée, cle de variante ou None)`.
+
+    « nom : valeur » (ANN-7, « les variables aussi », Hugo, 2026-11-05) fait naître — ou
+    retrouve — l'entrée « nom » À VARIANTES et sa variante « valeur » : « lieu : forêt » pose
+    l'entrée « lieu » avec sa variante « forêt » ; une valeur nouvelle tapée sur une entrée à
+    variantes qui existe (« lieu : grotte ») s'y ajoute comme variante. Les deux-points
+    séparent au PREMIER ; un côté vide est refusé (422 nommé), comme un nom déjà pris par une
+    entrée qui n'est pas à variantes. Sans deux-points : une entrée simple, comme avant."""
+    libelle = grilles.propre(libelle)
+    if not libelle:
+        raise HTTPException(422, "Une entrée neuve a besoin d'un libellé.")
+    nom, deux_points, valeur = libelle.partition(":")
+    if not deux_points:
+        return _entree_par_nom(conn, grille_id, version, libelle, "simple"), None
+    nom, valeur = grilles.propre(nom), grilles.propre(valeur)
+    if not nom or not valeur:
+        raise HTTPException(422, "« nom : valeur » demande les deux : l'entrée avant les "
+                                 "deux-points, sa variante après (« lieu : forêt »).")
+    e = _entree_par_nom(conn, grille_id, version, nom, "variantes")
+    if e["forme"] != "variantes":
+        raise HTTPException(422, f"« {e['libelle']} » est déjà une entrée de la grille, sans "
+                                 "variantes : posez-la telle quelle, ou donnez un autre nom à "
+                                 "celle-ci.")
+    return e, _variante_par_nom(conn, grille_id, version, e, valeur)
 
 
 @router.post("/api/releves", status_code=201)
@@ -464,14 +515,20 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
                                  f"votre écran montre la version {payload.version}. "
                                  "Rechargez la page.")
     version = grilles.version_par_id(conn, act["version_id"])
+    variante_cle = payload.variante_cle
     if payload.nouvelle_entree is not None:
         ouverte = conn.execute("SELECT ouverte FROM grille WHERE id = ?",
                                (payload.grille_id,)).fetchone()[0]
         if not ouverte or version["etat"] != grilles.ETAT_VIVANTE:
             raise HTTPException(422, "Une entrée ne naît en posant que dans une grille "
                                      "ouverte.")
-        entree = _entree_neuve(conn, payload.grille_id, version,
-                               payload.nouvelle_entree.libelle)
+        entree, variante_neuve = _entree_neuve(conn, payload.grille_id, version,
+                                               payload.nouvelle_entree.libelle)
+        if variante_neuve is not None:
+            if payload.variante_cle and payload.variante_cle != variante_neuve:
+                raise HTTPException(422, "La variante se dit une fois : dans « nom : valeur », "
+                                         "ou par `variante_cle`, pas les deux.")
+            variante_cle = variante_neuve
     else:
         entree = grilles.entree(conn, version["id"], payload.entree_cle)
         if entree is None or entree["retiree"]:
@@ -479,7 +536,7 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
                                      "version de la grille.")
     cibles = grilles.cibles_effectives(entree, version)
     passage, texte_ancre = _passage(entree, cibles, cible, payload.mots)
-    _forme(conn, version["id"], entree, payload.variante_cle, payload.qualificatifs)
+    _forme(conn, version["id"], entree, variante_cle, payload.qualificatifs)
     precision = _precision(entree, payload.precision)
     lien_id, lien_texte = _lien(conn, entree, payload.lien_region_id, cible)
     une = grilles.cardinalite_effective(entree, cibles) == "une"
@@ -495,7 +552,7 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
             "variante_cle, precision, lien_region_id, lien_texte, texte_ancre, une, auteur) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (payload.region_id, payload.planche_id, payload.grille_id, version["id"],
-             entree["cle"], payload.variante_cle or None, precision, lien_id, lien_texte,
+             entree["cle"], variante_cle or None, precision, lien_id, lien_texte,
              texte_ancre, int(une), portee.utilisateur)).lastrowid
     except sqlite3.IntegrityError:
         # La ceinture : l'index unique partiel de la cardinalité. Sous le verrou, la relecture

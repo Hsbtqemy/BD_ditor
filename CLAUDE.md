@@ -425,6 +425,14 @@ neuve à la remise à neuf ; le fichier absent ou refusé ne coûte pas le bac �
 sans grille, le journal du serveur le disant en erreur et la page « Aucune grille ». C'est
 une donnée lue, pas du code, et `tools/` entre dans l'image (`tests/test_grille_du_bac.py`).
 Les bacs à sable d'avant la reçoivent à leur remise à neuf ou au lundi suivant, sans migration.
+**Chaque projet naît aussi avec sa grille de TRAVAIL** (ANN-7, le basculement ; « Les
+étiquettes de travail », Hugo, 2026-11-05) : « Travail en cours » (`config.GRILLE_DE_TRAVAIL_NOM`),
+OUVERTE, VIDE, sur toute zone, active dans sa version vivante, à personne
+(`grille_import.installer_grille_de_travail`) — par la route, en bac à sable, le projet de
+repli d'une base neuve ; jamais le jeu ; les projets existants la recevront de la migration.
+Vide (`grille_import.grille_sans_rien`), elle part avec son projet. Dans toute grille ouverte,
+poser « nom : valeur » fait naître ou retrouve l'entrée « nom » à variantes et sa variante
+(`routes/releves._entree_neuve`).
 Un RELEVÉ applique une entrée à une cible — des MOTS d'une zone de texte (`releve_mot`, par
 rang dans le découpage de `mots.py`, que rend `GET /api/regions/{id}/mots` ; pas de jumeau
 navigateur), une RÉGION entière (case, bulle, cartouche, texte, personnage, détail), ou la

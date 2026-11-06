@@ -640,6 +640,9 @@ def test_les_bornes_de_dates_ne_datent_pas_du_journal_retenu(db_path):
     import journal as j
 
     conn = _lire(db_path)
+    # Une base neuve porte déjà les actes de la grille de travail du projet de repli (ANN-7,
+    # sous `grille`, retenus) : le compte sans filtre part de là.
+    deja = j.indicateurs_provenance(conn)["evenements"]["total"]
     conn.execute("INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
                  "date) VALUES ('creation', 'alice', 'humain', 'sharedocs', NULL, "
                  "'2020-01-01 00:00:00')")
@@ -655,7 +658,7 @@ def test_les_bornes_de_dates_ne_datent_pas_du_journal_retenu(db_path):
 
     # Sans le paramètre, le comportement d'avant est intact : les appelants qui ne
     # publient rien (aucun aujourd'hui) ne changent pas de réponse.
-    assert j.indicateurs_provenance(conn)["evenements"]["total"] == 2
+    assert j.indicateurs_provenance(conn)["evenements"]["total"] == deja + 2
 
 
 # --------------------------------------------------------------------------- #

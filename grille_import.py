@@ -1456,6 +1456,48 @@ def installer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_li
     return gid
 
 
+def installer_grille_de_travail(conn: sqlite3.Connection, projet_id: int) -> int | None:
+    """La grille de TRAVAIL d'un projet qui naît (ANN-7, le basculement ; Hugo, 2026-11-05) :
+    OUVERTE, VIDE, sur toute zone (les types de `grilles.CIBLES_ZONE`), active dans sa
+    version vivante 1, et à PERSONNE — aucun `cree_par`, comme la grille d'un bac à sable : le
+    journal garde seul l'acte, sous `grille`. Tout annotateur y fait naître une étiquette en
+    la posant (G14), « lieu : forêt » compris (`routes/releves._entree_neuve`).
+
+    Rien d'une grille n'est dans le code : une grille vide et nommée n'est pas un vocabulaire,
+    et son nom vit dans `config.GRILLE_DE_TRAVAIL_NOM`. Jamais dans le projet de jeu ; rien
+    si une grille du projet porte déjà ce nom (rejouée, elle ne double rien). Ne commite pas ;
+    rend l'identifiant, ou None."""
+    import database                              # import paresseux, cf. `importer`
+    import journal
+    from config import GRILLE_DE_TRAVAIL_NOM, GRILLE_DE_TRAVAIL_NOTE
+    if database.est_jeu(conn, projet_id) or nom_pris(conn, projet_id, GRILLE_DE_TRAVAIL_NOM):
+        return None
+    cible = grilles.ecrire_cibles(grilles.CIBLES_ZONE)
+    gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte) VALUES (?, ?, 1)",
+                       (projet_id, GRILLE_DE_TRAVAIL_NOM)).lastrowid
+    ecrire_version(conn, gid, {"cible": cible, "rubriques": {}, "entrees": {}, "listes": {}},
+                   numero=1, etat=grilles.ETAT_VIVANTE, note=GRILLE_DE_TRAVAIL_NOTE, par=None)
+    journal.journaliser(conn, "creation", "grille", gid,
+                        apres={"projet_id": projet_id, "nom": GRILLE_DE_TRAVAIL_NOM,
+                               "ouverte": True, "porte_sur": cible, "travail": True,
+                               "version": {"numero": 1, "etat": grilles.ETAT_VIVANTE}})
+    activer(conn, projet_id=projet_id, grille_id=gid, numero=1)
+    return gid
+
+
+def grille_sans_rien(conn: sqlite3.Connection, grille_id: int) -> bool:
+    """Une grille qui ne porte RIEN : aucune entrée dans aucune de ses versions, aucun relevé,
+    aucune passe. Elle n'est pas un vocabulaire — la grille de travail d'un projet qui naît,
+    tant qu'on n'y a rien posé — et part avec son projet (`socle._supprimer_projet`)."""
+    porte = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM grille_entree e JOIN grille_version v "
+        "               ON v.id = e.version_id WHERE v.grille_id = ?), "
+        "       EXISTS (SELECT 1 FROM releve WHERE grille_id = ?), "
+        "       EXISTS (SELECT 1 FROM passe WHERE grille_id = ?)",
+        (grille_id, grille_id, grille_id)).fetchone()
+    return not any(porte)
+
+
 def version_activable(conn: sqlite3.Connection, grille_id: int):
     """La version qu'on ACTIVERAIT sans en dire le numéro : la vivante d'une grille ouverte,
     la publiée la plus récente d'une fermée ; None s'il n'y en a pas (un brouillon seul)."""

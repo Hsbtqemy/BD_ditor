@@ -81,6 +81,16 @@ GRILLE_DU_BAC = BASE_DIR / "tools" / "grille-modele.csv"
 GRILLE_DU_BAC_LISTES = BASE_DIR / "tools" / "grille-modele-listes-qualificatifs.csv"
 GRILLE_DU_BAC_NOM = "Grille d'exemple"
 GRILLE_DU_BAC_PORTE_SUR = "mots"
+# La grille de TRAVAIL de chaque projet (ANN-7, le basculement ; « les étiquettes de
+# travail », Hugo, 2026-11-05 : « des choses en cours qu'on ne sait pas parfaitement nommer,
+# du work in progress à reprendre »). Une grille OUVERTE, VIDE, sur toute zone, qui naît avec
+# chaque projet — bacs à sable compris — et où tout annotateur crée une étiquette en la
+# posant. Vide, nommée, elle n'est pas un vocabulaire : rien d'une grille n'est dans le code,
+# seuls ce nom et cette note le sont (`grille_import.installer_grille_de_travail`).
+GRILLE_DE_TRAVAIL_NOM = "Travail en cours"
+GRILLE_DE_TRAVAIL_NOTE = ("Les étiquettes de travail du projet : ce qu'on ne sait pas encore "
+                          "nommer. Elles se renomment, se fusionnent, ou passent dans une "
+                          "vraie grille.")
 
 # Déconnexion (INFRA-1). Derrière le proxy d'authentification (Authelia), l'URL de
 # logout vit sur le sous-domaine du PORTAIL, cible comprise :
