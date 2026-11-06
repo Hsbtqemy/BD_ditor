@@ -207,3 +207,125 @@ def test_nouvelle_variante_se_dit_seule_et_seulement_dans_une_grille_ouverte(cli
     s = poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
     r = client.put(f"/api/releves/{s['id']}", headers=STAG, json={"nouvelle_variante": "x"})
     assert r.status_code == 422 and "pas de variantes" in r.text, r.text
+
+
+# --------------------------------------------------------------------------- #
+# J5 (c) : qui remanie une étiquette, et la clé `remaniable` du plan
+# --------------------------------------------------------------------------- #
+def _patch(client, qui, url, corps):
+    return client.patch(url, headers=qui, json=corps)
+
+
+def test_un_annotateur_renomme_une_etiquette_provisoire_et_ses_valeurs(client, decor, db_path):
+    t = _travail(client, decor, db_path)
+    g = t["grille_id"]
+    poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "lieu : forêt"})
+    r = _patch(client, STAG, f"/api/grilles/{g}/entrees/lieu",
+               {"libelle": "endroit", "vu": {"libelle": "lieu"}})
+    assert r.status_code == 200, r.text
+    assert "emplois" not in r.json()                 # les comptes restent aux responsables
+    r = _patch(client, STAG, f"/api/grilles/{g}/entrees/lieu/variantes/foret",
+               {"libelle": "bois"})
+    assert r.status_code == 200, r.text
+    r = client.post(f"/api/grilles/{g}/entrees/lieu/variantes", headers=STAG,
+                    json={"libelle": "grotte"})
+    assert r.status_code == 201, r.text
+    r = _patch(client, STAG, f"/api/grilles/{g}/entrees/lieu",
+               {"variantes": [{"libelle": "plage"}]})
+    assert r.status_code == 200, r.text
+    plan = _plan(client, t)
+    assert plan["lieu"]["libelle"] == "endroit"
+    assert [v["libelle"] for v in plan["lieu"]["variantes"]] == ["bois", "grotte", "plage"]
+    # Au journal, sous son nom.
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM evenement WHERE cible_table = 'grille' "
+                       "AND agent = 'stag' AND apres LIKE '%\"objet\"%'")[0]["n"] == 4
+    # Deux renommages croisés : la valeur vue (CONC-3) nomme l'autre.
+    r = _patch(client, ADMIN, f"/api/grilles/{g}/entrees/lieu",
+               {"libelle": "site", "vu": {"libelle": "lieu"}})
+    assert r.status_code == 409 and "conflit" in r.json()["detail"], r.text
+
+
+def test_un_annotateur_ne_fait_que_renommer_et_ajouter(client, decor, db_path):
+    t = _travail(client, decor, db_path)
+    g = t["grille_id"]
+    poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
+    poser(client, t, region_id=t["zones"]["bulle"], nouvelle_entree={"libelle": "humour"})
+    url = f"/api/grilles/{g}/entrees/ironie"
+    r = _patch(client, STAG, url, {"etat": "defini"})
+    assert r.status_code == 403 and "changer son état" in r.text, r.text
+    r = _patch(client, STAG, url, {"definition": "un sens second"})
+    assert r.status_code == 403, r.text
+    r = _patch(client, STAG, url, {"libelle": "ironie mordante", "cardinalite": "plusieurs"})
+    assert r.status_code == 403, r.text
+    r = client.post(f"{url}/fusion", headers=STAG, json={"dans": "humour"})
+    assert r.status_code == 403, r.text
+    r = client.post(f"{url}/retrait", headers=STAG)
+    assert r.status_code == 403, r.text
+    assert _plan(client, t)["ironie"]["libelle"] == "ironie"
+
+
+def test_une_etiquette_definie_ne_se_renomme_que_par_les_responsables(client, decor, db_path):
+    t = _travail(client, decor, db_path)
+    g = t["grille_id"]
+    r = client.post(f"/api/grilles/{g}/entrees", headers=ADMIN,
+                    json={"libelle": "sentiment", "forme": "variantes",
+                          "variantes": [{"libelle": "perte"}]})
+    assert r.status_code == 201, r.text
+    r = _patch(client, STAG, f"/api/grilles/{g}/entrees/sentiment", {"libelle": "émotion"})
+    assert r.status_code == 403 and "est définie" in r.text, r.text
+    r = client.post(f"/api/grilles/{g}/entrees/sentiment/variantes", headers=STAG,
+                    json={"libelle": "joie"})
+    assert r.status_code == 403 and "est définie" in r.text, r.text
+    r = _patch(client, STAG, f"/api/grilles/{g}/entrees/sentiment/variantes/perte",
+               {"libelle": "deuil"})
+    assert r.status_code == 403 and "est définie" in r.text, r.text
+
+
+def test_qui_n_annote_pas_le_projet_ne_renomme_rien(client, decor, db_path):
+    from grilles_decor import ANA, SAM, ZOE
+    t = _travail(client, decor, db_path)
+    g = t["grille_id"]
+    poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
+    url = f"/api/grilles/{g}/entrees/ironie"
+    for qui in (SAM, ANA):                 # membre d'une base protégée ; lectrice de C
+        r = _patch(client, qui, url, {"libelle": "x"})
+        assert r.status_code == 403, (qui, r.text)
+    assert _patch(client, ZOE, url, {"libelle": "x"}).status_code == 404
+    # Une grille FERMÉE se remanie au formulaire : 403, et aucun brouillon ne naît.
+    r = _patch(client, STAG, f"/api/grilles/{decor['grille_id']}/entrees/cri",
+               {"libelle": "hurlement"})
+    assert r.status_code == 403, r.text
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_version WHERE grille_id = ?",
+              (decor["grille_id"],))[0]["n"] == 1
+    # Même une entrée PROVISOIRE d'une grille fermée : le mode libre est celui des grilles
+    # ouvertes. (Un responsable l'a rendue provisoire, dans le brouillon où écrirait le geste.)
+    s = decor["grille_id"]
+    assert _patch(client, ADMIN, f"/api/grilles/{s}/entrees/cri",
+                  {"etat": "provisoire"}).status_code == 200
+    r = _patch(client, STAG, f"/api/grilles/{s}/entrees/cri", {"libelle": "hurlement"})
+    assert r.status_code == 403, r.text
+
+
+def test_le_plan_dit_ce_que_l_appelant_peut_remanier(client, decor, db_path):
+    from grilles_decor import LEA
+    t = _travail(client, decor, db_path)
+    g = t["grille_id"]
+    poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
+    client.post(f"/api/grilles/{g}/entrees", headers=ADMIN, json={"libelle": "écrite"})
+
+    def remaniable(qui, grille=g):
+        plan = client.get(f"/api/grilles/{grille}/versions/1", headers=qui).json()
+        return {e["cle"]: e["remaniable"] for e in plan["entrees"]}
+    tout = {"renommer": True, "ajouter_valeur": True, "fusionner": True, "retirer": True,
+            "etat": True}
+    rien = {k: False for k in tout}
+    assert remaniable(STAG) == {
+        "ironie": {**rien, "renommer": True, "ajouter_valeur": True}, "ecrite": rien}
+    assert remaniable(LEA) == {"ironie": tout, "ecrite": tout}
+    # Une grille fermée : rien sur place, même pour un responsable.
+    assert set(map(lambda x: tuple(x.values()), remaniable(LEA, decor["grille_id"]).values())
+               ) == {tuple(rien.values())}
+    # La réponse d'un geste porte la même clé.
+    r = _patch(client, STAG, f"/api/grilles/{g}/entrees/ironie", {"libelle": "ironie fine"})
+    assert {e["cle"]: e["remaniable"] for e in r.json()["plan"]["entrees"]}["ironie"][
+        "renommer"] is True

@@ -1026,6 +1026,32 @@ class Portee:
             return "0", []
         return "(" + " OR ".join(morceaux) + ")", params
 
+    def peut_remanier_entree(self, projet_id: int, geste: str, *, annotateur: bool,
+                             ouverte: bool, provisoire: bool) -> bool:
+        """Peut-on faire ce GESTE sur une entrée d'une grille de ce projet, depuis la page
+        Annotation ? ANN-7, le mode libre (J5 (c), Hugo, 2026-11-06 : « renommer une étiquette
+        ou une valeur et ajouter une valeur : tout annotateur du projet sur une entrée
+        provisoire ; fusionner et retirer : les responsables »).
+
+        - Qui GÈRE le projet (`peut_gerer_projet` : son responsable, l'administrateur) : tous
+          les gestes (`GESTES_D_ENTREE`) — ceux du formulaire, déjà les siens.
+        - Un ANNOTATEUR du projet (`annotateur` : il écrit dans un album du projet, le cercle
+          de ceux qui posent ; `ecrit_dans_le_projet`) : `GESTES_D_ANNOTATEUR` — renommer
+          l'entrée ou l'une de ses valeurs, ajouter une valeur —, sur une entrée PROVISOIRE
+          (née en la tapant, J4) d'une grille OUVERTE, dans sa version vivante. Renommer se
+          défait en renommant, et la valeur vue (CONC-3) garde deux renommages croisés ; ce
+          qu'un responsable a ÉCRIT (une entrée définie) ne se renomme pas sous lui.
+        - Fusionner, retirer, changer l'état (`GESTES_DE_RESPONSABLE`) : qui gère seulement —
+          une fusion réécrit les relevés des autres et ne se défait pas.
+
+        Les faits sont lus par l'appelant sur la grille et l'entrée ; la règle est ici. Un
+        geste inconnu lève : une garde qui ne connaît pas l'acte ne doit pas répondre."""
+        if geste not in GESTES_D_ENTREE:
+            raise ValueError(f"geste inconnu : {geste}")
+        if self.peut_gerer_projet(projet_id):
+            return True
+        return (geste in GESTES_D_ANNOTATEUR and annotateur and ouverte and provisoire)
+
     def peut_ecrire_quelque_part(self) -> bool:
         """A-t-on le droit d'écrire, où que ce soit ? Sert aux gestes qui ne visent aucune
         collection en particulier — enrichir le registre des personnages, par exemple. Sans
@@ -1462,6 +1488,23 @@ def bacs_du_principal(conn: sqlite3.Connection, login: str, projets,
             f"SELECT c.id FROM collection c WHERE c.id IN ({', '.join('?' * len(ids))}) "
             f"AND {sql_est_bac_a_sable(sql_projet_de('c'))}", ids)}
     return frozenset(bacs), frozenset(a_soi), frozenset(cols)
+
+
+# ANN-7, le mode libre (J5) — les gestes sur une entrée, et à qui ils reviennent
+# (`Portee.peut_remanier_entree`).
+GESTES_D_ANNOTATEUR = ("renommer", "ajouter_valeur")
+GESTES_DE_RESPONSABLE = ("fusionner", "retirer", "etat")
+GESTES_D_ENTREE = GESTES_D_ANNOTATEUR + GESTES_DE_RESPONSABLE
+
+
+def ecrit_dans_le_projet(conn: sqlite3.Connection, portee: Portee, projet_id: int) -> bool:
+    """L'appelant écrit-il dans un album de ce projet — est-il de ceux qui y POSENT des
+    relevés (le fait `annotateur` de `Portee.peut_remanier_entree`) ? Par `clause_album` en
+    écriture, la question des accesseurs gardés : une base protégée n'en fait pas un
+    annotateur, un bac à sable où l'on est invité, si."""
+    ou, params = portee.clause_album("a.id", ecriture=True)
+    return conn.execute(f"SELECT 1 FROM albums a WHERE {sql_projet_d_album('a')} = ? AND {ou} "
+                        "LIMIT 1", (projet_id, *params)).fetchone() is not None
 
 
 def acces_derives(conn: sqlite3.Connection, collection_id: int) -> list[dict]:

@@ -1102,8 +1102,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   mono-poste lisent encore dans la Recherche et l'Exploration le texte d'une copie gardée
   au fonds : leur portée totale la lit.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue dix-neuf questions depuis le basculement d'ANN-7, qui retire
-  `clause_terme`, `peut_ecrire_terme` et `peut_remanier_tag` — vingt-deux depuis la tranche
+  serveur distingue vingt questions depuis le mode libre d'ANN-7, qui ajoute
+  `peut_remanier_entree` (J5 (c)) — dix-neuf depuis le basculement, qui retire
+  `clause_terme`, `peut_ecrire_terme` et `peut_remanier_tag`, vingt-deux depuis la tranche
   3c, qui retire `clause_destruction` (2026-10-26), vingt-trois jusque-là, dix jusqu'au
   2026-10-10 (`peut_lire` /
   `peut_ecrire` / `peut_administrer` / `peut_exporter`, `clause_album` /
@@ -1123,9 +1124,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   `peut_nommer_le_demandeur` un second usage, nommer qui demande à qui doit CONSENTIR à un
   `rejoindre` (`consentement`), et la 3b à `peut_repondre_a` et `peut_nommer_le_demandeur`
   un genre de plus, la demande d'en partir entre deux projets (`projets`, ceux qui tiennent
-  le travail). Le client en reçoit neuf par une clé — six jusqu'au
+  le travail). Le client en reçoit dix par une clé — six jusqu'au
   2026-10-16, sept jusqu'au 2026-10-17, huit jusqu'au 2026-10-22, neuf jusqu'au 2026-10-25,
-  dix jusqu'au basculement d'ANN-7, qui retire `remaniable` —, et trois par la FORME d'une réponse (ci-dessous). La dixième (COL-3, tranche 3b) :
+  dix jusqu'au basculement d'ANN-7, qui retire `remaniable`, neuf jusqu'au mode libre —, et trois par la FORME d'une réponse (ci-dessous). La dixième (COL-3, tranche 3b) :
   `collection_creable`, projet par projet dans `GET /api/projets` — `peut_creer_collection`,
   posée sur le réglage du projet, que l'écran ne déduit pas du rôle ; et, pour qui gère,
   le réglage lui-même (`membres_creent_collections`). Une projet
@@ -1177,7 +1178,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   posée sur le projet de la collection — pour qu'une ligne dérivée ne mène à « Régler dans
   le projet » que qui le règle.
   La neuvième clé (ANN-8, 2026-10-22), `remaniable`, tag par tag dans `GET /api/lexique`, est
-  partie avec sa route au basculement d'ANN-7.
+  partie avec sa route au basculement d'ANN-7 ; une `remaniable` revient avec le mode libre,
+  entrée par entrée dans le plan d'une grille (`GET /api/grilles/{id}/versions/{n}`) —
+  `peut_remanier_entree`, geste par geste, dans la version vivante d'une grille ouverte.
   Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
   d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
   qu'on ajoute dans un panneau gardé hérite de sa garde **par défaut et non par décision** :
