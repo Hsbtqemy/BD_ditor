@@ -64,12 +64,21 @@ _DESCRIPTIONS = {
 
 # « ↕ Ranger » (ANN-7, le mode libre, tranché sur maquette le 2026-11-06) : le déplacement
 # d'une ENTRÉE de la grille de travail s'annule — et lui seul des actes sous `grille` (le
-# formulaire, l'import, une fusion ne s'annulent pas). Le fragment qui le reconnaît au journal.
+# formulaire, l'import, une fusion ne s'annulent pas). Le fragment qui le reconnaît au journal,
+# pour les grilles de travail lues avant (`_grilles_de_travail`).
 _SQL_ORDRE_DU_MODE_LIBRE = (
     "(cible_table = 'grille' AND type = 'modification' AND json_valid(apres) "
-    "AND json_extract(apres, '$.objet') LIKE 'ordre:entree:%' "
-    "AND EXISTS (SELECT 1 FROM grille _ug WHERE _ug.id = evenement.cible_id "
-    "AND _ug.travail = 1))")
+    "AND json_extract(apres, '$.objet') LIKE 'ordre:entree:%' AND cible_id IN ({ids}))")
+
+
+def _grilles_de_travail(conn: sqlite3.Connection) -> list:
+    """Les grilles de travail de l'instance. Une base d'avant la v39 n'a pas le drapeau
+    (`grille.travail`) : aucune — le journal d'une telle base se lit encore (les tests des
+    migrations l'interrogent avant de migrer)."""
+    try:
+        return [r[0] for r in conn.execute("SELECT id FROM grille WHERE travail = 1")]
+    except sqlite3.OperationalError:
+        return []
 
 
 class UndoImpossible(Exception):
@@ -202,6 +211,8 @@ def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
     Elle ne remonte pas au-dessous du PLANCHER (`plancher`, la v39 d'ANN-7) : rien de ce
     qui le précède n'est offert, et Ctrl+Z dit « rien à annuler ».
     """
+    travail = _grilles_de_travail(conn)
+    ordre = _SQL_ORDRE_DU_MODE_LIBRE.format(ids=", ".join("?" * len(travail)) or "NULL")
     ou, params = "  AND id > ? ", [plancher(conn)]
     if agent is not TOUS:
         ou += "  AND agent IS ? "               # `IS` et non `=` : gère l'agent NULL
@@ -217,14 +228,14 @@ def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
         f"WHERE agent_type = 'humain' "
         f"  AND type IN ({','.join('?' * len(_TYPES))}) "
         f"  AND (cible_table IN ({','.join('?' * len(_TABLES))}) "
-        f"       OR {_SQL_ORDRE_DU_MODE_LIBRE}) "
+        f"       OR {ordre}) "
         f"{ou}"
         f"  AND id NOT IN (SELECT cible_id FROM evenement "
         f"                 WHERE ((type = 'annulation' AND cible_table = 'evenement') "
         f"                     OR (type = 'abandon' AND cible_table = 'annulation')) "
         f"                   AND cible_id IS NOT NULL) "
         f"ORDER BY id DESC LIMIT 1",
-        (*_TYPES, *_TABLES, *params)).fetchone()
+        (*_TYPES, *_TABLES, *travail, *params)).fetchone()
 
 
 def reindexe(e) -> bool:
