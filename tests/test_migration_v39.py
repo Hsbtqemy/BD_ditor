@@ -351,6 +351,45 @@ def test_une_grille_de_travail_deja_nee_recoit_le_drapeau_sans_doubler(vraie_v38
     assert [g["nom"] for g in repli if g["travail"]] == [f"{GRILLE_DE_TRAVAIL_NOM} 2"]
 
 
+def test_effacer_un_bac_a_sable_ne_passe_rien_sous_le_plancher(vraie_v38):
+    """L'effacement d'un bac à sable PASSE les gestes encore annulables de ses régions (une
+    trace `abandon` par acte) : ceux d'avant le plancher ne l'étaient plus, il n'y a rien à
+    passer ni à compter. La vraie base porte des gestes dans ses deux bacs à sable, tous
+    d'avant la migration ; un geste d'APRÈS, sur une région du premier, l'est encore."""
+    import autorisation
+    import socle
+    f = _faits()
+    database.init_db()
+    conn = database.get_connection()
+    try:
+        plancher = undo.plancher(conn)
+        premier, *autres = f["bacs_a_sable"]
+        region = conn.execute(
+            "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
+            "JOIN albums a ON a.id = p.album_id "
+            f"WHERE {database.sql_projet_d_album('a')} = ? ORDER BY r.id LIMIT 1",
+            (premier,)).fetchone()[0]
+        journal.journaliser(conn, "modification", "regions", region, agent="nora",
+                            agent_type="humain", avant={"x": 0}, apres={"x": 1})
+        conn.commit()
+        bilans = []
+        for bac in f["bacs_a_sable"]:
+            bilans.append(socle._effacer_bac_a_sable(conn, autorisation.TOTALE, bac,
+                                                     motif="test"))
+            conn.commit()
+        sous = conn.execute("SELECT COUNT(*) FROM evenement WHERE type = 'abandon' "
+                            "AND cible_table = 'annulation' AND cible_id <= ?",
+                            (plancher,)).fetchone()[0]
+        apres = conn.execute("SELECT COUNT(*) FROM evenement WHERE type = 'abandon' "
+                             "AND cible_table = 'annulation' AND cible_id > ?",
+                             (plancher,)).fetchone()[0]
+    finally:
+        conn.close()
+    assert sous == 0
+    assert [b["gestes_passes"] for b in bilans] == [1] + [0] * len(autres), bilans
+    assert apres == 1
+
+
 class _Panne(Exception):
     pass
 
