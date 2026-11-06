@@ -710,60 +710,29 @@ def _ranger_aussi(db_path, album_id, collection_id):
         conn.close()
 
 
-def test_le_csv_d_un_album_tait_un_tag_illisible(client, db_path, tag_illisible):
-    """Lire l'album ne donne pas à lire tous les tags qu'il porte. L'export CSV d'un album
-    a sa propre requête — il ne passe ni par la Recherche ni par l'Atelier.
+def test_les_exports_d_album_ne_portent_plus_aucun_tag(client, db_path, tag_illisible):
+    """Lire l'album ne donnait pas à lire tous les tags qu'il porte : les exports d'un album
+    taisaient le tag local à c2 au titre de c1, et le portaient au titre de c2 (AUTH-11,
+    2026-10-07). ANN-7, le basculement : ils n'en portent plus AUCUN — ni le local, ni le
+    global —, pour personne et sous aucun titre. Et la route de l'annotation ne rend plus
+    aucun tag non plus.
 
-    L'anti-vacuité a changé de forme le 2026-10-07 (AUTH-11). Elle disait « pour
-    l'administrateur, le tag SORT » ; or l'album sort au titre de c1, et depuis ce jour
-    son vocabulaire est celui de c1 quel que soit qui exporte — administrateur compris.
-    Le tag sort donc là où il est chez lui : l'album rangé aussi dans c2, au titre de c2."""
-    from conftest import ADMIN
-    a1, c1, c2 = tag_illisible["a1"]["id"], tag_illisible["c1"], tag_illisible["c2"]
-    _ranger_aussi(db_path, a1, c2)
-
-    def fichier(h, collection_id):
-        rep = client.get("/api/export/csv",
-                         params={"album_id": a1, "collection_id": collection_id}, headers=h)
-        assert rep.status_code == 200, rep.text
-        return rep.text
-
-    assert "prive" in fichier(ADMIN, c2)
-    for qui in (ADMIN, tag_illisible["bob"]):
-        vu = fichier(qui, c1)
-        assert "commun" in vu and "prive" not in vu
-
-
-def test_l_atelier_et_les_exports_d_album_taisent_un_tag_illisible(client, db_path,
-                                                                   tag_illisible):
-    """Le cœur `_annotation_selon`, qui sert les exports JSON et TEI d'un album (il servait
-    aussi l'Atelier, jusqu'au basculement d'ANN-7, qui ne montre plus de tag).
-
-    L'export porte ce que la COLLECTION emporte (AUTH-11, 2026-10-07) : au titre de c1,
-    l'administrateur n'emporte pas le tag local à c2 ; au titre de c2 — l'album y étant
-    rangé aussi —, il l'emporte. Et la route de l'annotation ne rend plus aucun tag."""
+    Anti-vacuité : la région sort (son identifiant de zone dans le TEI), et l'export au
+    titre de c2 répond — le refus n'est pas ce qu'on mesure."""
     from conftest import ADMIN
     r1, a1 = tag_illisible["r1"]["id"], tag_illisible["a1"]["id"]
     c1, c2 = tag_illisible["c1"], tag_illisible["c2"]
     _ranger_aussi(db_path, a1, c2)
-
-    def lu(h, collection_id):
-        ann = client.get(f"/api/regions/{r1}/annotation", headers=h).json()
-        params = {"album_id": a1, "collection_id": collection_id}
-        json_ = client.get("/api/export/json", params=params, headers=h)
-        tei = client.get("/api/export/tei", params=params, headers=h)
-        assert json_.status_code == 200 and tei.status_code == 200, (json_.text, tei.text)
-        assert "tags" not in ann
-        return json_.text, tei.text
-
-    json_, tei = lu(ADMIN, c2)
-    assert "prive" in json_ and "prive" in tei
-    json_, tei = lu(ADMIN, c1)
-    assert "commun" in json_ and "prive" not in json_
-    assert "commun" in tei and "prive" not in tei
-    json_, tei = lu(tag_illisible["bob"], c1)
-    assert "commun" in json_ and "prive" not in json_
-    assert "commun" in tei and "prive" not in tei
+    assert "tags" not in client.get(f"/api/regions/{r1}/annotation", headers=ADMIN).json()
+    for qui, titres in ((ADMIN, (c1, c2)), (tag_illisible["bob"], (c1,))):
+        for collection_id in titres:
+            for fmt in ("csv", "json", "tei"):
+                rep = client.get(f"/api/export/{fmt}", headers=qui,
+                                 params={"album_id": a1, "collection_id": collection_id})
+                assert rep.status_code == 200, (fmt, rep.text)
+                assert "prive" not in rep.text and "commun" not in rep.text, (fmt, qui)
+                if fmt == "tei":
+                    assert f'zone_{r1}' in rep.text
 
 
 def test_annuler_une_note_ne_touche_aux_tags_d_hier_que_comme_la_route(client, db_path,

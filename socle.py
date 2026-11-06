@@ -45,7 +45,7 @@ from database import (CRAN_IMAGES, NATURE_COLLECTIF, CRANS, CRANS_DE_REPARTIR, D
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PLANCHE,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
-                      NOM_BAC_A_SABLE, clause_appartenance,
+                      NOM_BAC_A_SABLE,
                       collection_row, creer_collection_de_base, creer_copie,
                       demandes_vers_collection, document_d_album,
                       est_isole, est_jeu,
@@ -114,44 +114,14 @@ def _sans_accents(s: str) -> str:
     return "".join(c for c in s if not unicodedata.combining(c)).lower()
 
 
-def _annotation_selon(conn: sqlite3.Connection, clause_tag: tuple[str, list],
-                      region_id: int) -> dict:
-    """Représentation d'annotation (note + tags) ; structure vide si absente. Les tags
-    rendus sont ceux que `clause_tag` retient — un fragment `(sql, params)` sur
-    `t.collection_id`.
-
-    C'est le CŒUR, et il ne tranche rien : il reçoit un fragment plutôt qu'une `Portee`,
-    comme `database.lexique_resume`, parce que DEUX questions s'y posent et qu'elles ne
-    se confondent pas. Ce qu'une PERSONNE lisait (l'Atelier, jusqu'au basculement d'ANN-7) ; ce
-    qu'une COLLECTION emporte quand un album sort à son titre (`_vocabulaire_d_export`,
-    AUTH-11). Le fragment est OBLIGATOIRE : un défaut qui ne filtrerait rien rendrait
-    l'oubli invisible."""
-    ann = conn.execute(
-        "SELECT id, note, date_creation, date_modification "
-        "FROM annotations WHERE region_id = ?", (region_id,)
-    ).fetchone()
-    if ann is None:
-        return {"region_id": region_id, "note": None, "tags": [],
-                "date_modification": None}
-    ou_tag, p_tag = clause_tag
-    tags = _rows(conn.execute(
-        f"""SELECT t.id, t.label, t.couleur
-           FROM annotation_tags at JOIN tags t ON t.id = at.tag_id
-           WHERE at.annotation_id = ? AND {ou_tag} ORDER BY t.label""",
-        (ann["id"], *p_tag),
-    ))
-    return {"region_id": region_id, "note": ann["note"], "tags": tags,
-            "date_modification": ann["date_modification"]}
-
-
 def _annotation_for_region(conn: sqlite3.Connection, region_id: int) -> dict:
     """L'annotation d'une région telle que l'écran la lit : la NOTE seule.
 
-    ANN-7, le basculement — les tags n'existent plus pour les écrans et les routes :
-    l'annotation ne porte que la note (le reste est dans les relevés des grilles). Les
-    tables du vocabulaire restent jusqu'à la migration, et seuls les exports en lisent
-    encore les tags (`_annotation_selon`). Plus aucun terme à filtrer : la `Portee` n'a
-    plus rien à décider ici, et lire la région (l'accesseur gardé de l'appelant) suffit."""
+    ANN-7, le basculement — les tags n'existent plus : l'annotation ne porte que la note
+    (le reste est dans les relevés des grilles), pour les écrans comme pour les exports
+    d'un album, qui lisaient encore les tags par un cœur à part jusqu'au commit des
+    sorties. Plus aucun terme à filtrer : la `Portee` n'a plus rien à décider ici, et lire
+    la région (l'accesseur gardé de l'appelant) suffit."""
     ann = conn.execute(
         "SELECT note, date_modification FROM annotations WHERE region_id = ?",
         (region_id,)).fetchone()
@@ -1611,11 +1581,14 @@ def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
     « en mono-poste, rien à nommer » de DROIT-2, restreint au cas multi-collections. Elle
     rendait `None` pour un album rangé dans plusieurs collections sans qu'aucune soit
     nommée : « il ne sort alors sous aucun droit particulier ». C'était tenable tant que le
-    titre n'était qu'une ÉTIQUETTE ; depuis AUTH-11 il gouverne le CONTENU
-    (`_vocabulaire_d_export`), et un export sans titre était le seul dont rien ne bornait
-    le vocabulaire. Il n'y a donc plus de branche à part : `peut_exporter` répond déjà
-    vrai partout en portée totale, et le 422 nommé vaut pour l'administrateur et le
-    mono-poste comme pour les autres. Une seule collection : rien à nommer, comme avant.
+    titre n'était qu'une ÉTIQUETTE ; depuis AUTH-11 il gouvernait le CONTENU (le
+    vocabulaire qu'emportait l'album), et un export sans titre était le seul dont rien ne
+    bornait le vocabulaire. Le basculement d'ANN-7 a retiré ce vocabulaire des exports ; la
+    règle reste (cadrage de la tranche 3, « se tranchent en route »), en attendant que la
+    tranche 4 dise ce que les relevés emportent. Il n'y a donc plus de branche à part :
+    `peut_exporter` répond déjà vrai partout en portée totale, et le 422 nommé vaut pour
+    l'administrateur et le mono-poste comme pour les autres. Une seule collection : rien à
+    nommer, comme avant.
 
     **Cette fonction ne rend JAMAIS `None`.** Le dernier chemin qui y menait est un album
     rangé dans AUCUNE collection — une copie gardée au FONDS depuis COL-3 (tranche 2),
@@ -1651,44 +1624,6 @@ def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
                  "précisez au titre de laquelle il sort (`collection_id`) — "
                  + ", ".join(f"« {r['nom']} » ({r['id']})" for r in ouvertes) + ".")
     return ouvertes[0]
-
-
-def _vocabulaire_d_export(titre: dict,
-                          alias: str = "t.collection_id") -> tuple[str, list]:
-    """Le VOCABULAIRE qu'emporte un album qui sort au titre de `titre` — fragment SQL
-    `(sql, params)` sur la colonne `collection_id` d'un terme.  AUTH-11, 2026-10-07.
-
-    `titre` est ce que rend `_collection_d_export` : la collection AU TITRE DE LAQUELLE
-    l'album sort, qu'elle ait été nommée ou choisie par défaut. L'album n'emporte que le
-    vocabulaire de celle-là et le vocabulaire global — **quel que soit qui exporte**.
-    C'est la règle du dépôt, et la même fonction (`database.clause_appartenance`), pas
-    une seconde écriture.
-
-    Avant, ces exports suivaient la portée d'export de la PERSONNE (`pour_export` →
-    `clause_terme`) : le même fichier, étiqueté A, portait un tag local à B pour qui
-    exporte aussi B et pas pour qui n'exporte que A. Pas un accès indu — un artefact qui
-    variait selon qui clique, sous une étiquette qui ne variait pas.
-
-    Ce fragment ne restreint jamais MOINS que la personne : `titre` est une collection
-    qu'elle a le droit d'exporter (`_collection_d_export` l'a vérifié), donc « global ⊕
-    local à A » est inclus dans ce que sa portée d'export lui laissait sortir. Le DROIT
-    reste celui de DROIT-2 et se décide avant ; ici on ne dit que ce que le fichier porte.
-
-    Il ne borne que le VOCABULAIRE. Les données de l'album — régions, texte, notes —
-    sortent entières : une région qui porte un tag d'ailleurs garde son annotation, sans
-    ce tag ; et s'il n'en reste rien à montrer, elle n'est plus dite annotée (les trois
-    exports l'appliquent en lisant ce qui RESTE).
-
-    **`titre` n'est jamais `None`** (2026-10-07) : `_collection_d_export` rend toujours une
-    collection ou lève. Un export « sans titre » a existé une journée comme limite écrite
-    — portée totale, plusieurs collections, aucune nommée — et il ne bornait rien ; il
-    répond désormais 422. Aucun repli n'est donc écrit ici : un `None` lèverait un
-    `TypeError` bruyant, là où un `clause_appartenance(None)` rendrait « corpus entier »
-    en silence — exactement l'export non borné qu'on vient de fermer.
-
-    Les exports TRANSVERSAUX (Recherche, Exploration) ne passent pas par ici : ils ne
-    sortent au titre d'aucune collection et suivent la personne (`_portee_d_export`)."""
-    return clause_appartenance(titre["id"], alias)
 
 
 def _refuser_si_verrouillee(planche: dict) -> dict:

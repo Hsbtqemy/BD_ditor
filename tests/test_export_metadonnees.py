@@ -786,9 +786,14 @@ def test_metadonnees_n_emporte_ni_bac_a_sable_ni_jeu(isoles):
     assert r.returncode == 0, r.stderr
     doc = json.loads(r.stdout)["metadonnees_collection"]
     assert [a["titre"] for a in doc["albums"]] == ["Réel"]
-    labels = {t["label"] for t in doc["tags"]}
-    assert "mot-du-corpus" in labels and "mot-du-bac" not in labels
-    assert "axe-du-bac" not in {d["nom"] for d in doc["vocabulaire"]}
+    # ANN-7, le basculement : plus aucun terme d'hier ne sort, ni du bac à sable ni du
+    # corpus ; les clés du vocabulaire sont retirées.
+    for mot in ("mot-du-corpus", "mot-du-bac", "axe-du-bac"):
+        assert mot not in r.stdout, mot
+    assert not {"tags", "vocabulaire", "domaines"} & set(doc)
+    notes = [rg.get("annotation", {}).get("note") for a in doc["albums"]
+             for p in a["planches"] for rg in p["regions"]]
+    assert notes == ["n"], notes                    # la note du vrai corpus sort, elle
     assert "albums" not in doc["perimetre"]         # le corpus entier garde sa forme
 
 
@@ -806,7 +811,9 @@ def test_metadonnees_tables_sans_les_actes_du_bac_a_sable(isoles, tmp_path):
     assert str(isoles["evt_reel"]) in evts and str(isoles["evt_bac"]) not in evts
     assert colonne("albums", "id") == [str(isoles["reel"])]
     assert str(isoles["reg_bac"]) not in colonne("regions", "id")
-    assert "mot-du-bac" not in colonne("tags", "label")
+    # ANN-7, le basculement : la table des tags est retirée, pas laissée vide.
+    assert not (out / "tags.csv").exists()
+    assert colonne("annotations", "note") == ["n"]
 
 
 @pytest.mark.parametrize("quelle", ["base", "jeu_col"])
@@ -823,22 +830,28 @@ def test_la_fiche_ne_compte_ni_bac_a_sable_ni_jeu(isoles):
     assert r.returncode == 0, r.stderr
     fiche = json.loads(r.stdout)["description_collection"]
     assert fiche["couverture"]["albums"] == 1
-    assert fiche["couverture"]["annotations"]["tags_distincts"] == 1     # mot-du-corpus
-    assert "axe-du-bac" not in {d["nom"] for d in fiche["vocabulaire"]["dimensions"]}
+    # ANN-7, le basculement : la fiche ne compte plus que les notes (celle du vrai corpus),
+    # et son bloc `vocabulaire` est retiré.
+    assert fiche["couverture"]["annotations"] == {"notes": 1}
+    assert "vocabulaire" not in fiche
+    assert "axe-du-bac" not in r.stdout and "mot-du-bac" not in r.stdout
     assert "albums_scope" not in fiche["perimetre"]
 
 
-def test_le_pourcent_defini_ne_compte_ni_bac_a_sable_ni_jeu(isoles):
-    """Le « % défini » des deux outils, en corpus entier : ni le tag ni l'axe du bac à
-    sable (ils comptaient, `database.lexique_resume` sans `clause`)."""
-    totaux = {"tags": 1, "dimensions": 0}             # mot-du-corpus ; aucun axe hors bac
+def test_le_pourcent_defini_ne_sort_plus(isoles):
+    """Le « % défini » des deux outils (A4) comptait les termes du vocabulaire d'hier ; il
+    ne comptait ni le tag ni l'axe du bac à sable (COL-4). ANN-7, le basculement : il ne
+    sort plus du tout — ni bloc `vocabulaire` dans la fiche, ni `lexique` dans la
+    paradonnée des enregistrements. La clé est retirée, pas laissée à zéro : un « 0 %
+    défini » se lirait comme un vocabulaire non documenté."""
     r = _run("description_collection.py", isoles["db"], isoles["data"], "--json", "-")
-    lex = json.loads(r.stdout)["description_collection"]["vocabulaire"]["lexique"]
-    assert {k: lex["par_type"][k]["total"] for k in totaux} == totaux, lex
+    assert r.returncode == 0, r.stderr
+    assert "vocabulaire" not in json.loads(r.stdout)["description_collection"]
+    assert "pct_defini" not in r.stdout
     r = _run("metadonnees_collection.py", isoles["db"], isoles["data"], "--json", "-")
+    assert r.returncode == 0, r.stderr
     doc = json.loads(r.stdout)["metadonnees_collection"]
-    lex = next(v["lexique"] for v in doc.values() if isinstance(v, dict) and "lexique" in v)
-    assert {k: lex["par_type"][k]["total"] for k in totaux} == totaux, lex
+    assert "lexique" not in doc["paradonnee"] and "pct_defini" not in r.stdout
 
 
 def test_iiif_n_emporte_ni_bac_a_sable_ni_jeu(isoles, tmp_path):

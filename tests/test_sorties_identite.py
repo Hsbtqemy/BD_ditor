@@ -603,9 +603,6 @@ NON_BALAYE = {
     ("outil", "importer_grille.py"): (
         "IMPORTE le tableur d'une grille d'annotation (ANN-7) : il écrit en base, au nom "
         "d'aucun agent, et son compte rendu ne nomme que des clés et des libellés d'entrée."),
-    ("outil", "importer_vocabulaire.py"): (
-        "IMPORTE un tableur de vocabulaire : il écrit en base, et son compte rendu ne "
-        "nomme que des termes."),
     ("outil", "reindex_materiel.py"): (
         "Maintenance : relit les masters et écrit `planches.dpi_*`/`mode`. Son compte "
         "rendu est un décompte de planches."),
@@ -659,10 +656,6 @@ NON_BALAYE = {
         "et d'album, et le NOM d'un personnage du registre — une entité de corpus, jamais une colonne d'identité. "
         "Le retrait se journalise en `agent_type='moteur'` sous le nom du LOGICIEL "
         "(`retrait-liens-caches`), jamais sous celui de qui le lance."),
-    ("outil", "tags_hors_collection.py"): (
-        "Lecture seule (ANN-8) : dit les tags locaux posés hors de leur collection. Son "
-        "compte rendu nomme des tags, des collections et des albums, et compte des "
-        "régions — des objets du corpus, jamais une colonne d'identité."),
     ("outil", "semer_demo.py"): (
         "Sème un corpus de démonstration. Il écrit `albums.auteur` — l'AUTEUR DE LA BD, "
         "pas un annotateur : dans ce projet le mot désigne les deux, et c'est le seul "
@@ -1009,6 +1002,35 @@ def test_les_exemptions_d_extra_visent_des_surfaces_reelles(tmp_path):
         "l'exemption ne s'applique à rien. La retirer, ou corriger le libellé.")
 
 
+def test_une_declaration_hors_balayage_designe_une_surface_reelle():
+    """Une surface déclarée hors balayage doit EXISTER : un outil, un fichier de `tools/` ;
+    une route, une route GET de l'application.  ANN-7, le basculement.
+
+    Le contrôle (2) de `test_les_declarations_ne_mentent_pas` ne regarde qu'un sens : une
+    surface déclarée hors balayage qui serait balayée maintenant. Il ne voit pas l'autre,
+    une surface qui n'existe plus du tout — elle n'est ni balayée ni attendue, donc rien ne
+    la contredit, et sa raison périmée (« lecture seule, ne nomme que des termes ») continue
+    d'approuver ce qui n'existe pas. C'est ainsi que `tags_hors_collection.py` et
+    `importer_vocabulaire.py`, retirés au basculement, sont restés déclarés ici : une garde
+    qui approuve ce qui n'existe nulle part est le mode d'échec connu de ce dépôt.
+
+    Les familles (`("famille", …)`) décrivent une limite du balayeur, pas une surface : elles
+    n'ont rien à désigner. Les clés de `SORTIES_DECLAREES` sont tenues par le contrôle (1),
+    qui exige qu'elles soient balayées."""
+    outils = set(_outils())
+    routes = {r.path for r in _routes_get()}
+    inventaire_routes.exiger_plancher(len(routes), "le contrôle des déclarations hors "
+                                      "balayage (AUTH-5)", methode="get")
+    fantomes = sorted(f"{genre} {nom}" for genre, nom in NON_BALAYE
+                      if (genre == "outil" and nom not in outils)
+                      or (genre == "route" and nom not in routes))
+    inconnus = sorted(f"{genre} {nom}" for genre, nom in NON_BALAYE
+                      if genre not in ("outil", "route", "famille"))
+    assert not fantomes and not inconnus, (
+        f"Déclarées hors balayage mais introuvables : {fantomes} ; genre inconnu : "
+        f"{inconnus}. Une surface retirée sort de NON_BALAYE avec elle.")
+
+
 def test_le_skip_d_extra_retire_exactement_les_surfaces_visees(monkeypatch, tmp_path):
     """Le skip doit jouer sur une machine sans l'extra, et NE PAS jouer sur une avec.
 
@@ -1235,10 +1257,12 @@ PUBLIES = {
     "le titre de l'album": TITRE_PUBLIE,
     "le texte de la bulle enfant": "ZZTEXTE-BULLE-7",
     "sa note": "ZZNOTE-AVEC-TAG-7",
-    "son tag": "zztag7",
     "le texte du cartouche de la planche paratexte": "ZZTEXTE-PARATEXTE-7",
     "sa note, sans tag": "ZZNOTE-SEULE-7",
 }
+# Ce que le décor pose et qu'AUCUN export ne porte plus : le tag d'hier de la bulle (ANN-7,
+# le basculement). Sa présence en base est relue, sans quoi son absence ne dirait rien.
+TAG_RETIRE = "zztag7"
 # Ce qui PORTE une planche dans un export, déclaré. C'est sous un porteur neuf qu'une
 # colonne retenue sortirait transformée — `"verrou": true`, `subtype="locked"`, un
 # `<graphic>` au chemin haché — sans rien qui ressemble à ce qu'on cherche.
@@ -1341,8 +1365,12 @@ def _branches_du_tei(racine) -> dict:
         "une zone nue": any(len(z) == 0 for z in zones),
         "une zone dans une zone": any(_local(c.tag) == "zone" for z in zones for c in z),
         "une ligne de texte": bool(de("line")),
-        "une note avec tags": any(n.get("ana") for n in notes),
-        "une note sans tag": any(not n.get("ana") for n in notes),
+        # ANN-7, le basculement : une `<note>` ne porte plus de tags (`@ana`) ; la branche
+        # « note avec tags » n'existe plus, celle d'une note dans une zone enfant reste.
+        "une note": bool(notes),
+        "une note dans une zone enfant": any(
+            _local(c.tag) == "note" for z in zones for e in z if _local(e.tag) == "zone"
+            for c in e),
     }
 
 
@@ -1396,11 +1424,12 @@ def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, dat
                        (cartouche["id"], {"note": PUBLIES["sa note, sans tag"]})):
         rep = client.put(f"/api/regions/{rid}/annotation", json=corps)
         assert rep.status_code == 200, rep.text
-    # ANN-7 — le tag d'hier, posé en base : aucune route ne le pose plus, et les exports le
-    # lisent encore jusqu'à ce que les sorties le retirent.
+    # ANN-7 — le tag d'hier, posé en base : aucune route ne le pose plus, et aucun export
+    # ne le porte plus (le basculement, commit des sorties).
     import database
-    from conftest import poser_tags
-    poser_tags(database.DB_PATH, bulle["id"], [PUBLIES["son tag"]])
+    from conftest import direct_query, poser_tags
+    poser_tags(database.DB_PATH, bulle["id"], [TAG_RETIRE])
+    assert direct_query(db_path, "SELECT label FROM tags WHERE label = ?", (TAG_RETIRE,))
     rep = client.patch(f"/api/planches/{paratexte['id']}/role", json={"role": "paratexte"})
     assert rep.status_code == 200, rep.text
     ids = [recit["id"], paratexte["id"], vide["id"]]
@@ -1493,6 +1522,7 @@ def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, dat
         assert not absents, (
             f"{chemin} ne porte pas {absents} : ce contrôle ne lit pas ce qui sort, ou le "
             "décor n'exerce plus les branches qu'il annonce.")
+        assert TAG_RETIRE not in texte.lower(), f"{chemin} porte encore le tag d'hier"
 
         # (a) Les trois recherches. Elles passent AVANT l'inventaire et les preuves du
         # décor : une fuite doit être dite par ce qui la cherche, pas par un voisin.

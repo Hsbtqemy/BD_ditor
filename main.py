@@ -64,7 +64,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     PersonnageIn, PersonnageUpdate, PresenceIn, ProjetIn, ProjetUpdate, RegionIn, RegionUpdate, RelectureIn,
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TokenCorrectionIn,
     OrdrePlanchesIn, ValidationIn, VerrouIn, _BOM,
-    _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _annotation_for_region, _annotation_selon,
+    _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _annotation_for_region,
     _MOTIF_DESTRUCTION_BAC, _motif_d_effacement, _supprimer_planche,
     _consentement_d_effacement,
     _effacer_les_images_d_une_planche, _journaliser_scan,
@@ -94,7 +94,6 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _groupes, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
     _garder_case_d_un_detail,
     _sans_accents, _validate_parent, _valider_detail,
-    _vocabulaire_d_export,
     _sql_annotee, PARAMETRES_DU_VOCABULAIRE, motif_du_vocabulaire,
     refuser_le_vocabulaire,
     db, portee_courante,
@@ -2321,13 +2320,13 @@ def annuler_job(job_id: int, conn: sqlite3.Connection = Depends(db),
 # =========================================================================== #
 # Export
 # =========================================================================== #
-def _region_tree(regions: list[dict], conn: sqlite3.Connection,
-                 clause_tag: tuple[str, list]) -> list[dict]:
+def _region_tree(regions: list[dict], conn: sqlite3.Connection) -> list[dict]:
     """Reconstruit l'arbre des régions (par parent_id) avec annotations.
 
-    `clause_tag` borne le VOCABULAIRE et lui seul (`_vocabulaire_d_export`) : chaque
-    région sort, et son annotation n'est dite que s'il en reste quelque chose — une
-    note, ou un tag que le titre de l'export emporte."""
+    ANN-7, le basculement — l'annotation ne porte plus que la NOTE : la clé `tags` est
+    RETIRÉE de l'objet, pas laissée vide (un vocabulaire qui n'existe plus ne se déclare
+    pas « aucun »). Une région sans note sort sans annotation, comme sortait avant une
+    région sans note ni tag. Ce que les relevés des grilles deviennent ici est la tranche 4."""
     by_parent: dict = {}
     for r in regions:
         by_parent.setdefault(r["parent_id"], []).append(r)
@@ -2339,17 +2338,14 @@ def _region_tree(regions: list[dict], conn: sqlite3.Connection,
         nodes = []
         for r in sorted(by_parent.get(parent_id, []),
                         key=lambda x: (x["ordre"] or 0, x["id"])):
-            ann = _annotation_selon(conn, clause_tag, r["id"])
+            ann = _annotation_for_region(conn, r["id"])
             nodes.append({
                 "id": r["id"], "type": r["type"],
                 "citation": cits.get(r["id"]),
                 "x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"],
                 "ordre": rangs[r["id"]], "source": r["source"],
                 "ocr_texte": r["ocr_texte"],
-                "annotation": {
-                    "note": ann["note"],
-                    "tags": [t["label"] for t in ann["tags"]],
-                } if (ann["note"] or ann["tags"]) else None,
+                "annotation": {"note": ann["note"]} if ann["note"] else None,
                 "enfants": build(r["id"]),
             })
         return nodes
@@ -2429,8 +2425,7 @@ def _planches_exportables(conn: sqlite3.Connection, album_id: int) -> list[dict]
         "WHERE album_id = ? ORDER BY numero", (album_id,)))
 
 
-def _album_payload(conn: sqlite3.Connection, clause_tag: tuple[str, list],
-                   album_id: int) -> dict:
+def _album_payload(conn: sqlite3.Connection, album_id: int) -> dict:
     album = _album_exportable(conn, album_id)
     planches = _planches_exportables(conn, album_id)
     nums = numeros_editoriaux(conn, album_id)
@@ -2442,7 +2437,7 @@ def _album_payload(conn: sqlite3.Connection, clause_tag: tuple[str, list],
         regions = _rows(conn.execute(
             f"SELECT * FROM regions WHERE planche_id = ? AND {sql_region_sortante('regions')}",
             (p["id"],)))
-        p["regions"] = _region_tree(regions, conn, clause_tag)
+        p["regions"] = _region_tree(regions, conn)
     album["planches"] = planches
     return album
 
@@ -2453,9 +2448,11 @@ def _nom_album(album_id: int, titre: dict) -> str:
     sans titre (`_collection_d_export`, 2026-10-07).
 
     Partagé par le CSV et le TEI (AUTH-11, 2026-10-07). Le TEI s'appelait
-    `album_<id>_tei.xml` quel que soit son titre ; or le titre gouverne désormais le
-    CONTENU (`_vocabulaire_d_export`) : le même album au titre de A et au titre de B
-    rendait deux fichiers différents sous un seul nom."""
+    `album_<id>_tei.xml` quel que soit son titre ; le titre gouvernait alors le CONTENU
+    (le vocabulaire qu'emportait l'album), et le même album au titre de A et au titre de B
+    rendait deux fichiers différents sous un seul nom. Depuis le basculement d'ANN-7, plus
+    aucun vocabulaire ne sort ; le nom garde le titre, qui reste dit — « aucun export sans
+    titre » tient, en attendant que la tranche 4 dise ce que les relevés emportent."""
     return f"album_{album_id}_c{titre['id']}"
 
 
@@ -2466,13 +2463,12 @@ def export_json(album_id: int, collection_id: Optional[int] = None,
     """L'album entier, texte relevé compris — une PORTE de sortie (DROIT-2).
 
     Il sort AU TITRE d'une collection où l'on a le droit d'exporter
-    (`_collection_d_export`), et le dit dans `exporte_au_titre_de`. Son VOCABULAIRE est
-    celui de cette collection et le vocabulaire global, quel que soit qui exporte
-    (AUTH-11, `_vocabulaire_d_export`) : un tag local à une autre collection ne part
-    pas, même pour qui a le droit d'exporter l'autre aussi."""
+    (`_collection_d_export`), et le dit dans `exporte_au_titre_de`. Il ne porte plus
+    aucun vocabulaire depuis le basculement d'ANN-7 : l'annotation d'une région n'est que
+    sa note (`_region_tree`)."""
     _get_album(conn, portee, album_id)
     titre = _collection_d_export(conn, portee, album_id, collection_id)
-    album = _album_payload(conn, _vocabulaire_d_export(titre), album_id)
+    album = _album_payload(conn, album_id)
     return {
         "@context": {
             "@vocab": "https://schema.org/",
@@ -2497,25 +2493,20 @@ def export_csv(album_id: int, collection_id: Optional[int] = None,
     porte la collection, comme ailleurs il porte la date ou la troncature."""
     _get_album(conn, portee, album_id)
     titre = _collection_d_export(conn, portee, album_id, collection_id)
-    # L'album ne porte pas tous les tags posés sur ses régions : il sort au titre d'UNE
-    # collection, avec le vocabulaire de celle-là et le global — quel que soit qui
-    # exporte (AUTH-11). Une région dont le seul tag est d'ailleurs sort, sans tag.
-    ou_tag, p_tag = _vocabulaire_d_export(titre, "tg.collection_id")
+    # ANN-7, le basculement — la colonne `tags` est RETIRÉE, pas laissée vide (cadrage
+    # de la tranche 3, « se tranchent en route ») : plus aucun vocabulaire ne sort.
     rows = _rows(conn.execute(
         f"""SELECT a.titre AS album, p.numero AS ordre_import, r.id AS region_id,
                   r.planche_id, r.type, r.parent_id, r.x, r.y, r.w, r.h, r.ordre, r.source,
                   r.ocr_texte,
-                  an.note,
-                  (SELECT GROUP_CONCAT(tg.label, '|')
-                     FROM annotation_tags at JOIN tags tg ON tg.id = at.tag_id
-                    WHERE at.annotation_id = an.id AND {ou_tag}) AS tags
+                  an.note
            FROM regions r
            JOIN planches p ON p.id = r.planche_id
            JOIN albums a ON a.id = p.album_id
            LEFT JOIN annotations an ON an.region_id = r.id
            WHERE a.id = ? AND {sql_region_sortante('r')}
            ORDER BY p.numero, r.parent_id IS NOT NULL, r.ordre, r.id""",
-        (*p_tag, album_id),
+        (album_id,),
     ))
     # Deux rôles distincts : `ordre_import` = page PHYSIQUE (position d'import, garde
     # le paratexte groupable) ; `planche` = numéro ÉDITORIAL cité (vide pour le
@@ -2527,20 +2518,12 @@ def export_csv(album_id: int, collection_id: Optional[int] = None,
         r["ordre"] = rangs[r["region_id"]]
         r["planche"] = c["planche"] if c.get("planche") is not None else ""
         r["citation"] = c.get("texte", "")
-        # L'ordre d'un `GROUP_CONCAT` sans `ORDER BY` n'est promis par personne : il suivait
-        # en pratique la clé primaire de `annotation_tags`, donc l'ordre de CRÉATION des
-        # tags. Trié ici par libellé, comme le JSON et le TEI (`ORDER BY t.label`, même
-        # ordre binaire) : deux exports du même album ne doivent pas différer par l'humeur
-        # du planificateur. Trié en Python et non dans le SQL, parce que la seule forme
-        # garantie (`GROUP_CONCAT(… ORDER BY …)`) demande SQLite 3.44, que rien n'impose ici.
-        if r["tags"]:
-            r["tags"] = "|".join(sorted(r["tags"].split("|")))
-        for k in ("album", "ocr_texte", "note", "tags"):      # B7 : anti-injection de formule
+        for k in ("album", "ocr_texte", "note"):      # B7 : anti-injection de formule
             r[k] = _csv_safe(r.get(k))
     buf = io.StringIO()
     cols = ["album", "ordre_import", "planche", "citation", "region_id", "type",
             "parent_id", "x", "y", "w", "h", "ordre", "source", "ocr_texte",
-            "note", "tags"]
+            "note"]
     writer = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
@@ -2581,8 +2564,8 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
                portee: autorisation.Portee = Depends(portee_courante)):
     """L'album en TEI P5 — une PORTE de sortie (DROIT-2), au titre d'une collection où
     l'on a le droit d'exporter, dite dans `publicationStmt/availability` et dans le NOM
-    du fichier (`_nom_album`). Son vocabulaire est celui de cette collection et le global
-    (AUTH-11, `_vocabulaire_d_export`).
+    du fichier (`_nom_album`). Il ne porte plus aucun vocabulaire depuis le basculement
+    d'ANN-7 : la `<note>` d'une zone n'est que sa note, sans `@type="tags"` ni `@ana`.
 
     Il ne publie d'un album et d'une planche que ce que le JSON en publie : il les lit par
     les mêmes lectures nommées (`_album_exportable`, `_planches_exportables`). Une
@@ -2596,7 +2579,6 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
     _get_album(conn, portee, album_id)            # la garde de portée, comme le JSON
     album = _album_exportable(conn, album_id)
     titre = _collection_d_export(conn, portee, album_id, collection_id)
-    clause_tag = _vocabulaire_d_export(titre)
 
     ET.register_namespace("", TEI_NS)
     root = ET.Element(f"{{{TEI_NS}}}TEI")
@@ -2661,13 +2643,9 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
                     zone.set("n", f"c{_c['case']}")
                 if r["ocr_texte"]:
                     _tei_el(zone, "line").text = _xml_safe(r["ocr_texte"])
-                ann = _annotation_selon(conn, clause_tag, r["id"])
-                if ann["note"] or ann["tags"]:
-                    note = _tei_el(zone, "note")
-                    if ann["tags"]:
-                        note.set("type", "tags")
-                        note.set("ana", _xml_safe(" ".join(t["label"] for t in ann["tags"])))
-                    note.text = _xml_safe(ann["note"])
+                ann = _annotation_for_region(conn, r["id"])
+                if ann["note"]:
+                    _tei_el(zone, "note").text = _xml_safe(ann["note"])
                 add_zones(zone, r["id"])
 
         add_zones(surface, None)

@@ -90,19 +90,16 @@ def test_crosswalk_collection(client, album, db_path, data_dir):
     assert "Hergé" in [c["name"] for c in cw["albums"][0]["datacite"]["creators"]]
 
 
-def test_les_sujets_ne_portent_que_le_vocabulaire_de_la_collection(client, album,
-                                                                   db_path, data_dir):
-    """AUTH-11 — `subjects` (DataCite) et `dc:subject` prenaient TOUS les tags et TOUTES
-    les valeurs de l'instance.
+def test_les_notices_ne_portent_plus_aucun_sujet(client, album, db_path, data_dir):
+    """`subjects` (DataCite) et `dc:subject` étaient les valeurs du vocabulaire facetté et
+    les tags — bornés depuis AUTH-11 à l'appartenance (global ⊕ local à la collection
+    déposée), la pire des fuites de la famille par sa destination, un entrepôt pérenne.
+    ANN-7, le basculement : ce vocabulaire ne sort plus. La clé est RETIRÉE des notices,
+    pas laissée vide — un `subjects: []` dirait « ce corpus n'a aucun sujet ».
 
-    C'est la pire des quatre fuites de la famille, par sa destination : la notice de
-    collection part à l'entrepôt, où elle est figée et publique. La grille d'analyse d'une
-    autre étude s'y retrouvait en clair, sous le nom de la nôtre.
-
-    Le contrôle passe par la CLI en sous-processus, comme le reste de ce fichier : on
-    mesure ce que l'outil ÉMET — ici sur sa sortie standard, faute de `--out-dir`, et ce
-    sont les mêmes notices que celle-ci écrirait dans des fichiers. Anti-vacuité : le
-    sujet global et celui de la collection déposée doivent y être.
+    Le contrôle passe par la CLI en sous-processus, comme le reste de ce fichier : on mesure
+    ce que l'outil ÉMET. Le décor pose les trois portées d'hier ; anti-vacuité, la notice de
+    la collection est là.
     """
     _checkpoint(db_path)
     creer = _run("gerer_collections.py", db_path, data_dir, "creer",
@@ -118,18 +115,30 @@ def test_les_sujets_ne_portent_que_le_vocabulaire_de_la_collection(client, album
         conn.execute("INSERT INTO tags (label, collection_id) VALUES "
                      "('sujet-ailleurs-9502', "
                      " (SELECT id FROM collection WHERE nom = 'Collection par défaut'))")
+        dim = conn.execute("INSERT INTO attribut_dimension (cible, nom) "
+                           "VALUES ('case', 'axe-9503')").lastrowid
+        conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
+                     "VALUES (?, 'valeur-9504')", (dim,))
         conn.commit()
     finally:
         conn.close()
     _checkpoint(db_path)
 
+    for args in (("--collection", cid), ()):
+        r = _run("crosswalk_depot.py", db_path, data_dir, *args)
+        assert r.returncode == 0, r.stderr
+        for mot in ("sujet-global-9500", "sujet-ici-9501", "sujet-ailleurs-9502",
+                    "axe-9503", "valeur-9504"):
+            assert mot not in r.stdout, f"{args} : « {mot} » sort encore au dépôt"
+        cw = json.loads(r.stdout)["crosswalk_depot"]
+        notices = cw["albums"] + ([cw["collection"]] if cw["collection"] else [])
+        assert notices, "aucune notice : le test ne mesure rien"
+        for n in notices:
+            assert "subjects" not in n["datacite"] and "dc:subject" not in n["dublin_core"]
+            assert "<subjects" not in n["datacite_xml"]
+    assert cw["collection"] is None                  # le corpus entier, en dernier
     r = _run("crosswalk_depot.py", db_path, data_dir, "--collection", cid)
-    assert r.returncode == 0, r.stderr
-    texte = r.stdout
-    assert "sujet-global-9500" in texte, "le vocabulaire global a disparu de la notice"
-    assert "sujet-ici-9501" in texte, "la collection n'exporte plus son propre vocabulaire"
-    assert "sujet-ailleurs-9502" not in texte, (
-        "le vocabulaire d'une AUTRE collection part au dépôt sous le nom de celle-ci")
+    assert "Corpus déposé" in r.stdout
 
 
 def test_crosswalk_corpus_entier(client, album, db_path, data_dir):
@@ -168,11 +177,11 @@ def test_crosswalk_refuse_une_collection_isolee(isoles):
         r = _run("crosswalk_depot.py", isoles["db"], isoles["data"], "--collection", str(cid))
         assert r.returncode != 0 and r.stdout.strip() == "", r.stdout[:200]
         assert "bac à sable" in r.stderr and "rien n'en sort" in r.stderr, r.stderr
-    # La collection du vrai projet, elle, sort — sans le vocabulaire du bac à sable.
+    # La collection du vrai projet, elle, sort — sans aucun vocabulaire d'hier, ni du bac à
+    # sable ni du corpus (ANN-7, le basculement : plus de sujets du tout).
     r = _run("crosswalk_depot.py", isoles["db"], isoles["data"], "--collection",
              str(isoles["col"]))
     assert r.returncode == 0, r.stderr
-    sujets = json.loads(r.stdout)["crosswalk_depot"]["collection"]["datacite"].get(
-        "subjects", [])
-    texte = json.dumps(sujets, ensure_ascii=False)
-    assert "mot-du-corpus" in texte and "mot-du-bac" not in texte, texte
+    collection = json.loads(r.stdout)["crosswalk_depot"]["collection"]
+    assert collection is not None and "subjects" not in collection["datacite"]
+    assert "mot-du-corpus" not in r.stdout and "mot-du-bac" not in r.stdout

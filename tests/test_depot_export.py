@@ -238,15 +238,17 @@ def test_aucune_route_de_depot_n_atteint_les_outils_SANS_collection():
 
 
 # --------------------------------------------------------------------------- #
-# 2 bis. Le périmètre du VOCABULAIRE (AUTH-11)
+# 2 bis. Le VOCABULAIRE d'hier ne sort plus (ANN-7, le basculement)
 # --------------------------------------------------------------------------- #
-# Le périmètre des ALBUMS était tenu ; celui des TERMES ne l'était pas. Les catalogues
-# sortaient GLOBAUX — « entités canoniques du corpus », disait la doc —, si bien que
-# l'export de dépôt d'une collection emportait les étiquettes, les axes et les valeurs des
-# autres études, avec leur définition, leur note de portée et leur `collection_id`. Ce
-# n'est pas un mot qui fuit, c'est une GRILLE D'ANALYSE, et elle part dans un entrepôt
-# pérenne. La règle appliquée est celle du « % défini » : global ⊕ local à la collection
-# déposée (`database.clause_appartenance`), quel que soit qui exporte.
+# Jusqu'au basculement, ces tests gardaient le PÉRIMÈTRE du vocabulaire (AUTH-11) : un
+# export de dépôt emportait les termes globaux et ceux de SA collection, jamais ceux d'une
+# autre — la règle d'appartenance (`database.clause_appartenance`, retirée). Le
+# basculement retire tout le vocabulaire d'hier des sorties : tags, domaines, dimensions,
+# valeurs, situation d'une case, profil d'un personnage. Les tables restent jusqu'à la
+# migration ; le décor les remplit donc en base, et ces tests vérifient qu'AUCUN de leurs
+# termes ne sort, de quelque portée qu'il soit — la sentinelle d'à côté comme la globale
+# et celle de la collection déposée. Ce que les relevés des grilles deviennent ici est la
+# tranche 4.
 def _terme_local(db_path, table, colonne, libelle, collection_id):
     """Rend un terme déjà créé LOCAL à une collection (le décor, pas le geste testé)."""
     conn = sqlite3.connect(db_path)
@@ -261,16 +263,17 @@ def _terme_local(db_path, table, colonne, libelle, collection_id):
 
 @pytest.fixture
 def vocabulaire_cloisonne(client, db_path, derriere_proxy):
-    """Deux collections, un album chacune, et trois portées de vocabulaire.
+    """Deux collections, un album chacune, et trois portées de vocabulaire d'hier.
 
     Les libellés sont volontairement improbables : une fuite se cherche par `in` sur le
     document entier, ce qui couvre du même coup les formes qu'on n'a pas énumérées (le
     classeur XLSX, une clé JSON ajoutée demain).
 
-    Deux LIAISONS croisent exprès la frontière, parce qu'elles sont réelles — qui lit les
-    deux collections a pu les poser : la région d'Alpha porte un tag et une valeur de
-    Bravo, et le personnage (entité de corpus, sans collection) porte une valeur de
-    chaque côté. Sans elles, un filtre posé sur le seul catalogue paraîtrait suffire.
+    Le vocabulaire est POSÉ, pas seulement catalogué — c'était le patron d'AUTH-11, « la
+    portée se pose sur la LIAISON », et il reste le bon : la région d'Alpha porte trois
+    tags et deux valeurs, des trois portées, et le personnage (entité de corpus) un profil
+    de deux valeurs. Un export qui ne retirerait que les catalogues laisserait passer les
+    liaisons.
     """
     alpha = _collection(client, "Corpus Alpha")
     bravo = _collection(client, "Corpus Bravo")
@@ -299,16 +302,8 @@ def vocabulaire_cloisonne(client, db_path, derriere_proxy):
                     ("dim-global-9200", "val-global-9300"),
                     ("dim-alpha-9201", "val-alpha-9301"),
                     ("dim-bravo-9202", "val-bravo-9302"),
-                    # Une valeur qui reste GLOBALE sous un axe qui deviendra local à Bravo.
-                    # L'état est réel et daté : l'axe était global quand la valeur a été
-                    # créée, il a été restreint ensuite (v24 fait DESCENDRE la portée à la
-                    # création, pas rétroactivement). Elle est ici pour deux raisons. Elle
-                    # donne au `vocabulaire` CSV une LIGNE pour cet axe — ce dump est piloté
-                    # par les valeurs, donc un axe dont toutes les valeurs sont locales n'y
-                    # paraît jamais, et le filtre posé sur l'axe cessait d'être mesurable. Et
-                    # elle pose la règle « un terme n'est jamais plus GLOBAL que celui dont
-                    # il dépend » : son axe étant hors périmètre, elle ne voyage pas avec
-                    # Alpha.
+                    # Une valeur restée GLOBALE sous un axe devenu local à Bravo : l'état
+                    # d'une base où v24 n'a fait descendre la portée qu'à la création.
                     ("dim-bravo-9202", "valg-sous-bravo-9312"),
                     ("dim-perso-9203", "valp-global-9310"),
                     ("dim-perso-9203", "valp-bravo-9311"))}
@@ -317,7 +312,7 @@ def vocabulaire_cloisonne(client, db_path, derriere_proxy):
         conn.close()
     # Un personnage, entité de CORPUS : il porte une valeur de chaque côté.
     perso = client.post("/api/personnages", json={"nom": "Témoin"}, headers=ADMIN).json()
-    # La région d'Alpha porte trois tags et deux valeurs, des deux côtés de la frontière.
+    # La région d'Alpha porte une note, trois tags et deux valeurs.
     r = client.put(f"/api/regions/{reg['id']}/annotation", headers=ADMIN,
                    json={"note": "note"})
     assert r.status_code == 200, r.text
@@ -330,16 +325,7 @@ def vocabulaire_cloisonne(client, db_path, derriere_proxy):
         for v in ("val-alpha-9301", "val-bravo-9302"):
             conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
                          (reg["id"], vals[v]))
-        conn.commit()
-    finally:
-        conn.close()
-
-    # Un axe GLOBAL rattaché à un domaine LOCAL à Bravo : l'état d'une base antérieure à
-    # v24, où la portée ne DESCENDAIT pas encore du domaine vers ses dimensions. C'est la
-    # seule façon d'éprouver que le nom du domaine ne ressort pas par la bande, en
-    # libellé d'axe, sur une dimension parfaitement lisible.
-    conn = sqlite3.connect(db_path)
-    try:
+        # Un axe GLOBAL rattaché à un domaine LOCAL à Bravo (l'état d'avant v24).
         conn.execute("UPDATE attribut_dimension SET domaine_id = "
                      "(SELECT id FROM domaine WHERE nom = 'dom-bravo-9102') "
                      "WHERE nom = 'dim-global-9200'")
@@ -358,12 +344,16 @@ def vocabulaire_cloisonne(client, db_path, derriere_proxy):
             ("tags", "label", "tag-alpha-9401", alpha["id"]),
             ("tags", "label", "tag-bravo-9402", bravo["id"])):
         _terme_local(db_path, table, col, libelle, cid)
-    return {"alpha": alpha, "bravo": bravo, "perso": perso,
+    return {"alpha": alpha, "bravo": bravo, "perso": perso, "region_id": reg["id"],
             "global": ["dom-global-9100", "dim-global-9200", "val-global-9300",
                        "dim-perso-9203", "valp-global-9310", "tag-global-9400"],
             "a": ["dom-alpha-9101", "dim-alpha-9201", "val-alpha-9301", "tag-alpha-9401"],
             "b": ["dom-bravo-9102", "dim-bravo-9202", "val-bravo-9302",
                   "valg-sous-bravo-9312", "valp-bravo-9311", "tag-bravo-9402"]}
+
+
+def _tout_le_vocabulaire(v) -> list:
+    return v["global"] + v["a"] + v["b"]
 
 
 def _cw_texte(db_path, collection_id):
@@ -399,13 +389,6 @@ def _textes_de_depot(client, db_path, collection_id):
     try:
         arbre = json.dumps(mc.collecter(conn, collection_id=collection_id),
                            ensure_ascii=False, default=str)
-        # Le JOURNAL (A3) était EXCLU de ce contrôle jusqu'au 2026-09-24, parce que ses
-        # charges `avant`/`apres` partaient mot pour mot et emportaient, avec le texte des
-        # œuvres, le libellé des tags d'ailleurs. La décision de TAIRE LES CHARGES ferme
-        # ce canal, et l'exclusion tombe avec lui : ses deux tables rentrent dans la
-        # mesure. Une exception écrite en moins vaut mieux qu'une exception bien
-        # commentée — tant qu'elle tenait, ce contrôle disait « propre » d'un artefact
-        # dont il ne regardait pas deux tables sur dix-neuf.
         tbls = json.dumps(mc.tables(conn, collection_id=collection_id),
                           ensure_ascii=False, default=str)
     finally:
@@ -413,52 +396,67 @@ def _textes_de_depot(client, db_path, collection_id):
     route = client.get(f"/api/collections/{collection_id}/depot/metadonnees",
                        headers=ADMIN)
     assert route.status_code == 200, route.text
+    desc = client.get(f"/api/collections/{collection_id}/depot/description",
+                      headers=ADMIN)
+    assert desc.status_code == 200, desc.text
     return {"records JSON": arbre, "tables CSV": tbls,
             "crosswalk de dépôt": _cw_texte(db_path, collection_id),
-            "route /depot/metadonnees": route.content.decode("utf-8")}
+            "route /depot/metadonnees": route.content.decode("utf-8"),
+            "route /depot/description": desc.content.decode("utf-8")}
 
 
-def test_l_export_d_une_collection_ne_porte_que_son_vocabulaire(client, db_path,
-                                                                vocabulaire_cloisonne):
-    """AUTH-11 — l'export d'Alpha ne porte que le vocabulaire d'Alpha : global ⊕ local.
+def test_l_export_d_une_collection_ne_porte_plus_aucun_vocabulaire(client, db_path,
+                                                                   vocabulaire_cloisonne):
+    """ANN-7, le basculement — l'export de dépôt d'Alpha ne porte AUCUN terme d'hier : ni
+    ceux de Bravo (ce que gardait AUTH-11), ni les globaux, ni les siens. Celui de Bravo
+    non plus.
 
-    Les termes de Bravo cherchés ici ne sont pas seulement dans les CATALOGUES : le tag et
-    la valeur de Bravo sont POSÉS sur une région d'Alpha, et sur un personnage. Un filtre
-    qui ne borderait que les listes de référence laisserait passer les liaisons — c'est le
-    patron de la fiche, « la portée se pose sur la LIAISON et pas seulement sur le terme
-    nommé ».
-
-    Anti-vacuité en deux temps, et le second compte autant : le vocabulaire global ET
-    celui d'Alpha doivent SORTIR (sans quoi un filtre qui vide tout passerait), et
-    l'export de Bravo doit porter Bravo (sans quoi un filtre qui tairait toujours les
-    termes locaux passerait aussi).
+    Anti-vacuité : chaque sortie nomme sa collection ou son album — sans quoi un export
+    vide serait propre —, et les records gardent la NOTE de la région, le seul reste de
+    l'annotation d'hier qui sorte encore.
     """
     v = vocabulaire_cloisonne
-    for quoi, texte in _textes_de_depot(client, db_path, v["alpha"]["id"]).items():
-        for mot in v["b"]:
-            assert mot not in texte, f"{quoi} : « {mot} » a fuité hors de sa collection"
-        for mot in v["global"] + v["a"]:
-            # Le crosswalk ne porte que des SUJETS (valeurs + tags), pas les axes.
-            if quoi == "crosswalk de dépôt" and mot.startswith(("dom-", "dim-")):
-                continue
-            assert mot in texte, f"{quoi} : « {mot} » manque — le filtre a tout emporté"
+    for cle, temoin in ((v["alpha"]["id"], "ALBUM-ALPHA-9001"),
+                        (v["bravo"]["id"], "ALBUM-BRAVO-9002")):
+        for quoi, texte in _textes_de_depot(client, db_path, cle).items():
+            for mot in _tout_le_vocabulaire(v):
+                assert mot not in texte, f"{quoi} ({cle}) : « {mot} » sort encore"
+            nom = "Corpus Alpha" if cle == v["alpha"]["id"] else "Corpus Bravo"
+            assert temoin in texte or nom in texte, (
+                f"{quoi} ({cle}) : ni l'album ni la collection n'y sont — l'artefact est "
+                "vide, le test ne mesure rien")
+    import metadonnees_collection as mc
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        arbre = mc.collecter(conn, collection_id=v["alpha"]["id"])["metadonnees_collection"]
+        tbls = mc.tables(conn, collection_id=v["alpha"]["id"])
+    finally:
+        conn.close()
+    regions = [r for a in arbre["albums"] for p in a["planches"] for r in p["regions"]]
+    assert [r["annotation"]["note"] for r in regions if r["id"] == v["region_id"]] == ["note"]
+    # Les clés et les tables sont RETIRÉES, pas laissées vides (un catalogue vide se lirait
+    # « aucun vocabulaire »).
+    for cle in ("domaines", "vocabulaire", "tags"):
+        assert cle not in arbre, f"la clé `{cle}` des records est encore là"
+    assert "lexique" not in arbre["paradonnee"]
+    assert all("attributs" not in p for p in arbre["personnages"])
+    assert all("attributs" not in r for r in regions)
+    assert all(set(r["annotation"]) == {"note", "date_creation", "date_modification"}
+               for r in regions if "annotation" in r)
+    for table in ("tags", "domaines", "vocabulaire", "region_attributs",
+                  "personnage_attributs"):
+        assert table not in tbls, f"la table `{table}` des CSV est encore là"
+    assert tbls["annotations"][0] == ["region_id", "note", "date_creation",
+                                      "date_modification"]
 
-    for quoi, texte in _textes_de_depot(client, db_path, v["bravo"]["id"]).items():
-        for mot in v["b"]:
-            if quoi == "crosswalk de dépôt" and mot.startswith(("dom-", "dim-")):
-                continue
-            assert mot in texte, f"{quoi} : Bravo n'exporte plus son propre « {mot} »"
 
-
-def test_sans_collection_les_outils_exportent_TOUT_le_vocabulaire(db_path,
-                                                                  vocabulaire_cloisonne):
-    """Le mode « corpus entier » des CLI ne change pas (AUTH-11).
-
-    `--collection` est un RESTREIGNEUR, et sans lui il n'y a pas de frontière à tenir :
-    l'export décrit l'instance. Ce test existe parce que le remède se serait aussi bien
-    écrit en filtrant toujours — auquel cas la sauvegarde descriptive du corpus entier
-    aurait perdu la moitié de son lexique sans que rien ne le dise.
-    """
+def test_sans_collection_les_outils_n_exportent_aucun_vocabulaire_non_plus(
+        db_path, vocabulaire_cloisonne):
+    """Le mode « corpus entier » des CLI : il décrivait TOUT le vocabulaire de l'instance
+    (AUTH-11 : `--collection` est un restreigneur, sans lui pas de frontière). Le
+    basculement le retire là aussi — ce mode est celui qui en sortait le plus."""
+    import description_collection as dc
     import metadonnees_collection as mc
     v = vocabulaire_cloisonne
     conn = sqlite3.connect(db_path)
@@ -466,22 +464,53 @@ def test_sans_collection_les_outils_exportent_TOUT_le_vocabulaire(db_path,
     try:
         texte = json.dumps(mc.collecter(conn), ensure_ascii=False, default=str)
         texte += json.dumps(mc.tables(conn), ensure_ascii=False, default=str)
+        fiche, agg = dc.collecter(conn)
+        texte += json.dumps(fiche, ensure_ascii=False, default=str) + dc.catalogue_csv(agg)
     finally:
         conn.close()
     texte += _cw_texte(db_path, None)
-    for mot in v["global"] + v["a"] + v["b"]:
-        assert mot in texte, f"« {mot} » manque de l'export du corpus entier"
+    for mot in _tout_le_vocabulaire(v):
+        assert mot not in texte, f"« {mot} » sort de l'export du corpus entier"
+    assert "ALBUM-ALPHA-9001" in texte and "ALBUM-BRAVO-9002" in texte, (
+        "le corpus entier ne nomme plus ses albums : le test ne mesure rien")
+
+
+def test_un_terme_d_une_collection_supprimee_ne_sort_pas_devenu_global(
+        client, db_path, vocabulaire_cloisonne):
+    """Le trou que ce commit ferme. Un terme LOCAL à une collection qu'on supprime devient
+    GLOBAL par sa clé étrangère (`ON DELETE SET NULL`) : depuis le commit des coutures plus
+    rien ne retient ni ne range ce vocabulaire, et tant que les exports suivaient la règle
+    d'appartenance (« global ⊕ local »), ce tag d'une collection DISPARUE sortait avec
+    l'export de toutes les autres. Il ne sort plus, parce que plus rien d'hier ne sort.
+
+    Le décor est relu : sans la bascule vers NULL, le test ne mesurerait rien."""
+    v = vocabulaire_cloisonne
+    gamma = _collection(client, "Corpus Gamma")
+    poser_tags(db_path, v["region_id"], ["tag-gamma-9450"], collection_id=gamma["id"])
+    r = client.delete(f"/api/collections/{gamma['id']}", headers=ADMIN)
+    assert r.status_code in (200, 204), r.text
+    ligne = direct_query(db_path, "SELECT collection_id FROM tags WHERE label = ?",
+                         ("tag-gamma-9450",))
+    assert [l["collection_id"] for l in ligne] == [None], (
+        "le tag de la collection supprimée n'est pas devenu global : le décor ne pose "
+        "plus l'état que ce test ferme")
+    textes = _textes_de_depot(client, db_path, v["alpha"]["id"])
+    for fmt in ("json", "csv", "tei"):
+        textes[f"export {fmt}"] = _export_album(
+            client, fmt, _album_d_alpha(db_path), ADMIN, v["alpha"]["id"]).decode("utf-8")
+    for quoi, texte in textes.items():
+        assert "tag-gamma-9450" not in texte, f"{quoi} : le tag devenu global sort"
 
 
 # --------------------------------------------------------------------------- #
-# 2 ter. L'export d'un ALBUM suit la même règle (AUTH-11, tranché le 2026-10-07)
+# 2 ter. L'export d'un ALBUM (AUTH-11, puis ANN-7, le basculement)
 # --------------------------------------------------------------------------- #
-# Un album sort « au titre d'une collection » (DROIT-2), et son vocabulaire suivait la
-# portée d'export de la PERSONNE : le même fichier, étiqueté Alpha, portait le tag de
-# Bravo pour qui exporte aussi Bravo, et pas pour qui n'exporte qu'Alpha. Décision (1) de
-# Hugo : l'export d'un album au titre de A ne porte que le vocabulaire de A et le
-# vocabulaire global, quelle que soit la personne — la règle du dépôt, et la même
-# fonction (`database.clause_appartenance`).
+# Un album sort « au titre d'une collection » (DROIT-2). Depuis AUTH-11 (2026-10-07), ce
+# titre gouvernait son vocabulaire : celui de la collection et le global, quel que soit qui
+# exporte. Le basculement retire le vocabulaire : l'album ne porte plus que la NOTE de ses
+# régions. Ce qui reste de ces tests : l'artefact ne varie pas selon qui clique, le titre
+# ne se choisit pas librement (« aucun export sans titre », cadrage de la tranche 3), et une
+# région qui ne portait que des tags ne se dit pas annotée.
 #
 # Ce que ces tests NE disent pas : qui a le droit d'exporter. C'est DROIT-2, inchangé, et
 # `test_droit_export` le garde. Ici on ne regarde que ce que le fichier PORTE.
@@ -491,26 +520,23 @@ LIT_LES_DEUX = {"Remote-User": "lit-les-deux"}      # lit les deux, n'exporte qu
 T_GLOBAL, T_ALPHA, T_BRAVO = "tag-global-9400", "tag-alpha-9401", "tag-bravo-9402"
 
 
+def _album_d_alpha(db_path) -> int:
+    return direct_query(db_path, "SELECT id FROM albums WHERE titre = 'ALBUM-ALPHA-9001'"
+                        )[0]["id"]
+
+
 @pytest.fixture
 def album_partage(client, db_path, vocabulaire_cloisonne):
     """L'album d'Alpha et les comptes de la relecture du 2026-10-07.
 
-    Sa région porte déjà les trois tags (`vocabulaire_cloisonne`). S'y ajoute une BULLE
-    qui ne porte, elle, qu'un tag de Bravo et aucune note : la région dont il ne reste
-    rien à montrer quand l'album sort au titre d'Alpha.
+    Sa région porte déjà une note et les trois tags (`vocabulaire_cloisonne`). S'y ajoute
+    une BULLE qui ne porte, elle, qu'un tag et aucune note : la région dont il ne reste
+    rien à montrer.
     """
     v = vocabulaire_cloisonne
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        album_id = conn.execute("SELECT id FROM albums WHERE titre = 'ALBUM-ALPHA-9001'"
-                                ).fetchone()["id"]
-        planche_id = conn.execute("SELECT id FROM planches WHERE album_id = ?",
-                                  (album_id,)).fetchone()["id"]
-        region_id = conn.execute("SELECT id FROM regions WHERE planche_id = ?",
-                                 (planche_id,)).fetchone()["id"]
-    finally:
-        conn.close()
+    album_id = _album_d_alpha(db_path)
+    planche_id = direct_query(db_path, "SELECT id FROM planches WHERE album_id = ?",
+                              (album_id,))[0]["id"]
     r = client.post(f"/api/planches/{planche_id}/regions", headers=ADMIN,
                     json={"type": "bulle", "x": 1, "y": 1, "w": 3, "h": 3})
     assert r.status_code in (200, 201), r.text
@@ -539,7 +565,7 @@ def album_partage(client, db_path, vocabulaire_cloisonne):
         conn.commit()
     finally:
         conn.close()
-    return {**v, "album_id": album_id, "region_id": region_id, "bulle_id": bulle_id,
+    return {**v, "album_id": album_id, "bulle_id": bulle_id,
             "comptes": {"propriétaire d'Alpha et de Bravo": DES_DEUX,
                         "propriétaire d'Alpha seule": D_ALPHA,
                         "lit les deux, n'exporte qu'Alpha": LIT_LES_DEUX,
@@ -567,7 +593,9 @@ def _export_album(client, fmt, album_id, qui, collection_id=None, attendu=200):
 
 def _annotation_exportee(fmt, blob, region_id):
     """Ce que l'artefact dit de l'annotation d'UNE région : `None` si elle n'y est pas
-    dite annotée, sinon (note, tags). Lu dans la structure, pas cherché dans le texte."""
+    dite annotée, sinon sa note. Lu dans la structure, pas cherché dans le texte — et la
+    structure d'hier y est REFUSÉE : une clé `tags` en JSON, une colonne `tags` en CSV, un
+    `@type` ou un `@ana` sur la `<note>` du TEI font échouer, vides ou non."""
     if fmt == "json":
         def chercher(noeuds):
             for n in noeuds:
@@ -579,31 +607,36 @@ def _annotation_exportee(fmt, blob, region_id):
         noeud = next(filter(None, (chercher(p["regions"])
                                    for p in json.loads(blob)["planches"])))
         ann = noeud["annotation"]
-        return None if ann is None else (ann["note"] or "", ann["tags"])
+        if ann is None:
+            return None
+        assert set(ann) == {"note"}, f"l'annotation JSON porte encore {sorted(ann)}"
+        return ann["note"] or ""             # dite annotée sans note : "" et non None
     if fmt == "csv":
         import csv
-        ligne = next(l for l in csv.DictReader(io.StringIO(blob.decode("utf-8-sig")))
-                     if int(l["region_id"]) == region_id)
-        tags = [t for t in ligne["tags"].split("|") if t]
-        return None if not (ligne["note"] or tags) else (ligne["note"], tags)
+        lecteur = csv.DictReader(io.StringIO(blob.decode("utf-8-sig")))
+        assert "tags" not in lecteur.fieldnames, lecteur.fieldnames
+        ligne = next(l for l in lecteur if int(l["region_id"]) == region_id)
+        return ligne["note"] or None
     import xml.etree.ElementTree as ET
     tei = "{http://www.tei-c.org/ns/1.0}"
     zone = next(z for z in ET.fromstring(blob).iter(f"{tei}zone")
                 if z.get("{http://www.w3.org/XML/1998/namespace}id") == f"zone_{region_id}")
     note = zone.find(f"{tei}note")
-    return None if note is None else (note.text or "", (note.get("ana") or "").split())
+    if note is None:
+        return None
+    assert not note.attrib, f"la <note> TEI porte encore {note.attrib}"
+    return note.text or ""                   # une <note/> vide : "" et non None
 
 
 @pytest.mark.parametrize("nommee", [True, False], ids=["nommée", "par défaut"])
 @pytest.mark.parametrize("fmt", ["json", "csv", "tei"])
 def test_l_album_au_titre_d_alpha_sort_identique_quel_que_soit_qui_exporte(
         client, album_partage, fmt, nommee):
-    """Le MÊME artefact pour les comptes de la relecture — et il ne porte que le
-    vocabulaire d'Alpha et le vocabulaire global.
+    """Le MÊME artefact pour les comptes de la relecture — et il ne porte aucun tag, ni
+    global, ni d'Alpha, ni de Bravo : la région garde sa note, et rien d'autre.
 
     `par défaut` : aucun `collection_id`. L'album ne vit que dans Alpha, donc chacun
-    l'obtient au titre d'Alpha sans la nommer — et la borne doit tenir là aussi, sans
-    quoi il suffirait d'omettre un paramètre pour retrouver l'écart.
+    l'obtient au titre d'Alpha sans la nommer.
     """
     d = album_partage
     cid = d["alpha"]["id"] if nommee else None
@@ -611,14 +644,10 @@ def test_l_album_au_titre_d_alpha_sort_identique_quel_que_soit_qui_exporte(
               for nom, qui in d["comptes"].items()}
     for nom, blob in sortis.items():
         texte = blob.decode("utf-8")
-        assert T_GLOBAL in texte and T_ALPHA in texte, (
-            f"{fmt}, {nom} : le vocabulaire d'Alpha ou le global manque — le filtre a "
-            "tout emporté")
-        assert T_BRAVO not in texte, (
-            f"{fmt}, {nom} : l'album sort au titre d'Alpha et porte un tag local à Bravo")
-        # Les DONNÉES ne bougent pas : la région garde sa note et ses deux autres tags.
-        assert _annotation_exportee(fmt, blob, d["region_id"]) == (
-            "note", [T_ALPHA, T_GLOBAL])
+        assert "ALBUM-ALPHA-9001" in texte, f"{fmt}, {nom} : l'album n'est pas dans l'export"
+        for mot in _tout_le_vocabulaire(d):
+            assert mot not in texte, f"{fmt}, {nom} : l'export d'album porte « {mot} »"
+        assert _annotation_exportee(fmt, blob, d["region_id"]) == "note"
     reference = sortis["propriétaire d'Alpha seule"]
     for nom, blob in sortis.items():
         assert blob == reference, (
@@ -629,70 +658,80 @@ def test_l_album_au_titre_d_alpha_sort_identique_quel_que_soit_qui_exporte(
 
 
 @pytest.mark.parametrize("fmt", ["json", "csv", "tei"])
-def test_le_meme_album_au_titre_de_bravo_porte_bravo_et_plus_alpha(client, db_path,
-                                                                   album_partage, fmt):
-    """La contre-épreuve : la borne suit la collection NOMMÉE, elle ne tait pas les
-    termes locaux. Rangé aussi dans Bravo, le même album sort au titre de Bravo avec le
-    tag de Bravo — et sans celui d'Alpha, pour la même raison.
-
-    Le droit, lui, n'a pas bougé : qui ne lit pas Bravo reçoit 404, qui la lit sans
-    pouvoir l'exporter 403.
-    """
+def test_au_titre_de_bravo_le_meme_album_ne_porte_aucun_tag_non_plus(client, db_path,
+                                                                     album_partage, fmt):
+    """La contre-épreuve d'AUTH-11 portait Bravo au titre de Bravo ; plus rien ne sort,
+    sous aucun titre. Le droit, lui, n'a pas bougé : qui ne lit pas Bravo reçoit 404, qui
+    la lit sans pouvoir l'exporter 403."""
     d = album_partage
-    a, b = d["alpha"]["id"], d["bravo"]["id"]
+    b = d["bravo"]["id"]
     _ranger_aussi_dans(db_path, d["album_id"], b)
     sortis = {nom: _export_album(client, fmt, d["album_id"], d["comptes"][nom], b)
               for nom in ("propriétaire d'Alpha et de Bravo", "administrateur")}
     for nom, blob in sortis.items():
         texte = blob.decode("utf-8")
-        assert T_GLOBAL in texte and T_BRAVO in texte, (fmt, nom)
-        assert T_ALPHA not in texte, (
-            f"{fmt}, {nom} : l'album sort au titre de Bravo et porte un tag local à Alpha")
-        assert _annotation_exportee(fmt, blob, d["region_id"]) == (
-            "note", [T_BRAVO, T_GLOBAL])
+        assert "ALBUM-ALPHA-9001" in texte, (fmt, nom)
+        for mot in _tout_le_vocabulaire(d):
+            assert mot not in texte, f"{fmt}, {nom} : au titre de Bravo, « {mot} » sort"
+        assert _annotation_exportee(fmt, blob, d["region_id"]) == "note"
     assert len(set(sortis.values())) == 1, f"{fmt} : l'artefact varie selon qui clique"
-    # Et au titre d'Alpha, le même album rend toujours Alpha, pour les deux.
-    for nom in sortis:
-        texte = _export_album(client, fmt, d["album_id"], d["comptes"][nom], a).decode("utf-8")
-        assert T_ALPHA in texte and T_BRAVO not in texte, (fmt, nom)
     _export_album(client, fmt, d["album_id"], D_ALPHA, b, attendu=404)
     _export_album(client, fmt, d["album_id"], LIT_LES_DEUX, b, attendu=403)
 
 
 @pytest.mark.parametrize("fmt", ["json", "csv", "tei"])
-def test_une_region_au_seul_tag_d_ailleurs_ne_sort_pas_annotee(client, db_path,
-                                                               album_partage, fmt):
-    """Une bulle sans note, qui ne porte qu'un tag de Bravo : au titre d'Alpha il n'en
-    reste rien à montrer, et l'export ne la dit PAS annotée — ni `annotation` vide en
-    JSON, ni `<note>` vide en TEI. C'est la règle de `socle._sql_a_montrer`, posée par
-    `9446d68` pour les compteurs : le marqueur suit ce qu'on montre.
+def test_une_region_qui_ne_portait_que_des_tags_ne_sort_pas_annotee(client, db_path,
+                                                                    album_partage, fmt):
+    """Une bulle sans note, qui ne porte qu'un tag : il n'en reste rien à montrer, et
+    l'export ne la dit PAS annotée — ni `annotation` vide en JSON, ni `<note>` vide en
+    TEI —, sous aucun titre. AUTH-11 la disait annotée au titre de la collection de son
+    tag ; ce tag ne sort plus.
 
     La région elle-même sort toujours : c'est une DONNÉE de l'album.
     """
     d = album_partage
-    for nom, qui in d["comptes"].items():
-        blob = _export_album(client, fmt, d["album_id"], qui, d["alpha"]["id"])
-        assert _annotation_exportee(fmt, blob, d["bulle_id"]) is None, (
-            f"{fmt}, {nom} : la bulle est dite annotée alors qu'il n'en sort rien")
     _ranger_aussi_dans(db_path, d["album_id"], d["bravo"]["id"])
-    blob = _export_album(client, fmt, d["album_id"], ADMIN, d["bravo"]["id"])
-    assert _annotation_exportee(fmt, blob, d["bulle_id"]) == ("", [T_BRAVO]), (
-        f"{fmt} : au titre de Bravo, la bulle doit sortir annotée de son tag")
+    for cid in (d["alpha"]["id"], d["bravo"]["id"]):
+        blob = _export_album(client, fmt, d["album_id"], ADMIN, cid)
+        assert _annotation_exportee(fmt, blob, d["bulle_id"]) is None, (
+            f"{fmt}, au titre de {cid} : la bulle est dite annotée alors qu'il n'en sort "
+            "rien")
+
+
+def test_les_enregistrements_ne_disent_pas_annotee_une_region_aux_seuls_tags(
+        db_path, album_partage):
+    """La même règle dans les enregistrements de dépôt (`metadonnees_collection`) : la bulle
+    qui ne porte qu'une ligne d'annotation aux seuls tags d'hier n'a pas d'`annotation` dans
+    l'arbre, ni de ligne dans la table `annotations` — une note posée, sinon rien. La région
+    à note, elle, y est."""
+    import metadonnees_collection as mc
+    d = album_partage
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        arbre = mc.collecter(conn, collection_id=d["alpha"]["id"])["metadonnees_collection"]
+        tbls = mc.tables(conn, collection_id=d["alpha"]["id"])
+    finally:
+        conn.close()
+    regions = {r["id"]: r for a in arbre["albums"] for p in a["planches"]
+               for r in p["regions"]}
+    assert d["bulle_id"] in regions and "annotation" not in regions[d["bulle_id"]]
+    assert regions[d["region_id"]]["annotation"]["note"] == "note"
+    assert [l[0] for l in tbls["annotations"][1]] == [d["region_id"]]
 
 
 @pytest.mark.parametrize("fmt", ["json", "csv", "tei"])
 def test_un_album_ne_sort_pas_au_titre_d_une_collection_ou_il_n_est_pas_range(
         client, album_partage, fmt):
-    """Le titre gouverne le CONTENU, donc il ne se choisit pas librement.
+    """Le titre ne se choisit pas librement.
 
     L'album n'est rangé que dans Alpha. Bravo est lue ET exportable pour le propriétaire
     des deux comme pour l'administrateur : rien, dans leurs droits, ne s'oppose à ce qu'ils
     la nomment. Si `_collection_d_export` cherchait la collection nommée parmi toutes les
     collections et non parmi celles de l'ALBUM, ils obtiendraient 200 — l'album d'Alpha,
-    étiqueté Bravo, avec le vocabulaire de Bravo. Avant le 2026-10-07 cette ligne ne
-    gardait qu'une étiquette ; elle est maintenant la seule chose qui empêche un album de
-    sortir avec le vocabulaire d'une collection où il n'est pas (mutant de la relecture
-    croisée, qui survivait). 404, comme pour une collection qui n'existe pas.
+    étiqueté Bravo (mutant de la relecture croisée du 2026-10-07, qui survivait ; le titre
+    gouvernait alors aussi le vocabulaire, que le basculement d'ANN-7 a retiré). 404, comme
+    pour une collection qui n'existe pas.
     """
     d = album_partage
     for nom in ("propriétaire d'Alpha et de Bravo", "administrateur"):
@@ -709,10 +748,9 @@ def test_un_album_ne_sort_pas_au_titre_d_une_collection_ou_il_n_est_pas_range(
 
 def test_le_nom_du_fichier_dit_le_titre_en_csv_comme_en_tei(client, db_path,
                                                             album_partage):
-    """Deux contenus différents — au titre d'Alpha, au titre de Bravo — ne doivent pas
-    porter le même nom. Le CSV disait déjà `_c<N>` ; le TEI s'appelait
-    `album_<id>_tei.xml` dans tous les cas. Un nom SANS `_c<N>` n'existe plus : depuis le
-    2026-10-07 aucun album ne sort sans titre (cf.
+    """Le titre reste dit dans le NOM du fichier. Le CSV disait déjà `_c<N>` ; le TEI
+    s'appelait `album_<id>_tei.xml` dans tous les cas. Un nom SANS `_c<N>` n'existe plus :
+    depuis le 2026-10-07 aucun album ne sort sans titre (cf.
     `test_sans_titre_un_album_de_plusieurs_collections_ne_sort_plus`)."""
     d = album_partage
     a, b, alb = d["alpha"]["id"], d["bravo"]["id"], d["album_id"]
@@ -732,21 +770,32 @@ def test_le_nom_du_fichier_dit_le_titre_en_csv_comme_en_tei(client, db_path,
     assert nom("csv", b) == f"album_{alb}_c{b}.csv"
 
 
-def test_les_tags_d_une_region_sortent_dans_le_meme_ordre_dans_les_trois_formats(
-        client, db_path, album_partage):
-    """Triés par libellé, partout. Le CSV concaténait sans `ORDER BY` : l'ordre suivait en
-    pratique la CRÉATION des tags, que SQLite ne promet pas. Deux tags globaux sont donc
-    créés dans l'ordre INVERSE de l'alphabet — `zz…` d'abord — sur la bulle du décor."""
+def test_les_trois_formats_retirent_les_tags_au_lieu_de_les_vider(client, album_partage):
+    """Retirer n'est pas vider (cadrage de la tranche 3, « se tranchent en route » : la
+    colonne `tags` du CSV est retirée et non laissée vide). Joué sur l'ARTEFACT, pour la
+    région qui porte une note et des tags : en JSON, l'annotation n'a que `note` ; en CSV,
+    l'en-tête n'a plus de colonne `tags` ; en TEI, aucune `<note>` ne porte `@type` ni
+    `@ana`, et le document reste du XML bien formé."""
+    import csv
+    import xml.etree.ElementTree as ET
     d = album_partage
-    zz, aa = "zz-ordre-9700", "aa-ordre-9701"
-    for tags in ([zz], [aa]):                         # deux écritures : `zz` naît avant `aa`
-        poser_tags(db_path, d["bulle_id"], tags)      # en base : ANN-7, plus de route
-    ids = {l["label"]: l["id"] for l in direct_query(
-        db_path, "SELECT id, label FROM tags WHERE label IN (?, ?)", (zz, aa))}
-    assert ids[zz] < ids[aa], "le décor ne crée plus `zz` avant `aa` : l'ordre ne mesure rien"
-    for fmt in ("json", "csv", "tei"):
-        blob = _export_album(client, fmt, d["album_id"], ADMIN, d["alpha"]["id"])
-        assert _annotation_exportee(fmt, blob, d["bulle_id"]) == ("", [aa, zz]), fmt
+    blob = _export_album(client, "json", d["album_id"], ADMIN, d["alpha"]["id"])
+    annotations = []
+
+    def parcourir(noeuds):
+        for n in noeuds:
+            if n["annotation"] is not None:
+                annotations.append(n["annotation"])
+            parcourir(n["enfants"])
+    for p in json.loads(blob)["planches"]:
+        parcourir(p["regions"])
+    assert annotations and all(set(a) == {"note"} for a in annotations), annotations
+    blob = _export_album(client, "csv", d["album_id"], ADMIN, d["alpha"]["id"])
+    entete = next(csv.reader(io.StringIO(blob.decode("utf-8-sig"))))
+    assert entete[-1] == "note" and "tags" not in entete, entete
+    blob = _export_album(client, "tei", d["album_id"], ADMIN, d["alpha"]["id"])
+    notes = list(ET.fromstring(blob).iter("{http://www.tei-c.org/ns/1.0}note"))
+    assert notes and all(not n.attrib for n in notes), [n.attrib for n in notes]
 
 
 @pytest.mark.parametrize("fmt", ["json", "csv", "tei"])
@@ -759,12 +808,12 @@ def test_sans_titre_un_album_de_plusieurs_collections_ne_sort_plus(client, db_pa
     en portée totale (administrateur, mono-poste), un album rangé dans plusieurs
     collections et exporté sans en nommer aucune sortait en 200, `exporte_au_titre_de:
     null`, avec TOUT le vocabulaire posé sur ses régions — « il ne sort alors sous aucun
-    droit particulier » (DROIT-2, 2026-09-11). Ancien attendu : 200, les tags d'Alpha ET
-    de Bravo. Nouvel attendu : le **422 nommé** que recevaient déjà les autres comptes.
+    droit particulier » (DROIT-2, 2026-09-11). Nouvel attendu : le **422 nommé** que
+    recevaient déjà les autres comptes.
 
-    La raison : depuis que le titre gouverne le CONTENU (AUTH-11), « sans titre » était le
-    seul export d'album dont le vocabulaire n'était borné par rien, et le seul où le même
-    album changeait de contenu selon qu'il était rangé dans une ou deux collections.
+    La raison d'alors — depuis AUTH-11, le titre gouvernait le vocabulaire — attend la
+    tranche 4 d'ANN-7, qui dira ce que les relevés emportent ; la règle reste (cadrage de
+    la tranche 3, « se tranchent en route »).
 
     Ce qui reste vrai, et que `test_l_album_au_titre_d_alpha_sort_identique…[par défaut]`
     garde : un album rangé dans UNE seule collection sort sans rien nommer, au titre de
@@ -783,9 +832,9 @@ def test_sans_titre_un_album_de_plusieurs_collections_ne_sort_plus(client, db_pa
         for mot in (T_GLOBAL, T_ALPHA, T_BRAVO, "ALBUM-ALPHA-9001"):
             assert mot not in rep.text, f"{fmt}, {nom} : le refus porte « {mot} »"
     # Nommée, l'une comme l'autre répond — le refus porte sur le SILENCE, pas sur l'album.
-    for cid, porte, tait in ((a, T_ALPHA, T_BRAVO), (b, T_BRAVO, T_ALPHA)):
+    for cid in (a, b):
         texte = _export_album(client, fmt, d["album_id"], ADMIN, cid).decode("utf-8")
-        assert porte in texte and tait not in texte, (fmt, cid)
+        assert "ALBUM-ALPHA-9001" in texte, (fmt, cid)
 
 
 @pytest.mark.parametrize("fmt", ["json", "csv", "tei"])

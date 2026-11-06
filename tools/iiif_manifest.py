@@ -92,9 +92,9 @@ def _region_anno(reg, cid, base, aid, verbatim):
     if reg.get("presence"):
         bodies.append({"type": "TextualBody", "purpose": "identifying", "language": "fr",
                        "value": f"présence : {reg['presence']}"})
+    # ANN-7, le basculement — plus de corps `tagging` : les tags ne sortent plus. Ce que
+    # les relevés des grilles deviennent ici est la tranche 4.
     ann = reg.get("annotation") or {}
-    for tag in ann.get("tags", []):
-        bodies.append({"type": "TextualBody", "purpose": "tagging", "value": tag})
     if ann.get("note"):
         bodies.append({"type": "TextualBody", "purpose": "commenting", "language": "fr",
                        "format": "text/plain", "value": ann["note"]})

@@ -4,7 +4,7 @@ Parcourt la base EN LECTURE SEULE et instancie, pour un périmètre donné (par
 défaut : le corpus entier), les métadonnées décrites dans
 `docs/dictionnaire-metadonnees.md`. Produit deux vues du MÊME modèle :
 
-  • JSON — fiche roll-up (identité + couverture + provenance + vocabulaire + droits) ;
+  • JSON — fiche roll-up (identité + couverture + provenance + qualité + droits) ;
   • CSV  — catalogue champ par champ (le dictionnaire instancié, une ligne = un élément).
 
 Les champs marqués « absent — à prévoir » dans le dictionnaire apparaissent dans le
@@ -15,6 +15,13 @@ la ligne `collection` (v14). Gérer les collections : `gerer_collections.py`.
 
 COL-4 — ni les BACS À SABLE ni le JEU ne sortent : exclus du corpus entier, et une
 collection de l'un d'eux, nommée, est refusée (`_commun.HorsDuCorpus`).
+
+ANN-7, le basculement — la fiche ne décrit plus aucun VOCABULAIRE : le bloc
+`vocabulaire` (domaines, dimensions, « % défini »), les comptes de tags, les éléments du
+catalogue qui nommaient les tags, les domaines, les dimensions, les valeurs, la situation
+d'une case et le profil d'un personnage sont RETIRÉS, pas laissés vides ni à zéro — un
+zéro dirait « ce corpus n'en a pas », alors que ces éléments n'existent plus. Ce que les
+relevés des grilles y deviennent est la tranche 4.
 
 Usage :
     python tools/description_collection.py                     # JSON sur stdout
@@ -45,8 +52,8 @@ from _commun import (version_outil, environnement, portee_albums,  # noqa: E402 
                      forcer_utf8, CIBLES_CORPUS, REGIONS_SORTANTES,  # env / portée / stdout
                                                                    # + liste blanche AUTH-1
                      HorsDuCorpus, albums_du_corpus, clause_personnages,   # COL-4 : ni bac
-                     clause_vocabulaire, exiger_hors_isoles,               # à sable ni jeu
-                     sql_activite_isolee, sql_collection_isolee, sql_evenement_tu)
+                     exiger_hors_isoles,                                   # à sable ni jeu
+                     sql_activite_isolee, sql_evenement_tu)
 
 
 # --------------------------------------------------------------------------- #
@@ -91,34 +98,25 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
 
     `agg_plat` : {(niveau, element): "valeur ou agrégat"} — sert à remplir le CSV.
     `collection_id` (scoping `--collection`) restreint la COUVERTURE aux albums de la
-    collection et renseigne l'IDENTITÉ depuis la ligne `collection` ; les catalogues de
-    référence (personnages, vocabulaire, tags) restent comptés GLOBALEMENT, seuls leurs
-    LIENS vers des régions scopées sont restreints.
+    collection et renseigne l'IDENTITÉ depuis la ligne `collection` ; le catalogue de
+    référence des personnages reste compté GLOBALEMENT, seuls ses LIENS vers des régions
+    scopées sont restreints.
 
-    **« Canoniques au corpus » n'est plus une doctrine du dépôt, et ce fichier est le
-    dernier à la suivre** (AUTH-11, 2026-09-23). Les enregistrements
-    (`metadonnees_collection.py`) et le crosswalk bornent désormais le VOCABULAIRE par son
-    appartenance — global ⊕ local à la collection ; le bloc `vocabulaire` de cette fiche
-    nomme encore toutes les dimensions, toutes leurs valeurs et tous les domaines de
-    l'instance, et `tags_distincts` les compte tous. L'écart est écrit, pas ignoré : les
-    chiffres d'ici décrivent une COUVERTURE, et dire s'ils portent sur l'instance ou sur
-    le périmètre est une question de modèle, pas une clause à poser. Cf.
-    `docs/export-metadonnees.md`, § Portée d'une collection. Seul `vocabulaire.lexique`
-    (le « % défini ») est scopé, depuis A4.
+    Le vocabulaire ne se décrit plus (ANN-7, le basculement) : l'écart que cette fiche
+    portait — elle comptait tous les termes de l'instance quand les enregistrements les
+    bornaient par appartenance (AUTH-11) — disparaît avec lui.
     """
     # --- Périmètre : identité + prédicats de portée ------------------------- #
     row = database.collection_row(conn, collection_id) if collection_id is not None else None
     if collection_id is not None and row is None:
         raise SystemExit(f"Collection {collection_id} introuvable.")
     # COL-4 — une collection de bac à sable ou du jeu ne se décrit pas (refus nommé), et le
-    # corpus entier n'en compte rien : ni leurs albums (`albums_du_corpus`), ni leur
-    # vocabulaire (`hors_isole`, ci-dessous), ni leurs personnages (`clause_personnages`).
+    # corpus entier n'en compte rien : ni leurs albums (`albums_du_corpus`), ni leurs
+    # personnages (`clause_personnages`).
     exiger_hors_isoles(conn, collection_id)
     album_ids = (database.collection_album_ids(conn, collection_id)
                  if collection_id is not None else albums_du_corpus(conn))
     P = portee_albums(album_ids)
-    hors_isole = (f"(collection_id IS NULL OR collection_id NOT IN (SELECT _di.id FROM "
-                  f"collection _di WHERE {sql_collection_isolee('_di')}))")
     perso_ok = clause_personnages()
     # Les RÉGIONS sont toujours bornées : un détail ne se décrit pas (G17), corpus entier
     # compris — ni dans les comptes par type, ni dans ce qui se pose sur lui.
@@ -133,7 +131,6 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     A_reg = f" AND id IN {R}"
     W_tok = f" WHERE region_id IN {R}"               # tables portant region_id
     A_tok = f" AND region_id IN {R}"
-    W_pose = f" WHERE annotation_id IN (SELECT id FROM annotations WHERE region_id IN {R})"
 
     # --- Volumes de base ---------------------------------------------------- #
     albums = _un(conn, "SELECT COUNT(*) FROM albums" + W_alb)
@@ -193,10 +190,6 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     # --- Annotation interprétative ----------------------------------------- #
     notes = _un(conn, "SELECT COUNT(*) FROM annotations WHERE note IS NOT NULL "
                       "AND TRIM(note) <> ''" + A_tok)
-    # Compté sur TOUTE l'instance : écart assumé avec les enregistrements, qui bornent le
-    # vocabulaire par appartenance depuis AUTH-11 (cf. la docstring de `collecter`).
-    tags_n = _un(conn, f"SELECT COUNT(*) FROM tags WHERE {hors_isole}")
-    poses = _un(conn, "SELECT COUNT(*) FROM annotation_tags" + W_pose)
 
     # --- Entités personnages (entités globales ; LIENS scopés) ------------- #
     perso = _un(conn, f"SELECT COUNT(*) FROM personnages WHERE {perso_ok}")   # entités globales
@@ -206,26 +199,6 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     # A5 : personnages alignés sur ≥1 autorité (skos:exactMatch) — catalogue global.
     perso_alignes = _un(conn, "SELECT COUNT(DISTINCT personnage_id) FROM personnage_alignement "
                               f"WHERE personnage_id IN (SELECT id FROM personnages WHERE {perso_ok})")
-
-    # --- Vocabulaire facetté (catalogue global ; poses `ra` scopées) ------- #
-    dimensions = []
-    for d in conn.execute("SELECT id, cible, nom FROM attribut_dimension "
-                          f"WHERE {hors_isole} ORDER BY cible, nom"):
-        vals = [r[0] for r in conn.execute(
-            f"SELECT valeur FROM attribut_valeur WHERE dimension_id = ? AND {hors_isole} "
-            "ORDER BY valeur", (d["id"],))]
-        dimensions.append({"cible": d["cible"], "nom": d["nom"],
-                           "valeurs": vals, "pct_defini": None})
-    # Domaines (piste B) : champs analytiques regroupant les dimensions (émotions n'est qu'un cas).
-    domaines = [{"nom": d["nom"], "nb_dimensions": _un(
-                    conn, f"SELECT COUNT(*) FROM attribut_dimension WHERE domaine_id = ? "
-                          f"AND {hors_isole}", (d["id"],))}
-                for d in conn.execute(f"SELECT id, nom FROM domaine WHERE {hors_isole} "
-                                      "ORDER BY nom")]
-    val_tot = _un(conn, f"SELECT COUNT(*) FROM attribut_valeur WHERE {hors_isole}")
-    pa = _un(conn, "SELECT COUNT(*) FROM personnage_attribut "   # profils (entité globale)
-                   f"WHERE personnage_id IN (SELECT id FROM personnages WHERE {perso_ok})")
-    ra = _un(conn, "SELECT COUNT(*) FROM region_attribut" + W_tok)
 
     # --- Paradonnée / système ---------------------------------------------- #
     meta = {r[0]: r[1] for r in conn.execute("SELECT cle, valeur FROM meta")}
@@ -321,8 +294,7 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                         "taux_pct": _pct(txt_ocr, txt_tot)},
                 "tokens": {"total": tokens, "par_provenance": prov,
                            "par_pos": par_pos},
-                "annotations": {"notes": notes, "tags_distincts": tags_n,
-                                "poses": poses},
+                "annotations": {"notes": notes},
                 "personnages": {"total": perso, "locuteurs_distincts": loc_distinct,
                                 "liens_locuteur": loc_liens, "liens_presence": pres_liens,
                                 "avec_alignement_autorite": perso_alignes,
@@ -349,15 +321,9 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                 "accord_modele": accord_modele,
                 "accord_inter": accord_inter_fiche,
             },
-            # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
-            "vocabulaire": {"domaines": domaines, "dimensions": dimensions,
-                            # COL-4 : sans le vocabulaire des bacs à sable ni du jeu.
-                            "lexique": database.lexique_resume(
-                                conn, collection_id,
-                                clause=clause_vocabulaire(collection_id))},
             "droits": {
                 "ouvert": ["géométrie", "structure", "ordre", "citation", "lemme",
-                           "pos", "morph", "tags", "notes", "personnages", "attributs",
+                           "pos", "morph", "notes", "personnages",
                            "provenance", "qualité (relecture, accords)"],
                 "agregat": ["tokens.texte", "token_correction.forme"],
                 "restreint": ["regions.ocr_texte", "planches.chemin_tiff",
@@ -367,10 +333,6 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     }
 
     # --- Carte plate pour le CSV ------------------------------------------- #
-    def dims_couv():
-        return _pct(sum(1 for d in dimensions if d["valeurs"]), len(dimensions)) \
-            if dimensions else None
-
     debut, fin = (row["date_debut"], row["date_fin"]) if row else (None, None)
     agg = {
         ("collection", "nom"): row["nom"] if row else "",
@@ -443,19 +405,9 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
             f"corrige:{corr['c'] or 0}; valide:{corr['v'] or 0}; obsolète:{corr['obs'] or 0}",
         ("tokens", "effectifs.provenance"): _fmt(prov),
         ("annotation", "note"): notes,
-        ("annotation", "tags.label"): tags_n,
-        ("annotation", "annotation_tags"): poses,
         ("personnage", "nom"): perso,
         ("personnage", "bulle_locuteur"): f"{loc_liens} liens; {loc_distinct} distincts",
         ("personnage", "personnage_presence"): pres_liens,
-        ("vocabulaire", "domaine"): len(domaines),
-        ("vocabulaire", "dimension.domaine"): _un(
-            conn, f"SELECT COUNT(*) FROM attribut_dimension WHERE domaine_id IS NOT NULL "
-                  f"AND {hors_isole}"),
-        ("vocabulaire", "dimension.nom"): len(dimensions),
-        ("vocabulaire", "valeur"): val_tot,
-        ("vocabulaire", "personnage_attribut"): pa,
-        ("vocabulaire", "region_attribut"): ra,
         ("qualite", "relecture"): relecture_txt,
         ("qualite", "accord_modele"): accord_modele_txt,
         ("qualite", "accord_inter"): accord_inter_txt,
@@ -549,10 +501,6 @@ CATALOGUE = [
     ("tokens", "effectifs.a_revoir", "une correction a dérivé", "dérivé", "dérivé", "—", "ouvert"),
     ("annotation", "note", "commentaire libre", "humain", "libre", "TEI note", "ouvert"),
     ("annotation", "date_creation/date_modification", "vie de l'annotation", "paradonnée", "structuré", "PROV", "ouvert"),
-    ("annotation", "tags.label", "étiquette émergente", "humain", "structuré", "SKOS prefLabel", "ouvert"),
-    ("annotation", "tags.description", "glose du tag", "humain", "libre", "SKOS definition", "ouvert"),
-    ("annotation", "tags.couleur", "présentation", "humain", "structuré", "—", "ouvert"),
-    ("annotation", "annotation_tags", "pose d'un tag", "humain", "structuré", "—", "ouvert"),
     ("personnage", "nom", "identité récurrente", "humain", "structuré", "—", "ouvert"),
     ("personnage", "serie", "désambiguïsation", "humain", "structuré", "—", "ouvert"),
     ("personnage", "notes", "note libre", "humain", "libre", "—", "ouvert"),
@@ -562,18 +510,6 @@ CATALOGUE = [
     ("qualite", "relecture", "part du corpus relu grammaticalement (dérivé des provenances)", "dérivé", "dérivé (v21)", "PROV", "ouvert"),
     ("qualite", "accord_modele", "accord modèle↔humain sur l'échantillon relu (par champ)", "dérivé", "dérivé (NLP-1)", "PROV", "ouvert"),
     ("qualite", "accord_inter", "accord inter-annotateurs de révision (journal A3, corpus)", "dérivé", "dérivé (ANN-5)", "PROV", "ouvert"),
-    ("vocabulaire", "domaine", "champ analytique regroupant des dimensions (émotions, représentation…)", "humain", "structuré (v20)", "SKOS", "ouvert"),
-    ("vocabulaire", "dimension.cible", "à quoi s'applique l'axe", "humain", "structuré", "—", "ouvert"),
-    ("vocabulaire", "dimension.domaine", "domaine analytique de rattachement", "humain", "structuré (v20)", "SKOS", "ouvert"),
-    ("vocabulaire", "dimension.nom", "axe (registre, origine…)", "humain", "structuré", "SKOS", "ouvert"),
-    ("vocabulaire", "valeur", "valeur canonique de l'axe", "humain", "structuré", "SKOS concept", "ouvert"),
-    ("vocabulaire", "personnage_attribut", "profil du personnage", "humain", "structuré", "—", "ouvert"),
-    ("vocabulaire", "region_attribut", "situation de la case", "humain", "structuré", "—", "ouvert"),
-    ("vocabulaire", "collection_id", "portée d'appartenance (NULL=global)", "humain", "structuré (v17)", "SKOS", "ouvert"),
-    ("vocabulaire", "definition", "sens dimension/valeur (tag = description)", "humain", "structuré (v17)", "SKOS definition", "ouvert"),
-    ("vocabulaire", "note_portee", "cadre d'emploi", "humain", "structuré (v17)", "SKOS scopeNote", "ouvert"),
-    ("vocabulaire", "etat_definitionnel", "provisoire→défini", "humain", "structuré (v17)", "—", "ouvert"),
-    ("vocabulaire", "pct_defini", "part du vocabulaire documenté", "dérivé", "dérivé (v17)", "—", "ouvert"),
     ("paradonnee", "nlp_model", "modèle NLP ayant indexé", "paradonnée", "structuré", "PROV", "ouvert"),
     ("paradonnee", "nlp_reindexed_count/_at", "ampleur+date de réindex", "paradonnée", "structuré", "PROV", "ouvert"),
     ("paradonnee", "schema_version", "version du schéma", "système", "structuré", "—", "ouvert"),

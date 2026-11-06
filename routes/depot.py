@@ -7,7 +7,8 @@ outils de description deviennent hors d'atteinte de ceux à qui ils servent.
 
 Ce module n'invente rien : il applique deux patrons déjà présents dans le dépôt. Le
 fichier produit côté serveur et renvoyé en pièce jointe, c'est `/api/sauvegarde` ; le cœur
-partagé entre une CLI et une route, c'est `lexique_import.py`. **Aucune logique d'export
+partagé entre une CLI et une route, c'est `grille_import.py` (c'était `lexique_import.py`,
+retiré au basculement d'ANN-7). **Aucune logique d'export
 n'est réécrite ici** — c'est la condition que pose la fiche, et elle se lit dans le corps
 des routes : elles rassemblent des appels, elles ne calculent rien.
 

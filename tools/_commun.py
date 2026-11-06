@@ -287,16 +287,6 @@ def albums_du_corpus(conn) -> list[int] | None:
         f"SELECT a.id FROM albums a WHERE NOT {database.sql_album_isole('a')} ORDER BY a.id")]
 
 
-def clause_vocabulaire(collection_id, alias: str = "collection_id") -> tuple[str, list]:
-    """L'appartenance d'un terme (`database.clause_appartenance` : global ⊕ local à la
-    collection), SANS ce qui est local à une collection d'un projet isolé. Pour une
-    collection nommée, ordinaire, la seconde moitié ne retire rien ; en corpus entier, elle
-    retire le vocabulaire des bacs à sable et du jeu."""
-    ou, params = database.clause_appartenance(collection_id, alias)
-    return (f"({ou} AND ({alias} IS NULL OR {alias} NOT IN (SELECT _vi.id FROM collection "
-            f"_vi WHERE {sql_collection_isolee('_vi')})))", params)
-
-
 def clause_personnages(alias: str = "personnages") -> str:
     """Les PERSONNAGES publiables : ceux du registre. Un personnage NÉ dans un bac à sable
     (`personnages.bac_a_sable_id`, v35) ne sort pas. Ce point d'appel est UNIQUE : les

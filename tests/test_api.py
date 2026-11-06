@@ -649,9 +649,10 @@ def test_export_csv_album_inexistant_404(client):
 
 
 def test_export_tei_complet(client):
-    """Album avec auteur + région avec OCR + annotation note/tags : couvre les
-    branches author / <line> OCR / <note> de l'export TEI. Le tag est d'HIER, posé en base
-    (ANN-7) : l'export le lit encore jusqu'à ce que les sorties le retirent."""
+    """Album avec auteur + région avec OCR + annotation : couvre les branches author /
+    <line> OCR / <note> de l'export TEI. Le tag est d'HIER, posé en base (ANN-7) : depuis
+    le basculement l'export ne le porte plus — ni `@ana`, ni `@type="tags"` —, la note
+    seule sort."""
     import database
     from conftest import poser_tags
     aid = client.post("/api/albums",
@@ -667,7 +668,8 @@ def test_export_tei_complet(client):
     xml = client.get("/api/export/tei", params={"album_id": aid}).text
     assert "Sattouf" in xml
     assert "TEXTEOCR" in xml
-    assert "une note" in xml and 'ana="nuit"' in xml
+    assert "<note>une note</note>" in xml
+    assert "nuit" not in xml and "ana=" not in xml and 'type="tags"' not in xml
 
 
 def test_import_fichier_non_image_400(client, album):

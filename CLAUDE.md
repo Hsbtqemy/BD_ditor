@@ -526,10 +526,11 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   la même personne réduite à ce qu'elle peut SORTIR : c'est ce que reçoivent les exports qui
   traversent plusieurs collections (Recherche, Exploration), sans qu'aucun cœur l'ait
   appris. Un album sort **au titre d'une collection nommée** (`socle._collection_d_export`)
-  et le dit — et **ce titre gouverne son VOCABULAIRE** (AUTH-11, 2026-10-07) : le fichier
-  ne porte que les termes de cette collection et le global, QUEL QUE SOIT qui exporte
-  (`socle._vocabulaire_d_export` → `database.clause_appartenance`, la règle du dépôt), là
-  où les transversaux suivent `pour_export()`. D'où **aucun export sans titre** : plusieurs
+  et le dit — et **ce titre gouvernait son VOCABULAIRE** (AUTH-11, 2026-10-07) : le fichier
+  ne portait que les termes de cette collection et le global, QUEL QUE SOIT qui exporte (la
+  règle du dépôt), là où les transversaux suivent `pour_export()`. Le basculement d'ANN-7 a
+  retiré tout vocabulaire des sorties ; la règle du titre reste, en attendant que la
+  tranche 4 dise ce que les relevés emportent. D'où **aucun export sans titre** : plusieurs
   collections exportables, 422 qui les nomme, **portée totale comprise** — renversement
   daté du « en mono-poste, rien à nommer » de DROIT-2, qui laissait sortir un fichier dont
   rien ne bornait le vocabulaire ; une seule, elle est prise sans qu'on la nomme ; aucune
@@ -1279,9 +1280,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   (A4), pas celle des données. En revanche leurs COMPTEURS (fréquence, usages) sont
   filtrés comme des données : un nuage de tags devait refléter son sous-corpus. Depuis le
   basculement d'ANN-7, aucun écran ni aucune route ne montre plus ce vocabulaire, et
-  `clause_terme`, `peut_ecrire_terme` et `peut_remanier_tag` sont retirées ; les exports, qui
-  le lisent encore jusqu'à leur propre commit, le bornent par la règle d'une collection
-  (`database.clause_appartenance`).
+  `clause_terme`, `peut_ecrire_terme` et `peut_remanier_tag` sont retirées ; aucun export
+  ni outil de dépôt n'en porte plus rien (`database.clause_appartenance`, qui les bornait à
+  la règle d'une collection, est retirée avec eux).
 - **VOIR n'était pas CHANGER, et les deux fonctions étaient distinctes** : `clause_terme` dit ce
   qu'on voit, `peut_ecrire_terme(collection_id)` ce qu'on peut modifier (terme local →
   écrire dans SA collection ; terme global → écrire quelque part). Les accesseurs du
@@ -1525,7 +1526,7 @@ d'une retouche de relevé rend aussi `modifie_par` et `modifie_le`.
 
 ### Lexique situé (A4, v17)
 
-Couche définitionnelle **SKOS** sur le vocabulaire ÉMERGENT (dimensions, valeurs **et** tags — le même patron « contrôlé-mais-ouvert »). Chaque terme porte `definition` (pour un tag, sa `description` legacy EST la définition), `note_portee` (SKOS `scopeNote` = le « situé »), `etat` (`provisoire`→`defini`, miroir `auto→validé`) et `collection_id` (**portée d'appartenance** : NULL = global, sinon local ; promotion → NULL via `ON DELETE SET NULL`, patron *mentions→entités*). Édition : `PATCH /api/attributs/{dimensions,valeurs}/{id}/lexique` + `PATCH /api/tags/{id}/lexique` (partielle) ; `GET /api/lexique` (read model + **% défini** via `database.lexique_resume`). UI : bouton **📖 Lexique** sur Exploration → modale accessible (`dialog.js`). Un tag s'y **renomme**, se **fusionne** dans un autre et se **supprime** (ANN-8 : `PUT /api/tags/{id}`, `POST /api/tags/{id}/fusion`, `DELETE /api/tags/{id}` — les deux derniers jouables `a_blanc`, pour dire le nombre de régions avant la confirmation ; seuls les TAGS des régions touchées sont réécrits dans l'index, sans analyse de langue (`database.reindex_tags_regions`) ; journal sous la cible `tags`, retenue de toute sortie, hors Ctrl+Z ; logique d'écran dans `static/lib/gestes-tag.js`). Exporté en SKOS (records + paradonnée). Cf. `docs/lexique-situe.md`. **Depuis le basculement d'ANN-7, ni le panneau, ni ses routes, ni les gestes d'un tag n'existent plus** ; les tables restent jusqu'à la migration, et les exports les lisent encore.
+Couche définitionnelle **SKOS** sur le vocabulaire ÉMERGENT (dimensions, valeurs **et** tags — le même patron « contrôlé-mais-ouvert »). Chaque terme porte `definition` (pour un tag, sa `description` legacy EST la définition), `note_portee` (SKOS `scopeNote` = le « situé »), `etat` (`provisoire`→`defini`, miroir `auto→validé`) et `collection_id` (**portée d'appartenance** : NULL = global, sinon local ; promotion → NULL via `ON DELETE SET NULL`, patron *mentions→entités*). Édition : `PATCH /api/attributs/{dimensions,valeurs}/{id}/lexique` + `PATCH /api/tags/{id}/lexique` (partielle) ; `GET /api/lexique` (read model + **% défini** via `database.lexique_resume`). UI : bouton **📖 Lexique** sur Exploration → modale accessible (`dialog.js`). Un tag s'y **renomme**, se **fusionne** dans un autre et se **supprime** (ANN-8 : `PUT /api/tags/{id}`, `POST /api/tags/{id}/fusion`, `DELETE /api/tags/{id}` — les deux derniers jouables `a_blanc`, pour dire le nombre de régions avant la confirmation ; seuls les TAGS des régions touchées sont réécrits dans l'index, sans analyse de langue (`database.reindex_tags_regions`) ; journal sous la cible `tags`, retenue de toute sortie, hors Ctrl+Z ; logique d'écran dans `static/lib/gestes-tag.js`). Exporté en SKOS (records + paradonnée) jusqu'au basculement d'ANN-7, qui l'a retiré des sorties. Cf. `docs/lexique-situe.md`. **Depuis le basculement d'ANN-7, ni le panneau, ni ses routes, ni les gestes d'un tag n'existent plus** ; les tables restent jusqu'à la migration, et les exports les lisent encore.
 
 ### Alignement d'autorité (A5, v18)
 
@@ -1533,7 +1534,7 @@ Relie une **entité personnage** à des référentiels externes (`personnage_ali
 
 ### Domaines analytiques (piste B, v20)
 
-Palier `domaine` qui **regroupe les dimensions facettées** par champ analytique (émotions, représentation…) — les émotions ne sont **qu'un domaine**, pas un module figé. Table `domaine` (émergent, **même couche lexique SKOS** que dimensions/valeurs/tags) + `attribut_dimension.domaine_id` (**NULL = hors domaine**). **ORTHOGONAL à `cible`** : un domaine peut grouper des dimensions personnage ET case. Suppression d'un domaine → `domaine_id` NULL (`ON DELETE SET NULL`, promotion). API : `GET/POST/PATCH/DELETE /api/domaines` + `PATCH /api/domaines/{id}/lexique` + `PATCH /api/attributs/dimensions/{id}/domaine`. `GET /api/lexique` renvoie `domaines` + le `domaine_id` des dimensions. UI : dans le panneau **📖 Lexique**, dimensions regroupées sous leur domaine (+ sélecteur). Export : records + CSV + roll-up (% défini inclut les domaines). **Amorçage en lot** du vocabulaire (domaines → dimensions → valeurs + lexique) depuis un tableur CSV point-virgule : cœur partagé `lexique_import.py` (parsing + upsert **pré-remplir sans écraser** comme l'OCR, idempotent, portée = `collection_id`), exposé par **deux minces enveloppes** — CLI `tools/importer_vocabulaire.py` (`--collection`, `--dry-run` ; modèle `tools/vocabulaire-modele.csv`) et route `POST /api/lexique/importer` (bouton **Importer** du panneau 📖 Lexique). Cf. `docs/import-vocabulaire.md`. Différé (dormant) : nouveaux **types d'ancre** (planche/album/scène = nouvelle jointure). Cf. `docs/domaines.md`. **Depuis le basculement d'ANN-7, ces routes, ce panneau, `lexique_import.py`, l'outil et son modèle n'existent plus** : le vocabulaire d'un projet est une grille.
+Palier `domaine` qui **regroupe les dimensions facettées** par champ analytique (émotions, représentation…) — les émotions ne sont **qu'un domaine**, pas un module figé. Table `domaine` (émergent, **même couche lexique SKOS** que dimensions/valeurs/tags) + `attribut_dimension.domaine_id` (**NULL = hors domaine**). **ORTHOGONAL à `cible`** : un domaine peut grouper des dimensions personnage ET case. Suppression d'un domaine → `domaine_id` NULL (`ON DELETE SET NULL`, promotion). API : `GET/POST/PATCH/DELETE /api/domaines` + `PATCH /api/domaines/{id}/lexique` + `PATCH /api/attributs/dimensions/{id}/domaine`. `GET /api/lexique` renvoie `domaines` + le `domaine_id` des dimensions. UI : dans le panneau **📖 Lexique**, dimensions regroupées sous leur domaine (+ sélecteur). Export : records + CSV + roll-up (% défini inclut les domaines), jusqu'au basculement d'ANN-7, qui l'a retiré des sorties. **Amorçage en lot** du vocabulaire (domaines → dimensions → valeurs + lexique) depuis un tableur CSV point-virgule : cœur partagé `lexique_import.py` (parsing + upsert **pré-remplir sans écraser** comme l'OCR, idempotent, portée = `collection_id`), exposé par **deux minces enveloppes** — CLI `tools/importer_vocabulaire.py` (`--collection`, `--dry-run` ; modèle `tools/vocabulaire-modele.csv`) et route `POST /api/lexique/importer` (bouton **Importer** du panneau 📖 Lexique). Cf. `docs/import-vocabulaire.md`. Différé (dormant) : nouveaux **types d'ancre** (planche/album/scène = nouvelle jointure). Cf. `docs/domaines.md`. **Depuis le basculement d'ANN-7, ces routes, ce panneau, `lexique_import.py`, l'outil et son modèle n'existent plus** : le vocabulaire d'un projet est une grille.
 
 ### Matériel de numérisation (A6, v19)
 
