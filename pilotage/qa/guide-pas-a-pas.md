@@ -95,8 +95,8 @@ partie du foyer éclairé passe sous la fenêtre.
 ### Petits écrans et grande police, sous `arrivant`
 - Abandonnée le 2026-11-06 (Hugo : à 200 %, inutile de tester) — Fenêtre à 768 px, « Aa » → la plus grande police (200 %), « Revoir les pages » jusqu'à la Recherche puis l'Exploration : la fenêtre de la visite est une feuille en bas, son texte défile dedans, rien ne défile de côté ; la feuille repliée sur une ligne, le message des résultats se lit en entier
 - Abandonnée le 2026-11-06 (Hugo : à 200 %, inutile de tester) — Fenêtre à 768 px, plus grande police, rejouer « Constituer », « Tracer », « Corriger », « Transcrire » et « Annoter » (← et « Suivant → ») : à chacune, la fenêtre du guide est une feuille en bas et la page réserve sa hauteur ; replier la feuille sur une ligne dégage le foyer, qu'on atteint en entier en faisant défiler la page ; la rouvrir rend la consigne
-- [ ] Dans ces conditions, à « Constituer le corpus », la carte de l'album du parcours peut être amenée au-dessus de la feuille en faisant défiler la page jusqu'en bas
-- [ ] Fenêtre à 600 px de large : la fenêtre du guide est une feuille en bas, pleine largeur, et la page réserve sa hauteur (le bas de la planche n'est pas caché sous elle)
+- [x] Dans ces conditions, à « Constituer le corpus », la carte de l'album du parcours peut être amenée au-dessus de la feuille en faisant défiler la page jusqu'en bas
+- Abandonnée le 2026-11-06 (Hugo : le guide vise un écran de bureau) — Fenêtre à 600 px de large : la fenêtre du guide est une feuille en bas, pleine largeur, et la page réserve sa hauteur (le bas de la planche n'est pas caché sous elle)
 - [ ] À « Tracer une zone », zoomer la planche à la main, puis changer la largeur de la fenêtre : noter si le zoom est perdu (la planche se réajuste quand la feuille réserve sa place, choix confirmé par Hugo le 2026-11-05)
 
 ### Clavier et lecteur d'écran, sous `arrivant`

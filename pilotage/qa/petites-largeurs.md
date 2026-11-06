@@ -7,6 +7,8 @@ derniere: —
 
 # QA — le repli tient-il à l'usage, et pas seulement au rectangle
 
+**Hors des priorités** (Hugo, 2026-11-06) : elle ne conditionne aucune fusion ; elle se jouera le jour où quelqu'un travaillera vraiment sur tablette ou téléphone, sur l'appareil qu'il emploie.
+
 UX-7 est livré avec vingt tests neufs, et ils mesurent tous la même chose : le contenu
 est-il ATTEIGNABLE. C'est ce que demande le 1.4.10, et ils le demandent bien. Mais la
 fiche elle-même a écrit, le 2026-09-05, que **« rien ne dépasse » n'est pas
