@@ -49,6 +49,11 @@ def _ecrivable(conn: sqlite3.Connection, portee: autorisation.Portee):
             # l'écrire ne demande que d'écrire quelque part — le plancher de la route.
             for pid in lieux.get("personnages", []):
                 _get_personnage(conn, portee, pid)
+            # « ↕ Ranger » (ANN-7, le mode libre) : la grille de travail, que l'agent doit
+            # pouvoir ranger MAINTENANT — la question de la route.
+            for gid in lieux.get("grilles", []):
+                if not _peut_ranger(conn, portee, gid):
+                    return False
             # (ANN-8 y éprouvait aussi la valeur d'un attribut de case et le tag que
             # l'annulation reposerait : le basculement d'ANN-7 les a retirés.)
         except HTTPException as refus:
@@ -57,6 +62,23 @@ def _ecrivable(conn: sqlite3.Connection, portee: autorisation.Portee):
             raise
         return True
     return peut
+
+
+def _peut_ranger(conn: sqlite3.Connection, portee: autorisation.Portee, grille_id: int) -> bool:
+    """L'agent peut-il ranger les étiquettes de cette grille, maintenant ? La question de
+    `PUT /api/grilles/{id}/ordre` (`Portee.peut_remanier_entree`, geste « ranger ») ; une
+    grille qu'il ne lit plus : non, sans rien dire d'elle."""
+    ou, params = portee.clause_grille("g.id")
+    g = conn.execute(f"SELECT g.* FROM grille g WHERE g.id = ? AND {ou}",
+                     (grille_id, *params)).fetchone()
+    if g is None:
+        return False
+    vivante = conn.execute("SELECT 1 FROM grille_version WHERE grille_id = ? "
+                           "AND etat = 'vivante'", (grille_id,)).fetchone() is not None
+    return portee.peut_remanier_entree(
+        g["projet_id"], "ranger", ouverte=bool(g["ouverte"]) and vivante, provisoire=False,
+        travail=bool(g["travail"]),
+        annotateur=autorisation.ecrit_dans_le_projet(conn, portee, g["projet_id"]))
 
 
 def _ecrit_quelque_part(portee: autorisation.Portee) -> bool:

@@ -226,6 +226,8 @@ DECLAREES = {
     ("grille_import.py", "_fusionner"):
         "ses deux appelants réindexent les relevés fusionnés APRÈS avoir écrit le plan neuf "
         "(`reindexer_libelles(…, fusions)`) : réindexer ici lirait l'ancien plan",
+    ("undo.py", "_inverser_ordre"):
+        "Ctrl+Z d'un déplacement d'étiquette ne change que des rangs, pas un libellé",
     ("grille_import.py", "reporter_cardinalites"):
         "`une`, la cardinalité figée d'un relevé, n'est pas un libellé",
 }

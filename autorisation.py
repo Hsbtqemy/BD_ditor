@@ -1027,7 +1027,7 @@ class Portee:
         return "(" + " OR ".join(morceaux) + ")", params
 
     def peut_remanier_entree(self, projet_id: int, geste: str, *, annotateur: bool,
-                             ouverte: bool, provisoire: bool) -> bool:
+                             ouverte: bool, provisoire: bool, travail: bool = False) -> bool:
         """Peut-on faire ce GESTE sur une entrée d'une grille de ce projet, depuis la page
         Annotation ? ANN-7, le mode libre (J5 (c), Hugo, 2026-11-06 : « renommer une étiquette
         ou une valeur et ajouter une valeur : tout annotateur du projet sur une entrée
@@ -1041,6 +1041,10 @@ class Portee:
           (née en la tapant, J4) d'une grille OUVERTE, dans sa version vivante. Renommer se
           défait en renommant, et la valeur vue (CONC-3) garde deux renommages croisés ; ce
           qu'un responsable a ÉCRIT (une entrée définie) ne se renomme pas sous lui.
+        - RANGER une entrée parmi ses sœurs (« ↕ Ranger », tranché sur maquette le
+          2026-11-06) : tout annotateur du projet, dans la GRILLE DE TRAVAIL (`travail`)
+          seulement, définies comprises — ranger ne touche aucun relevé, et l'ordre est commun
+          au projet ; une autre grille se range au formulaire.
         - Fusionner, retirer, changer l'état (`GESTES_DE_RESPONSABLE`) : qui gère seulement —
           une fusion réécrit les relevés des autres et ne se défait pas.
 
@@ -1050,6 +1054,8 @@ class Portee:
             raise ValueError(f"geste inconnu : {geste}")
         if self.peut_gerer_projet(projet_id):
             return True
+        if geste == "ranger":
+            return annotateur and ouverte and travail
         return (geste in GESTES_D_ANNOTATEUR and annotateur and ouverte and provisoire)
 
     def peut_ecrire_quelque_part(self) -> bool:
@@ -1494,7 +1500,7 @@ def bacs_du_principal(conn: sqlite3.Connection, login: str, projets,
 # (`Portee.peut_remanier_entree`).
 GESTES_D_ANNOTATEUR = ("renommer", "ajouter_valeur")
 GESTES_DE_RESPONSABLE = ("fusionner", "retirer", "etat")
-GESTES_D_ENTREE = GESTES_D_ANNOTATEUR + GESTES_DE_RESPONSABLE
+GESTES_D_ENTREE = GESTES_D_ANNOTATEUR + ("ranger",) + GESTES_DE_RESPONSABLE
 
 
 def ecrit_dans_le_projet(conn: sqlite3.Connection, portee: Portee, projet_id: int) -> bool:

@@ -59,7 +59,17 @@ _DESCRIPTIONS = {
     ("creation", "releve_planche"): "pose d'un relevé",
     ("modification", "releve_planche"): "modification d'un relevé",
     ("suppression", "releve_planche"): "retrait d'un relevé",
+    ("modification", "grille"): "déplacement d'une étiquette",
 }
+
+# « ↕ Ranger » (ANN-7, le mode libre, tranché sur maquette le 2026-11-06) : le déplacement
+# d'une ENTRÉE de la grille de travail s'annule — et lui seul des actes sous `grille` (le
+# formulaire, l'import, une fusion ne s'annulent pas). Le fragment qui le reconnaît au journal.
+_SQL_ORDRE_DU_MODE_LIBRE = (
+    "(cible_table = 'grille' AND type = 'modification' AND json_valid(apres) "
+    "AND json_extract(apres, '$.objet') LIKE 'ordre:entree:%' "
+    "AND EXISTS (SELECT 1 FROM grille _ug WHERE _ug.id = evenement.cible_id "
+    "AND _ug.travail = 1))")
 
 
 class UndoImpossible(Exception):
@@ -206,7 +216,8 @@ def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
         f"SELECT * FROM evenement "
         f"WHERE agent_type = 'humain' "
         f"  AND type IN ({','.join('?' * len(_TYPES))}) "
-        f"  AND cible_table IN ({','.join('?' * len(_TABLES))}) "
+        f"  AND (cible_table IN ({','.join('?' * len(_TABLES))}) "
+        f"       OR {_SQL_ORDRE_DU_MODE_LIBRE}) "
         f"{ou}"
         f"  AND id NOT IN (SELECT cible_id FROM evenement "
         f"                 WHERE ((type = 'annulation' AND cible_table = 'evenement') "
@@ -221,7 +232,7 @@ def reindexe(e) -> bool:
     Non pour un lien (locuteur, présence : `_poser_lien` / `_retirer_lien` n'indexent rien),
     ni pour l'annulation d'une création (`_supprimer_region` ne fait que DÉSINDEXER). La
     route s'en sert pour ne charger spaCy que lorsqu'il servira (ANN-8)."""
-    if e["cible_table"] in _LIENS or e["cible_table"] in _RELEVES:
+    if e["cible_table"] in _LIENS or e["cible_table"] in _RELEVES or e["cible_table"] == "grille":
         return False
     return not (e["cible_table"] == "regions" and e["type"] == "creation")
 
@@ -926,6 +937,36 @@ def _inverser_releve(conn, e, avant, apres) -> None:
     reindex_etiquettes(conn, [actuel["region_id"]])       # J6 : la variante rendue s'y lit
 
 
+def _inverser_ordre(conn, e, avant, apres) -> None:
+    """L'inverse d'un déplacement d'étiquette (« ↕ Ranger ») : les entrées que l'acte a
+    rangées reprennent, ENTRE ELLES, l'ordre d'avant, aux places qu'elles tiennent — une
+    entrée née depuis (en bas) ou retirée ne bloque rien. Si l'ordre de ces entrées n'est
+    plus celui que l'acte a laissé, un autre les a rangées depuis : le 409 de CONC-3, qui le
+    nomme. `rang` n'est pas un libellé : l'index plein texte ne bouge pas."""
+    gid = e["cible_id"]
+    v = conn.execute("SELECT * FROM grille_version WHERE grille_id = ? AND etat = 'vivante' "
+                     "ORDER BY numero DESC LIMIT 1", (gid,)).fetchone()
+    if v is None:
+        raise Irretablissable()
+    objet = apres.get("objet") or ""
+    rubrique = objet[len("ordre:entree:"):] or None
+    entrees = conn.execute("SELECT cle, rubrique_cle FROM grille_entree WHERE version_id = ? "
+                           "ORDER BY rang, cle", (v["id"],)).fetchall()
+    freres = [x["cle"] for x in entrees if x["rubrique_cle"] == rubrique]
+    garde = [k for k in (apres.get("ordre") or []) if k in freres]
+    actuel = [k for k in freres if k in set(garde)]
+    conflit.verifier(conn, "grille", gid, "ordre", vu=garde, actuel=actuel,
+                     nouveau=[k for k in (avant or {}).get("ordre", []) if k in set(garde)],
+                     depuis=e["id"], objet=("objet", objet))
+    rendus = iter([k for k in (avant or {}).get("ordre", []) if k in set(garde)])
+    neufs = [next(rendus) if k in set(garde) else k for k in freres]
+    places = iter(neufs)
+    entier = [next(places) if x["cle"] in set(freres) else x["cle"] for x in entrees]
+    for rang, cle in enumerate(entier):
+        conn.execute("UPDATE grille_entree SET rang = ? WHERE version_id = ? AND cle = ?",
+                     (rang, v["id"], cle))
+
+
 def _rendre_releves(conn, snap) -> int:
     """Les relevés et les passes que la suppression d'une région avait emportés par CASCADE,
     rendus avec elle sous leurs identifiants (R10 ; « Supprimer une région supprime ses
@@ -996,6 +1037,9 @@ def _inverser(conn, e) -> int:
         if table in _RELEVES:              # cible_id = la région, ou la planche
             _inverser_releve(conn, e, avant, apres)
             return cid
+        if table == "grille":              # « ↕ Ranger » : cible_id = la grille
+            _inverser_ordre(conn, e, avant, apres)
+            return None
         if table in _LIENS:                # cible_id = region_id
             if t == "lien" and avant is None:
                 _garder_lien(conn, e, laisse=apres["personnage_id"], rendu=None)
@@ -1175,6 +1219,10 @@ def _meme_objet(conn, e) -> bool:
                     or _supprimee_depuis(conn, parent, e)):
                 return False
         return True
+    if e["cible_table"] == "grille":
+        # « ↕ Ranger » — la grille de travail, toujours là et toujours la grille de travail.
+        return conn.execute("SELECT 1 FROM grille WHERE id = ? AND travail = 1",
+                            (e["cible_id"],)).fetchone() is not None
     if e["cible_table"] == "releve_planche":
         # ANN-7 — la cible est la PLANCHE (la surface) : présente, et d'un album né avant
         # l'acte. Ses identifiants ne reviennent plus depuis la v30.
@@ -1279,6 +1327,8 @@ def lieux(conn, e) -> dict:
                 "personnages": []}
     if e["cible_table"] == "releve_planche":     # ANN-7 : un relevé de la surface
         return {"regions": [], "planches": [e["cible_id"]], "personnages": []}
+    if e["cible_table"] == "grille":             # « ↕ Ranger » : la grille de travail
+        return {"regions": [], "planches": [], "personnages": [], "grilles": [e["cible_id"]]}
     return {"regions": [e["cible_id"]], "planches": [], "personnages": []}
 
 
@@ -1373,6 +1423,8 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
         raise
     if e["cible_table"] == "releve_planche":     # la cible est la planche elle-même
         planche_id, region_id = e["cible_id"], None
+    elif e["cible_table"] == "grille":           # « ↕ Ranger » : ni planche ni région
+        planche_id, region_id = None, None
     else:
         planche_id = _planche_de(conn, region_id, e)
     journal.journaliser(conn, "annulation", "evenement", e["id"],

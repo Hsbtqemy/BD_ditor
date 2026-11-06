@@ -598,8 +598,9 @@ def demasquer_grille(collection_id: int, grille_id: int, conn: sqlite3.Connectio
 # « liste:sources », « case:sources/objet », « grille », et pour un ordre les frères qu'il
 # range, « ordre:entree:sons ») — c'est par elle que le 409 trouve
 # l'auteur d'une valeur. À qui gère le projet : 404 sur une grille qu'on ne voit pas, 403
-# nommé sur une grille qu'on lit sans la gérer. Ctrl+Z ne défait rien de cela, comme de
-# l'import. La réponse rend le PLAN de la version écrite (`grilles.plan`), que le formulaire
+# nommé sur une grille qu'on lit sans la gérer — hors des gestes du mode libre (J5 (c) et
+# « Ranger » : `_exiger_remaniement`). Ctrl+Z ne défait rien de cela, comme de l'import,
+# sauf le déplacement d'une étiquette de la grille de travail (`undo._inverser_ordre`). La réponse rend le PLAN de la version écrite (`grilles.plan`), que le formulaire
 # redessine.
 Cible = Optional[Union[str, list[str]]]
 
@@ -782,7 +783,8 @@ def _avec_remaniable(conn, portee, g, v, plan: dict) -> dict:
         e["remaniable"] = {
             geste: vivante and portee.peut_remanier_entree(
                 g["projet_id"], geste, annotateur=annotateur, ouverte=True,
-                provisoire=e["etat"] == grilles.ENTREE_PROVISOIRE)
+                provisoire=e["etat"] == grilles.ENTREE_PROVISOIRE,
+                travail=bool(g["travail"]))
             for geste in autorisation.GESTES_D_ENTREE}
     return plan
 
@@ -867,8 +869,13 @@ def _exiger_remaniement(conn, portee, g, v, entree: dict, geste: str, champs=())
     annotateur = autorisation.ecrit_dans_le_projet(conn, portee, g["projet_id"])
     provisoire = entree.get("etat") == grilles.ENTREE_PROVISOIRE
     if portee.peut_remanier_entree(g["projet_id"], geste, annotateur=annotateur,
-                                   ouverte=ouverte, provisoire=provisoire):
+                                   ouverte=ouverte, provisoire=provisoire,
+                                   travail=bool(g["travail"])):
         return
+    if geste == "ranger":
+        raise HTTPException(403, "Les étiquettes du mode libre se rangent par tout annotateur "
+                                 "du projet ; une autre grille se range au formulaire, par "
+                                 "ses responsables." if annotateur else _MOTIF_GERER)
     if annotateur and ouverte and not provisoire:
         raise HTTPException(403, f"« {entree['libelle']} » est définie : seuls les responsables "
                                  "du projet la renomment ou lui ajoutent une valeur.")
@@ -1516,12 +1523,21 @@ def ranger_dans_la_grille(grille_id: int, payload: OrdreIn,
     dans le brouillon comme tout geste du formulaire, et un brouillon qui ne change QUE
     l'ordre se publie. `vu` : l'ordre des frères que l'écran voyait — périmé, 409 de CONC-3,
     qui nomme qui l'a changé. Au journal, un acte sous la grille, dont l'objet nomme les
-    frères (« ordre:entree:<rubrique> »). Une place hors des frères : 422."""
+    frères (« ordre:entree:<rubrique> »). Une place hors des frères : 422.
+
+    « ↕ Ranger » (tranché sur maquette le 2026-11-06) : dans la GRILLE DE TRAVAIL, tout
+    annotateur du projet range une ENTRÉE (`Portee.peut_remanier_entree`, geste « ranger ») ;
+    l'ordre est celui de la grille, commun au projet, et une entrée neuve naît en bas
+    (`routes/releves._entree_par_nom`). Ctrl+Z défait ce déplacement-là
+    (`undo._inverser_ordre`). Le reste — une rubrique, une variante, une case, ou une autre
+    grille — à qui gère le projet (403 nommé)."""
     if payload.quoi not in _ORDONNABLES:
         raise HTTPException(422, f"« quoi » est l'un de : {', '.join(_ORDONNABLES)}.")
 
     def geste(g, v, avant, apres, ref):
         quoi, cle = payload.quoi, payload.cle
+        if quoi != "entree" and not g["gerable"]:
+            raise HTTPException(403, _MOTIF_GERER)
         if quoi == "rubrique":
             r = apres["rubriques"].get(cle)
             if r is None:
@@ -1533,6 +1549,7 @@ def ranger_dans_la_grille(grille_id: int, payload: OrdreIn,
             e = apres["entrees"].get(cle)
             if e is None:
                 raise _introuvable("Entrée", cle, v)
+            _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "ranger")
             objets, parent = apres["entrees"], e["rubrique_cle"]
             freres = [k for k in grilles._par_rang(objets)
                       if objets[k]["rubrique_cle"] == parent]
@@ -1564,4 +1581,4 @@ def ranger_dans_la_grille(grille_id: int, payload: OrdreIn,
         _ranger(objets, freres, neufs)
         return {"cle": cle, "actes": [("modification", objet, {"ordre": freres},
                                        {"ordre": neufs, "deplace": cle})]}
-    return _ecrire(conn, portee, grille_id, geste)
+    return _ecrire(conn, portee, grille_id, geste, gerer=False)

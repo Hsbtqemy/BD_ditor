@@ -316,11 +316,12 @@ def test_le_plan_dit_ce_que_l_appelant_peut_remanier(client, decor, db_path):
     def remaniable(qui, grille=g):
         plan = client.get(f"/api/grilles/{grille}/versions/1", headers=qui).json()
         return {e["cle"]: e["remaniable"] for e in plan["entrees"]}
-    tout = {"renommer": True, "ajouter_valeur": True, "fusionner": True, "retirer": True,
-            "etat": True}
+    tout = {"renommer": True, "ajouter_valeur": True, "ranger": True, "fusionner": True,
+            "retirer": True, "etat": True}
     rien = {k: False for k in tout}
     assert remaniable(STAG) == {
-        "ironie": {**rien, "renommer": True, "ajouter_valeur": True}, "ecrite": rien}
+        "ironie": {**rien, "renommer": True, "ajouter_valeur": True, "ranger": True},
+        "ecrite": {**rien, "ranger": True}}
     assert remaniable(LEA) == {"ironie": tout, "ecrite": tout}
     # Une grille fermée : rien sur place, même pour un responsable.
     assert set(map(lambda x: tuple(x.values()), remaniable(LEA, decor["grille_id"]).values())
@@ -329,3 +330,121 @@ def test_le_plan_dit_ce_que_l_appelant_peut_remanier(client, decor, db_path):
     r = _patch(client, STAG, f"/api/grilles/{g}/entrees/ironie", {"libelle": "ironie fine"})
     assert {e["cle"]: e["remaniable"] for e in r.json()["plan"]["entrees"]}["ironie"][
         "renommer"] is True
+
+
+# --------------------------------------------------------------------------- #
+# « ↕ Ranger » : l'ordre de la grille de travail, commun au projet, et Ctrl+Z
+# --------------------------------------------------------------------------- #
+def _ordre(client, t):
+    return [e["cle"] for e in client.get(f"/api/grilles/{t['grille_id']}/versions/1",
+                                         headers=ADMIN).json()["entrees"]]
+
+
+def _ranger(client, t, cle, place, qui=STAG, vu=None):
+    corps = {"quoi": "entree", "cle": cle, "place": place}
+    if vu is not None:
+        corps["vu"] = vu
+    return client.put(f"/api/grilles/{t['grille_id']}/ordre", headers=qui, json=corps)
+
+
+def _trois(client, t):
+    for zone, libelle in (("case", "ironie"), ("bulle", "humour"), ("cartouche", "colère")):
+        poser(client, t, region_id=t["zones"][zone], nouvelle_entree={"libelle": libelle})
+
+
+def test_un_annotateur_range_les_etiquettes_et_une_neuve_nait_en_bas(client, decor, db_path):
+    t = _travail(client, decor, db_path)
+    _trois(client, t)
+    # Une entrée DÉFINIE se range aussi (« toutes les entrées de la grille de travail »).
+    assert client.post(f"/api/grilles/{t['grille_id']}/entrees", headers=ADMIN,
+                       json={"libelle": "écrite"}).status_code == 201
+    assert _ordre(client, t) == ["ironie", "humour", "colere", "ecrite"]
+    r = _ranger(client, t, "ecrite", 0, vu=["ironie", "humour", "colere", "ecrite"])
+    assert r.status_code == 200, r.text
+    assert _ordre(client, t) == ["ecrite", "ironie", "humour", "colere"]
+    poser(client, t, region_id=t["zones"]["texte"], nouvelle_entree={"libelle": "lieu : ici"})
+    assert _ordre(client, t)[-1] == "lieu"
+    # Au journal, sous son nom ; la valeur vue périmée reçoit le 409 de CONC-3.
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM evenement WHERE cible_table = 'grille' "
+                       "AND agent = 'stag' AND apres LIKE '%ordre:entree:%'")[0]["n"] == 1
+    r = _ranger(client, t, "humour", 0, vu=["ironie", "humour", "colere", "ecrite", "lieu"])
+    assert r.status_code == 409 and "conflit" in r.json()["detail"], r.text
+
+
+def test_ranger_ailleurs_reste_aux_responsables(client, decor, db_path):
+    from grilles_decor import SAM
+    t = _travail(client, decor, db_path)
+    _trois(client, t)
+    assert _ranger(client, t, "humour", 0, qui=SAM).status_code == 403
+    # Une autre grille ouverte : le formulaire, à ses responsables.
+    entete = ["cle", "forme", "libelle"]
+    from grilles_decor import csv_de, grille_active
+    g = grille_active(client, decor["p"], entrees=csv_de([entete, ["a", "simple", "a"],
+                                                          ["b", "simple", "b"]]),
+                      listes=None, nom="Libre", ouverte=True, porte_sur="case")
+    r = _ranger(client, {**t, **g}, "b", 0)
+    assert r.status_code == 403 and "mode libre" in r.text, r.text
+    # Une rubrique, une variante : au formulaire.
+    r = client.put(f"/api/grilles/{t['grille_id']}/ordre", headers=STAG,
+                   json={"quoi": "variante", "entree_cle": "x", "cle": "y", "place": 0})
+    assert r.status_code == 403, r.text
+
+
+def test_ctrl_z_defait_un_deplacement(client, decor, db_path):
+    t = _travail(client, decor, db_path)
+    _trois(client, t)
+    assert _ranger(client, t, "colere", 0).status_code == 200
+    assert client.get("/api/undo/prochain", headers=STAG).json()["description"] == (
+        "déplacement d'une étiquette")
+    # Une étiquette née depuis, en bas, ne bloque rien.
+    poser(client, t, region_id=t["zones"]["texte"], nouvelle_entree={"libelle": "lieu : ici"})
+    r = client.post("/api/undo", headers=STAG)               # la pose de « lieu »
+    assert r.status_code == 200, r.text
+    r = client.post("/api/undo", headers=STAG)               # le déplacement
+    assert r.status_code == 200, r.text
+    assert r.json()["description"] == "déplacement d'une étiquette"
+    assert r.json()["planche_id"] is None and r.json()["region_id"] is None
+    assert _ordre(client, t)[:3] == ["ironie", "humour", "colere"]
+
+
+def test_ctrl_z_d_un_deplacement_recouvert_par_un_autre_est_refuse(client, decor, db_path):
+    t = _travail(client, decor, db_path)
+    _trois(client, t)
+    assert _ranger(client, t, "colere", 0).status_code == 200
+    assert _ranger(client, t, "ironie", 0, qui=ADMIN).status_code == 200
+    r = client.post("/api/undo", headers=STAG)
+    assert r.status_code == 409 and "conflit" in r.json()["detail"], r.text
+    assert _ordre(client, t) == ["ironie", "colere", "humour"]
+
+
+def test_ctrl_z_d_un_deplacement_demande_de_pouvoir_encore_ranger(client, decor, db_path):
+    """Qui n'écrit plus dans le projet — il écrit encore ailleurs, dans un autre projet : l'acte
+    est PASSÉ (AUTH-14), sans rien défaire."""
+    from conftest import du_projet
+    from grilles_decor import LEA, ZOE
+    t = _travail(client, decor, db_path)
+    _trois(client, t)
+    assert _ranger(client, t, "colere", 0).status_code == 200
+    du_projet(client, decor["d"], "utilisateur", "stag")
+    assert client.put(f"/api/collections/{decor['d']}/acces", headers=ZOE,
+                      json={"genre": "utilisateur", "principal": "stag",
+                            "niveau": "ecriture"}).status_code == 200
+    assert client.delete(f"/api/collections/{decor['c']}/acces/utilisateur/stag",
+                         headers=LEA).status_code in (200, 204)
+    assert client.delete(f"/api/collections/{decor['c2']}/acces/utilisateur/stag",
+                         headers=LEA).status_code in (200, 204)
+    r = client.post("/api/undo", headers=STAG)
+    assert r.status_code == 409 and "ecarte" in r.json()["detail"], r.text
+    assert _ordre(client, t) == ["colere", "ironie", "humour"]
+
+
+def test_le_formulaire_d_une_autre_grille_ne_s_annule_pas(client, decor, db_path):
+    from grilles_decor import csv_de, grille_active
+    entete = ["cle", "forme", "libelle"]
+    g = grille_active(client, decor["p"], entrees=csv_de([entete, ["a", "simple", "a"],
+                                                          ["b", "simple", "b"]]),
+                      listes=None, nom="Libre", ouverte=True, porte_sur="case")
+    r = client.put(f"/api/grilles/{g['grille_id']}/ordre", headers=ADMIN,
+                   json={"quoi": "entree", "cle": "b", "place": 0})
+    assert r.status_code == 200, r.text
+    assert client.get("/api/undo/prochain", headers=ADMIN).json() is None
