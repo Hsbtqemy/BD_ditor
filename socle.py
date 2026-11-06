@@ -1117,11 +1117,20 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     # rien de posé) ne compte pas, comme la base vide : elle part avec lui.
     vides = [r[0] for r in conn.execute("SELECT id FROM grille WHERE projet_id = ?",
                                         (projet_id,)) if grille_import.grille_sans_rien(conn, r[0])]
-    g = conn.execute("SELECT COUNT(*) FROM grille WHERE projet_id = ?",
-                     (projet_id,)).fetchone()[0] - len(vides)
-    if g:
-        raise HTTPException(409, f"Ce projet possède {g} grille(s) d'annotation : "
-                                 "supprimez-les d'abord. Un projet ne se supprime que vide.")
+    restantes = [(r[0], r[1]) for r in conn.execute(
+        "SELECT id, travail FROM grille WHERE projet_id = ?", (projet_id,)) if r[0] not in vides]
+    if restantes:
+        # La grille de travail ne se supprime pas (J2) : la phrase dit le geste qui la vide —
+        # retirer ses étiquettes, que personne ne pose plus (✎ « Retirer… »).
+        autres = sum(1 for _, travail in restantes if not travail)
+        mots = []
+        if autres:
+            mots.append(f"{autres} grille(s) d'annotation à supprimer d'abord")
+        if len(restantes) > autres:
+            mots.append("les étiquettes de son Mode libre à retirer d'abord "
+                        "(✎ « Retirer… », une fois qu'aucune zone ne les porte)")
+        raise HTTPException(409, "Ce projet porte encore " + ", et ".join(mots)
+                                 + ". Un projet ne se supprime que vide.")
     bases = conn.execute(
         "SELECT c.id, c.nom, (SELECT COUNT(*) FROM collection_album ca "
         "                     WHERE ca.collection_id = c.id) AS n "

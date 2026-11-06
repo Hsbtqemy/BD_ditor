@@ -124,7 +124,14 @@ def test_une_grille_de_travail_qui_porte_quelque_chose_retient_son_projet(client
         c.close()
     r = client.delete(f"/api/projets/{pid}", headers=ADMIN)
     assert r.status_code == 409, r.text
-    assert "grille" in r.json()["detail"], r.json()
+    detail = r.json()["detail"]
+    # La phrase dit le geste qui VIDE la grille de travail, jamais « supprimez-la », que J2
+    # refuse ; et l'étiquette retirée, le projet se supprime.
+    assert "Mode libre" in detail and "Retirer" in detail, detail
+    assert "supprimer" not in detail, detail
+    r = client.delete(f"/api/grilles/{g['id']}/entrees/a-reprendre", headers=ADMIN)
+    assert r.status_code == 200, r.text
+    assert client.delete(f"/api/projets/{pid}", headers=ADMIN).status_code == 204
 
 
 def test_nom_valeur_fait_naitre_l_entree_a_variantes_et_sa_variante(client, decor, db_path):
