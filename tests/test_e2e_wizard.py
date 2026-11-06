@@ -977,7 +977,16 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
     page.locator("#zoom-fit").click()
     expect(zoom).not_to_have_text(cadre)
     page.wait_for_timeout(300)
-    assert int(zoom.inner_text().rstrip(" %")) < int(cadre.rstrip(" %"))
+    ajuste = zoom.inner_text()
+    assert int(ajuste.rstrip(" %")) < int(cadre.rstrip(" %"))
+    # Une nouvelle mise en page — le navigateur change de taille, la fenêtre du guide se
+    # repose — ne recadre pas une vue reprise à la main (`BDAtelierVue.retouchee`).
+    page.set_viewport_size({"width": 1280, "height": 690})
+    page.wait_for_timeout(500)
+    expect(zoom).to_have_text(ajuste)
+    page.set_viewport_size({"width": 1280, "height": 720})
+    page.wait_for_timeout(500)
+    expect(zoom).to_have_text(ajuste)
     # Pas une modale, et la planche est jouable : on y trace une case, à la souris…
     assert not page.evaluate(INERTE, "#stage") and page.evaluate(INERTE, "#sidebar")
     case = _glisser(page, (220, 40), (380, 260))
@@ -993,6 +1002,10 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
     expect(suivant).to_have_class(re.compile(r"\bprimary\b"))
     # Le guide ne passe pas seul à la suite.
     expect(titre).to_have_text("Tracer une zone")
+    # Ni ne recadre la rangée : la phrase de « ✓ Fait » peut allonger la fenêtre (sous une
+    # police plus large, celle de l'image), ce qui est une mise en page ; « Ajuster » tient.
+    page.wait_for_timeout(500)
+    expect(zoom).to_have_text(ajuste)
 
     # « Corriger » : la planche se rapproche de la plus petite bulle du jeu, choisie.
     entier = zoom.inner_text()
@@ -1021,7 +1034,13 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
     # En sortant de l'étape, la planche revient entière.
     page.locator("#wizard-guide-prec").click()
     expect(titre).to_have_text("Tracer une zone")
-    expect(zoom).to_have_text(entier)
+    # La planche ENTIÈRE dans la scène d'à présent, et non le zoom lu avant « Corriger » :
+    # la fenêtre du guide, en feuille, réserve sa hauteur, qui suit sa phrase — la scène n'a
+    # plus forcément la taille qu'elle avait (mesuré dans l'image : 358 px, puis 339).
+    try:
+        page.wait_for_function(PLANCHE_ENTIERE, timeout=5000)
+    except Exception:
+        raise AssertionError(page.evaluate(PLANCHE_ENTIERE_MESURE)) from None
     # La carte dit ce qui est fait.
     page.locator("#wizard-guide-carte").click()
     album = _album(page)
@@ -1045,6 +1064,23 @@ def test_le_guide_lit_sur_la_planche_le_geste_fait(page, jeu_decoupe):
 # « Tracer une zone » : l'Atelier cadre la rangée du jeu (Hugo, 2026-11-05) — grossie, en
 # entier dans la scène et à côté de la fenêtre du guide, jamais dessous ; la planche revient
 # entière en sortant de l'étape.
+
+# La planche entière dans la scène : dedans, au pixel près, et à 95 % de la scène dans une
+# dimension au moins (« Ajuster »). Forme fonction : la CSP refuse l'`eval`.
+PLANCHE_ENTIERE_MESURE = """() => {
+  const s = document.getElementById('stage').getBoundingClientRect();
+  const p = document.getElementById('planche-img').getBoundingClientRect();
+  return { scene: [s.left, s.top, s.right, s.bottom].map(Math.round),
+           planche: [p.left, p.top, p.right, p.bottom].map(Math.round),
+           part: Math.max(p.width / s.width, p.height / s.height),
+           zoom: document.getElementById('zoom-level').textContent }; }"""
+PLANCHE_ENTIERE = """() => {
+  const s = document.getElementById('stage').getBoundingClientRect();
+  const p = document.getElementById('planche-img').getBoundingClientRect();
+  const part = Math.max(p.width / s.width, p.height / s.height);
+  return p.left >= s.left - 1 && p.top >= s.top - 1 && p.right <= s.right + 1
+    && p.bottom <= s.bottom + 1 && Math.abs(part - 0.95) < 0.01; }"""
+
 
 def _cadrage_pose(page):
     """Le cadrage du guide est posé : demandé, la planche là, et la mise en page faite."""

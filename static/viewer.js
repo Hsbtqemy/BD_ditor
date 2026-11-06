@@ -395,7 +395,7 @@ async function selectPlanche(id) {
    rectangle de la planche (`cadreAvecMarge`). Une demande faite avant que la planche
    soit là attend qu'elle le soit. `libre` (coordonnées de l'écran) : la part de la scène
    où cadrer — celle que la fenêtre du guide ne recouvre pas ; la scène entière sinon. */
-const CADRAGE = { voulu: null, pose: false, dernier: null };
+const CADRAGE = { voulu: null, pose: false, dernier: null, vue: null };
 
 function appliquerCadrage() {
   const v = CADRAGE.voulu;
@@ -423,6 +423,8 @@ function appliquerCadrage() {
   applyTransform();
   CADRAGE.pose = true;
   CADRAGE.dernier = v;
+  // La vue telle que le cadrage l'a posée : ce qui s'en écarte vient de la main.
+  CADRAGE.vue = { zoom: state.zoom, tx: state.tx, ty: state.ty };
 }
 
 window.BDAtelierVue = {
@@ -435,6 +437,14 @@ window.BDAtelierVue = {
   enAttente() { return !!CADRAGE.voulu; },
   // Une vue cadrée est posée (et pas encore rendue à la planche entière).
   estCadree() { return CADRAGE.pose; },
+  // La vue cadrée a été reprise à la main depuis le dernier cadrage — « Ajuster », la
+  // molette, un bouton du zoom, un glissé : le guide ne la recadre plus (un zoom fait à la
+  // main reste libre), même quand sa fenêtre change de taille.
+  retouchee() {
+    const v = CADRAGE.vue;
+    return !!(CADRAGE.pose && v
+              && (v.zoom !== state.zoom || v.tx !== state.tx || v.ty !== state.ty));
+  },
   toutVoir() {
     CADRAGE.voulu = null;
     CADRAGE.dernier = null;

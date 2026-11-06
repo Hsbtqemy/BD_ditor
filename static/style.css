@@ -918,6 +918,10 @@ kbd {
   border: 1px solid var(--focus); border-radius: 10px; box-shadow: 0 12px 32px var(--shadow);
 }
 .wizard-fenetre.gauche { right: auto; left: .6154rem; }
+/* La visite passe en feuille au-delà de l'écran étroit quand elle recouvre la zone choisie
+   (`wizard.js`, `feuillePourLaZone`) : la forme de la feuille sous 40em, ci-dessous. */
+.wizard-fenetre.feuille, .wizard-fenetre.feuille.gauche { left: .4615rem; right: .4615rem;
+  bottom: .4615rem; width: auto; max-height: 55%; }
 .wizard-fenetre > * { flex-shrink: 0; min-width: 0; }
 .wf-tete { display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem .6154rem; }
 .wf-compte { font-weight: 700; font-variant-numeric: tabular-nums; }

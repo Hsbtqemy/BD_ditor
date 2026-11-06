@@ -634,7 +634,7 @@
   const SVG = "http://www.w3.org/2000/svg";
   const F = { mode: null, pos: null, temps: [], choisie: null, survolee: null, declencheur: null,
               inertes: new Set(), cle: "", obs: null, attente: 0, menu: null, parScript: false,
-              verifier: false };
+              verifier: false, feuille: null };
   let foyer = null, voileSvg = null, fenetre = null;
 
   function chemin() { return location.pathname.replace(/\/+$/, "") || "/"; }
@@ -1001,6 +1001,7 @@
     F.pos = pos;
     F.choisie = null;
     F.survolee = null;
+    F.feuille = null;
     F.declencheur = declencheur || null;
     F.verifier = mode === "visite";
     F.temps = mode === "plan" ? W.tempsVisibles(pos.page, voit) : [];
@@ -1196,8 +1197,13 @@
     });
     if (F.choisie) {
       const els = zonesDe(F.choisie);
-      // Sur un écran étroit, la zone choisie remonte au-dessus de la feuille.
-      if (els.length && etroit()) amener(els, true);
+      // Posée en coin, la fenêtre recouvre la zone choisie : elle passe en feuille.
+      if (els.length && !etroit() && feuillePourLaZone(els)) {
+        F.feuille = cleDeLaVisite();
+        reserverLaVisite();
+      }
+      // En feuille (l'écran étroit, ou ce qui précède), la zone remonte au-dessus d'elle.
+      if (els.length && visiteEnFeuille()) amener(els, true);
       else if (els.length) els[0].scrollIntoView({ block: "nearest", inline: "nearest" });
     }
     dessinerVoile();
@@ -1709,7 +1715,53 @@
      mesure sur l'écran codé », 768 px sous une grande police). */
   function reserverLaVisite() {
     if (F.mode === "etape" || !fenetre) return;
-    reserver(etroit() ? fenetre.offsetHeight + 24 : 0);
+    fenetre.classList.toggle("feuille", !etroit() && F.feuille === cleDeLaVisite());
+    reserver(visiteEnFeuille() ? fenetre.offsetHeight + 24 : 0);
+  }
+
+  /* Au-delà de l'écran étroit, la fenêtre de la visite est posée en coin, et rien ne la
+     déplace pendant qu'on lit. Mais choisir un repère, c'est vouloir lire sa zone : si la
+     fenêtre la recouvre, elle devient la feuille du bas — pour ce temps et cette taille
+     d'écran, sans revenir —, et la zone remonte au-dessus d'elle. Mesuré dans l'image, à
+     768 px sous une police de 16, où la police est plus large que celle du poste : la
+     fenêtre, plus haute, cachait « Aucun album dans le corpus que vous lisez… ». Seulement
+     si ce qui s'y LIT est sous la fenêtre — ses lignes de texte, sa boîte quand elle n'en a
+     pas : la boîte des résultats prend toute la largeur, sa phrase non — et si la zone
+     peut alors se lire en entier au-dessus de la feuille (sa hauteur, au plus, celle
+     d'à présent) : la planche de l'Atelier n'y gagnerait rien. */
+  function cleDeLaVisite() {
+    return F.pos ? `${F.mode}:${F.pos.page}:${F.pos.temps}:${window.innerWidth}x${window.innerHeight}` : "";
+  }
+
+  function visiteEnFeuille() { return etroit() || (!!F.feuille && F.feuille === cleDeLaVisite()); }
+
+  function lignesDe(els) {
+    const out = [];
+    els.forEach((zone) => {
+      const w = document.createTreeWalker(zone, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if (!n.textContent.trim()) continue;
+        const r = document.createRange();
+        r.selectNodeContents(n);
+        Array.from(r.getClientRects()).forEach((b) => {
+          if (b.width >= 1 && b.height >= 1 && b.bottom > 0 && b.top < window.innerHeight) {
+            out.push({ l: b.left, t: b.top, r: b.right, b: b.bottom });
+          }
+        });
+      }
+    });
+    return out;
+  }
+
+  function feuillePourLaZone(els) {
+    const q = fenetre.getBoundingClientRect();
+    const lignes = lignesDe(els);
+    const rs = lignes.length ? lignes : els.map(partVisible).filter(Boolean);
+    const sous = rs.some((r) => Math.min(r.r, q.right) - Math.max(r.l, q.left) > 1
+                                && Math.min(r.b, q.bottom) - Math.max(r.t, q.top) > 1);
+    if (!sous) return false;
+    const z = rectDe(els), h = Math.min(q.height, window.innerHeight * 0.55);
+    return z.b - z.t <= window.innerHeight - h - 24 - 16;
   }
 
   function reserver(px) {
@@ -1823,10 +1875,15 @@
      fois par MISE EN PAGE — la fenêtre posée à côté du foyer ou en feuille, la taille de la
      scène —, sans boucle : la fenêtre change de place après le premier cadrage (elle passe
      en feuille, la page lui réserve sa hauteur), et le cadrage la suit. Entre deux mises en
-     page, rien n'est rejoué : un zoom fait à la main reste libre. */
+     page, rien n'est rejoué ; et une vue reprise à la main n'est plus recadrée du tout,
+     jusqu'à l'étape suivante : un zoom fait à la main reste libre. */
   function garderLaBulleHorsDeLaFenetre() {
     if (!G.cadree || G.cible == null || !window.BDAtelierVue) return;
     if (window.BDAtelierVue.enAttente && window.BDAtelierVue.enAttente()) return;
+    // Une vue reprise à la main reste libre, mise en page ou non : « ✓ Fait » allonge la
+    // phrase, la feuille grandit, et le guide recadrait la rangée sur un « Ajuster »
+    // (mesuré dans l'image, où la police est plus large : 68 % → 157 %).
+    if (window.BDAtelierVue.retouchee && window.BDAtelierVue.retouchee()) return;
     const scene = document.getElementById("stage");
     if (!scene || !boiteDeLaCible()) return;
     const s = scene.getBoundingClientRect(), fq = fenetre.getBoundingClientRect();
