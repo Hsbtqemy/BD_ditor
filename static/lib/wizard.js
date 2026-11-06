@@ -210,7 +210,10 @@
       phrase: "Recopiez le texte de la bulle, tel qu'il est écrit. La touche Tab passe à la "
         + "bulle suivante." },
     { k: "preremplir", titre: "Pré-remplir", ou: "Atelier, Traitement", surface: "/",
-      facultatif: true, zones: ["atelier-actions", "atelier-planche"],
+      // En mode Édition, comme « Tracer » et « Corriger » (Hugo, 2026-11-06) : sans mode à
+      // elle, l'étape gardait celui de « Transcrire et relire », où la planche d'essai, sans
+      // bulle, ne se voit pas ; en Édition, les cadres des moteurs s'y voient et se corrigent.
+      mode: "edition", facultatif: true, zones: ["atelier-actions", "atelier-planche"],
       // Les trois moteurs, et pas l'OCR seul (Hugo, 2026-11-05 : « pas spécialement pour
       // qu'ils l'activent, mais pour comprendre ce que ça fait »), en deux paragraphes de
       // Hugo, avec un visuel (`visuelEtape`). Une ligne vide sépare les paragraphes d'une

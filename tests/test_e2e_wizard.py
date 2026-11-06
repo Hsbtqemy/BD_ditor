@@ -1724,6 +1724,10 @@ def test_pre_remplir_montre_les_trois_moteurs_et_lui_seul(page, jeu):
     # « Pré-remplir » suit « Transcrire et relire » (Hugo, 2026-11-05).
     page.locator("#wizard-guide-suiv").click()
     expect(titre).to_have_text(re.compile(r"^Pré-remplir"), timeout=15000)
+    # En mode Édition, et non dans celui de « Transcrire et relire », d'où l'on vient (Hugo,
+    # 2026-11-06) : la colonne de la Transcription s'est retirée, la planche se voit.
+    expect(page.locator('.mode-btn[data-mode="edition"]')).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#transcription")).to_be_hidden()
     # Trois paragraphes : les trois moteurs, « jamais parfaits », puis le geste — la planche
     # du jeu n'a pas de bulle, d'où la ligne générique.
     phrases = page.locator("#wizard-fenetre .wf-phrase")
@@ -1777,6 +1781,7 @@ def test_pre_remplir_se_fait_sur_la_planche_d_essai(page, jeu_essai):
     titre = page.locator("#wizard-fenetre-titre")
     expect(titre).to_have_text(re.compile(r"^Pré-remplir"))
     assert re.search(rf"[?&]planche={essai}\b", page.url), page.url
+    expect(page.locator('.mode-btn[data-mode="edition"]')).to_have_attribute("aria-pressed", "true")
     phrases = page.locator("#wizard-fenetre .wf-phrase")
     expect(phrases).to_have_count(3)
     expect(phrases.nth(2)).to_contain_text("Sur cette planche d'essai, lancez dans l'ordre")

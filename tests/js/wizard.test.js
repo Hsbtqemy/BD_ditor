@@ -189,7 +189,7 @@ test("chaque étape mène à sa surface, à son outil et à la planche du parcou
   assert.deepEqual(ou, {
     corpus: "/corpus",
     decrire: "/corpus?album=31",
-    preremplir: "/?album=31&planche=310",
+    preremplir: "/?album=31&planche=310&mode=edition",
     tracer: "/?album=31&planche=310&mode=edition",
     decoupage: "/?album=31&planche=310&mode=edition",
     transcrire: "/?album=31&planche=310&mode=transcription",
@@ -1178,7 +1178,7 @@ test("« Pré-remplir » mène à la planche d'essai, les autres étapes à cell
                         planche_essai: 8 }] };
   const e = (k) => W.ETAPES.find((x) => x.k === k);
   assert.equal(W.plancheDeLEtape(e("preremplir"), vue), 8);
-  assert.equal(W.adresseEtape(e("preremplir"), vue), "/?album=6&planche=8");
+  assert.equal(W.adresseEtape(e("preremplir"), vue), "/?album=6&planche=8&mode=edition");
   for (const k of ["tracer", "decoupage", "transcrire"]) {
     assert.equal(W.plancheDeLEtape(e(k), vue), 7, k);
   }
