@@ -12,7 +12,11 @@ comptaient encore ailleurs. Le patron est celui du locuteur (`tests/test_undo.py
 3. **L'annulation est GARDÉE** : 409 nommé si un autre a changé ces liens depuis, rien
    d'écrit (CONC-3). La situation, un ensemble, revient par différence, comme les tags.
 4. **L'annulation ne repose pas un lien sur un type qui ne le montre pas.**
-5. **L'écran le dit** : la réponse nomme le personnage montré, compte la situation.
+5. **L'écran le dit** : la réponse nomme le personnage montré.
+
+ANN-7, le basculement : la situation d'une case ne se lit plus. Un changement de type ne la
+retire plus ni ne la photographie, Ctrl+Z ne la rend plus, et un acte d'avant qui l'avait
+retirée se défait sans elle (la ligne d'hier reste en base jusqu'à la migration v39).
 """
 import json
 
@@ -39,8 +43,8 @@ def _n(db_path, sql):
 
 
 def _case_situee(client, planche):
-    """Une case et sa situation d'HIER, posée en base (ANN-7 : aucune route ne la pose plus ;
-    la route qui change le type la retire encore, jusqu'à la migration)."""
+    """Une case et sa situation d'HIER, posée en base (ANN-7 : aucune route ne la pose plus,
+    ni ne la lit)."""
     rid = _region(client, planche["id"], headers=ADMIN)
     lieu = _valeur(client, "case", "lieu", "falaise")
     _situer(rid, lieu)
@@ -58,19 +62,18 @@ def _boite_montrant(client, planche, nom="Milou", headers=ADMIN):
 # --------------------------------------------------------------------------- #
 # Le retrait, dans l'acte
 # --------------------------------------------------------------------------- #
-def test_une_case_devenue_bulle_perd_sa_situation_dans_le_meme_acte(client, planche, db_path):
+def test_une_case_devenue_bulle_ne_lit_plus_sa_situation_d_hier(client, planche, db_path):
+    """ANN-7, le basculement : la situation ne se retire plus avec le type, ne se
+    photographie plus et ne se dit plus — la ligne d'hier reste, invisible, jusqu'à la
+    migration. Mutant tué : la part situation remise dans `database.retirer_liens_caches`."""
     rid, lieu = _case_situee(client, planche)
     rep = _ok(client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=ADMIN), 200)
-    assert rep.json()["situation_retiree"] == 1
+    assert "situation_retiree" not in rep.json()
     assert "locuteur_retire" not in rep.json() and "presence_retiree" not in rep.json()
-    assert _liens(db_path, rid)["attributs"] == []
+    assert _liens(db_path, rid)["attributs"] == [lieu]
     avant = json.loads(_dernier_acte(db_path, rid)["avant"])
-    assert avant["attributs"] == [lieu]
-    dim = _sql(db_path, "SELECT dimension_id FROM attribut_valeur WHERE id = ?", (lieu,))[0]
-    assert avant["liens_vus"] == {"locuteur": None, "presence": None, "attributs": [lieu],
-                                  "attributs_dimensions": [[lieu, dim["dimension_id"]]]}
-    assert avant["attributs_dimensions"] == [[lieu, dim["dimension_id"]]]
-    assert "attributs" not in json.loads(_dernier_acte(db_path, rid)["apres"])
+    assert "attributs" not in avant and "attributs_dimensions" not in avant
+    assert avant["liens_vus"] == {"locuteur": None, "presence": None}
     assert _n(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'delien'") == 0
 
 
@@ -84,11 +87,8 @@ def test_une_boite_personnage_devenue_bulle_perd_son_personnage_montre(client, p
 
 
 def test_la_regle_vaut_pour_tout_type_qui_ne_montre_pas(client, planche, db_path):
-    """« Ce que son nouveau type ne montre pas » : une case devenue boîte personnage perd sa
-    situation, une boîte personnage devenue case son personnage montré."""
-    case, _ = _case_situee(client, planche)
-    _ok(client.put(f"/api/regions/{case}", json={"type": "personnage"}, headers=ADMIN), 200)
-    assert _liens(db_path, case)["attributs"] == []
+    """« Ce que son nouveau type ne montre pas » : une boîte personnage devenue case perd
+    son personnage montré."""
     boite, _ = _boite_montrant(client, planche)
     _ok(client.put(f"/api/regions/{boite}", json={"type": "case"}, headers=ADMIN), 200)
     assert _liens(db_path, boite)["presence"] is None
@@ -108,15 +108,26 @@ def test_un_geste_qui_ne_change_pas_le_type_ne_retire_rien(client, planche, db_p
 # --------------------------------------------------------------------------- #
 # Un seul Ctrl+Z rend tout
 # --------------------------------------------------------------------------- #
-def test_un_ctrl_z_rend_la_case_et_sa_situation(client, planche, db_path):
+def test_un_ctrl_z_d_avant_le_basculement_rend_la_case_sans_sa_situation(client, planche,
+                                                                          db_path):
+    """Un changement de type d'AVANT le basculement avait retiré la situation et la portait
+    dans son `avant` (`attributs`, `attributs_dimensions`, `liens_vus`). Son Ctrl+Z rend le
+    type — et rien de la situation, qu'il ne nomme plus. Mutant tué : `attributs` remis dans
+    `undo._RETRAITS`."""
     rid, lieu = _case_situee(client, planche)
     _ok(client.put(f"/api/regions/{rid}", json={"type": "texte"}, headers=ADMIN), 200)
+    # L'acte, tel que la route d'hier l'écrivait, et la ligne qu'elle retirait.
+    _sql(db_path, "UPDATE evenement SET avant = json_set(avant, '$.attributs', json(?), "
+                  "'$.attributs_dimensions', json('[]'), '$.liens_vus.attributs', json(?)) "
+                  "WHERE id = ?", (f"[{lieu}]", f"[{lieu}]", _dernier_acte(db_path, rid)["id"]))
+    _sql(db_path, "DELETE FROM region_attribut WHERE region_id = ?", (rid,))
     assert client.get("/api/undo/prochain", headers=ADMIN).json()["description"] == \
-        "modification d'une région et retrait de sa situation"
+        "modification d'une région"
     n = _n(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'annulation'")
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
-    assert res["liens_non_rendus"] == 0
-    assert (_type(db_path, rid), _liens(db_path, rid)["attributs"]) == ("case", [lieu])
+    assert res["description"] == "modification d'une région"
+    assert "liens_non_rendus" not in res
+    assert (_type(db_path, rid), _liens(db_path, rid)["attributs"]) == ("case", [])
     assert _n(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'annulation'") == n + 1
 
 
@@ -264,17 +275,19 @@ def test_l_annulation_ne_remontre_pas_un_personnage_sur_une_region_devenue_bulle
     assert _liens(db_path, rid)["presence"] is None
 
 
-def test_une_suppression_retablie_ne_repose_pas_une_situation_sur_une_bulle(
-        client, planche, db_path):
-    """Une bulle d'avant ANN-8 qui porte une situation, supprimée puis rétablie : la bulle
-    revient, la situation non, et la réponse la compte."""
-    rid = _region(client, planche["id"], type="bulle")
-    lieu = _valeur(client, "case", "lieu", "falaise")
-    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)", (rid, lieu))
+def test_une_suppression_retablie_ne_rend_plus_la_situation(client, planche, db_path):
+    """ANN-7, le basculement : une case qui porte une situation d'hier, supprimée puis
+    rétablie — la case revient, la situation non (l'instantané ne la porte plus), et rien ne
+    la compte : elle ne se lit plus nulle part."""
+    rid, lieu = _case_situee(client, planche)
     _ok(client.delete(f"/api/regions/{rid}", headers=ADMIN), 204)
+    instantane = json.loads(_sql(db_path, "SELECT avant FROM evenement WHERE cible_table = "
+                                          "'regions' AND type = 'suppression' AND cible_id = ?",
+                                 (rid,))[0]["avant"])
+    assert "attributs" not in instantane
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
-    assert res["liens_non_rendus"] == 1
-    assert (_type(db_path, rid), _liens(db_path, rid)["attributs"]) == ("bulle", [])
+    assert res["liens_non_rendus"] == 0
+    assert (_type(db_path, rid), _liens(db_path, rid)["attributs"]) == ("case", [])
 
 
 def _bulle_de_bob(client, planche, chemin, type_):

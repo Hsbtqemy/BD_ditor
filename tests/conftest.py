@@ -268,9 +268,20 @@ def poser_tags(db_file: Path, region_id: int, labels, *, collection_id=None, esp
     sous son nom, comme la route d'hier l'écrivait (`annotations`, l'instantané entier)."""
     import journal
     assert Path(db_file) == Path(database.DB_PATH), "la base du test, celle de `data_dir`"
+
+    def instantane(conn):
+        # L'instantané d'HIER, tags compris : `journal.snapshot_annotation` ne les nomme plus
+        # depuis le basculement d'ANN-7, et la route d'hier les écrivait dans ses charges.
+        a = conn.execute("SELECT id, note FROM annotations WHERE region_id = ?",
+                         (region_id,)).fetchone()
+        if a is None:
+            return None
+        return {"note": a["note"], "tags": [t[0] for t in conn.execute(
+            "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
+            "WHERE at.annotation_id = ? ORDER BY t.label", (a["id"],))]}
     conn = database.get_connection()
     try:
-        avant = journal.snapshot_annotation(conn, region_id)
+        avant = instantane(conn)
         conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, ?) "
                      "ON CONFLICT(region_id) DO UPDATE SET note = COALESCE(excluded.note, note)",
                      (region_id, note))
@@ -286,7 +297,7 @@ def poser_tags(db_file: Path, region_id: int, labels, *, collection_id=None, esp
                          "VALUES (?, ?)", (ann, tid))
             ids[label] = tid
         if agent is not None:
-            apres = journal.snapshot_annotation(conn, region_id)
+            apres = instantane(conn)
             journal.journaliser(conn, "creation" if avant is None else "modification",
                                 "annotations", region_id, avant=avant, apres=apres,
                                 agent=agent)

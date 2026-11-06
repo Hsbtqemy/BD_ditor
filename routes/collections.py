@@ -460,7 +460,8 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
     _clore_demandes_vers(conn, portee, collection_id)
     # COL-4 — dans un bac à sable, ses termes ne deviennent pas GLOBAUX (`ON DELETE SET
     # NULL`) : ils passeraient la frontière, et survivraient à l'effacement chez tout le
-    # monde. Ils rejoignent la base du bac à sable, où ils restent locaux.
+    # monde. Ils rejoignent la base du bac à sable, où ils restent locaux. (ANN-7 : le
+    # vocabulaire d'hier ne se lit plus, mais ses tables restent jusqu'à leur migration.)
     projet = projet_de_collection(conn, collection_id)
     if _rive_d_un_terme(conn, collection_id):
         base = collection_de_base(conn, projet)
@@ -826,9 +827,8 @@ def list_collections_album(album_id: int, conn: sqlite3.Connection = Depends(db)
 
     L'appartenance est N-N depuis la v14, et c'est porteur de sens : un même album peut
     nourrir deux études. La liste est donc PARTIELLE quand l'album est partagé avec une
-    étude à laquelle on ne participe pas — même compromis que les attributs d'un objet
-    partagé (cf. `_attributs_de`) : mieux vaut ne pas montrer que révéler l'existence
-    d'une étude voisine.
+    étude à laquelle on ne participe pas : mieux vaut ne pas montrer que révéler
+    l'existence d'une étude voisine.
 
     UX-18 — le filtre vit dans `socle._collections_lues_d_albums`, que `GET /api/albums`
     lit aussi pour rendre l'appartenance de tous les albums en une lecture.

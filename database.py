@@ -15,8 +15,7 @@ import unicodedata
 from contextlib import contextmanager
 from typing import Iterator
 
-from config import (DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_REGION_RETENUS,
-                    TYPES_SITUATION)
+from config import DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_REGION_RETENUS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
@@ -1285,8 +1284,10 @@ FROM (
 # chemins qui échouent OUVERT si on l'oublie — la règle « travail d'autrui » de la suppression
 # directe, « repartir de zéro », la re-segmentation — ; `tests/test_tables_d_annotation.py`
 # le JOUE table par table, et exige que toute table du schéma qui porte un `region_id` ou un
-# `planche_id` soit ici, ou déclarée hors d'ici avec sa raison.
-TABLES_D_ANNOTATION = ("annotations", "region_attribut", "bulle_locuteur",
+# `planche_id` soit ici, ou déclarée hors d'ici avec sa raison. ANN-7, le basculement : la
+# situation d'une case (`region_attribut`) n'en est plus — plus rien ne la pose ni ne la lit,
+# et sa table part avec la migration.
+TABLES_D_ANNOTATION = ("annotations", "bulle_locuteur",
                        "personnage_presence", "releve", "releve_mot", "releve_qualificatif",
                        "doute", "doute_message", "passe")
 
@@ -1309,8 +1310,12 @@ TABLES_DES_GRILLES = ("grille", "grille_version", "grille_rubrique", "grille_ent
 # rapprochée de celle de la copie confondait une correction faite dans la même seconde, et
 # la validation la réécrit. Elle vit avec la ligne : une couche effacée l'emporte, une
 # couche posée ensuite naît à 0, et la corriger (une correction grammaticale) la remet à 0.
+# ANN-7, le basculement : la situation d'une case n'est plus recopiée ni lue.
 COUCHES_RECOPIEES = ("annotations", "bulle_locuteur", "personnage_presence",
-                     "region_attribut", "token_correction")
+                     "token_correction")
+# Celles qui ont reçu la marque à la v36 — la liste d'alors, que la migration garde : une base
+# d'avant la v36 porte encore `region_attribut`, que la v39 retirera.
+_COUCHES_MARQUEES_V36 = COUCHES_RECOPIEES + ("region_attribut",)
 
 
 def _marquer_les_couches_recopiees(conn: sqlite3.Connection, tables) -> None:
@@ -1820,7 +1825,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # … et la marque d'une couche RECOPIÉE (relecture croisée de la 3b, constats 3 et 4 ;
     # décision du pilotage du 2026-10-25) : par PRÉSENCE, à 0. (La v36 créait aussi la table
     # `geste_sur_copie`, que la v38 retire : SCHEMA_SQL ne la porte plus.)
-    for table in COUCHES_RECOPIEES:
+    for table in _COUCHES_MARQUEES_V36:
         if table in _tables and "recopiee" not in _cols(table):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN recopiee "
                          "INTEGER NOT NULL DEFAULT 0")
@@ -2425,9 +2430,10 @@ def retirer_locuteur_muet(conn: sqlite3.Connection, region_id: int) -> int | Non
 
 def liens_vus(conn: sqlite3.Connection, region_id: int) -> dict:
     """Les liens que porte une région au moment d'un changement de type : `{"locuteur": id
-    du personnage ou None, "presence": id du personnage montré ou None, "attributs": [ids
-    des valeurs de sa situation]}`. Des IDENTIFIANTS seulement, comme tout ce qu'un acte
-    range au journal — les clés mêmes d'un nœud d'instantané profond.
+    du personnage ou None, "presence": id du personnage montré ou None}`. Des IDENTIFIANTS
+    seulement, comme tout ce qu'un acte range au journal — les clés mêmes d'un nœud
+    d'instantané profond. (La situation d'une case, `attributs`, en était une troisième
+    jusqu'au basculement d'ANN-7 : elle ne se lit plus.)
 
     ANN-8 — le changement de type les PHOTOGRAPHIE dans son `avant`, sous `liens_vus`, et
     l'annulation compare à cette photographie ce que la région porte au moment de défaire
@@ -2440,30 +2446,20 @@ def liens_vus(conn: sqlite3.Connection, region_id: int) -> dict:
         r = conn.execute(f"SELECT personnage_id FROM {table} WHERE region_id = ?",
                          (region_id,)).fetchone()
         vus[cle] = r["personnage_id"] if r else None
-    lignes = conn.execute(
-        "SELECT ra.valeur_id, v.dimension_id FROM region_attribut ra "
-        "JOIN attribut_valeur v ON v.id = ra.valeur_id "
-        "WHERE ra.region_id = ? ORDER BY ra.valeur_id", (region_id,)).fetchall()
-    vus["attributs"] = [r["valeur_id"] for r in lignes]
-    # La DIMENSION de chaque valeur, à côté (relecture de la suite d'ANN-8, R1) :
-    # `attribut_valeur` n'a pas d'AUTOINCREMENT, et un identifiant repris dans la même
-    # seconde échappe au témoin de la date. L'annulation ne rend une valeur que si sa
-    # dimension est encore celle d'alors (`undo._liens_rendables`).
-    vus["attributs_dimensions"] = [[r["valeur_id"], r["dimension_id"]] for r in lignes]
     return vus
 
 
 def retirer_liens_caches(conn: sqlite3.Connection, region_id: int) -> dict:
     """Retire d'une région ce que son type ne montre pas — le locuteur hors des zones de
     texte (`TYPES_LOCUTEUR`), le personnage montré hors des boîtes personnage
-    (`TYPES_PRESENCE`), la situation hors des cases (`TYPES_SITUATION`) — et rend ce qui est
-    parti : `{"locuteur": id, "presence": id, "attributs": [ids], "attributs_dimensions":
-    [[id, dimension]]}`, chaque clé seulement si elle porte quelque chose. NE JOURNALISE PAS et NE COMMITE PAS : le changement de type le
-    range dans SON acte (`PUT /api/regions/{id}`).
+    (`TYPES_PRESENCE`) — et rend ce qui est parti : `{"locuteur": id, "presence": id}`,
+    chaque clé seulement si elle porte quelque chose. NE JOURNALISE PAS et NE COMMITE PAS :
+    le changement de type le range dans SON acte (`PUT /api/regions/{id}`).
 
     ANN-8 — le miroir du locuteur, tranché par Hugo le 2026-10-21 (« c'est utile ») : une
-    case devenue bulle gardait sa situation, une boîte personnage devenue bulle son
-    personnage montré, ni l'un ni l'autre visibles sur une bulle, et comptés ailleurs."""
+    boîte personnage devenue bulle gardait son personnage montré, invisible sur une bulle, et
+    compté ailleurs. (La situation d'une case devenue bulle partait de même jusqu'au
+    basculement d'ANN-7, qui l'a retirée.)"""
     r = conn.execute("SELECT type FROM regions WHERE id = ?", (region_id,)).fetchone()
     if r is None:
         return {}
@@ -2474,16 +2470,13 @@ def retirer_liens_caches(conn: sqlite3.Connection, region_id: int) -> dict:
     if vus["presence"] is not None and r["type"] not in TYPES_PRESENCE:
         conn.execute("DELETE FROM personnage_presence WHERE region_id = ?", (region_id,))
         retires["presence"] = vus["presence"]
-    if vus["attributs"] and r["type"] not in TYPES_SITUATION:
-        conn.execute("DELETE FROM region_attribut WHERE region_id = ?", (region_id,))
-        retires["attributs"] = vus["attributs"]
-        retires["attributs_dimensions"] = vus["attributs_dimensions"]
     return retires
 
 
 # ANN-8 — ce que la base portait AVANT le miroir du locuteur : des personnages montrés
-# hors des boîtes personnage, des situations hors des cases. Lu par
-# `tools/retirer_liens_caches.py`, qui le dit et le retire.
+# hors des boîtes personnage. Lu par `tools/retirer_liens_caches.py`, qui le dit et le
+# retire. (Les situations hors des cases en étaient la seconde moitié jusqu'au basculement
+# d'ANN-7.)
 def presences_cachees(conn: sqlite3.Connection) -> list:
     """Les personnages montrés par des régions qui n'en montrent pas : `region_id`, `type`,
     `planche_id`, `album_id`, `personnage_id`, `personnage_nom`. Rangés par album, planche,
@@ -2497,20 +2490,6 @@ def presences_cachees(conn: sqlite3.Connection) -> list:
         "JOIN personnages p ON p.id = pp.personnage_id "
         f"WHERE r.type NOT IN ({', '.join('?' * len(TYPES_PRESENCE))}) "
         "ORDER BY pl.album_id, r.planche_id, r.id", TYPES_PRESENCE).fetchall()
-
-
-def situations_cachees(conn: sqlite3.Connection) -> list:
-    """Les valeurs de situation que portent des régions qui n'en reçoivent pas : `region_id`,
-    `type`, `planche_id`, `album_id`, `valeur_id`. Une ligne par valeur ; rangées par album,
-    planche, région, valeur. Ni dimension ni valeur nommées : un terme peut être local à une
-    collection, et l'outil porte sur la base entière."""
-    return conn.execute(
-        "SELECT r.id AS region_id, r.type, r.planche_id, pl.album_id, ra.valeur_id "
-        "FROM region_attribut ra "
-        "JOIN regions r ON r.id = ra.region_id "
-        "JOIN planches pl ON pl.id = r.planche_id "
-        f"WHERE r.type NOT IN ({', '.join('?' * len(TYPES_SITUATION))}) "
-        "ORDER BY pl.album_id, r.planche_id, r.id, ra.valeur_id", TYPES_SITUATION).fetchall()
 
 
 # Régions de texte (citées au niveau bulle « pl·c·b ») — cf. ordre de lecture.
@@ -3363,6 +3342,13 @@ REGION_TEXTE = {"ocr_texte": None, "touche": 0}
 REGION_NOM = {"nom": None}
 _REGION_HORS_COPIE = frozenset({"id", "planche_id", "parent_id"})
 _SQL_NOM_POSE = "TRIM(COALESCE(nom, '')) <> ''"
+# Une annotation qui porte une note : la seule qui COMPTE depuis le basculement d'ANN-7 —
+# une ligne d'hier qui ne portait que des tags n'a plus rien à recopier, ne pèse rien dans
+# le niveau de travail, « Part » ni Ctrl+Z, et ne garde rien à la re-segmentation (relecture
+# croisée du commit des coutures, constat 2). Lue par `copier_le_travail`, l'aperçu,
+# `niveau_de_travail`, `repartir_de_zero` et son aperçu, `undo`, `pipeline/segmentation.py`
+# et `pipeline/bulles.py`. Une ligne nue jusqu'à la migration qui retire ces lignes.
+SQL_NOTE_POSEE = "TRIM(COALESCE(note, '')) <> ''"
 
 
 def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran: str,
@@ -3386,12 +3372,10 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
       source se lisait sinon dans la copie — l'analyse d'un mot, le croisement par l'axe
       « auteur », « qui perd quoi » —, nommé à des gens qui ne le connaissent pas. Elle se
       lit « recopiée » (`routes/analyse._tokens_effectifs`, `corr_recopiee`).
-    - **Seul le vocabulaire visible depuis la collection d'arrivée suit** (E5) : un tag, une
-      valeur d'attribut et sa dimension globaux ou locaux à `collection_id`
-      (`clause_appartenance`, la règle d'une collection et non d'une personne). Un terme
-      local à une autre collection serait posé sur la copie et invisible de ses lecteurs ;
-      il reste, et se COMPTE. Une annotation dont tous les tags restent et qui n'a pas de
-      note ne naît pas.
+    - **Le vocabulaire d'hier ne suit plus** (ANN-7, le basculement) : ni tag, ni situation
+      d'une case. Une annotation suit avec sa note ; sans note, elle ne naît pas. Les
+      relevés suivent si leur grille est active à l'arrivée (E5 pour les grilles), et se
+      COMPTENT sinon.
     - **Les personnages suivent** (E6, forme (a)) : un locuteur, une présence, même entre
       deux projets — le personnage EST le travail. C'est un chemin par lequel une fiche de
       personnage devient visible d'un autre projet, écrit et accepté.
@@ -3479,50 +3463,22 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
             f"INSERT INTO token_correction (region_id, {', '.join(cols)}) "
             f"VALUES (?, {', '.join('?' * len(cols))})")
     if annotations:
-        tag_vu, tag_p = clause_appartenance(collection_id, "t.collection_id")
-        dim_vu, dim_p = clause_appartenance(collection_id, "d.collection_id")
-        val_vu, val_p = clause_appartenance(collection_id, "v.collection_id")
-        n_annot = n_tags = n_tags_laisses = 0
+        n_annot = 0
         for s, c in regions.items():
-            a = conn.execute("SELECT id, note, date_creation, date_modification "
-                             "FROM annotations WHERE region_id = ?", (s,)).fetchone()
+            a = conn.execute("SELECT note, date_creation, date_modification "
+                             f"FROM annotations WHERE region_id = ? AND {SQL_NOTE_POSEE}",
+                             (s,)).fetchone()
             if a is None:
                 continue
-            tags = [t[0] for t in conn.execute(
-                f"SELECT at.tag_id FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-                f"WHERE at.annotation_id = ? AND {tag_vu} ORDER BY at.tag_id",
-                (a["id"], *tag_p))]
-            total = conn.execute("SELECT COUNT(*) FROM annotation_tags "
-                                 "WHERE annotation_id = ?", (a["id"],)).fetchone()[0]
-            n_tags_laisses += total - len(tags)
-            if not tags and not (a["note"] or "").strip():
-                continue
-            nid = conn.execute(
+            conn.execute(
                 "INSERT INTO annotations (region_id, note, date_creation, date_modification, "
                 "recopiee) VALUES (?, ?, ?, ?, 1)",
-                (c, a["note"], a["date_creation"], a["date_modification"])).lastrowid
-            conn.executemany("INSERT INTO annotation_tags (annotation_id, tag_id) "
-                             "VALUES (?, ?)", [(nid, t) for t in tags])
+                (c, a["note"], a["date_creation"], a["date_modification"]))
             n_annot += 1
-            n_tags += len(tags)
-        copies.update(annotations=n_annot, tags=n_tags)
-        laisses["tags"] = n_tags_laisses
+        copies["annotations"] = n_annot
         copies["noms"] = conn.execute(
             f"SELECT COUNT(*) FROM regions WHERE id IN ({','.join('?' * len(regions))}) "
             f"AND {_SQL_NOM_POSE}", list(regions.values())).fetchone()[0] if regions else 0
-        n_attr = n_attr_total = 0
-        for s, c in regions.items():
-            n_attr_total += conn.execute("SELECT COUNT(*) FROM region_attribut "
-                                         "WHERE region_id = ?", (s,)).fetchone()[0]
-            n_attr += conn.execute(
-                "INSERT INTO region_attribut (region_id, valeur_id, recopiee) "
-                "SELECT ?, ra.valeur_id, 1 FROM region_attribut ra "
-                "JOIN attribut_valeur v ON v.id = ra.valeur_id "
-                "JOIN attribut_dimension d ON d.id = v.dimension_id "
-                f"WHERE ra.region_id = ? AND {val_vu} AND {dim_vu}",
-                (c, s, *val_p, *dim_p)).rowcount
-        copies["attributs"] = n_attr
-        laisses["attributs"] = n_attr_total - n_attr
         copies["locuteurs"] = _par_region(
             "SELECT personnage_id, date_creation FROM bulle_locuteur WHERE region_id = ?",
             "INSERT INTO bulle_locuteur (region_id, personnage_id, date_creation, recopiee) "
@@ -3643,9 +3599,7 @@ def compter_le_travail(conn: sqlite3.Connection, depuis: int, cran: str,
     naissance, `{"copies": {…}, "laisses": {…}}`, plus `personnages`, le nombre de fiches de
     personnage que les locuteurs et présences copiés rendent lisibles depuis la copie (E6).
 
-    Des NOMBRES, jamais des libellés : un tag ou un attribut laissé l'est parce que la
-    collection d'arrivée ne le voit pas, et le nommer ferait lire à qui ne le lit pas le nom
-    d'un axe privé — la fuite de la v24. Les deux fonctions comptent pareil, et
+    Des NOMBRES, jamais des libellés. Les deux fonctions comptent pareil, et
     `tests/test_amorcer.py` exige que l'aperçu soit la charge, cran par cran."""
     rang = rang_du_cran(cran)
     if rang < 1:
@@ -3667,33 +3621,10 @@ def compter_le_travail(conn: sqlite3.Connection, depuis: int, cran: str,
     if rang >= rang_du_cran(CRAN_GRAMMAIRE):
         copies["corrections"] = n(f"SELECT COUNT(*) FROM token_correction WHERE region_id {dans}")
     if rang >= rang_du_cran(CRAN_ANNOTATIONS):
-        tag_vu, tag_p = clause_appartenance(collection_id, "t.collection_id")
-        dim_vu, dim_p = clause_appartenance(collection_id, "d.collection_id")
-        val_vu, val_p = clause_appartenance(collection_id, "v.collection_id")
-        n_annot = n_tags = n_tags_laisses = 0
-        annotations = conn.execute(f"SELECT id, note FROM annotations WHERE region_id {dans}",
-                                   regions).fetchall() if regions else []
-        for a in annotations:
-            total = conn.execute("SELECT COUNT(*) FROM annotation_tags "
-                                 "WHERE annotation_id = ?", (a["id"],)).fetchone()[0]
-            vus = conn.execute(
-                "SELECT COUNT(*) FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-                f"WHERE at.annotation_id = ? AND {tag_vu}", (a["id"], *tag_p)).fetchone()[0]
-            n_tags_laisses += total - vus
-            # Une annotation dont tous les tags restent et qui n'a pas de note ne naît pas.
-            if vus or (a["note"] or "").strip():
-                n_annot += 1
-                n_tags += vus
-        copies.update(annotations=n_annot, tags=n_tags)
-        laisses["tags"] = n_tags_laisses
+        # Une annotation sans note ne naît pas sur la copie (`copier_le_travail`).
+        copies["annotations"] = n(f"SELECT COUNT(*) FROM annotations WHERE region_id {dans} "
+                                  f"AND {SQL_NOTE_POSEE}")
         copies["noms"] = n(f"SELECT COUNT(*) FROM regions WHERE id {dans} AND {_SQL_NOM_POSE}")
-        total = n(f"SELECT COUNT(*) FROM region_attribut WHERE region_id {dans}")
-        copies["attributs"] = n(
-            "SELECT COUNT(*) FROM region_attribut ra "
-            "JOIN attribut_valeur v ON v.id = ra.valeur_id "
-            "JOIN attribut_dimension d ON d.id = v.dimension_id "
-            f"WHERE ra.region_id {dans} AND {val_vu} AND {dim_vu}", *val_p, *dim_p)
-        laisses["attributs"] = total - copies["attributs"]
         copies["locuteurs"] = n(f"SELECT COUNT(*) FROM bulle_locuteur WHERE region_id {dans}")
         copies["presences"] = n(
             f"SELECT COUNT(*) FROM personnage_presence WHERE region_id {dans}")
@@ -3717,9 +3648,8 @@ def _indexer_une_region_copiee(conn, source: int, copie: int, lemmes_source: str
                                grammaire: bool, annotations: bool) -> None:
     """L'index plein texte et les tokens d'une région copiée (cf. `copier_le_travail`) :
     recopiés de la source quand la copie dit tout ce que la source disait, réindexés
-    sinon. Les tags laissés (E5) ne changent pas les lemmes — l'index les porte à part,
-    dans `tags_concat`, que `_region_index_payload` relit sur la copie. `lemmes_source` :
-    ceux que l'index porte pour la source, lus par lots (`_lemmes_indexes`)."""
+    sinon. `lemmes_source` : ceux que l'index porte pour la source, lus par lots
+    (`_lemmes_indexes`)."""
     note = conn.execute("SELECT note FROM annotations WHERE region_id = ?",
                         (source,)).fetchone()
     a_une_note = note is not None and (note[0] or "").strip() != ""
@@ -4035,8 +3965,8 @@ def niveau_de_travail(conn: sqlite3.Connection, album_id: int,
     dessous de quoi on peut repartir de zéro (E8). Un FAIT, lu sur ce qui VIT, cran par cran
     de haut en bas (la liste d'E1) :
 
-    - `annotations` (4) : une annotation, un attribut de case, un locuteur, une présence, un
-      relevé, une passe, le nom d'un détail ;
+    - `annotations` (4) : une note, un locuteur, une présence, un relevé, une passe, le nom
+      d'un détail ;
     - `grammaire` (3) : une correction grammaticale, ou la relecture forcée d'une planche ;
     - `transcription` (2) : un texte non vide ;
     - `decoupage` (1) : une région ;
@@ -4049,9 +3979,10 @@ def niveau_de_travail(conn: sqlite3.Connection, album_id: int,
 
     def existe(sql: str) -> bool:
         return bool(conn.execute(f"SELECT EXISTS ({sql})", params).fetchone()[0])
-    if any(existe(f"SELECT 1 FROM {t} WHERE region_id IN ({regions})")
-           for t in ("annotations", "region_attribut", "bulle_locuteur",
-                     "personnage_presence", "releve", "passe")) or any(
+    if existe(f"SELECT 1 FROM annotations WHERE region_id IN ({regions}) "
+              f"AND {SQL_NOTE_POSEE}") or any(
+            existe(f"SELECT 1 FROM {t} WHERE region_id IN ({regions})")
+            for t in ("bulle_locuteur", "personnage_presence", "releve", "passe")) or any(
             existe(f"SELECT 1 FROM {t} WHERE planche_id IN (SELECT p.id FROM planches p "
                    f"WHERE {filtre})") for t in ("releve", "passe")) or existe(
             f"SELECT 1 FROM regions WHERE id IN ({regions}) AND {_SQL_NOM_POSE}"):
@@ -4117,11 +4048,11 @@ def repartir_de_zero(conn: sqlite3.Connection, album_id: int, cran: str, *,
         for i in range(0, len(ids), _LOT_INDEX):
             yield ids[i:i + _LOT_INDEX]
 
-    def retirer(table: str, cle: str = "region_id") -> int:
+    def retirer(table: str, cle: str = "region_id", condition: str = "") -> int:
         n = 0
         for lot in lots(regions):
             n += conn.execute(f"DELETE FROM {table} WHERE {cle} IN "
-                              f"({', '.join('?' * len(lot))})", lot).rowcount
+                              f"({', '.join('?' * len(lot))}){condition}", lot).rowcount
         return n
 
     def sur_les_planches(sql: str, condition: str = "", *, cle_planche: bool = False) -> int:
@@ -4132,8 +4063,11 @@ def repartir_de_zero(conn: sqlite3.Connection, album_id: int, cran: str, *,
                               lot).rowcount
         return n
 
-    comptes["annotations"] = retirer("annotations")             # annotation_tags en cascade
-    comptes["attributs"] = retirer("region_attribut")
+    # Seules les NOTES se comptent (`SQL_NOTE_POSEE`) ; une ligne d'hier qui ne portait que
+    # des tags part aussi, sans compter : « 1 annotation part » mentirait pour une ligne que
+    # rien ne montre. `annotation_tags` en cascade.
+    comptes["annotations"] = retirer("annotations", condition=f" AND {SQL_NOTE_POSEE}")
+    retirer("annotations")
     # ANN-7 (R11) — les relevés (leurs mots, qualificatifs et doutes en cascade) et les
     # passes, des régions ET de la surface des planches : ils sont du cran `annotations`, et
     # tout cran d'arrivée est au-dessous. Oubliés, ils resteraient sous une copie qu'on a
@@ -4205,10 +4139,11 @@ def compter_repartir(conn: sqlite3.Connection, album_id: int, cran: str, *,
 
     def n(sql: str) -> int:
         return conn.execute(sql, params).fetchone()[0]
-    comptes = {t: n(f"SELECT COUNT(*) FROM {table} WHERE region_id IN ({regions})")
-               for t, table in (("annotations", "annotations"), ("attributs", "region_attribut"),
-                                ("locuteurs", "bulle_locuteur"),
-                                ("presences", "personnage_presence"))}
+    comptes = {"annotations": n(f"SELECT COUNT(*) FROM annotations WHERE region_id IN "
+                                f"({regions}) AND {SQL_NOTE_POSEE}")}
+    comptes.update({t: n(f"SELECT COUNT(*) FROM {table} WHERE region_id IN ({regions})")
+                    for t, table in (("locuteurs", "bulle_locuteur"),
+                                     ("presences", "personnage_presence"))})
     comptes["noms"] = n(f"SELECT COUNT(*) FROM regions WHERE id IN ({regions}) "
                         f"AND {_SQL_NOM_POSE}")
     planches_sql = f"SELECT p.id FROM planches p WHERE p.album_id = ?{une[0]}"

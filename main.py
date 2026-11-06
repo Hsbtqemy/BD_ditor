@@ -79,7 +79,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _MOTIF_TERME_FRONTIERE, _rive_d_un_terme, _rive_d_un_album, _exiger_une_rive,
     _supprimer_le_vocabulaire_du_bac, _rive_d_un_personnage, _sortir_du_bac,
     _passer_les_gestes_du_bac,
-    _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
+    _auteur, _chemins_employes, _clore_demandes, _detruire_album,
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet, retirer_la_surface,
     _clore_demandes_vers, _clore_lignes_d_une_copie_detruite, _deposer, _en_attente_vers,
     _nouvelle_copie, _plan_rejoindre, _retour_en_attente,
@@ -90,7 +90,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _exiger_export_region,
     _get_album, _get_collection, _get_personnage, _get_planche,
     _PLANCHE_TUE, _planche_rendue,
-    _get_projet, _get_region, _get_valeur,
+    _get_projet, _get_region,
     _groupes, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
     _garder_case_d_un_detail,
     _sans_accents, _validate_parent, _valider_detail,
@@ -1112,7 +1112,7 @@ def planche_empreinte(planche_id: int, conn: sqlite3.Connection = Depends(db),
     `releves` (ANN-7, tranche 2) : l'empreinte des relevés, des passes et des doutes, zone par
     zone, À PART — la page Annotation la lit, l'Atelier, qui n'en montre rien, l'ignore."""
     _get_planche(conn, portee, planche_id)
-    return {"regions": empreinte.empreintes(conn, planche_id, portee),
+    return {"regions": empreinte.empreintes(conn, planche_id),
             "releves": empreinte.empreintes_releves(conn, planche_id)}
 
 
@@ -1264,10 +1264,10 @@ def update_region(region_id: int, patch: RegionUpdate,
             reindex_region(conn, region_id)
         # ANN-8 (Hugo, 2026-10-21) — une région qui CHANGE de type (le type change
         # réellement) perd ce que son nouveau type ne montre pas : une zone de texte devenue
-        # case ou boîte personnage son locuteur, une case devenue zone de texte ou boîte
-        # personnage sa situation, une boîte personnage devenue autre chose son personnage
-        # montré. Ils restaient, invisibles à l'écran et comptés partout ailleurs. Le retrait
-        # entre dans CE geste — `avant` le porte sous `locuteur`, `presence`, `attributs`,
+        # case ou boîte personnage son locuteur, une boîte personnage devenue autre chose son
+        # personnage montré (une case, sa situation, jusqu'au basculement d'ANN-7). Ils
+        # restaient, invisibles à l'écran et comptés partout ailleurs. Le retrait
+        # entre dans CE geste — `avant` le porte sous `locuteur`, `presence`,
         # les clés d'un nœud d'instantané profond — et non dans des `delien` à part : un seul
         # Ctrl+Z rend le type ET ses liens (cf. `undo._liens_a_rendre`), sans état
         # intermédiaire.
@@ -1289,23 +1289,12 @@ def update_region(region_id: int, patch: RegionUpdate,
     res = _row(conn.execute("SELECT * FROM regions WHERE id = ?", (region_id,)))
     # L'écran le DIT : sans quoi le retrait se découvrirait en repassant la région à son type
     # d'avant. Un personnage par son nom — il apparaissait dans cette région, que l'appelant
-    # écrit — ; une situation par son NOMBRE de valeurs seulement : un terme peut être local
-    # à une collection que l'appelant ne lit pas.
+    # écrit. (`situation_retiree`, le nombre de valeurs de situation retirées, est parti avec
+    # la situation au basculement d'ANN-7.)
     for cle, champ in (("locuteur", "locuteur_retire"), ("presence", "presence_retiree")):
         if cle in retires:
             res[champ] = _row(conn.execute(
                 "SELECT id, nom, serie FROM personnages WHERE id = ?", (retires[cle],)))
-    if "attributs" in retires:
-        # Seulement celles que l'appelant VOIT (la portée des termes) : une valeur locale à
-        # une collection qu'il ne lit pas part avec le type — Ctrl+Z la rend —, mais le
-        # compte ne lui apprend pas qu'elle existait (relecture de la suite d'ANN-8, S2).
-        ou, params = portee.clause_terme("t.collection_id")
-        vues = conn.execute(
-            f"SELECT COUNT(*) FROM attribut_valeur t WHERE t.id IN "
-            f"({', '.join('?' * len(retires['attributs']))}) AND {ou}",
-            (*retires["attributs"], *params)).fetchone()[0]
-        if vues:
-            res["situation_retiree"] = vues
     return res
 
 

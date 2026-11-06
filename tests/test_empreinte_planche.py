@@ -102,87 +102,32 @@ def test_hors_portee_la_planche_est_introuvable(client, planche, monkeypatch):
     assert client.get("/api/planches/999999/empreinte", headers=ADMIN).status_code == 404
 
 
-def test_un_tag_qu_on_ne_lit_pas_ne_change_pas_l_empreinte(client, album, planche, db_path,
-                                                           monkeypatch):
-    """AUTH-11 — un tag local à une collection qu'on ne lit pas, posé sur une région qu'on
-    lit : l'empreinte de la lectrice n'en dit rien (sinon « changé » sans rien à montrer, et
-    l'indice qu'un travail invisible bouge là). Celle d'un administrateur, si."""
+def test_le_vocabulaire_d_hier_ne_change_l_empreinte_de_personne(client, planche, db_path):
+    """ANN-7, le basculement : les tags et la situation d'une case ne se montrent plus nulle
+    part, et l'empreinte ne les condense plus — un tag ou une valeur posés en base (une base
+    d'avant la migration v39 les porte encore) ne font proposer « Actualiser » à personne,
+    administrateur compris. (AUTH-11 les filtrait par la portée des termes : la question
+    n'a plus d'objet.) Mutant tué : les tags ou la situation remis dans `empreinte.empreintes`."""
     pid = planche["id"]
-    rid = _region(client, pid)
-    secrete = client.post("/api/collections", json={"nom": "Étude fermée"},
-                          headers=ADMIN).json()["id"]
-    assert client.put(f"/api/albums/{album['id']}/collections/{secrete}",
-                      headers=ADMIN).status_code in (200, 201, 204)
+    rid = _region(client, pid, type="case")
+    avant = _empreinte(client, pid, ADMIN)
     conn = sqlite3.connect(db_path)
     try:
-        (ouverte,) = conn.execute("SELECT collection_id FROM collection_album WHERE album_id = ? "
-                                  "AND collection_id <> ?", (album["id"], secrete)).fetchone()
-        conn.execute("INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
-                     "VALUES (?, 'utilisateur', 'lectrice', 'lecture')", (ouverte,))
-        conn.commit()
-    finally:
-        conn.close()
-    monkeypatch.setattr(main, "AUTH_PROXY", True)
-    monkeypatch.setattr(autorisation, "AUTH_PROXY", True)
-    lectrice = {"Remote-User": "lectrice"}
-    avant_l, avant_a = _empreinte(client, pid, lectrice), _empreinte(client, pid, ADMIN)
-
-    conn = sqlite3.connect(db_path)
-    try:
-        tag = conn.execute("INSERT INTO tags (label, collection_id) VALUES ('secret', ?)",
-                           (secrete,)).lastrowid
+        tag = conn.execute("INSERT INTO tags (label) VALUES ('hier')").lastrowid
         ann = conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, '')",
                            (rid,)).lastrowid
         conn.execute("INSERT INTO annotation_tags (annotation_id, tag_id) VALUES (?, ?)",
                      (ann, tag))
+        dim = conn.execute("INSERT INTO attribut_dimension (cible, nom) "
+                           "VALUES ('case', 'lieu')").lastrowid
+        val = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
+                           "VALUES (?, 'forêt')", (dim,)).lastrowid
+        conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+                     (rid, val))
         conn.commit()
     finally:
         conn.close()
-    assert _empreinte(client, pid, lectrice) == avant_l
-    _seule_change(avant_a, _empreinte(client, pid, ADMIN), rid)
-
-
-def test_une_situation_qu_on_ne_lit_pas_ne_change_pas_l_empreinte(client, album, planche,
-                                                                    db_path, monkeypatch):
-    """Le miroir du tag, pour la situation d'une case : une valeur locale à une collection
-    qu'on ne lit pas — ou une valeur globale rangée sous un AXE local (bases d'avant la v24,
-    la ceinture de `socle._attributs_de`) — ne bouge pas l'empreinte de la lectrice ; celle
-    d'un administrateur, si. Les deux filtres, la valeur ET sa dimension, sont éprouvés."""
-    pid = planche["id"]
-    rid = _region(client, pid, type="case")
-    secrete = client.post("/api/collections", json={"nom": "Étude fermée"},
-                          headers=ADMIN).json()["id"]
-    assert client.put(f"/api/albums/{album['id']}/collections/{secrete}",
-                      headers=ADMIN).status_code in (200, 201, 204)
-    conn = sqlite3.connect(db_path)
-    try:
-        (ouverte,) = conn.execute("SELECT collection_id FROM collection_album WHERE album_id = ? "
-                                  "AND collection_id <> ?", (album["id"], secrete)).fetchone()
-        conn.execute("INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
-                     "VALUES (?, 'utilisateur', 'lectrice', 'lecture')", (ouverte,))
-        dim = conn.execute("INSERT INTO attribut_dimension (cible, nom, collection_id) "
-                           "VALUES ('case', 'grille-secrete', ?)", (secrete,)).lastrowid
-        locale = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
-                              "VALUES (?, 'confidentielle', ?)", (dim, secrete)).lastrowid
-        globale = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
-                               "VALUES (?, 'sous-axe-prive', NULL)", (dim,)).lastrowid
-        conn.commit()
-    finally:
-        conn.close()
-    monkeypatch.setattr(main, "AUTH_PROXY", True)
-    monkeypatch.setattr(autorisation, "AUTH_PROXY", True)
-    lectrice = {"Remote-User": "lectrice"}
-    for valeur in (locale, globale):
-        avant_l, avant_a = _empreinte(client, pid, lectrice), _empreinte(client, pid, ADMIN)
-        conn = sqlite3.connect(db_path)
-        try:
-            conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-                         (rid, valeur))
-            conn.commit()
-        finally:
-            conn.close()
-        assert _empreinte(client, pid, lectrice) == avant_l, valeur
-        _seule_change(avant_a, _empreinte(client, pid, ADMIN), rid)
+    assert _empreinte(client, pid, ADMIN) == avant
 
 
 # --------------------------------------------------------------------------- #

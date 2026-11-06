@@ -32,24 +32,21 @@
   const pluriel = (n, un, plusieurs) => (n > 1 ? plusieurs : un);
 
   /* CE QUE DIT un Ctrl+Z réussi, et combien de temps : « Annulé : … », puis ce qui n'a pas
-     été rendu — des liens (personnage ou valeur disparus), des tags (Ctrl+Z ne recrée jamais
-     un tag, ANN-8), des relevés (grille désactivée ou entrée disparue depuis, ANN-7). */
+     été rendu — des liens (personnage disparu, ou type qui ne le montre pas), des relevés
+     (grille désactivée ou entrée disparue depuis, ANN-7). (Les tags non rendus s'y disaient
+     aussi jusqu'au basculement d'ANN-7.) */
   function messageAnnule(res) {
     const r = res || {};
     const liens = r.liens_non_rendus || 0;
-    const tags = r.tags_non_rendus || 0;
     const releves = r.releves_non_rendus || 0;
     let t = "Annulé : " + (r.description || "le dernier geste");
     if (liens) {
-      t += ` — ${liens} ${pluriel(liens, "lien non rendu", "liens non rendus")} (personnage ou valeur disparus, ou type qui ne les montre pas)`;
-    }
-    if (tags) {
-      t += ` — ${tags} ${pluriel(tags, "tag non rendu", "tags non rendus")} (${pluriel(tags, "supprimé", "supprimés")} depuis, ou hors de portée)`;
+      t += ` — ${liens} ${pluriel(liens, "lien non rendu", "liens non rendus")} (personnage disparu, ou type qui ne le montre pas)`;
     }
     if (releves) {
       t += ` — ${releves} ${pluriel(releves, "relevé non rendu", "relevés non rendus")} (grille désactivée ou entrée disparue depuis)`;
     }
-    return { texte: t, duree: liens || tags || releves ? 8000 : 4000 };
+    return { texte: t, duree: liens || releves ? 8000 : 4000 };
   }
 
   /* « PASSER CE GESTE » : Ctrl+Z refusé par un conflit laisse l'acte en tête de la pile, et

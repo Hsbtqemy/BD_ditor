@@ -58,7 +58,8 @@ def test_undo_modification_region(client, planche, db_path):
 
 def test_undo_suppression_region_cascade(client, planche, db_path):
     """Le geste le plus dangereux : la suppression cascade est restaurée à l'identique
-    (sous-arbre + annotation + tags, mêmes id)."""
+    (sous-arbre + annotation, mêmes id). Les tags d'hier, eux, ne reviennent plus (ANN-7, le
+    basculement : l'instantané ne porte plus que la note)."""
     case = _creer_region(client, planche["id"], type="case")
     bulle = _creer_region(client, planche["id"], type="bulle", parent_id=case["id"],
                           ocr_texte="SALUT")
@@ -76,7 +77,7 @@ def test_undo_suppression_region_cascade(client, planche, db_path):
     tags = direct_query(db_path,
         "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
         "JOIN annotations a ON a.id = at.annotation_id WHERE a.region_id = ?", (bulle["id"],))
-    assert [t["label"] for t in tags] == ["emotion"]
+    assert tags == []
 
 
 # --------------------------------------------------------------------------- #
@@ -102,6 +103,47 @@ def test_undo_suppression_annotation(client, region, db_path):
     assert res["acte"] == "suppression"
     assert _un(db_path, "SELECT note FROM annotations WHERE region_id = ?",
                (region["id"],))["note"] == "garder"
+
+
+def test_un_geste_d_hier_qui_n_a_change_que_des_tags_est_passe(client, region, db_path):
+    """ANN-7, le basculement : un acte d'avant dont seuls les tags ont changé (la note
+    égale des deux côtés) n'a plus rien à rétablir. Il est PASSÉ, seconde phrase d'AUTH-14,
+    sans rien écrire sur l'annotation ; le Ctrl+Z suivant défait le geste d'avant. Mutant
+    tué : la garde « note inchangée » retirée de `undo._inverser_annotation` — l'acte
+    réussirait sans rien défaire de visible."""
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "garder"})
+    poser_tags(db_path, region["id"], ["hier"], agent="anonyme")   # l'acte d'hier, en base
+    acte = _un(db_path, "SELECT id, avant, apres FROM evenement WHERE cible_table = "
+                        "'annotations' ORDER BY id DESC LIMIT 1", ())
+    assert json.loads(acte["avant"])["note"] == json.loads(acte["apres"])["note"] == "garder"
+    rep = client.post("/api/undo")
+    assert rep.status_code == 409, rep.text
+    assert rep.json()["detail"]["message"] == undo.PHRASE_IRRETABLISSABLE.format(
+        description="modification d'une annotation")
+    assert _un(db_path, "SELECT note FROM annotations WHERE region_id = ?",
+               (region["id"],))["note"] == "garder"
+    res = client.post("/api/undo").json()               # le geste d'avant : la création
+    assert (res["acte"], res["cible_table"]) == ("creation", "annotations")
+    assert _un(db_path, "SELECT 1 FROM annotations WHERE region_id = ?", (region["id"],)) is None
+
+
+def test_des_tags_d_hier_seuls_n_empechent_pas_d_annuler_sa_creation(client, planche, db_path):
+    """ANN-7, le basculement (relecture croisée du commit des coutures, constat 2). Un acte
+    d'hier n'a posé que des TAGS sur ma bulle — une ligne d'annotation sans note, que rien
+    ne montre plus. Ctrl+Z le passe (409, « l'état d'avant ne peut plus être rétabli »),
+    puis le Ctrl+Z suivant défait MA création : la ligne aux seuls tags n'est pas du travail
+    d'un autre, et part avec la région. Elle comptait (`snapshot_annotation` rend
+    `{"note": None}`, pas `None`), et le second Ctrl+Z répondait le 409 de CONC-3 « modifié
+    par anonyme » ; la copie, elle, ne la comptait déjà pas (une note posée)."""
+    r = _creer_region(client, planche["id"], type="bulle")
+    poser_tags(db_path, r["id"], ["hier"], agent="anonyme")
+    assert _un(db_path, "SELECT note FROM annotations WHERE region_id = ?",
+               (r["id"],)) == {"note": None}, "le décor ne pose plus la ligne aux seuls tags"
+    assert client.post("/api/undo").status_code == 409
+    rep = client.post("/api/undo")
+    assert rep.status_code == 200, rep.text
+    assert (rep.json()["acte"], rep.json()["cible_table"]) == ("creation", "regions")
+    assert r["id"] not in _regions(db_path)
 
 
 # --------------------------------------------------------------------------- #

@@ -8,11 +8,11 @@
 - **Un Ctrl+Z lent le dit.** Le premier après un redémarrage attendait le moteur de langue
   9 à 17 s sans rien afficher. La requête est tenue en vol par le test : l'attente est
   certaine, pas chronométrée.
-- **Annuler la suppression d'une case rend son locuteur et sa situation, à l'écran.** Le
-  serveur est mesuré par `tests/test_undo_liens.py` ; ici, ce que l'Atelier montre ensuite —
-  la case revenue sur la planche — et, depuis le basculement d'ANN-7, le locuteur dans le
-  Contexte de la page Annotation, où il se lit désormais. La situation ne se lit plus sur
-  aucun écran : elle se mesure à la route.
+- **Annuler la suppression d'une case rend son locuteur, à l'écran.** Le serveur est mesuré
+  par `tests/test_undo_liens.py` ; ici, ce que l'Atelier montre ensuite — la case revenue
+  sur la planche — et, depuis le basculement d'ANN-7, le locuteur dans le Contexte de la
+  page Annotation, où il se lit désormais. La situation d'hier ne revient plus : elle ne se
+  lit nulle part, et l'instantané ne la porte plus.
 """
 import re
 import sqlite3
@@ -163,4 +163,4 @@ def test_annuler_la_suppression_d_une_case_rend_son_locuteur_a_l_ecran(page, dec
             (d["case"],)).fetchall()
     finally:
         conn.close()
-    assert [tuple(a) for a in attrs] == [("lieu", "falaise")]
+    assert [tuple(a) for a in attrs] == []        # ANN-7 : la situation d'hier ne revient pas

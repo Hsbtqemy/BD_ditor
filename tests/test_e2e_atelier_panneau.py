@@ -165,12 +165,11 @@ def test_une_bulle_devenue_case_perd_son_locuteur_et_un_ctrl_z_rend_les_deux(pag
     assert _locuteur(atelier, rid)["id"] == atelier["tintin"]
 
 
-def test_une_case_devenue_bulle_perd_sa_situation_et_un_ctrl_z_rend_les_deux(page, atelier):
-    """ANN-8, le miroir (Hugo, 2026-10-21) — une case située passe en bulle : l'écran DIT que
-    la situation part, par son nombre de valeurs (aucun terme nommé), et UN Ctrl+Z rend la
-    case avec sa situation. La situation se pose EN BASE : plus aucun écran ni aucune route
-    ne la pose, mais la table vit jusqu'à la migration du basculement, et la route qui
-    change le type retire encore ce qu'un type ne montre pas."""
+def test_une_case_devenue_bulle_ne_dit_rien_de_sa_situation_d_hier(page, atelier):
+    """ANN-8, le miroir, puis ANN-7, le basculement : la situation d'une case ne se lit plus.
+    Une case qui en porte une d'hier (posée EN BASE, sa table vit jusqu'à la migration)
+    passe en bulle sans qu'aucun message en parle, la ligne reste, et UN Ctrl+Z rend la
+    case."""
     rid = atelier["case"]
     _poser_une_situation(atelier, rid)
     _ouvrir(page, atelier, "case")
@@ -178,10 +177,10 @@ def test_une_case_devenue_bulle_perd_sa_situation_et_un_ctrl_z_rend_les_deux(pag
     with page.expect_response(_est("PUT", f"/api/regions/{rid}")) as reponse:
         page.locator("#region-type").select_option("bulle")
     assert reponse.value.status == 200, reponse.value.text()
-    toast = page.locator("#toasts .toast", has_text=re.compile(r"Situation retirée \(1 valeur\)"))
-    expect(toast).to_be_visible(timeout=15000)
-    expect(toast).not_to_contain_text("falaise")
-    assert _attributs(atelier, rid) == []
+    assert "situation_retiree" not in reponse.value.json()
+    expect(page.locator("#region-type")).to_have_value("bulle", timeout=15000)
+    expect(page.locator("#toasts .toast", has_text=re.compile("ituation"))).to_have_count(0)
+    assert _attributs(atelier, rid) == [("lieu", "falaise")]
 
     _annuler(page)
     expect(page.locator("#region-type")).to_have_value("case", timeout=15000)

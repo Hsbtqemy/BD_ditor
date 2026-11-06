@@ -208,8 +208,10 @@ def test_une_planche_qui_porte_un_releve_de_surface_ne_s_efface_pas_en_silence(c
 # La re-segmentation (G20 b)
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("porte", ["releve", "situation"])
-def test_la_resegmentation_garde_une_case_qui_porte_un_releve_ou_une_situation(
+def test_la_resegmentation_garde_une_case_qui_porte_un_releve_et_plus_une_situation(
         client, decor, monkeypatch, porte):
+    """Un relevé garde la case (G20 b). La situation d'HIER ne la garde plus (ANN-7, le
+    basculement : elle ne se lit plus) : la case part, et sa situation avec elle."""
     monkeypatch.setattr("main.kumiko_available", lambda: True)
     monkeypatch.setattr(seg, "run_kumiko",
                         lambda path: {"size": [400, 500], "panels": [[0, 0, 50, 50]]})
@@ -227,8 +229,9 @@ def test_la_resegmentation_garde_une_case_qui_porte_un_releve_ou_une_situation(
     monkeypatch.setattr(seg, "run_kumiko",
                         lambda path: {"size": [400, 500], "panels": [[300, 400, 50, 50]]})
     ok(client.post(f"/api/planches/{pl}/segmenter", headers=LEA))
-    assert any(x["id"] == case["id"] for x in ok(client.get(f"/api/planches/{pl}/regions",
-                                                            headers=LEA)))
+    gardee = any(x["id"] == case["id"] for x in ok(client.get(f"/api/planches/{pl}/regions",
+                                                              headers=LEA)))
+    assert gardee is (porte == "releve"), porte
 
 
 # --------------------------------------------------------------------------- #

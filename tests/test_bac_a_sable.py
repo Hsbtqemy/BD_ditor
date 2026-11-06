@@ -339,7 +339,6 @@ def test_l_arrivant_ne_gagne_rien_hors_de_son_bac_a_sable(client, decor):
         assert p.lecture, "le bac à sable est bien lu"
         for q in QUESTIONS_TRANSVERSES:
             assert getattr(p, q)() is False, (qui, q)
-        assert p.peut_ecrire_terme(None) is False, qui
         # Mais dans le bac à sable, on travaille comme ailleurs.
         assert p.peut_ecrire(decor["base"]), qui
     # La responsable d'un vrai projet garde ce qu'elle avait, son bac à sable en plus.
@@ -406,8 +405,9 @@ def test_aucun_acces_ne_se_pose_collection_par_collection(client, decor):
 # --------------------------------------------------------------------------- #
 # L'administrateur dans le bac à sable d'un autre : RIEN (Hugo, 2026-10-24)
 # --------------------------------------------------------------------------- #
-QUESTIONS_DE_COLLECTION = ("peut_lire", "peut_ecrire", "peut_administrer", "peut_exporter",
-                           "peut_ecrire_terme", "peut_remanier_tag")
+# (`peut_ecrire_terme` et `peut_remanier_tag` y étaient jusqu'au basculement d'ANN-7, qui
+# les retire.)
+QUESTIONS_DE_COLLECTION = ("peut_lire", "peut_ecrire", "peut_administrer", "peut_exporter")
 QUESTIONS_DE_PROJET = ("est_du_projet", "peut_gerer_projet")
 CLAUSES_D_ALBUM = ("clause_album", "clause_suppression_directe", "clause_repartir_directe",
                    "clause_rejoindre_directe")
@@ -441,9 +441,6 @@ def test_la_portee_totale_ne_passe_dans_aucun_bac_d_autrui(client, decor):
         try:
             assert c.execute(f"SELECT 1 FROM projet p WHERE p.id = ? AND {o}",
                              (decor["bac"]["id"], *prm)).fetchone() is None, qui
-            assert c.execute(f"SELECT 1 FROM collection c WHERE c.id = ? AND "
-                             f"{p.clause_terme('c.id')[0]}",
-                             (decor["base"], *p.clause_terme("c.id")[1])).fetchone() is None
         finally:
             c.close()
     h = _portee(decor["db"], HUGO)

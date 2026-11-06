@@ -654,9 +654,9 @@ NON_BALAYE = {
         "(`retrait-locuteurs-muets`), jamais sous celui de qui le lance."),
     ("outil", "retirer_liens_caches.py"): (
         "Maintenance (ANN-8) : dit, et retire avec `--appliquer`, les personnages montrés "
-        "hors des boîtes personnage et les situations hors des cases. Son compte rendu est un "
-        "décompte, des identifiants de région, de planche, d'album et de valeur, et le NOM "
-        "d'un personnage du registre — une entité de corpus, jamais une colonne d'identité. "
+        "hors des boîtes personnage (les situations hors des cases jusqu'au basculement "
+        "d'ANN-7). Son compte rendu est un décompte, des identifiants de région, de planche "
+        "et d'album, et le NOM d'un personnage du registre — une entité de corpus, jamais une colonne d'identité. "
         "Le retrait se journalise en `agent_type='moteur'` sous le nom du LOGICIEL "
         "(`retrait-liens-caches`), jamais sous celui de qui le lance."),
     ("outil", "tags_hors_collection.py"): (

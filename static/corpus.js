@@ -3209,7 +3209,7 @@ function htmlCopieVolet(a) {
   const cid = vcCollectionDApercu(a);
   const apercu = cid != null ? VCOP.apercus.get(cid) || null : null;
   const lignes = BDEchelle.lignesEchelle(apercu);
-  const sous = nouvelle ? { restent: "", personnages: "" } : BDEchelle.sousLEchelle(apercu, VCOP.cran, dest);
+  const sous = nouvelle ? { personnages: "" } : BDEchelle.sousLEchelle(apercu, VCOP.cran);
   const sansApercu = VCOP.cran !== "images" && !apercu;
   const rep = BDEchelle.reponseCopieVers({ cran: VCOP.cran, etat: apercu && apercu.etat,
                                           repondra: apercu && apercu.repondra, total: B.total,
@@ -3236,8 +3236,7 @@ function htmlCopieVolet(a) {
             <span>${esc(l.court)}</span></label></td>
           <td>${esc(l.texte)}</td></tr>`).join("")}</tbody>
       </table>
-      ${sous.restent || sous.personnages ? `<p class="small echelle-sous">${sous.restent
-        ? `<span class="echelle-reste">${esc(sous.restent)}</span> <span class="muted" title="${esc(sous.aide)}" aria-hidden="true">ⓘ</span><span class="sr-only"> — ${esc(sous.aide)}</span>` : ""}${sous.restent && sous.personnages ? " · " : ""}${esc(sous.personnages)}</p>` : ""}
+      ${sous.personnages ? `<p class="small echelle-sous">${esc(sous.personnages)}</p>` : ""}
       <div class="reponse-attendue"><span class="small" id="vc-quoi">${esc(texte)}</span>
         <span class="bi-boutons"><button type="button" class="primary small" id="vc-ok" ${eteint ? "disabled" : ""}>${esc(rep.bouton)}</button>
         <button type="button" class="ghost small" id="vc-annuler">Annuler</button></span></div>
@@ -4155,14 +4154,13 @@ function rendreDansProjet() {
 /* L'échelle de « Copie… », dépliée sous la ligne (écran de la 3b) : un tableau, une ligne
    par cran — la radio, puis ce que ce cran AJOUTE, en nombres (E5) ; une ligne grise quand
    la source n'a pas ce travail, le cran restant choisissable. Sous le tableau, au cran des
-   annotations, ce qui RESTE (compté, jamais nommé) et les fiches de personnage qui
-   deviennent lisibles (E6). Puis la réponse attendue — immédiat, ou à accepter — et le
+   annotations, les fiches de personnage qui deviennent lisibles (E6). Puis la réponse attendue — immédiat, ou à accepter — et le
    bouton. Les nombres viennent d'UN aperçu, au cran le plus haut : il les porte tous. */
 function htmlEchelleCopie(a, c) {
   const cp = P3A.dansProjet.copie;
   const nom = c ? c.nom : "";
   const lignes = BDEchelle.lignesEchelle(cp.apercu);
-  const sous = BDEchelle.sousLEchelle(cp.apercu, cp.cran, nom);
+  const sous = BDEchelle.sousLEchelle(cp.apercu, cp.cran);
   const sansApercu = cp.cran !== "images" && !cp.apercu;
   const rep = BDEchelle.reponseCopie({ cran: cp.cran, etat: cp.apercu && cp.apercu.etat,
                                        repondra: cp.apercu && cp.apercu.repondra,
@@ -4180,8 +4178,7 @@ function htmlEchelleCopie(a, c) {
           <span>${esc(l.court)}</span></label></td>
         <td>${esc(l.texte)}</td></tr>`).join("")}</tbody>
     </table>
-    ${sous.restent || sous.personnages ? `<p class="small echelle-sous">${sous.restent
-      ? `<span class="echelle-reste">${esc(sous.restent)}</span> <span class="muted" title="${esc(sous.aide)}" aria-hidden="true">ⓘ</span><span class="sr-only"> — ${esc(sous.aide)}</span>` : ""}${sous.restent && sous.personnages ? " · " : ""}${esc(sous.personnages)}</p>` : ""}
+    ${sous.personnages ? `<p class="small echelle-sous">${esc(sous.personnages)}</p>` : ""}
     <div class="reponse-attendue"><span class="small">${esc(texte)}</span>
       <span class="bi-boutons"><button type="button" class="primary small" data-dp-copier="${a.id}" ${sansApercu ? "disabled" : ""}>${esc(rep.bouton)}</button>
       <button type="button" class="ghost small" data-dp-annuler="${a.id}">Annuler</button></span></div>

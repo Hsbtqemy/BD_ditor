@@ -42,8 +42,9 @@ def _ok(r, code=200):
 def source(client, derriere_proxy, data_dir, db_path):
     """« Le Lotus bleu », importé et entièrement travaillé par `lea` dans Principale : une
     planche, une case et sa bulle, le texte, une note et deux tags (un global, un LOCAL à
-    Principale), un attribut de case global et un local, un locuteur, une présence, une
-    correction grammaticale, la planche validée. Étude est une seconde collection du même
+    Principale), un attribut de case global et un local — le vocabulaire d'hier, qu'une base
+    d'avant le basculement porte encore et qu'aucune copie n'emporte plus —, un locuteur,
+    une présence, une correction grammaticale, la planche validée. Étude est une seconde collection du même
     projet, où `lea` et `sam` écrivent."""
     principale = _collection(client, "Principale")
     etude = _collection(client, "Étude")
@@ -131,7 +132,7 @@ ATTENDU = {
     "transcription": {"regions": 2, "textes": 1, "tokens": 1},
     "grammaire": {"regions": 2, "textes": 1, "tokens": 1, "corrections": 1},
     "annotations": {"regions": 2, "textes": 1, "tokens": 1, "corrections": 1,
-                    "annotations": 1, "attributs": 1, "locuteurs": 1, "presences": 1},
+                    "annotations": 1, "locuteurs": 1, "presences": 1},
 }
 
 
@@ -236,42 +237,40 @@ def test_sous_la_transcription_la_region_n_a_que_sa_geometrie(db_path, source):
     assert (bulle["ocr_texte"], bulle["touche"]) == (None, 0)
 
 
-def test_le_vocabulaire_qui_ne_se_voit_pas_depuis_l_arrivee_reste_et_se_compte(db_path, source):
-    """E5 — Étude ne voit pas « secret » ni la grille privée de Principale : ils restent sur
-    la source ; le tag global et l'attribut global suivent. La charge de la naissance dit
-    ce qui est laissé."""
-    b = _copier(source, "annotations")
-    tags = _sql(db_path, "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-                         "JOIN annotations an ON an.id = at.annotation_id "
-                         "JOIN regions r ON r.id = an.region_id "
-                         "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?", (b,))
-    assert [t["label"] for t in tags] == ["dialogue"]
-    valeurs = _sql(db_path, "SELECT ra.valeur_id FROM region_attribut ra "
-                            "JOIN regions r ON r.id = ra.region_id "
-                            "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?", (b,))
-    assert [v["valeur_id"] for v in valeurs] == [source["globale"]]
-    charge = json.loads(_sql(
-        db_path, "SELECT apres FROM evenement WHERE cible_table = 'document' AND cible_id = ? "
-                 "AND json_extract(apres, '$.album_id') = ?", (source["doc"], b))[0]["apres"])
-    assert charge["copie"]["laisses"] == {"tags": 1, "attributs": 1, "releves": 0}
-    assert charge["copie"]["copies"]["tags"] == 1 and charge["copie"]["cran"] == "annotations"
-
-
-def test_dans_la_collection_qui_le_voit_le_vocabulaire_local_suit(db_path, source):
-    """La même règle, de l'autre côté : une copie rangée dans Principale emporte ce que
-    Principale voit."""
-    b = _copier(source, "annotations", collection=source["principale"])
-    assert _travail(db_path, b)["attributs"] == 2
-    assert _sql(db_path, "SELECT COUNT(*) AS n FROM annotation_tags at "
+def _tags_de(db_path, album_id) -> int:
+    return _sql(db_path, "SELECT COUNT(*) AS n FROM annotation_tags at "
                          "JOIN annotations an ON an.id = at.annotation_id "
                          "JOIN regions r ON r.id = an.region_id "
                          "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?",
-                (b,))[0]["n"] == 2
+                (album_id,))[0]["n"]
 
 
-def test_une_annotation_sans_note_dont_tous_les_tags_restent_ne_nait_pas(db_path, source):
+@pytest.mark.parametrize("arrivee", ["etude", "principale"])
+def test_le_vocabulaire_d_hier_ne_suit_aucune_copie(db_path, source, arrivee):
+    """ANN-7, le basculement : ni tag ni attribut de case ne suit une copie, global ou local,
+    quelle que soit la collection d'arrivée — l'annotation suit avec sa note seule. La charge
+    de la naissance ne les compte plus, ni copiés ni laissés. Mutant tué : la recopie des
+    tags ou des attributs remise dans `copier_le_travail`."""
+    b = _copier(source, "annotations", collection=source[arrivee])
+    assert _tags_de(db_path, b) == 0
+    assert _travail(db_path, b)["attributs"] == 0
+    assert _sql(db_path, "SELECT an.note FROM annotations an JOIN regions r "
+                         "ON r.id = an.region_id JOIN planches p ON p.id = r.planche_id "
+                         "WHERE p.album_id = ?", (b,)) == [{"note": "ironie"}]
+    charge = json.loads(_sql(
+        db_path, "SELECT apres FROM evenement WHERE cible_table = 'document' AND cible_id = ? "
+                 "AND json_extract(apres, '$.album_id') = ?", (source["doc"], b))[0]["apres"])
+    assert charge["copie"]["laisses"] == {"releves": 0}
+    assert "tags" not in charge["copie"]["copies"]
+    assert "attributs" not in charge["copie"]["copies"]
+    # La source garde ce qu'elle portait : le basculement n'efface rien par une copie.
+    assert _tags_de(db_path, source["a"]) == 2
+    assert _travail(db_path, source["a"])["attributs"] == 2
+
+
+def test_une_annotation_sans_note_ne_nait_pas(db_path, source):
+    """Une ligne d'hier qui ne porte que des tags n'a plus rien à recopier."""
     _sql(db_path, "UPDATE annotations SET note = NULL")
-    _sql(db_path, "UPDATE tags SET collection_id = ?", (source["principale"],))
     b = _copier(source, "annotations")
     assert _travail(db_path, b)["annotations"] == 0
 
@@ -287,13 +286,14 @@ def test_les_personnages_suivent(client, db_path, source):
 
 
 def test_l_index_suit_sans_rien_perdre(client, db_path, source):
-    """La copie se trouve comme sa source ; ses tags dans l'index sont les SIENS."""
+    """La copie se trouve comme sa source ; ses tags dans l'index sont les SIENS — aucun
+    depuis le basculement d'ANN-7 (la colonne part avec la migration)."""
     b = _copier(source, "annotations")
     ligne = _sql(db_path, "SELECT rc.* FROM recherche rc JOIN regions r ON r.id = rc.region_id "
                           "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ?", (b,))
     assert len(ligne) == 1
     assert ligne[0]["ocr_texte"] == "TINTIN ET LES OTAGES" and ligne[0]["note"] == "ironie"
-    assert ligne[0]["tags_concat"] == "dialogue"
+    assert ligne[0]["tags_concat"] == ""
 
 
 def test_sous_les_annotations_la_note_ne_passe_pas_dans_l_index(client, db_path, source):
@@ -343,8 +343,9 @@ def test_le_travail_d_autrui_recopie_compte_pour_le_copieur(client, db_path, sou
 
 
 def test_qui_copie_son_propre_travail_y_est_seul(client, db_path, source):
-    """La source 2 suit la chaîne : l'attribut de case recopié a son `lien` sous la région
-    SOURCE, posé par `lea` ; sans la chaîne, il compterait comme le travail d'un inconnu."""
+    """Ce que la copie emporte de la source, `lea` l'a fait : elle y est seule. (La
+    deuxième source, les attributs de case sans `lien` humain, est retirée par le
+    basculement d'ANN-7 : l'attribut ne suit plus, et ne se compte plus.)"""
     b = _copier(source, "annotations")
     assert _seul(b, LEA) is True
 
@@ -459,8 +460,8 @@ def test_une_couche_reposee_apres_une_remise_a_zero_ne_ranime_rien(client, db_pa
 
 
 def test_les_couches_recopiees_portent_leur_marque(db_path, source):
-    """`copier_le_travail` marque EXPLICITEMENT ce qu'il recopie — annotation, attribut de
-    case, locuteur, présence, correction — et rien de la source."""
+    """`copier_le_travail` marque EXPLICITEMENT ce qu'il recopie — annotation, locuteur,
+    présence, correction — et rien de la source."""
     b = _copier(source, "annotations")
     regions = ("SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
                "WHERE p.album_id = ?")
@@ -534,10 +535,7 @@ def test_l_administrateur_lit_le_travail_copie_sous_une_demande(client, db_path,
 
 def test_le_travail_de_la_racine_compte_deux_copies_plus_loin(client, db_path, source):
     """La chaîne entière, pas le maillon direct : `sam` a annoté la source ; `lea` en tire
-    une copie, puis une copie de cette copie — le travail de `sam` est dans les deux.
-    Les attributs de case sont retirés d'abord : la source 2 lit la même chaîne, et le
-    test passerait sinon par elle sans mesurer la sixième source."""
-    _sql(db_path, "DELETE FROM region_attribut")
+    une copie, puis une copie de cette copie — le travail de `sam` est dans les deux."""
     temoin = _copier(source, "annotations", depuis=_copier(source, "annotations"))
     assert _seul(temoin, LEA) is True
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=SAM,
@@ -731,14 +729,14 @@ def test_l_apercu_est_la_charge_de_la_naissance(client, db_path, source, cran):
     assert ap["etat"] == "fait" and "repondra" not in ap
 
 
-def test_l_apercu_compte_ce_qui_reste_sans_le_nommer(client, source):
-    """E5 — Étude ne voit ni « secret » ni la grille privée de Principale : l'aperçu les
-    compte, et leur nom ne traverse pas. Mutant tué : la liste des libellés au lieu de leur
-    nombre."""
+def test_l_apercu_ne_dit_rien_du_vocabulaire_d_hier(client, source):
+    """ANN-7, le basculement : l'aperçu ne compte plus ni tag ni attribut de case, copiés
+    ou laissés, et aucun de leurs noms ne traverse."""
     r = _apercu(client, source, LEA)
     ap = _ok(r)
-    assert ap["laisses"] == {"tags": 1, "attributs": 1, "releves": 0}
-    for nom in ("secret", "grille privée", "à part"):
+    assert ap["laisses"] == {"releves": 0}
+    assert not {"tags", "attributs"} & set(ap["copies"])
+    for nom in ("secret", "dialogue", "grille privée", "à part", "gros plan"):
         assert nom not in r.text
     assert (ap["etat"], ap["repondra"]) == ("demande", "administrateur")
 
@@ -747,9 +745,9 @@ def test_l_apercu_d_une_copie_sans_region(client, db_path, source):
     _sql(db_path, "DELETE FROM regions")
     ap = _ok(_apercu(client, source, ADMIN))
     assert ap["copies"] == {"regions": 0, "textes": 0, "corrections": 0, "annotations": 0,
-                            "tags": 0, "noms": 0, "attributs": 0, "locuteurs": 0,
+                            "noms": 0, "locuteurs": 0,
                             "presences": 0, "releves": 0, "passes": 0}
-    assert ap["laisses"] == {"tags": 0, "attributs": 0, "releves": 0} and ap["personnages"] == 0
+    assert ap["laisses"] == {"releves": 0} and ap["personnages"] == 0
 
 
 def test_l_apercu_garde_ses_portes(client, source):
@@ -761,11 +759,10 @@ def test_l_apercu_garde_ses_portes(client, source):
 
 
 def test_l_apercu_ne_compte_pas_l_annotation_qui_ne_naitra_pas(client, db_path, source):
-    """Sans note, et tous ses tags laissés : l'annotation ne naît pas, et l'aperçu ne la
-    compte pas — ses tags, eux, restent comptés."""
+    """Sans note, l'annotation ne naît pas, et l'aperçu ne la compte pas — ses tags d'hier
+    n'y font rien."""
     _sql(db_path, "UPDATE annotations SET note = NULL")
-    _sql(db_path, "UPDATE tags SET collection_id = ?", (source["principale"],))
     ap = _ok(_apercu(client, source, ADMIN))
-    assert (ap["copies"]["annotations"], ap["laisses"]["tags"]) == (0, 2)
+    assert ap["copies"]["annotations"] == 0
     b = _ligne(_amorcer(client, source, ADMIN))["copie_id"]
     assert _travail(db_path, b)["annotations"] == 0

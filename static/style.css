@@ -4268,7 +4268,6 @@ fieldset.fm-q { border: 0; padding: 0; margin: 1rem 0 0; min-width: 0; }
                 font-weight: 600; }
 .echelle-cran input { flex: none; }
 .echelle-sous { margin: 0; overflow-wrap: anywhere; }
-.echelle-reste { font-weight: 600; }
 .reponse-attendue { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center;
                     padding-top: .4rem; border-top: 1px solid var(--border); }
 .reponse-attendue > .small { flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }

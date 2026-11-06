@@ -10,6 +10,9 @@ Ce qui revient se décide lien par lien, sous les trois questions d'AUTH-14 : l'
 désigné existe-t-il encore, est-il celui de l'acte, l'agent le voit-il maintenant. Un lien
 qui échoue ne revient pas ; la région, elle, revient — c'est l'objet de l'acte —, et la
 réponse dit COMBIEN de liens sont restés en route, sans rien dire de l'objet.
+
+ANN-7, le basculement : la situation d'une case et les tags ne se lisent plus. L'instantané
+ne les porte plus, et Ctrl+Z ne les rend pas — ni ne les compte.
 """
 import sqlite3
 
@@ -56,18 +59,6 @@ def _situer(rid, valeur_id):
          (rid, valeur_id))
 
 
-def _retirer_la_valeur(valeur_id):
-    """Supprime une valeur d'attribut EN BASE (cascade sur ses affectations)."""
-    import database
-    c = sqlite3.connect(database.DB_PATH)
-    c.execute("PRAGMA foreign_keys = ON")
-    try:
-        c.execute("DELETE FROM attribut_valeur WHERE id = ?", (valeur_id,))
-        c.commit()
-    finally:
-        c.close()
-
-
 def _perso(client, nom, headers=ADMIN):
     return _ok(client.post("/api/personnages", json={"nom": nom}, headers=headers),
                200, 201).json()["id"]
@@ -107,15 +98,20 @@ def _decor(client, planche):
             "tintin": tintin, "milou": milou}
 
 
-def test_annuler_la_suppression_rend_locuteur_presence_et_situation(client, planche, db_path):
+def test_annuler_la_suppression_rend_locuteur_et_presence(client, planche, db_path):
+    """… et ni la situation ni les tags d'hier (ANN-7, le basculement) : rien ne les
+    montre plus."""
     d = _decor(client, planche)
     _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
     assert _liens(db_path, d["cartouche"]) == {"locuteur": None, "presence": None, "attributs": []}
 
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert (res["acte"], res["cible_table"]) == ("suppression", "regions")
-    assert res["liens_non_rendus"] == 0
-    assert _liens(db_path, d["case"])["attributs"] == [d["lieu"]]
+    assert res["liens_non_rendus"] == 0 and "tags_non_rendus" not in res
+    assert _liens(db_path, d["case"])["attributs"] == []
+    assert _sql(db_path, "SELECT COUNT(*) AS n FROM annotation_tags at JOIN annotations an "
+                         "ON an.id = at.annotation_id WHERE an.region_id = ?",
+                (d["cartouche"],))[0]["n"] == 0
     assert _liens(db_path, d["cartouche"])["locuteur"] == d["tintin"]
     assert _liens(db_path, d["boite"])["presence"] == d["milou"]
     # Ce qui revenait déjà revient toujours.
@@ -128,54 +124,37 @@ def test_annuler_la_suppression_rend_locuteur_presence_et_situation(client, plan
 
 def test_l_instantane_de_suppression_porte_les_liens(client, planche, db_path):
     """Le journal garde les IDENTIFIANTS des liens, et seulement eux : aucun nom de
-    personnage, aucun mot du vocabulaire n'entre dans l'instantané."""
+    personnage n'entre dans l'instantané — et, depuis le basculement d'ANN-7, ni la situation
+    ni les tags."""
     import json
     d = _decor(client, planche)
     _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
     avant = json.loads(_sql(db_path, "SELECT avant FROM evenement WHERE type = 'suppression' "
                                      "AND cible_table = 'regions' ORDER BY id DESC LIMIT 1")[0]["avant"])
-    assert avant["attributs"] == [d["lieu"]]
+    assert "attributs" not in avant
     enfants = {e["id"]: e for e in avant["enfants"]}
+    assert enfants[d["cartouche"]]["annotation"] == {"note": "voix off"}
     assert enfants[d["cartouche"]]["locuteur"] == d["tintin"]
     assert enfants[d["boite"]]["presence"] == d["milou"]
     brut = json.dumps(avant, ensure_ascii=False)
-    for mot in ("Tintin", "Milou", "falaise", "lieu"):
+    for mot in ("Tintin", "Milou", "falaise", "lieu", "récit"):
         assert mot not in brut, f"« {mot} » est entré dans l'instantané : {brut}"
 
 
 def test_un_lien_dont_l_objet_a_disparu_ne_revient_pas_et_se_compte(client, planche, db_path):
-    """Le personnage supprimé entre-temps, la valeur aussi : la case et le cartouche
-    reviennent, sans ces deux liens — ils seraient partis de toute façon avec ce qu'ils
-    désignaient. La présence, elle, revient."""
+    """Le personnage supprimé entre-temps : la case et le cartouche reviennent, sans ce
+    lien — il serait parti de toute façon avec ce qu'il désignait. La présence, elle,
+    revient."""
     d = _decor(client, planche)
     _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
     _ok(client.delete(f"/api/personnages/{d['tintin']}", headers=ADMIN), 200, 204)
-    _retirer_la_valeur(d["lieu"])
 
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert res["acte"] == "suppression"
-    assert res["liens_non_rendus"] == 2
+    assert res["liens_non_rendus"] == 1
     assert _liens(db_path, d["case"]) == {"locuteur": None, "presence": None, "attributs": []}
     assert _liens(db_path, d["cartouche"])["locuteur"] is None
     assert _liens(db_path, d["boite"])["presence"] == d["milou"]
-
-
-def test_une_valeur_nee_apres_l_acte_n_est_pas_celle_de_la_case(client, planche, db_path):
-    """`attribut_valeur` n'a pas d'`AUTOINCREMENT` : la valeur supprimée rend son
-    identifiant à la suivante. Née APRÈS la suppression, ce n'est plus la situation de la
-    case, et elle ne s'y pose pas."""
-    d = _decor(client, planche)
-    _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
-    _retirer_la_valeur(d["lieu"])
-    autre = _valeur(client, "case", "lieu", "grotte")
-    assert autre == d["lieu"], "le décor suppose l'identifiant repris"
-    # Les dates sont à la seconde : la reprise est datée après l'acte, comme elle le serait.
-    _sql(db_path, "UPDATE attribut_valeur SET date_creation = datetime('now', '+1 minute') "
-                  "WHERE id = ?", (autre,))
-
-    res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
-    assert res["liens_non_rendus"] == 1
-    assert _liens(db_path, d["case"])["attributs"] == []
 
 
 def test_un_personnage_que_l_agent_ne_voit_plus_ne_revient_pas(client, planche, db_path,

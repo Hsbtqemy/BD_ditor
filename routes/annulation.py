@@ -27,8 +27,7 @@ import conflit
 import undo
 from pipeline import nlp
 
-from socle import (_get_personnage, _get_planche, _get_region, _get_valeur, db,
-                   portee_courante)
+from socle import _get_personnage, _get_planche, _get_region, db, portee_courante
 
 router = APIRouter()
 
@@ -50,19 +49,8 @@ def _ecrivable(conn: sqlite3.Connection, portee: autorisation.Portee):
             # l'écrire ne demande que d'écrire quelque part — le plancher de la route.
             for pid in lieux.get("personnages", []):
                 _get_personnage(conn, portee, pid)
-            # ANN-8 — la valeur d'un attribut de case que rendrait l'annulation d'une
-            # suppression : un terme, qui se VOIT par la portée des termes. La route qui la
-            # pose ne demande que de la voir (`_affecter`) : la même question ici.
-            for vid in lieux.get("valeurs", []):
-                _get_valeur(conn, portee, vid)
-            # ANN-8 — un tag que l'annulation retrouverait par sa CLÉ (`undo._tag_a_rendre`)
-            # doit être un tag que l'agent VOIT : sinon, deux lignes de même clé lui feraient
-            # poser celle d'une collection qu'il ne lit pas.
-            ou, params = portee.clause_terme("t.collection_id")
-            for tid in lieux.get("tags", []):
-                if conn.execute(f"SELECT 1 FROM tags t WHERE t.id = ? AND {ou}",
-                                (tid, *params)).fetchone() is None:
-                    return False
+            # (ANN-8 y éprouvait aussi la valeur d'un attribut de case et le tag que
+            # l'annulation reposerait : le basculement d'ANN-7 les a retirés.)
         except HTTPException as refus:
             if refus.status_code == 404:
                 return False
@@ -97,8 +85,7 @@ def _agent_undo(portee: autorisation.Portee):
 def undo_prochain(conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     """Aperçu : ce que ferait la prochaine annulation (ou `null` s'il n'y a rien à annuler)."""
-    return undo.apercu(conn, agent=_agent_undo(portee),
-                       voit=undo.voit_valeur(_ecrivable(conn, portee)))
+    return undo.apercu(conn, agent=_agent_undo(portee))
 
 
 @router.post("/api/undo")
@@ -213,4 +200,4 @@ def undo_passer(payload: PasserIn, conn: sqlite3.Connection = Depends(db),
     undo.ecarter(conn, e)
     conn.commit()
     return {"evenement_id": e["id"],
-            "description": undo.apercu_de(e, voit=undo.voit_valeur(ecrivable))}
+            "description": undo.apercu_de(e)}

@@ -596,8 +596,8 @@ OUTILS_HORS = {
         "la base entière.",
     "retirer_liens_caches.py":
         "Maintenance (ANN-8) : son compte rendu nomme des régions, des planches, des albums "
-        "par identifiant, le NOM d'un personnage du registre et l'IDENTIFIANT d'une valeur "
-        "de situation — jamais un terme de vocabulaire ni une charge du journal. Sans "
+        "par identifiant et le NOM d'un personnage du registre — jamais un terme de "
+        "vocabulaire ni une charge du journal. Sans "
         "périmètre de collection : il porte sur la base entière.",
     "semer_demo.py": "SÈME un corpus de démonstration par l'API : il écrit, il ne "
                      "sort rien.",

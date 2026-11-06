@@ -4,6 +4,7 @@ Le décor de la relecture croisée (cadrage) : une base qui porte le jeu, trois 
 dont un expiré, une copie gardée au fonds dans l'un, un document importé dans un autre — et
 un vrai projet à côté, qui ne doit rien perdre.
 """
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from test_bac_a_sable import DOC_GRAMMAIRE, HUGO, LEA, RESP, SAM, _copie, _sql
 from test_jeu import DOC_EXEMPLE, DOC_PARCOURS, DOC_STOCK_SERVEUR, ecrire_jeu
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+import crosswalk_depot  # noqa: E402
 import effacer_bacs_a_sable  # noqa: E402
 import preparer_jeu  # noqa: E402
 
@@ -117,6 +119,30 @@ def _effacer(projet_id, portee=autorisation.TOTALE, motif="effacement"):
 # --------------------------------------------------------------------------- #
 # Le chemin de l'effacement
 # --------------------------------------------------------------------------- #
+def test_le_vocabulaire_d_un_bac_efface_ne_sort_pas_au_depot_d_une_vraie_collection(
+        client, decor):
+    """ANN-7, le basculement (relecture croisée du commit des coutures, constat 1). Tant que
+    les tables du vocabulaire d'hier existent, l'effacement d'un bac à sable doit encore les
+    nettoyer : sans cela, la clé étrangère (`ON DELETE SET NULL`) rend GLOBAL le tag né
+    dans le bac, et ce qui est global sortait au dépôt d'une VRAIE collection — une écriture
+    en base, sans retour. Mesuré sur la base ET sur la notice de dépôt de la collection du
+    vrai projet ; anti-vacuité, la notice nomme sa collection."""
+    def notice():
+        conn = database.get_connection()
+        try:
+            return json.dumps(crosswalk_depot.construire(conn, collection_id=decor["col"]),
+                              ensure_ascii=False)
+        finally:
+            conn.close()
+    avant = notice()
+    assert "Corpus" in avant and "mot-de-sam" not in avant
+    _effacer(decor["bac"]["id"])
+    assert _sql(decor["db"], "SELECT collection_id, espace FROM tags "
+                             "WHERE label = 'mot-de-sam'") == [], (
+        "le tag né dans le bac à sable a survécu à son effacement")
+    assert "mot-de-sam" not in notice(), "le tag du bac effacé sort au dépôt"
+
+
 def test_effacer_un_bac_a_sable_emporte_tout_ce_qu_il_porte(client, decor):
     db, pid = decor["db"], decor["bac"]["id"]
     avant = _etat_du_reel(db)

@@ -18,7 +18,6 @@ import pytest
 import autorisation
 import database
 import pipeline.segmentation as seg
-from conftest import poser_attribut
 from grilles_decor import LEA, STAG, grille_active, monter, ok
 
 # Les tables qui portent une région ou une planche, et ne sont PAS de l'annotation.
@@ -35,6 +34,9 @@ HORS_ANNOTATION = {
     "region_origine": "La provenance d'une région recopiée (E2) : elle part avec la région, "
                       "et la règle « travail d'autrui » la LIT pour remonter la chaîne.",
     "recherche": "L'index plein texte, dénormalisé, maintenu par `reindex_region`.",
+    "region_attribut": "La situation d'une case, le vocabulaire d'hier (ANN-7, le basculement) : "
+                       "plus aucune route ne la pose ni ne la lit, « qui perd quoi » ne la "
+                       "compte plus, et sa table part avec la migration v39.",
 }
 
 
@@ -87,13 +89,6 @@ def semer(client, d, table, qui=STAG):
     if table == "annotations":
         ok(client.put(f"/api/regions/{z['case']}/annotation", headers=qui,
                       json={"note": "vu"}))
-        return z["case"]
-    if table == "region_attribut":
-        # La situation d'une case, que plus aucune route ne pose (ANN-7, le basculement) :
-        # en base, au nom de `qui`, comme la route d'hier l'écrivait au journal. La table part
-        # au commit de la migration.
-        poser_attribut(d["db"], cible="case", dimension="lieu", valeur="cuisine",
-                       region_id=z["case"], agent=qui["Remote-User"])
         return z["case"]
     if table == "bulle_locuteur":
         ok(client.put(f"/api/regions/{z['bulle']}/locuteur", headers=qui,
@@ -171,6 +166,26 @@ def test_le_travail_d_un_autre_dans_cette_table_se_lit_avant_d_effacer(client, d
         c.close()
 
 
+def test_la_situation_d_hier_ne_se_lit_plus_sous_qui_perd_quoi(client, decor):
+    """ANN-7, le basculement (« se tranchent en route », au plus prudent) : une situation
+    posée par un autre — son `lien` au journal comme sa ligne — ne compte plus sous « qui
+    perd quoi » : ce qu'elle a posé ne se lit plus nulle part. Les deux anciennes voies sont
+    éprouvées : l'acte humain (première source) et la ligne sans acte (la deuxième, retirée).
+    Mutant tué : `region_attribut` remis dans `autorisation._CIBLES_DE_REGION`."""
+    from conftest import poser_attribut
+    z = decor["zones"]
+    poser_attribut(decor["db"], cible="case", dimension="lieu", valeur="cuisine",
+                   region_id=z["case"], agent=STAG["Remote-User"])
+    poser_attribut(decor["db"], cible="case", dimension="lieu", valeur="grotte",
+                   region_id=z["case"])
+    c = database.get_connection()
+    try:
+        assert _compte(c, "region_attribut", decor["album"]) == 2
+        assert not _travail_d_un_autre(c, decor)
+    finally:
+        c.close()
+
+
 @pytest.mark.parametrize("table", database.TABLES_D_ANNOTATION)
 def test_repartir_de_zero_vide_cette_table(client, decor, table):
     semer(client, decor, table)
@@ -188,7 +203,7 @@ def test_repartir_de_zero_vide_cette_table(client, decor, table):
 # Les tables qui peuvent porter du travail sur une CASE — celles que la re-segmentation
 # doit lire pour la garder. Le locuteur vit sur une zone de texte, la présence sur une boîte
 # personnage : la segmentation ne supprime que des cases.
-SUR_UNE_CASE = ("annotations", "region_attribut", "releve", "doute", "doute_message", "passe")
+SUR_UNE_CASE = ("annotations", "releve", "doute", "doute_message", "passe")
 
 
 @pytest.mark.parametrize("table", SUR_UNE_CASE)

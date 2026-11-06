@@ -766,12 +766,13 @@ def test_l_atelier_et_les_exports_d_album_taisent_un_tag_illisible(client, db_pa
     assert "commun" in tei and "prive" not in tei
 
 
-def test_annuler_sous_l_autre_identite_ne_perd_pas_le_tag_cache(client, db_path,
-                                                                tag_illisible):
-    """Le piège entre l'Atelier et l'annulation. Ctrl+Z efface les tags de l'annotation,
-    puis les repose depuis l'état AVANT du journal : si cet état était pris sur la vue
-    filtrée, annuler effacerait le tag qu'on ne voit pas — en silence, puisque personne ne
-    le voit. Le journal garde donc l'annotation ENTIÈRE, et c'est ce qu'on vérifie."""
+def test_annuler_une_note_ne_touche_aux_tags_d_hier_que_comme_la_route(client, db_path,
+                                                                       tag_illisible):
+    """Le piège d'hier entre l'Atelier et l'annulation — Ctrl+Z effaçait le tag qu'on ne
+    voit pas — n'a plus d'objet : ANN-7, le basculement, l'annulation ne lit plus de tag.
+    Elle fait ce que fait la route (`PUT …/annotation`) : rendre l'annotation à « sans
+    note », c'est la vider, et elle part entière, avec ce qu'elle portait encore du
+    vocabulaire d'hier — jusqu'à la migration qui retire ses tables."""
     from conftest import direct_query
     _ouvrir(db_path, tag_illisible["c1"], "bob", niveau="ecriture")
     bob, r1 = tag_illisible["bob"], tag_illisible["r1"]["id"]
@@ -779,10 +780,8 @@ def test_annuler_sous_l_autre_identite_ne_perd_pas_le_tag_cache(client, db_path,
     assert rep.status_code == 200, rep.text
     rep = client.post("/api/undo", headers=bob)
     assert rep.status_code == 200, rep.text
-    # ANN-7 — la route ne rend plus de tag : on les lit en base, où ils vivent encore.
-    assert {l["label"] for l in _lignes_tags(db_path, r1)} == {"prive", "commun"}
-    assert not direct_query(db_path, "SELECT note FROM annotations WHERE region_id = ? "
-                                     "AND TRIM(COALESCE(note, '')) <> ''", (r1,))
+    assert _lignes_tags(db_path, r1) == []
+    assert not direct_query(db_path, "SELECT 1 FROM annotations WHERE region_id = ?", (r1,))
 
 
 @pytest.fixture

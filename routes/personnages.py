@@ -202,7 +202,7 @@ def update_personnage(personnage_id: int, payload: PersonnageUpdate,
 def delete_personnage(personnage_id: int, conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
     _get_personnage(conn, portee, personnage_id, ecriture=True)
-    conn.execute("DELETE FROM personnages WHERE id = ?", (personnage_id,))   # CASCADE : détache liens/attributs
+    conn.execute("DELETE FROM personnages WHERE id = ?", (personnage_id,))   # CASCADE : détache les liens
     conn.commit()
 
 
@@ -211,8 +211,10 @@ def fusionner_personnage(personnage_id: int, payload: FusionIn,
                          conn: sqlite3.Connection = Depends(db),
                          portee: autorisation.Portee = Depends(portee_courante)):
     """Fusionne `personnage_id` (doublon) DANS `cible_id` (canonique) : réaffecte les
-    liens locuteur et les attributs, puis supprime le doublon. Idempotent sur les
-    affectations (INSERT OR IGNORE). Soupape du modèle mentions→entités (curation)."""
+    liens locuteur et les alignements, puis supprime le doublon. Idempotent sur les
+    affectations (INSERT OR IGNORE). Soupape du modèle mentions→entités (curation). (Le
+    profil, `personnage_attribut`, suivait aussi jusqu'au basculement d'ANN-7 : il ne se lit
+    plus, et part avec le doublon.)"""
     if payload.cible_id == personnage_id:
         raise HTTPException(422, "Un personnage ne peut être fusionné avec lui-même")
     _get_personnage(conn, portee, personnage_id, ecriture=True)
@@ -223,11 +225,6 @@ def fusionner_personnage(personnage_id: int, payload: FusionIn,
                      _rive_d_un_personnage(conn, payload.cible_id))
     # locuteur : une zone a au plus un locuteur (region_id PK) → réaffectation directe.
     conn.execute("UPDATE bulle_locuteur SET personnage_id = ? WHERE personnage_id = ?",
-                 (payload.cible_id, personnage_id))
-    # attributs : éviter le doublon (personnage_id, valeur_id) → OR IGNORE ; le reste du
-    # doublon part au DELETE (CASCADE).
-    conn.execute("INSERT OR IGNORE INTO personnage_attribut (personnage_id, valeur_id) "
-                 "SELECT ?, valeur_id FROM personnage_attribut WHERE personnage_id = ?",
                  (payload.cible_id, personnage_id))
     # alignements d'autorité (A5) : mêmes règles — dédupliqués par (personnage_id, uri).
     conn.execute("INSERT OR IGNORE INTO personnage_alignement (personnage_id, source, uri) "

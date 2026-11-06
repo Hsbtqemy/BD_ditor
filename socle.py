@@ -1171,7 +1171,8 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
         raise HTTPException(409, f"Sa collection de base porte encore {habitees} album(s) : "
                                  "rangez-les ailleurs, ou supprimez-les d'abord de la "
                                  "collection. Un projet ne se supprime que vide.")
-    # Une base qui porte du VOCABULAIRE local n'est pas vide non plus (relecture croisée) :
+    # Une base qui porte du VOCABULAIRE local n'est pas vide non plus (relecture croisée) —
+    # et ne l'est toujours pas après le basculement d'ANN-7, tant que ses tables existent :
     # supprimée, ses termes deviendraient GLOBAUX (`ON DELETE SET NULL`), donc visibles de
     # toute l'instance — une grille d'analyse qui fuit, ce qu'AUTH-2 (v24) ferme ailleurs.
     # Le refus le nomme ; c'est à qui le tient de le promouvoir ou de le supprimer, en le
@@ -1258,7 +1259,12 @@ def _supprimer_le_vocabulaire_du_bac(conn, projet_id: int, collections: list) ->
     posée sur une telle région, ou sur un personnage qui n'est pas né dans ce bac à sable ;
     une dimension qui porte une telle valeur (elle reste avec TOUTES ses valeurs) ; un
     domaine qui porte une dimension qui n'est pas du bac à sable.
-    Les valeurs avant leurs dimensions, les dimensions avant leurs domaines."""
+    Les valeurs avant leurs dimensions, les dimensions avant leurs domaines.
+
+    ANN-7, le basculement : plus rien ne pose ni ne lit ce vocabulaire, mais ses tables
+    restent jusqu'à la migration qui les retire. Ce nettoyage reste jusque-là : sans lui,
+    la clé étrangère rendrait GLOBAL ce qu'un bac à sable laisse, et ce qui est global
+    sortait encore au dépôt d'une vraie collection (relecture croisée du basculement)."""
     marques = ", ".join("?" * len(collections))
     dehors = (f"EXISTS (SELECT 1 FROM regions _r JOIN planches _p ON _p.id = _r.planche_id "
               f"JOIN albums _a ON _a.id = _p.album_id WHERE _r.id = {{region}} "
@@ -1761,66 +1767,6 @@ def _validate_parent(conn: sqlite3.Connection, planche_id: int,
                ) SELECT id FROM d""", (region_id,))}
         if parent_id in descendants:
             raise HTTPException(422, "parent_id créerait un cycle")
-
-# --------------------------------------------------------------------------- #
-# Accesseurs GARDÉS du VOCABULAIRE (AUTH-2) — VOIR n'est pas CHANGER
-# --------------------------------------------------------------------------- #
-# Même garde que ci-dessus, autre règle : un terme se VOIT par `clause_terme` (global,
-# ou local à une collection qu'on lit) et se MODIFIE par `peut_ecrire_terme`. D'où le
-# refus en 403 et non en 404 — le terme vient d'être listé, prétendre qu'il n'existe
-# pas serait incohérent, et le refus ne parle que des droits de l'appelant.
-#
-# ANN-7 — le basculement a retiré les routes du vocabulaire ; reste `_get_valeur`, que lit
-# l'annulation d'une suppression (`routes/annulation.py`) tant que les tables existent.
-
-
-def _get_valeur(conn, portee: autorisation.Portee, val_id, *, ecriture: bool = False):
-    """Terme du vocabulaire, VISIBLE (404 sinon) et, si `ecriture`, MODIFIABLE.
-
-    Le refus d'écriture est un 403 et non un 404, contrairement aux données : le
-    terme vient d'être listé, prétendre qu'il n'existe pas serait incohérent — et
-    le refus ne parle que des droits de l'appelant, il ne fuit rien.
-    """
-    ou, params = portee.clause_terme("t.collection_id")
-    v = _row(conn.execute(
-        f"SELECT t.* FROM attribut_valeur t WHERE t.id = ? AND {ou}", (val_id, *params)))
-    if v is None:
-        raise HTTPException(404, f"Valeur d'attribut {val_id} introuvable")
-    if ecriture and not portee.peut_ecrire_terme(v.get("collection_id")):
-        raise HTTPException(403, "Ce terme du vocabulaire est en lecture seule "
-                                 "pour vous.")
-    return v
-
-
-def _attributs_de(conn, portee, table, col, oid):
-    """Valeurs (avec leur dimension) affectées à une cible (personnage | région).
-
-    AUTH-2 — les valeurs sont filtrées comme des TERMES : sans cela, un objet partagé
-    (typiquement un personnage, qui traverse les albums) exposerait le vocabulaire privé
-    d'une autre étude — sa grille d'analyse, pas seulement un mot. Écart trouvé en
-    relisant : `GET /api/attributs/valeurs` masquait déjà ces termes, mais on les
-    retrouvait ici par la bande.
-
-    Conséquence assumée : la liste d'attributs d'un objet peut être PARTIELLE. C'est le
-    bon compromis — un objet peut légitimement porter les annotations d'études auxquelles
-    on ne participe pas, et il vaut mieux ne pas les montrer que de montrer un vocabulaire
-    qu'on ne peut ni comprendre ni situer.
-
-    La DIMENSION est filtrée à son tour (relecture du 2026-08-28). Les routes de création
-    ne posaient aucun `collection_id` : toute base antérieure à v24 contient des valeurs
-    globales sous des axes privés, et c'est le NOM de l'axe qui fuit, pas le mot. Les
-    créations héritent désormais de leur parent, et la migration v24 recolle l'existant ;
-    ce filtre-ci reste la ceinture.
-    """
-    ou, params = portee.clause_terme("v.collection_id")
-    ou_dim, p_dim = portee.clause_terme("d.collection_id")
-    return _rows(conn.execute(
-        f"SELECT v.id AS valeur_id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible "
-        f"FROM {table} x JOIN attribut_valeur v ON v.id = x.valeur_id "
-        f"JOIN attribut_dimension d ON d.id = v.dimension_id "
-        f"WHERE x.{col} = ? AND {ou} AND {ou_dim} ORDER BY d.nom, v.valeur",
-        (oid, *params, *p_dim)))
-
 
 # --------------------------------------------------------------------------- #
 # Portée DÉRIVÉE — le registre des personnages (AUTH-2)

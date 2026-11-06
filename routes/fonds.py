@@ -635,7 +635,7 @@ def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: se
     l'importateur n'est écrit nulle part —, `creee_par` (et son nom) : qui a créé la COPIE
     demandée, ce que lit la règle — et `travail_des_autres` : une entrée par
     personne, `agent` NULL pour les gestes dont l'auteur n'est pas écrit (un acte sans
-    agent, un attribut de case posé avant que le geste s'écrive), avec le nombre de gestes
+    agent, un relevé recopié entre deux projets), avec le nombre de gestes
     de chaque sorte et la date du dernier, le plus récent d'abord. Ce que la règle ne lit
     pas n'y est pas non plus : un travail sur une région supprimée depuis, une passe
     automatique. Ce sont des GESTES écrits au journal, pas ce qui reste sur les planches :
@@ -681,7 +681,7 @@ def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: se
         "SELECT creee_par FROM copie WHERE album_id = ?", (copie,)).fetchone()
     creee_par = ligne["creee_par"] if ligne else None
     noms = noms_lisibles(conn, [a for a in (*par_agent, importe_par, creee_par) if a])
-    # Le plus récent d'abord ; les gestes sans date (un attribut sans auteur) en dernier.
+    # Le plus récent d'abord ; les gestes sans date en dernier.
     autres = sorted(par_agent.values(), key=lambda e: e["dernier"] or "", reverse=True)
     for e in autres:
         e["agent_nom"] = noms.get(e["agent"]) if e["agent"] else None
@@ -2237,8 +2237,9 @@ def apercu_d_amorce(album_id: int, collection: int, cran: str,
 
     `copies` : ce qui partirait, table par table — la même forme que la charge de la
     naissance (`database.compter_le_travail`, qui compte comme `copier_le_travail` copie).
-    `laisses` : les tags et attributs qui RESTENT, parce que la collection d'arrivée ne les
-    voit pas — leur NOMBRE seul, jamais leurs libellés, que l'appelant ne lit peut-être pas.
+    `laisses` : ce qui RESTE — les relevés dont la grille n'est pas active dans le projet
+    d'arrivée —, leur NOMBRE seul. (Les tags et attributs de case y étaient comptés jusqu'au
+    basculement d'ANN-7.)
     `personnages` : les fiches de personnage que la copie rendrait lisibles depuis la
     collection d'arrivée (E6, une fuite écrite). Et ce que la prise répondrait : `fait`, ou
     `demande` avec `repondra` — sans rien écrire.

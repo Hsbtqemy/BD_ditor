@@ -260,14 +260,14 @@ def test_ses_propres_gestes_ne_sont_pas_le_travail_d_un_autre(client, decor):
     assert _autres(client, decor) == set()
 
 
-def test_un_attribut_dont_on_ne_sait_pas_qui_l_a_pose_fait_demander(client, db_path, decor):
-    """La prudence de B3, appliquée à l'auteur : un attribut de case que rien n'attribue à
-    l'importatrice — posé avant que le geste s'écrive, recopié par une fusion de valeurs —
-    compte comme le travail d'un autre."""
+def test_un_attribut_de_case_d_hier_ne_compte_plus(client, db_path, decor):
+    """La prudence de B3 comptait comme le travail d'un autre un attribut de case que rien
+    n'attribuait à l'importatrice. ANN-7, le basculement : ce qu'il a posé ne se lit plus
+    nulle part, et ne se compte plus (la deuxième source est retirée)."""
     vid = _valeur_de_case(client)
     _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
          (decor["region"], vid))
-    assert None in _autres(client, decor)
+    assert None not in _autres(client, decor)
 
 
 def test_la_notice_la_paternite_et_la_relecture_s_ecrivent_sous_le_document(
@@ -816,8 +816,8 @@ def _detail(client, demande_id):
 
 def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor):
     """Qui (login, nom), combien de gestes de chaque sorte, et la date du dernier. Le
-    demandeur n'y est pas, même s'il a travaillé ; l'importatrice y est, comme tout autre ;
-    un attribut dont l'auteur n'est pas écrit y est sous un agent inconnu."""
+    demandeur n'y est pas, même s'il a travaillé ; l'importatrice y est, comme tout autre.
+    Un attribut de case d'hier, dont l'auteur n'était pas écrit, n'y est plus (ANN-7)."""
     client.get("/api/moi", headers={**COLLEGUE, "Remote-Name": "Camille Zzcollegue"})
     r2 = _region(client, decor["planche"], COLLEGUE)
     assert client.put(f"/api/regions/{r2}/annotation", headers=COLLEGUE,
@@ -841,7 +841,7 @@ def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor)
     x = _detail(client, demande)
     assert x["importe_par"] == "importeuse"
     par = {e["agent"]: e for e in x["travail_des_autres"]}
-    assert set(par) == {"collegue", "importeuse", None}, par
+    assert set(par) == {"collegue", "importeuse"}, par
     assert par["collegue"]["agent_nom"] == "Camille Zzcollegue"
     assert par["collegue"]["gestes"] == {"regions": 1, "annotations": 1, "bulle_locuteur": 1}
     derniere = _sql(db_path, "SELECT MAX(date) AS d FROM evenement WHERE agent = 'collegue' "
@@ -851,10 +851,6 @@ def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor)
     # L'importatrice : sa région, la naissance du document et le scan qu'elle a ajouté.
     assert par["importeuse"]["gestes"] == {"regions": 1, "document": 2}  # naissance, scan
     assert par["importeuse"]["dernier"] == scan[0]["date"]
-    assert par[None] == {"agent": None, "agent_nom": None, "dernier": None,
-                         "collectif": False, "gestes": {"region_attribut": 1}}
-    # Le plus récent d'abord, l'inconnu sans date en dernier.
-    assert [e["agent"] for e in x["travail_des_autres"]][-1] is None
 
 
 def test_un_document_d_avant_le_fonds_dit_ce_qu_on_sait(client, db_path, decor):
@@ -870,10 +866,10 @@ def test_un_document_d_avant_le_fonds_dit_ce_qu_on_sait(client, db_path, decor):
 def test_une_demande_sans_demandeur_garde_les_gestes_sans_auteur(client, db_path, decor):
     """`demande.demandeur` est nullable — une demande venue un jour de quelqu'un sans
     compte. Un geste dont l'auteur n'est pas écrit n'est pas le sien pour autant : il reste
-    dans le détail, avec ceux de l'importatrice."""
-    vid = _valeur_de_case(client)
-    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-         (decor["region"], vid))
+    dans le détail, avec ceux de l'importatrice. (Un acte humain sans agent, posé en base :
+    l'attribut de case sans auteur qui jouait ce rôle ne compte plus depuis ANN-7.)"""
+    _sql(db_path, "INSERT INTO evenement (type, agent, cible_table, cible_id, apres) "
+                  "VALUES ('modification', NULL, 'regions', ?, '{}')", (decor["region"],))
     doc = _sql(db_path, "SELECT document_id FROM albums WHERE id = ?",
                (decor["erreur"],))[0]["document_id"]
     _sql(db_path, "INSERT INTO demande (genre, demandeur, motif) "

@@ -156,8 +156,8 @@ def description_des_droits() -> dict:
 # et la LECTURE de toutes les autres collections du projet par son responsable (F1, tranche
 # 3c, Hugo, 2026-10-26) — dérivées dans `Portee.__init__`, à partir de `bases_des_projets`
 # et de `collections_des_projets`. Aucune des clauses qui filtrent les données
-# (`clause_album`, `clause_terme`) ne connaît les projets : elles lisent les ensembles que la
-# dérivation a remplis. Toute autre collection garde son « Qui entre ».
+# (`clause_album`) ne connaît les projets : elles lisent les ensembles que la dérivation a
+# remplis. Toute autre collection garde son « Qui entre ».
 MEMBRE = "membre"
 RESPONSABLE = "responsable"
 ROLES_PROJET = (MEMBRE, RESPONSABLE)
@@ -443,9 +443,8 @@ class Portee:
         Un export qui traverse plusieurs collections filtre par le droit d'exporter et
         non par celui de lire — sans quoi qui exporte A emporterait le texte de B dans
         une concordance qui couvre les deux. Plutôt qu'une clause de plus que chaque cœur
-        devrait apprendre à recevoir, une Portee de plus : `clause_album`,
-        `clause_terme` et les accesseurs gardés la consomment telle quelle, et la règle
-        reste écrite ici."""
+        devrait apprendre à recevoir, une Portee de plus : `clause_album` et les
+        accesseurs gardés la consomment telle quelle, et la règle reste écrite ici."""
         if self.tout:
             return self
         return Portee(admin=self.admin, lecture=self.export,
@@ -466,7 +465,7 @@ class Portee:
         Le patron de `pour_export` : une Portee de plus plutôt qu'une clause que chaque cœur
         devrait apprendre. Pour une portée ordinaire, les collections des bacs à sable
         sortent de ses ensembles ; pour une portée TOTALE, qui ne matérialise aucun
-        ensemble, `hors_isoles` fait écarter par `clause_album` et `clause_terme` ce qui vit
+        ensemble, `hors_isoles` fait écarter par `clause_album` ce qui vit
         dans un projet isolé — la nature du projet, jamais la portée, tient l'isolement."""
         if self.tout:
             # Sans ses bacs à sable : ce qui s'y lit (ses personnages, par
@@ -971,79 +970,6 @@ class Portee:
             return True
         return bool(self.utilisateur) and demandeur == self.utilisateur
 
-    def clause_terme(self, alias: str) -> tuple[str, list]:
-        """Fragment SQL restreignant un TERME du vocabulaire (tag, domaine, dimension,
-        valeur) à ce qui est visible. `alias` désigne sa colonne `collection_id`.
-
-        Le vocabulaire ne suit pas la même règle que les données : il porte déjà sa propre
-        notion de portée depuis le lexique situé (A4) — `collection_id` NULL veut dire
-        GLOBAL, et c'est un état voulu, pas un oubli. Un terme est donc visible s'il est
-        global, ou s'il appartient à une collection qu'on lit.
-
-        Conséquence assumée : une personne sans aucune collection voit quand même le
-        vocabulaire global. Elle ne voit aucune donnée pour autant, et un lexique vide
-        serait un état plus déroutant qu'utile.
-        """
-        if self.tout:
-            if self.hors_isoles:                # COL-4, S8 : `pour_le_corpus`
-                return (f"({alias} IS NULL OR {alias} NOT IN (SELECT _hic.id FROM collection "
-                        f"_hic WHERE {sql_est_isole(sql_projet_de('_hic'))}))", [])
-            if self.bornee:                     # COL-4 : les termes des bacs d'autrui
-                o, p = self._ordinaire().clause_terme(alias)
-                return (f"({alias} NOT IN (SELECT _bbc.id FROM collection _bbc WHERE "
-                        f"{sql_est_bac_a_sable(sql_projet_de('_bbc'))}) OR {o})", p)
-            return "1", []
-        ids = sorted(self.lecture)
-        if not ids:
-            return f"{alias} IS NULL", []
-        marques = ", ".join("?" * len(ids))
-        return f"({alias} IS NULL OR {alias} IN ({marques}))", list(ids)
-
-    def peut_ecrire_terme(self, collection_id) -> bool:
-        """A-t-on le droit de MODIFIER ce terme du vocabulaire ?
-
-        `clause_terme` dit ce qu'on VOIT ; ceci dit ce qu'on peut changer, et les deux ne
-        se confondent pas — un vocabulaire partagé se lit bien plus largement qu'il ne
-        s'édite. Un terme LOCAL s'édite si l'on écrit dans sa collection ; un terme GLOBAL
-        s'édite si l'on écrit quelque part, personne ne le « possédant » en propre.
-        """
-        if self.tout and (collection_id is None or self.couvre(collection_id)):
-            return True
-        if self.tout:                           # COL-4 : un terme d'un bac à sable
-            return collection_id in self.ecriture
-        if collection_id is None:
-            # COL-4 (S2) — écrire dans son bac à sable ne fait pas modifier le vocabulaire
-            # GLOBAL : il survivrait à l'effacement, chez tout le monde.
-            return bool(self._ecriture_hors_bac())
-        return collection_id in self.ecriture
-
-    def peut_remanier_tag(self, collection_id) -> bool:
-        """A-t-on le droit de REMANIER ce tag — le renommer, le fusionner dans un autre, ou
-        le supprimer alors que des régions le portent ?  ANN-8 (Hugo, 2026-10-22).
-
-        Modifier un terme (`peut_ecrire_terme`) documente sa définition, sa note, sa portée.
-        Le remanier change ce que portent des régions annotées par d'autres : le nom sous
-        lequel ils l'ont posé, ou sa présence même. La question suit donc la PORTÉE du tag,
-        et non le droit d'écrire. Un tag LOCAL se remanie par le propriétaire de sa
-        collection (`peut_administrer`, qui laisse passer l'administrateur) ; un tag GLOBAL
-        par la portée totale seule — l'administrateur, et le mono-poste —, personne ne le
-        possédant en propre alors que tout le monde l'emploie.
-
-        Supprimer un tag que plus aucune région ne porte n'est PAS remanier : rien de ce
-        que d'autres ont posé ne change, et la question est celle de `peut_ecrire_terme`.
-
-        Ce que la question ne dit pas, et que la route doit tenir à part : un tag local
-        peut être POSÉ hors de sa collection — sur une région d'un album rangé ailleurs,
-        par qui lit la collection du tag et écrit dans celle de l'album. Remanier en
-        retirerait le tag là où l'appelant n'écrit pas ; seule une portée totale le fait
-        (cf. `routes/lexique.py`). Mesure d'attente : les grilles d'ANN-7 reprendront la
-        question."""
-        if self.tout and (collection_id is None or self.couvre(collection_id)):
-            return True
-        if collection_id is None:
-            return False
-        return self.peut_administrer(collection_id)
-
     def clause_grille(self, alias: str = "g.id") -> tuple[str, list]:
         """Fragment SQL restreignant `alias` (un id de grille) aux grilles dont on peut LIRE
         LE PLAN publié — ou vivant, pour une grille ouverte. ANN-7, tranche 1 (cadrage R8 ;
@@ -1051,7 +977,8 @@ class Portee:
         `clause_album` : `(sql, params)`, `alias` écrit par le code appelant.
 
         Une grille non partagée est un travail de recherche, et son seul plan peut révéler
-        une étude en cours — la question de `clause_terme`, un étage plus haut. Trois moitiés,
+        une étude en cours — la question que se posait le vocabulaire d'hier pour un terme
+        local (`clause_terme`, retirée au basculement), un étage plus haut. Trois moitiés,
         chacune nécessaire à un public :
 
         - (a) être MEMBRE du projet qui possède la grille (G5) — responsable compris : un
@@ -1101,12 +1028,12 @@ class Portee:
 
     def peut_ecrire_quelque_part(self) -> bool:
         """A-t-on le droit d'écrire, où que ce soit ? Sert aux gestes qui ne visent aucune
-        collection en particulier — enrichir le vocabulaire, par exemple. Sans cela, une
-        personne en lecture seule pourrait polluer un vocabulaire partagé par tous.
+        collection en particulier — enrichir le registre des personnages, par exemple. Sans
+        cela, une personne en lecture seule pourrait polluer un registre partagé par tous.
 
         COL-4 (S2) — écrire dans un BAC À SABLE n'y compte pas : chaque arrivant en ouvrirait
-        un, et ces gestes (vocabulaire global, registre des personnages, rôles de
-        contribution) survivraient à son effacement, chez tout le monde. La même réponse
+        un, et ces gestes (registre des personnages, rôles de contribution) survivraient à
+        son effacement, chez tout le monde. La même réponse
         que sans bac à sable."""
         return self.tout or bool(self._ecriture_hors_bac())
 
@@ -1138,10 +1065,14 @@ def _sql_une_soeur(alias: str) -> str:
 # « Qui perd quoi » : le travail des autres sur un album (COL-3, tranches 2 à 3c)
 # --------------------------------------------------------------------------- #
 # Les cibles du journal qui portent un travail sur une RÉGION et la désignent par son id —
-# la région elle-même, sa note et ses tags, son locuteur, la présence d'un personnage, un
-# attribut de case. Les deux premières sont écrites par `main.py`, les trois suivantes par
-# `routes/personnages.py`, la validation grammaticale (`regions`) par `routes/analyse.py`.
-# `region_attribut` n'est écrit que depuis la relecture croisée de la tranche 2.
+# la région elle-même, sa note, son locuteur, la présence d'un personnage. Les deux premières
+# sont écrites par `main.py`, les deux suivantes par `routes/personnages.py`, la validation
+# grammaticale (`regions`) par `routes/analyse.py`.
+#
+# ANN-7, le basculement (« se tranchent en route », au plus prudent) : les actes passés sur
+# `region_attribut` — la situation d'une case — ne comptent plus. Ce qu'ils ont posé ne se
+# lit plus nulle part, et ne se perd donc pas ; ils restent dans ce qu'un compte laisse en
+# partant (`comptes.traces`) : le travail a été fait.
 #
 # COL-3, tranche 3c (F3, Hugo, 2026-10-26) — ces sources ne DÉCIDENT plus rien : la règle
 # de l'effacement ne lit plus le journal (`Portee._clause_effacement`). Elles servent à
@@ -1151,7 +1082,7 @@ def _sql_une_soeur(alias: str) -> str:
 # passe automatique n'est attribuée qu'à son moteur ; ranger, demander, changer l'ordre
 # des planches, repartir de zéro ou retirer du projet n'est pas un travail sur l'album.
 _CIBLES_DE_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
-                     "region_attribut", "releve")
+                     "releve")
 # ANN-7 (tranche 1, R10, R11) — `releve` : un relevé posé, modifié, retiré sur une région, un
 # doute et son fil, une passe ; sa cible est la RÉGION, si bien que les sources 1 et 6 le
 # lisent par l'index du journal, sans chercher la région dans une charge. Le même acte sur la
@@ -1189,9 +1120,13 @@ def _sql_chaine_des_sources(depart: str) -> str:
 
 
 def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
-    """Les dix sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
+    """Les neuf sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
     quand, `FROM … WHERE …`, recopié) — la sorte est la `cible_table` de l'acte, ou le nom
     de la table lue. Qui vaut NULL quand l'auteur n'est pas écrit.
+
+    Elles gardent les numéros qu'on leur donne partout (« la sixième source ») : la
+    DEUXIÈME — les attributs de case sans `lien` humain, un auteur inconnu — est retirée par
+    le basculement d'ANN-7, et la liste passe de la première à la troisième.
 
     « Recopié » est une expression SQL, vraie pour une ligne de travail RECOPIÉ — fait
     ailleurs, avant la copie, et que la copie porte (tranche 3b) : toute la sixième source,
@@ -1210,15 +1145,7 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
          f"JOIN evenement _te ON _te.cible_table IN ({cibles}) AND _te.cible_id = _tr.id "
          f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain'", "0"),
-        ("NULL", "'region_attribut'", "NULL",
-         "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
-         "JOIN region_attribut _tra ON _tra.region_id = _tr.id "
-         f"WHERE _tp.album_id = {alias} AND NOT EXISTS (SELECT 1 FROM evenement _tre "
-         "WHERE _tre.cible_table = 'region_attribut' "
-         "AND (_tre.cible_id = _tra.region_id OR _tre.cible_id IN ("
-         + _sql_chaine_des_sources("SELECT _tra.region_id") + "SELECT s FROM _tch)) "
-         "AND _tre.type = 'lien' AND _tre.agent_type = 'humain' "
-         "AND json_extract(_tre.apres, '$.valeur_id') = _tra.valeur_id)", "0"),
+        # (La deuxième source, les attributs de case, est retirée : cf. la docstring.)
         ("_tt.auteur", "'token_correction'", "_tt.date_modif",
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
          "JOIN token_correction _tt ON _tt.region_id = _tr.id "
@@ -1382,8 +1309,7 @@ _SQL_COUCHE_VIT = (
     "(CASE _te.cible_table "
     + " ".join(f"WHEN '{t}' THEN EXISTS (SELECT 1 FROM {t} _tv WHERE _tv.region_id = _tsrc.d "
                "AND _tv.recopiee = 1)"
-               for t in ("annotations", "bulle_locuteur", "personnage_presence",
-                         "region_attribut"))
+               for t in ("annotations", "bulle_locuteur", "personnage_presence"))
     # ANN-7 — la cible `releve` porte deux couches, et l'acte dit laquelle (contre-relecture,
     # point 4) : une PASSE (marquée, rouverte) vit si une passe RECOPIÉE vit sur la région de
     # la copie — une passe posée ensuite, rouverte puis marquée, ne ranime pas celle de la
@@ -1407,7 +1333,7 @@ _SQL_COUCHE_VIT = (
 
 
 def sql_actes_sur_album(alias: str) -> str:
-    """`SELECT agent, sorte, quand, recopie` — chaque geste humain des dix sources sur
+    """`SELECT agent, sorte, quand, recopie` — chaque geste humain des neuf sources sur
     l'album `alias`, un par ligne, l'appelant compris (COL-3 ; Hugo, 2026-10-15 :
     l'administrateur voit, sous une demande, ce que les autres ont fait sur le document ;
     tranche 3b : « qui perd quoi » avant d'effacer). Lu au moment de la lecture. Ce n'est

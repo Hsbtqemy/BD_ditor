@@ -103,7 +103,8 @@ def test_journal_survit_a_la_suppression(client, derriere_proxy, album, db_path)
     assert sup is not None and sup["agent"] == "hugo"          # agent capté depuis l'auth
     avant = json.loads(sup["avant"])
     assert avant["type"] == "case" and avant["annotation"]["note"] == "à revoir"
-    assert avant["annotation"]["tags"] == ["colere"]           # snapshot profond complet
+    # ANN-7, le basculement : l'instantané ne porte plus que la note, pas les tags d'hier.
+    assert avant["annotation"] == {"note": "à revoir"}
 
 
 def test_evenements_humains_avant_apres(client, derriere_proxy, album, db_path):

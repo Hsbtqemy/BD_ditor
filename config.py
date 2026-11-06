@@ -288,7 +288,7 @@ TYPE_DETAIL = "detail"
 
 # Types de régions qui reçoivent un LOCUTEUR (ANN-6) : celles qui portent du texte — la
 # bulle, le cartouche (un récitatif a un narrateur) et la zone de texte. Ni la case, ni la
-# boîte personnage : la première reçoit une situation, la seconde une présence. C'est
+# boîte personnage : la seconde reçoit une présence. C'est
 # aujourd'hui la même liste que les régions transcrites (`pipeline.ocr.TEXT_TYPES`,
 # `database._TYPES_TEXTE`, `TEXT_TYPES` dans `static/viewer.js`), et elle a pourtant son
 # nom : « porte du texte » et « quelqu'un y parle » sont deux questions, que rien n'oblige
@@ -296,16 +296,15 @@ TYPE_DETAIL = "detail"
 # aussi, et `tests/test_e2e_annotation_locuteur.py` mesure leur accord type par type.
 TYPES_LOCUTEUR = ("bulle", "cartouche", "texte")
 
-# Types de régions qui MONTRENT un personnage (§14, brique (a) : la boîte porte l'identité),
-# et types qui reçoivent une SITUATION (`region_attribut`, une dimension de cible « case »).
+# Types de régions qui MONTRENT un personnage (§14, brique (a) : la boîte porte l'identité).
 # ANN-8 (Hugo, 2026-10-21) — le miroir du locuteur : une région qui change de type perd ce
 # que son nouveau type ne montre pas (`database.retirer_liens_caches`), et l'annulation ne
-# le repose que sur un type qui le montre. L'écran n'offre le bloc Personnage qu'à la boîte
-# et le bloc Situation qu'à la case, et leurs routes d'attribution gardent le type (422),
-# comme celle du locuteur (`PUT /api/regions/{id}/personnage`, `…/attributs`, décision du
-# 2026-10-22) ; lire et retirer restent ouverts à tout type.
+# le repose que sur un type qui le montre. L'écran n'offre le personnage qu'à la boîte, et sa
+# route d'attribution garde le type (422), comme celle du locuteur
+# (`PUT /api/regions/{id}/personnage`, décision du 2026-10-22) ; lire et retirer restent
+# ouverts à tout type. (La SITUATION d'une case, `TYPES_SITUATION`, suivait la même règle
+# jusqu'au basculement d'ANN-7, qui l'a retirée.)
 TYPES_PRESENCE = ("personnage",)
-TYPES_SITUATION = ("case",)
 
 # Jeu d'étiquettes POS universel (UPOS) — vocabulaire CONTRÔLÉ pour la correction
 # grammaticale humaine (cf. docs/correction-grammaticale.md). C'est aussi le jeu que

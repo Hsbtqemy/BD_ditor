@@ -830,7 +830,8 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   (Hugo, 2026-10-25) et se lit « recopiée » (`corr_recopiee` de
   `GET /api/regions/{id}/tokens`) ; dans un même projet, l'auteur reste. « Recopiée » est
   une marque EXPLICITE, `recopiee` (v36), posée par `copier_le_travail` sur chaque couche
-  reprise — correction, annotation, locuteur, présence, attribut (`COUCHES_RECOPIEES`) — et
+  reprise — correction, annotation, locuteur, présence (`COUCHES_RECOPIEES` ; l'attribut de
+  case jusqu'au basculement d'ANN-7) — et
   non une date (décision du pilotage, 2026-10-25 : la date confondait un geste fait dans la
   même seconde, et la validation la réécrivait). Elle vit avec la ligne : la corriger la
   remet à 0, la VALIDER non — valider une correction recopiée n'en fait pas l'auteur (ni
@@ -1026,15 +1027,17 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   responsables ne reçoivent qu'une collection vide. **Ce que la dérivation emporte**
   (constaté par la relecture croisée du 2026-10-17, sans être jugé faux) : ce sont des
   niveaux de collection ORDINAIRES, et tout ce qui se lit sur eux suit. Un membre d'une base
-  OUVERTE « écrit quelque part » (`peut_ecrire_quelque_part`) : il gagne l'édition du
-  vocabulaire GLOBAL (`peut_ecrire_terme(None)`) et l'accès à `GET /api/analyse/accord-inter`
+  OUVERTE « écrit quelque part » (`peut_ecrire_quelque_part`) : il gagnait l'édition du
+  vocabulaire GLOBAL (`peut_ecrire_terme(None)`, retirée par le basculement d'ANN-7) et gagne
+  l'accès à `GET /api/analyse/accord-inter`
   sur les albums de la base — des conséquences d'AUTH-2 et d'AUTH-1, neuves pour un simple
   membre de projet, qui n'ouvrait rien jusque-là. Et la propriété DÉRIVÉE du responsable
   donne tout ce que donne une propriété : décrire la collection, régler sa diffusion, son
   référent, ses accès dans « Qui entre », l'exporter d'office (DROIT-2), la déposer sur
   ShareDocs, lire les groupes de l'annuaire proposés pour elle. Ce qu'il NE fait PAS reste la
   moitié qui compte : aucune AUTRE collection du projet ne s'ouvre à qui en est simple
-  membre (ni `clause_album`, ni `clause_terme` ne connaissent les projets — elles lisent les
+  membre (ni `clause_album`, ni `clause_terme` jusqu'au basculement d'ANN-7, ne connaissent
+  les projets — elles lisent les
   ensembles que la dérivation a remplis ; le responsable les LIT depuis la tranche 3c) ; un
   accès de collection se passait d'être du projet jusqu'à la tranche 3c (F2 : plus
   maintenant) ; et `GET /api/moi` n'en dit rien. Lire une
@@ -1049,8 +1052,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   sens. Un responsable ne renomme donc pas le sien : ce nom se lit sur l'écran de tous.
   Trois **409 qui se nomment** : supprimer le projet de repli, supprimer un projet qui
   porte encore une collection — sa base ne compte pas tant qu'elle est vide : elle part avec
-  lui ; portant un album, ou du vocabulaire qui lui est propre (que sa suppression rendrait
-  GLOBAL par `ON DELETE SET NULL`), elle le retient par un refus qui la nomme —, retirer ou
+  lui ; portant un album, ou du vocabulaire d'hier qui lui est propre (que sa suppression
+  rendrait GLOBAL, jusqu'à la migration qui retire ses tables), elle le retient par un refus
+  qui la nomme —, retirer ou
   rétrograder son DERNIER responsable — mais un
   projet peut NAÎTRE sans responsable, comme une collection sans propriétaire. **Un
   quatrième depuis le 2026-10-16** (COL-3, tranche 2) : supprimer un projet qu'un album
@@ -1096,8 +1100,10 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   mono-poste lisent encore dans la Recherche et l'Exploration le texte d'une copie gardée
   au fonds : leur portée totale la lit.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue vingt-deux questions depuis la tranche 3c, qui retire
-  `clause_destruction` (2026-10-26) — vingt-trois jusque-là, dix jusqu'au 2026-10-10 (`peut_lire` /
+  serveur distingue dix-neuf questions depuis le basculement d'ANN-7, qui retire
+  `clause_terme`, `peut_ecrire_terme` et `peut_remanier_tag` — vingt-deux depuis la tranche
+  3c, qui retire `clause_destruction` (2026-10-26), vingt-trois jusque-là, dix jusqu'au
+  2026-10-10 (`peut_lire` /
   `peut_ecrire` / `peut_administrer` / `peut_exporter`, `clause_album` /
   `clause_destruction` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`
   / `peut_exporter_quelque_part`), quatorze jusqu'au 2026-10-16 avec les quatre du projet
@@ -1216,8 +1222,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   ensembles de plus dans `Portee` (`bacs_a_sable`, `bacs_a_soi`, `collections_bac`), qui
   ne changent AUCUNE question ponctuelle — dans son bac à sable on travaille comme
   ailleurs — et retirent des questions TRANSVERSES ce qu'il donnerait hors de lui (S2) :
-  `peut_ecrire_quelque_part`, `peut_ecrire_terme(None)`, `peut_exporter_quelque_part`,
-  `peut_lire_les_notices` ne le comptent pas, ni le bandeau de portée vide (Ctrl+Z, lui, y
+  `peut_ecrire_quelque_part`, `peut_exporter_quelque_part`,
+  `peut_lire_les_notices` ne le comptent pas (ni `peut_ecrire_terme(None)`, jusqu'au
+  basculement d'ANN-7), ni le bandeau de portée vide (Ctrl+Z, lui, y
   a son plancher : écrire quelque part, bac à sable compris). Un disjoint dans
   `clause_suppression_directe` : son propriétaire y détruit tout album sans rien demander.
   Rien n'en sort, rien n'y entre, rien ne s'y demande — pour TOUTE portée : la prise,
@@ -1233,12 +1240,13 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   jeu de la part du dépôt (`jeu_document.exportable`) qui ne porte aucune planche
   IMPORTÉE — une figure, si sa planche est une image du jeu (`_SQL_IMAGES_EXPORTABLES`) ;
   le plafond d'import compte toute image d'un bac à sable qui n'est pas une image du jeu,
-  quel que soit l'album. Le vocabulaire a une RIVE (`_rive_d_un_terme` : 0, ou le projet
-  isolé de sa collection) qu'aucun geste ne change (ranger, fusionner, rattacher, poser —
-  409 de la frontière) ; une collection supprimée dans un bac à sable donne ses termes à la
-  base, et l'effacement garde ce qui est employé dehors. Les libellés de TAGS d'un bac à
-  sable vivent dans un ESPACE à part (`tags.espace`, unicité par espace) : le corpus peut
-  avoir le même, et rien ne se voit d'un côté à l'autre. Un PERSONNAGE naît dans un bac à
+  quel que soit l'album. Le vocabulaire avait une RIVE (`_rive_d_un_terme`) qu'aucun geste
+  ne changeait, et un ESPACE de libellés de TAGS à part (`tags.espace`) ; le basculement
+  d'ANN-7 a retiré ses lecteurs et ses écrivains, mais tant que ses tables existent, une
+  collection supprimée dans un bac à sable donne ses termes à la base et l'effacement
+  supprime ceux qu'il porte, sauf l'employé dehors — sans quoi ils deviendraient GLOBAUX.
+  La frontière des gestes reste celle des personnages (409 de la frontière,
+  `_exiger_une_rive`). Un PERSONNAGE naît dans un bac à
   sable (`personnages.bac_a_sable_id`) ou au registre : le premier n'existe que pour ses
   membres, ne s'attribue que là et part avec lui ; pour le second, les apparitions dans un
   projet isolé ne comptent pas. `Portee.pour_le_corpus` (S8) est ce que reçoivent la
@@ -1265,14 +1273,16 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   une grille d'analyse. Les lectures à plat filtrent le terme PARENT en plus du terme
   (bases antérieures) et la migration v24 recolle l'existant, sans quoi le « % défini »
   compterait un terme que les listes masquent.
-- **Le VOCABULAIRE suit une autre règle**, et c'est voulu : `portee.clause_terme(alias)` —
+- **Le VOCABULAIRE suivait une autre règle**, et c'était voulu : `portee.clause_terme(alias)` —
   un tag / domaine / dimension / valeur est visible s'il est GLOBAL (`collection_id` NULL)
   ou local à une collection qu'on lit. C'est la portée d'appartenance du lexique situé
   (A4), pas celle des données. En revanche leurs COMPTEURS (fréquence, usages) sont
   filtrés comme des données : un nuage de tags devait refléter son sous-corpus. Depuis le
-  basculement d'ANN-7, aucun écran ni aucune route ne montre plus ce vocabulaire ; la règle
-  reste pour ce qui le lit encore (les exports, jusqu'à la migration qui retire ses tables).
-- **VOIR n'est pas CHANGER, et les deux fonctions sont distinctes** : `clause_terme` dit ce
+  basculement d'ANN-7, aucun écran ni aucune route ne montre plus ce vocabulaire, et
+  `clause_terme`, `peut_ecrire_terme` et `peut_remanier_tag` sont retirées ; les exports, qui
+  le lisent encore jusqu'à leur propre commit, le bornent par la règle d'une collection
+  (`database.clause_appartenance`).
+- **VOIR n'était pas CHANGER, et les deux fonctions étaient distinctes** : `clause_terme` dit ce
   qu'on voit, `peut_ecrire_terme(collection_id)` ce qu'on peut modifier (terme local →
   écrire dans SA collection ; terme global → écrire quelque part). Les accesseurs du
   vocabulaire prenaient donc `ecriture=True` sur les routes d'écriture — 19 ne l'avaient pas
@@ -1490,7 +1500,7 @@ Doutes et passes ont leurs types à eux, hors de ceux que Ctrl+Z remonte.
 
 ### Annulation (undo, D1)
 
-`undo.py` : **remonte le journal A3** pour rejouer l'INVERSE de la dernière action d'annotation. Le journal EST l'historique (pas de pile ; append-only préservé) : annuler = exécuter l'inverse + ajouter un événement `annulation` (`cible_table='evenement'`, `cible_id`=l'acte annulé) ; la « dernière action annulable » = l'événement **humain** le plus récent, d'un type annulable, non déjà référencé par une annulation → `Ctrl+Z` répété remonte la pile. Inversions en mutations **brutes** (+ réindex FTS), **hors routes** (sinon rejournalisation) ; un seul `annulation` par undo ; atomique (rollback si échec). Périmètre : région (créer/modifier/supprimer+**cascade** recréée depuis l'instantané profond, mêmes `id`), annotation (note+tags), locuteur, présence — gardés comme les autres champs de CONC-3 : le Ctrl+Z d'un locuteur ou d'un personnage montré qu'un autre a changé depuis est refusé par le 409 nommé, qui offre « Passer ce geste » (ANN-8), et le Ctrl+Z d'une CRÉATION de région l'est aussi quand un autre lui a donné un locuteur, un personnage montré ou une situation (CONC-4, `undo._garder_liens_de_creation`) ; actes **machine non annulables**. **L'annulation ne crée jamais de tag** (ANN-8) : seuls les libellés de l'instantané de l'acte se résolvent — par la chaîne du journal `tags`, puis le libellé exact, puis la clé parmi les tags que l'agent voit (`undo._tag_a_rendre`) — ; les tags d'aujourd'hui se reposent par leur identifiant ; ce qui ne se résout pas ne revient pas (`tags_non_rendus`). `GET /api/undo/prochain` + `POST /api/undo` (404 si rien, 409 si l'acte ne s'annule pas) ; **UI Ctrl+Z** dans l'Atelier et la page Annotation, la partie commune dans `static/lib/annulation.js`. Dormant : grammaire/validation, **redo**. Cf. `docs/undo.md`.
+`undo.py` : **remonte le journal A3** pour rejouer l'INVERSE de la dernière action d'annotation. Le journal EST l'historique (pas de pile ; append-only préservé) : annuler = exécuter l'inverse + ajouter un événement `annulation` (`cible_table='evenement'`, `cible_id`=l'acte annulé) ; la « dernière action annulable » = l'événement **humain** le plus récent, d'un type annulable, non déjà référencé par une annulation → `Ctrl+Z` répété remonte la pile. Inversions en mutations **brutes** (+ réindex FTS), **hors routes** (sinon rejournalisation) ; un seul `annulation` par undo ; atomique (rollback si échec). Périmètre : région (créer/modifier/supprimer+**cascade** recréée depuis l'instantané profond, mêmes `id`), annotation (la note ; ses tags jusqu'au basculement d'ANN-7, qui ne se rendent plus), locuteur, présence — gardés comme les autres champs de CONC-3 : le Ctrl+Z d'un locuteur ou d'un personnage montré qu'un autre a changé depuis est refusé par le 409 nommé, qui offre « Passer ce geste » (ANN-8), et le Ctrl+Z d'une CRÉATION de région l'est aussi quand un autre lui a donné un locuteur ou un personnage montré (CONC-4, `undo._garder_liens_de_creation` ; la situation d'une case aussi jusqu'au basculement d'ANN-7) ; actes **machine non annulables**. Depuis le basculement d'ANN-7, un acte d'avant qui n'a changé QUE des tags est passé (« l'état d'avant ne peut plus être rétabli ») ; ni tag ni situation ne se rendent, et `tags_non_rendus` n'existe plus. `GET /api/undo/prochain` + `POST /api/undo` (404 si rien, 409 si l'acte ne s'annule pas) ; **UI Ctrl+Z** dans l'Atelier et la page Annotation, la partie commune dans `static/lib/annulation.js`. Dormant : grammaire/validation, **redo**. Cf. `docs/undo.md`.
 
 **Les relevés s'annulent** (ANN-7, tranche 1) : poser, modifier, retirer — un relevé de
 région comme de surface —, avec les deux questions ci-dessous (écrire maintenant là où

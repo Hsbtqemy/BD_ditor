@@ -1959,7 +1959,7 @@ async function patchRegion(id, fields, vuExplicite = null) {
     fields.source = "corrige";
   }
   try {
-    const { locuteur_retire: loc, presence_retiree: pres, situation_retiree: sit, ...updated } =
+    const { locuteur_retire: loc, presence_retiree: pres, ...updated } =
       await apiSend("PUT", `/api/regions/${id}`,
                     Object.keys(vu).length ? { ...fields, vu } : fields);
     Object.assign(state.regionsById.get(id), updated);
@@ -1968,7 +1968,7 @@ async function patchRegion(id, fields, vuExplicite = null) {
     // ANN-8 — une région qui change de type perd ce que son nouveau type ne montre pas : le
     // dire, sans quoi on ne le découvrirait qu'en la repassant à son type d'avant. Ctrl+Z
     // rend le type et ses liens.
-    const retraits = messageRetraits(loc, pres, sit);
+    const retraits = messageRetraits(loc, pres);
     if (retraits) toast(retraits, "", 6000);
   } catch (e) {
     if (regionDisparue(e, id)) return;
@@ -1988,16 +1988,14 @@ async function patchRegion(id, fields, vuExplicite = null) {
 }
 
 /* ANN-8 — ce qu'un changement de type a retiré, en une phrase : le locuteur et le
-   personnage montré par leur nom, la situation par son nombre de valeurs (le serveur ne
-   nomme pas un terme, qui peut être local à une collection qu'on ne lit pas). null si rien
-   n'est parti. */
-function messageRetraits(loc, pres, sit) {
+   personnage montré par leur nom. null si rien n'est parti. (La situation d'une case s'y
+   disait par son nombre de valeurs jusqu'au basculement d'ANN-7.) */
+function messageRetraits(loc, pres) {
   const partis = [];
   if (loc) partis.push(`Locuteur « ${loc.nom} » retiré`);
   if (pres) partis.push(`Personnage montré « ${pres.nom} » retiré`);
-  if (sit) partis.push(`Situation retirée (${sit} valeur${sit > 1 ? "s" : ""})`);
   if (!partis.length) return null;
-  const pronom = partis.length > 1 ? "les" : (sit ? "la" : "le");
+  const pronom = partis.length > 1 ? "les" : "le";
   return `${partis.join(" ; ")} : ce type de région ne ${pronom} montre pas. Ctrl+Z ${pronom} rend.`;
 }
 

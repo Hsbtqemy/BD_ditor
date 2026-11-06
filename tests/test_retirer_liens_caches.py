@@ -1,14 +1,16 @@
-"""Les personnages montrés et les situations que portent des régions qui ne les montrent pas
+"""Les personnages montrés par des régions qui ne les montrent pas
 (`tools/retirer_liens_caches.py`, ANN-8).
 
-Une base d'avant le miroir du locuteur peut porter des bulles qui ont gardé la situation de
-la case qu'elles étaient, ou le personnage de la boîte qu'elles étaient. L'outil le dit, à
-blanc par défaut, et le retire avec `--appliquer`. Ce fichier éprouve ce qu'il promet, et
-qui échouerait en silence :
+Une base d'avant le miroir du locuteur peut porter des bulles qui ont gardé le personnage de
+la boîte qu'elles étaient. L'outil le dit, à blanc par défaut, et le retire avec
+`--appliquer`. Ce fichier éprouve ce qu'il promet, et qui échouerait en silence :
 
 1. **À blanc, il n'écrit RIEN** — la base s'ouvre en lecture seule.
 2. **Il ne touche qu'aux types qui ne montrent pas** : le personnage d'une boîte
-   personnage et la situation d'une case restent.
+   personnage reste.
+
+ANN-7, le basculement : la situation d'une case, qu'il retirait aussi, ne se lit plus ; il
+n'y touche plus (elle part avec la migration v39).
 3. **Le retrait est un acte MACHINE**, journalisé, hors de Ctrl+Z.
 
 `tools/` est hors couverture (`.coveragerc`) : sans ce fichier, une divergence y donnerait un
@@ -76,14 +78,11 @@ def _evenements(conn):
     return conn.execute("SELECT COUNT(*) FROM evenement").fetchone()[0]
 
 
-def test_les_listes_ne_portent_que_les_types_qui_ne_montrent_pas(conn):
+def test_la_liste_ne_porte_que_les_types_qui_ne_montrent_pas(conn):
     ids, perso, val = _semer(conn)
     pres = database.presences_cachees(conn)
     assert {r["region_id"] for r in pres} == {ids[t] for t in TYPES if t != "personnage"}
     assert all(r["personnage_id"] == perso and r["personnage_nom"] == "Milou" for r in pres)
-    sit = database.situations_cachees(conn)
-    assert {r["region_id"] for r in sit} == {ids[t] for t in TYPES if t != "case"}
-    assert all(r["valeur_id"] == val for r in sit)
 
 
 def test_a_blanc_l_outil_dit_et_n_ecrit_rien(conn, capsys):
@@ -91,11 +90,10 @@ def test_a_blanc_l_outil_dit_et_n_ecrit_rien(conn, capsys):
     avant = _evenements(conn)
     assert outil.main([]) == 0
     sortie = capsys.readouterr().err
-    assert "8 lien(s)" in sortie
+    assert "4 lien(s)" in sortie
     assert f"région {ids['bulle']} (bulle)" in sortie
     assert "personnage montré « Milou »" in sortie
-    assert f"situation, valeur {val}" in sortie
-    assert "nuit" not in sortie and "moment" not in sortie   # aucun terme nommé
+    assert "situation" not in sortie and "nuit" not in sortie and "moment" not in sortie
     assert "À BLANC" in sortie
     assert _presences(conn) == set(ids.values()) and _situees(conn) == set(ids.values())
     assert _evenements(conn) == avant
@@ -107,18 +105,18 @@ def test_a_blanc_la_base_s_ouvre_en_lecture_seule(conn):
     lecture = outil._ouvrir_la_base(False)
     try:
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
-            lecture.execute("DELETE FROM region_attribut")
+            lecture.execute("DELETE FROM personnage_presence")
     finally:
         lecture.close()
-    assert len(_situees(conn)) == 5
+    assert len(_presences(conn)) == 5
 
 
 def test_appliquer_retire_les_seuls_liens_caches_et_journalise_en_machine(conn, capsys):
     ids, perso, val = _semer(conn)
     assert outil.main(["--appliquer"]) == 0
-    assert "4 personnage(s) montré(s) et 4 valeur(s)" in capsys.readouterr().err
+    assert "4 personnage(s) montré(s) retiré(s)" in capsys.readouterr().err
     assert _presences(conn) == {ids["personnage"]}
-    assert _situees(conn) == {ids["case"]}
+    assert _situees(conn) == set(ids.values())       # la situation d'hier : plus touchée
 
     act = conn.execute("SELECT * FROM activite WHERE type = 'retrait_liens_caches'").fetchone()
     assert act is not None and act["agent_type"] == "moteur" and act["agent"] == outil.AGENT
@@ -126,12 +124,9 @@ def test_appliquer_retire_les_seuls_liens_caches_et_journalise_en_machine(conn, 
     evs = conn.execute("SELECT * FROM evenement WHERE activite_id = ? ORDER BY id",
                        (act["id"],)).fetchall()
     assert all((e["type"], e["agent_type"]) == ("delien", "moteur") for e in evs)
-    pres = [e for e in evs if e["cible_table"] == "personnage_presence"]
-    sit = [e for e in evs if e["cible_table"] == "region_attribut"]
-    assert sorted(e["cible_id"] for e in pres) == sorted(ids[t] for t in TYPES if t != "personnage")
-    assert sorted(e["cible_id"] for e in sit) == sorted(ids[t] for t in TYPES if t != "case")
-    assert all(f'"personnage_id": {perso}' in e["avant"] for e in pres)
-    assert all(f'"valeur_id": {val}' in e["avant"] for e in sit)
+    assert {e["cible_table"] for e in evs} == {"personnage_presence"}
+    assert sorted(e["cible_id"] for e in evs) == sorted(ids[t] for t in TYPES if t != "personnage")
+    assert all(f'"personnage_id": {perso}' in e["avant"] for e in evs)
 
 
 def test_le_retrait_reste_hors_de_ctrl_z(conn):
@@ -142,8 +137,8 @@ def test_le_retrait_reste_hors_de_ctrl_z(conn):
 
 def test_appliquer_est_rejouable(conn, capsys):
     _semer(conn)
-    assert outil.appliquer(conn) == {"presences": 4, "situations": 4}
-    assert database.presences_cachees(conn) == [] and database.situations_cachees(conn) == []
+    assert outil.appliquer(conn) == {"presences": 4}
+    assert database.presences_cachees(conn) == []
     assert outil.main(["--appliquer"]) == 0
     assert "Aucune région ne montre" in capsys.readouterr().err
 
