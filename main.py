@@ -1109,10 +1109,13 @@ def planche_empreinte(planche_id: int, conn: sqlite3.Connection = Depends(db),
     l'Atelier compare de temps en temps pour proposer « Actualiser » quand la planche ouverte
     a changé ailleurs (cf. `empreinte.py`). Bornée comme elle, par le même accesseur gardé.
     `releves` (ANN-7, tranche 2) : l'empreinte des relevés, des passes et des doutes, zone par
-    zone, À PART — la page Annotation la lit, l'Atelier, qui n'en montre rien, l'ignore."""
+    zone, À PART — la page Annotation la lit, l'Atelier, qui n'en montre rien, l'ignore.
+    `plans` (ANN-7, le mode libre) : l'empreinte du plan de chaque grille OUVERTE active dans
+    le projet, que la page Annotation lit seule (une étiquette née ou renommée ailleurs)."""
     _get_planche(conn, portee, planche_id)
     return {"regions": empreinte.empreintes(conn, planche_id),
-            "releves": empreinte.empreintes_releves(conn, planche_id)}
+            "releves": empreinte.empreintes_releves(conn, planche_id),
+            "plans": empreinte.empreintes_plans(conn, planche_id)}
 
 
 @app.post("/api/planches/{planche_id}/regions", status_code=201)

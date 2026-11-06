@@ -3529,7 +3529,7 @@ function brancherSynthese() {
    règle — et sa limite — est dans `lib/signal-planche.js`. */
 const SIG = { plancheId: null, base: null, touchees: null, gen: 0, jeton: 0, enVol: 0,
               ecritures: 0, rebaseReleves: false };
-const toucheesVides = () => ({ tout: false, ids: new Set(), planche: false });
+const toucheesVides = () => ({ tout: false, ids: new Set(), planche: false, plans: new Set() });
 
 /* La zone d'un relevé, ou du relevé d'un doute, d'après ce que la page a lu. */
 function zoneLue(sorte, id) {
@@ -3544,6 +3544,7 @@ function noterTouchees(t) {
   if (!SIG.touchees) SIG.touchees = toucheesVides();
   if (t.tout) { SIG.touchees.tout = true; return; }
   for (const id of t.ids || []) SIG.touchees.ids.add(id);
+  for (const id of t.plans || []) SIG.touchees.plans.add(id);
   if (t.planche) SIG.touchees.planche = true;
 }
 
@@ -3672,6 +3673,9 @@ async function actualiserPlanche() {
   const ou = { caseIx: S.caseIx, zoneId: S.zoneId };
   const region = zone !== null ? zone : (caseCourante() && caseCourante().case.id);
   S.mots = null;                                    // le texte a pu changer ailleurs
+  // Le mode libre : le plan d'une grille OUVERTE change sans changer de version (une
+  // étiquette née, renommée ou rangée ailleurs) ; on le relit.
+  await Promise.all(S.grilles.filter((g) => g.ouverte).map((g) => rechargerPlan(g)));
   await ouvrirPlanche(S.planche.id, region === undefined ? null : region, ou);
   if (sel.length && S.zoneId === zone) {
     await chargerMots();

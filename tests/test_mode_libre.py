@@ -448,3 +448,36 @@ def test_le_formulaire_d_une_autre_grille_ne_s_annule_pas(client, decor, db_path
                    json={"quoi": "entree", "cle": "b", "place": 0})
     assert r.status_code == 200, r.text
     assert client.get("/api/undo/prochain", headers=ADMIN).json() is None
+
+
+# --------------------------------------------------------------------------- #
+# « ⟳ Actualiser » : l'empreinte du plan d'une grille ouverte
+# --------------------------------------------------------------------------- #
+def _plans(client, decor, qui=STAG):
+    r = client.get(f"/api/planches/{decor['planche']}/empreinte", headers=qui)
+    assert r.status_code == 200, r.text
+    return r.json()["plans"]
+
+
+def test_l_empreinte_couvre_le_plan_des_grilles_ouvertes(client, decor, db_path):
+    t = _travail(client, decor, db_path)
+    g = str(t["grille_id"])
+    e0 = _plans(client, decor)
+    assert set(e0) == {g}                      # la grille fermée du décor n'y est pas
+    # Une étiquette née en posant, ailleurs : le plan change.
+    poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
+    e1 = _plans(client, decor)
+    assert e1[g] != e0[g]
+    # Une pose qui ne fait rien naître : le plan ne bouge pas (les relevés ont leur empreinte).
+    poser(client, t, region_id=t["zones"]["bulle"], entree_cle="ironie")
+    assert _plans(client, decor)[g] == e1[g]
+    # Renommée, puis rangée : il change à chaque fois.
+    assert client.patch(f"/api/grilles/{g}/entrees/ironie", headers=STAG,
+                        json={"libelle": "ironie fine"}).status_code == 200
+    e2 = _plans(client, decor)
+    assert e2[g] != e1[g]
+    poser(client, t, region_id=t["zones"]["cartouche"], nouvelle_entree={"libelle": "humour"})
+    e3 = _plans(client, decor)
+    assert client.put(f"/api/grilles/{g}/ordre", headers=STAG,
+                      json={"quoi": "entree", "cle": "humour", "place": 0}).status_code == 200
+    assert _plans(client, decor)[g] != e3[g]

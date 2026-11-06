@@ -28,7 +28,9 @@ et la situation d'une case y entraient, filtrés par la portée des termes, jusq
 basculement d'ANN-7.)
 
 **Les relevés à part** (ANN-7, tranche 2) : `empreintes_releves`, que la route rend sous
-`releves` pour la page Annotation, et que l'Atelier ne lit pas.
+`releves` pour la page Annotation, et que l'Atelier ne lit pas. **Et le plan des grilles
+ouvertes** (ANN-7, le mode libre) : `empreintes_plans`, sous `plans`, que la page Annotation
+lit seule — une étiquette créée, renommée ou rangée ailleurs.
 
 Un condensé court (12 caractères hexadécimaux) : il ne sert qu'à comparer deux états de la
 même région, et rien n'en sort qui ne soit déjà lisible par la route des régions.
@@ -39,6 +41,9 @@ import hashlib
 import json
 import sqlite3
 from collections import defaultdict
+
+import grilles
+from database import projet_d_album
 
 
 def empreintes(conn: sqlite3.Connection, planche_id: int) -> dict[str, str]:
@@ -123,4 +128,32 @@ def empreintes_releves(conn: sqlite3.Connection, planche_id: int) -> dict[str, s
     for k, canon in zones.items():
         brut = json.dumps(canon, ensure_ascii=False, separators=(",", ":"))
         resultat[k] = hashlib.sha1(brut.encode("utf-8")).hexdigest()[:12]
+    return resultat
+
+
+def empreintes_plans(conn: sqlite3.Connection, planche_id: int) -> dict[str, str]:
+    """ANN-7, le mode libre — l'empreinte du PLAN de chaque grille OUVERTE active dans le
+    projet de l'album de la planche, `{identifiant de grille (texte) → condensé}` : sa version
+    vivante change sans changer de numéro (une étiquette née en posant, renommée, rangée,
+    retirée ; une valeur ajoutée), et la page Annotation, qui garde le plan qu'elle a lu, ne
+    le voyait qu'au rechargement (le cadrage du mode libre, « Le signal « ⟳ Actualiser » »).
+    Une grille FERMÉE n'y est pas : sa version publiée ne change plus (hors d'une coquille,
+    qui ne touche aucun relevé).
+
+    Ce qui compte : le contenu entier de la version (`grilles.contenu`) — libellés, rangs,
+    états, variantes, cases. Qui lit la planche lit le plan d'une grille active dans son
+    projet (`clause_grille`, moitié (b)) : aucune borne de plus. La page Annotation la lit,
+    l'Atelier l'ignore."""
+    album = conn.execute("SELECT album_id FROM planches WHERE id = ?", (planche_id,)).fetchone()
+    if album is None:
+        return {}
+    resultat = {}
+    for gid, vid in conn.execute(
+            "SELECT pg.grille_id, pg.version_id FROM projet_grille pg "
+            "JOIN grille g ON g.id = pg.grille_id JOIN grille_version v ON v.id = pg.version_id "
+            "WHERE pg.projet_id = ? AND g.ouverte = 1 AND v.etat = ? ORDER BY pg.grille_id",
+            (projet_d_album(conn, album[0]), grilles.ETAT_VIVANTE)).fetchall():
+        brut = json.dumps(grilles.contenu(conn, vid), sort_keys=True, ensure_ascii=False,
+                          separators=(",", ":"))
+        resultat[str(gid)] = hashlib.sha1(brut.encode("utf-8")).hexdigest()[:12]
     return resultat

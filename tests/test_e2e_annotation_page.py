@@ -4328,3 +4328,29 @@ def test_actualiser_et_changer_de_case_gardent_la_designation(page, decor):
     expect(page.locator("#an-mini-mode")).to_be_hidden()
     assert next(r for r in _releves(decor) if r["id"] == lien["id"])["lien"]["region_id"] \
         == decor["cartouche"]
+
+
+def test_une_etiquette_nee_ailleurs_se_signale_et_actualiser_la_montre(page, decor):
+    """ANN-7, le mode libre : le plan d'une grille OUVERTE change sans changer de version —
+    une étiquette écrite sur un autre écran ne paraissait qu'au rechargement. L'empreinte de la
+    planche porte le plan (`plans`) : « ⟳ Actualiser » paraît, et le plan relu la montre."""
+    with _http(decor) as c:
+        actives = c.get(f"/api/projets/{decor['projet']}/grilles").json()["actives"]
+    travail = next(g["id"] for g in actives if g["travail"])
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f"#an-onglet-{travail}").click()
+    bouton = page.locator("#an-actualiser")
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_hidden()
+    with _http(decor) as c:
+        r = c.post(f"/api/grilles/{travail}/entrees", json={"libelle": "écrite ailleurs"})
+        assert r.status_code == 201, r.text
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_visible()
+    expect(bouton).to_have_attribute(
+        "title", "La planche a changé ailleurs : des étiquettes. "
+                 "Actualiser la recharge, sans perdre votre saisie.")
+    expect(page.locator("#an-plan", has_text="écrite ailleurs")).to_have_count(0)
+    bouton.click()
+    expect(bouton).to_be_hidden()
+    expect(page.locator("#an-plan", has_text="écrite ailleurs")).to_have_count(1)
