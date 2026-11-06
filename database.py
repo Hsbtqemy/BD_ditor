@@ -4559,7 +4559,8 @@ def _index_region(conn: sqlite3.Connection, region_id: int, payload,
     `neuve` : la région vient de naître dans cette transaction (une région copiée, COL-3,
     tranche 3b) et l'index ne porte rien d'elle — ses identifiants ne reviennent jamais
     (v30). L'effacement préalable est alors sauté : `region_id` étant `UNINDEXED`, il
-    parcourait l'index entier pour chaque région."""
+    parcourait l'index entier pour chaque région. `reindex_all` le passe aussi, ayant effacé
+    lui-même la ligne (par `rowid`) et les tokens de la région."""
     if not neuve:
         conn.execute("DELETE FROM recherche WHERE region_id = ?", (region_id,))
         conn.execute("DELETE FROM tokens WHERE region_id = ?", (region_id,))
@@ -4723,21 +4724,49 @@ def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
     conn.commit()
     n = 0
     try:
-        rows = conn.execute("SELECT id, ocr_texte FROM regions ORDER BY id").fetchall()
-        notes = {r["region_id"]: (r["note"] or "")
-                 for r in conn.execute("SELECT region_id, note FROM annotations")}
-        for start in range(0, len(rows), chunk):
-            batch = rows[start:start + chunk]
-            ocr_res = analyse_batch([r["ocr_texte"] or "" for r in batch])
-            note_res = analyse_batch([notes.get(r["id"], "") for r in batch])
-            for j, r in enumerate(batch):
+        ids = [r[0] for r in conn.execute("SELECT id FROM regions ORDER BY id")]
+        for start in range(0, len(ids), chunk):
+            paquet = ids[start:start + chunk]
+            marques = ",".join("?" * len(paquet))
+            textes = (f"SELECT r.id, r.ocr_texte, a.note FROM regions r LEFT JOIN annotations a "
+                      f"ON a.region_id = r.id WHERE r.id IN ({marques})")
+            # Le texte et la note sont lus, et ANALYSÉS, hors du verrou d'écriture : le moteur
+            # de langue ne tient jamais la base (§ Concurrence SQLite de `CLAUDE.md`). La
+            # réindexation tourne à côté d'une instance ouverte (la procédure de la v39), et un
+            # annotateur peut corriger une transcription pendant que son lot s'analyse.
+            vus = {r["id"]: (r["ocr_texte"], r["note"]) for r in conn.execute(textes, paquet)}
+            batch = [i for i in paquet if i in vus]
+            ocr_res = analyse_batch([vus[i][0] or "" for i in batch])
+            note_res = analyse_batch([vus[i][1] or "" for i in batch])
+            # Puis le verrou, et tout est RELU sous lui : une région dont le texte ou la note a
+            # changé depuis l'analyse, ou qui est partie, n'est pas écrite — sa route l'a
+            # réindexée elle-même ; sinon elle recevait les tokens et les lemmes de son ANCIEN
+            # texte, et sa correction grammaticale était ré-ancrée sur eux.
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            actuels = {r["id"]: (r["ocr_texte"], r["note"])
+                       for r in conn.execute(textes, paquet)}
+            # `region_id` est UNINDEXED : l'effacer par `DELETE … WHERE region_id = ?`
+            # parcourait l'index entier pour CHAQUE région, verrou tenu : à +30 000 régions,
+            # 5,1 s par lot en médiane et 7,5 s au plus, au-delà du `busy_timeout` (mesuré le
+            # 2026-11-06). Un parcours par lot lit les `rowid`, puis on efface par eux : 0,13 s
+            # en médiane, 0,85 s au plus.
+            lignes = {}
+            for r in conn.execute("SELECT rowid, region_id FROM recherche "
+                                  f"WHERE region_id IN ({marques})", paquet):
+                lignes.setdefault(r["region_id"], []).append(r["rowid"])
+            for j, rid in enumerate(batch):
+                if actuels.get(rid) != vus[rid]:
+                    continue
                 toks = ocr_res[j][1]
                 lemmes = (ocr_res[j][0] + " " + note_res[j][0]).strip()
-                fiable = bool(toks) or not (r["ocr_texte"] or "").strip()
-                lemmes = _appliquer_corrections(conn, r["id"], toks, lemmes,
-                                                reancrer=fiable)
-                _index_region(conn, r["id"], _region_index_payload(conn, r["id"]),
-                              lemmes, toks)
+                fiable = bool(toks) or not (vus[rid][0] or "").strip()
+                lemmes = _appliquer_corrections(conn, rid, toks, lemmes, reancrer=fiable)
+                conn.executemany("DELETE FROM recherche WHERE rowid = ?",
+                                 [(x,) for x in lignes.get(rid, ())])
+                conn.execute("DELETE FROM tokens WHERE region_id = ?", (rid,))
+                _index_region(conn, rid, _region_index_payload(conn, rid), lemmes, toks,
+                              neuve=True)
                 n += 1
             conn.commit()
         # L'ÉPILOGUE est DANS le `try`, et ce n'est pas de la symétrie : les deux

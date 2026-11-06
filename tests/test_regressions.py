@@ -1763,6 +1763,135 @@ def test_une_panne_dans_l_epilogue_ferme_quand_meme_l_activite(client, planche, 
         "une panne d'épilogue laisse l'activité OUVERTE alors que tout le travail est fait")
 
 
+def test_une_transcription_corrigee_pendant_la_reindexation_garde_son_analyse(
+        client, planche, db_path, monkeypatch):
+    """ANN-7, la v39 : `tools/reindex_nlp.py` se lance à côté de l'instance ouverte.
+
+    `reindex_all` lisait TOUS les textes au départ, puis écrivait chaque lot sur ce qu'il avait
+    lu : une transcription corrigée pendant l'analyse de son lot recevait les tokens et les
+    lemmes de son ANCIEN texte, et sa correction grammaticale était ré-ancrée sur eux — « otage »
+    revenait au rang 1 d'un texte où il est au rang 2. Une région dont le texte a changé entre
+    l'analyse et l'écriture n'est plus écrite : sa route l'a réindexée.
+
+    Et le verrou ne se tient plus à parcourir l'index : `region_id` est UNINDEXED, et un
+    `DELETE … WHERE region_id = ?` par région le parcourait entier (jusqu'à 7,5 s par lot à
+    +30 000 régions). Les lignes s'effacent par `rowid` — une région qui en portait deux n'en
+    garde qu'une. Le moteur de langue est une doublure : le test ne dépend pas de spaCy."""
+    import database
+    import pipeline.nlp as nlp
+
+    def analyse(texte):
+        mots = (texte or "").lower().split()
+        return " ".join(mots), [{"ordre": i, "texte": m, "lemme": m, "pos": "NOUN",
+                                 "morph": ""} for i, m in enumerate(mots)]
+
+    monkeypatch.setattr(nlp, "analyse", analyse)
+    url = f"/api/planches/{planche['id']}/regions"
+    rid = client.post(url, json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                                 "ocr_texte": "LE OTAGE"}).json()["id"]
+    double = client.post(url, json={"type": "bulle", "x": 20, "y": 1, "w": 9, "h": 9,
+                                    "ocr_texte": "MILLE SABORDS"}).json()["id"]
+    conn = database.get_connection()
+    try:
+        conn.execute("INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, etat, "
+                     "auteur) VALUES (?, 1, 'otage', 'otage', 'NOUN', 'corrige', 'lea')", (rid,))
+        conn.execute("INSERT INTO recherche (region_id, ocr_texte, note, etiquettes, lemmes) "
+                     "VALUES (?, 'MILLE SABORDS', '', '', '')", (double,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    saisie = {"faite": False}
+
+    def analyse_batch(textes):
+        if not saisie["faite"]:            # un annotateur corrige pendant l'analyse du lot
+            saisie["faite"] = True
+            autre = database.get_connection()
+            try:
+                autre.execute("UPDATE regions SET ocr_texte = 'LE GRAND OTAGE' WHERE id = ?",
+                              (rid,))
+                database.reindex_region(autre, rid)
+                autre.commit()
+            finally:
+                autre.close()
+        return [analyse(t) for t in textes]
+
+    monkeypatch.setattr(nlp, "analyse_batch", analyse_batch)
+    ecrits = []
+    conn = database.get_connection()
+    try:
+        conn.set_trace_callback(ecrits.append)
+        database.reindex_all(conn)
+        conn.set_trace_callback(None)
+        tokens = [r[0] for r in conn.execute(
+            "SELECT texte FROM tokens WHERE region_id = ? ORDER BY ordre", (rid,))]
+        lemmes = conn.execute("SELECT lemmes FROM recherche WHERE region_id = ?",
+                              (rid,)).fetchone()[0]
+        correction = tuple(conn.execute("SELECT ordre, obsolete FROM token_correction "
+                                        "WHERE region_id = ?", (rid,)).fetchone())
+        lignes = conn.execute("SELECT COUNT(*) FROM recherche WHERE region_id = ?",
+                              (double,)).fetchone()[0]
+    finally:
+        conn.close()
+    assert tokens == ["le", "grand", "otage"]
+    assert "grand" in lemmes.split()
+    assert correction == (2, 0)
+    assert lignes == 1
+    parcours = [s for s in ecrits if "DELETE FROM recherche" in s and "region_id" in s]
+    assert not parcours, parcours
+
+
+def test_la_reindexation_relit_les_textes_sous_le_verrou(client, planche, db_path, monkeypatch):
+    """La relecture qui écarte une région changée pendant l'analyse se fait SOUS le verrou
+    d'écriture, pris avant elle : une transcription qui arriverait entre la relecture et
+    l'écriture attend le lot (puis reçoit, au-delà du délai, le 409 « réessayer ») au lieu
+    d'être recouverte par l'analyse de l'ancien texte. La saisie est tentée pendant que le
+    lot lit ses lignes d'index, après la relecture, avec un délai court."""
+    import sqlite3
+
+    import database
+    import pipeline.nlp as nlp
+
+    def analyse(texte):
+        mots = (texte or "").lower().split()
+        return " ".join(mots), [{"ordre": i, "texte": m, "lemme": m, "pos": "NOUN",
+                                 "morph": ""} for i, m in enumerate(mots)]
+
+    monkeypatch.setattr(nlp, "analyse", analyse)
+    monkeypatch.setattr(nlp, "analyse_batch", lambda textes: [analyse(t) for t in textes])
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "LE OTAGE"}).json()["id"]
+    saisie = {"tentee": False, "refusee": False}
+
+    def pendant(sql):
+        if "SELECT rowid, region_id FROM recherche" in sql and not saisie["tentee"]:
+            saisie["tentee"] = True
+            autre = sqlite3.connect(database.DB_PATH, timeout=0.1)
+            try:
+                autre.execute("UPDATE regions SET ocr_texte = 'LE PETIT OTAGE' WHERE id = ?",
+                              (rid,))
+                autre.commit()
+            except sqlite3.OperationalError:
+                saisie["refusee"] = True
+            finally:
+                autre.close()
+
+    conn = database.get_connection()
+    try:
+        conn.set_trace_callback(pendant)
+        database.reindex_all(conn)
+        conn.set_trace_callback(None)
+        texte = conn.execute("SELECT ocr_texte FROM regions WHERE id = ?", (rid,)).fetchone()[0]
+        tokens = [r[0] for r in conn.execute(
+            "SELECT texte FROM tokens WHERE region_id = ? ORDER BY ordre", (rid,))]
+    finally:
+        conn.close()
+    assert saisie["tentee"]
+    assert saisie["refusee"], "la saisie est passée entre la relecture et l'écriture"
+    assert tokens == texte.lower().split()
+
+
 @pytest.mark.parametrize("lemme,repli,exact", [
     ("cœur", "concordance-coeur.csv", "concordance-cœur.csv"),   # hors latin-1 : un 500
     ("été", "concordance-ete.csv", "concordance-été.csv"),       # latin-1 : passait déjà
