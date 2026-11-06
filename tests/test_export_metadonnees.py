@@ -731,7 +731,7 @@ def test_aucun_login_d_annotateur_ne_sort_au_depot(corpus, album, tmp_path):
 # région annotée du vrai corpus, qui doit sortir. Les autres fichiers d'outils importent
 # cette fixture (`isoles`) avec celles dont elle dépend.
 from test_bac_a_sable import LEA, RESP, _copie, decor, jeu  # noqa: E402,F401
-from conftest import make_png  # noqa: E402
+from conftest import make_png, poser_tags  # noqa: E402
 
 
 @pytest.fixture
@@ -741,7 +741,11 @@ def isoles(client, decor, data_dir):
     reg_bac = client.post(f"/api/planches/{planche}/regions", headers=LEA,
                           json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
     assert client.put(f"/api/regions/{reg_bac}/annotation", headers=LEA,
-                      json={"note": "n", "tags": ["mot-du-bac"]}).status_code == 200
+                      json={"note": "n"}).status_code == 200
+    # Le tag, que plus aucune route ne pose (ANN-7), en base : né dans l'espace du bac à
+    # sable et local à sa base, comme la route d'hier le faisait naître.
+    poser_tags(db, reg_bac, ["mot-du-bac"], collection_id=decor["base"],
+               espace=decor["bac"]["id"], agent="lea")
     # L'axe local à la base, posé en SQL : ce que les routes laissent créer dans un bac à
     # sable n'est pas l'objet de ce test, seulement ce que les outils en laissent sortir.
     conn = sqlite3.connect(db)
@@ -754,7 +758,8 @@ def isoles(client, decor, data_dir):
     reg_reel = client.post(f"/api/planches/{pl}/regions", headers=RESP,
                            json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
     assert client.put(f"/api/regions/{reg_reel}/annotation", headers=RESP,
-                      json={"note": "n", "tags": ["mot-du-corpus"]}).status_code == 200
+                      json={"note": "n"}).status_code == 200
+    poser_tags(db, reg_reel, ["mot-du-corpus"], agent="resp")
     conn = sqlite3.connect(db)
     conn.row_factory = sqlite3.Row
     try:

@@ -134,7 +134,7 @@ def decor(live_server):
         # Même délai généreux que le décor d'a11y, et pour la même raison : écrire l'OCR
         # déclenche la réindexation, donc le chargement à froid de spaCy (~10 s).
         c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"}, timeout=180)
-        c.put(f"/api/regions/{rid}/annotation", json={"note": "colère", "tags": ["emotion"]})
+        c.put(f"/api/regions/{rid}/annotation", json={"note": "colère"})
         # ANN-7, tranche 2 — une grille active, que la page Annotation montre dépliée.
         grille_active_vivante(c)
     finally:

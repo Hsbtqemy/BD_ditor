@@ -62,8 +62,11 @@ def decor(client, db_path, jeu, derriere_proxy):
     planche = _copie({"bac": bac, "db": db_path}, "exemple")["planche_ids"][0]
     region = client.post(f"/api/planches/{planche}/regions", headers=SAM,
                          json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
-    client.put(f"/api/regions/{region}/annotation", headers=SAM,
-               json={"note": "essai", "tags": ["mot-de-sam"]})
+    client.put(f"/api/regions/{region}/annotation", headers=SAM, json={"note": "essai"})
+    # Un tag d'hier né local au bac, posé en base : aucune route ne le pose plus (ANN-7).
+    from conftest import poser_tags
+    poser_tags(db_path, region, ["mot-de-sam"], espace=bac["id"],
+               collection_id=bac["base"]["id"])
     client.post("/api/collections", headers=SAM,
                 json={"nom": "Chez Sam", "projet_id": bac["id"]})
     # Le bac à sable de resp, avec une copie GARDÉE au fonds ; celui de hugo, expiré. Rien

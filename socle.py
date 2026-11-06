@@ -45,9 +45,9 @@ from database import (CRAN_IMAGES, NATURE_COLLECTIF, CRANS, CRANS_DE_REPARTIR, D
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PLANCHE,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
-                      NOM_BAC_A_SABLE, clause_appartenance, cle_tag, collection_de_base,
+                      NOM_BAC_A_SABLE, clause_appartenance,
                       collection_row, creer_collection_de_base, creer_copie,
-                      demandes_vers_collection, document_d_album, espace_d_album,
+                      demandes_vers_collection, document_d_album,
                       est_isole, est_jeu,
                       etat_des_reponses,
                       get_connection,
@@ -106,161 +106,12 @@ def _row(cur) -> Optional[dict]:
 # --------------------------------------------------------------------------- #
 # Helpers métier
 # --------------------------------------------------------------------------- #
-def _norm_tag(label: str) -> str:
-    """Tags insensibles à la casse, stockés en minuscules, espaces compactés."""
-    return " ".join(label.strip().lower().split())
-
-
-# ANN-8 — la clé d'un libellé de TAG (apostrophes, accents composés, casse, espaces) : un
-# libellé saisi se compare par elle. `_norm_tag` reste ce qu'il était pour les noms de
-# domaine, de dimension et de valeur, que rien ne cherche encore par clé.
-_cle_tag = cle_tag
-
 
 def _sans_accents(s: str) -> str:
     """Minuscule sans diacritiques — pour une autocomplétion insensible aux accents
     (« etienne » trouve « Étienne »)."""
     s = unicodedata.normalize("NFKD", s or "")
     return "".join(c for c in s if not unicodedata.combining(c)).lower()
-
-
-def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee, *, album_id: int,
-                 deja=frozenset()) -> list[dict]:
-    """Crée les tags manquants et renvoie les lignes correspondantes.
-
-    **Un tag LOCAL ne se pose que sur les albums de sa collection** (ANN-8, décision de
-    Hugo du 2026-10-22). `album_id` est l'album de la région qui le recevrait ; un tag local
-    à une collection qui ne range pas cet album est refusé par un 422 qui le nomme, avec sa
-    collection — l'appelant la lit, puisqu'il lit le tag. Refuser plutôt que taire : la note
-    envoyée avec lui n'est pas enregistrée non plus, mais rien ne disparaît sans un mot, et
-    le libellé reste pris (l'unicité) — l'écrire en tag libre ne serait pas possible. Un tag
-    que la région porte DÉJÀ (`deja`, des identifiants) passe : ce qui existe reste, et une
-    liste renvoyée entière ne doit pas buter sur lui (`tools/tags_hors_collection.py` dit
-    l'existant). Le refus vient avant toute création. Les deux paramètres sont nommés et
-    `album_id` n'a pas de défaut : un appelant qui l'oublierait poserait partout.
-
-    **Ce qu'on ne LIT pas ne s'attache pas, et ne se crée pas non plus** (AUTH-11,
-    demi-mesure tranchée le 2026-09-24). Le libellé d'un tag est unique dans TOUTE
-    l'instance (`ON CONFLICT(label)`), si bien que taper le nom d'un tag local à une
-    collection qu'on ne lit pas attachait CE tag-là. Deux dommages, et le second est
-    celui qui coûtait : l'oracle par l'écriture, et surtout une région qui repartait
-    porteuse d'un terme étranger — invisible à qui vient de l'écrire, et **impossible à
-    retirer**, puisqu'une garde refuse de retirer un tag qu'on ne lit pas.
-
-    La `Portee` est OBLIGATOIRE, comme dans les accesseurs gardés : un défaut ferait
-    retomber un appelant distrait sur l'ancien comportement, qui marche parfaitement.
-
-    **Ce n'est PAS la fin du sujet**, et il ne faut pas le lire comme tel. La fin est une
-    unicité `(libellé, collection)` — un changement de schéma qui croise `COL-1`, doit
-    trancher la collision à la promotion, et bute sur trois pièges écrits dans la fiche
-    (les NULL distincts d'un index SQLite, le journal qui nomme les tags par libellé, et
-    « à quelle collection appartient un tag TAPÉ »). Cette garde ferme le dommage de
-    DONNÉES ; elle ne ferme pas l'oracle, puisque le libellé ne revient toujours pas.
-
-    Elle n'ajoute aucun mode de panne : le silence existait déjà. Aujourd'hui comme hier,
-    l'appelant reçoit son annotation SANS le libellé qu'il a tapé — ce qui change est
-    qu'il n'y a plus rien en base derrière ce silence.
-
-    **Un seul cas voit sa réponse changer**, et il a été mesuré : une note VIDE plus le
-    seul libellé illisible. Hier l'annotation naissait quand même, coquille ne portant que
-    le tag caché ; aujourd'hui il ne reste rien à enregistrer, donc `put_annotation`
-    supprime la ligne et rend `note: null` au lieu de `note: ""`. À l'écran c'est le même
-    vide, et la coquille était de toute façon comptée comme NON annotée depuis
-    `_sql_a_montrer`. Surtout, cela ne donne aucun bit de plus : ce qui distingue « libellé
-    pris ailleurs » de « libellé libre » reste ce qui le distinguait hier — le libellé
-    revient, ou il ne revient pas —, et on ne peut pas le retirer sans mentir.
-
-    **Elle n'atteint pas `undo._tag_a_rendre`, et c'est voulu.** L'annulation repose un
-    instantané pris par le journal, qui garde l'annotation ENTIÈRE, cachés compris : y
-    poser la même garde ferait de Ctrl+Z l'outil qui efface ce que `_tags_caches`
-    protège. Restaurer n'est pas saisir — on ne devine pas un libellé qu'on est en train
-    de remettre là où il était. Depuis ANN-8, l'annulation ne CRÉE plus aucun tag : un
-    libellé renommé, fusionné ou supprimé depuis se suit dans le journal, ou ne revient pas.
-
-    **Un libellé se cherche par sa CLÉ** (ANN-8, `database.cle_tag`) : « c’est pluriel » et
-    « c'est pluriel », un accent composé ou décomposé, désignent le même tag. Un tag neuf
-    naît sous sa clé ; un tag d'avant est retrouvé par la sienne, sous sa graphie. Si deux
-    tags d'avant partagent une clé, on en prend UN — celui dont le libellé EST la clé, sinon
-    le plus ancien — : attacher les deux poserait deux fois le même mot.
-    """
-    normalized = sorted({_cle_tag(l) for l in labels if _cle_tag(l)})
-    if not normalized:
-        return []
-    marques = ",".join("?" * len(normalized))
-    ou_tag, p_tag = portee.clause_terme("t.collection_id")
-    # COL-4 — les libellés vivent dans un ESPACE (`tags.espace`) : celui de l'instance, ou
-    # celui du bac à sable de l'album (Hugo, 2026-10-24). Tout se lit DANS l'espace de
-    # l'album : un libellé pris dans un bac à sable ne l'est pas pour le corpus, ni
-    # l'inverse, et rien ne se voit d'un côté à l'autre.
-    espace = espace_d_album(conn, album_id)
-    # Deux lectures, et l'écart entre elles EST la garde : tout ce que le libellé désigne
-    # déjà dans l'espace, puis ce qu'on en lit. La différence se tait — hors d'un bac à
-    # sable (AUTH-11, ci-dessus).
-    pris = {r["cle"] for r in conn.execute(
-        f"SELECT cle_tag(label) AS cle FROM tags WHERE espace = ? "
-        f"AND cle_tag(label) IN ({marques})", (espace, *normalized))}
-    lisibles = {}
-    for r in _rows(conn.execute(
-            f"SELECT t.id, t.label, t.couleur, t.collection_id, cle_tag(t.label) AS cle "
-            f"FROM tags t "
-            f"WHERE t.espace = ? AND cle_tag(t.label) IN ({marques}) AND {ou_tag} "
-            f"ORDER BY (t.label = cle_tag(t.label)) DESC, t.id",
-            (espace, *normalized, *p_tag))):
-        cle = r.pop("cle")
-        lisibles.setdefault(cle, r)
-    if espace and pris - set(lisibles):
-        # COL-4 — dans un bac à sable, poser un libellé qu'on ne peut pas poser ne rend
-        # plus 200 en silence (Hugo, 2026-10-24) : il est pris, dans CE bac à sable, par
-        # une collection que l'appelant ne lit pas — un refus nommé, entre ses comptes.
-        raise HTTPException(409, "Ce libellé est déjà pris dans ce bac à sable, par une "
-                                 "collection que vous ne lisez pas : choisissez-en un autre.")
-    lisibles = list(lisibles.values())
-    rangee_dans = {r[0] for r in conn.execute(
-        "SELECT collection_id FROM collection_album WHERE album_id = ?", (album_id,))}
-    for t in lisibles:
-        if (t["collection_id"] is not None and t["collection_id"] not in rangee_dans
-                and t["id"] not in deja):
-            nom = conn.execute("SELECT nom FROM collection WHERE id = ?",
-                               (t["collection_id"],)).fetchone()
-            raise HTTPException(422, f"Le tag « {t['label']} » est propre à la collection "
-                                     f"« {nom[0] if nom else t['collection_id']} » : il ne "
-                                     "se pose que sur les albums qu'elle range.")
-    # Un libellé LIBRE se crée (global, comme avant) ; un libellé pris par un terme qu'on
-    # ne lit pas ne se crée pas — l'unicité l'en empêche — et ne s'attache pas.
-    #
-    # COL-4 (S2) — sur un album de BAC À SABLE, le libellé libre naît LOCAL à une collection
-    # du bac à sable qui range l'album : global, il survivrait à l'effacement chez tout le
-    # monde ; local, l'effacement l'emporte avec le reste.
-    neufs = [l for l in normalized if l not in pris]
-    locale = _collection_locale_d_un_bac(conn, album_id)
-    for label in neufs:
-        conn.execute(
-            "INSERT INTO tags (label, collection_id, espace) VALUES (?, ?, ?) "
-            "ON CONFLICT(espace, label) DO NOTHING",
-            (label, locale, espace),
-        )
-    if neufs:
-        marques_neufs = ",".join("?" * len(neufs))
-        lisibles += _rows(conn.execute(
-            f"SELECT id, label, couleur FROM tags WHERE espace = ? "
-            f"AND label IN ({marques_neufs})", (espace, *neufs)))
-    return sorted(lisibles, key=lambda r: r["label"])
-
-
-def _collection_locale_d_un_bac(conn, album_id: int):
-    """La collection où naît un tag libre tapé sur cet album s'il vit dans un BAC À SABLE —
-    sa base s'il y est rangé, sinon sa plus petite collection, sinon la base (une copie
-    gardée au fonds) ; None hors d'un bac à sable. COL-4."""
-    projet_id, _ = _bac_a_sable_de(conn, album_id=album_id)
-    if projet_id is None:
-        return None
-    base = collection_de_base(conn, projet_id)
-    rangees = [r[0] for r in conn.execute(
-        "SELECT collection_id FROM collection_album WHERE album_id = ? ORDER BY collection_id",
-        (album_id,))]
-    if base in rangees or not rangees:
-        return base
-    return rangees[0]
 
 
 def _annotation_selon(conn: sqlite3.Connection, clause_tag: tuple[str, list],
@@ -271,7 +122,7 @@ def _annotation_selon(conn: sqlite3.Connection, clause_tag: tuple[str, list],
 
     C'est le CŒUR, et il ne tranche rien : il reçoit un fragment plutôt qu'une `Portee`,
     comme `database.lexique_resume`, parce que DEUX questions s'y posent et qu'elles ne
-    se confondent pas. Ce qu'une PERSONNE lit (`_annotation_for_region`, l'Atelier) ; ce
+    se confondent pas. Ce qu'une PERSONNE lisait (l'Atelier, jusqu'au basculement d'ANN-7) ; ce
     qu'une COLLECTION emporte quand un album sort à son titre (`_vocabulaire_d_export`,
     AUTH-11). Le fragment est OBLIGATOIRE : un défaut qui ne filtrerait rien rendrait
     l'oubli invisible."""
@@ -293,66 +144,68 @@ def _annotation_selon(conn: sqlite3.Connection, clause_tag: tuple[str, list],
             "date_modification": ann["date_modification"]}
 
 
-def _annotation_for_region(conn: sqlite3.Connection, portee, region_id: int) -> dict:
-    """L'annotation d'une région telle que CETTE personne la lit.
+def _annotation_for_region(conn: sqlite3.Connection, region_id: int) -> dict:
+    """L'annotation d'une région telle que l'écran la lit : la NOTE seule.
 
-    Les tags sont ceux dont on lit le TERME (`clause_terme`) : lire une région ne donne
-    pas à lire tous les tags qu'elle porte, un tag pouvant être local à une collection
-    qu'on ne lit pas. La `Portee` est OBLIGATOIRE, comme dans les accesseurs gardés : une
-    valeur par défaut rendrait l'oubli invisible. Ce qu'on ne montre pas, l'écriture
-    doit le PRÉSERVER (`_tags_caches`) ; le journal, lui, garde l'annotation ENTIÈRE.
+    ANN-7, le basculement — les tags n'existent plus pour les écrans et les routes :
+    l'annotation ne porte que la note (le reste est dans les relevés des grilles). Les
+    tables du vocabulaire restent jusqu'à la migration, et seuls les exports en lisent
+    encore les tags (`_annotation_selon`). Plus aucun terme à filtrer : la `Portee` n'a
+    plus rien à décider ici, et lire la région (l'accesseur gardé de l'appelant) suffit."""
+    ann = conn.execute(
+        "SELECT note, date_modification FROM annotations WHERE region_id = ?",
+        (region_id,)).fetchone()
+    if ann is None:
+        return {"region_id": region_id, "note": None, "date_modification": None}
+    return {"region_id": region_id, "note": ann["note"],
+            "date_modification": ann["date_modification"]}
 
-    Ne sert PLUS aux exports d'un album (AUTH-11, 2026-10-07) : un fichier qui sort au
-    titre d'une collection ne suit pas la portée de qui clique, cf. `_vocabulaire_d_export`."""
-    return _annotation_selon(conn, portee.clause_terme("t.collection_id"), region_id)
 
+def _sql_annotee(alias_region: str = "r") -> str:
+    """Fragment SQL vrai quand une région est ANNOTÉE : une note non vide, ou au moins un
+    relevé posé sur elle (ANN-7, I4, Hugo, 2026-11-05).
 
-def _sql_a_montrer(portee, alias_annotation: str = "a") -> tuple[str, list]:
-    """Fragment SQL `(sql, params)` vrai quand une annotation a quelque chose À MONTRER
-    à CET appelant : une note non vide, ou au moins un tag dont il lit le terme.
+    C'est ce que lisent la coche de l'arbre de structure (`annotee`), `nb_annotees` des
+    listes de planches et le compteur « annotées » de la Recherche. Jusqu'au basculement,
+    « annotée » voulait dire « une note, ou un tag dont on lit le terme » (AUTH-11) ; les
+    tags partis, une bulle relevée par les linguistes se serait dite « non annotée ».
 
-    AUTH-11 — `annotee`, `nb_annotees` et le compteur « annotées » de la Recherche
-    lisaient l'EXISTENCE de la ligne `annotations`. Une région dont il ne restait qu'un
-    tag local à une collection qu'on ne lit pas s'affichait donc cochée dans l'arbre de
-    structure, sans rien d'annoté à l'ouverture : un indice — mineur, mais un indice —
-    sur du travail qu'on ne voit pas, et surtout un marqueur qui ment à qui le regarde.
-
-    La ligne vide n'existe pas en base : `put_annotation` SUPPRIME l'annotation dès que
-    la note est vide et qu'il ne reste aucun tag, cachés compris. Ce fragment ne change
-    donc RIEN pour qui lit tout — il ne se distingue de « la ligne existe » que dans le
-    cas exact qu'il ferme. C'est aussi la définition que l'écran applique déjà de son
-    côté après un enregistrement (`static/viewer.js`), qui divergeait de celle du serveur.
-
-    Les alias internes sont `_atm` / `_tgm` et non `at` / `t`, exprès. Ce fragment
-    s'INSÈRE dans la requête d'un appelant, et `t` est justement l'alias usuel des tags
-    dans `routes/recherche.py` et `routes/analyse.py` : un appelant qui passerait
-    `alias_annotation="t"` verrait son propre `t` masqué par celui-ci, et la sous-requête
-    répondrait faux **sans erreur SQL** — un compteur qui se tait est précisément le
-    défaut que ce fragment vient de corriger. Aucun appel actuel n'est concerné ; le piège
-    est retiré plutôt que documenté comme une précaution à retenir.
+    Aucune question de portée : lire un relevé, c'est lire l'album, et l'appelant borne
+    déjà les régions qu'il compte. Les alias internes (`_anm`, `_rlm`) ne masquent aucun
+    alias usuel d'un appelant.
     """
-    ou_tag, p_tag = portee.clause_terme("_tgm.collection_id")
-    return (f"(TRIM(COALESCE({alias_annotation}.note, '')) <> '' "
-            f" OR EXISTS (SELECT 1 FROM annotation_tags _atm "
-            f"              JOIN tags _tgm ON _tgm.id = _atm.tag_id "
-            f"            WHERE _atm.annotation_id = {alias_annotation}.id AND {ou_tag}))",
-            list(p_tag))
+    r = alias_region
+    return (f"(EXISTS (SELECT 1 FROM annotations _anm WHERE _anm.region_id = {r}.id "
+            f"          AND TRIM(COALESCE(_anm.note, '')) <> '') "
+            f" OR EXISTS (SELECT 1 FROM releve _rlm WHERE _rlm.region_id = {r}.id))")
 
 
-def _tags_caches(conn: sqlite3.Connection, portee, region_id: int) -> list[int]:
-    """Ids des tags que porte la région et que l'appelant ne LIT pas — l'exact
-    complément de ce que montre `_annotation_for_region`.
+# ANN-7, I7 (Hugo, 2026-11-05) — les ANCIENS chemins du vocabulaire. FastAPI ignore un
+# paramètre inconnu : un lien d'hier filtré par tag (un « drill » enregistré, un favori)
+# rendrait le corpus ENTIER en ayant l'air filtré — un filtre qui se tait, le défaut
+# qu'AUTH-11 a déjà corrigé ailleurs. Ces noms sont donc reconnus et refusés par un 422
+# qui le dit, sur la Recherche et sur l'Exploration (et leurs exports).
+PARAMETRES_DU_VOCABULAIRE = frozenset({
+    "tags", "tag_scope", "attributs",
+    "a_tags", "b_tags", "a_attributs", "b_attributs",      # la comparaison A / B
+})
 
-    Une écriture qui remplace la liste des tags ne reçoit que ce que l'écran a montré.
-    Sans ce complément, enregistrer une annotation effacerait, sans un mot, le tag
-    d'une collection qu'on ne voit pas — et personne ne le verrait disparaître."""
-    ou_tag, p_tag = portee.clause_terme("t.collection_id")
-    return [r["tag_id"] for r in conn.execute(
-        f"""SELECT at.tag_id FROM annotation_tags at
-           JOIN annotations an ON an.id = at.annotation_id
-           JOIN tags t ON t.id = at.tag_id
-           WHERE an.region_id = ? AND NOT ({ou_tag})""",
-        (region_id, *p_tag))]
+
+def motif_du_vocabulaire(noms) -> str:
+    """La phrase d'un refus d'I7 : ce qui n'existe plus, et ce qui est refusé."""
+    noms = sorted(noms)
+    liste = ", ".join(f"« {n} »" for n in noms)
+    accord = "n'est plus accepté" if len(noms) == 1 else "ne sont plus acceptés"
+    return (f"Les tags et les attributs n'existent plus : {liste} {accord}. "
+            "L'annotation passe par les grilles de la page Annotation.")
+
+
+def refuser_le_vocabulaire(request: Request) -> None:
+    """Dépendance des routes de la Recherche et de l'Exploration : 422 nommé si la requête
+    porte un ancien paramètre du vocabulaire (`PARAMETRES_DU_VOCABULAIRE`)."""
+    anciens = set(request.query_params) & PARAMETRES_DU_VOCABULAIRE
+    if anciens:
+        raise HTTPException(422, motif_du_vocabulaire(anciens))
 
 
 # --------------------------------------------------------------------------- #
@@ -1367,7 +1220,6 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     journal.journaliser(conn, "suppression", "projet", projet_id, avant={"nom": p["nom"]})
 
 
-
 # --------------------------------------------------------------------------- #
 # Le BAC À SABLE (COL-4) — s'effacer
 # --------------------------------------------------------------------------- #
@@ -1803,8 +1655,8 @@ def _vocabulaire_d_export(titre: dict,
 
     Il ne borne que le VOCABULAIRE. Les données de l'album — régions, texte, notes —
     sortent entières : une région qui porte un tag d'ailleurs garde son annotation, sans
-    ce tag ; et s'il n'en reste rien à montrer, elle n'est plus dite annotée (la règle de
-    `_sql_a_montrer`, que les trois exports appliquent en lisant ce qui RESTE).
+    ce tag ; et s'il n'en reste rien à montrer, elle n'est plus dite annotée (les trois
+    exports l'appliquent en lisant ce qui RESTE).
 
     **`titre` n'est jamais `None`** (2026-10-07) : `_collection_d_export` rend toujours une
     collection ou lève. Un export « sans titre » a existé une journée comme limite écrite
@@ -1903,26 +1755,8 @@ def _validate_parent(conn: sqlite3.Connection, planche_id: int,
 # refus en 403 et non en 404 — le terme vient d'être listé, prétendre qu'il n'existe
 # pas serait incohérent, et le refus ne parle que des droits de l'appelant.
 #
-# Ils descendent ici parce qu'ils sont à CHEVAL sur la coupe : définis dans le bloc
-# Personnages, ils servent au bloc Collections (lexique) — les laisser en place aurait
-# obligé `routes/collections.py` à remonter vers `main`, ce qu'un cliquet interdit.
-
-def _get_dimension(conn, portee: autorisation.Portee, dim_id, *, ecriture: bool = False):
-    """Terme du vocabulaire, VISIBLE (404 sinon) et, si `ecriture`, MODIFIABLE.
-
-    Le refus d'écriture est un 403 et non un 404, contrairement aux données : le
-    terme vient d'être listé, prétendre qu'il n'existe pas serait incohérent — et
-    le refus ne parle que des droits de l'appelant, il ne fuit rien.
-    """
-    ou, params = portee.clause_terme("t.collection_id")
-    d = _row(conn.execute(
-        f"SELECT t.* FROM attribut_dimension t WHERE t.id = ? AND {ou}", (dim_id, *params)))
-    if d is None:
-        raise HTTPException(404, f"Dimension {dim_id} introuvable")
-    if ecriture and not portee.peut_ecrire_terme(d.get("collection_id")):
-        raise HTTPException(403, "Ce terme du vocabulaire est en lecture seule "
-                                 "pour vous.")
-    return d
+# ANN-7 — le basculement a retiré les routes du vocabulaire ; reste `_get_valeur`, que lit
+# l'annulation d'une suppression (`routes/annulation.py`) tant que les tables existent.
 
 
 def _get_valeur(conn, portee: autorisation.Portee, val_id, *, ecriture: bool = False):
@@ -1971,296 +1805,6 @@ def _attributs_de(conn, portee, table, col, oid):
         f"JOIN attribut_dimension d ON d.id = v.dimension_id "
         f"WHERE x.{col} = ? AND {ou} AND {ou_dim} ORDER BY d.nom, v.valeur",
         (oid, *params, *p_dim)))
-
-
-_ETATS_LEXIQUE = ("provisoire", "defini")
-
-
-# v24 — de qui un terme DÉPEND. Absent de cette table = aucun parent : un `domaine` est
-# la racine, et un `tag` est plat (aucune colonne ne le rattache à quoi que ce soit), donc
-# sa promotion ne bute jamais. La chaîne fait TROIS niveaux au plus, ce qui est la raison
-# pour laquelle un refus peut nommer tout ce qui manque au lieu d'en citer un et de laisser
-# découvrir le reste au coup suivant.
-_PARENT_TERME = {
-    "attribut_valeur": ("attribut_dimension", "dimension_id", "valeur"),
-    "attribut_dimension": ("domaine", "domaine_id", "nom"),
-}
-_NOM_TERME = {"attribut_valeur": "valeur", "attribut_dimension": "nom",
-              "domaine": "nom", "tags": "label"}
-_LIBELLE = {"attribut_valeur": "valeur", "attribut_dimension": "dimension",
-            "domaine": "domaine", "tags": "tag"}
-
-
-def _ancetres_terme(conn, table, oid) -> list:
-    """La chaîne de dépendance d'un terme, du parent immédiat vers la racine.
-
-    Chaque entrée : (table, id, nom, collection_id). Vide pour un domaine ou un tag.
-    """
-    chaine = []
-    while table in _PARENT_TERME:
-        p_table, fk, _ = _PARENT_TERME[table]
-        ligne = conn.execute(f"SELECT {fk} FROM {table} WHERE id = ?", (oid,)).fetchone()
-        if ligne is None or ligne[fk] is None:
-            break
-        parent = conn.execute(
-            f"SELECT id, {_NOM_TERME[p_table]} AS nom, collection_id "
-            f"FROM {p_table} WHERE id = ?", (ligne[fk],)).fetchone()
-        if parent is None:
-            break
-        chaine.append((p_table, parent["id"], parent["nom"], parent["collection_id"]))
-        table, oid = p_table, parent["id"]
-    return chaine
-
-
-def _descendre_portee(conn, table, oid, cible) -> list:
-    """Fait DESCENDRE une portée aux termes qui en dépendent et deviendraient plus globaux.
-
-    Symétrique de la garde de promotion, et nécessaire pour la même raison : rendre un
-    terme plus LOCAL peut laisser ses enfants au-dessus de lui. C'est la logique de la
-    migration v24 — « le domaine descend vers ses dimensions, qui descendent vers leurs
-    valeurs » — appliquée aux routes, qui ne l'avaient jamais eue.
-
-    RÉSERVE de la migration, gardée telle quelle : on ne touche QUE les enfants GLOBAUX,
-    c'est-à-dire ceux qui violeraient l'invariant. Un enfant déjà local à une autre
-    collection est un fait délibéré, pas une omission, et l'écraser déplacerait chez
-    quelqu'un le vocabulaire de quelqu'un d'autre.
-    """
-    if cible is None:                      # devenir global ne peut rien rendre trop global
-        return []
-    enfants = [(t, fk) for t, (p, fk, _) in _PARENT_TERME.items() if p == table]
-    bouges = []
-    for t_enfant, fk in enfants:
-        lignes = conn.execute(
-            f"SELECT id, {_NOM_TERME[t_enfant]} AS nom FROM {t_enfant} "
-            f"WHERE {fk} = ? AND collection_id IS NULL", (oid,)).fetchall()
-        for l in lignes:
-            conn.execute(f"UPDATE {t_enfant} SET collection_id = ? WHERE id = ?",
-                         (cible, l["id"]))
-            bouges.append(f"{_LIBELLE[t_enfant]} « {l['nom']} »")
-            bouges += _descendre_portee(conn, t_enfant, l["id"], cible)
-    return bouges
-
-
-def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definition"):
-    """Mise à jour PARTIELLE de la couche définitionnelle (definition/note_portee/etat/
-    collection_id) d'un terme. `col_definition='description'` pour les tags (leur glose EST
-    la définition). Valide l'état et l'existence de la collection de portée. Champ omis =
-    inchangé ; `collection_id: null` explicite = promotion en global."""
-    fields = payload.model_dump(exclude_unset=True)
-    fields.pop("promouvoir_parents", None)      # une INSTRUCTION, pas un champ à écrire
-    updates = {}
-    if "definition" in fields:
-        updates[col_definition] = fields["definition"]
-    for k in ("note_portee", "etat", "collection_id"):
-        if k in fields:
-            updates[k] = fields[k]
-    if "etat" in updates and updates["etat"] not in _ETATS_LEXIQUE:
-        raise HTTPException(422, f"État invalide : {updates['etat']} (provisoire | defini).")
-    # AUTH-2 — changer la PORTÉE d'un terme, c'est le déplacer chez quelqu'un (ou l'en
-    # sortir). Il faut donc écrire dans la collection VISÉE, pas seulement dans celle
-    # d'origine : sans cela, on rangerait son vocabulaire dans l'étude d'un autre.
-    if "collection_id" in updates:
-        cible = updates["collection_id"]
-        # COL-4 — ni dans un bac à sable, ni hors de lui : la rive d'arrivée est celle de
-        # départ. Après les gardes d'écriture sur le terme (la route) ; avant celles de la
-        # cible, qui ne parlent qu'à qui pourrait ranger.
-        actuel = conn.execute(f"SELECT collection_id FROM {table} WHERE id = ?",
-                              (oid,)).fetchone()
-        _exiger_une_rive(conn, _rive_d_un_terme(conn, actuel[0] if actuel else None),
-                         _rive_d_un_terme(conn, cible))
-        if cible is None:
-            if not portee.peut_ecrire_quelque_part():
-                raise HTTPException(403, "Promouvoir un terme en global demande un droit "
-                                         "d'écriture.")
-        elif not portee.peut_ecrire(cible):
-            raise HTTPException(404, f"Collection {cible} introuvable.")
-        elif conn.execute("SELECT 1 FROM collection WHERE id = ?",
-                          (cible,)).fetchone() is None:
-            raise HTTPException(404, f"Collection {cible} introuvable.")
-
-    # AUTH-11 — la TROISIÈME PORTE, fermée le 2026-09-25 (décision de Hugo). Ranger un
-    # terme dans une collection C le déplaçait sans rien regarder autour : une dimension
-    # sous un domaine de A rangée dans B, une dimension rangée dans B en laissant en A une
-    # valeur locale — l'état « hors de la collection de son parent » que l'import
-    # (`parent_ailleurs`) et le rattachement (`PATCH …/domaine`, 409) refusent depuis la
-    # veille. Refusé ici par un 409, si le parent est local à une autre collection que C ou
-    # si un terme qui en dépend l'est ; les enfants globaux descendent comme avant.
-    #
-    # RENVOYER un terme à la collection où il est déjà (relecture du 2026-09-25) n'est pas
-    # un déplacement du terme, mais sa descente l'est pour ses enfants GLOBAUX : un domaine
-    # de A dont la dimension globale porte une valeur de B faisait descendre la dimension en
-    # A — sous elle, une valeur de B. Choisi : JUGER ce que la descente déplacerait (les
-    # termes liés atteints à travers un enfant global) et refuser par le même 409, plutôt
-    # que de ne plus faire descendre. Ne pas faire descendre laisserait un enfant global
-    # au-dessus d'un parent local — l'état que v24 répare, et que la lecture masque — et le
-    # même geste ferait descendre ou non selon qu'il déplace ou renvoie : deux règles pour
-    # une. Les enfants DIRECTS d'un terme renvoyé ne sont pas jugés, eux : rien ne les
-    # déplace, et les juger bloquerait l'édition d'une base antérieure.
-    #
-    # Le refus nomme ce que l'appelant LIT, et lui seul — même forme que le 409 de la
-    # promotion ci-dessous. Tout terme lié qu'il ne lit pas devient « un terme lié que vous
-    # ne lisez pas », une seule fois : ni son nom, ni leur nombre. Ce qui en reste n'est
-    # PAS la seule chose connue : le sens et la sorte se déduisent souvent de la structure
-    # (une valeur n'a pas d'enfant, un domaine pas de parent ; l'ancêtre d'une dimension ne
-    # peut être qu'un domaine), et un rangement DEPUIS GLOBAL refusé révèle qu'une autre
-    # collection a spécialisé ce terme global — rangé sous lui un terme à elle. Ce bit est
-    # ACCEPTÉ comme limite écrite (Hugo, 2026-09-25, fiche AUTH-11) : il ne se fermera que
-    # si privatiser un terme global cesse d'être ouvert à qui écrit quelque part (COL-1). Le
-    # refus vient APRÈS les gardes d'écriture (sur le terme, puis sur C) : il ne répond qu'à
-    # qui pourrait ranger, et rien ne parle avant elles.
-    #
-    # Option (β), tranchée par Hugo le même jour : ranger la RACINE d'une branche — un
-    # terme sans parent local (un domaine, une dimension sans domaine ou sous un domaine
-    # global, une valeur sous une dimension globale) — de sa collection A vers B EMPORTE ses
-    # descendants rangés dans A, d'un seul geste. Sans cela, une branche entièrement locale
-    # ne passait de A à B que par Global (`promouvoir_parents` puis le rangement de sa
-    # racine) : publique entre les deux gestes. Restent refusés : un descendant d'une
-    # TROISIÈME collection, et le milieu d'une branche (son parent est ailleurs). Depuis
-    # GLOBAL, rien n'est emporté — privatiser un terme global est une question à part
-    # (COL-1). DROITS : emporter un descendant, c'est l'écrire ; il est dans A, donc
-    # modifiable par qui écrit dans A — et ranger la racine l'exige déjà (la route garde le
-    # terme en écriture, `_get_*(ecriture=True)`, avant d'appeler ici ; il est dans A), comme
-    # elle exige d'écrire dans B (garde de la cible, au-dessus). Aucune garde de plus n'est
-    # donc nécessaire, et aucune n'est écrite : elle serait inatteignable. Les emportés sont
-    # rendus dans la réponse (`promus`, ce qui a bougé en plus du terme) — ils étaient dans
-    # A, donc lisibles de qui range.
-    emportes = []
-    if "collection_id" in updates and updates["collection_id"] is not None:
-        cible = updates["collection_id"]
-        # Les termes LIÉS qui retiennent : le parent immédiat s'il est local à une autre
-        # collection que C (un parent GLOBAL convient, A4), et les descendants locaux à une
-        # autre collection que C (un enfant déjà dans C ne gêne rien). Un enfant GLOBAL
-        # descendra (`_descendre_portee`) : ses propres enfants comptent donc, sans quoi la
-        # descente les laisserait derrière elle — ranger un domaine ferait descendre sa
-        # dimension globale et laisserait « ailleurs » une valeur locale à une autre
-        # collection. Un tag n'a ni parent ni enfant. Imbriquée et non exposée par le
-        # module : `main.py` ré-exporte tout nom que `socle` définit (ARCH-1).
-        lies = []
-
-        def descendants(t, i, tous=True):
-            # `tous=False` : ne juger que sous un enfant GLOBAL (le renvoi, plus bas).
-            for t_enfant, (p, fk, _) in _PARENT_TERME.items():
-                if p != t:
-                    continue
-                for l in conn.execute(f"SELECT id, {_NOM_TERME[t_enfant]} AS nom, "
-                                      f"collection_id FROM {t_enfant} WHERE {fk} = ? "
-                                      f"ORDER BY id", (i,)):
-                    if l["collection_id"] is None:
-                        descendants(t_enfant, l["id"])      # descendra : ses enfants comptent
-                    elif not tous:
-                        continue                            # enfant direct d'un renvoi
-                    elif emporter and l["collection_id"] == actuelle:
-                        emportes.append((t_enfant, l["id"], l["nom"]))   # (β) : part avec
-                        descendants(t_enfant, l["id"])      # la racine, et ses enfants aussi
-                    elif l["collection_id"] != cible:
-                        lies.append(("enfant", t_enfant, l["id"], l["nom"],
-                                     l["collection_id"]))
-
-        actuelle = conn.execute(f"SELECT collection_id FROM {table} WHERE id = ?",
-                                (oid,)).fetchone()["collection_id"]
-        if actuelle != cible:
-            chaine = _ancetres_terme(conn, table, oid)
-            parent_local = bool(chaine) and chaine[0][3] is not None
-            if parent_local and chaine[0][3] != cible:
-                lies.append(("parent", *chaine[0]))
-            # Une racine emporte ; depuis GLOBAL, rien : aucun descendant local n'y est « dans
-            # l'ancienne collection » (NULL), et les globaux descendent de toute façon.
-            emporter = not parent_local
-            descendants(table, oid)
-        else:                                   # renvoi : ne juger que ce qui descendrait
-            emporter = False
-            descendants(table, oid, tous=False)
-        if lies:
-            article = {"domaine": "le", "attribut_dimension": "la", "attribut_valeur": "la"}
-            nommes = [f"{article[t]} {_LIBELLE[t]} « {nom} », "
-                      f"{'dont il dépend' if role == 'parent' else 'qui en dépend'},"
-                      for role, t, _, nom, col in lies if portee.peut_lire(col)]
-            tait = len(nommes) < len(lies)
-            morceaux = nommes + (["un terme lié que vous ne lisez pas"] if tait else [])
-            verbe = "vivent" if len(morceaux) > 1 else "vit"
-            raise HTTPException(409, f"Ce terme ne peut pas être rangé dans cette collection : "
-                                     f"{' et '.join(morceaux)} {verbe} dans une autre "
-                                     f"collection. Un terme ne se range pas hors de la "
-                                     f"collection de son parent, ni de celle des termes "
-                                     f"qui en dépendent.")
-
-    # v24 — UN TERME N'EST JAMAIS PLUS GLOBAL QUE CELUI DONT IL DÉPEND. L'invariant était
-    # posé à la CRÉATION (une dimension hérite de son domaine, une valeur de sa dimension)
-    # et dans la MIGRATION qui a recollé l'existant ; les routes qui DÉPLACENT ne l'ont
-    # jamais eu. Mesuré le 2026-09-06 : promouvoir une valeur sous une dimension privée
-    # répondait 200, et rien ne cassait — le terme était COMPTÉ dans le « % défini » de
-    # tout le monde (`lexique_resume` compte par appartenance) et MASQUÉ de leurs listes
-    # (qui filtrent le parent en plus du terme). Le désaccord même que v24 avait effacé.
-    #
-    # Le refus NOMME tout ce qui bloque, exhaustivement — la chaîne fait trois niveaux au
-    # plus, donc il n'y a pas de raison d'en citer un et de laisser découvrir le reste au
-    # coup suivant. C'est ce qui rend `promouvoir_parents` un consentement ÉCLAIRÉ plutôt
-    # qu'un « oui » à l'aveugle : on ne l'écrit qu'après avoir lu ce qu'il emporte.
-    #
-    # La règle ne borde QUE le sens interdit. Un terme plus LOCAL que son parent est
-    # légitime — c'est le vocabulaire situé d'A4. Deux termes locaux à des collections
-    # DIFFÉRENTES, eux, ne sont ni l'un ni l'autre plus globaux, et ce n'est pas cette
-    # garde-ci qui les refuse : c'est celle du rangement, plus haut (AUTH-11, 2026-09-25),
-    # qui interdit d'en PRODUIRE. Promouvoir vers Global n'en produit jamais.
-    #
-    # AUTH-11 (2026-09-24) — « exhaustivement » s'entend de ce qu'on LIT. La chaîne se
-    # remonte sans filtre de portée (il faut la connaître pour refuser), et le refus
-    # nommait tout, y compris un ancêtre local à une collection que l'appelant ne lit pas :
-    # une valeur de c1 sous une dimension et un domaine de c3 (l'import d'avant AUTH-11 en
-    # produisait) livrait à qui n'écrit que dans c1 deux noms de la grille d'analyse de c3.
-    # Un ancêtre qu'on ne voit pas n'est plus nommé : il devient « un terme que vous ne
-    # lisez pas », une seule fois quel que soit leur nombre. Le message ne NOMME pas ce
-    # terme ; sa SORTE, elle, peut se déduire de la structure — l'ancêtre tu d'une
-    # dimension ne peut être qu'un domaine, et, pour une valeur dont la dimension est
-    # nommée, le terme tu est son domaine. Ce que le refus livre en plus du blocage lui-même
-    # est donc « un ancêtre, à tel palier, vit dans une collection que vous ne lisez pas »,
-    # jamais son nom ni sa collection. Le 403 de `promouvoir_parents`
-    # suit la même règle : on ne peut pas écrire ce qu'on ne lit pas, et le dire ne nomme
-    # rien. Un ancêtre qu'on lit reste nommé, et c'est lui que le consentement vise.
-    promus = []
-    if "collection_id" in updates and updates["collection_id"] is None:
-        bloquants = [a for a in _ancetres_terme(conn, table, oid) if a[3] is not None]
-        if bloquants and not getattr(payload, "promouvoir_parents", False):
-            nommes = [f"{_LIBELLE[t]} « {nom} »" for t, _, nom, col in bloquants
-                      if portee.peut_lire(col)]
-            tait = len(nommes) < len(bloquants)
-            morceaux = nommes + (["un terme que vous ne lisez pas"] if tait else [])
-            quoi = " et ".join(morceaux)
-            quoi = f"d'{quoi}" if quoi.startswith("un ") else f"de {quoi}"
-            accord = "qui restent locaux" if len(morceaux) > 1 else "qui reste local"
-            suite = ("Seul qui écrit dans sa collection peut le promouvoir." if tait else
-                     "Pour les promouvoir aussi : promouvoir_parents=true.")
-            raise HTTPException(409, f"Ce terme dépend {quoi}, {accord}. Un terme ne peut "
-                                     f"pas être plus global que celui dont il dépend. "
-                                     f"{suite}")
-        for t_anc, id_anc, nom_anc, col_anc in bloquants:
-            if not portee.peut_ecrire_terme(col_anc):
-                if not portee.peut_lire(col_anc):
-                    raise HTTPException(403, "Promouvoir ce terme emporterait un terme que "
-                                             "vous ne lisez pas.")
-                raise HTTPException(403, f"Promouvoir {_LIBELLE[t_anc]} « {nom_anc} » demande "
-                                         f"un droit d'écriture sur sa collection.")
-        for t_anc, id_anc, nom_anc, _ in bloquants:
-            conn.execute(f"UPDATE {t_anc} SET collection_id = NULL WHERE id = ?", (id_anc,))
-            promus.append(f"{_LIBELLE[t_anc]} « {nom_anc} »")
-
-    if updates:
-        cols = ", ".join(f"{k} = ?" for k in updates)
-        conn.execute(f"UPDATE {table} SET {cols} WHERE id = ?", (*updates.values(), oid))
-        # L'autre sens : rendre un terme plus LOCAL laisserait ses enfants au-dessus de lui.
-        # Et (β) : les descendants emportés suivent la racine, puis leurs enfants globaux
-        # descendent à leur tour — `_descendre_portee` ne traverse que des termes GLOBAUX,
-        # il ne passerait pas par eux.
-        if "collection_id" in updates:
-            for t_e, i_e, _ in emportes:
-                conn.execute(f"UPDATE {t_e} SET collection_id = ? WHERE id = ?",
-                             (updates["collection_id"], i_e))
-            _descendre_portee(conn, table, oid, updates["collection_id"])
-            for t_e, i_e, _ in emportes:
-                _descendre_portee(conn, t_e, i_e, updates["collection_id"])
-            promus += [f"{_LIBELLE[t_e]} « {nom_e} »" for t_e, _, nom_e in emportes]
-        conn.commit()
-    return promus
 
 
 # --------------------------------------------------------------------------- #
@@ -2458,10 +2002,9 @@ def _groupes(request: Request) -> list[str]:
 # --------------------------------------------------------------------------- #
 # Modèles Pydantic — le CONTRAT d'entrée de l'API (ARCH-1)
 # --------------------------------------------------------------------------- #
-# Ici plutôt que dans chaque domaine, et c'est une décision : `LexiqueIn` sert à deux
-# blocs, `AttributIn` à un bloc sorti et un bloc resté. Les répartir exactement
-# demanderait une carte d'usage pour 27 déclarations sans logique, et se tromperait
-# sans bruit. Ce sont des contrats, pas de la mécanique de domaine.
+# Ici plutôt que dans chaque domaine, et c'est une décision : plusieurs servent à plus
+# d'un bloc. Les répartir exactement demanderait une carte d'usage pour des déclarations
+# sans logique, et se tromperait sans bruit. Ce sont des contrats, pas de la mécanique de domaine.
 
 class AlbumIn(BaseModel):
     # AUTH-2 : collection d'accueil. N'est PAS une colonne d'`albums` —
@@ -2650,24 +2193,17 @@ class JobIn(BaseModel):
 
 
 class AnnotationIn(BaseModel):
-    """Ce qu'un enregistrement d'annotation CHANGE — et seulement cela (CONC-3).
+    """Ce qu'un enregistrement d'annotation CHANGE : la note (CONC-3).
 
-    Un champ ABSENT garde sa valeur en base : `{"note": …}` ne touche pas aux tags. `tags`
-    remplace la liste visible ; `tags_ajoutes` / `tags_retires` la modifient, sans rien
-    savoir des tags que d'autres ont posés entre-temps. La route refuse `tags` avec l'un des
-    deux autres. Voir `main.put_annotation`."""
+    ANN-7, le basculement — les champs `tags`, `tags_ajoutes`, `tags_retires` ne sont plus
+    acceptés (I7) : ils restent DÉCLARÉS pour que la route les reconnaisse et les refuse par
+    un 422 qui le dit, au lieu de les ignorer en silence. Voir `main.put_annotation`."""
     note: Optional[str] = None
-    tags: list[str] = Field(default_factory=list)
-    tags_ajoutes: list[str] = Field(default_factory=list)
-    tags_retires: list[str] = Field(default_factory=list)
+    tags: Optional[list[str]] = None
+    tags_ajoutes: Optional[list[str]] = None
+    tags_retires: Optional[list[str]] = None
     # CONC-3, second temps : la note que l'écran avait vue. Facultative (Q8).
     note_vue: Optional[str] = None
-
-
-class TagIn(BaseModel):
-    label: str
-    couleur: Optional[str] = None
-    description: Optional[str] = None
 
 
 class PersonnageIn(BaseModel):
@@ -2706,11 +2242,6 @@ class AlignementIn(BaseModel):
     """Alignement d'autorité (A5) : URI d'un référentiel externe (skos:exactMatch)."""
     uri: str
     source: Optional[str] = None   # 'wikidata'|'viaf'|'idref'… ; auto-détecté si absent
-
-
-class DomaineIn(BaseModel):
-    """Domaine analytique (piste B) — champ émergent qui regroupe des dimensions."""
-    nom: str
 
 
 class FigureIn(BaseModel):
@@ -2886,35 +2417,3 @@ class NatureIn(BaseModel):
     """
     nature: str
 
-
-class DimensionDomaineIn(BaseModel):
-    domaine_id: Optional[int] = None   # null = retirer la dimension de son domaine
-
-
-class DimensionIn(BaseModel):
-    cible: str      # 'personnage' | 'case'
-    nom: str
-    domaine_id: Optional[int] = None   # champ analytique de rattachement (v20 ; optionnel)
-
-
-class ValeurIn(BaseModel):
-    valeur: str
-
-
-class LexiqueIn(BaseModel):
-    """Couche définitionnelle SKOS (A4) — mise à jour PARTIELLE (patch). Champ omis = laissé
-    tel quel ; `collection_id: null` explicite = promotion en GLOBAL (patron mentions→entités)."""
-    definition: Optional[str] = None      # SKOS definition (→ tags.description)
-    note_portee: Optional[str] = None     # SKOS scopeNote — le « situé »
-    etat: Optional[str] = None            # 'provisoire' | 'defini'
-    collection_id: Optional[int] = None   # portée d'appartenance ; null = global
-    # v24 / COL-1 — promouvoir AUSSI les ancêtres qui bloquent. Faux par défaut : un terme
-    # ne peut pas devenir plus global que celui dont il dépend, et le refus nomme alors
-    # exhaustivement ce qu'il faudrait emporter (au plus deux, la chaîne étant
-    # domaine→dimension→valeur). Ce drapeau n'est donc jamais coché à l'aveugle — on ne
-    # l'écrit qu'après avoir lu le 409 qui dit ce qu'il déplace.
-    promouvoir_parents: bool = False
-
-
-class AttributIn(BaseModel):
-    valeur_id: int

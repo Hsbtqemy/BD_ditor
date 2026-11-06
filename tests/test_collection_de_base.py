@@ -514,30 +514,10 @@ def test_la_migration_n_ouvre_pas_la_collection_de_repli_a_ses_responsables(vrai
 
 
 # --------------------------------------------------------------------------- #
-# Une base qui porte du vocabulaire n'est pas vide (relecture croisée, constat 8)
+# Une base qui porte du vocabulaire n'est pas vide (relecture croisée, constat 8). Le
+# vocabulaire se pose en base depuis le basculement d'ANN-7 ; la règle tient jusqu'à la
+# migration qui retire ses tables.
 # --------------------------------------------------------------------------- #
-def test_une_base_qui_porte_un_axe_retient_son_projet_et_ne_le_divulgue_pas(
-        client, derriere_proxy, db_path):
-    """La sonde de la relecture : un domaine local à la base, puis le projet supprimé — la
-    base partait, et le domaine devenait GLOBAL (`ON DELETE SET NULL`), lisible de toute
-    l'instance. Le refus le nomme désormais, et le domaine reste à sa collection."""
-    pid = _projet(client, nom="Grille privée")
-    base = _base(db_path, pid)["id"]
-    r = client.post("/api/domaines", json={"nom": "AxeSecret"}, headers=ADMIN)
-    assert r.status_code in (200, 201), r.text
-    domaine = r.json()["id"]
-    assert r.json()["nom"] == "axesecret"           # la forme que les lectures rendent
-    r = client.patch(f"/api/domaines/{domaine}/lexique",
-                     json={"collection_id": base}, headers=ADMIN)
-    assert r.status_code == 200, r.text
-    assert "axesecret" not in str(client.get("/api/lexique", headers=ZOE).json())
-    r = client.delete(f"/api/projets/{pid}", headers=ADMIN)
-    assert r.status_code == 409 and "vocabulaire" in r.json()["detail"], r.text
-    assert "axesecret" not in str(client.get("/api/lexique", headers=ZOE).json())
-    assert _sql(db_path, "SELECT collection_id FROM domaine WHERE id = ?", (domaine,)) \
-        == [{"collection_id": base}]
-
-
 @pytest.mark.parametrize("table", ["tags", "domaine", "attribut_dimension",
                                    "attribut_valeur"])
 def test_tout_terme_local_a_la_base_retient_son_projet(client, derriere_proxy, db_path,

@@ -242,6 +242,82 @@ def direct_query(db_file: Path, sql: str, params=()):
         conn.close()
 
 
+# ANN-7, le basculement — le VOCABULAIRE D'HIER posé en base. Les routes des tags, des
+# dimensions et des valeurs sont parties ; leurs tables vivent jusqu'à la migration qui les
+# retire, et ce qui les lit encore (exports, copies, Ctrl+Z, « qui perd quoi ») se mesure sur
+# des lignes posées ici, comme une base d'avant le basculement les porte. Chaque helper
+# réindexe la région touchée, comme le faisait la route.
+def poser_tags(db_file: Path, region_id: int, labels, *, collection_id=None, espace=0,
+               note=None, agent=None):
+    """Pose ces tags (créés s'il le faut, globaux ou locaux à `collection_id`) sur la région,
+    et la note si elle est donnée. Rend {libellé: id}. `agent` : l'acte s'écrit au journal
+    sous son nom, comme la route d'hier l'écrivait (`annotations`, l'instantané entier)."""
+    import journal
+    assert Path(db_file) == Path(database.DB_PATH), "la base du test, celle de `data_dir`"
+    conn = database.get_connection()
+    try:
+        avant = journal.snapshot_annotation(conn, region_id)
+        conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, ?) "
+                     "ON CONFLICT(region_id) DO UPDATE SET note = COALESCE(excluded.note, note)",
+                     (region_id, note))
+        ann = conn.execute("SELECT id FROM annotations WHERE region_id = ?",
+                           (region_id,)).fetchone()[0]
+        ids = {}
+        for label in labels:
+            conn.execute("INSERT OR IGNORE INTO tags (label, collection_id, espace) "
+                         "VALUES (?, ?, ?)", (label, collection_id, espace))
+            tid = conn.execute("SELECT id FROM tags WHERE espace = ? AND label = ?",
+                               (espace, label)).fetchone()[0]
+            conn.execute("INSERT OR IGNORE INTO annotation_tags (annotation_id, tag_id) "
+                         "VALUES (?, ?)", (ann, tid))
+            ids[label] = tid
+        if agent is not None:
+            apres = journal.snapshot_annotation(conn, region_id)
+            journal.journaliser(conn, "creation" if avant is None else "modification",
+                                "annotations", region_id, avant=avant, apres=apres,
+                                agent=agent)
+        database.reindex_region(conn, region_id)
+        conn.commit()
+        return ids
+    finally:
+        conn.close()
+
+
+def poser_attribut(db_file: Path, *, cible: str, dimension: str, valeur: str,
+                   region_id=None, personnage_id=None, collection_id=None, agent=None):
+    """Pose une valeur d'attribut (dimension et valeur créées s'il le faut) sur une région
+    (situation d'une case) ou un personnage (profil). Rend {dimension_id, valeur_id}.
+    `agent` : la situation d'une case s'écrit au journal sous son nom (`lien` sous
+    `region_attribut`), comme la route d'hier l'écrivait."""
+    import journal
+    conn = sqlite3.connect(db_file)
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        d = conn.execute("SELECT id FROM attribut_dimension WHERE cible = ? AND nom = ?",
+                         (cible, dimension)).fetchone()
+        d = d[0] if d else conn.execute(
+            "INSERT INTO attribut_dimension (cible, nom, collection_id) VALUES (?, ?, ?)",
+            (cible, dimension, collection_id)).lastrowid
+        v = conn.execute("SELECT id FROM attribut_valeur WHERE dimension_id = ? AND valeur = ?",
+                         (d, valeur)).fetchone()
+        v = v[0] if v else conn.execute(
+            "INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) VALUES (?, ?, ?)",
+            (d, valeur, collection_id)).lastrowid
+        if region_id is not None:
+            pose = conn.execute("INSERT OR IGNORE INTO region_attribut (region_id, valeur_id) "
+                                "VALUES (?, ?)", (region_id, v)).rowcount
+            if pose and agent is not None:
+                journal.journaliser(conn, "lien", "region_attribut", region_id,
+                                    apres={"valeur_id": v}, agent=agent)
+        if personnage_id is not None:
+            conn.execute("INSERT OR IGNORE INTO personnage_attribut (personnage_id, valeur_id) "
+                         "VALUES (?, ?)", (personnage_id, v))
+        conn.commit()
+        return {"dimension_id": d, "valeur_id": v}
+    finally:
+        conn.close()
+
+
 # SANTE-1 — le décor des moteurs, partagé par les deux fichiers E2E qui en ont besoin.
 # Ici et non dupliqué chez eux : `test_e2e_sante.test_le_serveur_repond_bien_ce_que_le
 # _decor_simule` confronte CES dicts à la vraie route, et un second décor recopié

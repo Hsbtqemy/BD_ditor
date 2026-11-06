@@ -36,8 +36,8 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 | **Bibliothèque** | `/corpus` | un **catalogue** : à gauche les collections du **projet** où vous travaillez — la case d'une collection filtre les albums, son nom l'ouvre —, au centre ses albums et leurs couvertures, à droite la fiche de l'album ouvert. Créer et décrire les albums et les collections, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, **importer les planches d'un album en lot**, lancer les traitements par lot, suivre l'avancement planche par planche |
 | **Atelier** | `/` | tout ce qui se fait sur une planche, sauf l'annoter : ajouter une image à l'album affiché, corriger le découpage, transcrire, relire la grammaire, exporter ; *Annoter ↗* mène à la page Annotation |
 | **Annotation** | `/annotation` | poser les **relevés** d'une grille sur une planche, case par case : désigner des mots ou une zone, choisir l'entrée, douter, marquer *terminée*, relire la planche dans la Synthèse |
-| **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
-| **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
+| **Recherche** | `/recherche` | interroger les dialogues et les notes ; chaque résultat rouvre l'Atelier pile sur la région |
+| **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus |
 | **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels projets existent et qui y entre, ce que l'instance détient (**le fonds**, et les suppressions qu'on lui demande), quels comptes et quels groupes existent — et, pour un administrateur, qui entre dans quelle collection —, la version servie, l'état des moteurs |
 
 Une barre de navigation commune les relie, sur les six pages. Les réglages d'affichage —
@@ -373,9 +373,9 @@ serait votre geste le plus récent, et Ctrl+Z le déferait d'abord.
 ### Étape 8 — Chercher et explorer
 **Recherche (`/recherche`), puis Exploration (`/exploration`)**
 
-La **Recherche** interroge en plein texte les dialogues, les notes et les tags — et les lemmes
-si l'analyse linguistique est active, auquel cas « otage » trouve « otages ». Les accents sont
-ignorés. Filtres par album, type de région et tags, nuage de tags, export CSV des résultats.
+La **Recherche** interroge en plein texte les dialogues et les notes — et les lemmes si
+l'analyse linguistique est active, auquel cas « otage » trouve « otages ». Les accents sont
+ignorés. Filtres par album et type de région, export CSV des résultats.
 Chaque résultat montre un extrait surligné et une vignette, et **rouvre l'Atelier
 exactement sur la région**.
 
@@ -384,15 +384,14 @@ L'**Exploration** mesure au lieu de retrouver, en quatre vues :
 | Vue | Ce qu'elle répond |
 |---|---|
 | **Distribution** | quels lemmes, catégories ou traits morphologiques, et à quelle fréquence |
-| **Concordance (KWIC)** | où exactement, avec le contexte de chaque occurrence, ses tags (ceux de la case compris, marqués « case ») et sa note — et un lien vers l'Atelier. Un lemme terminé par `*` cherche par préfixe : `otage*` trouve « otage » et « otages » |
+| **Concordance (KWIC)** | où exactement, avec le contexte de chaque occurrence et sa note — et un lien vers l'Atelier. Un lemme terminé par `*` cherche par préfixe : `otage*` trouve « otage » et « otages » |
 | **Croisement (2D)** | une facette contre une autre, en tableau de contingence avec carte de chaleur ; une cellule s'ouvre en concordance |
 | **Comparaison A / B** | ce qui est sur-représenté dans un sous-corpus par rapport à un autre. « Classer par » choisit la mesure : l'écart de fréquence relative, ou la **keyness** (log-vraisemblance), qui fait remonter un mot rare mais propre à un côté plutôt qu'un mot fréquent partout. L'export trie comme l'écran |
 
 L'état de la page est dans l'URL : une vue se partage par simple copier-coller du lien.
 
-Trois panneaux complètent la surface : **📖 Lexique** (documenter le vocabulaire),
-**🎯 Accord** (part des corrections que le modèle linguistique retrouvait déjà seul) et
-**👥 Inter** (accord entre annotateurs, quand un relecteur retouche le travail d'un autre).
+Deux panneaux complètent la surface : **🎯 Accord** (part des corrections que le modèle
+linguistique retrouvait déjà seul) et **👥 Inter** (accord entre annotateurs, quand un relecteur retouche le travail d'un autre).
 Ce dernier est le seul rapport **réservé** : il faut écrire quelque part pour le consulter,
 parce qu'il mesure des personnes et non un corpus.
 
@@ -1139,8 +1138,8 @@ revient.
 
 ### Recherche (`/recherche`)
 
-Un champ, trois filtres (album, type de région, tags), un nuage de tags cliquable, un export
-CSV. La recherche porte sur les dialogues, les notes et les tags — plus les lemmes si
+Un champ, deux filtres (album, type de région), des facettes grammaticales, un export CSV. La
+recherche porte sur les dialogues et les notes — plus les lemmes si
 l'analyse linguistique est installée ; sans elle, elle retombe proprement sur la recherche par
 préfixe, toujours insensible aux accents.
 
@@ -1154,44 +1153,21 @@ qui porte sa propre recherche — partagé, ou venu de l'Exploration — l'empor
 n'est retenu d'un onglet à l'autre, ni après sa fermeture (et rien du tout en navigation
 privée, où la page repart simplement vide).
 
-Elle porte sur les tags **sans distinguer leur portée** : un mot peut faire sortir une de vos
-régions parce qu'elle porte un tag local à une collection que vous ne lisez pas — le tag ne
-vous est pas montré pour autant, et rien ne sort d'une région hors de votre portée. Limite
-connue et mesurée, décrite dans `docs/modele-et-droits.md` § *Le vocabulaire*.
+Les tags et les attributs n'existent plus (le vocabulaire d'un projet est une grille) : un
+lien d'hier qui filtrait par tag ou par attribut ne cherche pas sans son filtre, il le dit.
+Ce que posent les grilles — les relevés — ne se cherche pas encore : la Recherche et
+l'Exploration le liront à l'étape suivante.
 
 ### Exploration (`/exploration`)
 
 Les quatre vues du tableau de l'étape 8, avec des filtres communs : album, type de région,
-catégorie grammaticale, **provenance** (auto / corrigé / validé), tag, locuteur. Le filtre de
+catégorie grammaticale, **provenance** (auto / corrigé / validé), locuteur. Le filtre de
 provenance est celui qui permet de ne mesurer que sur ce qui a été relu par un humain.
 
 Comme la Recherche, elle porte sur tout ce que vous lisez : **un document dont vous lisez deux
 copies y compte deux fois**, jusqu'à la tranche 4 de COL-3. Et comme elle, revenue par le
 menu, elle reprend la dernière vue de l'onglet et ses filtres ; un lien qui porte sa vue
 l'emporte.
-
-Le panneau **📖 Lexique** liste tout le vocabulaire — domaines, dimensions, valeurs, tags —
-avec pour chacun sa définition, sa note de portée, son état et sa portée d'appartenance, plus
-un « % défini » d'ensemble. Changer la portée d'un terme est refusé s'il se retrouverait
-séparé de son parent ou d'un terme qui en dépend, rangé dans une autre collection : le
-message dit lequel quand vous le lisez. Changer la portée d'un domaine, ou d'une dimension
-sans domaine ou sous un domaine global, emporte avec lui les termes qui en dépendent et
-partageaient sa collection — sauf depuis *Global*, d'où rien n'est emporté. C'est aussi de là qu'on **importe une taxonomie** depuis un tableur ;
-une ligne qui nommerait un terme que vous ne lisez pas, écrirait sur un terme
-en lecture seule pour vous, ou rangerait un terme hors de la collection de son parent, est
-refusée, et le bilan le dit par motif
-(cf. [`import-vocabulaire.md`](import-vocabulaire.md)).
-
-Un tag ouvert dans le panneau porte aussi, si vous y avez droit, trois gestes :
-**Renommer** (le libellé change partout où il est posé), **Fusionner** dans un autre tag —
-choisi dans le menu, parmi les tags globaux ou de la même collection — et **Supprimer**.
-Avant une fusion ou une suppression, le navigateur demande de confirmer en disant combien de
-régions seront touchées ; le message qui suit dit ce qui a été fait. Qui y a droit :
-renommer ou supprimer un tag que plus aucune région ne porte, quiconque peut le modifier ; le
-reste, le propriétaire de la collection du tag s'il est local, l'administrateur s'il est
-global. Ces
-gestes ne s'annulent pas par Ctrl+Z. Un tag propre à une collection ne se pose que sur les
-albums qu'elle range : l'Atelier ne le propose pas ailleurs, et le taper y est refusé. Cf. [`modele-et-droits.md`](modele-et-droits.md) §4.
 
 ---
 

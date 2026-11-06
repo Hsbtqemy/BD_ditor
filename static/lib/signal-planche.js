@@ -43,16 +43,14 @@
   const INTERVALLE_MS = 30000;
 
   /* Les écritures qui ne changent l'empreinte d'AUCUNE région : le registre des personnages
-     (créer, renommer, son profil, ses alignements), le lexique, l'état d'une planche, la
+     (créer, renommer, ses alignements), l'état d'une planche, la
      grammaire d'une région (elle n'entre pas dans l'empreinte), l'import de planches,
      ShareDocs et « Passer ce geste ». Tout le reste qui n'est pas placé plus bas vaut
      `tout`. */
   const SANS_EFFET = [
     /^\/api\/personnages(\?|$)/,                                   // POST : créer
     /^\/api\/personnages\/\d+(\?|$)/,                               // PUT : renommer
-    /^\/api\/personnages\/\d+\/(attributs|alignements)(\/|\?|$)/,
-    /\/lexique(\?|$)/,
-    /^\/api\/attributs\/dimensions(\/\d+\/valeurs)?(\?|$)/,          // POST : créer
+    /^\/api\/personnages\/\d+\/alignements(\/|\?|$)/,
     /^\/api\/planches\/\d+\/(statut|relecture|validation|verrou|role)(\?|$)/,
     /^\/api\/regions\/\d+\/(tokens|grammaire)(\/|\?|$)/,
     /^\/api\/albums\/\d+\/import(\?|$)/,

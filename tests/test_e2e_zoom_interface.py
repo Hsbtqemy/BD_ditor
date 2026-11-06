@@ -238,7 +238,9 @@ def test_le_menu_aa_reste_dans_la_fenetre_quand_on_zoome_menu_ouvert(live_server
 MODALES = [
     # (surface, ce qui l'ouvre, la boîte, son titre, son dernier bouton)
     ("/corpus", "#btn-new", "#album-modal .modal-box", "#modal-title", "#m-cancel"),
-    ("/exploration", "#btn-lexique", ".lexique-box", "#lexique-title", "#lex-close"),
+    # Le Lexique, qui sortait de 11 px par le haut, est parti avec le basculement d'ANN-7 :
+    # la modale 🎯 Accord tient sa place parmi les boîtes de l'Exploration.
+    ("/exploration", "#btn-accord", ".accord-box", "#accord-title", "#accord-close"),
 ]
 
 
@@ -246,7 +248,7 @@ MODALES = [
 # qui admet chacun, et la tablette, où 1,4 comme 2 restent possibles.
 @pytest.mark.parametrize("largeur,zoom", [(448, "1.4"), (768, "1.4"), (640, "2"), (768, "2")])
 @pytest.mark.parametrize("surface,ouvre,boite,titre,dernier", MODALES,
-                         ids=["fiche-album", "lexique"])
+                         ids=["fiche-album", "accord"])
 def test_une_modale_tient_dans_la_fenetre_et_tout_s_y_atteint(
         live_server, page, surface, ouvre, boite, titre, dernier, largeur, zoom):
     _ouvrir(page, live_server + surface, zoom, largeur, 900)

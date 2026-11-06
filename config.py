@@ -297,11 +297,6 @@ TYPES_LOCUTEUR = ("bulle", "cartouche", "texte")
 TYPES_PRESENCE = ("personnage",)
 TYPES_SITUATION = ("case",)
 
-# Cibles d'un attribut facetté (ANN-2) : un axe émergent s'applique soit au profil
-# (socio)linguistique d'un PERSONNAGE, soit à la situation d'une CASE (scène).
-# Cf. docs/personnages-et-attribution.md (§13).
-CIBLES_ATTRIBUT = ("personnage", "case")
-
 # Jeu d'étiquettes POS universel (UPOS) — vocabulaire CONTRÔLÉ pour la correction
 # grammaticale humaine (cf. docs/correction-grammaticale.md). C'est aussi le jeu que
 # spaCy produit, donc corrections et auto restent comparables/requêtables.

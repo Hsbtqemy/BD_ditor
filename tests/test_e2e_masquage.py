@@ -183,15 +183,6 @@ NON_RESOLUS = {
         "qui écrit : la fonction d'aide `montrer` reçoit un identifiant COMPOSÉ (`idLien`), "
         "que la résolution des appels à littéral ne lit pas. Mesuré par la sonde, ses deux "
         "identifiants déclarés dans `IDS_DECLARES`."),
-    ("exploration.js", 'sel.closest("label")'): (
-        "Le libellé « Importer dans » de la modale du 📖 Lexique, l'ancêtre `<label>` de "
-        "`#lex-import-portee`, retiré à qui n'écrit nulle part : la cible est atteinte par "
-        "`closest`, et n'a pas d'identifiant. `.lex-import-portee` pose `display: "
-        "inline-flex`, d'où le garde `.modal-box label[hidden] { display: none; }` dans la "
-        "feuille — vérifié le 2026-11-05 par `test_e2e_import_vocabulaire."
-        "test_qui_n_ecrit_nulle_part_lit_pourquoi_le_menu_est_ferme`, qui exige le menu CACHÉ "
-        "chez une lectrice, et `test_le_menu_importer_dans_n_offre_que_les_collections_ou_l_"
-        "on_ecrit`, VISIBLE chez qui écrit."),
     ("annotation.js", "fiche"): (
         "« Fiche » d'un lien du Contexte, `#an-loc-fiche` ou `#an-perso-fiche` : même "
         "composition que le « × ». `.ghost.small.an-loc-fiche` ne pose aucun `display` — "

@@ -156,7 +156,7 @@ def corpus_csp(live_server):
         rid = c.post(f"/api/planches/{pid}/regions",
                      json={"type": "bulle", "x": 10, "y": 10, "w": 120, "h": 80}).json()["id"]
         c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"})
-        c.put(f"/api/regions/{rid}/annotation", json={"note": "colère", "tags": ["emotion"]})
+        c.put(f"/api/regions/{rid}/annotation", json={"note": "colère"})
     finally:
         c.close()
     return {"base": live_server, "album": aid, "planche": pid, "region": rid}

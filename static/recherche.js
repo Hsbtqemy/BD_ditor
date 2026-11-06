@@ -1,6 +1,6 @@
 /* ===================================================================
    BéDéditeur — page de recherche / index (vanilla JS)
-   Interroge /api/recherche (FTS5) + /api/corpus + /api/tags + /api/albums.
+   Interroge /api/recherche (FTS5) + /api/corpus + /api/albums.
    Un clic sur un résultat ouvre la visionneuse pile sur la région.
    =================================================================== */
 "use strict";
@@ -9,10 +9,11 @@
 
 const state = {
   albums: [],
-  activeTags: new Set(),
-  tagScope: "propre",   // 'propre' (défaut) ou 'herite' (case parente incluse) — hérité du drill Exploration
-  personnage: "",       // facettes ANN-2 transportées par le drill Exploration (pas d'UI propre ici)
-  attributs: [],
+  personnage: "",       // facette ANN-2 transportée par le drill Exploration (pas d'UI propre ici)
+  // ANN-7, I7 — les paramètres d'hier (`tags`, `tag_scope`, `attributs`) d'un lien
+  // enregistré : envoyés UNE fois au serveur, qui les refuse par un 422 qui le dit. Les
+  // taire rendrait le corpus entier sous un lien qui a l'air filtré.
+  anciens: [],
   timer: null,
   searchGen: 0,   // jeton de fraîcheur : ignore les réponses de recherche périmées
   corpus: Promise.resolve(null),   // GET /api/corpus, ou null : la cause d'un écran vide (UX-6)
@@ -64,7 +65,7 @@ function direVide(defaut) {
   });
 }
 
-/* ---------------- Filtres : albums + nuage de tags ---------------- */
+/* ---------------- Filtres : albums ---------------- */
 async function loadAlbums() {
   try {
     // COL-3, tranche 2 — une copie gardée au fonds n'est plus un album de travail : seule
@@ -81,54 +82,6 @@ async function loadAlbums() {
   } catch (e) { /* ignore */ }
 }
 
-async function loadTags() {
-  try {
-    const tags = (await apiGet("/api/tags")).filter((t) => t.frequence > 0);
-    const box = $("#tag-cloud");
-    if (!tags.length) { box.innerHTML = '<span class="muted small">Aucun tag.</span>'; return; }
-    const max = Math.max(...tags.map((t) => t.frequence));
-    box.innerHTML = "";
-    for (const t of tags) {
-      const el = document.createElement("button");
-      el.className = "cloud-tag";
-      el.textContent = t.label;
-      el.dataset.label = t.label;
-      el.style.fontSize = (0.85 + 0.9 * (t.frequence / max)).toFixed(2) + "rem";
-      if (t.couleur) el.style.borderColor = t.couleur;
-      el.title = `${t.frequence} occurrence${t.frequence > 1 ? "s" : ""}`;
-      el.onclick = () => toggleTag(t.label);
-      box.appendChild(el);
-    }
-    // Le nuage vient d'être RECONSTRUIT : les boutons neufs ne portent plus la
-    // marque de ce qui est sélectionné, alors que `state.activeTags` la porte
-    // toujours. Sans cette ligne, le filtre resterait actif et invisible — et
-    // c'était déjà vrai au démarrage, `loadTags()` n'y étant pas attendu : arrivé
-    // après `restoreFromUrl()`, il effaçait le surlignage d'un tag deep-linké.
-    renderActiveTags();
-  } catch (e) { /* ignore */ }
-}
-
-function toggleTag(label) {
-  if (state.activeTags.has(label)) state.activeTags.delete(label);
-  else state.activeTags.add(label);
-  renderActiveTags();
-  search();
-}
-
-function renderActiveTags() {
-  const box = $("#active-tags");
-  box.innerHTML = "";
-  for (const label of state.activeTags) {
-    const chip = document.createElement("span");
-    chip.className = "active-tag";
-    chip.innerHTML = `<span>${escapeHtml(label)}</span><span class="x">×</span>`;
-    chip.querySelector(".x").onclick = () => toggleTag(label);
-    box.appendChild(chip);
-  }
-  document.querySelectorAll(".cloud-tag").forEach((el) =>
-    el.classList.toggle("active", state.activeTags.has(el.dataset.label)));
-}
-
 /* ---------------- Recherche ---------------- */
 /* Critères courants (texte + facettes corpus + facettes grammaticales) → URLSearchParams.
    `limit` exclu : l'URL reste propre/partageable, on l'ajoute juste pour la requête. */
@@ -142,15 +95,14 @@ function searchParams() {
   set("lemme", $("#f-lemme").value);
   set("morph", $("#f-morph").value);
   set("provenance", $("#f-prov").value);
-  state.activeTags.forEach((t) => p.append("tags", t));   // un param par tag
-  if (state.activeTags.size && state.tagScope === "herite") p.set("tag_scope", "herite");
   if (state.personnage) p.set("personnage", state.personnage);
-  state.attributs.forEach((v) => p.append("attributs", v));
+  state.anciens.forEach(([k, v]) => p.append(k, v));
   return p;
 }
 
 function search() {
   const p = searchParams();                    // critères réels (fetch + test de vacuité)
+  state.anciens = [];                          // dits une fois : le geste suivant s'en passe
   const vide = [...p].length === 0;
   // état dans l'URL (replaceState) → recherche partageable + rechargement sans perte ;
   // on y conserve `retour` (contexte de drill) sans l'envoyer à la requête.
@@ -160,7 +112,7 @@ function search() {
   Nav.memoriser(STOCKAGE, "recherche", display.toString());   // INFRA-5 : vide compris
   if (vide) {
     ++state.searchGen;                         // une réponse en vol n'écrase plus l'invite
-    direVide("Tapez un mot-clé, ou choisissez un album / type / tag / facette grammaticale.");
+    direVide("Tapez un mot-clé, ou choisissez un album / type / facette grammaticale.");
     $("#result-count").textContent = "";
     $("#btn-export").disabled = true;
     return;
@@ -200,8 +152,7 @@ function openPreview(r) {
     ? `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" class="pv-rect"/>` : "";
   $("#preview-text").innerHTML = (r.ocr_texte || "").trim()
     ? escapeHtml(r.ocr_texte) : '<span class="muted">(sans texte)</span>';
-  const tags = (r.tags || []).map((t) => `<span class="r-tag">${escapeHtml(t)}</span>`).join("");
-  $("#preview-meta").innerHTML = (r.note ? "📝 " + escapeHtml(r.note) + "<br>" : "") + tags;
+  $("#preview-meta").innerHTML = r.note ? "📝 " + escapeHtml(r.note) : "";
   $("#preview").hidden = false;
 }
 
@@ -247,7 +198,7 @@ function renderResults(res, q) {
     box.innerHTML = res.sans_terme
       ? '<div class="search-hint">Cette recherche ne contient aucun terme cherchable :'
         + ' la ponctuation et les symboles ne sont pas indexés. Essayez un mot,'
-        + ' ou passez par les filtres et le nuage de tags.</div>'
+        + ' ou passez par les filtres.</div>'
       : "";
     if (!res.sans_terme) direVide("Aucun résultat.");
     return;
@@ -263,16 +214,13 @@ function renderResults(res, q) {
     const texte = (r.ocr_texte || "").trim();
     const noteHtml = r.note
       ? `<div class="r-note">📝 ${highlight(r.note, q)}</div>` : "";
-    const tagsHtml = (r.tags || []).length
-      ? `<div class="r-tags">${r.tags.map((t) => `<span class="r-tag">${escapeHtml(t)}</span>`).join("")}</div>`
-      : "";
 
     card.innerHTML =
       `<img class="r-thumb" loading="lazy" alt=""` +
       ` src="/api/regions/${r.region_id}/crop?taille=260">` +
       `<div class="r-body">` +
         `<div class="r-text">${texte ? highlight(texte, q) : '<span class="muted">(sans texte)</span>'}</div>` +
-        noteHtml + tagsHtml +
+        noteHtml +
         `<div class="r-meta muted small">${escapeHtml(r.album_titre)} · ` +
         `<span class="r-cite">${escapeHtml(r.citation ? r.citation.texte : "planche " + r.planche_numero)}</span> · ` +
         `<span class="r-type">${r.type}</span></div>` +
@@ -304,11 +252,8 @@ function restoreFromUrl() {
   $("#f-lemme").value = p.get("lemme") || "";
   $("#f-morph").value = p.get("morph") || "";
   $("#f-prov").value = p.get("provenance") || "";
-  state.activeTags = new Set(p.getAll("tags"));
-  state.tagScope = p.get("tag_scope") === "herite" ? "herite" : "propre";   // hérité du drill
   state.personnage = p.get("personnage") || "";
-  state.attributs = p.getAll("attributs");
-  renderActiveTags();
+  state.anciens = [...p].filter(([k]) => ["tags", "tag_scope", "attributs"].includes(k));
   if (p.get("pos") || p.get("lemme") || p.get("morph") || p.get("provenance"))
     $("#gram-facets").open = true;     // déplie si une facette grammaticale est active
 }
@@ -339,13 +284,6 @@ async function setup() {
   });
   setupBack();   // bouton « ← Retour » (drill explicite, ou history.back si on vient de l'app)
   state.corpus = loadCorpus();
-  loadTags();
-  // Les tags naissent dans la VISIONNEUSE, souvent dans un autre onglet. Bâti une
-  // seule fois, le nuage restait figé sur l'état du démarrage (D1/D2) : on le relit
-  // en revenant sur l'onglet, qui est exactement le moment où il a pu changer.
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) loadTags();
-  });
   await loadAlbums();        // options d'album AVANT de restaurer la sélection d'album
   restoreFromUrl();
   search();                  // rejoue la recherche restaurée (ou affiche l'invite)

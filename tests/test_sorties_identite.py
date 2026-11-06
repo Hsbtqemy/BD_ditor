@@ -107,11 +107,8 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
     r = client.post(f"/api/planches/{pl['id']}/regions", headers=ident,
                     json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()
     client.put(f"/api/regions/{r['id']}", json={"ocr_texte": "OTAGE"}, headers=ident)
-    client.put(f"/api/regions/{r['id']}/annotation",
-               json={"note": "n", "tags": ["t"]}, headers=ident)
+    client.put(f"/api/regions/{r['id']}/annotation", json={"note": "n"}, headers=ident)
     perso = client.post("/api/personnages", json={"nom": "P"}, headers=ident).json()
-    dim = client.post("/api/attributs/dimensions",
-                      json={"cible": "case", "nom": "cadrage"}, headers=ident).json()
     # La collection de l'album — pas « la première », qui est depuis la v31 la base du
     # projet de repli, née avec lui et où l'album n'est pas.
     col = client.get(f"/api/albums/{a['id']}/collections", headers=ident).json()[0]
@@ -308,7 +305,6 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
     return {"ident": ident, "db": db_path, "data": data_dir,
             "album_id": a["id"], "planche_id": pl["id"], "region_id": r["id"],
             "collection_id": col["id"], "personnage_id": perso["id"],
-            "dim_id": dim["id"],
             "projet_id": projet["id"],
             "base_id": base["id"],
             "grille_id": grille_id, "numero": 1,
@@ -1396,10 +1392,15 @@ def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, dat
                    ocr_texte=PUBLIES["le texte de la bulle enfant"])
     cartouche = region(paratexte, type="cartouche",
                        ocr_texte=PUBLIES["le texte du cartouche de la planche paratexte"])
-    for rid, corps in ((bulle["id"], {"note": PUBLIES["sa note"], "tags": [PUBLIES["son tag"]]}),
-                       (cartouche["id"], {"note": PUBLIES["sa note, sans tag"], "tags": []})):
+    for rid, corps in ((bulle["id"], {"note": PUBLIES["sa note"]}),
+                       (cartouche["id"], {"note": PUBLIES["sa note, sans tag"]})):
         rep = client.put(f"/api/regions/{rid}/annotation", json=corps)
         assert rep.status_code == 200, rep.text
+    # ANN-7 — le tag d'hier, posé en base : aucune route ne le pose plus, et les exports le
+    # lisent encore jusqu'à ce que les sorties le retirent.
+    import database
+    from conftest import poser_tags
+    poser_tags(database.DB_PATH, bulle["id"], [PUBLIES["son tag"]])
     rep = client.patch(f"/api/planches/{paratexte['id']}/role", json={"role": "paratexte"})
     assert rep.status_code == 200, rep.text
     ids = [recit["id"], paratexte["id"], vide["id"]]

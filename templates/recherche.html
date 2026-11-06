@@ -31,8 +31,8 @@
 
     <div class="search-bar" data-parcours="recherche-champ">
       <input type="search" id="q" autocomplete="off"
-             aria-label="Rechercher dans les dialogues, notes et tags"
-             placeholder="Rechercher dans les dialogues, notes, tags…">
+             aria-label="Rechercher dans les dialogues et les notes"
+             placeholder="Rechercher dans les dialogues, notes…">
       <select id="f-album" aria-label="Filtrer par album"><option value="">Tous les albums</option></select>
       <select id="f-type" aria-label="Filtrer par type de région">
         <option value="">Tous les types</option>
@@ -61,12 +61,6 @@
           <option value="valide">validé</option>
         </select>
       </div>
-    </details>
-
-    <div id="active-tags" class="active-tags"></div>
-    <details id="tag-cloud-wrap" data-parcours="recherche-tags" open>
-      <summary class="muted small">Nuage de tags (cliquer pour filtrer)</summary>
-      <div id="tag-cloud" class="tag-cloud"></div>
     </details>
 
     <!-- COL-4 : dans un bac à sable, la phrase « … n'est ni cherché ni exploré » naît

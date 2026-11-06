@@ -186,55 +186,50 @@ def test_patch_statut_invalide_422(client, planche):
 
 
 # ---------------------------- Annotations ------------------------------- #
-def test_put_annotation_et_tags_minuscules(client, region):
-    r = client.put(f"/api/regions/{region['id']}/annotation",
-                   json={"note": "Salutation", "tags": ["Dialogue", "  AMITIÉ  "]})
-    assert r.status_code == 200
-    labels = {t["label"] for t in r.json()["tags"]}
-    assert labels == {"dialogue", "amitié"}  # normalisés en minuscules
+def test_annotee_veut_dire_une_note_ou_un_releve(client, planche, db_path):
+    """ANN-7, I4 (Hugo, 2026-11-05) — « annotée » : une note non vide, ou au moins un relevé
+    sur la région. Un tag d'hier seul (posé en base) ne compte plus. La même règle pour la
+    coche de l'arbre, `nb_annotees` d'une planche et le compteur de la Recherche."""
+    from conftest import poser_tags
+    from grilles_decor import grille_active_vivante
+
+    def bulle():
+        return client.post(f"/api/planches/{planche['id']}/regions",
+                           json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
+                                 "ocr_texte": "AH NON"}).json()["id"]
+    note, releve, tag, rien = bulle(), bulle(), bulle(), bulle()
+    client.put(f"/api/regions/{note}/annotation", json={"note": "une note"})
+    g = grille_active_vivante(client)
+    r = client.post("/api/releves", json={"region_id": releve, "grille_id": g["grille_id"],
+                                          "version": 1, "entree_cle": "cri", "mots": [0]})
+    assert r.status_code == 201, r.text
+    poser_tags(db_path, tag, ["d-hier"])
+    annotees = {x["id"] for x in client.get(f"/api/planches/{planche['id']}/regions").json()
+                if x["annotee"]}
+    assert annotees == {note, releve}
+    p = next(x for x in client.get(f"/api/albums/{planche['album_id']}/planches").json()
+             if x["id"] == planche["id"])
+    assert p["nb_annotees"] == 2
+    assert client.get("/api/corpus").json()["annotees"] == 2
 
 
 def test_get_annotation_vide(client, region):
     a = client.get(f"/api/regions/{region['id']}/annotation").json()
-    assert a["note"] is None and a["tags"] == []
-
-
-def test_annotation_upsert_remplace_tags(client, region):
-    client.put(f"/api/regions/{region['id']}/annotation",
-               json={"note": "n1", "tags": ["a", "b"]})
-    client.put(f"/api/regions/{region['id']}/annotation",
-               json={"note": "n2", "tags": ["c"]})
-    a = client.get(f"/api/regions/{region['id']}/annotation").json()
-    assert a["note"] == "n2" and {t["label"] for t in a["tags"]} == {"c"}
+    assert a["note"] is None and "tags" not in a     # ANN-7 : l'annotation est la note
 
 
 def test_put_annotation_vide_supprime_la_ligne(client, region):
-    """Vider une annotation (note blanche + tags blancs) SUPPRIME la ligne : pas
-    de coquille vide (sinon fausse le compteur d'annotées, n'est pas cherchable,
-    et ferait conserver à tort la case à la re-segmentation)."""
+    """Vider une annotation (note blanche) SUPPRIME la ligne : pas de coquille vide
+    (sinon fausse le compteur d'annotées, n'est pas cherchable, et ferait conserver à
+    tort la case à la re-segmentation)."""
     rid = region["id"]
     base = client.get("/api/corpus").json()["annotees"]
-    client.put(f"/api/regions/{rid}/annotation", json={"note": "temporaire", "tags": ["x"]})
+    client.put(f"/api/regions/{rid}/annotation", json={"note": "temporaire"})
     assert client.get("/api/corpus").json()["annotees"] == base + 1
-    # note blanche + tags réduits à rien après normalisation -> suppression
-    r = client.put(f"/api/regions/{rid}/annotation", json={"note": "  ", "tags": ["  ", ""]})
-    assert r.status_code == 200 and not r.json()["note"] and r.json()["tags"] == []
+    r = client.put(f"/api/regions/{rid}/annotation", json={"note": "  "})
+    assert r.status_code == 200 and not r.json()["note"]
     assert client.get("/api/corpus").json()["annotees"] == base       # ligne supprimée
     assert not client.get("/api/recherche", params={"q": "temporaire"}).json()["results"]
-
-
-def test_tags_frequence(client, region):
-    client.put(f"/api/regions/{region['id']}/annotation",
-               json={"note": "", "tags": ["nuit"]})
-    tags = {t["label"]: t["frequence"] for t in client.get("/api/tags").json()}
-    assert tags.get("nuit") == 1
-
-
-def test_create_tag_idempotent(client):
-    client.post("/api/tags", json={"label": "PLUIE", "couleur": "#111"})
-    client.post("/api/tags", json={"label": "pluie"})
-    labels = [t["label"] for t in client.get("/api/tags").json()]
-    assert labels.count("pluie") == 1
 
 
 # ------------------------------ Recherche ------------------------------- #
@@ -242,8 +237,7 @@ def _region_avec_ocr_et_annotation(client, planche):
     rid = client.post(f"/api/planches/{planche['id']}/regions",
                       json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
                             "ocr_texte": "Bonjour Esther"}).json()["id"]
-    client.put(f"/api/regions/{rid}/annotation",
-               json={"note": "salutation amicale", "tags": ["dialogue"]})
+    client.put(f"/api/regions/{rid}/annotation", json={"note": "salutation amicale"})
     return rid
 
 
@@ -256,12 +250,6 @@ def test_recherche_par_ocr(client, planche):
 def test_recherche_par_note(client, planche):
     rid = _region_avec_ocr_et_annotation(client, planche)
     res = client.get("/api/recherche", params={"q": "amicale"}).json()["results"]
-    assert any(r["region_id"] == rid for r in res)
-
-
-def test_recherche_filtre_tag(client, planche):
-    rid = _region_avec_ocr_et_annotation(client, planche)
-    res = client.get("/api/recherche", params={"tags": "dialogue"}).json()["results"]
     assert any(r["region_id"] == rid for r in res)
 
 
@@ -544,7 +532,8 @@ def test_sante_expose_kumiko(client):
 
 def test_corpus_stats(client, region):
     c = client.get("/api/corpus").json()
-    assert set(c) >= {"albums", "planches", "regions", "annotees", "transcrites", "tags"}
+    assert set(c) >= {"albums", "planches", "regions", "annotees", "transcrites"}
+    assert "tags" not in c          # ANN-7 : le vocabulaire d'hier ne se compte plus
     assert c["albums"] >= 1 and c["planches"] >= 1 and c["regions"] >= 1
 
 
@@ -558,10 +547,6 @@ def test_corpus_transcrites_compte_le_texte(client, planche):
 def test_recherche_page_servie(client):
     r = client.get("/recherche")
     assert r.status_code == 200 and "Recherche" in r.text
-
-
-def test_create_tag_label_vide_422(client):
-    assert client.post("/api/tags", json={"label": "   "}).status_code == 422
 
 
 def test_update_region_sans_champ_inchange(client, region):
@@ -600,14 +585,7 @@ def test_delete_region_inexistante_404(client):
 def test_annotation_region_inexistante_404(client):
     assert client.get("/api/regions/999/annotation").status_code == 404
     assert client.put("/api/regions/999/annotation",
-                      json={"note": "x", "tags": []}).status_code == 404
-
-
-def test_annotation_tags_tous_vides(client, region):
-    """Tags ne contenant que des espaces -> aucun tag (branche _ensure_tags vide)."""
-    r = client.put(f"/api/regions/{region['id']}/annotation",
-                   json={"note": "n", "tags": ["  ", ""]})
-    assert r.status_code == 200 and r.json()["tags"] == []
+                      json={"note": "x"}).status_code == 404
 
 
 def test_update_region_ocr_reindexe(client, region):
@@ -672,7 +650,10 @@ def test_export_csv_album_inexistant_404(client):
 
 def test_export_tei_complet(client):
     """Album avec auteur + région avec OCR + annotation note/tags : couvre les
-    branches author / <line> OCR / <note> de l'export TEI."""
+    branches author / <line> OCR / <note> de l'export TEI. Le tag est d'HIER, posé en base
+    (ANN-7) : l'export le lit encore jusqu'à ce que les sorties le retirent."""
+    import database
+    from conftest import poser_tags
     aid = client.post("/api/albums",
                       json={"titre": "T", "auteur": "Sattouf"}).json()["id"]
     buf = io.BytesIO()
@@ -682,8 +663,7 @@ def test_export_tei_complet(client):
     rid = client.post(f"/api/planches/{pid}/regions",
                       json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
                             "ocr_texte": "TEXTEOCR"}).json()["id"]
-    client.put(f"/api/regions/{rid}/annotation",
-               json={"note": "une note", "tags": ["nuit"]})
+    poser_tags(database.DB_PATH, rid, ["nuit"], note="une note")
     xml = client.get("/api/export/tei", params={"album_id": aid}).text
     assert "Sattouf" in xml
     assert "TEXTEOCR" in xml

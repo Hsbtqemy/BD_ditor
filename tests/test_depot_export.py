@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import ADMIN, direct_query, make_png
+from conftest import ADMIN, direct_query, make_png, poser_tags
 
 # `tools/` n'est pas un paquet et ses scripts s'importent à plat entre eux : c'est le
 # DOSSIER qui doit être sur le chemin, exactement comme `routes/depot.py` le fait. Posé
@@ -281,60 +281,58 @@ def vocabulaire_cloisonne(client, db_path, derriere_proxy):
     reg = client.post(f"/api/planches/{pl['id']}/regions", headers=ADMIN,
                       json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}).json()
 
-    def domaine(nom):
-        return client.post("/api/domaines", json={"nom": nom}, headers=ADMIN).json()
-
-    def dimension(nom, cible="case"):
-        r = client.post("/api/attributs/dimensions",
-                        json={"cible": cible, "nom": nom}, headers=ADMIN)
-        assert r.status_code in (200, 201), r.text
-        return r.json()
-
-    def valeur(dim, v):
-        r = client.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
-                        json={"valeur": v}, headers=ADMIN)
-        assert r.status_code in (200, 201), r.text
-        return r.json()
-
-    for nom in ("dom-global-9100", "dom-alpha-9101", "dom-bravo-9102"):
-        domaine(nom)
-    dims = {nom: dimension(nom) for nom in
-            ("dim-global-9200", "dim-alpha-9201", "dim-bravo-9202")}
-    # Un axe de PERSONNAGE : les attributs d'une entité passent par `personnage_attribut`,
-    # qui exige une dimension de cible `personnage` — un axe de case y est refusé en 422,
-    # et le décor serait vide sans qu'aucune assertion ne s'en plaigne.
-    dims["dim-perso-9203"] = dimension("dim-perso-9203", cible="personnage")
-    vals = {nom: valeur(dims[dim], nom) for dim, nom in
-            (("dim-global-9200", "val-global-9300"),
-             ("dim-alpha-9201", "val-alpha-9301"),
-             ("dim-bravo-9202", "val-bravo-9302"),
-             # Une valeur qui reste GLOBALE sous un axe qui deviendra local à Bravo.
-             # L'état est réel et daté : l'axe était global quand la valeur a été créée,
-             # il a été restreint ensuite (v24 fait DESCENDRE la portée à la création,
-             # pas rétroactivement). Elle est ici pour deux raisons. Elle donne au
-             # `vocabulaire` CSV une LIGNE pour cet axe — ce dump est piloté par les
-             # valeurs, donc un axe dont toutes les valeurs sont locales n'y paraît
-             # jamais, et le filtre posé sur l'axe cessait d'être mesurable. Et elle pose
-             # la règle « un terme n'est jamais plus GLOBAL que celui dont il dépend » :
-             # son axe étant hors périmètre, elle ne voyage pas avec Alpha.
-             ("dim-bravo-9202", "valg-sous-bravo-9312"),
-             ("dim-perso-9203", "valp-global-9310"),
-             ("dim-perso-9203", "valp-bravo-9311"))}
+    # Le vocabulaire d'hier, que plus aucune route ne crée ni ne pose (ANN-7, le
+    # basculement) : écrit en base, comme une base d'avant le basculement le porte.
+    conn = sqlite3.connect(db_path)
+    try:
+        for nom in ("dom-global-9100", "dom-alpha-9101", "dom-bravo-9102"):
+            conn.execute("INSERT INTO domaine (nom) VALUES (?)", (nom,))
+        # `dim-perso-9203` : un axe de PERSONNAGE, celui que porte `personnage_attribut`.
+        dims = {nom: conn.execute("INSERT INTO attribut_dimension (cible, nom) VALUES (?, ?)",
+                                  (cible, nom)).lastrowid
+                for nom, cible in (("dim-global-9200", "case"), ("dim-alpha-9201", "case"),
+                                   ("dim-bravo-9202", "case"),
+                                   ("dim-perso-9203", "personnage"))}
+        vals = {nom: conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
+                                  "VALUES (?, ?)", (dims[dim], nom)).lastrowid
+                for dim, nom in (
+                    ("dim-global-9200", "val-global-9300"),
+                    ("dim-alpha-9201", "val-alpha-9301"),
+                    ("dim-bravo-9202", "val-bravo-9302"),
+                    # Une valeur qui reste GLOBALE sous un axe qui deviendra local à Bravo.
+                    # L'état est réel et daté : l'axe était global quand la valeur a été
+                    # créée, il a été restreint ensuite (v24 fait DESCENDRE la portée à la
+                    # création, pas rétroactivement). Elle est ici pour deux raisons. Elle
+                    # donne au `vocabulaire` CSV une LIGNE pour cet axe — ce dump est piloté
+                    # par les valeurs, donc un axe dont toutes les valeurs sont locales n'y
+                    # paraît jamais, et le filtre posé sur l'axe cessait d'être mesurable. Et
+                    # elle pose la règle « un terme n'est jamais plus GLOBAL que celui dont
+                    # il dépend » : son axe étant hors périmètre, elle ne voyage pas avec
+                    # Alpha.
+                    ("dim-bravo-9202", "valg-sous-bravo-9312"),
+                    ("dim-perso-9203", "valp-global-9310"),
+                    ("dim-perso-9203", "valp-bravo-9311"))}
+        conn.commit()
+    finally:
+        conn.close()
     # Un personnage, entité de CORPUS : il porte une valeur de chaque côté.
     perso = client.post("/api/personnages", json={"nom": "Témoin"}, headers=ADMIN).json()
-    for v in ("valp-global-9310", "valp-bravo-9311"):
-        r = client.put(f"/api/personnages/{perso['id']}/attributs",
-                       json={"valeur_id": vals[v]["id"]}, headers=ADMIN)
-        assert r.status_code == 200, r.text
     # La région d'Alpha porte trois tags et deux valeurs, des deux côtés de la frontière.
     r = client.put(f"/api/regions/{reg['id']}/annotation", headers=ADMIN,
-                   json={"note": "note", "tags": ["tag-global-9400", "tag-alpha-9401",
-                                                  "tag-bravo-9402"]})
+                   json={"note": "note"})
     assert r.status_code == 200, r.text
-    for v in ("val-alpha-9301", "val-bravo-9302"):
-        r = client.put(f"/api/regions/{reg['id']}/attributs",
-                       json={"valeur_id": vals[v]["id"]}, headers=ADMIN)
-        assert r.status_code == 200, r.text
+    poser_tags(db_path, reg["id"], ["tag-global-9400", "tag-alpha-9401", "tag-bravo-9402"])
+    conn = sqlite3.connect(db_path)
+    try:
+        for v in ("valp-global-9310", "valp-bravo-9311"):
+            conn.execute("INSERT INTO personnage_attribut (personnage_id, valeur_id) "
+                         "VALUES (?, ?)", (perso["id"], vals[v]))
+        for v in ("val-alpha-9301", "val-bravo-9302"):
+            conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+                         (reg["id"], vals[v]))
+        conn.commit()
+    finally:
+        conn.close()
 
     # Un axe GLOBAL rattaché à un domaine LOCAL à Bravo : l'état d'une base antérieure à
     # v24, où la portée ne DESCENDAIT pas encore du domaine vers ses dimensions. C'est la
@@ -517,15 +515,8 @@ def album_partage(client, db_path, vocabulaire_cloisonne):
                     json={"type": "bulle", "x": 1, "y": 1, "w": 3, "h": 3})
     assert r.status_code in (200, 201), r.text
     bulle_id = r.json()["id"]
-    # ANN-8 (2026-10-22) — un tag local ne se POSE plus hors de sa collection : l'état réel
-    # se fabrique comme il naît, le tag de Bravo posé quand il était global, puis rendu local.
-    bravo_du_tag = direct_query(db_path, "SELECT collection_id FROM tags WHERE label = ?",
-                                (T_BRAVO,))[0]["collection_id"]
-    _terme_local(db_path, "tags", "label", T_BRAVO, None)
-    r = client.put(f"/api/regions/{bulle_id}/annotation", headers=ADMIN,
-                   json={"note": "", "tags": [T_BRAVO]})
-    assert r.status_code == 200, r.text
-    _terme_local(db_path, "tags", "label", T_BRAVO, bravo_du_tag)
+    # Le tag de Bravo, posé en base (ANN-7 : plus aucune route ne pose un tag).
+    poser_tags(db_path, bulle_id, [T_BRAVO])
     # Le décor est RELU : sans la ligne d'annotation, « elle n'est pas dite annotée » ne
     # mesurerait rien.
     lignes = direct_query(db_path,
@@ -748,10 +739,8 @@ def test_les_tags_d_une_region_sortent_dans_le_meme_ordre_dans_les_trois_formats
     créés dans l'ordre INVERSE de l'alphabet — `zz…` d'abord — sur la bulle du décor."""
     d = album_partage
     zz, aa = "zz-ordre-9700", "aa-ordre-9701"
-    for tags in ([zz], [zz, aa]):                     # deux écritures : `zz` naît avant `aa`
-        r = client.put(f"/api/regions/{d['bulle_id']}/annotation", headers=ADMIN,
-                       json={"note": "", "tags": tags})
-        assert r.status_code == 200, r.text
+    for tags in ([zz], [aa]):                         # deux écritures : `zz` naît avant `aa`
+        poser_tags(db_path, d["bulle_id"], tags)      # en base : ANN-7, plus de route
     ids = {l["label"]: l["id"] for l in direct_query(
         db_path, "SELECT id, label FROM tags WHERE label IN (?, ?)", (zz, aa))}
     assert ids[zz] < ids[aa], "le décor ne crée plus `zz` avant `aa` : l'ordre ne mesure rien"
@@ -819,38 +808,20 @@ def test_un_album_sans_collection_ne_sort_pas_sans_titre_non_plus(client, db_pat
     assert "aucune collection" in rep.json()["detail"], rep.text
 
 
-def test_les_exports_transversaux_gardent_la_regle_de_la_personne(client, db_path,
-                                                                  album_partage):
-    """La décision du 2026-10-07 s'arrête à l'export d'album. La Recherche et
-    l'Exploration ne sortent au titre d'AUCUNE collection : elles traversent ce que la
-    personne a le droit d'exporter, et leur vocabulaire suit sa portée d'export
-    (`Portee.pour_export`, DROIT-2) — même filtrées sur un seul album.
-
-    Ce test ne peut pas être rouge sur le code d'avant : il garde ce qui ne devait PAS
-    changer. Borner ces deux cœurs par erreur le ferait tomber.
-    """
+def test_les_exports_transversaux_ne_sortent_plus_aucun_tag(client, db_path, album_partage):
+    """ANN-7, le basculement — la Recherche et l'Exploration ne lisent plus le vocabulaire
+    d'hier : leurs exports ne portent aucun tag, pour personne, même filtrés sur un album
+    dont les régions en portent encore. Ce test gardait, jusque-là, que leur vocabulaire
+    suivait la portée d'export de la personne (`Portee.pour_export`, DROIT-2)."""
     d = album_partage
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
-                     "VALUES (?, 0, 'DIS', 'dire', 'VERB', '')", (d["region_id"],))
-        conn.commit()
-    finally:
-        conn.close()
-    sorties = (("/api/recherche/export.csv", {"album": d["album_id"]}),
-               ("/api/analyse/croisement.csv",
-                {"axe_x": "tag", "axe_y": "type", "album": d["album_id"]}))
-    for route, params in sorties:
-        def texte(qui):
-            rep = client.get(route, params=params, headers=qui)
-            assert rep.status_code == 200, (route, qui, rep.text[:300])
-            return rep.text
-        for qui in (DES_DEUX, ADMIN):
-            assert T_BRAVO in texte(qui) and T_ALPHA in texte(qui), (
-                f"{route} : qui exporte Alpha ET Bravo doit emporter les deux — "
-                "l'export transversal a été borné comme un export d'album")
-        for qui in (D_ALPHA, LIT_LES_DEUX):
-            assert T_ALPHA in texte(qui) and T_BRAVO not in texte(qui), (route, qui)
+    rep = client.get("/api/recherche/export.csv", params={"album": d["album_id"]},
+                     headers=ADMIN)
+    assert rep.status_code == 200, rep.text[:300]
+    assert "ALBUM-ALPHA-9001" in rep.text, "le décor ne sort plus : le test ne mesure rien"
+    for qui in (DES_DEUX, D_ALPHA, LIT_LES_DEUX, ADMIN):
+        texte = client.get("/api/recherche/export.csv", params={"album": d["album_id"]},
+                           headers=qui).text
+        assert T_ALPHA not in texte and T_BRAVO not in texte and T_GLOBAL not in texte, qui
 
 
 # --------------------------------------------------------------------------- #

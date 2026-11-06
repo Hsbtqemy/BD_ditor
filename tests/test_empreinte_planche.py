@@ -51,19 +51,14 @@ def test_chaque_geste_de_l_atelier_change_l_empreinte_de_sa_seule_region(client,
     boite = _region(client, pid, type="personnage")
     temoin = _region(client, pid, type="cartouche")
     zed = client.post("/api/personnages", json={"nom": "Zed"}).json()["id"]
-    d = client.post("/api/attributs/dimensions", json={"cible": "case", "nom": "lieu"}).json()["id"]
-    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "rue"}).json()["id"]
     gestes = [
         (bulle, lambda: client.put(f"/api/regions/{bulle}", json={"ocr_texte": "BONJOUR"})),
         (bulle, lambda: client.put(f"/api/regions/{bulle}", json={"x": 5})),
         (bulle, lambda: client.put(f"/api/regions/{bulle}", json={"parent_id": case})),
         (bulle, lambda: client.put(f"/api/regions/{bulle}/annotation", json={"note": "n"})),
-        (bulle, lambda: client.put(f"/api/regions/{bulle}/annotation",
-                                   json={"tags_ajoutes": ["cri"]})),
         (bulle, lambda: client.put(f"/api/regions/{bulle}/locuteur", json={"personnage_id": zed})),
         (boite, lambda: client.put(f"/api/regions/{boite}/personnage",
                                    json={"personnage_id": zed})),
-        (case, lambda: client.put(f"/api/regions/{case}/attributs", json={"valeur_id": v})),
         (temoin, lambda: client.put(f"/api/regions/{temoin}", json={"type": "texte"})),
     ]
     for rid, geste in gestes:

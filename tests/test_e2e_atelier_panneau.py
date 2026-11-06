@@ -16,6 +16,7 @@ reste ici ne dépendait du mode que pour s'y rendre :
   l'arbre : c'est ce que le guide fait écrire dans une note pour renvoyer à une autre bulle.
 """
 import re
+import sqlite3
 
 import httpx
 import pytest
@@ -40,7 +41,7 @@ SURFACES_HORS_PERIMETRE = {
 
 
 @pytest.fixture
-def atelier(live_server):
+def atelier(live_server, tmp_path):
     """Une planche, une case, et sous elle une bulle, un cartouche, une zone de texte et une
     boîte personnage — plus Tintin au registre."""
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
@@ -58,7 +59,8 @@ def atelier(live_server):
             return rep.json()["id"]
 
         case = region("case", 40, 40)
-        decor = {"base": live_server, "album": aid, "planche": pid, "case": case,
+        decor = {"base": live_server, "base_sqlite": tmp_path / "live.sqlite",
+                 "album": aid, "planche": pid, "case": case,
                  "bulle": region("bulle", 60, 60, case),
                  "cartouche": region("cartouche", 60, 300, case),
                  "texte": region("texte", 400, 60, case),
@@ -86,9 +88,39 @@ def _locuteur(decor, rid):
         return c.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]
 
 
+def _sql(decor):
+    conn = sqlite3.connect(decor["base_sqlite"])
+    conn.execute("PRAGMA busy_timeout = 5000")
+    return conn
+
+
 def _attributs(decor, rid):
-    with _http(decor) as c:
-        return [(a["dimension"], a["valeur"]) for a in c.get(f"/api/regions/{rid}/attributs").json()]
+    """La situation d'une région, lue EN BASE : ses routes sont parties avec le basculement
+    d'ANN-7 ; la table vit jusqu'à la migration qui la retire."""
+    conn = _sql(decor)
+    try:
+        return [tuple(x) for x in conn.execute(
+            "SELECT d.nom, v.valeur FROM region_attribut ra "
+            "JOIN attribut_valeur v ON v.id = ra.valeur_id "
+            "JOIN attribut_dimension d ON d.id = v.dimension_id WHERE ra.region_id = ?",
+            (rid,))]
+    finally:
+        conn.close()
+
+
+def _poser_une_situation(decor, rid):
+    """Une situation d'HIER, posée EN BASE : aucune route ne la pose plus (ANN-7)."""
+    conn = _sql(decor)
+    try:
+        d = conn.execute("INSERT INTO attribut_dimension (cible, nom) VALUES ('case', 'lieu')"
+                         ).lastrowid
+        v = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
+                         "VALUES (?, 'falaise')", (d,)).lastrowid
+        conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+                     (rid, v))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _est(methode, chemin):
@@ -136,14 +168,11 @@ def test_une_bulle_devenue_case_perd_son_locuteur_et_un_ctrl_z_rend_les_deux(pag
 def test_une_case_devenue_bulle_perd_sa_situation_et_un_ctrl_z_rend_les_deux(page, atelier):
     """ANN-8, le miroir (Hugo, 2026-10-21) — une case située passe en bulle : l'écran DIT que
     la situation part, par son nombre de valeurs (aucun terme nommé), et UN Ctrl+Z rend la
-    case avec sa situation. La situation se pose par l'API : plus aucun écran ne la pose, mais
-    la table vit jusqu'à la migration du basculement, et la route retire encore ce qu'un type
-    ne montre pas."""
+    case avec sa situation. La situation se pose EN BASE : plus aucun écran ni aucune route
+    ne la pose, mais la table vit jusqu'à la migration du basculement, et la route qui
+    change le type retire encore ce qu'un type ne montre pas."""
     rid = atelier["case"]
-    with _http(atelier) as c:
-        d = c.post("/api/attributs/dimensions", json={"cible": "case", "nom": "lieu"}).json()["id"]
-        v = c.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "falaise"}).json()["id"]
-        assert c.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v}).status_code == 200
+    _poser_une_situation(atelier, rid)
     _ouvrir(page, atelier, "case")
 
     with page.expect_response(_est("PUT", f"/api/regions/{rid}")) as reponse:

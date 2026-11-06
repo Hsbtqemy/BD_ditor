@@ -40,10 +40,32 @@ def _region(client, planche_id, headers=ADMIN, **kw):
 
 
 def _valeur(client, cible, dimension, valeur):
-    d = _ok(client.post("/api/attributs/dimensions", json={"cible": cible, "nom": dimension},
-                        headers=ADMIN), 200, 201).json()["id"]
-    return _ok(client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": valeur},
-                           headers=ADMIN), 200, 201).json()["id"]
+    """Une valeur d'attribut d'HIER, posée EN BASE : ses routes sont parties avec le
+    basculement d'ANN-7, la table vit jusqu'à la migration qui la retire. `client` reste
+    dans la signature : les appelants le passent, comme avant."""
+    import database
+    from conftest import poser_attribut
+    return poser_attribut(database.DB_PATH, cible=cible, dimension=dimension,
+                          valeur=valeur)["valeur_id"]
+
+
+def _situer(rid, valeur_id):
+    """La situation d'une case, posée EN BASE (ANN-7 : aucune route ne la pose plus)."""
+    import database
+    _sql(database.DB_PATH, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+         (rid, valeur_id))
+
+
+def _retirer_la_valeur(valeur_id):
+    """Supprime une valeur d'attribut EN BASE (cascade sur ses affectations)."""
+    import database
+    c = sqlite3.connect(database.DB_PATH)
+    c.execute("PRAGMA foreign_keys = ON")
+    try:
+        c.execute("DELETE FROM attribut_valeur WHERE id = ?", (valeur_id,))
+        c.commit()
+    finally:
+        c.close()
 
 
 def _perso(client, nom, headers=ADMIN):
@@ -71,13 +93,16 @@ def _decor(client, planche):
     boite = _region(client, pid, type="personnage", parent_id=case, x=25, w=20, h=20)
     lieu = _valeur(client, "case", "lieu", "falaise")
     tintin, milou = _perso(client, "Tintin"), _perso(client, "Milou")
-    _ok(client.put(f"/api/regions/{case}/attributs", json={"valeur_id": lieu}, headers=ADMIN), 200)
+    _situer(case, lieu)
     _ok(client.put(f"/api/regions/{cartouche}/locuteur", json={"personnage_id": tintin},
                    headers=ADMIN), 200)
     _ok(client.put(f"/api/regions/{boite}/personnage", json={"personnage_id": milou},
                    headers=ADMIN), 200)
     _ok(client.put(f"/api/regions/{cartouche}/annotation",
-                   json={"note": "voix off", "tags": ["récit"]}, headers=ADMIN), 200)
+                   json={"note": "voix off"}, headers=ADMIN), 200)
+    import database
+    from conftest import poser_tags
+    poser_tags(database.DB_PATH, cartouche, ["récit"])        # un tag d'hier, en base
     return {"case": case, "cartouche": cartouche, "boite": boite, "lieu": lieu,
             "tintin": tintin, "milou": milou}
 
@@ -98,7 +123,7 @@ def test_annuler_la_suppression_rend_locuteur_presence_et_situation(client, plan
                 (d["cartouche"],))[0]["note"] == "voix off"
     # Et l'écran le relit par ses routes, pas seulement en base.
     assert client.get(f"/api/regions/{d['cartouche']}/locuteur").json()["locuteur"]["id"] == d["tintin"]
-    assert [a["valeur"] for a in client.get(f"/api/regions/{d['case']}/attributs").json()] == ["falaise"]
+    # (la situation ne se relit plus par une route : ANN-7.)
 
 
 def test_l_instantane_de_suppression_porte_les_liens(client, planche, db_path):
@@ -125,7 +150,7 @@ def test_un_lien_dont_l_objet_a_disparu_ne_revient_pas_et_se_compte(client, plan
     d = _decor(client, planche)
     _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
     _ok(client.delete(f"/api/personnages/{d['tintin']}", headers=ADMIN), 200, 204)
-    _ok(client.delete(f"/api/attributs/valeurs/{d['lieu']}", headers=ADMIN), 200, 204)
+    _retirer_la_valeur(d["lieu"])
 
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert res["acte"] == "suppression"
@@ -141,7 +166,7 @@ def test_une_valeur_nee_apres_l_acte_n_est_pas_celle_de_la_case(client, planche,
     case, et elle ne s'y pose pas."""
     d = _decor(client, planche)
     _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
-    _ok(client.delete(f"/api/attributs/valeurs/{d['lieu']}", headers=ADMIN), 200, 204)
+    _retirer_la_valeur(d["lieu"])
     autre = _valeur(client, "case", "lieu", "grotte")
     assert autre == d["lieu"], "le décor suppose l'identifiant repris"
     # Les dates sont à la seconde : la reprise est datée après l'acte, comme elle le serait.

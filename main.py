@@ -33,7 +33,7 @@ from database import (DEMANDE_REJOINDRE, DEMANDE_REPARTIR, DEMANDE_SUPPRESSION_D
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_d_album, projet_de_collection,
                       liens_vus, relecture_planches, reindex_region, retirer_liens_caches,
-                      espace_d_album, sql_album_isole, sql_couverture_d_album, sql_est_jeu,
+                      sql_album_isole, sql_couverture_d_album, sql_est_jeu,
                       sql_projet_d_album, unindex_region)
 import autorisation
 import conflit
@@ -57,21 +57,21 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     AccesIn, AccesMembresIn, AlbumIn, AlbumUpdate, CreationCollectionsIn, DemandeIn,
     DocumentPrisIn, PriseIn,
     ReponseIn, AlignementIn, DEMANDE, FAIT, REFUSE,
-    AnnotationIn, AttributIn, CollectionIn,
-    CollectionUpdate, ContributionIn, ContributionRoleIn, DeposerExportIn, DeposerIn, DimensionDomaineIn,
-    DimensionIn, DomaineIn, FigureIn, FusionIn, JobIn, LexiqueIn, LocuteurIn, MoveIn,
+    AnnotationIn, CollectionIn,
+    CollectionUpdate, ContributionIn, ContributionRoleIn, DeposerExportIn, DeposerIn,
+    FigureIn, FusionIn, JobIn, LocuteurIn, MoveIn,
     MembreIn, NatureIn,
     PersonnageIn, PersonnageUpdate, PresenceIn, ProjetIn, ProjetUpdate, RegionIn, RegionUpdate, RelectureIn,
-    RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
-    OrdrePlanchesIn, ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
-    _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
+    RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TokenCorrectionIn,
+    OrdrePlanchesIn, ValidationIn, VerrouIn, _BOM,
+    _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _annotation_for_region, _annotation_selon,
     _MOTIF_DESTRUCTION_BAC, _motif_d_effacement, _supprimer_planche,
     _consentement_d_effacement,
     _effacer_les_images_d_une_planche, _journaliser_scan,
     _MOTIF_JEU, _refuser_le_jeu, _refuser_la_reference,
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_ISOLE, _MOTIF_BAC_PROPRIETAIRE,
     _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS, _MOTIF_JEU_SOURCE,
-    _MOTIF_EXPORT_BAC, _bac_a_sable_de, _collection_locale_d_un_bac, _creer_bac_a_sable,
+    _MOTIF_EXPORT_BAC, _bac_a_sable_de, _creer_bac_a_sable,
     _poser_la_grille_du_bac,
     _exiger_l_export_hors_bac, _exiger_le_plafond, _planches_importees_du_bac,
     _MOTIF_EXPORT_IMPORTEE, _SQL_IMAGES_DU_JEU, _SQL_IMAGES_EXPORTABLES,
@@ -84,17 +84,19 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _clore_demandes_vers, _clore_lignes_d_une_copie_detruite, _deposer, _en_attente_vers,
     _nouvelle_copie, _plan_rejoindre, _retour_en_attente,
     RepartirIn, RetirerIn, _MOTIF_REPARTIR, _MOTIF_REPARTIR_PLANCHE, _cran_de_repartir, _repartir,
-    _clause_lemme, _clause_personnage, _cle_tag, _collection_d_export, _collections_lues_d_albums,
-    _csv_response, _csv_safe, _descendre_portee,
-    _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
+    _clause_lemme, _clause_personnage, _collection_d_export, _collections_lues_d_albums,
+    _csv_response, _csv_safe,
+    _disposition, _exiger_destruction, _exiger_export,
     _exiger_export_region,
-    _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
+    _get_album, _get_collection, _get_personnage, _get_planche,
     _PLANCHE_TUE, _planche_rendue,
     _get_projet, _get_region, _get_valeur,
-    _groupes, _norm_tag, _patch_lexique, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
+    _groupes, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
     _garder_case_d_un_detail,
-    _sans_accents, _sql_a_montrer, _tags_caches, _validate_parent, _valider_detail,
+    _sans_accents, _validate_parent, _valider_detail,
     _vocabulaire_d_export,
+    _sql_annotee, PARAMETRES_DU_VOCABULAIRE, motif_du_vocabulaire,
+    refuser_le_vocabulaire,
     db, portee_courante,
 )
 # ARCH-1 — les domaines sortis de ce fichier. `include_router`, plus bas, les rend
@@ -108,7 +110,6 @@ from routes import collections as _routes_collections
 from routes import depot as _routes_depot
 from routes import figures as _routes_figures
 from routes import fonds as _routes_fonds
-from routes import lexique as _routes_lexique
 from routes import personnages as _routes_personnages
 from routes import projets as _routes_projets
 from routes import recherche as _routes_recherche
@@ -177,7 +178,6 @@ app.include_router(_routes_personnages.router)
 app.include_router(_routes_annulation.router)
 app.include_router(_routes_collections.router)
 app.include_router(_routes_depot.router)
-app.include_router(_routes_lexique.router)
 app.include_router(_routes_projets.router)
 app.include_router(_routes_fonds.router)
 app.include_router(_routes_bac_a_sable.router)
@@ -826,18 +826,16 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
 def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
     _get_album(conn, portee, album_id)
-    # AUTH-11 : `nb_annotees` compte ce qu'on VOIT — une région dont il ne reste qu'un tag
-    # d'une collection qu'on ne lit pas n'est pas annotée POUR NOUS (cf. `_sql_a_montrer`).
-    ou_montrer, p_montrer = _sql_a_montrer(portee, "an")
+    # ANN-7, I4 : `nb_annotees` compte les régions qui portent une note ou un relevé
+    # (`socle._sql_annotee`).
     planches = _rows(conn.execute(
         f"""SELECT p.*,
                   (SELECT COUNT(*) FROM regions r WHERE r.planche_id = p.id)
                       AS nb_regions,
                   (SELECT COUNT(*) FROM regions r
-                     JOIN annotations an ON an.region_id = r.id
-                   WHERE r.planche_id = p.id AND {ou_montrer}) AS nb_annotees
+                   WHERE r.planche_id = p.id AND {_sql_annotee("r")}) AS nb_annotees
            FROM planches p WHERE p.album_id = ? ORDER BY p.numero""",
-        (*p_montrer, album_id),
+        (album_id,),
     ))
     nums = numeros_editoriaux(conn, album_id)
     rel = relecture_planches(conn, [p["id"] for p in planches])   # ANN-4 : statut dérivé/forcé
@@ -1088,19 +1086,16 @@ def liberer_ml(portee: autorisation.Portee = Depends(portee_courante)):
 def planche_regions(planche_id: int, conn: sqlite3.Connection = Depends(db),
                     portee: autorisation.Portee = Depends(portee_courante)):
     _get_planche(conn, portee, planche_id)
-    # AUTH-11 : `annotee` suit ce qu'on VOIT — c'est la pastille de l'arbre de structure,
-    # et elle cochait une région dont on ne peut rien lire (cf. `_sql_a_montrer`).
-    ou_montrer, p_montrer = _sql_a_montrer(portee, "a")
+    # ANN-7, I4 : `annotee`, la coche de l'arbre de structure — une note ou un relevé
+    # (`socle._sql_annotee`).
     regions = _rows(conn.execute(
         f"""SELECT r.*,
-                  EXISTS(SELECT 1 FROM annotations a WHERE a.region_id = r.id
-                         AND {ou_montrer})
-                      AS annotee,
+                  {_sql_annotee("r")} AS annotee,
                   (SELECT COUNT(*) FROM regions c WHERE c.parent_id = r.id)
                       AS nb_enfants
            FROM regions r WHERE r.planche_id = ?
            ORDER BY r.parent_id IS NOT NULL, r.ordre, r.id""",
-        (*p_montrer, planche_id),
+        (planche_id,),
     ))
     cits = citations_regions(conn, [r["id"] for r in regions])
     for r in regions:
@@ -1857,98 +1852,64 @@ def update_role(planche_id: int, payload: RoleIn,
 
 
 # =========================================================================== #
-# Annotations & tags
+# Annotations — la note (ANN-7 : les tags sont partis)
 # =========================================================================== #
 @app.get("/api/regions/{region_id}/annotation")
 def get_annotation(region_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
     _get_region(conn, portee, region_id)
-    return _annotation_for_region(conn, portee, region_id)
+    return _annotation_for_region(conn, region_id)
 
 
 @app.put("/api/regions/{region_id}/annotation")
 def put_annotation(region_id: int, payload: AnnotationIn,
                    conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
-    """Enregistre ce que l'appelant CHANGE, et garde le reste tel qu'il est en base.
+    """Enregistre la NOTE d'une région — ce que l'appelant change, et rien d'autre.
 
-    CONC-3 — l'écran renvoyait la note ET les tags chargés quand la bulle avait été
-    sélectionnée. Mesuré le 2026-09-16 à deux navigateurs : la note de A effaçait en
-    silence le tag que B venait de poser, et le tag suivant de B effaçait la note de A.
-    Un champ ABSENT de la requête n'est donc plus touché, et les tags se modifient par
-    différence (`tags_ajoutes`, `tags_retires`), sans réécrire ceux des autres. `tags`
-    remplace toujours la liste visible, pour les appelants qui l'envoient entière ; le
-    mélanger aux deux autres serait ambigu, d'où le 422. Deux personnes sur le MÊME champ
-    restent en « le dernier gagne » : c'est le second temps du chantier.
+    ANN-7, le basculement — l'annotation ne porte plus que la note : les tags n'existent
+    plus, et `tags`, `tags_ajoutes`, `tags_retires` sont refusés par un 422 qui le dit (I7,
+    Hugo, 2026-11-05), au lieu d'être ignorés : un écran d'hier croirait avoir posé ses
+    tags. Les tables du vocabulaire restent jusqu'à la migration ; ce qu'une annotation y
+    porte encore n'est plus ni montré ni écrit, et part avec elle quand la note se vide
+    (une annotation sans note n'a plus rien à porter).
+
+    CONC-3 — un champ ABSENT n'est pas touché ; la note envoyée avec `note_vue` n'écrase pas
+    une note qu'un autre a changée depuis (409 nommé). Sans `note_vue`, le dernier gagne.
     """
-    region = _region_a_ecrire(conn, portee, region_id)
-    champs = payload.model_fields_set & {"note", "tags", "tags_ajoutes", "tags_retires"}
-    if "tags" in champs and champs & {"tags_ajoutes", "tags_retires"}:
-        raise HTTPException(422, "« tags » remplace la liste, « tags_ajoutes » et "
-                                 "« tags_retires » la modifient : pas les deux à la fois.")
-    if not champs:
-        return _annotation_for_region(conn, portee, region_id)
+    anciens = payload.model_fields_set & {"tags", "tags_ajoutes", "tags_retires"}
+    if anciens:
+        raise HTTPException(422, motif_du_vocabulaire(anciens))
+    _region_a_ecrire(conn, portee, region_id)
+    if "note" not in payload.model_fields_set:
+        return _annotation_for_region(conn, region_id)
     # Le verrou se décide sur la REQUÊTE seule (un no-op qui ne se découvre qu'à la lecture
     # reste sous verrou), et se prend AVANT de lire la note gardée.
     nlp.ensure_loaded()            # spaCy HORS transaction : la réindexation suivra, verrou tenu
     conflit.verrouiller(conn)      # la note actuelle se lit sous le verrou d'écriture
 
-    # État avant (note + tags) pour journaliser création / modification / suppression.
+    # État avant, pour journaliser création / modification / suppression.
     avant_annot = journal.snapshot_annotation(conn, region_id)
-    # Second temps (Q1) : la note envoyée avec `note_vue` n'écrase pas une note qu'un autre a
-    # changée depuis. Les tags n'ont pas de garde (Q3) : leurs différences commutent.
-    if "note" in champs and "note_vue" in payload.model_fields_set:
+    if "note_vue" in payload.model_fields_set:
         try:
             conflit.verifier(conn, "annotations", region_id, "note", vu=payload.note_vue,
                              actuel=(avant_annot or {}).get("note"), nouveau=payload.note)
         except conflit.Perime as exc:
             raise _conflit_http(exc)
-    note = payload.note if "note" in champs else (avant_annot or {}).get("note")
+    note = payload.note
 
-    # Les tags que l'appelant ne LIT pas ne lui ont pas été montrés, donc ne sont pas
-    # dans `payload.tags` : remplacer la liste par celle reçue les effacerait sans un
-    # mot. On les garde — et le journal enregistre l'annotation ENTIÈRE, parce que
-    # c'est ce que l'undo restaure : un instantané filtré lui ferait effacer ce qu'on
-    # a caché. Pour la même raison, on ne RETIRE pas un tag caché qu'on nommerait.
-    caches = _tags_caches(conn, portee, region_id)
-    # ANN-8 — un tag local ne se pose que sur les albums de sa collection ; ce que la région
-    # porte déjà passe (cf. `_ensure_tags`).
-    pose = {"album_id": conn.execute("SELECT album_id FROM planches WHERE id = ?",
-                                     (region["planche_id"],)).fetchone()[0],
-            "deja": {r["tag_id"] for r in conn.execute(
-                "SELECT at.tag_id FROM annotation_tags at JOIN annotations an "
-                "ON an.id = at.annotation_id WHERE an.region_id = ?", (region_id,))}}
-    if "tags" in champs:
-        tag_ids = [t["id"] for t in _ensure_tags(conn, payload.tags, portee, **pose)]
-    else:
-        tag_ids = [r["tag_id"] for r in conn.execute(
-            "SELECT at.tag_id FROM annotation_tags at JOIN annotations an "
-            "ON an.id = at.annotation_id WHERE an.region_id = ?", (region_id,))
-            if r["tag_id"] not in caches]
-        # ANN-8 — par la CLÉ : retirer « c'est pluriel » retire aussi le tag d'avant écrit
-        # « c’est pluriel » — le même mot pour quiconque le lit.
-        retires = {t["id"] for t in _rows(conn.execute(
-            f"SELECT id FROM tags WHERE cle_tag(label) IN "
-            f"({','.join('?' * len(payload.tags_retires))})",
-            [_cle_tag(l) for l in payload.tags_retires]))} if payload.tags_retires else set()
-        tag_ids = [i for i in tag_ids if i not in retires]
-        tag_ids += [t["id"] for t in _ensure_tags(conn, payload.tags_ajoutes, portee, **pose)
-                    if t["id"] not in tag_ids]
-    # Vider une annotation (note vide ET aucun tag) = SUPPRIMER la ligne, pas
-    # laisser une coquille vide : sinon elle fausserait le compteur d'annotées,
-    # ne serait pas cherchable, et ferait conserver à tort la case à la
-    # re-segmentation (préservation du travail humain). « Aucun tag » compte aussi
-    # ceux qu'on ne voit pas : vider ce qu'on voit ne supprime pas ce qu'on ne voit pas.
-    if annotation_vide(note, len(tag_ids) + len(caches)):
-        conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))
-        reindex_region(conn, region_id)
+    # Vider la note = SUPPRIMER la ligne, pas laisser une coquille vide : sinon elle
+    # ferait conserver à tort la case à la re-segmentation (préservation du travail humain).
+    if annotation_vide(note, 0):
         if avant_annot is not None:
+            conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))
+            reindex_region(conn, region_id)
             # Cible = region_id (STABLE), pas l'id d'annotation (détruit ici) : une annotation
             # supprimée doit rester restaurable par l'undo (D1), comme locuteur/présence.
             journal.journaliser(conn, "suppression", "annotations", region_id,
                                 avant=avant_annot)
-        conn.commit()
-        return _annotation_for_region(conn, portee, region_id)
+            conn.commit()
+        return _annotation_for_region(conn, region_id)
 
     # Upsert de l'annotation (region_id est UNIQUE).
     conn.execute(
@@ -1958,136 +1919,16 @@ def put_annotation(region_id: int, payload: AnnotationIn,
                date_modification = datetime('now')""",
         (region_id, note),
     )
-    ann_id = conn.execute(
-        "SELECT id FROM annotations WHERE region_id = ?", (region_id,)
-    ).fetchone()["id"]
-
-    # Pose l'ensemble des tags calculé plus haut, cachés compris.
-    conn.execute("DELETE FROM annotation_tags WHERE annotation_id = ?", (ann_id,))
-    for tag_id in tag_ids + caches:
-        conn.execute(
-            "INSERT OR IGNORE INTO annotation_tags (annotation_id, tag_id) "
-            "VALUES (?, ?)", (ann_id, tag_id),
-        )
-
-    # Cible = region_id (stable), pas ann_id (éphémère) → undo (D1) uniforme avec locuteur/présence.
-    # Un enregistrement qui ne change RIEN (retirer un tag absent) ne se journalise pas :
-    # il deviendrait un Ctrl+Z qui ne défait rien de visible.
+    # Cible = region_id (stable), pas l'id de l'annotation → undo (D1) uniforme avec
+    # locuteur/présence. Un enregistrement qui ne change RIEN ne se journalise pas : il
+    # deviendrait un Ctrl+Z qui ne défait rien de visible.
     apres_annot = journal.snapshot_annotation(conn, region_id)
     if apres_annot != avant_annot:
         journal.journaliser(conn, "creation" if avant_annot is None else "modification",
                             "annotations", region_id, avant=avant_annot, apres=apres_annot)
     reindex_region(conn, region_id)
     conn.commit()
-    return _annotation_for_region(conn, portee, region_id)
-
-
-@app.get("/api/tags")
-def list_tags(album: Optional[int] = None, conn: sqlite3.Connection = Depends(db),
-              portee: autorisation.Portee = Depends(portee_courante)):
-    """Le vocabulaire de tags, avec sa fréquence d'emploi.
-
-    AUTH-2 — deux filtres, pas un. Le premier borne les TERMES visibles (global, ou
-    appartenant à une collection qu'on lit : cf. `clause_terme`). Le second borne le
-    COMPTE : `frequence` était calculée sur tout le corpus, si bien que le nuage de tags
-    disait le volume de travail des autres. Le compter sur les seules régions lisibles est
-    du même coup plus JUSTE analytiquement — un nuage doit refléter le sous-corpus qu'on
-    regarde, pas la base entière.
-
-    `album` (ANN-8) : les seuls tags qui se POSENT sur cet album — globaux, ou locaux à une
-    collection qui le range. C'est ce que l'Atelier propose ; un tag local ne se pose que sur
-    les albums de sa collection (`socle._ensure_tags`). Un album qu'on ne lit pas : 404.
-    """
-    # COL-4 (S8) — sans `album`, c'est le nuage de la Recherche et de l'Exploration : ni bac à
-    # sable ni jeu, ni dans ses termes ni dans ses fréquences. Avec, c'est l'Atelier, sur un
-    # album qu'on lit, bac à sable compris.
-    if album is None:
-        portee = portee.pour_le_corpus()
-    ou_terme, p_terme = portee.clause_terme("t.collection_id")
-    # COL-4 — et l'ESPACE de libellés : celui de l'album (son bac à sable, ou l'instance),
-    # celui de l'instance pour le nuage. Rien ne se voit d'un espace à l'autre.
-    espace = 0
-    if album is not None:
-        _get_album(conn, portee, album)
-        espace = espace_d_album(conn, album)
-        ou_terme = (f"({ou_terme}) AND (t.collection_id IS NULL OR t.collection_id IN "
-                    f"(SELECT collection_id FROM collection_album WHERE album_id = ?))")
-        p_terme = [*p_terme, album]
-    ou_terme, p_terme = f"({ou_terme}) AND t.espace = ?", [*p_terme, espace]
-    ou_album, p_album = portee.clause_album("pl.album_id")
-    return _rows(conn.execute(
-        f"""SELECT t.id, t.label, t.couleur, t.description,
-                  (SELECT COUNT(*)
-                     FROM annotation_tags at
-                     JOIN annotations an ON an.id = at.annotation_id
-                     JOIN regions r      ON r.id = an.region_id
-                     JOIN planches pl    ON pl.id = r.planche_id
-                    WHERE at.tag_id = t.id AND {ou_album}) AS frequence
-           FROM tags t
-           WHERE {ou_terme}
-           ORDER BY frequence DESC, t.label""", [*p_album, *p_terme]
-    ))
-
-
-@app.post("/api/tags", status_code=201)
-def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db),
-               portee: autorisation.Portee = Depends(portee_courante)):
-    """AUTH-2 — enrichir le vocabulaire suppose de pouvoir écrire QUELQUE PART. Le tag
-    créé reste global (`collection_id` NULL, comme avant) : c'est le comportement
-    historique, et le rattacher d'office à une collection demanderait de choisir laquelle,
-    question sans réponse quand on écrit dans plusieurs. Sans cette garde, une personne en
-    lecture seule pourrait polluer un vocabulaire que tout le monde partage.
-
-    **Créer n'est pas réécrire** (AUTH-11, 2026-09-24). Le libellé étant unique dans TOUTE
-    l'instance, l'`ON CONFLICT(label)` ci-dessous faisait de cette route une écriture sur
-    un terme EXISTANT, gardée par le seul « écrire quelque part » : qui écrivait dans une
-    collection réécrivait la couleur et la définition (`description`) d'un tag local à
-    une collection qu'il ne lit pas — et la réponse lui rendait ce terme entier. Sa
-    jumelle `PATCH /api/tags/{id}/lexique` pose les deux questions depuis AUTH-2 ; on
-    les pose ici aussi, dans le même ordre, AVANT d'écrire quoi que ce soit — et sous le
-    verrou d'écriture (`conflit.verrouiller`), pris avant de lire l'existant : sans lui,
-    un tag qu'un `PATCH …/lexique` concurrent rattache, entre la lecture et l'`INSERT`,
-    à une collection qu'on ne lit pas serait réécrit quand même.
-
-    Un terme qu'on ne VOIT pas répond **409**, et non un silence : l'appelant demande un
-    tag, lui en rendre un autre ou lui en inventer un serait mentir. Le message ne nomme
-    rien du terme. Il confirme en revanche que le libellé est pris, où qu'il vive dans
-    l'instance — un bit par mot deviné, le même oracle que celui déjà accepté pour
-    `socle._ensure_tags` (demi-mesure du 2026-09-24), et c'est une LIMITE écrite :
-    l'unicité (libellé, collection), avec `COL-1`, la fermera. Un terme visible mais
-    qu'on ne peut pas modifier répond **403**, comme la jumelle."""
-    if not portee.peut_ecrire_quelque_part():
-        raise HTTPException(403, "Créer un terme du vocabulaire demande un droit "
-                                 "d'écriture sur au moins une collection.")
-    label = _cle_tag(tag.label)
-    if not label:
-        raise HTTPException(422, "Label de tag vide")
-    conflit.verrouiller(conn)      # l'existant se lit sous le verrou d'écriture
-    # ANN-8 — l'existant se cherche par la CLÉ du libellé : un tag d'avant écrit « c’est
-    # pluriel » est celui que désigne « c'est pluriel », et c'est SA ligne qu'on écrit.
-    # COL-4 — un tag créé ici est de l'espace de l'INSTANCE (0) : c'est là qu'on cherche
-    # l'existant, et un libellé né dans un bac à sable n'y prend rien.
-    existant = _row(conn.execute(
-        "SELECT id, collection_id, label FROM tags WHERE espace = 0 AND cle_tag(label) = ? "
-        "ORDER BY (label = ?) DESC, id LIMIT 1", (label, label)))
-    if existant is not None:
-        label = existant["label"]
-        ou, params = portee.clause_terme("t.collection_id")
-        if conn.execute(f"SELECT 1 FROM tags t WHERE t.id = ? AND {ou}",
-                        (existant["id"], *params)).fetchone() is None:
-            raise HTTPException(409, "Ce libellé de tag est déjà pris : choisissez-en "
-                                     "un autre.")
-        if not portee.peut_ecrire_terme(existant["collection_id"]):
-            raise HTTPException(403, "Ce tag est en lecture seule pour vous.")
-    conn.execute(
-        """INSERT INTO tags (label, couleur, description, espace) VALUES (?, ?, ?, 0)
-           ON CONFLICT(espace, label) DO UPDATE SET
-               couleur = COALESCE(excluded.couleur, tags.couleur),
-               description = COALESCE(excluded.description, tags.description)""",
-        (label, tag.couleur, tag.description),
-    )
-    conn.commit()
-    return _row(conn.execute("SELECT * FROM tags WHERE espace = 0 AND label = ?", (label,)))
+    return _annotation_for_region(conn, region_id)
 
 
 # =========================================================================== #

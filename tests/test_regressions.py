@@ -16,16 +16,6 @@ def test_ecriture_persistee_sur_disque(client, db_path):
     assert rows and rows[0]["titre"] == "Persist"
 
 
-def test_tag_finissant_par_chiffre_conserve(client, region):
-    """Un tag terminé par un chiffre (ex. 'tome1') ne doit pas être tronqué."""
-    r = client.put(f"/api/regions/{region['id']}/annotation",
-                   json={"note": "", "tags": ["tome1", "case2"]})
-    labels = {t["label"] for t in r.json()["tags"]}
-    assert labels == {"tome1", "case2"}
-    res = client.get("/api/recherche", params={"q": "tome1"}).json()["results"]
-    assert any(x["region_id"] == region["id"] for x in res)
-
-
 def test_suppression_region_nettoie_fts(client, planche, db_path):
     """Supprimer une région (et sa descendance) retire ses lignes FTS."""
     parent = client.post(f"/api/planches/{planche['id']}/regions",
@@ -162,7 +152,8 @@ def test_lot3_recherche_facette_grammaticale(client, planche):
     assert exp.text.startswith("﻿")                                     # BOM (Excel/Windows)
     lignes = exp.text.lstrip("﻿").strip().splitlines()
     # en-tête (la colonne `citation` a été ajoutée par la numérotation éditoriale)
-    assert lignes[0] == "album,planche,citation,region_id,type,ocr_texte,note,tags"
+    # ANN-7 — la colonne `tags` est retirée, et non laissée vide.
+    assert lignes[0] == "album,planche,citation,region_id,type,ocr_texte,note"
     assert any(str(rid) in l for l in lignes[1:])                            # la région exportée
 
 
@@ -384,7 +375,7 @@ def test_resegmentation_preserve_ocr_et_fts_propre(client, album, db_path):
     client.post(f"/api/planches/{p['id']}/segmenter")
     case_id = client.get(f"/api/planches/{p['id']}/regions").json()[0]["id"]
     # une case annotée (FTS) + une bulle océrisée enfant (FTS)
-    client.put(f"/api/regions/{case_id}/annotation", json={"note": "ANNOTCASE", "tags": []})
+    client.put(f"/api/regions/{case_id}/annotation", json={"note": "ANNOTCASE"})
     child = client.post(f"/api/planches/{p['id']}/regions",
                         json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
                               "parent_id": case_id, "ocr_texte": "GARDE"}).json()
@@ -516,26 +507,6 @@ def test_recherche_limit_borne(client, planche):
     assert res["count"] == 1
 
 
-def test_recherche_tags_repetes_et_virgule(client, planche):
-    """Tags transmis en paramètres RÉPÉTÉS (pas join ',') : un label contenant
-    une virgule n'est plus scindé, et plusieurs tags = ET logique."""
-    r1 = client.post(f"/api/planches/{planche['id']}/regions",
-                     json={"type": "bulle", "x": 0, "y": 0, "w": 5, "h": 5}).json()
-    r2 = client.post(f"/api/planches/{planche['id']}/regions",
-                     json={"type": "bulle", "x": 6, "y": 0, "w": 5, "h": 5}).json()
-    client.put(f"/api/regions/{r1['id']}/annotation",
-               json={"note": "", "tags": ["paris, france", "jour"]})
-    client.put(f"/api/regions/{r2['id']}/annotation",
-               json={"note": "", "tags": ["jour"]})
-    # le label à virgule n'est pas scindé : seule r1 le porte
-    res = client.get("/api/recherche", params={"tags": ["paris, france"]}).json()["results"]
-    assert [x["region_id"] for x in res] == [r1["id"]]
-    # deux tags répétés = ET : seule r1 a les deux
-    res2 = client.get("/api/recherche",
-                      params={"tags": ["paris, france", "jour"]}).json()["results"]
-    assert [x["region_id"] for x in res2] == [r1["id"]]
-
-
 def test_export_tei_filtre_caracteres_non_xml(client, planche):
     """G1 : des caractères de contrôle non-XML dans l'OCR ne doivent PAS produire
     un TEI corrompu — l'export reste un XML bien formé (re-parsable)."""
@@ -566,7 +537,7 @@ def test_export_csv_neutralise_injection_de_formule(client, album, planche):
     reg = client.post(f"/api/planches/{planche['id']}/regions",
                       json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
                             "ocr_texte": "=SUM(1+1)"}).json()
-    client.put(f"/api/regions/{reg['id']}/annotation", json={"note": "@evil", "tags": []})
+    client.put(f"/api/regions/{reg['id']}/annotation", json={"note": "@evil"})
     for url, params in ((f"/api/export/csv", {"album_id": album["id"]}),
                         ("/api/recherche/export.csv", {"q": "SUM"})):
         txt = client.get(url, params=params).text

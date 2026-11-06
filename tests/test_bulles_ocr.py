@@ -104,7 +104,9 @@ def test_redetecter_bulles_preserve_annotation(client, planche, monkeypatch):
     client.post(f"/api/planches/{planche['id']}/detecter-bulles")
     b = next(r for r in client.get(
         f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle")
-    client.put(f"/api/regions/{b['id']}/annotation", json={"note": "", "tags": ["cri"]})
+    import database
+    from conftest import poser_tags
+    poser_tags(database.DB_PATH, b["id"], ["cri"])   # annotée d'un tag d'hier, en base (ANN-7)
     # re-détection à un autre endroit (ne recouvre pas) → la bulle annotée survit
     monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(200, 200, 60, 30)]))
     body = client.post(f"/api/planches/{planche['id']}/detecter-bulles").json()

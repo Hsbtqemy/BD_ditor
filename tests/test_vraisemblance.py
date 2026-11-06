@@ -57,19 +57,18 @@ def test_les_deux_mesures_s_accordent_sur_le_cote():
 # La route : `metrique` choisit le classement de la comparaison A/B
 # --------------------------------------------------------------------------- #
 def _deux_sous_corpus(client, planche, db_path):
-    """A et B, séparés par un tag, de même taille (32 tokens). « le » y est fréquent des
+    """A et B, séparés par leur type de zone (une bulle, un cartouche ; c'était un tag avant
+    le basculement d'ANN-7), de même taille (32 tokens). « le » y est fréquent des
     deux côtés (30 contre 24), « otage » rare et seulement en A (2), « chat » seulement en
     B (8). L'écart relatif met « le » en tête de A (0,1875 contre 0,0625) ; la
     log-vraisemblance y met « otage » (2,77 contre 0,67). Semé en direct : la couche
     spaCy est optionnelle, et le classement doit se tester sans elle."""
     import sqlite3
     a, b = (client.post(f"/api/planches/{planche['id']}/regions",
-                        json={"type": "bulle", "x": 10, "y": 10, "w": 50, "h": 40}).json()["id"]
-            for _ in range(2))
-    client.put(f"/api/regions/{a}/annotation", json={"note": "", "tags": ["colère"]})
-    client.put(f"/api/regions/{b}/annotation", json={"note": "", "tags": ["joie"]})
+                        json={"type": t, "x": 10, "y": 10, "w": 50, "h": 40}).json()["id"]
+            for t in ("bulle", "cartouche"))
     mots = {a: ["le"] * 30 + ["otage"] * 2, b: ["le"] * 24 + ["chat"] * 8}
-    conn = sqlite3.connect(db_path)                  # APRÈS l'annotation : elle réindexe
+    conn = sqlite3.connect(db_path)                  # APRÈS la création : elle réindexe
     try:
         conn.executemany(
             "INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
@@ -79,7 +78,7 @@ def _deux_sous_corpus(client, planche, db_path):
         conn.commit()
     finally:
         conn.close()
-    return {"champ": "lemme", "a_tags": "colère", "b_tags": "joie"}
+    return {"champ": "lemme", "a_type": "bulle", "b_type": "cartouche"}
 
 
 def test_la_comparaison_classe_par_la_mesure_demandee(client, album, planche, db_path):

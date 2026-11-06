@@ -256,8 +256,12 @@ def seme(client, db_path, data_dir, vocabulaire_cloisonne):
                    json={"ocr_texte": TEXTE_AILLEURS})
     assert r.status_code == 200, r.text
     r = client.put(f"/api/regions/{region_bravo}/annotation", headers=ADMIN,
-                   json={"note": NOTE_AILLEURS, "tags": ["tag-bravo-9402"]})
+                   json={"note": NOTE_AILLEURS})
     assert r.status_code == 200, r.text
+    import database
+    from conftest import poser_tags
+    # D'hier, en base (ANN-7) ; l'acte au journal, au nom du décor, comme la route l'écrivait.
+    poser_tags(database.DB_PATH, region_bravo, ["tag-bravo-9402"], agent="decor")
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -543,10 +547,6 @@ OUTILS_HORS = {
         "`--fusionner` (le réimport d'une grille ouverte, 2026-11-03) ne font que répondre "
         "pour une entrée qui disparaît : la retirer, ou reporter ses relevés sur une autre "
         "entrée de la même grille ; ils ne disent que des clés d'entrée.",
-    "importer_vocabulaire.py":
-        "ENTRE du vocabulaire, n'en sort pas. Son `--collection` désigne la portée où "
-        "les termes naissent ; son compte rendu ne nomme que les lignes du tableur "
-        "qu'on lui donne. Ses refus sont gardés par `test_import_vocabulaire`.",
     "dictionnaire_xlsx.py":
         "Met en classeur le DICTIONNAIRE des métadonnées, c'est-à-dire un fichier "
         "markdown du dépôt (`docs/dictionnaire-metadonnees.md`). N'ouvre pas la base.",
@@ -599,11 +599,6 @@ OUTILS_HORS = {
         "par identifiant, le NOM d'un personnage du registre et l'IDENTIFIANT d'une valeur "
         "de situation — jamais un terme de vocabulaire ni une charge du journal. Sans "
         "périmètre de collection : il porte sur la base entière.",
-    "tags_hors_collection.py":
-        "Lecture seule (ANN-8) : il NOMME des tags locaux, leur collection et des albums, "
-        "sur la base entière — c'est son objet : dire à l'exploitant, dans la console du "
-        "serveur, où un tag local est posé hors de sa collection. Aucun fichier, aucune "
-        "charge du journal, rien qui parte au titre d'une collection.",
     "semer_demo.py": "SÈME un corpus de démonstration par l'API : il écrit, il ne "
                      "sort rien.",
     "regenerer_exemples.py":
@@ -625,7 +620,6 @@ ENTREES_HORS = {
     "importer_grille.py": {"fichier", "--listes", "--projet", "--grille", "--nom", "--ouverte",
                            "--porte-sur", "--note", "--a-blanc", "--json", "--publier",
                            "--activer", "--masquer", "--retirer", "--fusionner"},
-    "importer_vocabulaire.py": {"fichier", "--collection", "--dry-run"},
     "dictionnaire_xlsx.py": {"--out", "--source"},
     "rapport_accord.py": {"--json", "--csv", "--modele"},
     "rapport_accord_inter.py": {"--json", "--csv"},
@@ -649,7 +643,6 @@ ENTREES_HORS = {
     "normaliser_casse.py": {"--album", "--dry-run", "--planche"},
     "retirer_locuteurs_muets.py": {"--appliquer"},
     "retirer_liens_caches.py": {"--appliquer"},
-    "tags_hors_collection.py": set(),
     "semer_demo.py": set(),
     "regenerer_exemples.py": set(),
     "fabriquer_base_de_version.py": {"commit", "sortie", "--copie"},

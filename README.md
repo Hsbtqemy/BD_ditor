@@ -92,9 +92,7 @@ réutilisation / le dépôt Nakala-HAL) : fiche descriptive, enregistrements (CS
 `gerer_collections.py` — et les
 albums portent une **paternité** (contributions Zotero-like) + des champs d'édition.
 Notices d'entrepôt **Dublin Core & DataCite** (`crosswalk_depot.py`) et provenance
-**PROV-O / TEI** du journal d'audit (`provenance_export.py`). Le vocabulaire (attributs +
-tags) est **documenté en SKOS** — définition, note de portée, état, portée d'appartenance
-(**lexique situé**, panneau 📖 Lexique sur Exploration) ; les **entités personnages** sont
+**PROV-O / TEI** du journal d'audit (`provenance_export.py`). Les **entités personnages** sont
 **alignées sur des référentiels** (Wikidata/VIAF/IdRef, `skos:exactMatch`) via le panneau
 Personnage.
 Cf. `docs/export-metadonnees.md`, `docs/provenance-audit.md`, `docs/lexique-situe.md`,
@@ -178,8 +176,8 @@ La base `bd_annotator.sqlite` et les dossiers `corpus/` (masters) et
    par les lots) ; **lancer un traitement par lot** (segmentation / bulles / OCR)
    sur une sélection d'albums et/ou de planches, exécuté en **tâche de fond** avec
    barre de progression et annulation.
-10. **Recherche (`/recherche`)** : plein texte FTS5 sur dialogues + notes + tags
-    (+ lemmes si le NLP est actif), filtres album / type / tags + nuage de tags ;
+10. **Recherche (`/recherche`)** : plein texte FTS5 sur dialogues + notes
+    (+ lemmes si le NLP est actif), filtres album / type et facettes grammaticales ;
     chaque résultat (extrait surligné + vignette) **ouvre la visionneuse pile sur
     la région**. Export CSV des résultats.
 11. **Exploration (`/exploration`)** : distributions (lemme / POS / morph) d'un
@@ -226,16 +224,11 @@ l'identique), annotation, locuteur, présence. Pile via événements `annulation
 préservé) ; **Ctrl+Z** dans l'Atelier. Les actes machine ne sont pas annulables.
 Cf. `docs/undo.md`.
 
-**Lexique situé** (A4) : le vocabulaire émergent (dimensions, valeurs, tags) porte une
-couche **SKOS** — `definition`, `note_portee` (cadre d'emploi), `etat`
-(`provisoire`→`defini`) et `collection_id` (portée : global ou local à une collection).
-Édité via l'API et le panneau **📖 Lexique** (Exploration). Cf. `docs/lexique-situe.md`.
-
-**Domaines analytiques** (piste B) : un palier `domaine` **regroupe les dimensions
-facettées** par champ d'étude (émotions, représentation…) — les émotions ne sont qu'un
-domaine, pas un module figé. Émergent + SKOS comme le reste du vocabulaire, **orthogonal à
-`cible`** (un domaine peut grouper des dimensions personnage ET région). Créé et regroupé
-dans le panneau **📖 Lexique**. Cf. `docs/domaines.md`.
+**Lexique situé** (A4) et **domaines analytiques** (piste B) : le vocabulaire émergent
+d'hier (tags, dimensions, valeurs, domaines) n'a plus ni écran ni route depuis le
+basculement d'ANN-7 ; le vocabulaire d'un projet est une **grille**, qui s'importe,
+s'écrit et se pose depuis la page Annotation. Cf. `docs/lexique-situe.md`, `docs/domaines.md`
+(traces datées).
 
 **Alignement d'autorité** (A5) : `personnage_alignement` relie une entité personnage à
 des référentiels externes (Wikidata/VIAF/IdRef…, `skos:exactMatch`, source auto-détectée).
@@ -276,14 +269,9 @@ Cf. `docs/materiel-numerisation.md`.
 | `GET` | `/api/regions/{id}/tokens` | analyse grammaticale d'une région (valeurs effectives) |
 | `PUT/DELETE` | `/api/regions/{id}/tokens/{ordre}` | corriger / annuler la correction d'un token |
 | `POST` | `/api/regions/{id}/grammaire/valider` | valider toute la grammaire d'une région |
-| `GET/POST` | `/api/tags` | tags (avec fréquences) |
-| `GET` | `/api/lexique` | lexique situé (domaines · dimensions · valeurs · tags) + résumé « % défini » |
-| `PATCH` | `/api/{domaines,attributs/dimensions,attributs/valeurs,tags}/{id}/lexique` | documenter un terme : définition / note de portée / état / portée (SKOS) |
-| `GET/POST/PATCH/DELETE` | `/api/domaines[/{id}]` | domaines analytiques (piste B) — regroupent les dimensions |
-| `PATCH` | `/api/attributs/dimensions/{id}/domaine` | rattacher / détacher une dimension d'un domaine |
 | `GET` | `/api/collections` | collections (unité de dépôt) — sert le menu de portée |
 | `GET/POST/DELETE` | `/api/personnages/{id}/alignements[/{aid}]` | alignement d'autorité : personnage → URI Wikidata/VIAF/IdRef (`skos:exactMatch`) |
-| `GET` | `/api/recherche?q=&album=&type=&tags=` | recherche FTS5 |
+| `GET` | `/api/recherche?q=&album=&type=` | recherche FTS5 |
 | `GET` | `/api/recherche/export.csv` | export CSV des résultats de recherche |
 | `GET` | `/api/analyse/frequences?champ=&album=&type=&pos=…` | distribution lemme / POS / morph (alias `/api/analyse/lemmes`) |
 | `GET` | `/api/analyse/concordance?lemme=&pos=&morph=…` | occurrences en contexte (KWIC, multimodal) |
@@ -311,9 +299,8 @@ bd_annotator/
 ├── routes/              # un module par domaine, `router = APIRouter()` inclus par main.py
 │   ├── recherche.py     # recherche FTS5 + export CSV + stats de corpus
 │   ├── analyse.py       # analyse grammaticale : fréquences, concordance, croisement, A/B
-│   ├── personnages.py   # entités, locuteur, présence, alignements (A5) + attributs facettés
+│   ├── personnages.py   # entités, locuteur, présence, alignements (A5)
 │   ├── collections.py   # espaces de travail : accès, partage, diffusion (AUTH-3, DROIT-1)
-│   ├── lexique.py       # couche définitionnelle SKOS du vocabulaire émergent (A4)
 │   ├── annulation.py    # annulation de la dernière action — Ctrl+Z (D1)
 │   └── figures.py       # figure citable (DROIT-1) : citer n'est pas publier
 ├── autorisation.py      # AUTH-2 : le SEUL endroit qui tranche « qui voit quoi » (Portee)
@@ -324,7 +311,6 @@ bd_annotator/
 ├── figure.py            # cœur de la figure citable : crop + légende + notice
 ├── accord.py            # accord modèle↔humain (NLP-1)
 ├── accord_inter.py      # accord inter-annotateurs, depuis le journal A3 (ANN-5)
-├── lexique_import.py    # amorçage du vocabulaire depuis un tableur (pré-remplir sans écraser)
 ├── config.py            # chemins & constantes partagés
 ├── pipeline/
 │   ├── ingest.py        # image → dérivé web + métadonnées + suppression fichiers
@@ -339,7 +325,7 @@ bd_annotator/
 ├── templates/           # index.html · recherche.html · corpus.html · exploration.html
 ├── static/
 │   ├── viewer.js        # visionneuse + modes + arbre + grammaire + ShareDocs + deep-link
-│   ├── recherche.js     # recherche FTS5 + résultats + nuage de tags
+│   ├── recherche.js     # recherche FTS5 + résultats
 │   ├── corpus.js        # gestion albums/planches + rôle/validation/verrou + lots
 │   ├── exploration.js   # distributions + comparaison de sous-corpus
 │   ├── theme.js         # réglages d'affichage partagés (thème, contraste, zoom)
@@ -348,7 +334,6 @@ bd_annotator/
 ├── tools/               # scripts hors-app : reindex_nlp.py, reindex_materiel.py, pdf_check.py, sharedocs_check.py,
 │                        #   normaliser_casse (casse des transcriptions, cf. docs/normalisation-casse.md) ·
 │                        #   rapport_accord (modèle↔humain) · rapport_accord_inter (inter-annotateurs) ·
-│                        #   importer_vocabulaire (amorçage taxonomie CSV, cf. docs/import-vocabulaire.md) ·
 │                        #   export métadonnées : gerer_collections · description_collection ·
 │                        #   metadonnees_collection · iiif_manifest · valider_iiif · dictionnaire_xlsx ·
 │                        #   crosswalk_depot (DC/DataCite) · provenance_export (PROV-O/TEI)

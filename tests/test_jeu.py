@@ -356,7 +356,7 @@ def test_le_jeu_ne_se_regle_pas(client, reference):
 # une contribution, l'ordre des planches passaient tous).
 def _corps_des_ecritures(ref):
     a, pl, rg, ct = ref["album"], ref["planche"], ref["region"], ref["contribution"]
-    v, p, g = ref["valeur"], ref["personnage"], ref["grille"]
+    p, g = ref["personnage"], ref["grille"]
     rl, dt = ref["releve"], ref["doute"]
     return {
         # ANN-7 (relecture croisée, constat 7) — un relevé et un doute SEMÉS par SQL sur la
@@ -382,10 +382,6 @@ def _corps_des_ecritures(ref):
             (f"/api/regions/{ref['case']}/personnage", {"personnage_id": p}),
         ("DELETE", "/api/regions/{region_id}/personnage"):
             (f"/api/regions/{ref['case']}/personnage", None),
-        ("PUT", "/api/regions/{region_id}/attributs"):
-            (f"/api/regions/{ref['case']}/attributs", {"valeur_id": v}),
-        ("DELETE", "/api/regions/{region_id}/attributs/{valeur_id}"):
-            (f"/api/regions/{ref['case']}/attributs/{v}", None),
         ("PUT", "/api/albums/{album_id}/collections/{collection_id}"):
             (f"/api/albums/{a}/collections/{ref['ailleurs']}", None),
         ("DELETE", "/api/albums/{album_id}/collections/{collection_id}"):
@@ -424,7 +420,7 @@ def _corps_des_ecritures(ref):
         ("PATCH", "/api/planches/{planche_id}/role"):
             (f"/api/planches/{pl}/role", {"role": "couverture"}),
         ("PUT", "/api/regions/{region_id}/annotation"):
-            (f"/api/regions/{rg}/annotation", {"note": "ajout", "tags": ["altere"]}),
+            (f"/api/regions/{rg}/annotation", {"note": "ajout"}),
         ("POST", "/api/albums/{album_id}/contributions"):
             (f"/api/albums/{a}/contributions", {"nom": "Intrus", "role": "scenario"}),
         ("POST", "/api/albums/{album_id}/valider"): (f"/api/albums/{a}/valider", {"validee": True}),
@@ -492,7 +488,7 @@ def _empreinte(db, album):
 
 @pytest.fixture
 def reference_complete(client, db_path, reference, png_bytes):
-    """La référence de l'exemple, avec une case, une contribution, une valeur d'attribut, un
+    """La référence de l'exemple, avec une case, une contribution, un
     personnage à attribuer — et une grille ACTIVE sur le projet du jeu (ANN-7)."""
     regions = _sql(db_path, "SELECT id, type FROM regions WHERE planche_id = ? ORDER BY id",
                    (reference["planche"],))
@@ -505,10 +501,6 @@ def reference_complete(client, db_path, reference, png_bytes):
         c.commit()
     finally:
         c.close()
-    d = client.post("/api/attributs/dimensions", headers=ADMIN,
-                    json={"cible": "case", "nom": "cadrage"}).json()["id"]
-    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=ADMIN,
-                    json={"valeur": "gros plan"}).json()["id"]
     p = client.post("/api/personnages", headers=ADMIN, json={"nom": "Spirou"}).json()["id"]
     ailleurs = client.post("/api/collections", headers=ADMIN, json={"nom": "Ailleurs"}).json()
     # ANN-7 — la grille du modèle FICTIF, née dans le projet de repli, puis activée sur le
@@ -536,7 +528,7 @@ def reference_complete(client, db_path, reference, png_bytes):
         c.commit()
     finally:
         c.close()
-    return {**reference, "region": bulle, "case": case, "contribution": ct, "valeur": v,
+    return {**reference, "region": bulle, "case": case, "contribution": ct,
             "personnage": p, "ailleurs": ailleurs["id"], "grille": g, "releve": rl,
             "doute": dt}
 

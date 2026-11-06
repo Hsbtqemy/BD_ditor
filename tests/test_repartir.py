@@ -170,7 +170,7 @@ def test_ctrl_z_ne_remonte_pas_au_dela(client, source, db_path):
     reg = _ok(client.post(f"/api/planches/{pl}/regions", headers=LEA,
                           json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)["id"]
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=LEA,
-                   json={"note": "ironie, vraiment", "tags": ["dialogue", "secret"]}))
+                   json={"note": "ironie, vraiment"}))
     _ok(client.put(f"/api/regions/{reg}", headers=LEA, json={"ocr_texte": "AILLEURS"}))
     _ok(_repartir(client, source["a"], "grammaire", LEA))
     # Le plus récent : le texte posé sur l'autre album — il s'annule.
@@ -237,7 +237,7 @@ def test_une_planche_repart_seule_et_le_reste_s_annule_encore(client, source, db
                          json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)["id"]
     _ok(client.put(f"/api/regions/{r2}", headers=LEA, json={"ocr_texte": "SECONDE"}))
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=LEA,
-                   json={"note": "après coup", "tags": ["dialogue"]}))
+                   json={"note": "après coup"}))
     r = client.post(f"/api/planches/{source['pl']}/repartir", json={"cran": "images"},
                     headers=LEA)
     rendu = _ok(r)

@@ -816,13 +816,12 @@
       zones: [
         ["recherche-corpus", "Ce que vous lisez", "Le corpus ouvert à votre compte, sans "
           + "votre bac à sable."],
-        ["recherche-champ", "Le champ et ses filtres", "Dialogues, notes et tags ; par album, "
-          + "par type de zone."],
+        ["recherche-champ", "Le champ et ses filtres", "Dialogues et notes ; par album, par "
+          + "type de zone."],
         // Explicite (Hugo, 2026-11-05) : ce qu'on cherche par la grammaire, avec un exemple.
         ["recherche-facettes", "Facettes grammaticales", "Chercher par la grammaire : la "
           + "catégorie d'un mot (verbe, nom…), son lemme (« aller » trouve « va » et « irons »), "
           + "un trait (le temps, le nombre)."],
-        ["recherche-tags", "Le nuage de tags", "Un clic filtre par tag."],
         ["recherche-resultats", "Les résultats", "Un clic ouvre l'aperçu, qui mène à la zone "
           + "dans l'Atelier."],
       ] },
@@ -833,9 +832,9 @@
         ["exploration-vues", "Les vues", "Distribution, concordance, croisement, "
           + "comparaison."],
         ["exploration-sous-corpus", "Le sous-corpus", "Ce que la vue regarde : album, type, "
-          + "catégorie, tag, locuteur."],
-        ["exploration-lexique", "Lexique et accords", "Les définitions du vocabulaire, et les "
-          + "mesures d'accord."],
+          + "catégorie, locuteur."],
+        ["exploration-lexique", "Les accords", "Ce que le modèle retrouve seul, et ce que "
+          + "les relecteurs gardent."],
         ["exploration-resultat", "Le résultat", "Les valeurs et leurs fréquences. Un clic "
           + "mène aux emplois en contexte."],
       ] },

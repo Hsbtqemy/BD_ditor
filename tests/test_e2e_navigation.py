@@ -681,7 +681,7 @@ def test_filtres_recherche_ont_un_nom_accessible(page, live_server):
     le texte de l'option par défaut)."""
     page.goto(f"{live_server}/recherche", wait_until="networkidle")
     expect(page.locator("#q")).to_have_attribute(
-        "aria-label", "Rechercher dans les dialogues, notes et tags", timeout=15000)
+        "aria-label", "Rechercher dans les dialogues et les notes", timeout=15000)
     expect(page.locator("#f-album")).to_have_attribute("aria-label", "Filtrer par album")
     expect(page.locator("#f-type")).to_have_attribute("aria-label", "Filtrer par type de région")
     # facettes grammaticales (dans un <details>) : nommées aussi

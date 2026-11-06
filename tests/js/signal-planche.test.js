@@ -32,11 +32,7 @@ test("une région créée sur la planche ouverte : son identifiant vient de la r
 
 test("ce qui ne change l'empreinte d'aucune région ne touche rien", () => {
   for (const [m, c] of [["POST", "/api/personnages"], ["PUT", "/api/personnages/3"],
-                        ["PUT", "/api/personnages/3/attributs"],
                         ["DELETE", "/api/personnages/3/alignements/2"],
-                        ["PATCH", "/api/tags/5/lexique"],
-                        ["POST", "/api/attributs/dimensions"],
-                        ["POST", "/api/attributs/dimensions/2/valeurs"],
                         ["PATCH", "/api/planches/7/verrou"], ["PATCH", "/api/planches/7/validation"],
                         ["PUT", "/api/regions/4/tokens/2"], ["POST", "/api/regions/4/grammaire/valider"],
                         ["POST", "/api/albums/2/import"], ["POST", "/api/sharedocs/importer"],
@@ -49,7 +45,7 @@ test("ce que le module ne sait pas placer a tout touché : jamais un signal faux
   for (const [m, c] of [["POST", "/api/undo"], ["POST", "/api/planches/7/segmenter"],
                         ["POST", "/api/regions/4/deplacer"],
                         ["POST", "/api/planches/7/reordonner"], ["DELETE", "/api/personnages/3"],
-                        ["POST", "/api/personnages/3/fusion"], ["PUT", "/api/tags/5"],
+                        ["POST", "/api/personnages/3/fusion"],
                         ["POST", "/api/inconnue"]]) {
     assert.deepEqual(S.regionsTouchees(m, c, {}, 7), { tout: true }, `${m} ${c}`);
   }

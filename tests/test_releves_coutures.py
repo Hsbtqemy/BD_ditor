@@ -220,12 +220,10 @@ def test_la_resegmentation_garde_une_case_qui_porte_un_releve_ou_une_situation(
     if porte == "releve":
         poser(client, decor, region_id=case["id"], entree_cle="regard-camera")
     else:
-        dim = ok(client.post("/api/attributs/dimensions", headers=LEA,
-                             json={"cible": "case", "nom": "lieu"}), 201)["id"]
-        val = ok(client.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=LEA,
-                             json={"valeur": "cuisine"}), 201)["id"]
-        ok(client.put(f"/api/regions/{case['id']}/attributs", headers=LEA,
-                      json={"valeur_id": val}))
+        # Une situation d'HIER, posée en base : aucune route ne la pose plus (ANN-7).
+        from conftest import poser_attribut
+        poser_attribut(database.DB_PATH, cible="case", dimension="lieu", valeur="cuisine",
+                       region_id=case["id"])
     monkeypatch.setattr(seg, "run_kumiko",
                         lambda path: {"size": [400, 500], "panels": [[300, 400, 50, 50]]})
     ok(client.post(f"/api/planches/{pl}/segmenter", headers=LEA))

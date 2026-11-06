@@ -48,7 +48,7 @@ def _region(client, planche_id, rid, headers=A):
 
 def _annotation(client, rid, headers=None):
     a = client.get(f"/api/regions/{rid}/annotation", headers=headers).json()
-    return a["note"], {t["label"] for t in a["tags"]}
+    return a["note"], set()          # ANN-7 : l'annotation ne porte plus que la note
 
 
 def _derriere_le_proxy(monkeypatch, client=None):
@@ -120,20 +120,6 @@ def test_la_geometrie_perimee_est_refusee(client, planche, monkeypatch):
     rep = client.put(f"/api/regions/{rid}", json={"x": 60, "vu": {"x": 0}}, headers=A)
     assert rep.status_code == 409, rep.text
     assert rep.json()["detail"]["conflit"]["champ"] == "x"
-
-
-def test_les_tags_n_ont_pas_de_garde(client, planche, monkeypatch):
-    """Q3 — ajouter ou retirer un tag ne rend jamais 409, même quand la note a changé."""
-    rid = _bulle(client, planche["id"])
-    _derriere_le_proxy(monkeypatch, client)
-    client.put(f"/api/regions/{rid}/annotation", json={"note": "note de A"}, headers=A)
-    rep = client.put(f"/api/regions/{rid}/annotation", json={"tags_ajoutes": ["tag-de-b"]},
-                     headers=B)
-    assert rep.status_code == 200, rep.text
-    rep = client.put(f"/api/regions/{rid}/annotation", json={"tags_retires": ["absent"]},
-                     headers=B)
-    assert rep.status_code == 200, rep.text
-    assert _annotation(client, rid, A) == ("note de A", {"tag-de-b"})
 
 
 def test_ecrire_la_valeur_deja_en_base_n_est_pas_un_conflit(client, planche, monkeypatch):

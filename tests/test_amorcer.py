@@ -25,7 +25,7 @@ import json
 import pytest
 
 import database
-from conftest import ADMIN
+from conftest import ADMIN, poser_attribut, poser_tags
 from test_fonds import _accorder, _album, _collection, _planche
 from test_projets import _sql
 
@@ -59,9 +59,11 @@ def source(client, derriere_proxy, data_dir, db_path):
                                   "parent_id": case}), 201)["id"]
     _ok(client.put(f"/api/regions/{bulle}", headers=LEA,
                    json={"ocr_texte": "TINTIN ET LES OTAGES"}))
-    _ok(client.put(f"/api/regions/{bulle}/annotation", headers=LEA,
-                   json={"note": "ironie", "tags": ["dialogue", "secret"]}))
-    _sql(db_path, "UPDATE tags SET collection_id = ? WHERE label = 'secret'", (principale,))
+    # La note par la route ; les tags et les attributs de case, que plus aucune route ne pose
+    # (ANN-7, le basculement), en base et au nom de `lea`, comme leurs routes les écrivaient.
+    _ok(client.put(f"/api/regions/{bulle}/annotation", headers=LEA, json={"note": "ironie"}))
+    poser_tags(db_path, bulle, ["dialogue"], agent="lea")
+    poser_tags(db_path, bulle, ["secret"], collection_id=principale, agent="lea")
     perso = _ok(client.post("/api/personnages", headers=LEA, json={"nom": "Tintin"}), 201)["id"]
     _ok(client.put(f"/api/regions/{bulle}/locuteur", headers=LEA,
                    json={"personnage_id": perso}))
@@ -69,20 +71,10 @@ def source(client, derriere_proxy, data_dir, db_path):
     # personnage que dans une boîte (422), et tout ce que ce fichier compte suppose ce décor.
     _sql(db_path, "INSERT INTO personnage_presence (region_id, personnage_id) VALUES (?, ?)",
          (case, perso))
-    dim = _ok(client.post("/api/attributs/dimensions", headers=LEA,
-                          json={"cible": "case", "nom": "cadrage"}), 201)["id"]
-    globale = _ok(client.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=LEA,
-                              json={"valeur": "gros plan"}), 201)["id"]
-    dim_locale = _ok(client.post("/api/attributs/dimensions", headers=LEA,
-                                 json={"cible": "case", "nom": "grille privée"}), 201)["id"]
-    locale = _ok(client.post(f"/api/attributs/dimensions/{dim_locale}/valeurs", headers=LEA,
-                             json={"valeur": "à part"}), 201)["id"]
-    for v in (globale, locale):
-        _ok(client.put(f"/api/regions/{case}/attributs", headers=LEA, json={"valeur_id": v}))
-    _sql(db_path, "UPDATE attribut_dimension SET collection_id = ? WHERE id = ?",
-         (principale, dim_locale))
-    _sql(db_path, "UPDATE attribut_valeur SET collection_id = ? WHERE id = ?",
-         (principale, locale))
+    globale = poser_attribut(db_path, cible="case", dimension="cadrage", valeur="gros plan",
+                             region_id=case, agent="lea")["valeur_id"]
+    locale = poser_attribut(db_path, cible="case", dimension="grille privée", valeur="à part",
+                            region_id=case, collection_id=principale, agent="lea")["valeur_id"]
     # Une correction grammaticale, posée en base : sans spaCy, aucun token n'existe sur
     # lequel la route l'accepterait. Ce que la copie doit en faire ne dépend pas du moteur.
     # Les tokens que l'écriture du texte a produits sont retirés d'abord : AVEC spaCy, la
@@ -401,7 +393,7 @@ def test_une_couche_recopiee_effacee_par_une_remise_a_zero_ne_compte_plus(client
     propriétaire d'Étude ramène la copie à la transcription : la couche est effacée, le
     travail de `sam` ne compte plus, et `lea` la supprime de nouveau seule."""
     _ok(client.put(f"/api/regions/{source['case']}/annotation", headers=SAM,
-                   json={"note": "plan large", "tags": []}))
+                   json={"note": "plan large"}))
     b = _copier(source, "annotations")
     assert _seul(b, LEA) is False
     _accorder(client, source["etude"], "proprio", "proprietaire")
@@ -433,12 +425,12 @@ def test_une_couche_posee_ensuite_ne_ranime_pas_celle_de_la_source(client, db_pa
     annote elle-même la case copiée : la couche vit sur la copie, mais ce n'est pas celle de
     `sam`, et `lea` supprime seule sa copie."""
     _ok(client.put(f"/api/regions/{source['case']}/annotation", headers=SAM,
-                   json={"note": "plan large", "tags": []}))
+                   json={"note": "plan large"}))
     b = _copier(source, "transcription")
     case = _sql(db_path, "SELECT region_id FROM region_origine WHERE region_source_id = ?",
                 (source["case"],))[0]["region_id"]
     _ok(client.put(f"/api/regions/{case}/annotation", headers=LEA,
-                   json={"note": "à moi", "tags": []}))
+                   json={"note": "à moi"}))
     assert _seul(b, LEA) is True
 
 
@@ -449,7 +441,7 @@ def test_une_couche_reposee_apres_une_remise_a_zero_ne_ranime_rien(client, db_pa
     à la transcription, puis `lea` annote elle-même la case copiée : le travail de `sam` ne
     revient pas, et `lea` supprime seule sa copie."""
     _ok(client.put(f"/api/regions/{source['case']}/annotation", headers=SAM,
-                   json={"note": "plan large", "tags": []}))
+                   json={"note": "plan large"}))
     b = _copier(source, "annotations")
     assert _seul(b, LEA) is False
     _accorder(client, source["etude"], "proprio", "proprietaire")
@@ -460,7 +452,7 @@ def test_une_couche_reposee_apres_une_remise_a_zero_ne_ranime_rien(client, db_pa
                          "WHERE o.region_source_id = ? AND p.album_id = ?",
                 (source["case"], b))[0]["region_id"]
     _ok(client.put(f"/api/regions/{case}/annotation", headers=LEA,
-                   json={"note": "à moi", "tags": []}))
+                   json={"note": "à moi"}))
     assert _sql(db_path, "SELECT recopiee FROM annotations WHERE region_id = ?",
                 (case,)) == [{"recopiee": 0}]
     assert _seul(b, LEA) is True
@@ -486,7 +478,7 @@ def test_le_travail_fait_sur_la_source_apres_la_copie_ne_compte_pas(client, db_p
     _sql(db_path, "UPDATE copie SET creee_le = datetime('now', '-1 hour') WHERE album_id = ?",
          (b,))
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=SAM,
-                   json={"note": "après la copie", "tags": ["dialogue"]}))
+                   json={"note": "après la copie"}))
     assert _seul(b, LEA) is True
     assert _seul(source["a"], LEA) is False
 
@@ -494,7 +486,7 @@ def test_le_travail_fait_sur_la_source_apres_la_copie_ne_compte_pas(client, db_p
 def test_une_note_qui_n_a_pas_suivi_ne_compte_pas(client, db_path, source):
     """`sam` a annoté la source ; `lea` en prend le découpage, qu'elle a fait seule."""
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=SAM,
-                   json={"note": "de sam", "tags": ["dialogue"]}))
+                   json={"note": "de sam"}))
     b = _copier(source, "decoupage")
     assert _seul(b, LEA) is True
     c = _copier(source, "annotations")
@@ -549,7 +541,7 @@ def test_le_travail_de_la_racine_compte_deux_copies_plus_loin(client, db_path, s
     temoin = _copier(source, "annotations", depuis=_copier(source, "annotations"))
     assert _seul(temoin, LEA) is True
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=SAM,
-                   json={"note": "de sam", "tags": ["dialogue"]}))
+                   json={"note": "de sam"}))
     _sql(db_path, "UPDATE evenement SET date = datetime('now', '-1 minute')")
     b = _copier(source, "annotations")
     c = _copier(source, "annotations", depuis=b)

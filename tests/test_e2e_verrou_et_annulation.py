@@ -15,6 +15,7 @@
   aucun écran : elle se mesure à la route.
 """
 import re
+import sqlite3
 
 import httpx
 import pytest
@@ -41,8 +42,10 @@ SURFACES_HORS_PERIMETRE = {
 
 
 @pytest.fixture
-def decor(live_server):
-    """Une case avec une situation ; dessous, un cartouche avec un locuteur."""
+def decor(live_server, tmp_path):
+    """Une case avec une situation ; dessous, un cartouche avec un locuteur. La situation se
+    pose EN BASE : ses routes sont parties avec le basculement d'ANN-7, la table vit jusqu'à
+    la migration qui la retire."""
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE) as c:
         aid = c.post("/api/albums", json={"titre": "E2E verrou"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",
@@ -53,13 +56,21 @@ def decor(live_server):
                            json={"type": "cartouche", "x": 60, "y": 60, "w": 280, "h": 120,
                                  "parent_id": case}).json()["id"]
         tintin = c.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
-        dim = c.post("/api/attributs/dimensions", json={"cible": "case", "nom": "lieu"}).json()["id"]
-        val = c.post(f"/api/attributs/dimensions/{dim}/valeurs", json={"valeur": "falaise"}).json()["id"]
-        assert c.put(f"/api/regions/{case}/attributs", json={"valeur_id": val}).status_code == 200
         assert c.put(f"/api/regions/{cartouche}/locuteur",
                      json={"personnage_id": tintin}).status_code == 200
-    return {"base": live_server, "album": aid, "planche": pid, "case": case,
-            "cartouche": cartouche}
+    conn = sqlite3.connect(tmp_path / "live.sqlite")
+    try:
+        dim = conn.execute("INSERT INTO attribut_dimension (cible, nom) VALUES ('case', 'lieu')"
+                           ).lastrowid
+        val = conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) "
+                           "VALUES (?, 'falaise')", (dim,)).lastrowid
+        conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+                     (case, val))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"base": live_server, "base_sqlite": tmp_path / "live.sqlite", "album": aid,
+            "planche": pid, "case": case, "cartouche": cartouche}
 
 
 def _ouvrir(page, d, region=None):
@@ -143,6 +154,13 @@ def test_annuler_la_suppression_d_une_case_rend_son_locuteur_a_l_ecran(page, dec
     page.goto(f"{d['base']}/annotation?album={d['album']}&planche={d['planche']}"
               f"&region={d['cartouche']}", wait_until="networkidle")
     expect(page.locator("#an-loc-nom")).to_have_text("Tintin", timeout=15000)
-    with httpx.Client(base_url=d["base"], trust_env=False, timeout=30) as c:
-        attrs = c.get(f"/api/regions/{d['case']}/attributs").json()
-    assert [(a["dimension"], a["valeur"]) for a in attrs] == [("lieu", "falaise")]
+    conn = sqlite3.connect(d["base_sqlite"])
+    try:
+        attrs = conn.execute(
+            "SELECT d.nom, v.valeur FROM region_attribut ra "
+            "JOIN attribut_valeur v ON v.id = ra.valeur_id "
+            "JOIN attribut_dimension d ON d.id = v.dimension_id WHERE ra.region_id = ?",
+            (d["case"],)).fetchall()
+    finally:
+        conn.close()
+    assert [tuple(a) for a in attrs] == [("lieu", "falaise")]

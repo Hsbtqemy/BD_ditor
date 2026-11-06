@@ -94,16 +94,8 @@ class _Api:
 def semer(cli):
     api = _Api(cli)
 
-    # Tags de travail (avec couleurs).
-    for label, coul, desc in [
-        ("dialogue", "#3b82f6", "Réplique parlée"),
-        ("récitatif", "#10b981", "Voix off / cartouche narratif"),
-        ("onomatopée", "#f59e0b", "Bruitage lettré"),
-        ("action", "#ef4444", "Moment d'action"),
-        ("décor", "#8b5cf6", "Décor remarquable"),
-        ("indice", "#0ea5e9", "Indice pour l'intrigue"),
-    ]:
-        api.post("/api/tags", label=label, couleur=coul, description=desc)
+    # ANN-7 — plus de tags ni d'attributs facettés : le basculement les a retirés des
+    # routes. Le vocabulaire d'un projet est une grille (cf. `tools/grille-modele.csv`).
 
     # Personnages (série de démo).
     lea = api.post("/api/personnages", nom="Léa", serie="Les Explorateurs",
@@ -112,33 +104,20 @@ def semer(cli):
                      notes="Prudent, taquin.")
     cap = api.post("/api/personnages", nom="Le Capitaine", serie="Les Explorateurs")
 
-    # Attributs facettés (→ vocabulaire).
-    dim_reg = api.post("/api/attributs/dimensions", cible="personnage", nom="registre de langue")
-    reg = {v: api.post(f"/api/attributs/dimensions/{dim_reg['id']}/valeurs", valeur=v)["id"]
-           for v in ("familier", "courant", "soutenu")}
-    dim_lieu = api.post("/api/attributs/dimensions", cible="case", nom="lieu")
-    lieu = {v: api.post(f"/api/attributs/dimensions/{dim_lieu['id']}/valeurs", valeur=v)["id"]
-            for v in ("falaise", "phare", "cabine", "rivage")}
-    api.put(f"/api/personnages/{lea['id']}/attributs", valeur_id=reg["courant"])
-    api.put(f"/api/personnages/{sacha['id']}/attributs", valeur_id=reg["familier"])
-    api.put(f"/api/personnages/{cap['id']}/attributs", valeur_id=reg["soutenu"])
-
     def poser(planche, rects, lignes):
-        """Pose cases + bulles/cartouches + annotations + locuteurs + attributs de case.
+        """Pose cases + bulles/cartouches + notes + locuteurs.
 
-        Chaque ligne = (texte, tag, personnage|None, type_région, note|None, lieu). `lieu`
-        vaut une valeur de la dimension « lieu » (→ attribut de case), ou "indice" (ajoute
-        le tag indice, sans attribut), ou None."""
+        Chaque ligne = (texte, tag, personnage|None, type_région, note|None, lieu). `tag`
+        et `lieu` ne sont plus posés depuis le basculement d'ANN-7 (ni tags ni attributs de
+        case) ; ils restent dans les lignes comme la description de la démonstration."""
         for i, rc in enumerate(rects):
             ca = api.case(planche["id"], rc, i + 1)
-            texte, tag, perso, typ, note, lieu_val = lignes[i]
+            texte, _tag, perso, typ, note, _lieu = lignes[i]
             reg_txt = api.texte(planche["id"], ca["id"], _bulle(rc), texte, typ)
-            api.put(f"/api/regions/{reg_txt['id']}/annotation",
-                    note=(note or None), tags=[tag] + (["indice"] if lieu_val == "indice" else []))
+            if note:
+                api.put(f"/api/regions/{reg_txt['id']}/annotation", note=note)
             if perso:
                 api.put(f"/api/regions/{reg_txt['id']}/locuteur", personnage_id=perso["id"])
-            if lieu_val in lieu:
-                api.put(f"/api/regions/{ca['id']}/attributs", valeur_id=lieu[lieu_val])
 
     # ---- Album 1 : L'Île aux Énigmes (4 planches) -----------------------
     a1 = api.post("/api/albums", titre="L'Île aux Énigmes", serie="Les Explorateurs",

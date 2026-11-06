@@ -18,7 +18,7 @@ import pytest
 
 import database
 import journal
-from conftest import ADMIN, REPO_ROOT, make_png
+from conftest import ADMIN, REPO_ROOT, make_png, poser_tags
 from test_bac_a_sable import HUGO, LEA, RESP, SAM, _copie, _sql, decor, jeu  # noqa: F401
 
 
@@ -30,12 +30,14 @@ def corpus(client, decor):
     reg = client.post(f"/api/planches/{pl}/regions", headers=RESP,
                       json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
     client.put(f"/api/regions/{reg}", headers=RESP, json={"ocr_texte": "LE OTAGE"})
-    client.put(f"/api/regions/{reg}/annotation", headers=RESP,
-               json={"note": "n", "tags": ["vrai-tag"]})
+    client.put(f"/api/regions/{reg}/annotation", headers=RESP, json={"note": "n"})
     planche = _copie(decor, "exemple")["planche_ids"][0]
     breg = client.get(f"/api/planches/{planche}/regions", headers=LEA).json()[-1]["id"]
-    client.put(f"/api/regions/{breg}/annotation", headers=LEA,
-               json={"note": "n", "tags": ["tag-du-bac", "vrai-tag"]})
+    client.put(f"/api/regions/{breg}/annotation", headers=LEA, json={"note": "n"})
+    # ANN-7 — les tags d'hier, posés en base : aucune route ne les pose plus.
+    poser_tags(decor["db"], reg, ["vrai-tag"])
+    poser_tags(decor["db"], breg, ["tag-du-bac", "vrai-tag"], espace=decor["bac"]["id"],
+               collection_id=decor["base"])
     hugo = client.post("/api/bac-a-sable", headers=HUGO).json()
     return {**decor, "region_reelle": reg, "region_du_bac": breg, "bac_hugo": hugo}
 
@@ -64,26 +66,15 @@ def test_l_exploration_ne_compte_aucun_bac_a_sable(client, corpus):
     sa référence. Le vrai corpus porte UNE bulle « LE OTAGE » ; le jeu en porte deux de
     plus (la référence, la copie)."""
     r = client.get("/api/analyse/concordance", headers=HUGO,
-                   params={"tags": "vrai-tag"}).json()
+                   params={"lemme": "otage"}).json()
     regions = {x["region_id"] for x in r["results"]}
     assert corpus["region_du_bac"] not in regions
     assert client.get("/api/analyse/concordance", headers=LEA,
-                      params={"tags": "vrai-tag"}).json()["results"] == []
+                      params={"lemme": "otage"}).json()["results"] == []
     freq = client.get("/api/analyse/frequences", headers=HUGO,
                       params={"champ": "lemme"}).json()["results"]
     otage = sum(x["freq"] for x in freq if (x.get("lemme") or "").lower() == "otage")
     assert otage <= 1, freq
-
-
-def test_le_nuage_et_le_lexique_ne_comptent_pas_les_bacs_a_sable(client, corpus):
-    nuage = {t["label"]: t["frequence"] for t in client.get("/api/tags", headers=HUGO).json()}
-    assert nuage.get("vrai-tag") == 1 and "tag-du-bac" not in nuage
-    lexique = {t["label"]: t for t in client.get("/api/lexique", headers=HUGO).json()["tags"]}
-    assert "tag-du-bac" not in lexique
-    # L'Atelier, lui, propose sur l'album qu'il ouvre ce qui s'y pose.
-    album = _copie(corpus, "exemple")["album_id"]
-    assert "tag-du-bac" in {t["label"] for t in client.get(
-        "/api/tags", headers=LEA, params={"album": album}).json()}
 
 
 def test_l_accord_modele_humain_ne_compte_pas_le_jeu(client, corpus):
@@ -219,7 +210,7 @@ def test_le_resume_de_provenance_ne_compte_pas_un_bac_a_sable(client, corpus, tm
     reg = client.post(f"/api/planches/{planche}/regions", headers=LEA,
                       json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
     client.put(f"/api/regions/{reg}", headers=LEA, json={"ocr_texte": "DANS LE BAC"})
-    client.put(f"/api/regions/{reg}/annotation", headers=LEA, json={"note": "n", "tags": []})
+    client.put(f"/api/regions/{reg}/annotation", headers=LEA, json={"note": "n"})
     conn = database.get_connection()
     try:
         journal.inscrire_run_termine(conn, "segmentation", agent="kumiko", agent_type="moteur",
@@ -375,7 +366,7 @@ def _faire_annoter(client, corpus, qui):
                       json={"genre": "utilisateur", "principal": login,
                             "niveau": "ecriture"}).status_code == 200
     r = client.put(f"/api/regions/{corpus['region_reelle']}/annotation", headers=qui,
-                   json={"note": f"note de {login}", "tags": []})
+                   json={"note": f"note de {login}"})
     assert r.status_code == 200, r.text
 
 
@@ -442,16 +433,16 @@ def test_rien_ne_redonne_un_rang_une_fois_le_bac_a_sable_efface(client, corpus, 
     reg = client.post(f"/api/planches/{planche}/regions", headers=LEA,
                       json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
     assert client.put(f"/api/regions/{reg}/annotation", headers=LEA,
-                      json={"note": "n", "tags": []}).status_code == 200
+                      json={"note": "n"}).status_code == 200
     assert client.delete(f"/api/regions/{reg}", headers=LEA).status_code == 204
     assert client.put(f"/api/regions/{corpus['region_du_bac']}/annotation", headers=LEA,
-                      json={"note": "gardée", "tags": []}).status_code == 200
+                      json={"note": "gardée"}).status_code == 200
     # Une région RECOPIÉE n'a aucun acte de création : validée, son premier acte ne nomme
     # pas sa planche, et seule sa suppression le dit.
     recopiee = client.get(f"/api/planches/{_copie(corpus, 'grammaire')['planche_ids'][0]}"
                           "/regions", headers=LEA).json()[-1]["id"]
     assert client.put(f"/api/regions/{recopiee}/annotation", headers=LEA,
-                      json={"note": "n", "tags": []}).status_code == 200
+                      json={"note": "n"}).status_code == 200
     r = client.post(f"/api/regions/{recopiee}/grammaire/valider", headers=LEA)
     assert r.status_code == 200, r.text
     assert client.delete(f"/api/regions/{recopiee}", headers=LEA).status_code == 204

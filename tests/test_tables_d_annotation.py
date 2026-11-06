@@ -18,6 +18,7 @@ import pytest
 import autorisation
 import database
 import pipeline.segmentation as seg
+from conftest import poser_attribut
 from grilles_decor import LEA, STAG, grille_active, monter, ok
 
 # Les tables qui portent une région ou une planche, et ne sont PAS de l'annotation.
@@ -68,10 +69,7 @@ def decor(client, db_path, derriere_proxy):
     d.update(grille_active(client, d["p"]))
     perso = ok(client.post("/api/personnages", headers=LEA, json={"nom": "Zed"}), 200, 201)
     d["perso"] = perso["id"]
-    dim = ok(client.post("/api/attributs/dimensions", headers=LEA,
-                         json={"cible": "case", "nom": "lieu"}), 201)["id"]
-    d["valeur"] = ok(client.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=LEA,
-                                 json={"valeur": "cuisine"}), 201)["id"]
+    d["db"] = db_path
     return d
 
 
@@ -91,8 +89,11 @@ def semer(client, d, table, qui=STAG):
                       json={"note": "vu"}))
         return z["case"]
     if table == "region_attribut":
-        ok(client.put(f"/api/regions/{z['case']}/attributs", headers=qui,
-                      json={"valeur_id": d["valeur"]}))
+        # La situation d'une case, que plus aucune route ne pose (ANN-7, le basculement) :
+        # en base, au nom de `qui`, comme la route d'hier l'écrivait au journal. La table part
+        # au commit de la migration.
+        poser_attribut(d["db"], cible="case", dimension="lieu", valeur="cuisine",
+                       region_id=z["case"], agent=qui["Remote-User"])
         return z["case"]
     if table == "bulle_locuteur":
         ok(client.put(f"/api/regions/{z['bulle']}/locuteur", headers=qui,

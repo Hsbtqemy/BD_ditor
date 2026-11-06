@@ -25,11 +25,9 @@ STATIC = RACINE / "static"
 
 # Appels dont la classe n'est pas un littéral : (fichier, expression) → où ses valeurs
 # sont garanties. Une expression neuve échoue tant qu'elle n'est pas déclarée ici.
-CLASSES_CALCULEES = {
-    ("exploration.js", "b.ton"):
-        "BDBilanImport.bilan ne rend que \"success\", \"\" ou \"error\" — "
-        "tests/js/bilan-import.test.js",
-}
+# Vide depuis le basculement d'ANN-7, qui a retiré l'import de vocabulaire et son bilan
+# (`BDBilanImport.bilan`, le seul appel calculé de l'Exploration).
+CLASSES_CALCULEES: dict = {}
 
 
 def _classes_definies():

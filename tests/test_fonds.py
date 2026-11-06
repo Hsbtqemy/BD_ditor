@@ -171,30 +171,12 @@ def _presence(client, decor):
 
 
 def _valeur_de_case(client):
-    r = client.post("/api/attributs/dimensions", headers=ADMIN,
-                    json={"cible": "case", "nom": "émotion"})
-    assert r.status_code == 201, r.text
-    v = client.post(f"/api/attributs/dimensions/{r.json()['id']}/valeurs", headers=ADMIN,
-                    json={"valeur": "colère"})
-    assert v.status_code == 201, v.text
-    return v.json()["id"]
-
-
-def _case(client, decor):
-    """La case de l'album, posée par l'importatrice à la première demande : depuis ANN-8,
-    seule une case reçoit une situation (422 ailleurs), et la région du décor est une bulle."""
-    if "case" not in decor:
-        r = client.post(f"/api/planches/{decor['planche']}/regions", headers=IMPORTEUSE,
-                        json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9})
-        assert r.status_code == 201, r.text
-        decor["case"] = r.json()["id"]
-    return decor["case"]
-
-
-def _attribut(client, decor, qui=COLLEGUE):
-    r = client.put(f"/api/regions/{_case(client, decor)}/attributs", headers=qui,
-                   json={"valeur_id": _valeur_de_case(client)})
-    assert r.status_code == 200, r.text
+    """Une valeur d'attribut de case d'HIER, posée en base : ses routes sont parties avec le
+    basculement d'ANN-7, et seule la base d'avant porte encore des situations."""
+    import database
+    from conftest import poser_attribut
+    return poser_attribut(database.DB_PATH, cible="case", dimension="émotion",
+                          valeur="colère")["valeur_id"]
 
 
 def _notice(client, decor):
@@ -231,9 +213,9 @@ def _autres(client, decor):
 
 TRAVAUX = {
     "une région posée": lambda c, d: _region(c, d["planche"], COLLEGUE),
-    # Relecture croisée de la tranche 2 (sondes S1 à S3) : ces quatre gestes n'étaient
-    # écrits nulle part, et l'importatrice détruisait sans demander.
-    "un attribut de case": _attribut,
+    # Relecture croisée de la tranche 2 (sondes S1 à S3) : ces gestes n'étaient écrits
+    # nulle part, et l'importatrice détruisait sans demander. (L'attribut de case, qui en
+    # était, ne se pose plus depuis le basculement d'ANN-7.)
     "la notice": _notice,
     "une contribution": _contribution,
     "une relecture forcée": _relecture,
@@ -241,7 +223,7 @@ TRAVAUX = {
     "une présence": _presence,
     "une annotation": lambda c, d: c.put(
         f"/api/regions/{d['region']}/annotation", headers=COLLEGUE,
-        json={"note": "vu", "tags": []}).raise_for_status(),
+        json={"note": "vu"}).raise_for_status(),
     "un scan ajouté": lambda c, d: _planche(c, d["erreur"], COLLEGUE),
     "une planche validée": lambda c, d: c.patch(
         f"/api/planches/{d['planche']}/validation", headers=COLLEGUE,
@@ -269,7 +251,6 @@ def test_ses_propres_gestes_ne_sont_pas_le_travail_d_un_autre(client, decor):
     """L'envers des travaux d'autrui : les mêmes gestes, faits par l'importatrice, ne se
     comptent pas sous SA demande — sans quoi « les autres » se réduirait à « tout le
     monde »."""
-    _attribut(client, decor, IMPORTEUSE)
     for chemin, charge in ((f"/api/albums/{decor['erreur']}", {"isbn": "978-2"}),):
         assert client.put(chemin, headers=IMPORTEUSE, json=charge).status_code == 200
     assert client.post(f"/api/albums/{decor['erreur']}/contributions", headers=IMPORTEUSE,
@@ -287,63 +268,6 @@ def test_un_attribut_dont_on_ne_sait_pas_qui_l_a_pose_fait_demander(client, db_p
     _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
          (decor["region"], vid))
     assert None in _autres(client, decor)
-
-
-def test_un_attribut_sans_auteur_le_reste_si_l_importatrice_en_a_retire_un_pareil(
-        client, db_path, decor):
-    """Un attribut que rien n'attribue — posé avant que le geste s'écrive, puis retiré par
-    l'importatrice, puis recopié par la fusion de deux valeurs — reste d'un auteur inconnu :
-    seul un `lien` écrit l'attribue, un `delien` ne dit pas qui l'avait posé."""
-    vid = _valeur_de_case(client)
-    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-         (decor["region"], vid))
-    assert client.delete(f"/api/regions/{decor['region']}/attributs/{vid}",
-                         headers=IMPORTEUSE).status_code == 204
-    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
-         (decor["region"], vid))
-    assert None in _autres(client, decor)
-
-
-def test_un_attribut_pose_puis_retire_par_un_autre_compte_encore(client, db_path, decor):
-    """Comme une annotation posée puis retirée : le journal garde l'acte d'un autre sur une
-    région qui vit encore, et c'est lui qui compte — il ne reste plus d'attribut à lire."""
-    _attribut(client, decor)
-    vid = _sql(db_path, "SELECT valeur_id FROM region_attribut")[0]["valeur_id"]
-    assert client.delete(f"/api/regions/{decor['case']}/attributs/{vid}",
-                         headers=COLLEGUE).status_code == 204
-    assert _sql(db_path, "SELECT 1 FROM region_attribut") == []
-    assert "collegue" in _autres(client, decor)
-
-
-def test_un_attribut_de_case_s_ecrit_sans_rang_ni_annulation(client, db_path, decor):
-    """Écrire un geste neuf au journal change ce qu'on compte. Ce qui change est voulu : le
-    collègue qui n'a fait que qualifier une case « laisse des actes » en partant — c'est du
-    travail. Ce qui ne change pas est tenu ici : aucun pseudonyme de sortie ne bouge (la
-    cible est sans rang), et Ctrl+Z ne défait pas l'attribut — il ne le défaisait pas la
-    veille."""
-    import _commun
-
-    def conn():
-        c = sqlite3.connect(db_path)
-        c.row_factory = sqlite3.Row
-        return c
-
-    _case(client, decor)                 # posée d'abord : elle compte pour l'importatrice
-    rangs = _commun.pseudonymes(conn())
-    actes = comptes.traces(conn())[0]
-    _attribut(client, decor)
-    assert _sql(db_path, "SELECT type, agent, cible_id FROM evenement "
-                         "WHERE cible_table = 'region_attribut'") == [
-        {"type": "lien", "agent": "collegue", "cible_id": decor["case"]}]
-    assert _commun.pseudonymes(conn()) == rangs and "collegue" not in rangs
-    assert comptes.traces(conn())[0] == {**actes, "collegue": actes.get("collegue", 0) + 1}
-    assert client.get("/api/undo/prochain", headers=COLLEGUE).json() is None
-    # Retirer s'écrit aussi ; re-retirer ce qui n'est plus là, non.
-    vid = _sql(db_path, "SELECT valeur_id FROM region_attribut")[0]["valeur_id"]
-    for _ in range(2):
-        client.delete(f"/api/regions/{decor['case']}/attributs/{vid}", headers=COLLEGUE)
-    assert [e["type"] for e in _sql(db_path, "SELECT type FROM evenement "
-                                              "WHERE cible_table = 'region_attribut'")]         == ["lien", "delien"]
 
 
 def test_la_notice_la_paternite_et_la_relecture_s_ecrivent_sous_le_document(
@@ -897,7 +821,7 @@ def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor)
     client.get("/api/moi", headers={**COLLEGUE, "Remote-Name": "Camille Zzcollegue"})
     r2 = _region(client, decor["planche"], COLLEGUE)
     assert client.put(f"/api/regions/{r2}/annotation", headers=COLLEGUE,
-                      json={"note": "vu", "tags": []}).status_code == 200
+                      json={"note": "vu"}).status_code == 200
     _locuteur(client, decor)
     _region(client, decor["planche"], ATELIER)               # le demandeur aussi travaille
     vid = _valeur_de_case(client)

@@ -15,7 +15,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import conflit  # noqa: E402
 import undo  # noqa: E402
-from conftest import ADMIN, direct_query  # noqa: E402
+from conftest import ADMIN, direct_query, poser_tags  # noqa: E402
 
 
 def _regions(db_path):
@@ -62,7 +62,8 @@ def test_undo_suppression_region_cascade(client, planche, db_path):
     case = _creer_region(client, planche["id"], type="case")
     bulle = _creer_region(client, planche["id"], type="bulle", parent_id=case["id"],
                           ocr_texte="SALUT")
-    client.put(f"/api/regions/{bulle['id']}/annotation", json={"note": "cri", "tags": ["emotion"]})
+    client.put(f"/api/regions/{bulle['id']}/annotation", json={"note": "cri"})
+    poser_tags(db_path, bulle["id"], ["emotion"])          # un tag d'hier, en base (ANN-7)
     client.delete(f"/api/regions/{case['id']}")
     assert case["id"] not in _regions(db_path) and bulle["id"] not in _regions(db_path)
 
@@ -82,9 +83,9 @@ def test_undo_suppression_region_cascade(client, planche, db_path):
 # Annotations
 # --------------------------------------------------------------------------- #
 def test_undo_annotation_modif_puis_creation(client, region, db_path):
-    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "A", "tags": ["x"]})
-    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "B", "tags": ["y"]})
-    res = client.post("/api/undo").json()               # annule la modification → A/x
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "A"})
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "B"})
+    res = client.post("/api/undo").json()               # annule la modification → A
     assert res["acte"] == "modification" and res["cible_table"] == "annotations"
     assert _un(db_path, "SELECT note FROM annotations WHERE region_id = ?",
                (region["id"],))["note"] == "A"
@@ -94,8 +95,8 @@ def test_undo_annotation_modif_puis_creation(client, region, db_path):
 
 
 def test_undo_suppression_annotation(client, region, db_path):
-    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "garder", "tags": ["t"]})
-    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "", "tags": []})  # vidée → supprimée
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "garder"})
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": ""})  # vidée → supprimée
     assert _un(db_path, "SELECT 1 FROM annotations WHERE region_id = ?", (region["id"],)) is None
     res = client.post("/api/undo").json()               # annule la suppression → restaurée
     assert res["acte"] == "suppression"
@@ -1245,15 +1246,9 @@ def test_le_mono_poste_n_a_pas_de_delai(client, planche, db_path):
 # Trouvé par la relecture croisée d'ANN-8 le 2026-10-21 (`test_h5_…`, dans sa copie) :
 # `_garder_creation` ne regardait que les colonnes, l'annotation et les enfants ; supprimer
 # la région emportait le locuteur, le personnage montré et la situation par CASCADE, sans
-# instantané pour les rendre. Les gestes de l'auteur de la création sont annulés AVANT elle
-# (ou ne s'annulent pas : la situation) ; ce qui reste et vient d'un autre se garde.
-def _situation(client, nom):
-    d = client.post("/api/attributs/dimensions", headers=ADMIN,
-                    json={"cible": "case", "nom": nom}).json()["id"]
-    return client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=ADMIN,
-                       json={"valeur": "intérieur"}).json()["id"]
-
-
+# instantané pour les rendre. Les gestes de l'auteur de la création sont annulés AVANT elle ;
+# ce qui reste et vient d'un autre se garde. (La situation, qui en était, ne se pose plus
+# depuis le basculement d'ANN-7.)
 def _creation_refusee(client, rid, champ, login, db_path):
     n = _ev_count(db_path)
     res = client.post("/api/undo", headers=PROPRIO)
@@ -1284,30 +1279,6 @@ def test_annuler_la_creation_d_une_boite_n_emporte_pas_le_personnage_montre_d_un
     _poser(client, rid, "personnage", zed, STAGIAIRE)
     _creation_refusee(client, rid, "presence", "stagiaire", db_path)
     assert _lien(db_path, "personnage_presence", rid) == zed
-
-
-def test_annuler_la_creation_d_une_case_n_emporte_pas_la_situation_d_un_autre(
-        client, planche, db_path, derriere_proxy):
-    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="case")["id"]
-    v = _situation(client, "lieu")
-    assert client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v},
-                      headers=STAGIAIRE).status_code == 200
-    _creation_refusee(client, rid, "situation", "stagiaire", db_path)
-    assert _un(db_path, "SELECT 1 x FROM region_attribut WHERE region_id = ?", (rid,))
-
-
-def test_annuler_la_creation_d_une_case_qualifiee_par_son_auteur_passe(
-        client, planche, db_path, derriere_proxy):
-    """La situation ne s'annule pas (hors Ctrl+Z) : posée par l'auteur de la case lui-même,
-    elle ne doit pas rendre sa création inannulable. Le Ctrl+Z la défait avec la case,
-    comme avant."""
-    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="case")["id"]
-    v = _situation(client, "lieu")
-    assert client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v},
-                      headers=PROPRIO).status_code == 200
-    res = client.post("/api/undo", headers=PROPRIO)
-    assert res.status_code == 200, res.text
-    assert rid not in _regions(db_path)
 
 
 def test_un_lien_pose_puis_retire_par_un_autre_ne_bloque_pas(

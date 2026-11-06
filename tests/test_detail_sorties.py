@@ -32,7 +32,7 @@ from pathlib import Path
 import pytest
 
 import database
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, poser_tags
 from grilles_decor import csv_de, importer
 
 NOM, NOTE, TAG = "ZZDETAIL9", "ZZNOTEDET9", "zztagdet9"
@@ -85,7 +85,8 @@ def semer(client, png_bytes):
     assert client.put(f"/api/regions/{detail['id']}",
                       json={"nom": NOM, "vu": {"nom": "brouillon"}}).status_code == 200
     assert client.put(f"/api/regions/{detail['id']}/annotation",
-                      json={"note": NOTE, "tags_ajoutes": [TAG]}).status_code == 200
+                      json={"note": NOTE}).status_code == 200
+    poser_tags(database.DB_PATH, detail["id"], [TAG])     # un tag d'hier, en base (ANN-7)
     # Un second détail, nommé puis SUPPRIMÉ : le journal garde ses actes, et ne les publie pas.
     parti = client.post(f"/api/planches/{pl['id']}/regions",
                         json={"type": "detail", "x": 30, "y": 30, "w": 5, "h": 5,
@@ -166,7 +167,11 @@ def test_un_detail_ne_sort_d_aucun_artefact(client, db_path, tmp_path, png_bytes
     det = next(r for r in regions if r["id"] == s["detail"])
     assert det["type"] == "detail" and det["nom"] == NOM
     ann = client.get(f"/api/regions/{s['detail']}/annotation").json()
-    assert ann["note"] == NOTE and [t["label"] for t in ann["tags"]] == [TAG]
+    assert ann["note"] == NOTE
+    assert [r["label"] for r in database.get_connection().execute(
+        "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
+        "JOIN annotations an ON an.id = at.annotation_id WHERE an.region_id = ?",
+        (s["detail"],))] == [TAG]                    # le tag d'hier, posé en base
     assert any(r["region_id"] == s["detail"]
                for r in client.get(f"/api/planches/{s['planche']}/releves").json()["releves"])
     d, x, nu = s["detail"], s["parti"], s["nu"]

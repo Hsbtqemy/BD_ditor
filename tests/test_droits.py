@@ -111,9 +111,23 @@ def test_chaque_acte_se_joue_au_niveau_qu_il_declare(client, derriere_proxy, mon
         assert r.status_code in (201, 404), r.text
         return r.status_code == 201
 
+    # ANN-7 — le vocabulaire est une grille : le geste qui le gère, au niveau d'un membre de
+    # la collection, est d'y faire naître une entrée en la posant, dans une grille OUVERTE.
+    # (C'était `POST /api/tags`, parti avec le basculement.)
+    repli = next(p for p in client.get("/api/projets", headers=ADMIN).json() if p.get("repli"))
+    g = client.post(f"/api/projets/{repli['id']}/grilles", headers=ADMIN,
+                    json={"nom": "Actes", "porte_sur": "case", "ouverte": True})
+    assert g.status_code == 201, g.text
+    gid = g.json()["grille_id"]
+    r = client.put(f"/api/projets/{repli['id']}/grilles/{gid}/activation", headers=ADMIN,
+                   json={"version": 1})
+    assert r.status_code == 200, r.text
+
     def vocabulaire(h):
-        r = client.post("/api/tags", json={"label": "motif"}, headers=h)
-        assert r.status_code in (201, 403), r.text
+        r = client.post("/api/releves", headers=h,
+                        json={"region_id": region_id, "grille_id": gid, "version": 1,
+                              "nouvelle_entree": {"libelle": f"motif {h['Remote-User']}"}})
+        assert r.status_code in (201, 404), r.text
         return r.status_code == 201
 
     def lots(h):
