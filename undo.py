@@ -31,7 +31,7 @@ import conflit
 import journal
 from config import TYPE_DETAIL, TYPES_LOCUTEUR, TYPES_PRESENCE
 from database import (CLE_PLANCHER_ANNULATION, NATURE_COLLECTIF, SQL_NOTE_POSEE,
-                      annotation_vide, reindex_region, unindex_region)
+                      annotation_vide, reindex_etiquettes, reindex_region, unindex_region)
 
 # Types d'événements et tables que l'undo sait inverser (le reste est ignoré : ni annulé,
 # ni bloquant — l'undo « saute » un acte non annulable et remonte au précédent).
@@ -862,7 +862,7 @@ def _inverser_releve(conn, e, avant, apres) -> None:
                     "ORDER BY id DESC LIMIT 1", (e["id"], autre["id"])).fetchone()
                 raise conflit.Perime(e["cible_table"], e["cible_id"], "releve", autre["id"],
                                      conflit.auteur(conn, pose) if pose else None)
-        releves.rendre(conn, snap)
+        releves.rendre(conn, snap)              # réindexe ses étiquettes (J6)
         return
     if not actuel:
         raise Irretablissable()                  # retiré depuis : il n'y a rien à défaire
@@ -887,6 +887,7 @@ def _inverser_releve(conn, e, avant, apres) -> None:
             raise conflit.Perime(e["cible_table"], e["cible_id"], "doute", "ouvert",
                                  conflit.auteur(conn, ouvert) if ouvert else None)
         conn.execute("DELETE FROM releve WHERE id = ?", (rid,))
+        reindex_etiquettes(conn, [actuel["region_id"]])   # J6 : ses étiquettes quittent l'index
         return
     # Une modification : ce que l'acte a changé revient, et lui seul.
     avant, apres = avant or {}, apres or {}
@@ -922,6 +923,7 @@ def _inverser_releve(conn, e, avant, apres) -> None:
     if changes and "modifie_par" in avant:
         conn.execute("UPDATE releve SET modifie_par = ?, modifie_le = ? WHERE id = ?",
                      (avant.get("modifie_par"), avant.get("modifie_le"), rid))
+    reindex_etiquettes(conn, [actuel["region_id"]])       # J6 : la variante rendue s'y lit
 
 
 def _rendre_releves(conn, snap) -> int:

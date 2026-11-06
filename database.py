@@ -4831,6 +4831,69 @@ def unindex_region(conn: sqlite3.Connection, region_id: int) -> None:
     conn.execute("DELETE FROM recherche WHERE region_id = ?", (region_id,))
 
 
+def reindex_etiquettes(conn: sqlite3.Connection, region_ids) -> None:
+    """Réécrit les seules ÉTIQUETTES (`etiquettes`, `sql_etiquettes`) de l'index de ces
+    régions — ANN-7, le mode libre (J6, Hugo, 2026-11-06) : quand un relevé d'une grille
+    OUVERTE est posé, modifié, retiré ou rendu, ou qu'un libellé qu'il lit change (une
+    entrée, une variante, une case renommée ; une fusion).
+
+    Le patron de l'ancien `reindex_tags_regions` (ANN-8) : `reindex_region` relance le moteur
+    de langue et régénère `tokens` pour chaque région — sous le verrou d'écriture, 1 500
+    régions le tenaient 14,7 s (mesuré le 2026-10-22), et des `tokens` figés avec un autre
+    modèle (`tools/reindex_nlp.py`) étaient régénérés avec celui du serveur. Un relevé ne
+    change ni le texte, ni la note, ni donc les lemmes : on garde la ligne et on n'y réécrit
+    que `etiquettes` (mesuré par le cadrage : 74 ms pour 1 500 régions sur 20 000).
+
+    `region_id` est UNINDEXED : le chercher parcourt toute la table. On le parcourt donc UNE
+    fois par paquet de régions, pour lire le `rowid` de chacune, puis on écrit par `rowid`.
+    Une région sans ligne en reçoit une (ses lemmes vides : elle n'avait ni texte ni note
+    indexés, sans quoi elle aurait une ligne — une CASE qui porte « lieu : forêt ») ; une
+    ligne qui n'a plus rien à porter part ; une région qui n'existe plus est ignorée (sa
+    suppression l'a désindexée, `unindex_region`). Ne commite pas.
+
+    Le cliquet de `tests/test_reindex_etiquettes.py` exige que toute écriture de `releve`, et
+    de ce qui change un libellé indexé, vive dans une fonction qui l'appelle — ou y soit
+    déclarée avec sa raison."""
+    ids = sorted({int(x) for x in region_ids if x is not None})
+    for debut in range(0, len(ids), 500):
+        paquet = ids[debut:debut + 500]
+        lignes = {r["region_id"]: r for r in conn.execute(
+            "SELECT rowid, region_id, lemmes FROM recherche "
+            f"WHERE region_id IN ({','.join('?' * len(paquet))})", paquet)}
+        for region_id in paquet:
+            payload = _region_index_payload(conn, region_id)
+            ligne = lignes.get(region_id)
+            if payload is None:
+                if ligne is not None:
+                    conn.execute("DELETE FROM recherche WHERE rowid = ?", (ligne["rowid"],))
+                continue
+            ocr_texte, note, etiquettes = payload
+            lemmes = ligne["lemmes"] if ligne is not None else ""
+            if not (ocr_texte or note or etiquettes or lemmes):
+                if ligne is not None:
+                    conn.execute("DELETE FROM recherche WHERE rowid = ?", (ligne["rowid"],))
+            elif ligne is not None:
+                conn.execute("UPDATE recherche SET etiquettes = ? WHERE rowid = ?",
+                             (etiquettes, ligne["rowid"]))
+            else:
+                conn.execute("INSERT INTO recherche (region_id, ocr_texte, note, etiquettes, "
+                             "lemmes) VALUES (?, ?, ?, ?, '')",
+                             (region_id, ocr_texte, note, etiquettes))
+
+
+def regions_des_releves(conn: sqlite3.Connection, releve_ids) -> list:
+    """Les régions de ces relevés (ceux de la planche n'en ont pas : l'index est par
+    région) — ce que `reindex_etiquettes` réécrit après un geste qui les touche en masse."""
+    ids = sorted({int(x) for x in releve_ids})
+    sortie = set()
+    for debut in range(0, len(ids), 500):
+        paquet = ids[debut:debut + 500]
+        sortie |= {r[0] for r in conn.execute(
+            f"SELECT region_id FROM releve WHERE id IN ({','.join('?' * len(paquet))}) "
+            "AND region_id IS NOT NULL", paquet)}
+    return sorted(sortie)
+
+
 def annotation_vide(note) -> bool:
     """Une annotation qui n'a plus rien à porter : pas de note (une note faite d'espaces est
     vide, `ESPACES_DE_NOTE` — la règle de `SQL_NOTE_POSEE`). Elle se SUPPRIME plutôt que de

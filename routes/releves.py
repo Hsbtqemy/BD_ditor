@@ -59,7 +59,7 @@ import grilles
 import journal
 import mots
 from releves import instantane, qualificatifs_de
-from database import cle_tag, noms_lisibles, projet_d_album
+from database import cle_tag, noms_lisibles, projet_d_album, reindex_etiquettes
 from socle import _get_planche, _get_region, db, portee_courante
 
 router = APIRouter()
@@ -636,6 +636,7 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
                      "VALUES (?, ?)", [(rid, q) for q in sorted(set(payload.qualificatifs))])
     releve = conn.execute("SELECT * FROM releve WHERE id = ?", (rid,)).fetchone()
     journaliser_releve(conn, "creation", releve, apres=instantane(conn, rid))
+    reindex_etiquettes(conn, [releve["region_id"]])        # J6 : ses étiquettes cherchables
     conn.commit()
     return vue_de(conn, portee, rid)
 
@@ -783,6 +784,7 @@ def modifier_releve(releve_id: int, payload: ReleveUpdate,
     if "lien_region_id" in change:
         avant["lien_texte"], apres["lien_texte"] = actuel["lien_texte"], lien_texte
     journaliser_releve(conn, "modification", r, avant=avant, apres=apres)
+    reindex_etiquettes(conn, [r["region_id"]])
     conn.commit()
     return vue_de(conn, portee, releve_id)
 
@@ -811,6 +813,7 @@ def retirer(conn, r) -> None:
     avant = instantane(conn, r["id"], profond=True)
     conn.execute("DELETE FROM releve WHERE id = ?", (r["id"],))
     journaliser_releve(conn, "suppression", r, avant=avant)
+    reindex_etiquettes(conn, [r["region_id"]])
 
 
 class RetraitIn(BaseModel):

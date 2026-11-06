@@ -401,6 +401,7 @@ def ecrire(conn: sqlite3.Connection, g, v: dict, avant: dict, apres: dict, *,
     grille_import.ecrire_plan(conn, v["id"], apres)
     if v["etat"] == grilles.ETAT_VIVANTE:
         grille_import.reporter_cardinalites(conn, g["id"], v["id"], avant, apres)
+        grille_import.reindexer_libelles(conn, g["id"], v["id"], avant, apres, fusions)
     conn.execute("UPDATE grille_version SET cible = ?, note = ? WHERE id = ?",
                  (apres["cible"], note, v["id"]))
     conn.execute("UPDATE grille_version SET empreinte = ? WHERE id = ?",

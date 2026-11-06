@@ -1187,6 +1187,46 @@ def reporter_cardinalites(conn, grille_id: int, version_id: int, avant: dict,
                      "AND entree_cle = ?", (int(neuve == "une"), grille_id, version_id, cle_))
 
 
+def reindexer_libelles(conn, grille_id: int, version_id: int, avant: dict, apres: dict,
+                       fusions=()) -> list:
+    """Après l'écriture d'une version VIVANTE (donc d'une grille ouverte, la seule dont les
+    libellés entrent dans l'index plein texte, J6) : les ÉTIQUETTES des régions dont un
+    relevé lit un libellé qui a CHANGÉ — une entrée, une variante, une case renommée —, et
+    celles des relevés FUSIONNÉS (`fusions`, avec leurs `releve_ids`), sont réécrites
+    (`database.reindex_etiquettes`). APRÈS `ecrire_plan` : c'est le plan neuf qu'elles
+    lisent. Un retrait, une entrée remise, un ordre ne changent aucun libellé. Rend les
+    régions réécrites."""
+    from database import regions_des_releves, reindex_etiquettes   # import paresseux
+    av_e, ap_e = avant["entrees"], apres["entrees"]
+    entrees = {k for k, x in ap_e.items() if k in av_e and av_e[k]["libelle"] != x["libelle"]}
+    variantes = {(k, vc) for k, x in ap_e.items() if k in av_e
+                 for vc, v in x["variantes"].items()
+                 if vc in av_e[k]["variantes"]
+                 and av_e[k]["variantes"][vc]["libelle"] != v["libelle"]}
+    cases = {(lc, qc) for lc, l in apres["listes"].items() if lc in avant["listes"]
+             for qc, q in l["qualificatifs"].items()
+             if qc in avant["listes"][lc]["qualificatifs"]
+             and avant["listes"][lc]["qualificatifs"][qc]["libelle"] != q["libelle"]}
+    regions = set(regions_des_releves(conn, [i for f in fusions
+                                             for i in f.get("releve_ids") or []]))
+    if entrees or variantes:
+        for r in conn.execute("SELECT region_id, entree_cle, variante_cle FROM releve "
+                              "WHERE grille_id = ? AND version_id = ? AND region_id IS NOT NULL",
+                              (grille_id, version_id)):
+            if r["entree_cle"] in entrees or (r["entree_cle"], r["variante_cle"]) in variantes:
+                regions.add(r["region_id"])
+    if cases:
+        listes = {k: x.get("liste_cle") for k, x in ap_e.items()}
+        for r in conn.execute("SELECT r.region_id, r.entree_cle, q.qualificatif_cle "
+                              "FROM releve r JOIN releve_qualificatif q ON q.releve_id = r.id "
+                              "WHERE r.grille_id = ? AND r.version_id = ? "
+                              "AND r.region_id IS NOT NULL", (grille_id, version_id)):
+            if (listes.get(r["entree_cle"]), r["qualificatif_cle"]) in cases:
+                regions.add(r["region_id"])
+    reindex_etiquettes(conn, regions)
+    return sorted(regions)
+
+
 def _fusionner(conn, grille_id: int, version_id: int, fusion: dict) -> list:
     """Reporte les relevés d'une entrée sur une autre (« fusionner dans… »), et rend leurs
     identifiants. `reconcilier_ouverte` a dit le doublon d'une cardinalité `une` ; relu ici
@@ -1469,6 +1509,7 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
         ecrire_plan(conn, en_place["id"], c)
         if vivante:
             reporter_cardinalites(conn, gid, en_place["id"], avant, c)
+            reindexer_libelles(conn, gid, en_place["id"], avant, c, fusions)
         numero = en_place["numero"]
     else:
         derniere = grilles.derniere_version(conn, gid)

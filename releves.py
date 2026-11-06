@@ -61,7 +61,9 @@ def instantanes_de_la_region(conn: sqlite3.Connection, region_id: int) -> tuple[
 def rendre(conn: sqlite3.Connection, snap: dict) -> None:
     """Recrée un relevé depuis son instantané profond, sous son identifiant — ses mots, ses
     qualificatifs, ses doutes et leur fil. Lève `sqlite3.IntegrityError` si quelque chose
-    s'y oppose (l'identifiant, la cardinalité `une`, une clé) ; l'appelant décide."""
+    s'y oppose (l'identifiant, la cardinalité `une`, une clé) ; l'appelant décide. Ses
+    ÉTIQUETTES reviennent dans l'index (J6, `database.reindex_etiquettes`)."""
+    from database import reindex_etiquettes        # import paresseux (database importe ce module)
     conn.execute(
         "INSERT INTO releve (id, region_id, planche_id, grille_id, version_id, entree_cle, "
         "variante_cle, precision, lien_region_id, lien_texte, texte_ancre, une, origine_id, "
@@ -87,6 +89,7 @@ def rendre(conn: sqlite3.Connection, snap: dict) -> None:
                          "VALUES (?, ?, ?, ?, ?)",
                          [(m["id"], d["id"], m["auteur"], m["date"], m["texte"])
                           for m in d["messages"]])
+    reindex_etiquettes(conn, [snap["region_id"]])
 
 
 def reancrer_releves(conn: sqlite3.Connection, region_id: int) -> int:
