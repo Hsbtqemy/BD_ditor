@@ -6,7 +6,7 @@ duree: 70 min
 
 # QA — le Mode libre sur la page Annotation, et ses étiquettes dans la Recherche
 
-**Où** — la pile de recette locale, `https://bd.127-0-0-1.sslip.io`, reconstruite sur `f91d681`
+**Où** — la pile de recette locale, `https://bd.127-0-0-1.sslip.io`, reconstruite sur `a509448` ou après
 (branche `ann7-sur-dev` : la branche d'ANN-7 rejouée au-dessus de `dev`, PAS encore sur `dev`),
 état `apres-moustache` restauré (`C:\temp\bd-recette\etat-de-base.ps1 restaurer apres-moustache`).
 Au démarrage, l'application migre la base en v39 : le vocabulaire d'hier (tags, attributs de case)
