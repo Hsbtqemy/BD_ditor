@@ -1487,6 +1487,28 @@ function htmlActesAlbum(a) {
    lecture des planches : un menu qui se replie seul retire le bouton sous le doigt. */
 const AUTRES = { ouvert: null };
 
+/* Le menu s'aligne à droite de son bouton ; s'il sortait alors du volet par la gauche (la
+   rangée des gestes passée à la ligne, le bouton à gauche), il s'aligne à gauche. */
+function placerAutres(details) {
+  const menu = details.querySelector(".autres-menu");
+  const volet = details.closest("#biblio-volet") || document.body;
+  if (!menu) return;
+  menu.classList.remove("a-gauche");
+  if (menu.getBoundingClientRect().left < volet.getBoundingClientRect().left) {
+    menu.classList.add("a-gauche");
+  }
+}
+
+/* Un clic hors du menu le referme, comme tout menu déroulant ; un geste fait DANS le menu le
+   laisse ouvert (cf. ci-dessus), et un clic dans la modale qu'un de ses gestes a ouverte
+   aussi : refermé derrière elle, le menu ne rendrait plus le focus au bouton qui l'a ouverte. */
+document.addEventListener("pointerdown", (e) => {
+  const d = document.querySelector("#biblio-volet details.autres[open]");
+  if (!d || d.contains(e.target)) return;
+  if (e.target.closest && e.target.closest('[id$="-modal"], [aria-modal="true"]')) return;
+  d.open = false;
+});
+
 function renderDetail() {
   const a = state.albums.find((x) => x.id === state.openId);
   const fiche = $("#biblio-volet");
@@ -1622,7 +1644,19 @@ function renderDetail() {
     </section>`;
   $("#rel-filter").value = state.relFilter;                       // reflète l'état courant
   const autres = fiche.querySelector("details.autres");
-  if (autres) autres.addEventListener("toggle", () => { AUTRES.ouvert = autres.open ? a.id : null; });
+  if (autres) {
+    autres.addEventListener("toggle", () => {
+      AUTRES.ouvert = autres.open ? a.id : null;
+      if (autres.open) placerAutres(autres);
+    });
+    autres.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !autres.open) return;
+      e.stopPropagation();
+      autres.open = false;
+      autres.querySelector("summary").focus();
+    });
+    if (autres.open) placerAutres(autres);
+  }
   if (IMPORT.focus) { IMPORT.focus = false; const b = $("#bi-importer"); if (b) b.focus(); }
   rendreFocusOrdre();
   loadDetailContribs(a.id);

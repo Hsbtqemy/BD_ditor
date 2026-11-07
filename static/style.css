@@ -2835,10 +2835,19 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .copies-l li.ici { font-weight: 600; }
 .copies-l li .muted { font-weight: 400; }
 /* « Autres gestes » : un clic de plus pour des gestes rares, à revoir avec Hugo. */
-.autres { display: inline-block; }
+.autres { display: inline-block; position: relative; }
 .autres > summary { display: inline-block; cursor: pointer; }
-.autres[open] > summary { margin-bottom: .3rem; }
-.autres-menu { display: flex; flex-wrap: wrap; gap: .4rem; }
+/* Un menu SUPERPOSÉ, sous son bouton (Hugo, 2026-11-07) : rangé dans la rangée des gestes, il
+   la faisait passer à la ligne, étirait les autres boutons à sa hauteur et poussait « Modifier »
+   hors du volet. Ouvert, il ne déplace rien. Aligné à droite de son bouton, à gauche s'il
+   sortirait du volet (`a-gauche`, posé par corpus.js). */
+.autres-menu { position: absolute; top: calc(100% + .3rem); right: 0; z-index: 20;
+               display: flex; flex-direction: column; align-items: stretch; gap: .3rem;
+               width: max-content; padding: .4rem; background: var(--bg-panel);
+               border: 1px solid var(--border); border-radius: 6px;
+               box-shadow: 0 6px 18px rgba(0, 0, 0, .22); }
+.autres-menu.a-gauche { right: auto; left: 0; }
+.autres-menu > button { text-align: left; }
 /* `minmax(0, 1fr)` : une piste implicite grandit jusqu'au champ de création ouvert, plus large
    que la colonne sous une préférence de 24, et toute la liste sortait de 5 px avec elle. Bornée,
    la ligne du champ passe à la ligne. */
@@ -3844,7 +3853,7 @@ li.lf-groupe { margin: .6rem 0 .2rem; padding: .2rem .5rem; border-radius: 4px;
                background: color-mix(in srgb, var(--text) 8%, transparent); }
 .lf-detail { flex-basis: 100%; color: var(--text-muted); font-size: .85rem; overflow-wrap: anywhere; }
 .lf-objet[aria-current="true"] .lf-detail { color: var(--text); }
-.lf-gestes-tete { display: flex; flex-wrap: wrap; gap: .4rem; }
+.lf-gestes-tete { display: flex; flex-wrap: wrap; gap: .4rem; align-items: flex-start; }
 .lf-tete h3:focus { outline: none; }
 .lf-tete h3:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* « ← Liste » n'existe que sous le seuil étroit, où la fiche remplace la liste. */
