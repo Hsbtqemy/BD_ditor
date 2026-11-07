@@ -308,11 +308,11 @@ def test_un_enregistrement_en_cours_retient_le_changement_puis_le_rejoue(page, d
     clic à refaire."""
     d = decor
     _ouvrir(page, d)
-    page.evaluate("() => { state.envoiNote = new Promise((r) => { window.__lacher = r; }); }")
+    page.evaluate("() => { state.envoiTr = new Promise((r) => { window.__lacher = r; }); }")
     _collection(page).select_option(str(d["cols"]["B"]))
     expect(_collection(page)).to_have_value(str(d["cols"]["base"]))
     assert page.evaluate("() => state.albumId") == d["albums"]["De la base"]
-    page.evaluate("() => { state.envoiNote = null; window.__lacher(['ok']); }")
+    page.evaluate("() => { state.envoiTr = null; window.__lacher(['ok']); }")
     expect(_collection(page)).to_have_value(str(d["cols"]["B"]))
     expect(_albums(page)).to_have_text(["De A et de B (0)", "De B (0)"])
     expect(page.locator("#album-select")).to_have_value(str(d["albums"]["De A et de B"]))
