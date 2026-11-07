@@ -2850,8 +2850,12 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* `display: flex` (`.lf-tri`) l'emporterait sur la règle UA `[hidden]` : le choix « dans
    l'une / dans toutes » naît caché. */
 #calques-mode[hidden] { display: none; }
-.bi-collections .col-sec { margin: .45rem 0 .1rem; padding: 0 .35rem; font-size: .85rem;
-                           font-weight: 600; color: var(--text-muted); }
+/* Un titre de section se lit AVANT les noms qu'il range : encre du texte, gras, sur un léger
+   aplat (UX-20, Hugo, sur maquette, 2026-11-07 : en encre atténuée, de la taille des détails,
+   il se confondait avec « lecture · par le projet »). */
+.bi-collections .col-sec { margin: .6rem 0 .2rem; padding: .2rem .4rem; font-size: .85rem;
+                           font-weight: 700; color: var(--text); border-radius: 4px;
+                           background: color-mix(in srgb, var(--text) 8%, transparent); }
 .bi-collections .col-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
                             gap: 0 .4rem; align-items: center; padding: .1rem .35rem;
                             border-radius: 5px; }
@@ -3834,7 +3838,10 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
                      border: 1px solid var(--border); border-radius: 5px; padding: .2rem .35rem;
                      font: inherit; }
 .lf-groupe { margin: .6rem .5rem .2rem; font-size: .8rem; text-transform: uppercase;
-             letter-spacing: .06em; color: var(--text-muted); font-weight: 600; }
+             letter-spacing: .06em; color: var(--text); font-weight: 700; }
+/* Dans une liste, le titre d'un groupe porte l'aplat des sections du rail (même décision). */
+li.lf-groupe { margin: .6rem 0 .2rem; padding: .2rem .5rem; border-radius: 4px;
+               background: color-mix(in srgb, var(--text) 8%, transparent); }
 .lf-detail { flex-basis: 100%; color: var(--text-muted); font-size: .85rem; overflow-wrap: anywhere; }
 .lf-objet[aria-current="true"] .lf-detail { color: var(--text); }
 .lf-gestes-tete { display: flex; flex-wrap: wrap; gap: .4rem; }
