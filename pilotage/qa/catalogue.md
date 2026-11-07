@@ -32,8 +32,8 @@ Prendre du fonds et dans le projet : `prendre-un-document`. Repartir de zéro et
 passant, pas en entier. La police de 24 et 320 px : `petites-largeurs`.
 
 ### Prélude, sous `proprio` : une copie vierge à replier
-- [ ] *Bibliothèque* : le rail commence par « Tout ce que vous lisez » (le nombre d'albums à droite), puis le bloc « Collections · n » ; aucune entrée « À répondre » tant qu'aucune demande n'attend
-- [ ] Ouvrir « Annee_lievre-1 » (clic sur sa carte) : le volet s'ouvre à droite, « Copie… » est dans la tête de la fiche. « Copie… » : « Copier dans » propose les collections où vous écrivez ; choisir « Collection Test », cocher « Images seules » : la phrase dit « Votre copie ira dans « Collection Test », rangée sous l'original. » ; « Copier les images » : le volet s'ouvre sur la copie, et sa fiche dit « Album · copie de travail » au-dessus du titre
+- [x] *Bibliothèque* : le rail commence par « Tout ce que vous lisez » (le nombre d'albums à droite), puis le bloc « Collections · n » ; aucune entrée « À répondre » tant qu'aucune demande n'attend
+- [x] Ouvrir « Annee_lievre-1 » (clic sur sa carte) : le volet s'ouvre à droite, « Copie… » est dans la tête de la fiche. « Copie… » : « Copier dans » propose les collections où vous écrivez ; choisir « Collection Test », cocher « Images seules » : la phrase dit « Votre copie ira dans « Collection Test », rangée sous l'original. » ; « Copier les images » : le volet s'ouvre sur la copie, et sa fiche dit « Album · copie de travail » au-dessus du titre
 
 ### Le rail, sous `proprio`
 - [ ] Le filtre au-dessus des collections a trois boutons, « Les miennes · Où j'écris · Tout », « Tout » pressé : la liste est rangée en sections « Les vôtres » (dont « Projet principal », marquée « base ») puis « Où vous lisez »
