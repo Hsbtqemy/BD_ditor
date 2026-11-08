@@ -18,6 +18,7 @@ Le harnais neutralise l'ouverture seule de l'album pour toute la suite (`tests/c
 """
 import json
 import re
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -344,6 +345,13 @@ def test_arrivee_sur_une_autre_page_pendant_la_visite_la_fait_suivre(page, jeu):
 # « Par où commencer », la ligne du bac à sable et tout lien vers une autre page ne font
 # rien ; le clic CHOISIT leur zone, comme un clic sur sa ligne.
 
+def _chemin(page):
+    # Le CHEMIN seul : la page écrit son lieu dans l'adresse après son chargement
+    # (`?collection=…&planche=…`), si bien qu'une adresse entière relevée trop tôt change sans
+    # qu'aucun lien ait navigué — vu rouge ainsi dans l'image le 2026-11-08.
+    return urlsplit(page.url).path
+
+
 def _ligne_choisie(page, marque):
     expect(page.locator(f'#wizard-zones .wf-zone[data-zone="{marque}"]')).to_have_attribute(
         "aria-pressed", "true")
@@ -355,7 +363,7 @@ def test_pendant_la_visite_ce_qui_perd_le_fil_choisit_sa_zone(page, jeu):
     _commencer_la_visite(page, jeu)
     compte = page.locator("#wizard-visite-compte")
     expect(compte).to_have_text("Visite 1 / 7")
-    adresse = page.url
+    chemin = _chemin(page)
     # Le « ? » n'ouvre pas les repères à la place de la visite.
     page.locator("#site-nav > .bande-aide").click()
     expect(compte).to_have_text("Visite 1 / 7")
@@ -364,7 +372,7 @@ def test_pendant_la_visite_ce_qui_perd_le_fil_choisit_sa_zone(page, jeu):
     # Un lien de la barre ne quitte pas la page.
     page.locator('.surf-nav a.surf-link[href^="/annotation"]').first.click()
     page.wait_for_timeout(400)
-    assert page.url == adresse
+    assert _chemin(page) == chemin
     expect(compte).to_have_text("Visite 1 / 7")
     _ligne_choisie(page, "bande-pages")
     # « Par où commencer » ne rouvre ni l'album ni la carte.
@@ -395,10 +403,10 @@ def test_dans_les_reperes_un_lien_vers_une_autre_page_choisit_sa_zone(page, jeu)
     expect(page.locator("#an-atelier")).to_be_visible()
     page.locator("#site-nav > .bande-aide").click()
     expect(page.locator("#wizard-visite-compte")).to_have_text("Cette page")
-    adresse = page.url
+    chemin = _chemin(page)
     page.locator("#an-atelier").click()
     page.wait_for_timeout(400)
-    assert page.url == adresse
+    assert _chemin(page) == chemin
     expect(page.locator("#wizard-visite-compte")).to_have_text("Cette page")
     _ligne_choisie(page, "annotation-lieu")
 
