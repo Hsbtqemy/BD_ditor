@@ -620,6 +620,52 @@ def test_copie_depuis_la_fiche_se_demande_a_la_proprietaire(page, decor):
         "album_id": d["albums"]["Pirates"], "cran": "decoupage"}]}]
 
 
+def test_copie_refusee_garde_le_focus_dans_le_panneau(page, decor):
+    """Un refus de la prise se lit dans le panneau, et le focus y reste — sur « Copier… »
+    s'il se rallume, sinon sur « Copier dans » —, jamais sur la page. L'envoi éteint le
+    bouton, qui perd le focus AVANT la réponse : sans le rendre, il restait sur `body`.
+    Le refus est simulé (`page.route`), sous ses deux formes : une erreur nommée (409), et
+    une ligne `refuse` dans une réponse 200."""
+    d = decor
+    fiche = _fiche_album(page, d, "paule", "QRN", "Corpus")
+    echelle, lu = page.locator("#vc-echelle"), "rien : la source n'a pas ce travail"
+    fiche.locator("#vc-ouvrir").click()
+    expect(echelle).to_contain_text(lu, timeout=5000)
+    ok, msg, prise = page.locator("#vc-ok"), page.locator("#vc-msg"), "**/api/collections/*/prendre"
+    actif = "() => document.activeElement && document.activeElement.id"
+
+    # --- Une erreur nommée, aux images seules : le panneau se redessine, l'aperçu se relit,
+    # et « Copier… », rallumé, garde le focus. Mesuré après l'aperçu, qui redessine encore.
+    page.route(prise, lambda r: r.fulfill(status=409, json={"detail": "Refus de test."}))
+    ok.click()
+    expect(msg).to_have_text("Refus de test.", timeout=5000)
+    expect(echelle).to_contain_text(lu, timeout=5000)
+    expect(ok).to_be_focused()
+    assert page.evaluate(actif) == "vc-ok"
+    page.unroute(prise)
+
+    # --- Une ligne refusée dans une réponse 200 : rien ne se redessine, le focus revient.
+    page.route(prise, lambda r: r.fulfill(status=200, json={"documents": [
+        {"etat": "refuse", "motif": "Motif de test."}]}))
+    ok.click()
+    expect(msg).to_have_text("Motif de test.", timeout=5000)
+    expect(ok).to_be_focused()
+    assert page.evaluate(actif) == "vc-ok"
+    page.unroute(prise)
+
+    # --- Au-dessus des images, l'erreur efface l'aperçu : « Copier… » reste éteint jusqu'à
+    # sa relecture, et le focus va sur « Copier dans ».
+    page.locator('#vc-zone input[data-vc-cran][value="decoupage"]').check()
+    expect(ok).to_be_enabled(timeout=5000)
+    page.route(prise, lambda r: r.fulfill(status=409, json={"detail": "Refus de test."}))
+    ok.click()
+    expect(msg).to_have_text("Refus de test.", timeout=5000)
+    expect(echelle).to_contain_text(lu, timeout=5000)
+    expect(page.locator("#vc-dest")).to_be_focused()
+    assert page.evaluate(actif) == "vc-dest"
+    page.unroute(prise)
+
+
 def test_a_repondre_les_demandes_d_effacement_au_responsable(page, decor):
     """Tranche 3c (Q9 ; Hugo, sur maquette, 2026-11-02) — « À répondre », sous « Tout le
     projet » : les demandes d'effacement que Noé a déposées, une couleur par genre, « qui perd

@@ -3285,10 +3285,24 @@ function vcChanger(t) {
   }
 }
 
+/* Après un refus, le focus revient dans le panneau : sur « Copier… » s'il se rallume, sinon
+   sur « Copier dans ». L'envoi éteint « Copier… » (pendantEnvoi), et un bouton éteint perd
+   le focus, qui tombe sur la page AVANT la réponse : le redessin du panneau n'a alors plus
+   rien à rendre. */
+function vcRendreLeFocus() {
+  if (!$("#vc-zone")) return;
+  const ok = $("#vc-ok");
+  const cible = ok && !ok.disabled ? ok : $("#vc-dest");
+  if (cible) cible.focus();
+}
+
 async function vcCopier() {
   const a = state.albums.find((x) => x.id === VCOP.album);
   const ok = $("#vc-ok");
   if (!a || !ok || ok.disabled) return;
+  // Lu AVANT l'envoi : pendant, le focus est déjà tombé sur la page.
+  const zone = $("#vc-zone");
+  const avaitLeFocus = !!zone && zone.contains(document.activeElement);
   const cran = VCOP.cran;
   const ligne = cran === "images"
     ? { document_id: a.document_id, reponse: "zero", album_id: a.id }
@@ -3324,6 +3338,7 @@ async function vcCopier() {
     VCOP.apercus.clear();
     if (VCOP.album === a.id && $("#vc-zone")) rendreCopieVolet(false);
     dire(e.message, true);
+    if (avaitLeFocus && VCOP.album === a.id) vcRendreLeFocus();
     vcLireApercu(a);
     return;
   }
@@ -3349,6 +3364,7 @@ async function vcCopier() {
     return;
   }
   dire(l.motif || "Refusé.", true);
+  if (avaitLeFocus && VCOP.album === a.id) vcRendreLeFocus();
 }
 
 /* ── « Supprimer la planche… » (COL-3, tranche 3c, F5) ─────────────────────────────────
