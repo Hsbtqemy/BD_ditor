@@ -561,7 +561,12 @@ def test_copie_depuis_la_fiche_dit_ou_va_la_copie(page, decor):
     d = decor
     vues = _requetes(page, "/api/collections", ("POST",))
     fiche = _fiche_album(page, d, "paule", "QRN", "Corpus")
+    # Le focus se mesure APRÈS l'aperçu, qui redessine le panneau à son arrivée : mesuré avant,
+    # le test passait ou non selon qui gagnait la course, et le focus perdu ne se voyait que
+    # sous charge. Lu, l'aperçu dit qu'un cran manque à la source.
+    echelle, lu = page.locator("#vc-echelle"), "rien : la source n'a pas ce travail"
     fiche.locator("#vc-ouvrir").click()
+    expect(echelle).to_contain_text(lu, timeout=5000)
     dest = page.locator("#vc-dest")
     expect(dest).to_be_focused()
     expect(dest).to_have_value(str(d["cols"]["Corpus"]))
@@ -571,6 +576,9 @@ def test_copie_depuis_la_fiche_dit_ou_va_la_copie(page, decor):
         "Votre copie ira dans « Corpus », rangée sous l'original.", timeout=5000)
     expect(page.locator("#vc-ok")).to_have_text("Copier les images")
     dest.select_option("nouvelle")
+    # Une nouvelle collection fait lire l'aperçu d'une autre (la première où l'on écrit) :
+    # le panneau se redessine sans lui, puis avec.
+    expect(echelle).to_contain_text(lu, timeout=5000)
     expect(page.locator("#vc-nom")).to_be_focused()
     expect(page.locator("#vc-ok")).to_be_disabled()
     expect(page.locator("#vc-quoi")).to_have_text("Donnez un nom à votre collection.")

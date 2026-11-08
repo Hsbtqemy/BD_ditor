@@ -3175,7 +3175,10 @@ async function vcLireApercu(a) {
     if (VCOP.jeton !== jeton) return;
     VCOP.erreur = e.message;
   }
-  rendreCopieVolet(false);
+  // L'aperçu arrive APRÈS le geste qui l'a demandé : le focus est déjà sur « Copier dans »
+  // ou sur le nom de la nouvelle collection, et redessiner sans le rendre le laissait tomber
+  // sur la page. Il ne revient que s'il était dans le panneau.
+  rendreCopieVolet(true);
 }
 
 function basculerCopieVolet() {
