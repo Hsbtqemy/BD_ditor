@@ -1,6 +1,6 @@
 ---
 chantier: UX-7
-statut: livré
+statut: à venir
 audit: AUDIT.md
 ---
 
@@ -296,7 +296,7 @@ PANNEAU qui distingue, et le test est paramétré sur les deux depuis.
 - [x] Sur téléphone et tablette, les MODES de l'Atelier passent en bas (Navigation, Édition, Transcription), avec un raccourci Annotation ↗ vers la page Annotation — attendu : tranché par Hugo sur maquette, à la séance. **Tranché le 2026-11-03 : oui, c'est l'option retenue (zone ci-dessous).** Idée de Hugo du 2026-11-02, qui peut remplacer celle du dessus : chaque surface aurait en bas SES gestes, et les six surfaces resteraient en haut. Le raccourci reprend `Nav.lienAnnotation` (album, planche, zone). À y regarder : la barre d'état, déjà en bas ; les libellés des modes, clipés sous 1023 px, qu'on retrouverait en bas ; à l'étroit, le raccourci remplace le mode Annotation dès cette barre, le plus simple (Hugo, 2026-11-02), et l'écran large le garde jusqu'au basculement ; le téléphone couché ; le clavier virtuel en Transcription
 
 ### Tranché par Hugo sur maquette le 2026-11-03 — les gestes de la page en bas, au pouce
-Maquette https://claude.ai/artifact/AMxRvruWZmU1DnsRtTMtCs, version 1, privée : les vraies pages de `bc0c4df`, à 390 × 844 et 820 × 1180, au doigt. Écartés : tout en haut (l'écran d'aujourd'hui) et les six pages en bas, qui empilaient leur barre sur « Poser… » de la page Annotation. On change de page rarement, on répète « zone suivante » ou « Valider » sans arrêt. Rien n'est demandé au serveur.
+Maquette https://claude.ai/artifact/AMxRvruWZmU1DnsRtTMtCs, version 1, privée : les vraies pages de `bc0c4df`, à 390 × 844 et 820 × 1180, au doigt. Écartés : tout en haut (l'écran d'aujourd'hui) et les six pages en bas, qui empilaient leur barre sur « Poser… » de la page Annotation. On change de page rarement, on répète « zone suivante » ou « Valider » sans arrêt. Rien n'est demandé au serveur. **Le 2026-11-11, Hugo repasse la fiche à `à venir`** : sous `livré`, cette barre, tranchée et jamais codée, dormait parmi les chantiers finis (il l'attendait à 390 px en jouant la passe du mode libre). Elle vient après l'intégration d'`ANN-7`, dont la page Annotation porte « Poser… ».
 - [ ] **Les gestes de la page sont dans une barre en bas, sur téléphone ET sur tablette au doigt ; les six pages restent en haut** — attendu : sur l'Atelier, la page Annotation, la Transcription, la Recherche et la Bibliothèque, à 390 × 844 et 820 × 1180 au doigt, la barre est collée en bas ; elle ne passe pas sous la zone du geste système (`env(safe-area-inset-bottom)`) ni sous la barre de Firefox (hauteur en `svh`) ; le seuil (largeur, `any-pointer: coarse`) est écrit au CSS comme les bascules d'aujourd'hui
 - [ ] **Les cibles font 44 px dans la barre du bas et dans le haut, 36 px dans les listes denses** — attendu : la règle nomme ses listes (la grille, les zones, les planches au moins) ; à 390 × 844 au doigt, aucune cible de l'Atelier ni de la page Annotation sous ces tailles. Mesuré sur `bc0c4df` : 26 à 30 px, et les 22 cibles de l'Atelier dans le quart haut
 - [ ] **Le haut est resserré** — attendu : sur la ligne du bac à sable, « Inviter » et « Remettre à neuf » passent sous « ⋯ » ; sur la page Annotation, Collection · Album · Planche se replient en une ligne qui s'ouvre au toucher

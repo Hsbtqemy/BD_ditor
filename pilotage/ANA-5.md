@@ -11,8 +11,8 @@ COMPLÈTE ; isoler un trait (`Tense=Past`) est impossible.
 ## Reste
 
 ### Modèle
-- [ ] Une table `token_trait` (un trait UD par ligne) est peuplée au reindex, au même moment que `tokens`, et n'est jamais touchée par la couche de correction humaine
-- [ ] La table est régénérée au reindex comme `tokens`, et une correction morphologique dans `token_correction` s'y reflète via `tokens_effectifs`
+- [x] **Le trait se lit avec ou sans table** — **tranché par Hugo le 2026-11-11 : sans table ni migration**, sur la mesure du 2026-11-08 (cf. Contexte). Les deux cases d'une table `token_trait`, qui se contredisaient sur les corrections, sont remplacées par la suivante
+- [ ] **Le trait se lit dans la morph de `tokens_effectifs`, au moment de la requête** — attendu : aucune table, aucune migration ; une correction de morph dans `token_correction` compte d'office ; le filtre traite les valeurs multiples (`PronType=Int,Rel`), par `instr` sur `'|'||morph||'|'` puis la valeur entre virgules
 
 ### Surface
 - [ ] La distribution accepte un trait isolé comme champ et renvoie des comptes cohérents avec la signature complète
@@ -41,7 +41,7 @@ Une table `token_trait` gagnerait un facteur 2 sur le compte et un facteur 5 sur
 
 Les deux cases de `### Modèle` se contredisent là-dessus : la première dit la table « jamais touchée par la couche de correction humaine », la seconde veut qu'une correction s'y reflète.
 
-La taille visée est d'environ 7 500 planches (`IMG-1`), soit environ 750 k tokens. À cette taille, toutes les vues répondent entre 0,4 et 0,8 s. Ce que la mesure n'a pas établi : la vitesse du VPS, qui peut être deux ou trois fois plus lent, et la lecture à froid. La forme juste du filtre traite les valeurs multiples (`PronType=Int,Rel`) : `instr` sur `'|'||morph||'|'`, puis la valeur cherchée entre virgules. Les cases de `### Modèle` attendent la décision de Hugo, avec ou sans table.
+La taille visée est d'environ 7 500 planches (`IMG-1`), soit environ 750 k tokens. À cette taille, toutes les vues répondent entre 0,4 et 0,8 s. Ce que la mesure n'a pas établi : la vitesse du VPS, qui peut être deux ou trois fois plus lent, et la lecture à froid. La forme juste du filtre traite les valeurs multiples (`PronType=Int,Rel`) : `instr` sur `'|'||morph||'|'`, puis la valeur cherchée entre virgules. Hugo a tranché le 2026-11-11 : sans table.
 
 Le paragraphe suivant date d'avant la mesure.
 
