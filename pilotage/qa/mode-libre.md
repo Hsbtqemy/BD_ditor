@@ -41,8 +41,8 @@ ce rejeu. Ce qu'il a relevé sans en faire une case — le « — » qui reste d
 posé quand rien ne l'est, l'absence de trace visible d'une étiquette créée depuis une grille
 fermée, « (J8) » lisible à l'écran — est dans `pilotage/ANN-7.md`.
 
-**Ce qu'elle ne juge pas** — la tablette et le téléphone (une case pour un vrai appareil, en
-fin) ; 320 px, grande police et contraste, mesurés par les tests ; la migration v39 elle-même.
+**Ce qu'elle ne juge pas** — la tablette et le téléphone (la case d'un vrai appareil, retirée
+après la passe du 2026-11-11, vit dans `pilotage/ANN-7.md`, à jouer en production) ; 320 px, grande police et contraste, mesurés par les tests ; la migration v39 elle-même.
 En fin de passe, `restaurer apres-moustache` avant toute autre passe qui part de ce décor.
 
 ## Reste
@@ -73,7 +73,7 @@ En fin de passe, `restaurer apres-moustache` avant toute autre passe qui part de
 - [x] Recharger la page (F5) : la même zone revient, et l'ordre est toujours « A → Z ». Revenir à « À la main », cliquer « ↕ Ranger » : chaque étiquette porte une poignée ⠿ et ↑ ↓, le bouton dit « Fini »
 - [x] Au clavier : Tab jusqu'au ↓ de « sentiment », Entrée : « sentiment » passe sous « lieu », et le focus reste sur son ↓. Clic sur « Fini », puis hors d'un champ, Ctrl+Z : « Annulé : déplacement d'une étiquette », et « sentiment » revient en tête
 
-### Deux écrans — fenêtres `proprio` et `stagiaire`, même planche
+### Deux écrans — fenêtres `proprio` et `stagiaire`, même planche, CÔTE À CÔTE (aucune ne recouvre l'autre : Chrome tient une fenêtre recouverte pour cachée, et sa page ne vérifie plus la planche)
 
 - [x] Fenêtre `proprio` : page Annotation, Collection Test, esther v1, planche 1, onglet « Mode libre » : les quatre étiquettes de `stagiaire` y sont, dans le même ordre. « ↕ Ranger », monter « silence » en tête, « Fini »
 - [x] Fenêtre `stagiaire`, sans recharger : dans les trente secondes, « ⟳ Actualiser » paraît dans la bande de la planche ; le cliquer : « silence » est en tête, et la zone choisie, ses puces et l'onglet n'ont pas changé
@@ -81,10 +81,10 @@ En fin de passe, `restaurer apres-moustache` avant toute autre passe qui part de
 ### ✎ et les gestes rares — fenêtre `proprio`, onglet « Mode libre »
 
 - [x] Choisir la case c5, bulle b2. Sur « rire », « ✎ » : le nom devient un champ, à côté l'état « provisoire » ; dessous, « Définir », « Fusionner dans… », « Passer dans une grille… », « Retirer… ». Renommer en « rire nerveux », Entrée : l'étiquette s'appelle « rire nerveux », dans la liste et posée sur la bulle
-- [x] Toujours dans « ✎ », « Définir » : l'état dit « ✓ définie » dans ✎, et nulle part ailleurs dans la grille ; « Remettre provisoire » paraît à la place de « Définir »
+- [x] Toujours dans « ✎ », « Définir » : l'état dit « ✓ définie » dans ✎, et nulle part ailleurs dans la grille ; « Remettre provisoire » paraît à la place de « Définir » (ne pas le cliquer : la suite suppose « rire nerveux » définie)
 - [x] « Passer dans une grille… » : la confirmation montre « Voir le bilan… » éteint ; son clic dit sur place « Le bilan, relevé par relevé : une tranche à part (J8) », sans rien faire
 - [x] Sur « silence », « ✎ », « Fusionner dans… » : la liste propose « rire nerveux » ; le choisir : la phrase dit « 1 relevé passe à « rire nerveux ». » ; « Fusionner » : « silence » disparaît, et la case c7 porte maintenant « rire nerveux »
-- [x] Choisir la case c1. Sur « lieu », « ✎ », « + valeur », taper « cour », Entrée : « lieu » a deux valeurs, « école » et « cour », toutes deux posées sur la case c1
+- [x] Choisir la case c1. Sur « lieu », « ✎ », « + valeur », taper « cour » puis la touche Entrée : « lieu » a deux valeurs, « école » et « cour », toutes deux posées sur la case c1
 
 ### Ce qu'un annotateur ne fait pas — fenêtre `stagiaire`, onglet « Mode libre »
 
@@ -105,8 +105,7 @@ En fin de passe, `restaurer apres-moustache` avant toute autre passe qui part de
 
 ### L'étroit et le doigt
 
-- [x] Fenêtre `stagiaire`, page Annotation, fenêtre à 390 px de large, une bulle choisie : « Poser… ▴ » en bas ; hors d'un champ, « + » fait monter la feuille, ouverte sur « Mode libre » avec le focus dans « + Nouvelle étiquette… »
-- [ ] Sur une tablette ou un téléphone (un bac à sable de la production, une fois la branche intégrée) : ✎, ↑ ↓, les puces et le champ se touchent sans viser, et rien ne passe par le survol
+- [x] Fenêtre `stagiaire`, page Annotation, à 390 px de large (une fenêtre Chrome ne descend pas sous ~500 px : F12, Ctrl+Maj+M, largeur 390), une bulle choisie : « Poser… ▴ » en bas ; hors d'un champ, « + » fait monter la feuille, ouverte sur « Mode libre » avec le focus dans « + Nouvelle étiquette… »
 
 ### L'Administration — fenêtre `proprio`, Administration, vue Projets, « Projet principal »
 
