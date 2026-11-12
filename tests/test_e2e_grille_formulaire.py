@@ -366,3 +366,25 @@ def test_le_formulaire_se_lit_sans_violation_et_dit_quand_il_est_trop_etroit(pag
     expect(page.locator(".fm-ed")).to_be_hidden()
     assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth"), \
         "le formulaire fait défiler la page de côté à 700 px"
+
+
+def test_une_grille_ouverte_depuis_le_projet_montre_d_office_se_relit_au_rechargement(
+        page, live_server):
+    """Au large, « Projets » montre d'office le premier projet sans le nommer dans l'adresse.
+    Une grille ouverte depuis lui écrivait `&grille=` seul, que la lecture de l'adresse
+    ignore sans projet : recharger la refermait (Hugo, 2026-11-12). Ouvrir une grille nomme
+    son projet."""
+    base = live_server
+    with _http(base) as c:
+        g = grille_active_vivante(c, nom="Signaux", ouverte=False)
+    page.goto(f"{base}/administration?vue=projets", wait_until="networkidle")
+    expect(page).not_to_have_url(re.compile(r"[?&]projet="))
+    page.locator(f'[data-gr-modifier="{g["grille_id"]}"]').click()
+    expect(page.locator(".fm-ed")).to_be_visible(timeout=10000)
+    expect(page).to_have_url(re.compile(rf"[?&]projet={g['projet_id']}(?!\d)"))
+    page.locator("#fm-g-note").fill("Intérieur d'abord")
+    page.keyboard.press("Tab")
+    expect(page.locator(".fm-tete .pj-puce").first).to_have_text("brouillon v2")
+    page.reload(wait_until="networkidle")
+    expect(page.locator(".fm-ed")).to_be_visible(timeout=10000)
+    expect(page.locator("#fm-g-note")).to_have_value("Intérieur d'abord")

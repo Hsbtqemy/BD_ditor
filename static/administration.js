@@ -2441,6 +2441,10 @@ async function fmOuvrir(grilleId, sel, opts = {}) {
   fmReinitialiser();
   FM.ouvert = true;
   FM.projet = p.id;
+  // Le projet montré d'office (le premier de la liste) n'est pas dans l'adresse ; la grille
+  // ne s'y relit qu'avec lui (`pjLireAdresse`), sans quoi recharger la refermait (Hugo,
+  // 2026-11-12). Ouvrir une grille NOMME donc son projet.
+  PJ.nomme = true;
   if (grilleId) {
     FM.grilleId = grilleId;
     try { await fmLirePlan(); }
