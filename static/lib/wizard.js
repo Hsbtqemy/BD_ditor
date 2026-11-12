@@ -238,8 +238,9 @@
     { k: "annoter", titre: "Annoter", ou: "Page Annotation", surface: "/annotation",
       zones: ["annotation-case", "annotation-mots", "annotation-grille"],
       // « du texte, sous l'image » (Hugo, 2026-11-06) : c'est là que se désignent les mots,
-      // et non sur la bulle de la case agrandie.
-      phrase: "Cliquez un mot du texte, sous l'image, puis une entrée de la grille, à droite : "
+      // et non sur la bulle de la case agrandie. La grille n'est pas située (Hugo,
+      // 2026-11-11) : « à droite » était faux sous 47,5em, où elle monte du bas.
+      phrase: "Cliquez un mot du texte, sous l'image, puis une entrée de la grille : "
         + "c'est le vocabulaire du projet." },
     { k: "chercher", titre: "Chercher et explorer", ou: "Recherche, Exploration",
       surface: "/recherche", dite: true, sansAlbum: true,

@@ -1256,9 +1256,10 @@ test("à « Annoter », la fenêtre se pose à la hauteur des mots, et la phrase
   assert.deepEqual(W.placerFenetre(large, FEN, ECRAN, 14, mots),
                    W.placerFenetre(large, FEN, ECRAN, 14));
   assert.deepEqual(W.placerFenetre(f, FEN, ECRAN, 14, null), W.placerFenetre(f, FEN, ECRAN, 14));
-  // La phrase de Hugo (2026-11-06) : le mot se clique dans le texte, sous l'image.
+  // La phrase de Hugo (2026-11-06) : le mot se clique dans le texte, sous l'image. La
+  // grille n'est pas située (2026-11-11) : sous 47,5em, elle n'est pas à droite.
   assert.equal(sp(W.phraseEtape(ann, VUE, null)), "Cliquez un mot du texte, sous l'image, puis "
-    + "une entrée de la grille, à droite : c'est le vocabulaire du projet.");
+    + "une entrée de la grille : c'est le vocabulaire du projet.");
 });
 
 /* « Traitement » saute aux yeux à « Pré-remplir » (Hugo, 2026-11-06) : le foyer PRINCIPAL,
