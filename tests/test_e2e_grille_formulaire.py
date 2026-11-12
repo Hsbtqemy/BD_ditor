@@ -319,7 +319,10 @@ def test_corriger_dans_le_formulaire_mene_a_l_entree_en_faute(page, live_server)
         g = grille_active_vivante(c, nom="Libre", ouverte=True)
         classeur = c.get(f"/api/grilles/{g['grille_id']}/versions/1/tableur").content
 
-    def libre(ws):
+    # Une faute que le TABLEUR laisse taper : la colonne de la cible avertit sans refuser, là
+    # où la liste de « 4. Ce qu'on choisit » refuse toute autre réponse (la passe de QA
+    # demandait « libre » dans celle-ci, injouable dans Excel ; Hugo, 2026-11-12).
+    def nuage(ws):
         titres = None
         for ligne in ws.iter_rows():
             valeurs = [x.value for x in ligne]
@@ -327,10 +330,10 @@ def test_corriger_dans_le_formulaire_mene_a_l_entree_en_faute(page, live_server)
                 titres = {v: i for i, v in enumerate(valeurs) if v}
                 continue
             if titres is not None and valeurs[titres["Entrée"]] == "cri":
-                ws.cell(row=ligne[0].row, column=titres["4. Ce qu'on choisit"] + 1, value="libre")
+                ws.cell(row=ligne[0].row, column=titres["2. Se pose sur"] + 1, value="nuage")
                 return
         raise AssertionError("« cri » introuvable")
-    fautif = _retouche(classeur, libre)
+    fautif = _retouche(classeur, nuage)
     _ouvrir(page, base, g["projet_id"])
     ligne = page.locator(".pg-grille", has_text="Libre")
     ligne.get_by_role("button", name="⤒ Réimporter…").click()
