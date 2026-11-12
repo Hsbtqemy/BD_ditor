@@ -414,14 +414,15 @@ class ReleveIn(BaseModel):
     mots: list[int] = []
 
 
-def _entree_neuve(conn, grille_id: int, version, libelle: str):
+def _entree_neuve(conn, grille_id: int, version, libelle: str, *, cible=None):
     """Une entrée qui naît EN LA POSANT, dans la version vivante d'une grille OUVERTE (G14,
     le patron des tags libres) : une entrée de même NOM — comparé par la clé d'un libellé
     (`database.cle_tag` : casse, apostrophes, espaces) — est reprise ; sinon sa `cle` se
     DÉRIVE de son libellé comme à l'import et au formulaire (`grille_ecriture.cle_neuve` :
     sans accents, minuscules, tirets, 48 caractères, `-2` à la collision). Simple, sans
-    rubrique ; sa cible est celle de la version. Au journal, sous la grille, et l'empreinte
-    de la version suit."""
+    rubrique ; sa cible est celle de la version, ou, dans une version sans défaut, `cible` :
+    ce qu'on désigne en la posant, écrit sur elle (Hugo, 2026-11-12). Au journal, sous la
+    grille, et l'empreinte de la version suit."""
     libelle = grilles.propre(libelle)
     if not libelle:
         raise HTTPException(422, "Une entrée neuve a besoin d'un libellé.")
@@ -437,13 +438,16 @@ def _entree_neuve(conn, grille_id: int, version, libelle: str):
                                     quoi="entree")
     rang = conn.execute("SELECT COALESCE(MAX(rang), -1) + 1 FROM grille_entree "
                         "WHERE version_id = ?", (version["id"],)).fetchone()[0]
-    conn.execute("INSERT INTO grille_entree (version_id, cle, rang, forme, libelle) "
-                 "VALUES (?, ?, ?, 'simple', ?)", (version["id"], cle, rang, libelle))
+    if grilles.cibles_de(version["cible"]):
+        cible = None                     # elle suit le défaut, comme avant
+    conn.execute("INSERT INTO grille_entree (version_id, cle, rang, forme, libelle, cible) "
+                 "VALUES (?, ?, ?, 'simple', ?, ?)", (version["id"], cle, rang, libelle, cible))
     conn.execute("UPDATE grille_version SET empreinte = ? WHERE id = ?",
                  (grilles.empreinte(grilles.contenu(conn, version["id"])), version["id"]))
     journal.journaliser(conn, "modification", "grille", grille_id,
                         apres={"entree_neuve": {"version": version["numero"], "cle": cle,
-                                                "libelle": libelle}})
+                                                "libelle": libelle,
+                                                **({"cible": cible} if cible else {})}})
     return grilles.entree(conn, version["id"], cle)
 
 
@@ -470,8 +474,11 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
         if not ouverte or version["etat"] != grilles.ETAT_VIVANTE:
             raise HTTPException(422, "Une entrée ne naît en posant que dans une grille "
                                      "ouverte.")
+        # Sans défaut, ce qu'on désigne : des mots, la sorte de la zone, ou la planche.
+        designee = ("planche" if cible["region"] is None
+                    else grilles.CIBLE_MOTS if payload.mots else cible["region"]["type"])
         entree = _entree_neuve(conn, payload.grille_id, version,
-                               payload.nouvelle_entree.libelle)
+                               payload.nouvelle_entree.libelle, cible=designee)
     else:
         entree = grilles.entree(conn, version["id"], payload.entree_cle)
         if entree is None or entree["retiree"]:

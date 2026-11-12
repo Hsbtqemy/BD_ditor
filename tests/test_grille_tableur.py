@@ -89,6 +89,19 @@ def _classeur_retouche(data: bytes, feuille: str, retouche) -> bytes:
 # --------------------------------------------------------------------------- #
 # 1. Le bilan est en DONNÉES
 # --------------------------------------------------------------------------- #
+def test_sans_defaut_chaque_entree_du_fichier_dit_ou_elle_se_pose():
+    """Hugo, 2026-11-12 : « Porte sur » est facultatif ; sans lui, une entrée qui ne dit pas
+    la sienne est une faute SUR L'ENTRÉE, à la question 2 — plus « Porte sur » manque."""
+    entete = "cle;forme;libelle;cible\r\n"
+    lu = grille_import.lire(flux(entete + "a;simple;a;\r\nb;simple;b;la case\r\n"), None,
+                            porte_sur=None)
+    (f,) = lu["anomalies"]
+    assert f["code"] == "cible_manque" and f["cle"] == "a" and f["colonne"] == "cible"
+    assert f["question"] == "2. Se pose sur"
+    lu = grille_import.lire(flux(entete + "b;simple;b;la case\r\n"), None, porte_sur=None)
+    assert lu["anomalies"] == [] and lu["contenu"]["cible"] is None
+
+
 def test_une_anomalie_est_une_donnee_qui_dit_ou_quoi_et_que_faire():
     entete = "cle;forme;libelle\r\n"
     lu = grille_import.lire(flux(entete + "a;libre;a\r\n"), None, porte_sur="mots")

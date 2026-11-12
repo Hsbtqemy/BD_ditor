@@ -535,12 +535,34 @@ def test_une_entree_nait_en_la_posant_dans_une_grille_ouverte(client, decor, db_
     assert r4["entree_cle"] == "echo-lointain"
     assert _q(db_path, "SELECT COUNT(*) AS n FROM evenement WHERE cible_table = 'grille' "
                        "AND apres LIKE '%entree_neuve%'")[0]["n"] == 3
+    # Avec un défaut, elle le suit sans rien écrire sur elle.
+    assert _q(db_path, "SELECT cible FROM grille_entree WHERE cle = 'rire-nerveux'")[0][
+        "cible"] is None
     # Dans une grille fermée, non.
     poser(client, decor, attendu=(422,), region_id=bulle(decor),
           nouvelle_entree={"libelle": "nouveau"}, mots=[0])
     # Ni sans droit d'écrire l'album : c'est ce qui borne qui enrichit.
     poser(client, d, qui=ANA, attendu=(404,), region_id=bulle(d),
           nouvelle_entree={"libelle": "autre"}, mots=[0])
+
+
+def test_sans_defaut_une_entree_nee_a_la_pose_prend_ce_qu_on_designe(client, decor,
+                                                                     db_path):
+    """Hugo, 2026-11-12 : dans une grille ouverte sans défaut, l'entrée qui naît en la
+    posant prend la cible de ce qu'on désigne — des mots, la sorte de la zone, la planche —,
+    écrite sur elle."""
+    entete = ["cle", "forme", "libelle", "cible"]
+    g = grille_active(client, decor["p"], entrees=csv_de([entete, ["vu", "simple", "vu",
+                                                                   "des mots"]]),
+                      listes=None, nom="Sans défaut", ouverte=True, porte_sur=None)
+    d = {**decor, **g}
+    poser(client, d, region_id=bulle(d), nouvelle_entree={"libelle": "Rire"}, mots=[0])
+    poser(client, d, region_id=d["zones"]["cartouche"], nouvelle_entree={"libelle": "Ambiance"})
+    poser(client, d, planche_id=d["planche"], nouvelle_entree={"libelle": "Rythme"})
+    cibles = {x["cle"]: x["cible"] for x in _q(
+        db_path, "SELECT cle, cible FROM grille_entree WHERE cle IN ('rire', 'ambiance', "
+                 "'rythme')")}
+    assert cibles == {"rire": "mots", "ambiance": "cartouche", "rythme": "planche"}
 
 
 # --------------------------------------------------------------------------- #

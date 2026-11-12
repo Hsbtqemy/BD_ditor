@@ -122,12 +122,59 @@ def test_creer_une_grille_porte_les_refus_de_l_import(client, decor, db_path):
     r = client.post(f"/api/projets/{p}/grilles", headers=LEA,
                     json={"nom": "  signaux ", "porte_sur": "mots"})
     assert r.status_code == 409 and "s'appelle déjà" in r.json()["detail"]
-    r = client.post(f"/api/projets/{p}/grilles", headers=LEA, json={"nom": "Autre"})
-    assert r.status_code == 422 and _codes(r) == ["porte_sur_manque"]
     r = client.post(f"/api/projets/{p}/grilles", headers=LEA,
                     json={"nom": "Autre", "porte_sur": "mots | case"})
     assert r.status_code == 422 and _codes(r) == ["porte_sur_inconnu"]
     assert _n(db_path, "SELECT COUNT(*) FROM grille") == 1
+
+
+# --------------------------------------------------------------------------- #
+# Une grille sans défaut (Hugo, 2026-11-12 ; `docs/ann7-grille-sans-defaut-cadrage.md`)
+# --------------------------------------------------------------------------- #
+def test_une_grille_nait_sans_defaut_et_ne_se_publie_qu_entree_par_entree_dite(client,
+                                                                              decor):
+    """Le nom et « fermée ou ouverte » suffisent : la grille naît sans « Porte sur », une
+    entrée sans cible y attend au brouillon, et la publication la retient en la nommant."""
+    p = decor["p"]
+    g = ok(client.post(f"/api/projets/{p}/grilles", headers=LEA, json={"nom": "Autre"}), 201)
+    gid = g["grille_id"]
+    assert g["plan"]["porte_sur"] == []
+    r = ok(client.post(f"/api/grilles/{gid}/entrees", headers=LEA,
+                       json={"libelle": "Escalier"}), 201)
+    cle = r["cle"]
+    assert _entree(r["plan"], cle)["cibles"] == [] and _entree(r["plan"], cle)["pose"] is None
+    r = client.post(f"/api/grilles/{gid}/versions/1/publication", headers=LEA)
+    assert r.status_code == 409, r.text
+    assert "« Escalier » ne dit pas où se poser" in r.json()["detail"]
+    ok(client.patch(f"/api/grilles/{gid}/entrees/{cle}", headers=LEA,
+                    json={"cible": "la case"}))
+    ok(client.post(f"/api/grilles/{gid}/versions/1/publication", headers=LEA))
+
+
+def test_retirer_le_defaut_l_ecrit_sur_les_entrees_qui_le_suivaient(client, decor, db_path):
+    """Rien ne change pour elles : chacune garde sa cible, écrite cette fois sur elle, et
+    son acte est au journal. Une entrée qui disait la sienne la garde."""
+    p = decor["p"]
+    g = ok(client.post(f"/api/projets/{p}/grilles", headers=LEA,
+                       json={"nom": "Lieux", "porte_sur": "la case"}), 201)
+    gid = g["grille_id"]
+    suit = ok(client.post(f"/api/grilles/{gid}/entrees", headers=LEA,
+                          json={"libelle": "Escalier"}), 201)["cle"]
+    dit = ok(client.post(f"/api/grilles/{gid}/entrees", headers=LEA,
+                         json={"libelle": "Ambiance", "cible": "la planche"}), 201)["cle"]
+    avant = _n(db_path, "SELECT COUNT(*) FROM evenement WHERE cible_table = 'grille'")
+    r = ok(client.patch(f"/api/grilles/{gid}", headers=LEA,
+                        json={"porte_sur": [], "vu": {"porte_sur": ["case"]}}))
+    assert r["plan"]["porte_sur"] == []
+    assert _entree(r["plan"], suit)["cible_declaree"] == ["case"]
+    assert _entree(r["plan"], suit)["cibles"] == ["case"]
+    assert _entree(r["plan"], dit)["cible_declaree"] == ["planche"]
+    actes = _q(db_path, "SELECT avant, apres FROM evenement WHERE cible_table = 'grille' "
+                        "ORDER BY id")[avant:]
+    objets = sorted(json.loads(a["apres"])["objet"] for a in actes)
+    assert objets == ["entree:" + suit, "grille"], objets
+    # Et la grille, sans défaut, se publie : chacune dit où elle se pose.
+    ok(client.post(f"/api/grilles/{gid}/versions/1/publication", headers=LEA))
 
 
 def test_une_grille_ouverte_nait_vivante(client, decor, db_path):

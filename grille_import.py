@@ -58,6 +58,16 @@ COLONNES = ("cle", "rubrique", "rubrique_cle", "forme", "libelle", "variante_cle
 OBLIGATOIRES = ("forme", "libelle")
 
 
+def sans_cible(contenu: dict) -> list[str]:
+    """Les libellés des entrées vivantes qui ne disent pas où elles se posent, dans une
+    version sans défaut : ce qui retient une publication."""
+    if grilles.cibles_de(contenu["cible"]):
+        return []
+    return [e["libelle"] or cle for cle, e in sorted(contenu["entrees"].items(),
+                                                       key=lambda kv: kv[1]["rang"])
+            if not e.get("retiree") and not grilles.cibles_de(e["cible"])]
+
+
 def _forme_en_faute(valeur) -> str:
     """Le problème d'une forme refusée : une réponse qu'on ne connaît pas, ou aucune."""
     texte = str(valeur or "").strip()
@@ -370,11 +380,6 @@ def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
         anomalies.append(_faute("porte_sur_inconnu", f"« Porte sur » : {erreur}",
                                 "écrivez des mots, la case, la planche, ou des sortes de "
                                 "zone", colonne="porte_sur", **ou_porte_sur))
-    elif not cible_version:
-        anomalies.append(_faute(
-            "porte_sur_manque", "« Porte sur » manque : sur quoi la grille se pose-t-elle ?",
-            "dites-le dans la feuille « 1. La grille », ou en déclarant l'import ("
-            + " · ".join(grilles.CIBLES) + ")", colonne="porte_sur", **ou_porte_sur))
 
     # -- Les entrées.
     nom_e, entete_e, brutes_e = tableur["entrees"]
@@ -517,6 +522,13 @@ def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
             anomalies.append(_faute(
                 "cible_inconnue", erreur, "laissez vide (comme la grille), ou écrivez des "
                 "mots, la case, la planche, ou des sortes de zone", colonne="cible", **ou))
+        elif not cible and not cible_version:
+            # Sans défaut, chaque entrée dit la sienne (Hugo, 2026-11-12) : un fichier est
+            # entier, la faute s'y corrige là où elle est.
+            anomalies.append(_faute(
+                "cible_manque", "l'entrée ne dit pas où elle se pose, et la grille n'a pas "
+                "de défaut", "répondez à sa question 2, ou donnez un défaut à la grille "
+                "(feuille « 1. La grille »)", colonne="cible", **ou))
         cardinalite = grille_tableur.cardinalite_lue(l["cardinalite"]) or None
         if cardinalite is not None and cardinalite not in CARDINALITES:
             anomalies.append(_faute(

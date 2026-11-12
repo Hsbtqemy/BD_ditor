@@ -290,6 +290,15 @@ def publier_version(grille_id: int, numero: int, conn: sqlite3.Connection = Depe
         # Une grille créée sans import naît vide (la règle de l'import : « aucune entrée »).
         raise HTTPException(409, f"La version {numero} n'a aucune entrée : elle ne se publie "
                                  "pas.")
+    manquent = grille_import.sans_cible(grilles.contenu(conn, v["id"]))
+    if manquent:
+        # Sans défaut, chaque entrée dit où elle se pose avant qu'on publie (Hugo,
+        # 2026-11-12) : le brouillon l'attend, la version publiée ne changerait plus.
+        noms = ", ".join(f"« {x} »" for x in manquent[:5]) + (" …" if len(manquent) > 5 else "")
+        verbe = "ne dit" if len(manquent) == 1 else "ne disent"
+        raise HTTPException(409, f"{noms} {verbe} pas où se poser, et la grille n'a pas de "
+                                 "défaut : répondez à la question 2, ou donnez un défaut à "
+                                 "la grille, avant de publier.")
     publiee = grilles.derniere_version(conn, grille_id, grilles.ETAT_PUBLIEE)
     if publiee is not None:
         # Un brouillon qui porte exactement la dernière version publiée — même contenu, même
@@ -824,8 +833,9 @@ def _introuvable(quoi: str, cle: str, v) -> HTTPException:
 def creer_grille(projet_id: int, payload: GrilleIn, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
     """CRÉE une grille sans import, VIDE : fermée, son brouillon 1 ; ouverte, sa version
-    vivante 1. Un nom unique dans le projet (409 nommé, la règle de l'import), « Porte sur »
-    exigé (422). Une grille vide ne se publie pas. À qui gère le projet ; jamais dans le
+    vivante 1. Un nom unique dans le projet (409 nommé, la règle de l'import) ; « Porte sur »
+    facultatif — une grille naît sans défaut, et chaque entrée dit le sien (Hugo,
+    2026-11-12). Une grille vide ne se publie pas. À qui gère le projet ; jamais dans le
     projet de jeu ; dans un bac à sable, oui (G6)."""
     _get_projet(conn, portee, projet_id, gerer=True, motif=_MOTIF_GERER)
     _refuser_le_jeu(conn, projet_id=projet_id)
@@ -839,10 +849,6 @@ def creer_grille(projet_id: int, payload: GrilleIn, conn: sqlite3.Connection = D
             raise grille_import.Refus(409, f"Une grille de ce projet s'appelle déjà « {nom} » :"
                                            " choisissez un autre nom.")
         porte_sur = _norme("porte_sur", payload.porte_sur)
-        if porte_sur is None:
-            raise _refus("porte_sur_manque", "« Porte sur » manque : sur quoi la grille se "
-                         "pose-t-elle ?", "des mots, la case, la planche, ou des sortes de "
-                         "zone", colonne="porte_sur")
     except grille_import.Refus as exc:
         raise _refus_http(exc)
     gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte, cree_par) "
@@ -903,11 +909,19 @@ def modifier_grille(grille_id: int, payload: GrillePatch, conn: sqlite3.Connecti
         _verifier_vu(conn, g, "grille", {k: x for k, x in vu.items() if k != "nom"},
                      ("porte_sur", "note"), actuel, nouveaux)
         changes = {c: x for c, x in nouveaux.items() if x != actuel[c]}
+        actes = [("modification", "grille", {c: actuel[c] for c in changes},
+                  changes)] if changes else []
         if "porte_sur" in changes:
             apres["cible"] = changes["porte_sur"]
-        return {"cle": None, "note": changes.get("note", v["note"]),
-                "actes": [("modification", "grille", {c: actuel[c] for c in changes},
-                           changes)] if changes else []}
+            # Retirer le défaut l'ÉCRIT sur les entrées qui le suivaient : rien ne change
+            # pour elles (Hugo, 2026-11-12). Chacune a son acte au journal.
+            if changes["porte_sur"] is None and actuel["porte_sur"]:
+                for k, e in apres["entrees"].items():
+                    if not e.get("cible"):
+                        e["cible"] = actuel["porte_sur"]
+                        actes.append(("modification", f"entree:{k}", {"cible": None},
+                                      {"cible": actuel["porte_sur"]}))
+        return {"cle": None, "note": changes.get("note", v["note"]), "actes": actes}
     return _ecrire(conn, portee, grille_id, geste)
 
 

@@ -120,6 +120,8 @@ comme l'entité vont seules. Un détail se trace dans une case, sur la page Anno
 (« Détail d'image ») ; il ne sort d'aucun export avant la tranche 4.
 
 « **Porte sur** » est la cible des entrées qui ne disent pas la leur ; elle se déclare (ci-dessous).
+Elle est **facultative** (2026-11-12) : sans elle, chaque entrée dit sa cible, et une entrée qui
+ne la dit pas est une faute sur cette entrée, à la question 2.
 
 ### La cardinalité
 
@@ -210,7 +212,8 @@ variante ; une ligne de variante qui remplit autrement une colonne de son entré
 inconnue, ou absente d'une entrée à qualificatifs, ou présente sur une autre forme ; une case
 sans liste ; des cibles qui ne se combinent pas ; une rubrique dont le chemin et les
 identifiants n'ont pas les mêmes étages, qui a deux noms, deux identifiants, deux parents, ou
-qui est son propre ancêtre ; « Porte sur » absent ou inconnu ; dans un classeur, une cellule
+qui est son propre ancêtre ; « Porte sur » inconnu, ou absent quand une entrée ne dit pas sa
+cible ; dans un classeur, une cellule
 qui porte une FORMULE ou une erreur du tableur ; une feuille « 1. La grille » qui dit une autre
 nature que la grille, ou une nature inconnue.
 

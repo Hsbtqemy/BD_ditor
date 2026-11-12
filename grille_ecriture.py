@@ -235,12 +235,13 @@ def valider(c: dict) -> tuple[list, list]:
     def faute(code, probleme, a_faire=None, *, cle=None, colonne=None, listes=False):
         fautes.append(_faute(code, probleme, a_faire, cle=cle, colonne=colonne, listes=listes))
 
+    # « Porte sur » est FACULTATIF (Hugo, 2026-11-12) : une grille peut naître sans défaut,
+    # et une entrée sans cible y attend sa réponse au BROUILLON — le formulaire écrit un
+    # geste à la fois. Le refus vient où la réponse compte : l'import d'un fichier entier,
+    # la publication, la pose (`docs/ann7-grille-sans-defaut-cadrage.md`).
     sortes, erreur = grilles.lire_cibles(c["cible"])
     if erreur:
         faute("porte_sur_inconnu", f"« Porte sur » : {erreur}", colonne="porte_sur")
-    elif not sortes:
-        faute("porte_sur_manque", "« Porte sur » manque : sur quoi la grille se pose-t-elle ?",
-              "des mots, la case, la planche, ou des sortes de zone", colonne="porte_sur")
     rubriques, listes = c["rubriques"], c["listes"]
     vus_chemin: dict = {}
     dits_en_boucle: set = set()
