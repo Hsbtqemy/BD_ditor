@@ -314,6 +314,34 @@ def test_le_nom_d_une_version_suivante_ne_change_pas_par_le_classeur(client, dec
 # --------------------------------------------------------------------------- #
 # 5. Le classeur se produit et se lit sans danger
 # --------------------------------------------------------------------------- #
+def test_le_tableur_d_une_grille_sans_defaut_se_relit_tel_quel(client, decor):
+    """Hugo, 2026-11-12 : une grille sans défaut se télécharge avec « Porte d'ordinaire sur »
+    vide, une règle rouge sur « 2. Se pose sur » vide, et se réimporte sans changement."""
+    p = decor["p"]
+    g = client.post(f"/api/projets/{p}/grilles", headers=LEA, json={"nom": "Sans défaut"})
+    assert g.status_code == 201, g.text
+    gid = g.json()["grille_id"]
+    for libelle, cible in (("Escalier", "la case"), ("Cri", "des mots")):
+        r = client.post(f"/api/grilles/{gid}/entrees", headers=LEA,
+                        json={"libelle": libelle, "cible": cible})
+        assert r.status_code == 201, r.text
+    r = client.get(f"/api/grilles/{gid}/versions/1/tableur", headers=LEA)
+    assert r.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(r.content))
+    feuille = wb["1. La grille"]
+    (ligne,) = [n for n in range(1, 20)
+                if feuille.cell(row=n, column=1).value == "Porte d'ordinaire sur"]
+    assert feuille.cell(row=ligne, column=2).value in (None, "")
+    assert "defaut_grille" in wb.defined_names
+    rouges = [str(cf.sqref) for cf in wb["2. Les entrées"].conditional_formatting]
+    assert any(x.startswith("D2:") for x in rouges)
+    files = {"fichier": ("sans-defaut.xlsx", r.content, "application/octet-stream")}
+    res = client.post(f"/api/projets/{p}/grilles/import", headers=LEA, files=files,
+                      data={"grille_id": str(gid), "a_blanc": "true"})
+    assert res.status_code == 200, res.text[:600]
+    assert res.json()["aucun_changement"], res.json()["bilan"]
+
+
 def test_le_classeur_porte_listes_aide_rouge_et_exemple(client, decor):
     gid = importer(client, decor["p"], LEA)["grille_id"]
     r = client.get(f"/api/grilles/{gid}/versions/1/tableur", headers=LEA)

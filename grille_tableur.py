@@ -80,9 +80,10 @@ COLONNES_ENTREES = (
      "Pour une entrée qui se pose avec une variante (question 4) : une ligne par variante, "
      "juste sous l'entrée, la colonne « Entrée » laissée vide.", 18, False),
     ("cible", "2. Se pose sur",
-     "Vide : ce que dit la feuille « 1. La grille ». Sinon : des mots, la case, la planche, "
-     "ou une ou plusieurs sortes de zone (« bulle, cartouche ou texte hors bulle »). Des "
-     "mots et une zone ne se combinent pas.", 18, False),
+     "Vide : ce que dit la feuille « 1. La grille » ; si elle ne dit rien, la réponse est "
+     "obligatoire. Sinon : des mots, la case, la planche, ou une ou plusieurs sortes de zone "
+     "(« bulle, cartouche ou texte hors bulle »). Des mots et une zone ne se combinent pas.",
+     18, False),
     ("cardinalite", "3. Combien de fois",
      "Vide : la règle ordinaire — plusieurs fois sur des mots, une fois sur une zone, la "
      "case ou la planche. « une seule » : en choisir une autre remplace la première.",
@@ -138,8 +139,9 @@ CHAMPS_GRILLE = (
      "Fermée : elle change par versions, publiées l'une après l'autre. Ouverte : une seule "
      "version, vivante, qui s'enrichit quand on pose une entrée qu'elle n'a pas."),
     ("porte_sur", "Porte d'ordinaire sur",
-     "Ce sur quoi se posent les entrées qui ne disent pas le leur (question 2) : des mots, "
-     "la case, la planche, ou des sortes de zone."),
+     "Facultatif : ce sur quoi se posent les entrées qui ne disent pas le leur (question 2) "
+     ": des mots, la case, la planche, ou des sortes de zone. Vide : chaque entrée dit le "
+     "sien."),
     ("note", "Note de version", "Facultatif : ce que cette version change, en une phrase."),
 )
 TITRES_GRILLE = {c: t for c, t, _ in CHAMPS_GRILLE}
@@ -651,6 +653,9 @@ def ecrire_classeur(contenu: dict, *, nom: str, ouverte: bool, porte_sur, note=N
                             showErrorMessage=True)
         dv.add(f"B{ligne_de[champ]}")
         g.add_data_validation(dv)
+    # Le défaut, nommé : la règle rouge de « 2. Se pose sur » le lit d'une autre feuille.
+    wb.defined_names["defaut_grille"] = DefinedName(
+        "defaut_grille", attr_text=f"'{FEUILLE_GRILLE}'!$B${ligne_de['porte_sur']}")
 
     # -- 2. Les entrées, et l'exemple.
     def _entrees(ws, c, aides):
@@ -686,6 +691,9 @@ def ecrire_classeur(contenu: dict, *, nom: str, ouverte: bool, porte_sur, note=N
                   f'${L["forme"]}2<>"{FORMES_MOTS["qualificatifs"]}")'),
         ("libelle", f'AND(${L["libelle"]}2="",${L["variante"]}2="",'
                     f'COUNTA(${L["rubrique"]}2:${L["piege"]}2)>0)'),
+        # Sans défaut, chaque entrée dit où elle se pose (Hugo, 2026-11-12).
+        ("cible", f'AND(${L["libelle"]}2<>"",${L["variante"]}2="",${L["cible"]}2="",'
+                  'defaut_grille="")'),
     )
     for col, formule in regles:
         e.conditional_formatting.add(f"{L[col]}2:{L[col]}{fin}",
