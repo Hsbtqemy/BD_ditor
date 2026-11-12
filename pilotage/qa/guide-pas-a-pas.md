@@ -125,5 +125,5 @@ Recette reconstruite sur `dev` le 2026-11-06 (`98c0e26`…`06d9d51`), état `apr
 - [ ] À « Pré-remplir », le bouton « Traitement » porte un cadre ambre épais, plus marqué que le reste éclairé, et il saute aux yeux sans qu'on le cherche ; ouvrir son menu efface le cadre, le refermer le rend, tant que l'OCR n'a pas été lancé
 - [ ] Même chose en thème clair (« Aa » → thème) : le cadre de « Traitement » se voit aussi nettement qu'en sombre
 - [ ] « Annoter », fenêtre à 1 440 px : la fenêtre du guide est posée à côté, son haut à la hauteur du bloc du texte (les mots), et non en face de la case agrandie ; elle ne couvre ni les mots ni la grille
-- [ ] « Annoter » : la fenêtre dit « Cliquez un mot du texte, sous l'image, puis une entrée de la grille, à droite : c'est le vocabulaire du projet. », et le texte est bien sous l'image
+- [ ] « Annoter » : la fenêtre dit « Cliquez un mot du texte, sous l'image, puis une entrée de la grille : c'est le vocabulaire du projet. », et le texte est bien sous l'image
 - [ ] « Annoter », fenêtre à 1 280 px (la fenêtre devient une feuille en bas) : le bloc des mots remonte au-dessus de la feuille, les mots entiers visibles

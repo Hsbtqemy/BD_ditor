@@ -1,6 +1,6 @@
 ---
 chantier: QA-6
-statut: livré
+statut: à venir
 ---
 
 # QA-6 — un cliquet ÉCHOUE quand le modèle NLP manque, là où le dépôt promet un skip
@@ -41,6 +41,7 @@ spaCy, configuration que `CLAUDE.md` déclare supportée.
 - [x] Les compteurs qui lisent `tokens_effectifs` sont inchangés dans la configuration AVEC modèle — accord modèle↔humain, accord inter, concordance, « % relu » de la relecture : 683 verts sur 684, le seul skip étant `iiif-prezi3`
 
 ### Chercher les autres du même genre, puisqu'ils viennent par familles
+- [ ] **Sans `lib/kumiko`, la suite par défaut n'a aucun échec** — attendu : dans une copie du dépôt sans `lib/kumiko` (un `git clone`, qui ne le porte pas), `tests/test_sante.py::test_kumiko_profond_refuse_opencv_5` et `tests/test_segmentation_unit.py::test_un_vrai_sous_processus_ne_survit_pas_a_l_annulation` se skippent ou passent. Vu par l'agent des correctifs du wizard le 2026-11-12 : tous deux ÉCHOUAIENT dans sa copie, verts une fois `lib/kumiko` recopié ; la famille de cette fiche, revenue depuis le passage du 2026-09-05
 - [x] La suite entière est passée dans une configuration sans modèle NLP, et le compte est écrit : **1 seul** test ÉCHOUAIT là où le dépôt promet un skip propre, celui du constat lui-même — 684 tests, 675 verts, 9 skips, 0 échec après réparation
 - [x] Le même passage est fait sans Kumiko, sans les moteurs de bulles/OCR et sans `iiif-prezi3` : **2 échecs de plus**, `test_sante.py` important `cv2` sans garde — 684 tests, 652 verts, 32 skips, 0 échec après réparation
 - [x] Et sans `openpyxl`, que le venv nu portait encore : 649 verts, 35 skips, 0 échec, et le cliquet ANNONCE son balayage partiel en nommant les deux surfaces XLSX qu'il n'a pas regardées — la réparation d'ARCH-2 était crue, elle est mesurée
