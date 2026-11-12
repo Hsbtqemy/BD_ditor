@@ -56,6 +56,13 @@ COLONNES = ("cle", "rubrique", "rubrique_cle", "forme", "libelle", "variante_cle
             "variante", "structure", "definition", "exemples", "piege", "liste",
             "precision", "lien", "cible", "cardinalite")
 OBLIGATOIRES = ("forme", "libelle")
+
+
+def _forme_en_faute(valeur) -> str:
+    """Le problème d'une forme refusée : une réponse qu'on ne connaît pas, ou aucune."""
+    texte = str(valeur or "").strip()
+    return (f"la réponse « {texte} » n'est pas une forme" if texte
+            else "aucune réponse : l'entrée ne dit pas ce qu'on choisit")
 # Les colonnes PROPRES à une entrée : vides sur une ligne de variante, ou recopiées.
 COLONNES_DE_L_ENTREE = ("rubrique", "rubrique_cle", "forme", "libelle", "liste",
                         "precision", "lien", "cible", "cardinalite")
@@ -418,8 +425,10 @@ def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
             continue
         forme = grille_tableur.forme_lue(l["forme"]) or ""
         if forme not in FORMES:
+            # Une case VIDE n'est pas une réponse inconnue : « la réponse «  » » se lisait
+            # comme une faute de frappe invisible (2026-11-12).
             anomalies.append(_faute(
-                "forme_inconnue", f"la réponse « {l['forme'] or ''} » n'est pas une forme",
+                "forme_inconnue", _forme_en_faute(l["forme"]),
                 "répondez « rien », « une variante » ou « des cases d'une liste » ("
                 + " · ".join(FORMES) + ")", colonne="forme", **ou))
         if not l["libelle"]:

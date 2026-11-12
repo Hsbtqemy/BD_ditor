@@ -275,7 +275,7 @@ def valider(c: dict) -> tuple[list, list]:
             x = rubriques[x]["parent_cle"]
     for k, e in c["entrees"].items():
         if e["forme"] not in FORMES:
-            faute("forme_inconnue", f"la réponse « {e['forme'] or ''} » n'est pas une forme",
+            faute("forme_inconnue", grille_import._forme_en_faute(e["forme"]),
                   " · ".join(FORMES), cle=k, colonne="forme")
         if not e["libelle"]:
             faute("libelle_vide", "l'entrée n'a pas de nom", "donnez-lui un nom", cle=k,

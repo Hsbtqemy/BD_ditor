@@ -97,6 +97,10 @@ def test_une_anomalie_est_une_donnee_qui_dit_ou_quoi_et_que_faire():
                  "colonne": "forme", "question": "4. Ce qu'on choisit",
                  "probleme": a["probleme"], "a_faire": a["a_faire"]}
     assert "libre" in a["probleme"] and "une variante" in a["a_faire"]
+    # Une case vide se dit comme telle, et non « la réponse «  » ».
+    (v,) = grille_import.lire(flux(entete + "a;;a\r\n"), None, porte_sur="mots")["anomalies"]
+    assert v["code"] == "forme_inconnue" and "«" not in v["probleme"], v["probleme"]
+    assert "aucune réponse" in v["probleme"]
     texte = grille_import.en_mots(a)
     assert texte.startswith("entrées, ligne 2 · « a » · 4. Ce qu'on choisit : ")
     assert " → répondez" in texte
