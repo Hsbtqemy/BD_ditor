@@ -882,6 +882,57 @@ def test_l_album_et_la_carte_tiennent_a_320_px_sous_grande_police(page, jeu):
     assert not echecs, "\n".join(echecs)
 
 
+# Hugo, 2026-11-11 : sur téléphone, un blanc au-dessus de l'illustration de l'album. La
+# hauteur minimale de la page (20rem) garde l'album immobile quand on tourne les pages, le
+# texte À CÔTÉ de l'image ; empilés, elle centrait l'illustration dans 20rem et laissait le
+# vide au-dessus (87 px à la première page, à 320 px de large). Elle ne vaut donc que tant
+# que les deux colonnes tiennent.
+MESURE_PAGE = """() => {
+  const p = document.querySelector('#wizard-page'), i = p.querySelector('.wizard-ill');
+  const f = i.firstElementChild, rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return { colonnes: getComputedStyle(p).gridTemplateColumns.split(' ').length,
+           ecart: f.getBoundingClientRect().top - p.getBoundingClientRect().top,
+           rembourrage: parseFloat(getComputedStyle(i).paddingTop),
+           page: p.getBoundingClientRect().height, ill: i.getBoundingClientRect().height,
+           plancher: 20 * rem }; }"""
+
+
+@pytestmark_proxy
+def test_l_album_garde_sa_hauteur_cote_a_cote_et_aucun_blanc_empile(page, jeu):
+    """À 1 280 et à 600 px, chaque page illustrée (texte à côté de l'image) garde au moins
+    20rem, sa colonne d'image aussi ; à 320 px (l'image sur le texte), l'illustration
+    commence en haut de la page, à son seul rembourrage. 600 px est sous 47,5em et les deux
+    colonnes y tiennent : le seuil est celui de la grille, pas un seuil de fenêtre."""
+    page.emulate_media(reduced_motion="reduce")   # mesurer des pages posées, pas en vol
+    _ouvrir(jeu, CAMILLE)
+    _sous(page, CAMILLE)
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _arriver(page, jeu["base"])
+    page.locator("#bac-commencer").click()
+    album = _album(page)
+    echecs = []
+    for n in range(1, 8):
+        expect(album.locator("#wizard-compte")).to_have_text(f"{n} / 8")
+        for largeur in (1280, 600, 320):
+            page.set_viewport_size({"width": largeur, "height": 800})
+            page.wait_for_timeout(100)
+            m = page.evaluate(MESURE_PAGE)
+            if largeur != 320:
+                if m["colonnes"] != 2:
+                    echecs.append(f"page {n}, {largeur} : {m['colonnes']} colonne(s)")
+                if m["page"] < m["plancher"] - .5 or m["ill"] < m["plancher"] - .5:
+                    echecs.append(f"page {n}, {largeur} : sous 20rem, {m}")
+            else:
+                if m["colonnes"] != 1:
+                    echecs.append(f"page {n}, 320 : {m['colonnes']} colonnes")
+                if m["ecart"] > m["rembourrage"] + 1:
+                    echecs.append(f"page {n}, 320 : {m['ecart']:.0f} px au-dessus de "
+                                  f"l'illustration (rembourrage {m['rembourrage']:.0f})")
+        page.set_viewport_size({"width": 1280, "height": 800})
+        album.locator("#wizard-suiv").click()
+    assert not echecs, "\n".join(echecs)
+
+
 # ── Le guide, étape par étape (tranche 3) ──────────────────────────────────────────────
 #
 # Une étape faite se voit sur la planche, sans coche à déclarer (Hugo, 2026-11-02) : le

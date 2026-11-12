@@ -678,7 +678,7 @@ kbd {
 }
 .wizard-modal[hidden] { display: none; }
 .wizard-boite { width: min(40rem, 92%); }
-.wizard-boite.wizard-album { width: min(52rem, 92%); }
+.wizard-boite.wizard-album { width: min(52rem, 92%); container: wizard-album / inline-size; }
 /* « Parcours terminé » : la taille de l'album, ses planches en vraies vignettes. */
 .wizard-boite.wizard-termine { width: min(52rem, 92%); }
 .wizard-termine h2 { margin: 0; font-size: 1.3077rem; }
@@ -701,9 +701,21 @@ kbd {
 .wizard-tete h2 { margin: 0; font-size: 1.2308rem; flex: 1 1 12rem; min-width: 0; }
 .wizard-haut { display: inline-flex; flex-wrap: wrap; gap: .4615rem; margin-left: auto; }
 .wizard-haut button { white-space: nowrap; }
-.wizard-page { display: grid; gap: 1.2308rem; align-items: center; min-height: 20rem;
+.wizard-page { display: grid; gap: 1.2308rem; align-items: center;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
 .wizard-page.sans-ill { grid-template-columns: minmax(0, 1fr); }
+/* La hauteur stable de l'album (20rem, la page et sa colonne d'image) : tourner la page ne
+   le fait pas sauter, tant que le texte est À CÔTÉ de l'image. Empilés, elle centrait
+   l'illustration dans 20rem et laissait un blanc au-dessus — 87 px à la première page, à
+   320 px de large (Hugo, 2026-11-11 ; `tests/test_e2e_wizard.py`). Elle ne vaut donc que
+   là où les deux colonnes tiennent : deux pistes de 16rem et l'écart, mesurés sur la
+   largeur de la PAGE et non de la fenêtre — à la police par défaut, une fenêtre de 512 px,
+   bien en deçà de 47,5em ; le zoom d'interface et la police suivent. Une requête de
+   conteneur, parce que le seuil est celui de la grille ; c'est celui de `wizard-fin`, plus
+   bas. */
+@container wizard-album (min-width: 33.2308rem) {
+  .wizard-page, .wizard-ill { min-height: 20rem; }
+}
 /* La page qui arrive glisse de son côté (la maquette) ; rien ne bouge pour qui a demandé
    moins d'animations. La boîte ne laisse pas déborder la page pendant qu'elle glisse. */
 .wizard-album { overflow-x: clip; }
@@ -714,7 +726,7 @@ kbd {
 @keyframes wizard-glisse-avant { from { transform: translateX(2.5rem); opacity: 0; } }
 @keyframes wizard-glisse-arriere { from { transform: translateX(-2.5rem); opacity: 0; } }
 .wizard-ill { min-width: 0; display: grid; place-items: center; overflow: hidden;
-              padding: .4615rem .2308rem; min-height: 20rem; box-sizing: border-box; }
+              padding: .4615rem .2308rem; box-sizing: border-box; }
 .wizard-txt { display: grid; gap: .3846rem; align-content: center; min-width: 0; }
 .wizard-num { font-size: 2rem; font-weight: 800; line-height: 1; color: var(--text-muted);
               font-variant-numeric: tabular-nums; }
