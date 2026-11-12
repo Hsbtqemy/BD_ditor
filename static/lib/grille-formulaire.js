@@ -56,6 +56,11 @@
   /* Les six questions, leurs titres et leur aide (en infobulle : l'écran ne la dit pas en
      phrases). Le titre est celui du catalogue et du classeur. */
   const QUESTIONS = {
+    // Un DÉFAUT et non une restriction (Hugo, 2026-11-12) : lue « Sur quoi porte-t-elle
+    // d'ordinaire ? », la question passait pour un choix qui ferme la grille.
+    B: { titre: "Où se posent ses entrées, sauf exception ?",
+         aide: "La réponse à la question 2 pour toutes les entrées qui ne disent pas la leur.",
+         note: "Chaque entrée peut en choisir une autre." },
     1: { titre: "Où se range-t-elle ?",
          aide: "Une rubrique du plan, sur autant de niveaux qu'il faut, ou aucune." },
     2: { titre: "Sur quoi se pose-t-elle ?",

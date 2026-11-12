@@ -3035,6 +3035,13 @@ function fmQuestion(n, q, corps, manque, extra) {
       ? `<p class="fm-manque-msg">● ${esc(manque)}</p>` : ""}</fieldset>`;
 }
 
+// La ligne qu'une question porte sous ses choix, quand l'infobulle ne suffit pas : celle
+// de B dit qu'elle pose un défaut, pas une restriction.
+function fmNoteDeQuestion(n) {
+  const Q = BDGrilleFormulaire.QUESTIONS[n];
+  return Q && Q.note ? `<p class="muted small fm-q-note">${esc(Q.note)}</p>` : "";
+}
+
 function fmZones(attr, sortes, actif, ajouterCase) {
   const F = BDGrilleFormulaire;
   const liste = ajouterCase ? [...F.ZONES, "case"] : F.ZONES;
@@ -3160,8 +3167,8 @@ function fmFicheGrille() {
       ${fmQuestion("A", { titre: "Fermée ou ouverte ?", aide: "Fermée : elle change par versions, publiées, qui ne bougent plus. Ouverte : une seule version, vivante ; on tape un mot qu'elle n'a pas et une entrée simple naît. La réponse ne change plus une fois la grille créée." },
         fmRadio("ouverte", "non", n.ouverte ? "oui" : "non", "Fermée", "on la publie, puis elle ne bouge plus")
         + fmRadio("ouverte", "oui", n.ouverte ? "oui" : "non", "Ouverte", "une seule version, qui s'enrichit en posant"))}
-      ${fmQuestion("B", { titre: "Sur quoi porte-t-elle d'ordinaire ?", aide: "La réponse à la question 2 pour toutes les entrées qui ne disent pas la leur." },
-        fmReponsesCible("porte", n.porte, false, [], "data-fm-porte-zone"),
+      ${fmQuestion("B", null,
+        fmReponsesCible("porte", n.porte, false, [], "data-fm-porte-zone") + fmNoteDeQuestion("B"),
         n.porte && n.porte.choix === "zone" && !F.ciblesDeReponse(n.porte) ? "Cochez au moins une sorte de zone." : "")}
       <div class="pg-gestes fm-creer"><button type="button" class="primary small" data-fm-creer="1"${pret
         ? "" : ` aria-disabled="true" title="${esc(raison)}"`}>Créer la grille</button>
@@ -3178,8 +3185,8 @@ function fmFicheGrille() {
               "La nature d'une grille ne change pas après sa création.")
       + fmRadio("ouverte", "oui", g.ouverte ? "oui" : "non", "Ouverte", "une seule version, qui s'enrichit en posant", "",
                 "La nature d'une grille ne change pas après sa création."))}
-    ${fmQuestion("B", { titre: "Sur quoi porte-t-elle d'ordinaire ?", aide: "La réponse à la question 2 pour toutes les entrées qui ne disent pas la leur." },
-      fmReponsesCible("porte", rep, false, [], "data-fm-porte-zone"),
+    ${fmQuestion("B", null,
+      fmReponsesCible("porte", rep, false, [], "data-fm-porte-zone") + fmNoteDeQuestion("B"),
       FM.attPorte ? "Cochez au moins une sorte de zone." : "")}
     ${fmNoteDeVersion(g)}
     <section class="fm-section"><h4>Dans le plan</h4><p class="muted small">${esc([

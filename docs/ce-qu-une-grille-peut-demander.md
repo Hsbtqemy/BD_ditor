@@ -17,8 +17,9 @@ ouvrez *Mon bac à sable*, puis la page Annotation.
   bouge plus. Une grille ouverte n'a qu'une version, qui s'enrichit pendant le travail : on tape
   un mot qu'elle n'a pas, et une entrée naît. Cette entrée est simple, sans rubrique, et
   personne ne lui a écrit de définition.
-- **Sur quoi porte-t-elle d'ordinaire ?** Des mots, une zone, une case… C'est la réponse à la
-  question 2 ci-dessous pour toutes les entrées qui ne disent pas la leur.
+- **Où se posent ses entrées, sauf exception ?** Des mots, une zone, une case… C'est un défaut,
+  pas une restriction : la réponse à la question 2 ci-dessous pour toutes les entrées qui ne
+  disent pas la leur, chacune pouvant en choisir une autre.
 
 ## Six questions, pour chaque entrée
 

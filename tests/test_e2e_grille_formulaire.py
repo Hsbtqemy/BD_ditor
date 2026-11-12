@@ -96,6 +96,12 @@ def test_construire_une_grille_de_deux_rubriques_la_publier_l_activer(page, live
     expect(page.locator("#fm-g-nom")).to_be_focused()
     creer = page.get_by_role("button", name="Créer la grille")
     expect(creer).to_have_attribute("aria-disabled", "true")
+    # La question B pose un DÉFAUT, et le dit sous ses choix (Hugo, 2026-11-12) : lue « Sur
+    # quoi porte-t-elle d'ordinaire ? », elle passait pour une restriction de la grille.
+    b = page.locator("fieldset.fm-q").filter(has=page.locator(".fm-q-n", has_text="B"))
+    expect(b.locator(".fm-q-titre")).to_contain_text("Où se posent ses entrées, sauf exception ?")
+    expect(b.locator(".fm-q-note")).to_be_visible()
+    expect(b.locator(".fm-q-note")).to_have_text("Chaque entrée peut en choisir une autre.")
     page.fill("#fm-g-nom", "Lieux")
     page.keyboard.press("Tab")
     page.get_by_label("La case").check()
