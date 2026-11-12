@@ -397,6 +397,9 @@ def test_un_vrai_sous_processus_ne_survit_pas_a_l_annulation(monkeypatch, kumiko
 
     monkeypatch.setenv("BD_TEST_MARQUEUR", str(marqueur))
     monkeypatch.setattr(seg, "KUMIKO_ENTRY", script)
+    # Le dossier de travail de l'enfant aussi : sans le clone `lib/kumiko`, `Popen` refusait
+    # un `cwd` absent et le test échouait au lieu de mesurer (QA-6, 2026-11-12).
+    monkeypatch.setattr(seg, "KUMIKO_DIR", tmp_path)
     monkeypatch.setattr(seg, "PAS_INTERRUPTION", 0.05)
     # L'interruption n'est demandée qu'une fois l'enfant AU TRAVAIL : sinon on tuerait
     # un processus qui n'a pas commencé, et le test ne prouverait rien.

@@ -88,15 +88,23 @@ def test_profond_borne_le_message(monkeypatch):
 # --------------------------------------------------------------------------- #
 # Ce que le contrôle rapide NE PEUT PAS voir — la raison d'être du profond
 # --------------------------------------------------------------------------- #
-def test_kumiko_profond_refuse_opencv_5(monkeypatch):
+def test_kumiko_profond_refuse_opencv_5(monkeypatch, tmp_path):
     """OpenCV 5 s'importe parfaitement et casse Kumiko ensuite (`HoughLinesP` renvoie
     (N, 4) au lieu de (N, 1, 4)). `find_spec` n'y voit rien ; le profond doit refuser.
 
     `importorskip` et non le marqueur Kumiko : ce test-ci n'a besoin QUE de cv2 — il
     truque la version, il n'appelle jamais le script. Le marqueur exigerait en plus le
     clone `lib/kumiko`, et le ferait taire là où il sait encore mesurer (QA-6).
+
+    Le point d'entrée est donc POSÉ : `_verifier_kumiko` le cherche avant la version, et
+    sans lui le test échouait sur « point d'entrée absent » dans une copie sans clone
+    (2026-11-12).
     """
     cv2 = pytest.importorskip("cv2", reason="OpenCV non installé")
+    import pipeline.segmentation as seg
+    entree = tmp_path / "kumiko"
+    entree.write_text("", encoding="utf-8")
+    monkeypatch.setattr(seg, "KUMIKO_ENTRY", entree)
     sante._reset()
     monkeypatch.setattr(cv2, "__version__", "5.0.0", raising=False)
     r = sante.profond("kumiko")
