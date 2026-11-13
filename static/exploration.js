@@ -17,13 +17,12 @@ const INITIAL_QS = Nav.etatDeDepart(location.search, STOCKAGE, "exploration").qs
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));   // d'où l'on vient (si inbound)
 const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
               "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
-// Libellé de la cible d'une dimension (lève l'ambiguïté entre dimensions homonymes :
-// une « origine » de personnage et une « origine » de case ne se confondent plus).
-const CIBLE_LBL = { personnage: "locuteur", case: "scène" };
-let ATTR_CATALOGUE = [];   // valeurs d'attribut à plat (cible→dim→valeur) — source des puces
 // `corpus` : GET /api/corpus, ou null — la cause d'un écran vide (UX-6, `direVide`).
-const state = { timer: null, gen: 0, attributs: { f: new Set(), b: new Set() },
-                corpus: Promise.resolve(null) };
+// `anciens` (ANN-7, I7) : les paramètres d'hier (`tags`, `tag_scope`, `attributs`…) d'un
+// lien enregistré, envoyés UNE fois au serveur, qui les refuse par un 422 qui le dit. Les
+// taire rendrait le corpus entier sous un lien qui a l'air filtré.
+const state = { timer: null, gen: 0, corpus: Promise.resolve(null), anciens: [] };
+const PARAMETRES_D_HIER = ["tags", "b_tags", "tag_scope", "attributs", "b_attributs"];
 
 async function loadCorpus() {
   try {
@@ -48,9 +47,9 @@ function direVide(ecrire, criteres, defaut) {
   });
 }
 const NLP_A_RELANCER = "Aucune donnée (relancer l'indexation NLP ?).";
-// Des critères posés sur le sous-corpus A (hors portée des tags, qui ne filtre rien seule).
+// Des critères posés sur le sous-corpus A.
 function criteresA() {
-  return [...filtresA().keys()].some((k) => k !== "tag_scope");
+  return [...filtresA().keys()].length > 0;
 }
 
 async function loadAlbums() {
@@ -71,21 +70,6 @@ async function loadAlbums() {
   } catch (e) { /* ignore */ }
 }
 
-async function loadTags() {
-  try {
-    const tags = await apiGet("/api/tags");
-    for (const id of ["#f-tags", "#b-tags"]) {
-      const sel = $(id);
-      for (const t of tags) {
-        const o = document.createElement("option");
-        o.value = t.label;
-        o.textContent = `${t.label} (${t.frequence})`;
-        sel.appendChild(o);
-      }
-    }
-  } catch (e) { /* ignore */ }
-}
-
 /* ---------------- Paramètres ---------------- */
 function champ() { return $("#f-champ").value; }
 function vue() { return $("#f-vue").value; }   // distribution | concordance | comparaison
@@ -96,15 +80,9 @@ function metrique() { return $("#f-metrique").value; }   // comparaison : diff |
 function sideFilters(pre) {
   const g = (k) => ($(`#${pre}-${k}`).value || "").trim();
   const f = { album: g("album"), type: g("type"), morph: g("morph"),
-              provenance: g("prov"), tags: g("tags"), personnage: g("personnage") };
+              provenance: g("prov"), personnage: g("personnage") };
   if (champ() !== "pos") f.pos = g("pos");   // filtre POS redondant si on distribue par POS
   return f;
-}
-// Portée du filtre tag : 'herite' (case parente incluse, défaut) ou 'propre'. Global (A+B).
-function tagScope() { return $("#f-tagscope").checked ? "herite" : "propre"; }
-// Attributs sélectionnés d'un côté → liste de valeur_id (ET côté backend).
-function selectedAttributs(pre) {
-  return [...state.attributs[pre]];
 }
 
 /* Sous-corpus A → params backend (noms attendus par concordance / croisement). Le POS est
@@ -114,11 +92,9 @@ function filtresA() {
   const p = new URLSearchParams();
   const g = (k) => ($(`#f-${k}`).value || "").trim();
   for (const [ctl, key] of [["album", "album"], ["type", "type"], ["pos", "pos"],
-       ["morph", "morph"], ["prov", "provenance"], ["tags", "tags"], ["personnage", "personnage"]]) {
+       ["morph", "morph"], ["prov", "provenance"], ["personnage", "personnage"]]) {
     const v = g(ctl); if (v) p.set(key, v);
   }
-  selectedAttributs("f").forEach((v) => p.append("attributs", v));
-  if (tagScope() === "propre") p.set("tag_scope", "propre");
   return p;
 }
 // Le lemme saisi, ou "" s'il ne dit rien. Un joker seul (« * ») n'est pas un préfixe : le
@@ -142,20 +118,14 @@ function croisementParams() {
   p.set("axe_y", $("#f-axe-y").value);
   return p;
 }
-// Facettes croisables fixes ; les dimensions d'attribut (dim:<id>) s'ajoutent dynamiquement.
+// Facettes croisables. Les axes « tag » et « dimension d'attribut » sont partis avec le
+// basculement d'ANN-7 ; la tranche 4 croisera les relevés.
 const AXES_STATIQUES = [
   ["pos", "catégorie (POS)"], ["morph", "morphologie"], ["type", "type de région"],
-  ["provenance", "provenance"], ["locuteur", "locuteur"], ["tag", "tag"],
+  ["provenance", "provenance"], ["locuteur", "locuteur"],
 ];
 function axeOptions(sel) {
-  const opts = AXES_STATIQUES.slice();
-  const vus = new Set();
-  for (const v of ATTR_CATALOGUE) {                 // une entrée par dimension (cible · nom)
-    if (vus.has(v.dimension_id)) continue;
-    vus.add(v.dimension_id);
-    opts.push([`dim:${v.dimension_id}`, `${CIBLE_LBL[v.cible] || v.cible} · ${v.dimension}`]);
-  }
-  return opts.map(([val, lbl]) =>
+  return AXES_STATIQUES.map(([val, lbl]) =>
     `<option value="${esc(val)}"${val === sel ? " selected" : ""}>${esc(lbl)}</option>`).join("");
 }
 function populateAxes() {
@@ -165,8 +135,7 @@ function populateAxes() {
 // Le backend exige au moins un critère grammatical/sémantique : album/type/provenance seuls
 // ne suffisent pas. On le vérifie AVANT l'appel pour afficher une invite plutôt qu'une erreur.
 function concordanceHasCriterion(p) {
-  return ["lemme", "pos", "morph", "tags", "personnage"].some((k) => p.get(k))
-    || p.getAll("attributs").length > 0;
+  return ["lemme", "pos", "morph", "personnage"].some((k) => p.get(k));
 }
 
 async function loadPersonnages() {
@@ -182,57 +151,6 @@ async function loadPersonnages() {
       }
     }
   } catch (e) { /* ignore */ }
-}
-
-async function loadAttributs() {
-  try {
-    ATTR_CATALOGUE = await apiGet("/api/attributs/valeurs");   // à plat, ordonné cible→dim→valeur
-  } catch (e) { ATTR_CATALOGUE = []; }
-  renderAttrChips("f");
-  renderAttrChips("b");
-}
-
-/* (Re)rend les puces d'attribut d'un côté, groupées par dimension. Chaque puce est un
-   bouton-bascule (toggle) : plus découvrable qu'un <select multiple> (qui imposait
-   Ctrl-clic). L'état vit dans state.attributs[pre] (Set de valeur_id). */
-function renderAttrChips(pre) {
-  const box = $(`#${pre}-attr-chips`);
-  if (!box) return;
-  box.innerHTML = "";
-  if (!ATTR_CATALOGUE.length) {
-    box.innerHTML = '<span class="muted small">Aucun attribut défini.</span>';
-    return;
-  }
-  const sel = state.attributs[pre];
-  let curDim = null, grp = null;
-  for (const v of ATTR_CATALOGUE) {
-    if (v.dimension_id !== curDim) {            // nouvelle dimension → nouveau groupe
-      curDim = v.dimension_id;
-      grp = document.createElement("div");
-      grp.className = "attr-group";
-      const lbl = document.createElement("span");
-      lbl.className = "attr-dim";
-      lbl.textContent = `${CIBLE_LBL[v.cible] || v.cible} · ${v.dimension}`;
-      grp.appendChild(lbl);
-      box.appendChild(grp);
-    }
-    const id = String(v.id), actif = sel.has(id);
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "cloud-tag attr-chip" + (actif ? " active" : "");
-    chip.dataset.vid = id;
-    chip.textContent = v.valeur;
-    chip.setAttribute("aria-pressed", actif ? "true" : "false");
-    if (v.nb_usages != null) chip.title = Resultats.nombre(v.nb_usages, "usage");
-    chip.onclick = () => {
-      const on = !sel.has(id);
-      if (on) sel.add(id); else sel.delete(id);
-      chip.classList.toggle("active", on);
-      chip.setAttribute("aria-pressed", on ? "true" : "false");
-      run();
-    };
-    grp.appendChild(chip);
-  }
 }
 
 /* URL/état : vue + (champ|lemme) + filtres A (nus) + filtres B (préfixés b_). Partageable. */
@@ -256,25 +174,20 @@ function stateParams() {
   p.set("champ", champ());
   const a = sideFilters("f");
   for (const [k, val] of Object.entries(a)) if (val) p.set(k, val);
-  selectedAttributs("f").forEach((val) => p.append("attributs", val));
   if (v === "comparaison") {
     const b = sideFilters("b");
     for (const [k, val] of Object.entries(b)) if (val) p.set("b_" + k, val);
-    selectedAttributs("b").forEach((val) => p.append("b_attributs", val));
-    if (metrique() !== "diff") p.set("metrique", metrique());   // défaut omis, comme tag_scope
+    if (metrique() !== "diff") p.set("metrique", metrique());   // défaut omis de l'URL
   }
-  if (tagScope() === "propre") p.set("tag_scope", "propre");   // hérité = défaut, omis de l'URL
   if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit aux changements de filtre
   return p;
 }
 
 /* Descente aux preuves : Recherche pré-filtrée sur la valeur + les filtres du côté. */
-function drillUrl(valeur, filtres, attributs) {
+function drillUrl(valeur, filtres) {
   const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(filtres)) if (v) p.set(k, v);
+  for (const [k, v] of Object.entries(filtres)) if (v) p.set(k, v);   // locuteur compris
   p.set(champ(), valeur);
-  if (filtres.tags) p.set("tag_scope", tagScope());   // Recherche filtre le tag avec le MÊME scope
-  (attributs || []).forEach((v) => p.append("attributs", v));   // locuteur via filtres.personnage
   p.set("retour", location.pathname + location.search);   // pour revenir à l'Exploration
   return "/recherche?" + p.toString();
 }
@@ -310,7 +223,12 @@ function exporterAnalyse() {
 
 /* ---------------- Exécution ---------------- */
 function run() {
-  const etat = stateParams().toString();
+  // ANN-7, I7 — les paramètres d'hier partent avec ce calcul-ci, et lui seul : l'erreur du
+  // serveur les dit ; le geste suivant s'en passe.
+  const anciens = state.anciens;
+  state.anciens = [];
+  const avecAnciens = (p) => { anciens.forEach(([k, val]) => p.append(k, val)); return p; };
+  const etat = avecAnciens(stateParams()).toString();
   history.replaceState(null, "", "?" + etat);
   Nav.memoriser(STOCKAGE, "exploration", etat);   // INFRA-5
   const v = vue();
@@ -329,19 +247,17 @@ function run() {
     const a = sideFilters("f"), b = sideFilters("b");
     for (const [k, val] of Object.entries(a)) if (val) p.set("a_" + k, val);
     for (const [k, val] of Object.entries(b)) if (val) p.set("b_" + k, val);
-    selectedAttributs("f").forEach((val) => p.append("a_attributs", val));
-    selectedAttributs("b").forEach((val) => p.append("b_attributs", val));
-    if (tagScope() === "propre") p.set("tag_scope", "propre");
     if (metrique() !== "diff") p.set("metrique", metrique());   // l'export trie comme l'écran
+    avecAnciens(p);
     armerExport("comparaison", p);
     apiGet("/api/analyse/comparaison?" + p.toString()).then(done(renderComparaison)).catch(fail);
   } else if (v === "concordance") {
-    const p = concordanceParams();
-    if (!concordanceHasCriterion(p)) {           // sinon le backend renverrait 422 → invite claire
+    const p = avecAnciens(concordanceParams());
+    if (!anciens.length && !concordanceHasCriterion(p)) {   // sinon 422 → invite claire
       $("#dist-info").textContent = "";
       $("#kwic").className = "kwic";              // retire une grille « aligné » résiduelle d'un rendu précédent
       $("#kwic").innerHTML =
-        '<p class="muted small">Précisez un lemme / mot, ou un filtre POS, morpho, tag, locuteur ou attribut.</p>';
+        '<p class="muted small">Précisez un lemme / mot, ou un filtre POS, morpho ou locuteur.</p>';
       desarmerExport();          // rien n'a été demandé : il n'y a rien à emporter
       return;
     }
@@ -349,7 +265,7 @@ function run() {
     p.set("limit", String(Resultats.LIMITE + 1));
     apiGet("/api/analyse/concordance?" + p.toString()).then(done(renderKwic)).catch(fail);
   } else if (v === "croisement") {
-    const p = croisementParams();
+    const p = avecAnciens(croisementParams());
     armerExport("croisement", p);
     p.set("limit", String(CROISE_LIMIT));
     apiGet("/api/analyse/croisement?" + p.toString()).then(done(renderCroise)).catch(fail);
@@ -357,8 +273,7 @@ function run() {
     const p = new URLSearchParams();
     p.set("champ", champ());
     for (const [k, val] of Object.entries(sideFilters("f"))) if (val) p.set(k, val);
-    selectedAttributs("f").forEach((val) => p.append("attributs", val));
-    if (tagScope() === "propre") p.set("tag_scope", "propre");
+    avecAnciens(p);
     armerExport("frequences", p);
     p.set("limit", String(Resultats.LIMITE + 1));
     apiGet("/api/analyse/frequences?" + p.toString()).then(done(renderDist)).catch(fail);
@@ -380,7 +295,7 @@ function renderDist(res) {
   if (!rows.length) {
     $("#dist-info").textContent = "";
     direVide((m) => { $("#dist-info").textContent = m; },
-             Object.values(sideFilters("f")).some(Boolean) || selectedAttributs("f").length > 0,
+             Object.values(sideFilters("f")).some(Boolean),
              NLP_A_RELANCER);
     return;
   }
@@ -398,7 +313,7 @@ function renderDist(res) {
     const sub = (ch === "lemme" && r.pos) ? `<span class="dist-pos">${esc(r.pos)}</span>` : "";
     const row = document.createElement(v === "" ? "div" : "a");
     row.className = "dist-row";
-    if (v !== "") { row.href = drillUrl(v, fa, selectedAttributs("f")); row.title = "Voir les emplois en contexte"; }
+    if (v !== "") { row.href = drillUrl(v, fa); row.title = "Voir les emplois en contexte"; }
     row.innerHTML =
       `<span class="dist-label">${esc(label)}${sub}</span>` +
       `<span class="dist-bar"><i style="width:${(100 * r.freq / max).toFixed(1)}%"></i></span>` +
@@ -410,7 +325,7 @@ function renderDist(res) {
 /* ---------------- Rendu : comparaison A / B ---------------- */
 /* `cle` = la mesure qui a classé la liste (`diff` ou `ll`) : la barre en montre la force,
    sans quoi un classement par keyness s'afficherait avec les longueurs de l'autre mesure. */
-function compColumn(items, side, filtres, attributs, cle) {
+function compColumn(items, side, filtres, cle) {
   if (!items.length) return '<div class="muted small">—</div>';
   const max = Math.max(...items.map((x) => Math.abs(x[cle]))) || 1;
   return items.map((x) => {
@@ -423,7 +338,7 @@ function compColumn(items, side, filtres, attributs, cle) {
       `<span class="dist-freq" title="A:${x.freq_a} · B:${x.freq_b}${g2}">${x.freq_a}/${x.freq_b}</span>`;
     return v === ""
       ? `<div class="dist-row">${inner}</div>`
-      : `<a class="dist-row" href="${esc(drillUrl(v, filtres, attributs))}" title="Voir les emplois en contexte">${inner}</a>`;
+      : `<a class="dist-row" href="${esc(drillUrl(v, filtres))}" title="Voir les emplois en contexte">${inner}</a>`;
   }).join("");
 }
 
@@ -444,9 +359,9 @@ function renderComparaison(res) {
   }
   box.innerHTML =
     `<div class="comp-col col-a"><h3 class="comp-h">▲ Sur-représentés en A</h3>` +
-      `<div class="dist">${compColumn(res.sur_a, "a", sideFilters("f"), selectedAttributs("f"), cle)}</div></div>` +
+      `<div class="dist">${compColumn(res.sur_a, "a", sideFilters("f"), cle)}</div></div>` +
     `<div class="comp-col col-b"><h3 class="comp-h">▲ Sur-représentés en B</h3>` +
-      `<div class="dist">${compColumn(res.sur_b, "b", sideFilters("b"), selectedAttributs("b"), cle)}</div></div>`;
+      `<div class="dist">${compColumn(res.sur_b, "b", sideFilters("b"), cle)}</div></div>`;
 }
 
 /* ---------------- Rendu : concordance (KWIC) ---------------- */
@@ -474,60 +389,36 @@ function kwicMeta(r) {
             : (r.planche_numero != null ? "pl." + r.planche_numero : "—");
   return esc(cit + (r.locuteur ? " · " + r.locuteur : "") + (r.pos ? " · " + r.pos : ""));
 }
-/* ANA-6 — tags et note d'une ligne. Le serveur les ordonne PROPRES puis HÉRITÉS de la
-   case ; l'hérité se dit par la forme (pointillé) ET par le mot « case », jamais par la
-   seule couleur. `tags` et `note` peuvent manquer (doublure de test, réponse ancienne) :
-   absents, il n'y a rien à montrer. */
-const KWIC_PUCES = 2;   // au-delà, « +N » : une ligne à quatre tags n'élargit pas toute la grille
-const kwicLibelle = (t) => (t.herite ? "case · " : "") + t.label;
-function kwicPuce(t) {
-  // Une VRAIE espace entre « case » et le libellé, pas une marge : deux <span> collés se
-  // lisent « casecolère » au lecteur d'écran — l'œil voyait l'écart, l'oreille non.
-  return t.herite
-    ? `<span class="kw-tag kw-herite"><span class="kw-pref">case</span> ${esc(t.label)}</span>`
-    : `<span class="kw-tag">${esc(t.label)}</span>`;
-}
-function kwicPuces(r, plafond) {
-  const tags = r.tags || [];
-  const vus = plafond ? tags.slice(0, plafond) : tags;
-  const reste = tags.slice(vus.length).map(kwicLibelle).join(", ");
-  // Le « +N » cache des noms : l'infobulle les montre à la souris, le texte masqué à
-  // l'ŒIL SEULEMENT les dit au lecteur d'écran — une infobulle ne s'annonce pas.
-  const plus = reste
-    ? `<span class="kw-tag kw-plus" title="${esc(reste)}" aria-hidden="true">+${tags.length - vus.length}</span>` +
-      `<span class="kw-cache">, et ${esc(reste)}</span>`
-    : "";
-  return vus.map(kwicPuce).join("") + plus;
-}
+/* ANA-6 — la note d'une ligne : un repère dans le rendu aligné, la note entière dans la
+   liste. Les tags qui l'accompagnaient sont partis avec le basculement d'ANN-7. `note` peut
+   manquer (doublure de test, réponse ancienne) : absente, il n'y a rien à montrer. */
 function kwicRepere(r) {
   return r.note ? '<span class="kw-note" role="img" aria-label="porte une note"'
     + ' title="Porte une note — le rendu liste la montre en entier">📝</span>' : "";
 }
-function kwicRowAligne(r, avecTags) {
+function kwicRowAligne(r, avecNote) {
   const parts = splitPivot(r.ocr_texte, r.texte);
   const L = parts ? esc(parts.left) : esc(r.ocr_texte || "");
   const K = parts ? esc(parts.key) : "";
   const R = parts ? esc(parts.right) : "";
   // Une cellule par ligne dans la 5e colonne, VIDE comprise : les lignes sont en
   // `display: contents`, et une cellule manquante décalerait toute la grille.
-  const tags = avecTags
-    ? `<span class="kw-tags">${kwicPuces(r, KWIC_PUCES)}${kwicRepere(r)}</span>` : "";
+  const note = avecNote ? `<span class="kw-notes">${kwicRepere(r)}</span>` : "";
   return `<a class="kwic-row" href="${esc(kwicViewerHref(r))}" title="Voir la case">` +
     `<span class="kw-left">${L}</span><span class="kw-key">${K}</span>` +
-    `<span class="kw-right">${R}</span><span class="kw-meta">${kwicMeta(r)}</span>${tags}</a>`;
+    `<span class="kw-right">${R}</span><span class="kw-meta">${kwicMeta(r)}</span>${note}</a>`;
 }
 function kwicRowListe(r) {
   const parts = splitPivot(r.ocr_texte, r.texte);
   const texte = parts
     ? `${esc(parts.left)}<b class="kw-hit">${esc(parts.key)}</b>${esc(parts.right)}`
     : esc(r.ocr_texte || "");
-  // La liste dit TOUT : les tags sans plafond, et la note entière en encre pleine — c'est
-  // ici qu'on la lit, et une note en petit texte atténué serait l'invisible déplacé.
-  const tags = (r.tags || []).length ? `<span class="kwic-tags">${kwicPuces(r, 0)}</span>` : "";
+  // La liste dit TOUT : la note entière en encre pleine — c'est ici qu'on la lit, et une
+  // note en petit texte atténué serait l'invisible déplacé.
   const note = r.note ? `<span class="kwic-note">📝 ${esc(r.note)}</span>` : "";
   return `<a class="kwic-item" href="${esc(kwicViewerHref(r))}" title="Voir la case">` +
     `<span class="kwic-meta">${kwicMeta(r)}</span>` +
-    `<span class="kwic-text">« ${texte} »</span>${tags}${note}</a>`;
+    `<span class="kwic-text">« ${texte} »</span>${note}</a>`;
 }
 function renderKwic(res) {
   const box = $("#kwic");
@@ -546,12 +437,12 @@ function renderKwic(res) {
     return;
   }
   const aligne = kwicStyle() === "aligne";
-  // La 5e colonne n'existe que si une ligne AFFICHÉE a quelque chose à y mettre : sur un
-  // corpus sans annotation, elle ne coûterait qu'une gouttière vide.
-  const avecTags = aligne && rows.some((r) => (r.tags || []).length || r.note);
-  box.className = "kwic" + (aligne ? " kwic-aligned" + (avecTags ? " kwic-tags" : "")
+  // La 5e colonne n'existe que si une ligne AFFICHÉE a une note : sur un corpus sans
+  // note, elle ne coûterait qu'une gouttière vide.
+  const avecNote = aligne && rows.some((r) => r.note);
+  box.className = "kwic" + (aligne ? " kwic-aligned" + (avecNote ? " kwic-notes" : "")
                                    : " kwic-list");
-  box.innerHTML = rows.map((r) => aligne ? kwicRowAligne(r, avecTags) : kwicRowListe(r)).join("");
+  box.innerHTML = rows.map((r) => aligne ? kwicRowAligne(r, avecNote) : kwicRowListe(r)).join("");
 }
 
 /* ---------------- Rendu : tableau croisé 2D (ANA-2) ---------------- */
@@ -615,13 +506,11 @@ function drillCroise(i, j) {
 function applyAxisFilter(param, cle) {
   if (cle == null) return;                           // cellule « (vide) » : pas de filtre d'absence
   const v = String(cle);
-  if (param === "tags") $("#f-tags").value = v;
-  else if (param === "type") $("#f-type").value = v;
+  if (param === "type") $("#f-type").value = v;
   else if (param === "pos") $("#f-pos").value = v;
   else if (param === "provenance") $("#f-prov").value = v;
   else if (param === "morph") $("#f-morph").value = v;
   else if (param === "personnage") $("#f-personnage").value = v;
-  else if (param === "attributs") { state.attributs.f.add(v); renderAttrChips("f"); }
 }
 
 /* ---------------- Contrôles / démarrage ---------------- */
@@ -655,16 +544,11 @@ function restoreFromUrl() {
     $(`#${pre}-pos`).value = p.get(keyfn("pos")) || "";
     $(`#${pre}-morph`).value = p.get(keyfn("morph")) || "";
     $(`#${pre}-prov`).value = p.get(keyfn("provenance")) || "";
-    $(`#${pre}-tags`).value = p.get(keyfn("tags")) || "";
     $(`#${pre}-personnage`).value = p.get(keyfn("personnage")) || "";
   };
   setSide("f", (k) => k);              // A = paramètres nus
   setSide("b", (k) => "b_" + k);       // B = préfixés
-  state.attributs.f = new Set(p.getAll("attributs"));
-  state.attributs.b = new Set(p.getAll("b_attributs"));
-  renderAttrChips("f");                // reflète l'état restauré sur les puces
-  renderAttrChips("b");
-  $("#f-tagscope").checked = (p.get("tag_scope") || "herite") !== "propre";
+  state.anciens = [...p].filter(([k]) => PARAMETRES_D_HIER.includes(k));
 }
 
 /* Bouton « ← Retour » : revient d'où l'on vient via `retour` (ou history.back si
@@ -687,405 +571,6 @@ function setupBack() {
     back.onclick = (e) => { e.preventDefault(); history.back(); };
   } else {
     back.href = target;
-  }
-}
-
-/* ---------------- Lexique situé (A4) : documenter le vocabulaire ----------------
-   Modale d'édition de la couche définitionnelle SKOS (definition / note de portée /
-   état provisoire→défini / portée d'appartenance) sur dimensions, valeurs et tags.
-   Read model : GET /api/lexique ; écriture : PATCH .../lexique (partielle). */
-let LEX_COLLECTIONS = [];   // {id, nom, …} — menu « portée »
-let LEX_DOMAINES = [];      // {id, nom, …} — menu « domaine » des dimensions (piste B)
-let LEX_TAGS = [];          // les tags visibles — cibles d'une fusion (ANN-8)
-
-async function openLexique() {
-  $("#lex-import-bilan").hidden = true;        // un bilan d'une ouverture précédente
-  $("#lexique-modal").hidden = false;
-  await loadLexique();
-}
-function closeLexique() { $("#lexique-modal").hidden = true; }
-
-async function loadLexique() {
-  const body = $("#lex-body");
-  body.textContent = "Chargement…";
-  try {
-    const [lex, cols] = await Promise.all([apiGet("/api/lexique"), apiGet("/api/collections")]);
-    LEX_COLLECTIONS = cols;
-    LEX_DOMAINES = lex.domaines || [];
-    LEX_TAGS = lex.tags || [];
-    renderLexique(lex);
-  } catch (e) { body.textContent = "Impossible de charger le lexique."; }
-}
-
-function lexResume(r) {
-  const pct = r.pct_defini == null ? "—" : Math.round(r.pct_defini * 100) + " %";
-  return `${Resultats.nombre(r.definis, "terme défini", "termes définis")} sur ${r.total} — ${pct}`;
-}
-
-/* Le menu « Portée » : les collections où l'on ÉCRIT (`ecrivable`, AUTH-12 — comme le menu
-   « Importer dans »), plus celle où le terme vit déjà, pour que le menu dise la vérité sur
-   un terme d'une collection seulement lue. Proposer une collection lue promettait un
-   rangement que le serveur refuse (« introuvable »). */
-function porteeOptions(sel) {
-  return [`<option value="">Global</option>`].concat(
-    LEX_COLLECTIONS.filter((c) => c.ecrivable || String(c.id) === String(sel)).map((c) =>
-      `<option value="${c.id}"${String(c.id) === String(sel) ? " selected" : ""}>${esc(c.nom)}</option>`)
-  ).join("");
-}
-
-function domaineOptions(sel) {
-  return [`<option value="">Hors domaine</option>`].concat(
-    LEX_DOMAINES.map((d) =>
-      `<option value="${d.id}"${String(d.id) === String(sel) ? " selected" : ""}>${esc(d.nom)}</option>`)
-  ).join("");
-}
-
-/* Éditeur d'un terme (domaine | dimension | valeur | tag). `defi` = définition courante (la
-   `description` pour un tag). Câble un PATCH par champ modifié. Une dimension porte en plus un
-   sélecteur de DOMAINE (piste B) → PATCH .../domaine (réorganise, re-rend la modale). */
-function termEditor(kind, term, defi) {
-  const url = kind === "tag" ? `/api/tags/${term.id}/lexique`
-            : kind === "valeur" ? `/api/attributs/valeurs/${term.id}/lexique`
-            : kind === "domaine" ? `/api/domaines/${term.id}/lexique`
-            : `/api/attributs/dimensions/${term.id}/lexique`;
-  const nom = kind === "tag" ? term.label : (term.nom || term.valeur);
-  const sub = kind === "dimension" ? (CIBLE_LBL[term.cible] || term.cible)
-            : kind === "domaine" ? Resultats.nombre(term.nb_dimensions, "dimension")
-            : kind === "valeur" ? Resultats.nombre(term.nb_usages, "usage")
-            : Resultats.nombre(term.frequence, "pose");
-  const defini = term.etat === "defini";
-  const domaineField = kind === "dimension"
-    ? `<label>Domaine <select data-f="domaine_id">${domaineOptions(term.domaine_id)}</select></label>`
-    : "";
-  const d = document.createElement("details");
-  d.className = "lex-term" + (kind === "domaine" ? " lex-domaine" : "");
-  d.dataset.terme = `${kind}:${term.id}`;    // pour rouvrir l'éditeur après un rechargement
-  d.innerHTML = `
-    <summary>
-      <span class="lex-name">${esc(nom)}</span>
-      <span class="lex-sub">${esc(sub)}</span>
-      <span class="lex-badge${defini ? " defini" : ""}" data-role="badge">${defini ? "défini" : "provisoire"}</span>
-    </summary>
-    <div class="lex-fields">
-      <label>Définition
-        <textarea rows="2" data-f="definition" placeholder="sens du terme">${esc(defi || "")}</textarea>
-      </label>
-      <label>Note de portée <span class="muted small">(cadre d'emploi dans ce corpus)</span>
-        <textarea rows="2" data-f="note_portee" placeholder="ex. ici, « rural » = hors grande ville">${esc(term.note_portee || "")}</textarea>
-      </label>
-      <div class="lex-row">
-        <label class="lex-check"><input type="checkbox" data-f="etat"${defini ? " checked" : ""}> Défini</label>
-        <label>Portée <select data-f="collection_id">${porteeOptions(term.collection_id)}</select></label>
-        ${domaineField}
-      </div>
-    </div>`;
-  const badge = d.querySelector('[data-role="badge"]');
-  const domSel = d.querySelector('[data-f="domaine_id"]');   // dimensions seulement
-  // Ce que le sélecteur MONTRE, et non ce que dit `term.domaine_id` : un domaine qu'on ne
-  // voit pas (AUTH-2) n'est pas une option, et le sélecteur affiche alors « Hors domaine ».
-  let domaineAffiche = domSel ? domSel.value : "";
-  if (domSel) domSel.addEventListener("change", async (e) => {
-    try {
-      await apiSend("PATCH", `/api/attributs/dimensions/${term.id}/domaine`,
-                    { domaine_id: e.target.value ? Number(e.target.value) : null });
-      domaineAffiche = e.target.value;
-      toast("Domaine mis à jour"); loadLexique();          // regroupement changé → re-render
-    } catch (err) {
-      // Échec (409 d'un rattachement qui déplacerait une portée, AUTH-11) : rien n'est
-      // enregistré, donc le sélecteur revient à ce qu'il montrait — sinon il afficherait un
-      // rattachement qui n'existe pas. Revenir à `term.domaine_id` ne suffit pas : pour un
-      // domaine caché, aucune option ne correspondrait, et rien ne serait sélectionné.
-      // Même patron que la case « Défini » ci-dessous.
-      e.target.value = domaineAffiche;
-      toast("Échec : " + err.message, "error");
-    }
-  });
-  // `save` renvoie true/false : les MAJ optimistes (badge, % défini) ne s'appliquent QUE
-  // sur succès — sinon l'UI divergerait de la base (ex. 409 base occupée, 500).
-  // `save` rend la réponse (vraie) sur succès, false sur échec.
-  const save = async (patch) => {
-    try {
-      const rep = await apiSend("PATCH", url, patch);
-      toast("Enregistré");
-      return rep || true;
-    }
-    catch (e) { toast("Échec : " + e.message, "error"); return false; }
-  };
-  d.querySelectorAll("textarea[data-f]").forEach((ta) =>
-    ta.addEventListener("change", () => save({ [ta.dataset.f]: ta.value })));
-  d.querySelector('[data-f="etat"]').addEventListener("change", async (e) => {
-    if (!await save({ etat: e.target.checked ? "defini" : "provisoire" })) {
-      e.target.checked = !e.target.checked;   // échec → reverter la case (pas de change re-déclenché)
-      return;
-    }
-    badge.textContent = e.target.checked ? "défini" : "provisoire";
-    badge.classList.toggle("defini", e.target.checked);
-    refreshLexResume();                       // le % défini change (succès uniquement)
-  });
-  // Même patron que le sélecteur de domaine : après un échec (409 d'un rangement hors de
-  // la collection d'un terme lié, AUTH-11 2026-09-25), revenir à ce que le sélecteur
-  // MONTRAIT — sinon il afficherait un rangement qui n'a pas eu lieu. Ce n'est PAS
-  // `term.collection_id` : pour un terme GLOBAL, il vaut `null`, et `select.value = null`
-  // ne sélectionne aucune option — le refus depuis Global (le cas du bit, atteignable)
-  // laisserait le sélecteur vide. Ce qu'il montrait, lui, est « » : l'option « Global ».
-  //
-  // Désactivé quand le terme n'est pas modifiable : un terme d'une collection qu'on ne
-  // fait que lire (la sienne n'est pas `ecrivable`), ou un terme global quand on n'écrit
-  // nulle part — le geste répondrait 403. La collection du terme reste affichée (cf.
-  // `porteeOptions`), pour que le menu dise où il vit.
-  //
-  // Et après un succès, RECHARGER le lexique : un rangement déplace aussi d'autres termes —
-  // les descendants emportés d'une racine (AUTH-11, β), les globaux qui descendent — dont
-  // les éditeurs garderaient sinon l'ancienne portée. L'éditeur courant est rouvert, le
-  // focus rendu à son sélecteur, pour que le geste ne perde pas sa place.
-  const porteeSel = d.querySelector('[data-f="collection_id"]');
-  const porteeAffichee = porteeSel.value;
-  const saCollection = LEX_COLLECTIONS.find((c) => String(c.id) === String(term.collection_id));
-  porteeSel.disabled = term.collection_id == null
-    ? !LEX_COLLECTIONS.some((c) => c.ecrivable)
-    : !(saCollection && saCollection.ecrivable);
-  if (porteeSel.disabled) porteeSel.title = "En lecture seule pour vous";
-  porteeSel.addEventListener("change", async (e) => {
-    if (await save({ collection_id: e.target.value ? Number(e.target.value) : null })) {
-      await loadLexique();                    // l'éditeur est refait : sa mémoire avec lui
-      const rouvert = document.querySelector(`#lex-body [data-terme="${kind}:${term.id}"]`);
-      if (rouvert) {
-        rouvert.open = true;
-        rouvert.querySelector('[data-f="collection_id"]').focus();
-      }
-    } else {
-      e.target.value = porteeAffichee;
-    }
-  });
-  if (kind === "tag") gestesDuTag(d, term);
-  return d;
-}
-
-/* ANN-8 — renommer, fusionner, supprimer un tag. Les gestes offerts viennent de la clé
-   `remaniable` du serveur et du droit de modifier le terme (cf. static/lib/gestes-tag.js) ;
-   un tag sans geste offert n'a pas de rangée. Le nombre de régions est demandé à la route
-   jouée à blanc, AVANT la confirmation du navigateur. Après un geste, le lexique est
-   rechargé : un tag renommé ou disparu change aussi les menus de fusion des autres. */
-function gestesDuTag(d, tag) {
-  const G = BDGestesTag;
-  const offerts = G.gestesOfferts(tag, G.modifiable(tag, LEX_COLLECTIONS));
-  if (!offerts.renommer && !offerts.fusionner && !offerts.supprimer) return;
-  const cibles = G.ciblesDeFusion(tag, LEX_TAGS);
-  const rangee = document.createElement("div");
-  rangee.className = "lex-row lex-gestes";
-  rangee.innerHTML = `
-    ${offerts.renommer ? `
-      <span class="lex-geste">
-        <input data-g="label" value="${esc(tag.label)}" autocomplete="off"
-               aria-label="Nouveau libellé de « ${esc(tag.label)} »">
-        <button type="button" class="ghost small" data-g="renommer"
-                title="${esc(G.INFOBULLES.renommer)}">Renommer</button>
-      </span>` : ""}
-    ${offerts.fusionner ? `
-      <span class="lex-geste">
-        <select data-g="cible" aria-label="Fusionner « ${esc(tag.label)} » dans">
-          <option value="">Fusionner dans…</option>
-          ${cibles.map((c) => `<option value="${c.id}">${esc(c.label)}</option>`).join("")}
-        </select>
-        <button type="button" class="ghost small" data-g="fusionner"
-                title="${esc(G.INFOBULLES.fusionner)}">Fusionner</button>
-      </span>` : ""}
-    ${offerts.supprimer ? `
-      <button type="button" class="danger small" data-g="supprimer"
-              title="${esc(G.INFOBULLES.supprimer)}">Supprimer</button>` : ""}`;
-  d.querySelector(".lex-fields").appendChild(rangee);
-
-  const apres = async (message) => {
-    toast(message, "success");
-    await loadLexique();
-  };
-  const echec = (e) => toast("Échec : " + e.message, "error");
-
-  const btnRenommer = rangee.querySelector('[data-g="renommer"]');
-  if (btnRenommer) btnRenommer.addEventListener("click", async () => {
-    const champ = rangee.querySelector('[data-g="label"]');
-    const label = champ.value.trim();
-    if (!label || label === tag.label) { champ.focus(); return; }
-    try {
-      const rep = await apiSend("PUT", `/api/tags/${tag.id}`, { label });
-      await apres(G.reussiteRenommage(tag.label, rep));
-      const rouvert = document.querySelector(`#lex-body [data-terme="tag:${tag.id}"]`);
-      if (rouvert) rouvert.open = true;
-    } catch (e) { echec(e); }
-  });
-
-  const btnFusionner = rangee.querySelector('[data-g="fusionner"]');
-  if (btnFusionner) btnFusionner.addEventListener("click", async () => {
-    const menu = rangee.querySelector('[data-g="cible"]');
-    if (!menu.value) { menu.focus(); return; }
-    const corps = { cible_id: Number(menu.value) };
-    try {
-      const blanc = await apiSend("POST", `/api/tags/${tag.id}/fusion`,
-                                  { ...corps, a_blanc: true });
-      if (!window.confirm(G.confirmerFusion(blanc))) return;
-      await apres(G.reussiteFusion(await apiSend("POST", `/api/tags/${tag.id}/fusion`, corps)));
-    } catch (e) { echec(e); }
-  });
-
-  const btnSupprimer = rangee.querySelector('[data-g="supprimer"]');
-  if (btnSupprimer) btnSupprimer.addEventListener("click", async () => {
-    try {
-      const blanc = await apiSend("DELETE", `/api/tags/${tag.id}?a_blanc=true`);
-      if (!window.confirm(G.confirmerSuppression(blanc))) return;
-      await apres(G.reussiteSuppression(await apiSend("DELETE", `/api/tags/${tag.id}`)));
-    } catch (e) { echec(e); }
-  });
-}
-
-function renderLexique(lex) {
-  const body = $("#lex-body");
-  body.textContent = "";
-  $("#lex-resume").textContent = lexResume(lex.resume);
-  remplirMenuImport();                                   // menu « portée » de l'amorçage CSV
-
-  // --- Domaines (piste B) + attributs facettés regroupés par domaine -------- #
-  const grp = document.createElement("div");
-  grp.className = "lex-group";
-  grp.innerHTML = `<h4>Domaines &amp; attributs facettés</h4>
-    <div class="lex-add">
-      <input id="lex-dom-nom" placeholder="Nouveau domaine (ex. émotions, représentation)"
-             autocomplete="off" aria-label="Nom du nouveau domaine">
-      <button id="lex-dom-add" class="ghost small" type="button">+ Domaine</button>
-    </div>`;
-  body.appendChild(grp);
-
-  const parDomaine = new Map();               // domaine_id (ou null) → [dimensions]
-  for (const dim of lex.dimensions) {
-    if (!parDomaine.has(dim.domaine_id)) parDomaine.set(dim.domaine_id, []);
-    parDomaine.get(dim.domaine_id).push(dim);
-  }
-  const renderDims = (dims) => {
-    for (const dim of dims || []) {
-      grp.appendChild(termEditor("dimension", dim, dim.definition));
-      for (const val of dim.valeurs) {
-        const ve = termEditor("valeur", val, val.definition);
-        ve.classList.add("lex-nested");
-        grp.appendChild(ve);
-      }
-    }
-  };
-  for (const dom of lex.domaines) {           // un domaine documentable + ses dimensions
-    grp.appendChild(termEditor("domaine", dom, dom.definition));
-    renderDims(parDomaine.get(dom.id));
-  }
-  // AUTH-2 — une dimension peut pointer vers un domaine qu'on ne VOIT pas (elle est locale
-  // à une collection qu'on lit, son domaine à une autre). Sans ce repli elle ne serait
-  // rendue nulle part : ni sous son domaine, absent de la boucle ci-dessus, ni « hors
-  // domaine », puisque son `domaine_id` n'est pas nul. Elle disparaîtrait du panneau tout
-  // en restant éditable ailleurs — le pire des deux.
-  const domainesVus = new Set(lex.domaines.map(d => d.id));
-  const horsDomaine = [];
-  for (const [did, dims] of parDomaine)
-    if (did == null || !domainesVus.has(did)) horsDomaine.push(...dims);
-  if (horsDomaine.length) {
-    grp.insertAdjacentHTML("beforeend", `<p class="lex-subhead muted small">Hors domaine</p>`);
-    renderDims(horsDomaine);
-  }
-  if (!lex.dimensions.length && !lex.domaines.length)
-    grp.insertAdjacentHTML("beforeend", `<p class="muted small">Aucun domaine ni dimension.</p>`);
-  $("#lex-dom-add").onclick = async () => {
-    const nom = $("#lex-dom-nom").value.trim();
-    if (!nom) return;
-    try { await apiSend("POST", "/api/domaines", { nom }); loadLexique(); }
-    catch (e) { toast("Domaine : " + e.message, "error"); }
-  };
-  $("#lex-dom-nom").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); $("#lex-dom-add").click(); }
-  });
-
-  // --- Étiquettes (tags) ---------------------------------------------------- #
-  const tg = document.createElement("div");
-  tg.className = "lex-group";
-  tg.innerHTML = "<h4>Étiquettes (tags)</h4>";
-  if (!lex.tags.length)
-    tg.insertAdjacentHTML("beforeend", `<p class="muted small">Aucun tag.</p>`);
-  for (const tag of lex.tags) tg.appendChild(termEditor("tag", tag, tag.description));
-  body.appendChild(tg);
-}
-
-async function refreshLexResume() {
-  try { $("#lex-resume").textContent = lexResume((await apiGet("/api/lexique")).resume); }
-  catch (e) { /* non bloquant */ }
-}
-
-/* Amorçage EN LOT du vocabulaire depuis un tableur CSV (bouton « Importer »). Envoi
-   multipart vers POST /api/lexique/importer (même cœur que l'outil headless) ; la modale
-   se recharge. Cf. docs/import-vocabulaire.md.
-
-   Le bilan (AUTH-11) : UN toast de synthèse — lignes créées, lignes refusées par motif —
-   et le détail ligne par ligne dans la modale, borné (`BDBilanImport`). Un toast par
-   ligne ne se lisait plus au-delà de quelques lignes, et s'effaçait en 4 s. Le détail
-   vit hors de `#lex-body`, que `loadLexique` réécrit : il survit au rechargement. */
-function afficherBilanImport(b) {
-  const zone = $("#lex-import-bilan");
-  zone.textContent = "";
-  const p = document.createElement("p");
-  p.textContent = b.texte;
-  zone.appendChild(p);
-  if (b.details.length) {
-    const ul = document.createElement("ul");
-    ul.setAttribute("aria-label", "Détail de l'import, ligne par ligne");
-    for (const d of b.details.concat(b.reste ? [BDBilanImport.suite(b.reste)] : [])) {
-      const li = document.createElement("li");
-      li.textContent = d;
-      ul.appendChild(li);
-    }
-    zone.appendChild(ul);
-  }
-  zone.hidden = false;
-}
-
-/* « Importer dans » : seulement les collections où l'on ÉCRIT, et le choix précédent
-   gardé d'un rechargement à l'autre (règles dans BDBilanImport.menuImport). Fermé, l'import
-   disparaît derrière une note lisible — un contrôle `disabled` ne prend pas le focus, et
-   son explication serait hors d'atteinte au clavier. `porteeOptions`, qui liste tout ce
-   qu'on lit, reste celui des termes. */
-async function remplirMenuImport() {
-  const sel = $("#lex-import-portee");
-  const avant = sel.value;
-  const moi = await Promise.resolve(window.BDMoi).catch(() => null);
-  const m = BDBilanImport.menuImport(LEX_COLLECTIONS,
-                                     !!(moi && moi.acces && moi.acces.total), avant);
-  sel.textContent = "";
-  for (const o of m.options) sel.appendChild(new Option(o.label, o.value));
-  sel.value = m.valeur;
-  sel.closest("label").hidden = !m.ouvert;
-  $("#lex-import").hidden = !m.ouvert;
-  const note = $("#lex-import-note");
-  note.textContent = m.note;
-  note.hidden = m.ouvert;
-}
-
-async function importerTableur(e) {
-  const input = e.target;
-  const fichier = input.files && input.files[0];
-  if (!fichier) return;
-  const fd = new FormData();
-  fd.append("file", fichier);
-  const cid = $("#lex-import-portee").value;
-  if (cid) fd.append("collection_id", cid);
-  try {
-    const r = await fetch("/api/lexique/importer",
-      { method: "POST", headers: { "X-BD-Requete": "1" }, body: fd });
-    const out = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(out.detail || r.statusText);
-    const b = BDBilanImport.bilan(out);
-    // Un bilan qui demande à être lu reste plus longtemps que la confirmation d'un succès.
-    toast(b.texte, b.ton, b.ton === "success" ? 4000 : 10000);
-    afficherBilanImport(b);
-    await loadLexique();
-    // APRÈS le rechargement, qui change la hauteur de la modale : le bilan reste en vue.
-    $("#lex-import-bilan").scrollIntoView({ block: "nearest" });
-  } catch (err) {
-    $("#lex-import-bilan").hidden = true;      // le bilan d'un import PRÉCÉDENT mentirait
-    toast("Import échoué : " + err.message, "error");
-  } finally {
-    input.value = "";                 // réautorise le réimport du même fichier
   }
 }
 
@@ -1215,22 +700,9 @@ async function setup() {
   $("#f-metrique").onchange = run;                 // comparaison : mesure de classement
   $("#f-axe-x").onchange = run;                    // croisement : axes
   $("#f-axe-y").onchange = run;
-  // Les puces d'attribut câblent leur propre clic (cf. renderAttrChips) — absentes d'ici.
-  ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-tags", "#f-tagscope", "#f-personnage",
-   "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-tags", "#b-personnage"]
+  ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-personnage",
+   "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-personnage"]
     .forEach((s) => { $(s).onchange = run; });
-  // Lexique situé (A4) — modale accessible (piège à focus, Échap, retour du focus).
-  $("#btn-lexique").onclick = openLexique;
-  $("#lex-close").onclick = closeLexique;
-  $("#lex-import").onclick = () => $("#lex-import-file").click();   // amorçage CSV
-  $("#lex-import-file").addEventListener("change", importerTableur);
-  $("#lexique-modal").addEventListener("mousedown", (e) => {
-    if (e.target.id === "lexique-modal") closeLexique();
-  });
-  if (window.BDDialog)
-    BDDialog.register($("#lexique-modal"),
-      { box: ".modal-box", labelledby: "lexique-title", onClose: closeLexique });
-  // Accord modèle↔humain (NLP-1) — modale accessible.
   $("#btn-export-analyse").onclick = exporterAnalyse;
   // DROIT-2 — les trois exports de la page ne se proposent qu'à qui peut exporter
   // quelque part ; la note dit quand le fichier emportera moins que l'écran.
@@ -1266,10 +738,8 @@ async function setup() {
       { box: ".modal-box", labelledby: "accord-inter-title", onClose: closeAccordInter });
   state.corpus = loadCorpus();
   await loadAlbums();        // options d'album (A et B) avant restauration
-  await loadTags();          // options de tag (A et B) avant restauration
   await loadPersonnages();   // locuteurs (A et B)
-  await loadAttributs();     // valeurs d'attribut, groupées par dimension (A et B)
-  populateAxes();            // options des axes de croisement (facettes + dimensions)
+  populateAxes();            // options des axes de croisement
   restoreFromUrl();
   setupBack();
   syncControls();

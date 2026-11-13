@@ -249,7 +249,7 @@ DEPLIES = {
     "#btn-tiroir-nav": {
         "nom": "tiroir des planches", "panneau": "#sidebar", "surfaces": ["/"]},
     "#btn-tiroir-panneau": {
-        "nom": "tiroir d'annotation", "panneau": "#panel", "surfaces": ["/"]},
+        "nom": "tiroir Structure et zone", "panneau": "#panel", "surfaces": ["/"]},
     # « Collections… » (UX-20) : à l'étroit, une liste remplace le rail, que ce bouton rouvre.
     "#cat-rail-ouvrir": {
         "nom": "rail des collections", "panneau": "#cat-rail", "surfaces": ["/corpus"]},

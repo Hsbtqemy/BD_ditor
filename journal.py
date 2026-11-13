@@ -97,7 +97,9 @@ def inscrire_run_termine(conn: sqlite3.Connection, type: str, *, agent: Optional
 
 # Les cibles du journal qui désignent une RÉGION par leur `cible_id` (« les actes
 # d'annotation ciblent le region_id ») ; `token_correction` la porte dans sa charge
-# (`region_id`). `tools/_commun.py` la relit d'ici : une seule liste.
+# (`region_id`). `tools/_commun.py` la relit d'ici : une seule liste. `region_attribut`
+# (la situation d'une case) n'est plus écrite depuis le basculement d'ANN-7, mais le journal
+# garde ses actes d'avant, qu'il faut encore rattacher à leur région.
 CIBLES_PAR_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
                      "region_attribut")
 
@@ -217,20 +219,22 @@ def snapshot_region(conn: sqlite3.Connection, region_id: int) -> Optional[dict]:
 
 
 def snapshot_annotation(conn: sqlite3.Connection, region_id: int) -> Optional[dict]:
-    """Contenu d'annotation d'une région : {note, tags:[labels]} ; None si aucune annotation."""
-    a = conn.execute("SELECT id, note FROM annotations WHERE region_id = ?",
+    """Contenu d'annotation d'une région : {note} ; None si aucune annotation.
+
+    ANN-7, le basculement : l'annotation ne porte plus que sa note. Les instantanés d'avant
+    nommaient aussi ses tags (`tags`, des libellés) ; le journal les garde, et l'annulation
+    ne les lit plus."""
+    a = conn.execute("SELECT note FROM annotations WHERE region_id = ?",
                      (region_id,)).fetchone()
     if a is None:
         return None
-    tags = [t["label"] for t in conn.execute(
-        "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-        "WHERE at.annotation_id = ? ORDER BY t.label", (a["id"],))]
-    return {"note": a["note"], "tags": tags}
+    return {"note": a["note"]}
 
 
 def snapshot_region_profond(conn: sqlite3.Connection, region_id: int) -> Optional[dict]:
-    """Instantané RÉCURSIF d'une région : ses colonnes métier + son annotation (note+tags)
-    + ses liens (locuteur, présence, attributs de case) + ses enfants (mêmes règles). C'est l'état AVANT capturé à la suppression : le CASCADE
+    """Instantané RÉCURSIF d'une région : ses colonnes métier + son annotation (sa note)
+    + ses liens (locuteur, présence) + ses relevés et ses passes + ses enfants (mêmes
+    règles). C'est l'état AVANT capturé à la suppression : le CASCADE
     SQL détruit tout le sous-arbre, mais le journal en garde la trace → substrat de l'undo
     (D1). L'`id` est inclus ici (indispensable pour restaurer la hiérarchie)."""
     base = snapshot_region(conn, region_id)
@@ -241,10 +245,10 @@ def snapshot_region_profond(conn: sqlite3.Connection, region_id: int) -> Optiona
     if annot is not None:
         base["annotation"] = annot
     # ANN-8 — ce que le CASCADE emporte aussi, et que Ctrl+Z ne rendait pas : le locuteur
-    # d'une zone de texte, le personnage montré dans une boîte, la situation d'une case.
-    # Des IDENTIFIANTS seulement : l'annulation éprouve chacun avant de le reposer (le
-    # personnage, la valeur existent-ils encore, sont-ils ceux d'alors, l'agent les
-    # voit-il), et aucun nom, aucun mot du vocabulaire n'entre au journal par ici. Les clés
+    # d'une zone de texte, le personnage montré dans une boîte (la situation d'une case,
+    # `attributs`, jusqu'au basculement d'ANN-7). Des IDENTIFIANTS seulement : l'annulation
+    # éprouve chacun avant de le reposer (le personnage existe-t-il encore, est-il celui
+    # d'alors, l'agent le voit-il), et aucun nom n'entre au journal par ici. Les clés
     # n'apparaissent que si elles portent quelque chose : un instantané sans lien garde la
     # forme qu'il avait.
     for cle, table in (("locuteur", "bulle_locuteur"), ("presence", "personnage_presence")):
@@ -252,11 +256,6 @@ def snapshot_region_profond(conn: sqlite3.Connection, region_id: int) -> Optiona
                             (region_id,)).fetchone()
         if lien is not None:
             base[cle] = lien["personnage_id"]
-    attributs = [row["valeur_id"] for row in conn.execute(
-        "SELECT valeur_id FROM region_attribut WHERE region_id = ? ORDER BY valeur_id",
-        (region_id,))]
-    if attributs:
-        base["attributs"] = attributs
     # ANN-7 (R10) — ses relevés (profonds : mots, qualificatifs, doutes et leur fil) et ses
     # passes, que le CASCADE emporte aussi et que Ctrl+Z rend (« Supprimer une région supprime
     # ses relevés, Ctrl+Z les rend »). La charge porte du texte — une précision, des

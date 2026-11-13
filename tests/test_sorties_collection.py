@@ -32,16 +32,18 @@ désigne plus rien, parce qu'une liste périmée rassure.
 
 **Ce que « propre » veut dire** — la définition du contrôle existant, sans l'affaiblir :
 aucun terme d'une collection qu'on ne dépose pas (les sentinelles de
-`vocabulaire_cloisonne`, catalogues ET liaisons), aucune charge du journal (les
-marqueurs de `_semer_une_charge_par_cible`, plus les charges RÉELLES que le décor
-produit en passant par l'API). S'y ajoutent le périmètre des ALBUMS — le titre de
+`vocabulaire_cloisonne`, catalogues ET liaisons) — et, depuis le basculement d'ANN-7,
+aucun terme d'hier DU TOUT, ni global ni de la collection déposée —, aucune charge du
+journal (les marqueurs de `_semer_une_charge_par_cible`, plus les charges RÉELLES que le
+décor produit en passant par l'API). S'y ajoutent le périmètre des ALBUMS — le titre de
 l'album de Bravo, le texte et la note de sa région — et le marqueur de portée d'un run.
 « Propre » veut donc dire « aucune de CES sentinelles », pas « aucune donnée de Bravo » :
 un identifiant numérique, un compteur trop grand, une colonne que le décor ne remplit
 pas passeraient. Et, dans l'autre sens, l'anti-vacuité du contrôle
 existant devenue une ÉGALITÉ : chaque artefact porte exactement le vocabulaire que sa
-famille annonce. C'est elle qui fait tomber un lecteur vacant — un classeur compressé
-lu en octets ne « porte » rien, et paraîtrait propre.
+famille annonce — AUCUN depuis le basculement d'ANN-7, si bien que chaque artefact a un
+TÉMOIN (le nom de son album ou de sa collection). C'est lui qui fait tomber un lecteur
+vacant — un classeur compressé lu en octets ne « porte » rien, et paraîtrait propre.
 
 **Ce qu'il ne fait pas, et qu'il ne faut pas lui prêter.** Il ferme la porte de l'OUBLI,
 pas celle de l'erreur : une sortie dont le contenu fuit autre chose que ces sentinelles
@@ -256,8 +258,12 @@ def seme(client, db_path, data_dir, vocabulaire_cloisonne):
                    json={"ocr_texte": TEXTE_AILLEURS})
     assert r.status_code == 200, r.text
     r = client.put(f"/api/regions/{region_bravo}/annotation", headers=ADMIN,
-                   json={"note": NOTE_AILLEURS, "tags": ["tag-bravo-9402"]})
+                   json={"note": NOTE_AILLEURS})
     assert r.status_code == 200, r.text
+    import database
+    from conftest import poser_tags
+    # D'hier, en base (ANN-7) ; l'acte au journal, au nom du décor, comme la route l'écrivait.
+    poser_tags(database.DB_PATH, region_bravo, ["tag-bravo-9402"], agent="decor")
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -284,6 +290,8 @@ def seme(client, db_path, data_dir, vocabulaire_cloisonne):
             "region_bravo": region_bravo,
             "album_id": album[ALBUM_ALPHA],
             "charges": [f"CHARGE-{t}" for t in cibles],
+            # Les termes que l'égalité de `porte` compte : ils devaient SORTIR jusqu'au
+            # basculement d'ANN-7 ; toutes les sorties portent AUCUN terme désormais.
             "propre": v["global"] + v["a"],
             "interdits": interdits}
 
@@ -292,16 +300,14 @@ def seme(client, db_path, data_dir, vocabulaire_cloisonne):
 # Ce que chaque sortie JOUÉE doit porter — et rien d'autre
 # --------------------------------------------------------------------------- #
 # `porte` : les familles de termes que l'artefact publie, par préfixe de sentinelle. Le
-# cliquet en fait une ÉGALITÉ avec ce qu'il lit — c'est l'anti-vacuité du contrôle
-# existant (« le vocabulaire global ET celui d'Alpha doivent SORTIR »), et elle sert deux
-# fois : un filtre qui emporterait tout tombe, et un LECTEUR qui ne verrait rien aussi.
+# cliquet en fait une ÉGALITÉ avec ce qu'il lit. Jusqu'au basculement d'ANN-7, c'était
+# l'anti-vacuité du contrôle (« le vocabulaire global ET celui d'Alpha doivent SORTIR ») ;
+# le vocabulaire d'hier ne sort plus, toutes les sorties portent AUCUN terme, et l'égalité
+# dit désormais qu'aucun terme global ni d'Alpha ne sort non plus. La machinerie reste pour
+# la tranche 4, qui dira ce que les relevés des grilles emportent.
 # `temoin` : pour un artefact qui ne porte aucun terme, la chaîne qui prouve qu'on l'a lu.
 Attendu = namedtuple("Attendu", "porte temoin raison")
 
-TOUT = ("dom-", "dim-", "val", "tag-")
-AXES = ("dom-", "dim-", "val")          # la fiche nomme les axes, elle COMPTE les tags
-SUJETS = ("val", "tag-")                # la notice de dépôt : des sujets, pas des axes
-TAGS = ("tag-",)                        # le manifeste : les tags posés sur les régions
 AUCUN = ()
 
 _DESC = "/api/collections/{collection_id}/depot/description"
@@ -311,44 +317,48 @@ _IIIF = "/api/collections/{collection_id}/depot/iiif"
 ATTENDUS = {
     # ---- Routes de dépôt -------------------------------------------------- #
     ("route", _DESC, "json"): Attendu(
-        AXES, None, "le roll-up nomme domaines, dimensions et valeurs ; il compte les tags"),
+        AUCUN, "Corpus Alpha", "le roll-up : identité, couverture, qualité, droits — plus "
+        "de bloc `vocabulaire` ni de compte de tags (ANN-7, le basculement)"),
     ("route", _DESC, "csv"): Attendu(
         AUCUN, "Corpus Alpha", "le catalogue : une ligne par ÉLÉMENT de métadonnée, des "
         "agrégats, aucun terme nommé"),
-    ("route", _META, "json"): Attendu(TOUT, None, "l'arbre des enregistrements"),
-    ("route", _META, "zip"): Attendu(TOUT, None, "les tables CSV, une par niveau"),
-    ("route", _META, "xlsx"): Attendu(TOUT, None, "le classeur : tables, arbre et fiche"),
+    ("route", _META, "json"): Attendu(AUCUN, ALBUM_ALPHA, "l'arbre des enregistrements"),
+    ("route", _META, "zip"): Attendu(AUCUN, ALBUM_ALPHA, "les tables CSV, une par niveau"),
+    ("route", _META, "xlsx"): Attendu(AUCUN, ALBUM_ALPHA,
+                                      "le classeur : tables, arbre et fiche"),
     ("route", _IIIF, "zip"): Attendu(
-        TAGS, None, "collection + un manifeste par album : les tags voyagent en "
-        "annotations `tagging`, les attributs n'y sont pas"),
+        AUCUN, ALBUM_ALPHA, "collection + un manifeste par album : plus d'annotation "
+        "`tagging` (ANN-7, le basculement)"),
     # ---- Autres routes jouées --------------------------------------------- #
-    # L'export d'un album, au titre de la collection : ses tags sont ceux de CETTE
-    # collection et les globaux, quel que soit qui exporte (AUTH-11, tranché le
-    # 2026-10-07 — `socle._vocabulaire_d_export`). L'écart « À TRANCHER » que ce balayage
-    # avait trouvé et déclaré ici est fermé : ces trois sorties n'ont plus d'entrée dans
-    # ECARTS, et le tag de Bravo y est redevenu une fuite comme une autre. Le compte par
-    # compte est joué à part, par `test_depot_export` (§ 2 ter).
-    ("route", "/api/export/json", "json"): Attendu(TAGS, None, "l'export d'un album"),
-    ("route", "/api/export/csv", "csv"): Attendu(TAGS, None, "l'export d'un album"),
-    ("route", "/api/export/tei", "tei"): Attendu(TAGS, None, "l'export d'un album"),
+    # L'export d'un album, au titre de la collection. Ses tags étaient ceux de CETTE
+    # collection et les globaux (AUTH-11, 2026-10-07) ; il n'en porte plus aucun depuis le
+    # basculement d'ANN-7. Le compte par compte est joué à part, par `test_depot_export`
+    # (§ 2 ter).
+    ("route", "/api/export/json", "json"): Attendu(AUCUN, ALBUM_ALPHA, "l'export d'un album"),
+    ("route", "/api/export/csv", "csv"): Attendu(AUCUN, ALBUM_ALPHA, "l'export d'un album"),
+    ("route", "/api/export/tei", "tei"): Attendu(AUCUN, ALBUM_ALPHA, "l'export d'un album"),
     ("route", "/api/figures", "zip"): Attendu(
         AUCUN, "ALBUM-ALPHA-9001", "crop + légende + notice : une liste FERMÉE de "
         "mentions (`figure.CHAMPS`), aucune ne lit le vocabulaire"),
     # ---- Outils ----------------------------------------------------------- #
-    ("outil", "description_collection.py", "--json"): Attendu(AXES, None, "= la route"),
+    ("outil", "description_collection.py", "--json"): Attendu(
+        AUCUN, "Corpus Alpha", "= la route"),
     ("outil", "description_collection.py", "--csv"): Attendu(
         AUCUN, "Corpus Alpha", "= la route"),
-    ("outil", "metadonnees_collection.py", "--json"): Attendu(TOUT, None, "= la route"),
+    ("outil", "metadonnees_collection.py", "--json"): Attendu(
+        AUCUN, ALBUM_ALPHA, "= la route"),
     ("outil", "metadonnees_collection.py", "--csv-dir"): Attendu(
-        TOUT, None, "les tables de l'archive, écrites à plat dans un dossier"),
-    ("outil", "metadonnees_collection.py", "--zip"): Attendu(TOUT, None, "= la route"),
-    ("outil", "metadonnees_collection.py", "--xlsx"): Attendu(TOUT, None, "= la route"),
-    ("outil", "iiif_manifest.py", "--out-dir"): Attendu(TAGS, None, "= la route"),
+        AUCUN, ALBUM_ALPHA, "les tables de l'archive, écrites à plat dans un dossier"),
+    ("outil", "metadonnees_collection.py", "--zip"): Attendu(AUCUN, ALBUM_ALPHA, "= la route"),
+    ("outil", "metadonnees_collection.py", "--xlsx"): Attendu(AUCUN, ALBUM_ALPHA, "= la route"),
+    ("outil", "iiif_manifest.py", "--out-dir"): Attendu(AUCUN, ALBUM_ALPHA, "= la route"),
     ("outil", "iiif_manifest.py", "(stdout)"): Attendu(
-        TAGS, None, "sans `--out-dir` : le manifeste du PREMIER album, sur la sortie"),
+        AUCUN, ALBUM_ALPHA, "sans `--out-dir` : le manifeste du PREMIER album, sur la sortie"),
     ("outil", "crosswalk_depot.py", "--out-dir"): Attendu(
-        SUJETS, None, "notices Dublin Core et DataCite (JSON + XML)"),
-    ("outil", "crosswalk_depot.py", "(stdout)"): Attendu(SUJETS, None, "le même, en JSON"),
+        AUCUN, "Corpus Alpha", "notices Dublin Core et DataCite (JSON + XML) ; plus de "
+        "sujets, qui étaient les valeurs et les tags (ANN-7, le basculement)"),
+    ("outil", "crosswalk_depot.py", "(stdout)"): Attendu(
+        AUCUN, "Corpus Alpha", "le même, en JSON"),
     ("outil", "provenance_export.py", "--out-dir"): Attendu(
         AUCUN, "annotateur-", "PROV-JSON + TEI revisionDesc : des ACTES, sans charges"),
     ("outil", "provenance_export.py", "(stdout)"): Attendu(
@@ -373,20 +383,10 @@ ATTENDUS = {
 # attend une décision : c'est un instrument d'inventaire, pas un arbitrage. Il ne reste
 # ici que des LIMITES écrites : le seul écart « à trancher » qu'il ait porté — l'export
 # d'album, dont le vocabulaire variait selon qui clique — a été tranché le jour même et
-# retiré, le cliquet ayant crié sur la déclaration devenue périmée.
+# retiré, le cliquet ayant crié sur la déclaration devenue périmée. La limite de la fiche
+# de description (son bloc `vocabulaire` nommait les axes de toute l'instance, AUTH-11,
+# 2026-09-23) est partie avec ce bloc au basculement d'ANN-7, retirée de la même façon.
 Ecart = namedtuple("Ecart", "parties raison")
-
-_AXES_BRAVO = frozenset({"dom-bravo-9102", "dim-bravo-9202", "val-bravo-9302",
-                         "valg-sous-bravo-9312", "valp-bravo-9311"})
-
-_LIMITE_FICHE = (
-    "LIMITE ÉCRITE, non tranchée (AUTH-11, 2026-09-23 ; `docs/export-metadonnees.md`, "
-    "§ Portée d'une collection). Le bloc `vocabulaire` de la fiche de description nomme "
-    "toutes les dimensions, toutes leurs valeurs et tous les domaines de l'INSTANCE : "
-    "ses chiffres décrivent une couverture, et dire s'ils portent sur l'instance ou sur "
-    "le périmètre est une question de modèle, pas une clause à poser. Les TAGS n'y "
-    "passent pas — ils y sont comptés, jamais nommés — et c'est pourquoi la sentinelle "
-    "de tag n'est pas dans cette liste : la voir apparaître serait une fuite neuve.")
 
 _LIMITE_PORTEE = (
     "LIMITE ÉCRITE (AUTH-11, 2026-09-24, case « taire les charges ») : `activite.params`, "
@@ -397,16 +397,11 @@ _LIMITE_PORTEE = (
 _PROV = _LIMITE_PORTEE + " La sérialisation PROV-O publie les mêmes trois colonnes."
 
 ECARTS = {
-    ("route", _DESC, "json"): Ecart({"": _AXES_BRAVO}, _LIMITE_FICHE),
-    ("outil", "description_collection.py", "--json"): Ecart({"": _AXES_BRAVO}, _LIMITE_FICHE),
-    # Le classeur embarque la fiche : la même limite, par ricochet, dans UN onglet — et
-    # la portée des runs dans un AUTRE. Chacune n'est admise que chez elle.
-    ("route", _META, "xlsx"): Ecart(
-        {"fiche": _AXES_BRAVO, "activite": {PORTEE_AILLEURS}},
-        _LIMITE_FICHE + " — onglet `fiche`. Et, onglet `activite` : " + _LIMITE_PORTEE),
+    # Le classeur : la portée des runs, dans l'onglet `activite` et là seulement.
+    ("route", _META, "xlsx"): Ecart({"activite": {PORTEE_AILLEURS}},
+                                    "Onglet `activite` : " + _LIMITE_PORTEE),
     ("outil", "metadonnees_collection.py", "--xlsx"): Ecart(
-        {"m.xlsx/fiche": _AXES_BRAVO, "m.xlsx/activite": {PORTEE_AILLEURS}},
-        _LIMITE_FICHE + " — onglet `fiche`. Et, onglet `activite` : " + _LIMITE_PORTEE),
+        {"m.xlsx/activite": {PORTEE_AILLEURS}}, "Onglet `activite` : " + _LIMITE_PORTEE),
     ("route", _META, "zip"): Ecart({"activite.csv": {PORTEE_AILLEURS}}, _LIMITE_PORTEE),
     ("outil", "metadonnees_collection.py", "--zip"): Ecart(
         {"m.zip/activite.csv": {PORTEE_AILLEURS}}, _LIMITE_PORTEE),
@@ -543,10 +538,6 @@ OUTILS_HORS = {
         "`--fusionner` (le réimport d'une grille ouverte, 2026-11-03) ne font que répondre "
         "pour une entrée qui disparaît : la retirer, ou reporter ses relevés sur une autre "
         "entrée de la même grille ; ils ne disent que des clés d'entrée.",
-    "importer_vocabulaire.py":
-        "ENTRE du vocabulaire, n'en sort pas. Son `--collection` désigne la portée où "
-        "les termes naissent ; son compte rendu ne nomme que les lignes du tableur "
-        "qu'on lui donne. Ses refus sont gardés par `test_import_vocabulaire`.",
     "dictionnaire_xlsx.py":
         "Met en classeur le DICTIONNAIRE des métadonnées, c'est-à-dire un fichier "
         "markdown du dépôt (`docs/dictionnaire-metadonnees.md`). N'ouvre pas la base.",
@@ -596,14 +587,9 @@ OUTILS_HORS = {
         "la base entière.",
     "retirer_liens_caches.py":
         "Maintenance (ANN-8) : son compte rendu nomme des régions, des planches, des albums "
-        "par identifiant, le NOM d'un personnage du registre et l'IDENTIFIANT d'une valeur "
-        "de situation — jamais un terme de vocabulaire ni une charge du journal. Sans "
+        "par identifiant et le NOM d'un personnage du registre — jamais un terme de "
+        "vocabulaire ni une charge du journal. Sans "
         "périmètre de collection : il porte sur la base entière.",
-    "tags_hors_collection.py":
-        "Lecture seule (ANN-8) : il NOMME des tags locaux, leur collection et des albums, "
-        "sur la base entière — c'est son objet : dire à l'exploitant, dans la console du "
-        "serveur, où un tag local est posé hors de sa collection. Aucun fichier, aucune "
-        "charge du journal, rien qui parte au titre d'une collection.",
     "semer_demo.py": "SÈME un corpus de démonstration par l'API : il écrit, il ne "
                      "sort rien.",
     "regenerer_exemples.py":
@@ -625,7 +611,6 @@ ENTREES_HORS = {
     "importer_grille.py": {"fichier", "--listes", "--projet", "--grille", "--nom", "--ouverte",
                            "--porte-sur", "--note", "--a-blanc", "--json", "--publier",
                            "--activer", "--masquer", "--retirer", "--fusionner"},
-    "importer_vocabulaire.py": {"fichier", "--collection", "--dry-run"},
     "dictionnaire_xlsx.py": {"--out", "--source"},
     "rapport_accord.py": {"--json", "--csv", "--modele"},
     "rapport_accord_inter.py": {"--json", "--csv"},
@@ -649,7 +634,6 @@ ENTREES_HORS = {
     "normaliser_casse.py": {"--album", "--dry-run", "--planche"},
     "retirer_locuteurs_muets.py": {"--appliquer"},
     "retirer_liens_caches.py": {"--appliquer"},
-    "tags_hors_collection.py": set(),
     "semer_demo.py": set(),
     "regenerer_exemples.py": set(),
     "fabriquer_base_de_version.py": {"commit", "sortie", "--copie"},
@@ -1203,8 +1187,9 @@ def test_le_semis_est_visible(client, seme):
        prête, les liaisons qui croisent la frontière existent, et le journal porte des
        charges — les marqueurs (que `_semer_une_charge_par_cible` relit déjà) ET une
        charge RÉELLE, écrite par l'API, qui nomme le tag de Bravo.
-    2. À LA SORTIE, là où c'est permis : l'export de BRAVO porte les termes de Bravo —
-       sans quoi un filtre qui tairait tout terme local passerait pour propre.
+    2. À LA SORTIE, l'export de BRAVO : il porte son album et sa note — sans quoi un
+       titre absent de partout passerait pour « bien filtré » —, et AUCUN terme d'hier,
+       pas même les siens (ANN-7, le basculement ; jusque-là il portait ceux de Bravo).
     3. PAR LE LECTEUR : la sauvegarde est la base entière, dépliée par le même lecteur
        que les artefacts ; toute sentinelle interdite doit y être vue. C'est la preuve
        qu'« absent » ci-dessus veut dire « filtré », pas « illisible ».
@@ -1212,43 +1197,13 @@ def test_le_semis_est_visible(client, seme):
     conn = sqlite3.connect(seme["db"])
     conn.row_factory = sqlite3.Row
     try:
-        portee = {}
-        for table, col in (("domaine", "nom"), ("attribut_dimension", "nom"),
-                           ("attribut_valeur", "valeur"), ("tags", "label")):
-            for r in conn.execute(f"SELECT {col} AS mot, collection_id FROM {table}"):
-                portee[r["mot"]] = r["collection_id"]
-        attendue = {**{m: None for m in seme["global"]},
-                    **{m: seme["alpha"]["id"] for m in seme["a"]},
-                    **{m: seme["bravo"]["id"] for m in seme["b"]}}
-        # La seule sentinelle de Bravo qui soit GLOBALE : elle vit sous un axe de Bravo.
-        attendue["valg-sous-bravo-9312"] = None
-        for mot, cid in sorted(attendue.items()):
-            assert mot in portee, f"« {mot} » n'est dans aucune table de vocabulaire"
-            assert portee[mot] == cid, f"« {mot} » : portée {portee[mot]}, attendu {cid}"
-
-        poses = {r[0] for r in conn.execute(
-            "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-            "JOIN annotations a ON a.id = at.annotation_id WHERE a.region_id = ?",
-            (seme["region_id"],))}
-        assert {"tag-bravo-9402", "tag-alpha-9401", "tag-global-9400"} <= poses, poses
-        situes = {r[0] for r in conn.execute(
-            "SELECT v.valeur FROM region_attribut ra JOIN attribut_valeur v "
-            "ON v.id = ra.valeur_id WHERE ra.region_id = ?", (seme["region_id"],))}
-        assert {"val-bravo-9302", "val-alpha-9301"} <= situes, situes
-        profil = {r[0] for r in conn.execute(
-            "SELECT v.valeur FROM personnage_attribut pa JOIN attribut_valeur v "
-            "ON v.id = pa.valeur_id")}
-        assert {"valp-bravo-9311", "valp-global-9310"} <= profil, profil
-        # L'axe GLOBAL rattaché au domaine de Bravo — l'état d'une base antérieure à
-        # v24, que le décor pose par SQL. C'est lui qui éprouve que le nom du domaine ne
-        # ressort pas en libellé d'un axe parfaitement lisible ; neutralisé, tout restait
-        # vert (relecture du 2026-10-07).
-        rattache = conn.execute(
-            "SELECT d.nom FROM attribut_dimension a JOIN domaine d ON d.id = a.domaine_id "
-            "WHERE a.nom = 'dim-global-9200'").fetchone()
-        assert rattache and rattache[0] == "dom-bravo-9102", (
-            "`dim-global-9200` n'est plus rattachée à `dom-bravo-9102` : la liaison "
-            "axe global → domaine d'ailleurs n'est plus dans le décor")
+        # ANN-7, la v39 : le vocabulaire d'hier n'a plus de table. Ce qui en reste, et que
+        # les sorties doivent taire, ce sont les CHARGES du journal qui nommaient les tags :
+        # chacun des trois y est.
+        for mot in (*seme["global"], *seme["a"], *seme["b"]):
+            assert conn.execute("SELECT COUNT(*) FROM evenement WHERE cible_table = "
+                                "'annotations' AND apres LIKE ?", (f"%{mot}%",)
+                                ).fetchone()[0], f"« {mot} » n'est dans aucune charge"
         # Le contenu de l'album de Bravo, que `seme` pose par l'API.
         bulle = conn.execute(
             "SELECT r.ocr_texte, a.titre, n.note FROM regions r "
@@ -1256,11 +1211,6 @@ def test_le_semis_est_visible(client, seme):
             "LEFT JOIN annotations n ON n.region_id = r.id WHERE r.id = ?",
             (seme["region_bravo"],)).fetchone()
         assert tuple(bulle) == (TEXTE_AILLEURS, ALBUM_AILLEURS, NOTE_AILLEURS), tuple(bulle)
-        poses_b = {r[0] for r in conn.execute(
-            "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-            "JOIN annotations a ON a.id = at.annotation_id WHERE a.region_id = ?",
-            (seme["region_bravo"],))}
-        assert poses_b == {"tag-bravo-9402"}, poses_b
 
         reelles = [r[0] for r in conn.execute(
             "SELECT apres FROM evenement WHERE agent = 'decor' AND apres LIKE "
@@ -1273,21 +1223,19 @@ def test_le_semis_est_visible(client, seme):
     finally:
         conn.close()
 
-    # (2) Bravo exporte Bravo — chaque route, dans la famille qu'elle annonce.
+    # (2) Bravo exporte son album, et aucun terme d'hier — pas même les siens.
     bravo = _balayer_routes(client, seme, seme["bravo"]["id"], album=False)
     assert {c for c, _, _ in bravo} == {c for c in _cles_attendues()
                                         if c[0] == "route" and DEPOT in c[1]}
     verbatim_vu = False
     for cle, variante, parties in bravo:
         tout = "\n".join(parties.values())
-        dus = {m for m in seme["b"] if m.startswith(ATTENDUS[cle].porte)} \
-            if ATTENDUS[cle].porte else set()
-        manque = dus - _presents(dus, tout)
-        assert not manque, (f"{cle[1]} [{cle[2]}] ({variante}) : Bravo n'exporte plus "
-                            f"son propre {sorted(manque)}")
+        sortis = _presents(seme["b"], tout)
+        assert not sortis, (f"{cle[1]} [{cle[2]}] ({variante}) : l'export de Bravo porte "
+                            f"encore son vocabulaire d'hier {sorted(sortis)}")
         # Le périmètre d'ALBUMS, à l'endroit : là où Alpha nomme son album, Bravo nomme
         # le sien — sans quoi un titre absent de partout passerait pour « bien filtré ».
-        if ATTENDUS[cle].porte in (TOUT, TAGS):
+        if ATTENDUS[cle].temoin == ALBUM_ALPHA:
             assert ALBUM_AILLEURS in tout and NOTE_AILLEURS in tout, (
                 f"{cle[1]} [{cle[2]}] ({variante}) : l'album de Bravo ou sa note manque "
                 "de l'export de Bravo")
@@ -1312,23 +1260,25 @@ def test_le_semis_est_visible(client, seme):
 def test_le_lecteur_ouvre_un_classeur(seme, client):
     """Le lecteur de XLSX rend des FEUILLES nommées, et leur contenu.
 
-    Un écart se déclare par feuille (`fiche`, `activite`) : si le lecteur rendait le
-    classeur en un bloc, ou ses octets, les déclarations ne viseraient plus rien — et
-    c'est par l'égalité du vocabulaire qu'on le verrait, pas ici. Ce test dit la chose
-    directement, sur l'artefact réel.
+    Un écart se déclare par feuille (`activite`) : si le lecteur rendait le classeur en un
+    bloc, ou ses octets, les déclarations ne viseraient plus rien. Ce test dit la chose
+    directement, sur l'artefact réel. Et il y lit ce que le basculement d'ANN-7 a RETIRÉ :
+    les onglets du vocabulaire d'hier n'existent plus, au lieu d'exister vides.
     """
     if not _xlsx_lisible():
         pytest.skip("openpyxl absent (extra d'export)")
     rep = client.get(_META.replace("{collection_id}", str(seme["alpha"]["id"])),
                      params={"format": "xlsx"}, headers=ADMIN)
     assert rep.status_code == 200, rep.text
-    assert not _presents(seme["propre"], rep.content.decode("latin-1")), (
-        "les octets BRUTS du classeur portent une sentinelle en clair : ce test ne "
-        "prouve plus que la lecture en octets est vacante")
+    assert ALBUM_ALPHA not in rep.content.decode("latin-1"), (
+        "les octets BRUTS du classeur portent le témoin en clair : ce test ne prouve plus "
+        "que la lecture en octets est vacante")
     feuilles = _parties(rep.content)
-    assert {"fiche", "arbre", "vocabulaire", "tags", "activite", "evenement"} <= set(feuilles)
-    assert "tag-alpha-9401" in feuilles["tags"]
-    assert "dim-alpha-9201" in feuilles["vocabulaire"]
+    assert {"fiche", "arbre", "albums", "annotations", "activite", "evenement"} <= set(feuilles)
+    assert ALBUM_ALPHA in feuilles["albums"]
+    for retire in ("vocabulaire", "tags", "domaines", "region_attributs",
+                   "personnage_attributs"):
+        assert retire not in feuilles, f"l'onglet `{retire}` existe encore"
 
 
 def test_le_balayage_dit_ce_qu_il_n_a_pas_vu(capsys):

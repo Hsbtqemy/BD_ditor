@@ -761,3 +761,86 @@ def test_a11y_feuille_couchee(appareil, decor, theme):
     _ouvrir_la_feuille(pg)
     viol = _audit(pg)
     assert not viol, _fmt(viol)
+
+
+# --------------------------------------------------------------------------- #
+# Le MODE LIBRE à l'étroit et au doigt (maquette tranchée par Hugo le 2026-11-06, point 9)
+# --------------------------------------------------------------------------- #
+def _travail(d):
+    with _http(d) as c:
+        actives = c.get(f"/api/projets/{d['projet']}/grilles").json()["actives"]
+        gid = next(g["id"] for g in actives if g["travail"])
+        r = c.post("/api/releves", json={"region_id": d["bulle"], "grille_id": gid, "version": 1,
+                                         "nouvelle_entree": {"libelle": "sentiment : perte"}})
+        assert r.status_code == 201, r.text
+    return gid
+
+
+def test_la_feuille_s_ouvre_sur_le_champ_de_creation_du_mode_libre(page, decor):
+    gid = _travail(decor)
+    page.set_viewport_size(TELEPHONE)
+    _ouvrir(page, decor, decor["bulle"])
+    # « + », depuis la page : la feuille monte, sur le Mode libre et son champ.
+    page.locator("#an-mots").focus()
+    page.keyboard.press("+")
+    expect(page.locator("#an-poser")).to_have_attribute("aria-expanded", "true")
+    expect(page.locator(f"#an-onglet-{gid}")).to_have_attribute("aria-selected", "true")
+    expect(page.locator("#an-creer")).to_be_focused()
+    page.locator("#an-grille-fermer").click()
+    # Rouverte à la souris, sur le Mode libre : le champ « + Nouvelle étiquette… ».
+    page.locator("#an-poser").click()
+    page.wait_for_function("""() => {
+      const r = document.querySelector('#an-grille').getBoundingClientRect();
+      return Math.abs(r.bottom - innerHeight) < 1; }""")
+    expect(page.locator("#an-creer")).to_be_focused()
+    assert _visible(page, "#an-creer")
+
+
+def test_au_doigt_les_cibles_du_mode_libre_font_44_px(doigt, decor):
+    gid = _travail(decor)
+    _ouvrir(doigt, decor, decor["bulle"])
+    doigt.locator("#an-poser").tap()
+    doigt.locator(f"#an-onglet-{gid}").tap()
+    expect(doigt.locator("#an-creer")).to_be_visible()
+    doigt.locator('#an-plan [data-crayon="sentiment"]').tap()
+    expect(doigt.locator('#an-plan [data-renom="sentiment"]')).to_be_visible()
+    hauteurs = doigt.evaluate("""() => [...document.querySelectorAll(
+      '#an-creer, #an-tri, #an-ranger, #an-plan .an-crayon, #an-plan .an-renom, '
+      + '#an-plan .an-renomv, #an-plan .an-plusv, #an-plan .an-gestes-rares button')]
+      .filter((e) => e.getClientRects().length)
+      .map((e) => [e.id || e.className, Math.round(e.getBoundingClientRect().height)])""")
+    assert len(hauteurs) >= 9, hauteurs
+    assert all(h >= 44 for _, h in hauteurs), hauteurs
+    # Ranger au doigt : ↑ ↓, aucun geste qui ne passe que par le survol ou le glissé.
+    doigt.locator('#an-plan [data-fin="sentiment"]').tap()
+    doigt.locator("#an-ranger").tap()
+    fleches = doigt.locator("#an-plan [data-monter], #an-plan [data-descendre]")
+    expect(fleches).to_have_count(2)
+    assert all(h >= 44 for h in fleches.evaluate_all(
+        "(l) => l.map((e) => Math.round(e.getBoundingClientRect().height))"))
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_mode_libre_champ_et_crayon_ouverts(page, decor, theme):
+    if not _AXE.is_file():
+        pytest.skip("axe absent (tests/js/vendor/axe.min.js)")
+    gid = _travail(decor)
+    page.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f"#an-onglet-{gid}").click()
+    page.locator("#an-creer").fill("sentiment : joie")
+    expect(page.locator("#an-quoi")).to_be_visible()
+    viol = _audit(page)
+    assert not viol, _fmt(viol)
+    # La ligne flotte au-dessus de la liste tant que le champ a le focus : on le quitte.
+    page.locator("#an-mots").focus()
+    expect(page.locator("#an-quoi")).to_be_hidden()
+    page.locator('#an-plan [data-crayon="sentiment"]').click()
+    page.locator('#an-plan [data-geste="passer"][data-c="sentiment"]').click()
+    expect(page.locator("#an-plan .an-conf")).to_be_visible()
+    viol = _audit(page)
+    assert not viol, _fmt(viol)
+    page.locator('#an-plan [data-fin="sentiment"]').click()
+    page.locator("#an-ranger").click()
+    viol = _audit(page)
+    assert not viol, _fmt(viol)

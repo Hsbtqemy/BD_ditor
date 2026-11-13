@@ -36,7 +36,6 @@
     // ANN-8 : gardés par l'annulation d'un changement de type (`undo._garder_liens_du_type`).
     locuteur: ["Locuteur", "m", "le locuteur"],
     presence: ["Personnage montré", "m", "le personnage montré"],
-    situation: ["Situation", "f", "la situation"],
     // ANN-7, tranche 2 — les valeurs uniques d'un relevé, sur la page Annotation. « mp » :
     // un masculin pluriel (« Qualificatifs modifiés »).
     variante_cle: ["Variante", "f", "la variante"],

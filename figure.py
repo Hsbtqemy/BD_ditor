@@ -121,7 +121,7 @@ def legende(conn: sqlite3.Connection, region_id: int, champs=CHAMPS, *,
 
     `lisibles` : les collections que l'appelant a le droit de lire (None = aucune
     restriction). Ce module reçoit un ensemble d'ids plutôt qu'une `Portee` pour ne pas
-    dépendre de `autorisation` — la règle reste écrite là-bas, comme pour `lexique_resume`.
+    dépendre de `autorisation` — la règle reste écrite là-bas.
     """
     album = _album_de_region(conn, region_id)
     if album is None:

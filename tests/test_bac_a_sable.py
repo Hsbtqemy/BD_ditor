@@ -14,7 +14,6 @@ Ce que ces tests tiennent, en une phrase par bloc :
 - S5 : son propriétaire y détruit tout album ; un invité garde la règle commune ;
 - S9 : le plafond d'import ; S11 : l'invitation.
 """
-import json
 import sqlite3
 import sys
 from datetime import datetime, timedelta
@@ -27,7 +26,6 @@ import conflit
 import database
 import main
 import socle
-from conftest import du_projet
 from conftest import ADMIN, make_png
 from test_jeu import DOC_EXEMPLE, DOC_PARCOURS, DOC_STOCK_SERVEUR, ecrire_jeu
 
@@ -341,7 +339,6 @@ def test_l_arrivant_ne_gagne_rien_hors_de_son_bac_a_sable(client, decor):
         assert p.lecture, "le bac à sable est bien lu"
         for q in QUESTIONS_TRANSVERSES:
             assert getattr(p, q)() is False, (qui, q)
-        assert p.peut_ecrire_terme(None) is False, qui
         # Mais dans le bac à sable, on travaille comme ailleurs.
         assert p.peut_ecrire(decor["base"]), qui
     # La responsable d'un vrai projet garde ce qu'elle avait, son bac à sable en plus.
@@ -352,10 +349,7 @@ def test_l_arrivant_ne_gagne_rien_hors_de_son_bac_a_sable(client, decor):
 
 @pytest.mark.parametrize("methode, chemin, corps", [
     ("get", "/api/fonds/notices", None),
-    ("post", "/api/tags", {"label": "global-neuf"}),
     ("post", "/api/personnages", {"nom": "Inventé"}),
-    ("post", "/api/domaines", {"nom": "émotions"}),
-    ("post", "/api/attributs/dimensions", {"cible": "case", "nom": "cadrage"}),
     ("post", "/api/contribution-roles", {"label": "lettreur"}),
     ("get", "/api/analyse/accord-inter", None),
     ("get", "/api/recherche/export.csv?q=otage", None),
@@ -372,25 +366,6 @@ def test_le_bandeau_de_portee_vide_reste_allume(client, decor):
     assert (acces["collections"], acces["ecriture"], acces["exporter"]) == (0, 0, "rien")
     acces = client.get("/api/moi", headers=RESP).json()["acces"]
     assert acces["collections"] >= 1
-
-
-def test_un_tag_tape_dans_un_bac_a_sable_y_nait_local(client, decor):
-    planche = _copie(decor, "exemple")["planche_ids"][0]
-    region = client.get(f"/api/planches/{planche}/regions", headers=LEA).json()[0]["id"]
-    r = client.put(f"/api/regions/{region}/annotation", headers=LEA,
-                   json={"note": "n", "tags": ["mot-du-bac"]})
-    assert r.status_code == 200 and [t["label"] for t in r.json()["tags"]] == ["mot-du-bac"]
-    assert _sql(decor["db"], "SELECT collection_id FROM tags WHERE label = 'mot-du-bac'") == [
-        {"collection_id": decor["base"]}]
-    # Hors d'un bac à sable, rien ne change : un libellé libre naît global.
-    pl = client.post(f"/api/albums/{decor['reel']}/import", headers=RESP,
-                     files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
-    reg = client.post(f"/api/planches/{pl}/regions", headers=RESP,
-                      json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
-    client.put(f"/api/regions/{reg}/annotation", headers=RESP,
-               json={"note": "n", "tags": ["mot-du-corpus"]})
-    assert _sql(decor["db"], "SELECT collection_id FROM tags WHERE label = 'mot-du-corpus'"
-                ) == [{"collection_id": None}]
 
 
 def test_l_annuaire_ne_se_lit_pas_dans_un_bac_a_sable(client, decor):
@@ -430,8 +405,9 @@ def test_aucun_acces_ne_se_pose_collection_par_collection(client, decor):
 # --------------------------------------------------------------------------- #
 # L'administrateur dans le bac à sable d'un autre : RIEN (Hugo, 2026-10-24)
 # --------------------------------------------------------------------------- #
-QUESTIONS_DE_COLLECTION = ("peut_lire", "peut_ecrire", "peut_administrer", "peut_exporter",
-                           "peut_ecrire_terme", "peut_remanier_tag")
+# (`peut_ecrire_terme` et `peut_remanier_tag` y étaient jusqu'au basculement d'ANN-7, qui
+# les retire.)
+QUESTIONS_DE_COLLECTION = ("peut_lire", "peut_ecrire", "peut_administrer", "peut_exporter")
 QUESTIONS_DE_PROJET = ("est_du_projet", "peut_gerer_projet")
 CLAUSES_D_ALBUM = ("clause_album", "clause_suppression_directe", "clause_repartir_directe",
                    "clause_rejoindre_directe")
@@ -465,9 +441,6 @@ def test_la_portee_totale_ne_passe_dans_aucun_bac_d_autrui(client, decor):
         try:
             assert c.execute(f"SELECT 1 FROM projet p WHERE p.id = ? AND {o}",
                              (decor["bac"]["id"], *prm)).fetchone() is None, qui
-            assert c.execute(f"SELECT 1 FROM collection c WHERE c.id = ? AND "
-                             f"{p.clause_terme('c.id')[0]}",
-                             (decor["base"], *p.clause_terme("c.id")[1])).fetchone() is None
         finally:
             c.close()
     h = _portee(decor["db"], HUGO)
@@ -499,7 +472,7 @@ def test_les_lots_de_l_administrateur_ne_touchent_pas_le_bac_d_un_autre(client, 
     "lire l'album", "lire ses planches", "lire une région", "écrire une région",
     "annoter", "créer une région", "lire ses collections", "lire les membres",
     "créer une collection", "inviter", "détruire l'album", "lire les accès", "exporter",
-    "prendre", "ranger", "proposer les tags", "régler la base", "décrire la base"])
+    "prendre", "ranger", "régler la base", "décrire la base"])
 def test_l_administrateur_n_a_rien_dans_le_bac_d_un_autre(client, decor, geste):
     """Route par route : la portée totale ne passe pas dans le bac à sable de lea — 404,
     comme pour qui n'en est pas (rita, qui joue le même geste). Rien n'y est écrit."""
@@ -513,7 +486,7 @@ def test_l_administrateur_n_a_rien_dans_le_bac_d_un_autre(client, decor, geste):
         "lire ses planches": ("get", f"/api/albums/{copie['album_id']}/planches", None),
         "lire une région": ("get", f"/api/regions/{region}/annotation", None),
         "écrire une région": ("put", f"/api/regions/{region}", {"ocr_texte": "ADMIN"}),
-        "annoter": ("put", f"/api/regions/{region}/annotation", {"note": "x", "tags": []}),
+        "annoter": ("put", f"/api/regions/{region}/annotation", {"note": "x"}),
         "créer une région": ("post", f"/api/planches/{planche}/regions",
                              {"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}),
         "lire ses collections": ("get", f"/api/albums/{copie['album_id']}/collections", None),
@@ -529,7 +502,6 @@ def test_l_administrateur_n_a_rien_dans_le_bac_d_un_autre(client, decor, geste):
                     {"documents": [{"document_id": copie["document_id"], "reponse": "zero"}],
                      "motif": "x"}),
         "ranger": ("put", f"/api/albums/{decor['reel']}/collections/{base}", None),
-        "proposer les tags": ("get", f"/api/tags?album={copie['album_id']}", None),
         "régler la base": ("put", f"/api/projets/{pid}/acces-membres",
                            {"acces_membres": None}),
         "décrire la base": ("patch", f"/api/collections/{base}", {"description": "x"}),
@@ -583,28 +555,6 @@ def test_dans_le_sien_l_administrateur_est_un_arrivant(client, decor):
     assert client.delete(f"/api/albums/{copie['album_id']}", headers=HUGO).status_code == 204
 
 
-def test_l_administrateur_ne_remanie_pas_un_tag_pose_dans_le_bac_d_un_autre(client, decor):
-    """Un tag GLOBAL posé (base retouchée : le geste ne se fait plus depuis l'écran) sur une
-    région du bac à sable de lea : l'administrateur ne le retire pas « partout » — il
-    n'écrit pas là (`routes/lexique._exiger_tout_ecrit`)."""
-    region = _sql(decor["db"], "SELECT id FROM regions WHERE planche_id = ? ORDER BY id",
-                  (_copie(decor, "exemple")["planche_ids"][0],))[0]["id"]
-    c = sqlite3.connect(decor["db"])
-    try:
-        tag = c.execute("INSERT INTO tags (label) VALUES ('global-pose')").lastrowid
-        an = c.execute("INSERT INTO annotations (region_id, note) VALUES (?, '')",
-                       (region,)).lastrowid
-        c.execute("INSERT INTO annotation_tags (annotation_id, tag_id) VALUES (?, ?)",
-                  (an, tag))
-        c.commit()
-    finally:
-        c.close()
-    r = client.delete(f"/api/tags/{tag}", headers=HUGO)
-    assert r.status_code == 403 and "administrateur" in r.json()["detail"], r.text
-    assert _sql(decor["db"], "SELECT label FROM tags WHERE id = ?", (tag,)) == [
-        {"label": "global-pose"}]
-
-
 def test_invite_ailleurs_l_administrateur_est_un_invite(client, decor):
     client.put(f"/api/projets/{decor['bac']['id']}/membres", headers=LEA,
                json={"genre": "utilisateur", "principal": "hugo", "role": "membre"})
@@ -639,119 +589,6 @@ def _region_du_bac(client, decor, qui=LEA):
     planche = _copie(decor, "exemple")["planche_ids"][0]
     return next(r["id"] for r in client.get(f"/api/planches/{planche}/regions",
                                             headers=qui).json() if r["type"] == "bulle")
-
-
-def test_un_terme_ne_passe_pas_la_frontiere(client, decor):
-    """resp écrit dans « Corpus » ET a son bac à sable : elle ne range pas un tag du corpus
-    dans la base de son bac (qui partait avec lui, et la région du corpus le perdait), ni
-    une dimension locale à « Corpus » ; et un tag né dans un bac à sable n'en sort pas —
-    ni vers le global, ni vers le corpus. Entre deux collections du même bac à sable, si."""
-    reg = _region_reelle(client, decor)
-    client.put(f"/api/regions/{reg}/annotation", headers=RESP,
-               json={"note": "n", "tags": ["colere"]})
-    tag = _sql(decor["db"], "SELECT id FROM tags WHERE label = 'colere'")[0]["id"]
-    bac = client.post("/api/bac-a-sable", headers=RESP).json()
-    r = client.patch(f"/api/tags/{tag}/lexique", headers=RESP,
-                     json={"collection_id": bac["base"]["id"]})
-    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
-    d = client.post("/api/attributs/dimensions", headers=RESP,
-                    json={"cible": "case", "nom": "cadrage"}).json()
-    assert client.patch(f"/api/attributs/dimensions/{d['id']}/lexique", headers=RESP,
-                        json={"collection_id": decor["col"]}).status_code == 200
-    r = client.patch(f"/api/attributs/dimensions/{d['id']}/lexique", headers=RESP,
-                     json={"collection_id": bac["base"]["id"]})
-    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
-    # Un tag né dans le bac de resp n'en sort pas.
-    planche = next(j for j in bac["jeu"] if j["role"] == "exemple")["planche_ids"][0]
-    breg = client.get(f"/api/planches/{planche}/regions", headers=RESP).json()[0]["id"]
-    client.put(f"/api/regions/{breg}/annotation", headers=RESP,
-               json={"note": "", "tags": ["du-bac"]})
-    du_bac = _sql(decor["db"], "SELECT id FROM tags WHERE label = 'du-bac'")[0]["id"]
-    for cible in (None, decor["col"]):
-        r = client.patch(f"/api/tags/{du_bac}/lexique", headers=RESP,
-                         json={"collection_id": cible})
-        assert r.status_code == 409 and "frontière" in r.json()["detail"], (cible, r.text)
-    autre = client.post("/api/collections", headers=RESP,
-                        json={"nom": "Ailleurs", "projet_id": bac["id"]}).json()["id"]
-    assert client.patch(f"/api/tags/{du_bac}/lexique", headers=RESP,
-                        json={"collection_id": autre}).status_code == 200
-    # Ni par une fusion, dans un sens ou dans l'autre.
-    r = client.post(f"/api/tags/{du_bac}/fusion", headers=RESP, json={"cible_id": tag})
-    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
-    # Rien n'a bougé : la remise à neuf n'emporte que ce qui est né dans le bac à sable.
-    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=RESP).status_code == 200
-    tags = client.get(f"/api/regions/{reg}/annotation", headers=RESP).json()["tags"]
-    assert [t["label"] for t in tags] == ["colere"]
-    assert _sql(decor["db"], "SELECT id FROM tags WHERE label = 'du-bac'") == []
-
-
-def test_l_effacement_garde_le_vocabulaire_employe_hors_du_bac(client, decor):
-    """L'état qu'aurait laissé une base retouchée : un tag et une dimension du corpus,
-    rangés dans la base du bac à sable de lea et employés dans le corpus. L'effacement ne
-    les emporte pas (ils deviennent globaux, leur collection partie) ; ce qui n'est employé
-    que dans le bac à sable part."""
-    reg, case = _region_reelle(client, decor), _region_reelle(client, decor, "case")
-    client.put(f"/api/regions/{reg}/annotation", headers=RESP,
-               json={"note": "", "tags": ["dehors"]})
-    d = client.post("/api/attributs/dimensions", headers=RESP,
-                    json={"cible": "case", "nom": "cadrage"}).json()["id"]
-    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=RESP,
-                    json={"valeur": "gros plan"}).json()["id"]
-    assert client.put(f"/api/regions/{case}/attributs", headers=RESP,
-                      json={"valeur_id": v}).status_code in (200, 201)
-    base = decor["base"]
-    for q in ("UPDATE tags SET collection_id = ? WHERE label = 'dehors'",
-              "UPDATE attribut_dimension SET collection_id = ? WHERE nom = 'cadrage'",
-              "UPDATE attribut_valeur SET collection_id = ? WHERE valeur = 'gros plan'"):
-        _sql(decor["db"], q, (base,))
-    _sql(decor["db"], "INSERT INTO tags (label, collection_id) VALUES ('seul-ici', ?)",
-         (base,))
-    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=LEA).status_code == 200
-    assert _sql(decor["db"], "SELECT collection_id FROM tags WHERE label = 'dehors'") == [
-        {"collection_id": None}]
-    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM region_attribut WHERE region_id = ?",
-                (case,)) == [{"n": 1}]
-    assert _sql(decor["db"], "SELECT id FROM tags WHERE label = 'seul-ici'") == []
-
-
-def test_chacun_voit_le_vocabulaire_de_ses_bacs_a_sable(client, decor):
-    """Le 📖 Lexique (Hugo, 2026-10-24) : lea et son invité y lisent le tag né dans le bac
-    à sable — l'administrateur et resp, non. Il se remanie comme ailleurs : par la
-    propriétaire de sa collection. Ses chiffres restent ceux du vrai corpus (0 emploi)."""
-    client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
-               json={"note": "", "tags": ["du-bac"]})
-    for qui, voit, remanie in ((LEA, True, True), (SAM, True, False), (HUGO, False, None),
-                               (RESP, False, None)):
-        tags = {t["label"]: t for t in client.get("/api/lexique", headers=qui).json()["tags"]}
-        assert ("du-bac" in tags) is voit, qui
-        if voit:
-            assert tags["du-bac"]["remaniable"] is remanie and tags["du-bac"]["frequence"] == 0
-    tag = _sql(decor["db"], "SELECT id FROM tags WHERE label = 'du-bac'")[0]["id"]
-    assert client.put(f"/api/tags/{tag}", headers=LEA,
-                      json={"label": "renomme"}).status_code == 200
-    assert client.put(f"/api/tags/{tag}", headers=SAM,
-                      json={"label": "autre"}).status_code == 403
-
-
-def test_les_usages_du_lexique_ne_comptent_pas_le_bac_de_l_admin(client, decor):
-    """Contre-relecture, D1 : les chiffres du Lexique restent aveugles aux bacs à sable pour
-    TOUT le monde — `pour_le_corpus` d'une portée totale ne repasse pas ses bacs à sable,
-    sans quoi un personnage du bac de l'administrateur comptait dans `nb_usages`."""
-    bac = client.post("/api/bac-a-sable", headers=HUGO).json()
-    d = client.post("/api/attributs/dimensions", headers=HUGO,
-                    json={"cible": "personnage", "nom": "humeur"}).json()["id"]
-    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=HUGO,
-                    json={"valeur": "joyeux"}).json()["id"]
-    p = client.post("/api/personnages", headers=HUGO,
-                    json={"nom": "Gaston", "bac_a_sable_id": bac["id"]}).json()["id"]
-    r = client.put(f"/api/personnages/{p}/attributs", headers=HUGO, json={"valeur_id": v})
-    assert r.status_code in (200, 201, 204), r.text
-
-    def usages(qui):
-        return next(val["nb_usages"] for dim in client.get("/api/lexique", headers=qui)
-                    .json()["dimensions"] for val in dim["valeurs"] if val["id"] == v)
-
-    assert usages(HUGO) == usages(RESP) == 0, (usages(HUGO), usages(RESP))
 
 
 def _fiche(client, login):
@@ -789,184 +626,20 @@ def test_ce_qu_on_fait_dans_un_bac_ne_retient_personne(client, decor, monkeypatc
     breg = client.post(f"/api/planches/{planche}/regions", headers=RESP,
                        json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
     client.put(f"/api/regions/{breg}/annotation", headers=RESP,
-               json={"note": "n", "tags": ["x"]})
+               json={"note": "n"})
     assert _fiche(client, "resp")["actes"] == avant + 1
     assert client.post("/api/bac-a-sable/remise-a-neuf", headers=RESP).status_code == 200
     assert _fiche(client, "resp")["actes"] == avant + 1
 
 
-def test_une_collection_supprimee_dans_un_bac_y_garde_ses_termes(client, decor):
-    """Ses termes ne deviennent pas globaux (`ON DELETE SET NULL`) : ils rejoignent la base."""
+def test_une_collection_supprimee_dans_un_bac_n_a_plus_de_termes_a_decider(client, decor):
+    """La v39 (ANN-7) a détruit le vocabulaire d'hier : supprimer une collection d'un bac à
+    sable n'a plus de termes à rendre à la base, et réussit."""
     pid = decor["bac"]["id"]
     chez_lea = client.post("/api/collections", headers=LEA,
                            json={"nom": "Chez Léa", "projet_id": pid}).json()["id"]
-    _sql(decor["db"], "INSERT INTO tags (label, collection_id) VALUES ('a-moi', ?)",
-         (chez_lea,))
     assert client.delete(f"/api/collections/{chez_lea}", headers=LEA).status_code == 204
-    assert _sql(decor["db"], "SELECT collection_id FROM tags WHERE label = 'a-moi'") == [
-        {"collection_id": decor["base"]}]
-
-
-def test_on_n_importe_pas_de_vocabulaire_dans_un_bac_a_sable(client, decor):
-    csv = "domaine;dimension;cible;valeur\nemotions;humeur;case;joie\n".encode("utf-8")
-    r = client.post("/api/lexique/importer", headers=LEA,
-                    data={"collection_id": str(decor["base"])},
-                    files={"file": ("v.csv", csv, "text/csv")})
-    assert r.status_code == 409 and "bac à sable" in r.json()["detail"], r.text
-    assert _sql(decor["db"], "SELECT COUNT(*) AS n FROM domaine") == [{"n": 0}]
-
-
-def test_une_valeur_d_un_bac_ne_se_pose_pas_dans_le_corpus(client, decor):
-    """Posée en base (une valeur locale au bac à sable, sous une dimension du corpus) : elle
-    ne se pose pas sur une case du corpus, ni sous un domaine de l'autre rive."""
-    case = _region_reelle(client, decor, "case")
-    d = client.post("/api/attributs/dimensions", headers=RESP,
-                    json={"cible": "case", "nom": "cadrage"}).json()["id"]
-    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=RESP,
-                    json={"valeur": "gros plan"}).json()["id"]
-    _sql(decor["db"], "UPDATE attribut_valeur SET collection_id = ? WHERE id = ?",
-         (decor["base"], v))
-    client.put(f"/api/projets/{decor['bac']['id']}/membres", headers=LEA,
-               json={"genre": "utilisateur", "principal": "resp", "role": "membre"})
-    r = client.put(f"/api/regions/{case}/attributs", headers=RESP, json={"valeur_id": v})
-    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
-    # Ni fondue dans une valeur du corpus, de la même dimension.
-    w = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=RESP,
-                    json={"valeur": "plan large"}).json()["id"]
-    r = client.post(f"/api/attributs/valeurs/{v}/fusion", headers=RESP, json={"cible_id": w})
-    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
-    dom = client.post("/api/domaines", headers=RESP, json={"nom": "regard"}).json()["id"]
-    _sql(decor["db"], "UPDATE domaine SET collection_id = ? WHERE id = ?", (decor["base"], dom))
-    r = client.patch(f"/api/attributs/dimensions/{d}/domaine", headers=RESP,
-                     json={"domaine_id": dom})
-    assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
-
-
-def _tags_de(db, label):
-    return _sql(db, "SELECT id, espace, collection_id FROM tags WHERE label = ? ORDER BY id",
-                (label,))
-
-
-def test_les_libelles_d_un_bac_a_sable_sont_a_part(client, decor):
-    """Hugo, 2026-10-24 : un libellé né dans un bac à sable ne bloque rien ailleurs ; le
-    vrai corpus peut avoir le même, et rien ne se voit d'un côté à l'autre (relecture
-    croisée : resp posait « peur » sur le corpus et recevait 200 avec `tags: []`)."""
-    bac_region = _region_du_bac(client, decor)
-    r = client.put(f"/api/regions/{bac_region}/annotation", headers=LEA,
-                   json={"note": "", "tags": ["peur"]})
-    assert [t["label"] for t in r.json()["tags"]] == ["peur"]
-    reg = _region_reelle(client, decor)
-    r = client.put(f"/api/regions/{reg}/annotation", headers=RESP,
-                   json={"note": "", "tags": ["peur"]})
-    assert r.status_code == 200 and [t["label"] for t in r.json()["tags"]] == ["peur"], r.text
-    assert [t["espace"] for t in _tags_de(decor["db"], "peur")] == [decor["bac"]["id"], 0]
-    # Dans l'autre sens : un libellé du corpus ne se pose pas dans le bac à sable — le bac
-    # à sable a le sien.
-    client.put(f"/api/regions/{reg}/annotation", headers=RESP,
-               json={"note": "", "tags": ["peur", "colere"]})
-    r = client.put(f"/api/regions/{bac_region}/annotation", headers=LEA,
-                   json={"note": "", "tags": ["peur", "colere"]})
-    bac_ids = {t["id"] for t in r.json()["tags"]}
-    assert bac_ids == {t["id"] for t in _sql(decor["db"], "SELECT id FROM tags WHERE "
-                                                          "espace = ?", (decor["bac"]["id"],))}
-    # Rien ne se voit d'un côté à l'autre : ni ce que l'Atelier propose, ni le nuage.
-    album_bac = _copie(decor, "exemple")["album_id"]
-    proposes = client.get("/api/tags", headers=LEA, params={"album": album_bac}).json()
-    assert {t["id"] for t in proposes} == bac_ids
-    # Le vocabulaire de l'instance se crée sans rien voir du bac à sable.
-    r = client.post("/api/tags", headers=RESP, json={"label": "peur", "description": "d"})
-    assert r.status_code == 201 and r.json()["espace"] == 0, r.text
-    client.put(f"/api/projets/{decor['bac']['id']}/membres", headers=LEA,
-               json={"genre": "utilisateur", "principal": "resp", "role": "membre"})
-    corpus = {t["id"] for t in client.get("/api/tags", headers=RESP,
-                                          params={"album": decor["reel"]}).json()}
-    assert not corpus & bac_ids
-    assert not {t["id"] for t in client.get("/api/tags", headers=RESP).json()} & bac_ids
-
-
-def test_dans_un_bac_un_libelle_pris_se_refuse_par_son_nom(client, decor):
-    """Pris dans CE bac à sable par une collection qu'on ne lit pas : un refus nommé, et non
-    un 200 qui ne pose rien (Hugo, 2026-10-24)."""
-    pid = decor["bac"]["id"]
-    chez_sam = client.post("/api/collections", headers=SAM,
-                           json={"nom": "Chez Sam", "projet_id": pid}).json()["id"]
-    _sql(decor["db"], "INSERT INTO tags (label, collection_id, espace) VALUES "
-                      "('secret', ?, ?)", (chez_sam, pid))
-    r = client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
-                   json={"note": "", "tags": ["secret"]})
-    assert r.status_code == 409 and "déjà pris dans ce bac à sable" in r.json()["detail"], \
-        r.text
-
-
-def test_un_tag_se_renomme_dans_son_espace(client, decor):
-    """L'unicité vaut dans l'espace : un tag du bac à sable prend un libellé du corpus, pas
-    celui d'un autre tag du même bac à sable."""
-    client.put(f"/api/regions/{_region_reelle(client, decor)}/annotation", headers=RESP,
-               json={"note": "", "tags": ["corpus"]})
-    client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
-               json={"note": "", "tags": ["un", "deux"]})
-    un = next(t["id"] for t in _tags_de(decor["db"], "un"))
-    assert client.put(f"/api/tags/{un}", headers=LEA, json={"label": "corpus"}).status_code \
-        == 200
-    r = client.put(f"/api/tags/{un}", headers=LEA, json={"label": "deux"})
-    assert r.status_code == 409 and "fusion" in r.json()["detail"], r.text
-
-
-def test_un_tag_du_bac_employe_dehors_rejoint_l_instance(client, decor):
-    """L'état d'une base retouchée : le « peur » du bac à sable posé sur une région du
-    corpus. L'effacement ne l'emporte pas : il se fond dans le « peur » de l'instance."""
-    client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
-               json={"note": "", "tags": ["peur"]})
-    r1, r2 = _region_reelle(client, decor), _region_reelle(client, decor)
-    client.put(f"/api/regions/{r1}/annotation", headers=RESP,
-               json={"note": "", "tags": ["peur"]})
-    client.put(f"/api/regions/{r2}/annotation", headers=RESP, json={"note": "x", "tags": []})
-    du_bac, de_l_instance = (t["id"] for t in _tags_de(decor["db"], "peur"))
-    _sql(decor["db"], "INSERT INTO annotation_tags (annotation_id, tag_id) SELECT id, ? "
-                      "FROM annotations WHERE region_id = ?", (du_bac, r2))
-    assert client.post("/api/bac-a-sable/remise-a-neuf", headers=LEA).status_code == 200
-    assert _tags_de(decor["db"], "peur") == [
-        {"id": de_l_instance, "espace": 0, "collection_id": None}]
-    tags = client.get(f"/api/regions/{r2}/annotation", headers=RESP).json()["tags"]
-    assert [t["id"] for t in tags] == [de_l_instance]
-
-
-def test_un_renommage_dans_un_bac_ne_detourne_pas_le_ctrl_z_du_corpus(client, decor):
-    """La chaîne de renommages du journal se lit DANS l'espace de la région
-    (`undo._tag_a_rendre`) : « foo » renommé « bar » dans le bac à sable de lea ne fait pas
-    rendre « bar » — ni rien — à la région du corpus dont resp défait le retrait de « foo »
-    (contre-relecture : ce mutant survivait à la suite)."""
-    reg = _region_reelle(client, decor)
-    for tags in (["foo"], []):
-        assert client.put(f"/api/regions/{reg}/annotation", headers=RESP,
-                          json={"note": "n", "tags": tags}).status_code == 200
-    assert client.put(f"/api/regions/{_region_du_bac(client, decor)}/annotation", headers=LEA,
-                      json={"note": "m", "tags": ["foo"]}).status_code == 200
-    album = _copie(decor, "exemple")["album_id"]
-    tid = next(t["id"] for t in client.get(f"/api/tags?album={album}", headers=LEA).json()
-               if t["label"] == "foo")
-    assert client.put(f"/api/tags/{tid}", headers=LEA, json={"label": "bar"}).status_code == 200
-    r = client.post("/api/undo", headers=RESP)
-    assert r.status_code == 200, r.text
-    tags = [t["label"] for t in client.get(f"/api/regions/{reg}/annotation",
-                                           headers=RESP).json()["tags"]]
-    assert tags == ["foo"], tags
-
-
-def test_ctrl_z_rend_le_tag_de_son_espace(client, decor):
-    """L'annulation retrouve un libellé DANS l'espace de la région (`undo._tag_a_rendre`) :
-    le « mot » du bac à sable, pas celui du corpus, plus ancien."""
-    client.put(f"/api/regions/{_region_reelle(client, decor)}/annotation", headers=RESP,
-               json={"note": "", "tags": ["mot"]})
-    region = _region_du_bac(client, decor)
-    client.put(f"/api/regions/{region}/annotation", headers=LEA,
-               json={"note": "n", "tags": ["mot"]})
-    du_bac = next(t["id"] for t in _tags_de(decor["db"], "mot") if t["espace"])
-    client.put(f"/api/regions/{region}/annotation", headers=LEA, json={"note": "n", "tags": []})
-    r = client.post("/api/undo", headers=LEA)
-    assert r.status_code == 200, r.text
-    tags = client.get(f"/api/regions/{region}/annotation", headers=LEA).json()["tags"]
-    assert [t["id"] for t in tags] == [du_bac]
+    assert _sql(decor["db"], "SELECT 1 FROM collection WHERE id = ?", (chez_lea,)) == []
 
 
 # --------------------------------------------------------------------------- #
@@ -1033,7 +706,8 @@ def test_un_personnage_nait_dans_un_bac_a_sable(client, decor):
 def test_un_personnage_du_bac_ne_passe_pas_la_frontiere(client, decor):
     """Il ne s'attribue que dans son bac à sable, ne se fond pas dans le registre, et ne
     porte pas une valeur d'un autre bac. Un personnage du registre, lui, s'attribue dans
-    un bac à sable."""
+    un bac à sable. (Le profil d'un personnage, qui y passait aussi, est parti avec le
+    basculement d'ANN-7.)"""
     pid = decor["bac"]["id"]
     client.put(f"/api/projets/{pid}/membres", headers=LEA,
                json={"genre": "utilisateur", "principal": "resp", "role": "membre"})
@@ -1052,19 +726,6 @@ def test_un_personnage_du_bac_ne_passe_pas_la_frontiere(client, decor):
     r = client.post(f"/api/personnages/{gaston}/fusion", headers=RESP,
                     json={"cible_id": registre})
     assert r.status_code == 409 and "frontière" in r.json()["detail"], r.text
-    # Une valeur locale au bac à sable (posée en base) ne qualifie pas un personnage du
-    # registre ; elle qualifie celui du bac à sable.
-    d = client.post("/api/attributs/dimensions", headers=RESP,
-                    json={"cible": "personnage", "nom": "humeur"}).json()["id"]
-    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=RESP,
-                    json={"valeur": "gai"}).json()["id"]
-    _sql(decor["db"], "UPDATE attribut_valeur SET collection_id = ? WHERE id = ?",
-         (decor["base"], v))
-    r = client.put(f"/api/personnages/{registre}/attributs", headers=RESP,
-                   json={"valeur_id": v})
-    assert r.status_code == 409, r.text
-    assert client.put(f"/api/personnages/{gaston}/attributs", headers=LEA,
-                      json={"valeur_id": v}).status_code in (200, 201)
 
 
 def test_l_effacement_emporte_les_personnages_du_bac(client, decor):

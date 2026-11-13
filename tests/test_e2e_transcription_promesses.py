@@ -29,15 +29,15 @@ qui EXIGERAIT le libellé serait un miroir de la page — c'est l'écueil que
 sur le texte, il le CROIT et vérifie que l'écran tient parole.
 
 **Ce que le recensement ne voit pas, écrit plutôt que supposé.** Il lit le DOM dans les
-quatre modes, sur une planche à deux bulles dont une région est sélectionnée — sans quoi
+trois modes, sur une planche à deux bulles dont une région est sélectionnée — sans quoi
 les boutons de déplacement de l'arbre, qui ne s'affichent que sur le nœud courant,
 n'existeraient pas. Une annonce qui n'apparaîtrait que dans un état non visité (un bandeau
 de conflit, une modale) lui échapperait. Il ne compte que les libellés RENDUS — c'était
 l'inverse jusqu'au 2026-09-24, au motif qu'un libellé caché se réaffiche demain ; depuis
 qu'un badge s'éteint par DÉCISION, un recensement aveugle à la visibilité approuverait
 une promesse retirée comme une promesse tenue. Il mesure le rendu et non l'OCCLUSION :
-les boutons de l'arbre, sous l'overlay plein écran, comptent encore dans les quatre
-modes. **Et le porteur ne distingue pas des FRÈRES de même classe** : les quatre
+les boutons de l'arbre, sous l'overlay plein écran, comptent encore dans les trois
+modes. **Et le porteur ne distingue pas des FRÈRES de même classe** : les trois
 boutons de mode s'effondrent en un seul `button.mode-btn`, les deux flèches de l'arbre en
 un seul `button.tn-mv`. Une touche qui migrerait d'un bouton de mode à un autre garderait
 donc un couple déjà déclaré et resterait invisible ici. C'est étroit — les deux familles
@@ -133,7 +133,7 @@ def _transcription(page, s):
 # Transcription, un recensement aveugle à la visibilité ne verrait jamais l'extinction
 # et approuverait une promesse retirée comme une promesse tenue. Ce que la règle ne
 # sait pas faire est écrit : elle mesure le RENDU, pas l'OCCLUSION — les boutons de
-# l'arbre, sous l'overlay plein écran, restent comptés comme annoncés dans les quatre
+# l'arbre, sous l'overlay plein écran, restent comptés comme annoncés dans les trois
 # modes.
 _RECENSEMENT = r"""() => {
   const MULTI = '(?:Tab|Entrée|Échap|Maj|Ctrl|Alt|Suppr|Espace|←|→|↑|↓)';
@@ -266,7 +266,7 @@ def test_le_badge_de_raccourci_s_eteint_sans_eteindre_le_bouton(
             "éteint le badge, pas le bouton — la fonction ne doit rien perdre")
 
     # Le nom reste annoncé : c'est ce qui rend le bouton identifiable sans son badge.
-    for mode, nom in (("navigation", "Navigation"), ("annotation", "Annotation")):
+    for mode, nom in (("navigation", "Navigation"), ("edition", "Édition")):
         annonce = page.locator(f'.mode-btn[data-mode="{mode}"]').aria_snapshot()
         assert nom in annonce, (
             f"à {largeur} px, le bouton « {mode} » s'annonce {annonce!r} : sans badge "
@@ -274,8 +274,8 @@ def test_le_badge_de_raccourci_s_eteint_sans_eteindre_le_bouton(
             "ne voit pas l'écran")
 
     # Cliquable, et CLIQUÉ : le mode change pour de bon.
-    page.locator('.mode-btn[data-mode="annotation"]').click()
-    expect(page.locator("#stat-mode")).to_have_text("Mode : Annotation", timeout=15000)
+    page.locator('.mode-btn[data-mode="edition"]').click()
+    expect(page.locator("#stat-mode")).to_have_text("Mode : Édition", timeout=15000)
     # Et la promesse revient là où elle est vraie.
     expect(page.locator('.mode-btn[data-mode="navigation"] kbd')).to_be_visible()
 
@@ -351,7 +351,9 @@ def test_entree_reste_un_retour_a_la_ligne(page, planche_a_deux_bulles):
 
 
 def test_les_badges_de_mode_tiennent_leur_promesse(page, planche_a_deux_bulles):
-    """Les quatre `<kbd>` de la bande d'outils, joués depuis le corps de la page.
+    """Les trois `<kbd>` de la bande d'outils, joués depuis le corps de la page. Le quatrième,
+    « A », est parti avec le mode Annotation (ANN-7) ; la touche mène désormais à la page
+    Annotation, ce que `test_e2e_navigation` éprouve.
 
     **Ils ne sont PAS joués depuis la Transcription, et ce n'est pas un oubli.** Mesuré le
     2026-09-23 : le mode y focalise la zone de saisie à chaque rendu, si bien que `n`, `e`,
@@ -369,8 +371,7 @@ def test_les_badges_de_mode_tiennent_leur_promesse(page, planche_a_deux_bulles):
     mode = page.locator("#stat-mode")
     expect(mode).to_have_text("Mode : Navigation")
 
-    for touche, attendu in (("E", "Édition"), ("A", "Annotation"),
-                            ("N", "Navigation"), ("T", "Transcription")):
+    for touche, attendu in (("E", "Édition"), ("N", "Navigation"), ("T", "Transcription")):
         page.keyboard.press(CLAVIER[touche])
         expect(mode).to_have_text(f"Mode : {attendu}", timeout=15000)
     expect(page.locator("#transcription")).to_be_visible()

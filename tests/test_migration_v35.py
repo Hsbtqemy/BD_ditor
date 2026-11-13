@@ -27,6 +27,7 @@ import pytest
 
 import database
 import migration_v38
+import migration_v39
 from migration_v38 import COLONNES_V38
 
 BASE_V34 = Path(__file__).resolve().parent / "bases" / "v34-35cc4a3.sql"
@@ -89,7 +90,13 @@ def _etat(db):
         db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
             "AND name NOT LIKE 'recherche_%' ORDER BY name")]
     lignes = {}
+    # La v39 (ANN-7, le basculement) détruit le vocabulaire d'hier : ses tables ne se
+    # lisent plus après la migration (`migration_v39`).
+    presentes = {r["name"] for r in _sql(db, "SELECT name FROM sqlite_master "
+                                             "WHERE type = 'table'")}
     for t in LIGNES:
+        if t not in presentes:
+            continue
         retire = COLONNES_NEUVES.get(t, ())
         lignes[t] = sorted(json.dumps({k: v for k, v in r.items() if k not in retire},
                                       sort_keys=True, ensure_ascii=False)
@@ -150,7 +157,10 @@ def test_une_vraie_base_v34_migre_sans_rien_perdre(vraie_v34):
     avant = _etat(vraie_v34)
     seq_avant = _seq(vraie_v34)
     membres_avant = migration_v38.membres(vraie_v34)
+    v39 = migration_v39.avant_la_v39(vraie_v34)
     database.init_db()
+    migration_v39.defaire_la_v39(vraie_v34, v39)
+    avant = migration_v39.ramener_l_etat(avant, v39)
     migration_v38.retirer_les_membres_de_la_v38(vraie_v34, membres_avant)
     apres = _etat(vraie_v34)
     assert _sql(vraie_v34, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
@@ -236,10 +246,14 @@ def test_rejouee_la_migration_ne_change_rien(vraie_v34):
             _sql(vraie_v34, "SELECT type, name, sql FROM sqlite_master ORDER BY name")) == etat
 
 
-def test_les_libelles_de_tags_sont_uniques_par_espace(vraie_v34):
+def test_les_libelles_de_tags_sont_uniques_par_espace(vraie_v34, monkeypatch):
     """`tags` est reconstruite : l'unicité du libellé sur toute l'instance cède la place à
     l'unicité PAR ESPACE (COL-4). L'existant est de l'espace de l'instance, ses annotations
     le désignent toujours, et un même libellé vit dans un bac à sable sans rien bloquer."""
+    # La v39 (ANN-7, le basculement) détruit ensuite le vocabulaire d'hier : ce que l'étape
+    # de la v35 en fait se lit migration arrêtée avant elle (`_basculer_le_vocabulaire`
+    # neutralisé ; la v39 est éprouvée par `tests/test_migration_v39.py`).
+    monkeypatch.setattr(database, "_basculer_le_vocabulaire", lambda conn: None)
     avant = _sql(vraie_v34, "SELECT at.annotation_id, t.label FROM annotation_tags at "
                             "JOIN tags t ON t.id = at.tag_id ORDER BY 1, 2")
     assert avant, "la vraie base porte des tags posés"
@@ -293,6 +307,10 @@ def test_la_v35_ne_relit_pas_tags_dans_le_schema_courant(vraie_v34, monkeypatch)
     if n:
         monkeypatch.setattr(database, "SCHEMA_SQL", sans_tags)
     assert "CREATE TABLE IF NOT EXISTS tags (" not in database.SCHEMA_SQL
+    # La v39 (ANN-7, le basculement) détruit ensuite le vocabulaire d'hier : ce que l'étape
+    # de la v35 en fait se lit migration arrêtée avant elle (`_basculer_le_vocabulaire`
+    # neutralisé ; la v39 est éprouvée par `tests/test_migration_v39.py`).
+    monkeypatch.setattr(database, "_basculer_le_vocabulaire", lambda conn: None)
     avant = _sql(vraie_v34, "SELECT * FROM tags ORDER BY id")
     poses = _sql(vraie_v34, "SELECT * FROM annotation_tags ORDER BY 1, 2")
     assert avant and poses, "la vraie base porte des tags posés"

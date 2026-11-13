@@ -90,8 +90,9 @@ def test_journal_survit_a_la_suppression(client, derriere_proxy, album, db_path)
     conn.close()
     r = client.post(f"/api/planches/{pid}/regions",
                     json={"type": "case", "x": 1, "y": 2, "w": 3, "h": 4}, headers=H).json()
-    client.put(f"/api/regions/{r['id']}/annotation",
-               json={"note": "à revoir", "tags": ["colere"]}, headers=H)
+    client.put(f"/api/regions/{r['id']}/annotation", json={"note": "à revoir"}, headers=H)
+    from conftest import poser_tags
+    poser_tags(db_path, r["id"], ["colere"])                # un tag d'hier, en base (ANN-7)
     client.delete(f"/api/regions/{r['id']}", headers=H)
 
     conn = _lire(db_path)
@@ -102,7 +103,8 @@ def test_journal_survit_a_la_suppression(client, derriere_proxy, album, db_path)
     assert sup is not None and sup["agent"] == "hugo"          # agent capté depuis l'auth
     avant = json.loads(sup["avant"])
     assert avant["type"] == "case" and avant["annotation"]["note"] == "à revoir"
-    assert avant["annotation"]["tags"] == ["colere"]           # snapshot profond complet
+    # ANN-7, le basculement : l'instantané ne porte plus que la note, pas les tags d'hier.
+    assert avant["annotation"] == {"note": "à revoir"}
 
 
 def test_evenements_humains_avant_apres(client, derriere_proxy, album, db_path):
@@ -128,7 +130,7 @@ def test_evenements_humains_avant_apres(client, derriere_proxy, album, db_path):
     # touche dénormalisé posé par la retouche humaine.
     assert conn.execute("SELECT touche FROM regions WHERE id = ?", (r["id"],)).fetchone()["touche"] == 1
     # l'annotation a son propre événement.
-    client.put(f"/api/regions/{r['id']}/annotation", json={"note": "x", "tags": []}, headers=H)
+    client.put(f"/api/regions/{r['id']}/annotation", json={"note": "x"}, headers=H)
     conn = _lire(db_path)
     assert conn.execute(
         "SELECT COUNT(*) FROM evenement WHERE cible_table='annotations' AND type='creation'"
@@ -639,6 +641,9 @@ def test_les_bornes_de_dates_ne_datent_pas_du_journal_retenu(db_path):
     import journal as j
 
     conn = _lire(db_path)
+    # Une base neuve porte déjà les actes de la grille de travail du projet de repli (ANN-7,
+    # sous `grille`, retenus) : le compte sans filtre part de là.
+    deja = j.indicateurs_provenance(conn)["evenements"]["total"]
     conn.execute("INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
                  "date) VALUES ('creation', 'alice', 'humain', 'sharedocs', NULL, "
                  "'2020-01-01 00:00:00')")
@@ -654,7 +659,7 @@ def test_les_bornes_de_dates_ne_datent_pas_du_journal_retenu(db_path):
 
     # Sans le paramètre, le comportement d'avant est intact : les appelants qui ne
     # publient rien (aucun aujourd'hui) ne changent pas de réponse.
-    assert j.indicateurs_provenance(conn)["evenements"]["total"] == 2
+    assert j.indicateurs_provenance(conn)["evenements"]["total"] == deja + 2
 
 
 # --------------------------------------------------------------------------- #

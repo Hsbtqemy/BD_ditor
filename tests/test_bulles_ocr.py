@@ -98,19 +98,46 @@ def test_redetecter_bulles_preserve_ocr(client, planche, monkeypatch):
 @requires_bulles
 def test_redetecter_bulles_preserve_annotation(client, planche, monkeypatch):
     """Une bulle annotée SANS OCR est préservée à la re-détection (branche
-    'NOT EXISTS annotations' du tri)."""
+    'NOT EXISTS annotations' du tri). Annotée d'une NOTE : des tags d'hier seuls ne la
+    gardent plus (ANN-7, le basculement ; cf. le test suivant)."""
     _add_case(client, planche, 0, 0, 400, 500)
     monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(50, 60, 80, 40)]))
     client.post(f"/api/planches/{planche['id']}/detecter-bulles")
     b = next(r for r in client.get(
         f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle")
-    client.put(f"/api/regions/{b['id']}/annotation", json={"note": "", "tags": ["cri"]})
+    assert client.put(f"/api/regions/{b['id']}/annotation",
+                      json={"note": "cri"}).status_code == 200
     # re-détection à un autre endroit (ne recouvre pas) → la bulle annotée survit
     monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(200, 200, 60, 30)]))
     body = client.post(f"/api/planches/{planche['id']}/detecter-bulles").json()
     regions = client.get(f"/api/planches/{planche['id']}/regions").json()
     assert any(r["id"] == b["id"] for r in regions)   # bulle annotée préservée
     assert body["preservees"] == 1
+
+
+@requires_bulles
+def test_redetecter_bulles_ne_garde_pas_une_bulle_aux_seuls_tags_d_hier(client, planche,
+                                                                         monkeypatch):
+    """ANN-7, le basculement (relecture croisée du commit des coutures, constat 2) : une
+    ligne d'annotation qui ne porte que des tags d'hier, sans note, n'est plus du travail —
+    la bulle du moteur part à la re-détection, comme une bulle nue (la v39 retire ces lignes ;
+    une base retouchée peut en porter). Le décor est relu."""
+    import database
+    from conftest import direct_query
+    _add_case(client, planche, 0, 0, 400, 500)
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(50, 60, 80, 40)]))
+    client.post(f"/api/planches/{planche['id']}/detecter-bulles")
+    b = next(r for r in client.get(
+        f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle")
+    with database.connect() as c:
+        c.execute("INSERT INTO annotations (region_id, note) VALUES (?, NULL)", (b["id"],))
+    assert direct_query(database.DB_PATH, "SELECT note FROM annotations WHERE region_id = ?",
+                        (b["id"],)) == [{"note": None}]
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(200, 200, 60, 30)]))
+    body = client.post(f"/api/planches/{planche['id']}/detecter-bulles").json()
+    regions = client.get(f"/api/planches/{planche['id']}/regions").json()
+    assert not any(r["id"] == b["id"] for r in regions)
+    assert body["preservees"] == 0
 
 
 @requires_bulles

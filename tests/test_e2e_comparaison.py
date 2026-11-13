@@ -36,20 +36,21 @@ MOTS = {"colère": ["le"] * 30 + ["otage"] * 2, "joie": ["le"] * 24 + ["chat"] *
 
 @pytest.fixture
 def corpus_compare(live_server, tmp_path):
+    """A et B sont deux ALBUMS (ANN-7 : les tags qui les séparaient sont partis)."""
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
+    regions, albums = {}, []
     try:
-        aid = c.post("/api/albums", json={"titre": "Comparaison"}).json()["id"]
-        pid = c.post(f"/api/albums/{aid}/import",
-                     files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
-        regions = {}
-        for tag in MOTS:
+        for titre in MOTS:
+            aid = c.post("/api/albums", json={"titre": titre}).json()["id"]
+            pid = c.post(f"/api/albums/{aid}/import",
+                         files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
             rid = c.post(f"/api/planches/{pid}/regions",
                          json={"type": "bulle", "x": 10, "y": 10, "w": 50, "h": 40}).json()["id"]
-            c.put(f"/api/regions/{rid}/annotation", json={"note": "", "tags": [tag]})
-            regions[rid] = MOTS[tag]
+            regions[rid] = MOTS[titre]
+            albums.append(aid)
     finally:
         c.close()
-    # APRÈS l'annotation, qui réindexe : même base que le serveur (`live_server`).
+    # APRÈS la création, qui réindexe : même base que le serveur (`live_server`).
     conn = sqlite3.connect(tmp_path / "live.sqlite")
     try:
         conn.executemany(
@@ -60,7 +61,7 @@ def corpus_compare(live_server, tmp_path):
         conn.commit()
     finally:
         conn.close()
-    return live_server
+    return live_server, albums
 
 
 def _tete_de_a(page):
@@ -69,8 +70,9 @@ def _tete_de_a(page):
 
 def test_la_keyness_se_choisit_voyage_dans_l_url_et_part_avec_l_export(page, corpus_compare):
     from test_e2e_a11y import _audit, _fmt      # axe absent : ce module-là se saute entier
-    page.goto(f"{corpus_compare}/exploration?vue=comparaison&champ=lemme"
-              "&tags=col%C3%A8re&b_tags=joie", wait_until="networkidle")
+    base, (a, b) = corpus_compare
+    page.goto(f"{base}/exploration?vue=comparaison&champ=lemme&album={a}&b_album={b}",
+              wait_until="networkidle")
     page.wait_for_selector("#comparaison .col-a .dist-row")
     assert page.locator("#wrap-metrique").is_visible()
     assert _tete_de_a(page) == "le"                    # le défaut n'a pas changé
@@ -105,7 +107,7 @@ def test_la_keyness_se_choisit_voyage_dans_l_url_et_part_avec_l_export(page, cor
 def test_le_selecteur_de_mesure_n_apparait_qu_en_comparaison(page, corpus_compare):
     """« Classer par » n'a de sens que pour la comparaison : ailleurs, il proposerait un
     réglage qui ne change rien à l'écran."""
-    page.goto(f"{corpus_compare}/exploration?vue=distribution", wait_until="networkidle")
+    page.goto(f"{corpus_compare[0]}/exploration?vue=distribution", wait_until="networkidle")
     assert page.locator("#wrap-metrique").is_hidden()
     page.select_option("#f-vue", "comparaison")
     assert page.locator("#wrap-metrique").is_visible()

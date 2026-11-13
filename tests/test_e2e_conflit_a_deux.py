@@ -1,10 +1,17 @@
 """Deux personnes sur le MÊME champ : l'écran le dit, et ne perd rien (CONC-3, second temps).
 
 Tranché par Hugo sur maquette le 2026-09-17. Quand le serveur refuse un enregistrement fait
-sur une valeur périmée (409), l'Atelier ouvre un BANDEAU dans le panneau : il nomme
+sur une valeur périmée (409), l'Atelier ouvre un BANDEAU au-dessus du champ : il nomme
 l'auteur, montre sa version, garde la saisie en cours, et offre « Remplacer par la mienne »
 et « Garder l'autre ». Le focus reste dans le champ. Tant qu'on n'a pas choisi, changer de
 mode est bloqué. Une case supprimée ailleurs donne un toast nommé, et quitte l'écran.
+
+**Depuis le basculement d'ANN-7, la machinerie se joue sur la Transcription.** Elle se
+provoquait par la NOTE du mode Annotation, qui est parti : la note, le locuteur et le
+personnage montré s'écrivent dans la page Annotation, qui a son bandeau et ses tests
+(`test_e2e_annotation_page.py`, `test_e2e_annotation_locuteur.py`). Le bandeau de l'Atelier,
+l'attente au départ, le laissez-passer et le filet servent toujours au texte transcrit : ces
+gardes ne disparaissent pas avec le champ qui servait à les provoquer.
 
 Quitter un champ dont l'enregistrement n'est pas revenu ATTEND la réponse (tranché sans
 maquette, sur description) : le geste se voit, se rejoue seul, et l'attente est bornée. Les
@@ -32,9 +39,8 @@ pytestmark = pytest.mark.e2e
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
     "/annotation": (
-        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : l'écriture "
-        "d'un même champ à deux (la page n'écrit encore rien) vit dans "
-        "l'Atelier, que ce module audite"),
+        "la page Annotation a son propre bandeau et ses tests (`test_e2e_annotation_page.py`, "
+        "`test_e2e_annotation_locuteur.py`) : ce module audite celui de l'Atelier"),
     "/recherche": "on n'y écrit ni note ni texte : le conflit se joue dans l'Atelier seul",
     "/corpus": "on n'y écrit ni note ni texte : le conflit se joue dans l'Atelier seul",
     "/exploration": "on n'y écrit ni note ni texte : le conflit se joue dans l'Atelier seul",
@@ -72,7 +78,7 @@ def decor(live_server):
     base = f"{live_server}/?album={aid}&planche={pid}"
     return {"base": live_server, "planche": pid, "bulle": bulle, "case": autre_case,
             "url_bulle": f"{base}&region={bulle}", "url_case": f"{base}&region={autre_case}",
-            "url_planche": base, "seconde": seconde}
+            "url_seconde": f"{base}&region={seconde}", "url_planche": base, "seconde": seconde}
 
 
 def _contexte(page, identite):
@@ -86,15 +92,15 @@ def _contexte(page, identite):
 
 def _ouvrir(p, url, mode):
     p.goto(url, wait_until="networkidle")
-    if mode == "annotation" and "region=" in url:
-        # `networkidle` rend la main tout de suite si la page l'a DÉJÀ atteint, et
-        # « Enregistré » est le texte du gabarit : ni l'un ni l'autre ne dit que la note est
-        # chargée. Le locuteur, lui, n'est demandé qu'APRÈS qu'elle a été posée dans le champ.
-        with p.expect_request(lambda r: r.url.endswith("/locuteur")):
-            p.click(f'.mode-btn[data-mode="{mode}"]')
-    else:
-        p.click(f'.mode-btn[data-mode="{mode}"]')
+    p.click(f'.mode-btn[data-mode="{mode}"]')
     p.wait_for_load_state("networkidle")
+
+
+def _transcrire(p, url, attendu):
+    """Ouvre l'Atelier en Transcription sur la bulle de `url`, et attend son texte : la
+    zone de saisie est remplie au rendu de la bulle, après le chargement de la planche."""
+    _ouvrir(p, url, "transcription")
+    expect(p.locator("#tr-text")).to_have_value(attendu, timeout=15000)
 
 
 class _Retenue:
@@ -126,6 +132,16 @@ class _Retenue:
             route.continue_()
 
 
+def _note_d_alice(s, note):
+    """Alice écrit la note de la bulle, comme le ferait la page Annotation : son acte est au
+    journal, et le prochain Ctrl+Z d'Alice le vise."""
+    with _client(s["base"]) as c:
+        c.get("/api/moi", headers=ALICE)
+        r = c.put(f"/api/regions/{s['bulle']}/annotation", headers=ALICE,
+                  json={"note": note, "note_vue": ""})
+        assert r.status_code == 200, r.text
+
+
 def _note_en_base(base, rid):
     with _client(base) as c:
         return c.get(f"/api/regions/{rid}/annotation").json()["note"] or ""
@@ -152,72 +168,77 @@ def _attendre(fonction, attendu, delai=15, page=None):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_deux_notes_le_bandeau_nomme_garde_la_saisie_et_bloque_le_mode(page, decor):
+def test_deux_textes_le_bandeau_nomme_garde_la_saisie_et_bloque_le_mode(page, decor):
+    """Jouée par la note jusqu'au basculement d'ANN-7, la même garde sur le texte transcrit."""
     s = decor
     ctx_a, a = _contexte(page, ALICE)
     ctx_b, b = _contexte(page, BOB)
     try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        _ouvrir(b, s["url_bulle"], "annotation")
+        _transcrire(a, s["url_planche"], "TEXTE INITIAL")
+        _transcrire(b, s["url_planche"], "TEXTE INITIAL")
 
-        a.fill("#note-input", "note de A")
-        expect(a.locator("#save-state")).to_have_text("Enregistré", timeout=15000)
-        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "note de A") == "note de A"
+        a.fill("#tr-text", "TEXTE DE A")
+        expect(a.locator("#tr-save")).to_have_text("Enregistré", timeout=15000)
+        assert _attendre(lambda: _texte_en_base(s["base"], s["planche"], s["bulle"]),
+                         "TEXTE DE A") == "TEXTE DE A"
 
-        b.click("#note-input")
-        b.keyboard.type("note de B")
+        b.click("#tr-text")
+        b.keyboard.press("End")
+        b.keyboard.type(" B")
         bandeau = b.locator("#bandeau-conflit")
         expect(bandeau).to_be_visible(timeout=15000)
-        expect(bandeau.locator(".bandeau-titre")).to_contain_text("Note modifiée par Alice Dupont")
-        expect(bandeau.locator(".bandeau-version")).to_have_text("note de A")
+        expect(bandeau.locator(".bandeau-titre")).to_contain_text("Texte modifié par Alice Dupont")
+        expect(bandeau.locator(".bandeau-version")).to_have_text("TEXTE DE A")
         expect(bandeau.locator("button")).to_have_text(["Remplacer par la mienne", "Garder l'autre"])
-        expect(b.locator("#save-state")).to_have_text("En attente de votre choix")
+        expect(b.locator("#tr-save")).to_have_text("En attente de votre choix")
         # Le focus N'a PAS sauté au bandeau, et la saisie est restée.
-        assert b.evaluate("document.activeElement.id") == "note-input"
-        assert b.input_value("#note-input") == "note de B"
-        assert _note_en_base(s["base"], s["bulle"]) == "note de A", "la note de A a été écrasée"
-        # L'Atelier a bien déclaré ce qu'il avait vu (Q8 : facultatif pour l'API, pas pour lui).
-        notes = [json.loads(d) for m, u, d in b.envois if u.endswith("/annotation") and d]
-        assert notes and all("note_vue" in corps for corps in notes if "note" in corps)
+        assert b.evaluate("document.activeElement.id") == "tr-text"
+        assert b.input_value("#tr-text") == "TEXTE INITIAL B"
+        assert _texte_en_base(s["base"], s["planche"], s["bulle"]) == "TEXTE DE A", \
+            "le texte de A a été écrasé"
 
         # Le bandeau s'atteint au clavier, en arrière depuis le champ.
         b.keyboard.press("Shift+Tab")
         assert b.evaluate("document.activeElement.closest('#bandeau-conflit') !== null")
+        # Hors du champ, la touche A mène à la page Annotation (ANN-7, I7) — pas tant qu'un
+        # conflit attend : elle passe par les mêmes gardes qu'un changement de mode.
+        b.keyboard.press("a")
+        expect(b.locator("#toasts .toast").last).to_have_text("Choisissez d'abord une version")
+        b.wait_for_timeout(300)
+        assert "/annotation" not in b.url, b.url
         # Changer de mode est bloqué tant qu'on n'a pas choisi.
         b.click('.mode-btn[data-mode="navigation"]')
         expect(b.locator("#toasts .toast").last).to_have_text("Choisissez d'abord une version")
-        expect(b.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute("aria-pressed", "true")
-        # Recliquer le mode COURANT, ou la bulle COURANTE, rechargerait le champ depuis le
-        # serveur : la saisie que le bandeau garde doit y survivre. Ce qu'on juge est la lecture
-        # qui PART, et non le champ : relu tout de suite, il dit encore la saisie même si la
-        # relecture est en route, et seul un serveur rapide aurait fait voir l'écrasement.
-        relues = []
-        b.on("request", lambda r: relues.append(r.url) if r.method == "GET"
-             and r.url.endswith(f"/regions/{s['bulle']}/annotation") else None)
-        b.click('.mode-btn[data-mode="annotation"]')
-        b.locator(f"#overlay [data-id='{s['bulle']}']").first.click(force=True)
+        expect(b.locator('.mode-btn[data-mode="transcription"]')).to_have_attribute(
+            "aria-pressed", "true")
+        # Recliquer le mode COURANT, ou la bulle COURANTE de la mini-planche, rendrait la bulle
+        # de nouveau — sa zone de saisie reprise du texte VU : la saisie que le bandeau garde
+        # doit y survivre.
+        b.click('.mode-btn[data-mode="transcription"]')
+        b.locator("#tr-mini .tr-region[data-i='0']").click(force=True)
         b.wait_for_timeout(300)
-        assert not relues, relues
-        assert b.input_value("#note-input") == "note de B"
+        assert b.input_value("#tr-text") == "TEXTE INITIAL B"
         expect(bandeau).to_be_visible()
 
         # « Remplacer par la mienne » : la version de B écrase celle de A.
         bandeau.get_by_role("button", name="Remplacer par la mienne", exact=True).click()
         expect(bandeau).to_have_count(0)
-        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "note de B") == "note de B"
-        expect(b.locator("#save-state")).to_have_text("Enregistré", timeout=15000)
+        assert _attendre(lambda: _texte_en_base(s["base"], s["planche"], s["bulle"]),
+                         "TEXTE INITIAL B") == "TEXTE INITIAL B"
+        expect(b.locator("#tr-save")).to_have_text("Enregistré", timeout=15000)
 
-        # A a encore vu « note de A » : sa frappe ouvre le bandeau, et « Garder l'autre »
+        # A a encore vu « TEXTE DE A » : sa frappe ouvre le bandeau, et « Garder l'autre »
         # remet la version de B dans son champ sans rien envoyer.
-        a.click("#note-input")
+        a.click("#tr-text")
+        a.keyboard.press("End")
         a.keyboard.type(" (suite)")
         expect(a.locator("#bandeau-conflit .bandeau-titre")).to_contain_text(
-            "Note modifiée par Bob Martin", timeout=15000)
+            "Texte modifié par Bob Martin", timeout=15000)
         a.locator("#bandeau-conflit").get_by_role("button", name="Garder l'autre").click()
         expect(a.locator("#bandeau-conflit")).to_have_count(0)
-        assert a.input_value("#note-input") == "note de B"
+        assert a.input_value("#tr-text") == "TEXTE INITIAL B"
         time.sleep(1)
-        assert _note_en_base(s["base"], s["bulle"]) == "note de B"
+        assert _texte_en_base(s["base"], s["planche"], s["bulle"]) == "TEXTE INITIAL B"
     finally:
         ctx_a.close()
         ctx_b.close()
@@ -230,22 +251,24 @@ def test_quitter_l_atelier_pendant_un_conflit_demande_d_abord(page, decor):
     ctx_a, a = _contexte(page, ALICE)
     ctx_b, b = _contexte(page, BOB)
     try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        _ouvrir(b, s["url_bulle"], "annotation")
+        _transcrire(a, s["url_planche"], "TEXTE INITIAL")
+        _transcrire(b, s["url_planche"], "TEXTE INITIAL")
         vues = []
         b.on("dialog", lambda d: (vues.append(d.type), d.dismiss()))
-        a.fill("#note-input", "note de A")
-        expect(a.locator("#save-state")).to_have_text("Enregistré", timeout=15000)
-        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "note de A") == "note de A"
-        b.click("#note-input")
-        b.keyboard.type("note de B")
+        a.fill("#tr-text", "TEXTE DE A")
+        expect(a.locator("#tr-save")).to_have_text("Enregistré", timeout=15000)
+        assert _attendre(lambda: _texte_en_base(s["base"], s["planche"], s["bulle"]),
+                         "TEXTE DE A") == "TEXTE DE A"
+        b.click("#tr-text")
+        b.keyboard.press("End")
+        b.keyboard.type(" B")
         expect(b.locator("#bandeau-conflit")).to_be_visible(timeout=15000)
         b.locator('#site-nav a[href="/corpus"]').first.click()
         expect(b.locator("#bandeau-conflit")).to_be_visible()
         b.wait_for_timeout(300)
         assert vues == ["beforeunload"]
         assert "/corpus" not in b.url
-        assert b.input_value("#note-input") == "note de B"
+        assert b.input_value("#tr-text") == "TEXTE INITIAL B"
         # Le conflit réglé, plus rien à perdre : la page part sans demander.
         b.locator("#bandeau-conflit button", has_text="Garder l'autre").click()
         expect(b.locator("#bandeau-conflit")).to_be_hidden()
@@ -300,28 +323,29 @@ def test_transcription_le_texte_de_l_autre_n_est_plus_ecrase(page, decor):
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_quitter_pendant_l_envoi_attend_la_reponse_puis_part_seul(page, decor):
-    """Le délai qui PASSE. Changer de mode pendant que la note n'est pas revenue retient le
+    """Le délai qui PASSE. Changer de mode pendant que le texte n'est pas revenu retient le
     geste : l'indicateur le dit, rien ne bouge, et le geste se rejoue seul à la réponse."""
     s = decor
     ctx_a, a = _contexte(page, ALICE)
     try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        retenue = _Retenue(a, "**/api/regions/*/annotation")
-        a.click("#note-input")
-        a.keyboard.type("note tenue")
+        _transcrire(a, s["url_planche"], "TEXTE INITIAL")
+        retenue = _Retenue(a, "**/api/regions/*")
+        a.click("#tr-text")
+        a.keyboard.press("End")
+        a.keyboard.type(" TENU")
         a.click('.mode-btn[data-mode="navigation"]')     # avant le délai de frappe
-        expect(a.locator("#save-state")).to_have_text("Enregistrement en cours…")
+        expect(a.locator("#tr-save")).to_have_text("Enregistrement en cours…")
         assert retenue.attendre(1) == 1
         a.wait_for_timeout(1000)
-        expect(a.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute(
+        expect(a.locator('.mode-btn[data-mode="transcription"]')).to_have_attribute(
             "aria-pressed", "true")
-        assert a.input_value("#note-input") == "note tenue"
+        assert a.input_value("#tr-text") == "TEXTE INITIAL TENU"
 
         retenue.liberer()
         # Aucun clic à refaire : le geste retenu part de lui-même.
         expect(a.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute(
             "aria-pressed", "true", timeout=15000)
-        assert _note_en_base(s["base"], s["bulle"]) == "note tenue"
+        assert _texte_en_base(s["base"], s["planche"], s["bulle"]) == "TEXTE INITIAL TENU"
         expect(a.locator("#toasts .toast")).to_have_count(0)
     finally:
         ctx_a.close()
@@ -334,25 +358,26 @@ def test_une_attente_vaine_rend_la_main_et_laisse_partir_si_l_on_insiste(page, d
     s = decor
     ctx_a, a = _contexte(page, ALICE)
     try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        retenue = _Retenue(a, "**/api/regions/*/annotation")
-        a.click("#note-input")
-        a.keyboard.type("note muette")
+        _transcrire(a, s["url_planche"], "TEXTE INITIAL")
+        retenue = _Retenue(a, "**/api/regions/*")
+        a.click("#tr-text")
+        a.keyboard.press("End")
+        a.keyboard.type(" MUET")
         a.click('.mode-btn[data-mode="navigation"]')
-        expect(a.locator("#save-state")).to_have_text("Enregistrement en cours…")
+        expect(a.locator("#tr-save")).to_have_text("Enregistrement en cours…")
         toast = a.locator("#toasts .toast", has_text="L'enregistrement n'a pas encore abouti")
         expect(toast).to_have_count(1, timeout=10000)
         expect(toast).to_contain_text("Votre saisie reste dans le champ")
-        expect(a.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute(
+        expect(a.locator('.mode-btn[data-mode="transcription"]')).to_have_attribute(
             "aria-pressed", "true")
-        assert a.input_value("#note-input") == "note muette"
+        assert a.input_value("#tr-text") == "TEXTE INITIAL MUET"
 
         a.click('.mode-btn[data-mode="navigation"]')     # on insiste
         expect(a.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute(
             "aria-pressed", "true")
         retenue.liberer()
-        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "note muette",
-                         page=a) == "note muette"
+        assert _attendre(lambda: _texte_en_base(s["base"], s["planche"], s["bulle"]),
+                         "TEXTE INITIAL MUET", page=a) == "TEXTE INITIAL MUET"
     finally:
         ctx_a.close()
 
@@ -360,28 +385,31 @@ def test_une_attente_vaine_rend_la_main_et_laisse_partir_si_l_on_insiste(page, d
 @pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_quitter_sur_une_version_perimee_reste_et_ouvre_le_bandeau(page, decor):
     """Le 409 revient pendant qu'on part : on ne part pas, et le bandeau s'ouvre sur la
-    saisie. Avant, il s'ouvrait dans le panneau quitté, où le blocage interdisait de revenir."""
+    saisie. Avant, il s'ouvrait dans le panneau quitté, où le blocage interdisait de revenir.
+    Deux sorties de la Transcription : le bouton d'un autre mode, puis Échap."""
     s = decor
     ctx_a, a = _contexte(page, ALICE)
     ctx_b, b = _contexte(page, BOB)
     try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        _ouvrir(b, s["url_bulle"], "annotation")
-        a.fill("#note-input", "note de A")
-        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "note de A") == "note de A"
+        _transcrire(a, s["url_seconde"], "AUTRE BULLE")
+        _transcrire(b, s["url_seconde"], "AUTRE BULLE")
+        a.fill("#tr-text", "SECONDE DE A")
+        assert _attendre(lambda: _texte_en_base(s["base"], s["planche"], s["seconde"]),
+                         "SECONDE DE A") == "SECONDE DE A"
 
-        b.click("#note-input")
-        b.keyboard.type("note de B")
+        b.click("#tr-text")
+        b.keyboard.press("End")
+        b.keyboard.type(" B")
         b.click('.mode-btn[data-mode="navigation"]')     # avant le délai de frappe
         bandeau = b.locator("#bandeau-conflit")
         expect(bandeau).to_be_visible(timeout=15000)
-        expect(bandeau.locator(".bandeau-titre")).to_contain_text("Note modifiée par Alice Dupont")
-        expect(b.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute(
+        expect(bandeau.locator(".bandeau-titre")).to_contain_text("Texte modifié par Alice Dupont")
+        expect(b.locator('.mode-btn[data-mode="transcription"]')).to_have_attribute(
             "aria-pressed", "true")
-        assert b.input_value("#note-input") == "note de B"
+        assert b.input_value("#tr-text") == "AUTRE BULLE B"
         expect(b.locator("#toasts .toast", has_text="n'a pas été enregistr")).to_have_count(0)
 
-        # Même chose en Transcription, en sortant par Échap.
+        # Même chose sur l'autre bulle, en sortant par Échap.
         _ouvrir(a, s["url_planche"], "transcription")
         _ouvrir(b, s["url_planche"], "transcription")
         expect(b.locator("#tr-text")).to_have_value("TEXTE INITIAL", timeout=15000)
@@ -411,13 +439,10 @@ def test_un_aller_retour_lent_n_ouvre_pas_de_conflit_avec_soi_meme(page, decor):
     ctx_a, a = _contexte(page, ALICE)
     try:
         for url, mode, champ, lire in (
-                (s["url_bulle"], "annotation", "#note-input",
-                 lambda: _note_en_base(s["base"], s["bulle"])),
                 (s["url_planche"], "transcription", "#tr-text",
-                 lambda: _texte_en_base(s["base"], s["planche"], s["bulle"]))):
+                 lambda: _texte_en_base(s["base"], s["planche"], s["bulle"])),):
             _ouvrir(a, url, mode)
-            motif = "**/api/regions/*/annotation" if mode == "annotation" else "**/api/regions/*"
-            retenue = _Retenue(a, motif)
+            retenue = _Retenue(a, "**/api/regions/*")
             a.click(champ)
             a.keyboard.press("End")
             a.keyboard.type(" un")
@@ -434,43 +459,6 @@ def test_un_aller_retour_lent_n_ouvre_pas_de_conflit_avec_soi_meme(page, decor):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_partir_quand_meme_n_ecrit_pas_la_saisie_sur_la_bulle_d_arrivee(page, decor):
-    """On insiste pour partir pendant qu'un enregistrement est en suspens. Ce qui restait à
-    envoyer vise la bulle QUITTÉE, jamais celle d'arrivée — même quand le champ montre encore
-    l'ancienne saisie, parce que l'annotation de la nouvelle bulle tarde à venir."""
-    s = decor
-    ctx_a, a = _contexte(page, ALICE)
-    try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        retenue = _Retenue(a, "**/api/regions/*/annotation")
-        a.click("#note-input")
-        a.keyboard.type("un")
-        assert retenue.attendre(1) == 1                  # le premier est en vol
-        a.keyboard.type(" deux")                          # le second attend son délai de frappe
-        seconde = a.locator(f"#overlay [data-id='{s['seconde']}']").first
-        seconde.click(force=True)
-        expect(a.locator("#toasts .toast", has_text="L'enregistrement n'a pas encore abouti")
-               ).to_have_count(1, timeout=10000)
-
-        lectures = []
-        a.route(f"**/api/regions/{s['seconde']}/annotation",
-                lambda route: lectures.append(route) if route.request.method == "GET"
-                else route.fallback())
-        seconde.click(force=True)                         # on insiste
-        assert _attendre(lambda: len(lectures), 1, page=a) == 1
-        retenue.liberer()
-        a.wait_for_timeout(1500)
-        for route in lectures:
-            route.continue_()
-        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "un", page=a) == "un"
-        a.wait_for_timeout(500)
-        assert _note_en_base(s["base"], s["seconde"]) == "", \
-            "la saisie de la bulle quittée a été écrite sur la bulle d'arrivée"
-    finally:
-        ctx_a.close()
-
-
-@pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_une_reponse_tardive_eteint_le_laissez_passer(page, decor):
     """L'attente expire — le geste suivant pourrait partir sans attendre —, puis le serveur
     répond, ici par un 409. Le laissez-passer ne sert que contre un serveur MUET : la réponse
@@ -479,18 +467,20 @@ def test_une_reponse_tardive_eteint_le_laissez_passer(page, decor):
     s = decor
     ctx_a, a = _contexte(page, ALICE)
     try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        retenue = _Retenue(a, "**/api/regions/*/annotation")
-        a.click("#note-input")
-        a.keyboard.type("note de A")
+        _transcrire(a, s["url_planche"], "TEXTE INITIAL")
+        retenue = _Retenue(a, "**/api/regions/*")
+        a.click("#tr-text")
+        a.keyboard.press("End")
+        a.keyboard.type(" A")
         a.click('.mode-btn[data-mode="navigation"]')
         expect(a.locator("#toasts .toast", has_text="L'enregistrement n'a pas encore abouti")
                ).to_have_count(1, timeout=10000)
         with _client(s["base"]) as c:
             c.get("/api/moi", headers=BOB)
-            assert c.put(f"/api/regions/{s['bulle']}/annotation", headers=BOB,
-                         json={"note": "de Bob", "note_vue": ""}).status_code == 200
-        renvoi = _Retenue(a, "**/api/regions/*/annotation")     # retient le renvoi à venir
+            assert c.put(f"/api/regions/{s['bulle']}", headers=BOB,
+                         json={"ocr_texte": "DE BOB",
+                               "vu": {"ocr_texte": "TEXTE INITIAL"}}).status_code == 200
+        renvoi = _Retenue(a, "**/api/regions/*")                   # retient le renvoi à venir
         retenue.liberer()                                         # le 409 tardif
         bandeau = a.locator("#bandeau-conflit")
         expect(bandeau).to_be_visible(timeout=15000)
@@ -498,14 +488,14 @@ def test_une_reponse_tardive_eteint_le_laissez_passer(page, decor):
         bandeau.get_by_role("button", name="Remplacer par la mienne", exact=True).click()
         assert renvoi.attendre(1) == 1
         a.click('.mode-btn[data-mode="navigation"]')              # sans avoir insisté
-        expect(a.locator("#save-state")).to_have_text("Enregistrement en cours…")
+        expect(a.locator("#tr-save")).to_have_text("Enregistrement en cours…")
         a.wait_for_timeout(500)
-        expect(a.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute(
+        expect(a.locator('.mode-btn[data-mode="transcription"]')).to_have_attribute(
             "aria-pressed", "true")
         renvoi.liberer()
         expect(a.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute(
             "aria-pressed", "true", timeout=15000)
-        assert _note_en_base(s["base"], s["bulle"]) == "note de A"
+        assert _texte_en_base(s["base"], s["planche"], s["bulle"]) == "TEXTE INITIAL A"
     finally:
         ctx_a.close()
 
@@ -519,14 +509,10 @@ def test_insister_pour_partir_puis_un_409_ne_piege_pas_l_ecran(page, decor):
     ctx_a, a = _contexte(page, ALICE)
     try:
         for url, mode, champ, motif, ecrire, dit in (
-                (s["url_bulle"], "annotation", "#note-input", "**/api/regions/*/annotation",
-                 lambda c: c.put(f"/api/regions/{s['bulle']}/annotation", headers=BOB,
-                                 json={"note": "de Bob", "note_vue": ""}),
-                 "la vôtre n'a pas été enregistrée"),
                 (s["url_planche"], "transcription", "#tr-text", "**/api/regions/*",
                  lambda c: c.put(f"/api/regions/{s['bulle']}", headers=BOB,
                                  json={"ocr_texte": "DE BOB", "vu": {"ocr_texte": "TEXTE INITIAL"}}),
-                 "le vôtre n'a pas été enregistré")):
+                 "le vôtre n'a pas été enregistré"),):
             _ouvrir(a, url, mode)
             retenue = _Retenue(a, motif)
             a.click(champ)
@@ -577,14 +563,14 @@ def test_une_case_supprimee_ailleurs_est_nommee_et_quitte_l_ecran(page, decor):
 @pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_ctrl_z_refuse_dit_qui_a_change_la_note(page, decor):
     """Le serveur refuse d'annuler une note réécrite depuis par un autre ; l'écran doit le
-    DIRE avec le nom, et non afficher « Conflict » ou un message technique."""
+    DIRE avec le nom, et non afficher « Conflict » ou un message technique. La note s'écrit
+    dans la page Annotation depuis le basculement d'ANN-7 : Alice la pose par l'API, et c'est
+    le Ctrl+Z de l'Atelier, en Navigation, qui est jugé."""
     s = decor
+    _note_d_alice(s, "à défaire")
     ctx_a, a = _contexte(page, ALICE)
     try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        a.fill("#note-input", "à défaire")
-        # « Enregistré » s'affiche dès le chargement : seule la base dit que la note est partie.
-        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "à défaire") == "à défaire"
+        _ouvrir(a, s["url_bulle"], "navigation")
         with _client(s["base"]) as c:
             c.get("/api/moi", headers=BOB)
             r = c.put(f"/api/regions/{s['bulle']}/annotation", headers=BOB,
@@ -607,11 +593,10 @@ def test_un_ctrl_z_refuse_se_passe_d_un_clic(page, decor):
     serveur, le message le dit, la note de Bob reste, et la pile d'Alice ne retombe plus sur
     ce geste."""
     s = decor
+    _note_d_alice(s, "à défaire")
     ctx_a, a = _contexte(page, ALICE)
     try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        a.fill("#note-input", "à défaire")
-        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "à défaire") == "à défaire"
+        _ouvrir(a, s["url_bulle"], "navigation")
         with _client(s["base"]) as c:
             c.get("/api/moi", headers=BOB)
             r = c.put(f"/api/regions/{s['bulle']}/annotation", headers=BOB,
@@ -684,12 +669,15 @@ def test_le_meme_compte_ne_se_nomme_pas(page, decor):
     ctx_a, a = _contexte(page, ALICE)
     ctx_b, b = _contexte(page, ALICE)
     try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        _ouvrir(b, s["url_bulle"], "annotation")
-        a.fill("#note-input", "écran 1")
-        expect(a.locator("#save-state")).to_have_text("Enregistré", timeout=15000)
-        b.click("#note-input")
-        b.keyboard.type("écran 2")
+        _transcrire(a, s["url_planche"], "TEXTE INITIAL")
+        _transcrire(b, s["url_planche"], "TEXTE INITIAL")
+        a.fill("#tr-text", "ÉCRAN 1")
+        expect(a.locator("#tr-save")).to_have_text("Enregistré", timeout=15000)
+        assert _attendre(lambda: _texte_en_base(s["base"], s["planche"], s["bulle"]),
+                         "ÉCRAN 1") == "ÉCRAN 1"
+        b.click("#tr-text")
+        b.keyboard.press("End")
+        b.keyboard.type(" 2")
         titre = b.locator("#bandeau-conflit .bandeau-titre")
         expect(titre).to_contain_text("depuis un autre écran de ce même compte", timeout=15000)
         expect(titre).not_to_contain_text("Alice")
@@ -729,152 +717,11 @@ def test_un_glissement_seul_n_est_pas_un_conflit(page, decor):
 
 
 # --------------------------------------------------------------------------- #
-# CONC-4 — le locuteur et le personnage montré : le même bandeau, sur un choix
+# CONC-4 — le locuteur et le personnage montré
 # --------------------------------------------------------------------------- #
-def _choisir(p, champ, liste, nom):
-    """Taper un nom du registre dans le champ, attendre qu'il soit proposé, Entrée."""
-    p.click(champ)
-    p.keyboard.type(nom)
-    expect(p.locator(liste)).to_contain_text(nom, timeout=15000)
-    p.keyboard.press("Enter")
-
-
-def _personnages_qa(base, *noms):
-    with _client(base) as c:
-        for qui in (ALICE, BOB):
-            c.get("/api/moi", headers=qui)        # le nom affiché, comme un écran réel
-        return [c.post("/api/personnages", json={"nom": n}).json()["id"] for n in noms]
-
-
-def _lien_en_base(base, rid, route, cle):
-    with _client(base) as c:
-        return (c.get(f"/api/regions/{rid}/{route}").json()[cle] or {}).get("id")
-
-
-@pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_deux_locuteurs_le_bandeau_nomme_garde_le_choix_et_offre_les_deux_gestes(page, decor):
-    """La mesure du 2026-10-25, rejouée : Alice pose Zed, Bob — qui voyait « aucun » — pose
-    Yann. Le choix de Bob est refusé, le bandeau le dit et montre Zed ; « Remplacer par la
-    mienne » pose Yann. Puis le ✕ d'Alice, qui voit encore Zed, est refusé à son tour, et
-    « Garder l'autre » lui montre Yann. Rien ne s'est perdu en silence."""
-    s = decor
-    zed, yann = _personnages_qa(s["base"], "Zed QA", "Yann QA")
-    locuteur = lambda: _lien_en_base(s["base"], s["bulle"], "locuteur", "locuteur")  # noqa: E731
-    ctx_a, a = _contexte(page, ALICE)
-    ctx_b, b = _contexte(page, BOB)
-    try:
-        _ouvrir(a, s["url_bulle"], "annotation")
-        _ouvrir(b, s["url_bulle"], "annotation")
-        expect(b.locator("#loc-current")).to_have_text("Aucun locuteur")
-
-        _choisir(a, "#loc-input", "#loc-suggest", "Zed QA")
-        expect(a.locator("#loc-current")).to_contain_text("Zed QA", timeout=15000)
-        assert _attendre(locuteur, zed) == zed
-
-        _choisir(b, "#loc-input", "#loc-suggest", "Yann QA")
-        bandeau = b.locator("#bandeau-conflit")
-        expect(bandeau).to_be_visible(timeout=15000)
-        expect(bandeau.locator(".bandeau-titre")).to_contain_text(
-            "Locuteur modifié par Alice Dupont")
-        expect(bandeau.locator(".bandeau-texte")).to_have_text(
-            "Votre choix, Yann QA, n'est pas enregistré.")
-        expect(bandeau.locator(".bandeau-version")).to_have_text("Zed QA")
-        expect(bandeau.locator("button")).to_have_text(["Remplacer par la mienne", "Garder l'autre"])
-        assert locuteur() == zed, "le choix d'Alice a été écrasé"
-        # L'Atelier a déclaré ce qu'il voyait (Q8 : facultatif pour l'API, pas pour lui).
-        corps = [json.loads(d) for m, u, d in b.envois if m == "PUT" and u.endswith("/locuteur")]
-        assert corps and all(c.get("personnage_vu", "absent") is None for c in corps), corps
-        # Changer de mode est bloqué tant qu'on n'a pas choisi, comme pour la note.
-        b.click('.mode-btn[data-mode="navigation"]')
-        expect(b.locator("#toasts .toast").last).to_have_text("Choisissez d'abord une version")
-        expect(b.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute(
-            "aria-pressed", "true")
-
-        bandeau.get_by_role("button", name="Remplacer par la mienne", exact=True).click()
-        expect(bandeau).to_have_count(0)
-        assert _attendre(locuteur, yann) == yann
-        expect(b.locator("#loc-current")).to_contain_text("Yann QA")
-        dernier = [json.loads(d) for m, u, d in b.envois if m == "PUT" and u.endswith("/locuteur")][-1]
-        assert dernier == {"personnage_id": yann, "personnage_vu": zed}, dernier
-
-        # Alice voit encore Zed : son ✕ ne retire plus Yann.
-        expect(a.locator("#loc-current")).to_contain_text("Zed QA")
-        a.click("#loc-current .x")
-        bandeau_a = a.locator("#bandeau-conflit")
-        expect(bandeau_a).to_be_visible(timeout=15000)
-        expect(bandeau_a.locator(".bandeau-titre")).to_contain_text("Locuteur modifié par Bob Martin")
-        expect(bandeau_a.locator(".bandeau-texte")).to_have_text("Votre retrait n'est pas enregistré.")
-        expect(bandeau_a.locator(".bandeau-version")).to_have_text("Yann QA")
-        assert any(m == "DELETE" and u.endswith(f"/locuteur?personnage_vu={zed}")
-                   for m, u, d in a.envois), a.envois
-        assert locuteur() == yann, "le retrait d'Alice a emporté Yann"
-        bandeau_a.get_by_role("button", name="Garder l'autre", exact=True).click()
-        expect(bandeau_a).to_have_count(0)
-        expect(a.locator("#loc-current")).to_contain_text("Yann QA")
-        assert locuteur() == yann
-    finally:
-        ctx_a.close()
-        ctx_b.close()
-
-
-@pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_deux_personnages_montres_le_second_est_refuse_et_garder_l_autre_le_montre(page, decor):
-    s = decor
-    zed, yann = _personnages_qa(s["base"], "Zed QA", "Yann QA")
-    with _client(s["base"]) as c:
-        boite = c.post(f"/api/planches/{s['planche']}/regions",
-                       json={"type": "personnage", "x": 120, "y": 40, "w": 30, "h": 40}).json()["id"]
-    url = s["url_planche"] + f"&region={boite}"
-    montre = lambda: _lien_en_base(s["base"], boite, "personnage", "personnage")  # noqa: E731
-    ctx_a, a = _contexte(page, ALICE)
-    ctx_b, b = _contexte(page, BOB)
-    try:
-        for p in (a, b):
-            p.goto(url, wait_until="networkidle")
-            with p.expect_request(lambda r: r.url.endswith("/personnage")):
-                p.click('.mode-btn[data-mode="annotation"]')
-            p.wait_for_load_state("networkidle")
-        _choisir(a, "#perso-input", "#perso-suggest", "Zed QA")
-        assert _attendre(montre, zed) == zed
-        _choisir(b, "#perso-input", "#perso-suggest", "Yann QA")
-        bandeau = b.locator("#bandeau-conflit")
-        expect(bandeau).to_be_visible(timeout=15000)
-        expect(bandeau.locator(".bandeau-titre")).to_contain_text(
-            "Personnage montré modifié par Alice Dupont")
-        expect(bandeau.locator(".bandeau-version")).to_have_text("Zed QA")
-        assert montre() == zed
-        bandeau.get_by_role("button", name="Garder l'autre", exact=True).click()
-        expect(bandeau).to_have_count(0)
-        expect(b.locator("#perso-current")).to_contain_text("Zed QA")
-        assert montre() == zed
-    finally:
-        ctx_a.close()
-        ctx_b.close()
-
-
-@pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_deux_choix_de_locuteur_coup_sur_coup_ne_se_contredisent_pas(page, decor):
-    """Relecture de CONC-4 : deux choix faits avant que le premier soit revenu partaient
-    tous deux avec la valeur vue d'AVANT, et le second recevait un 409 contre soi-même. Ils
-    partent désormais l'un après l'autre : le second déclare le personnage du premier."""
-    s = decor
-    zed, yann = _personnages_qa(s["base"], "Zed QA", "Yann QA")
-    locuteur = lambda: _lien_en_base(s["base"], s["bulle"], "locuteur", "locuteur")  # noqa: E731
-    ctx_b, b = _contexte(page, BOB)
-    try:
-        _ouvrir(b, s["url_bulle"], "annotation")
-        retenue = _Retenue(b, "**/api/regions/*/locuteur")
-        _choisir(b, "#loc-input", "#loc-suggest", "Zed QA")
-        assert retenue.attendre(1) == 1
-        _choisir(b, "#loc-input", "#loc-suggest", "Yann QA")
-        b.wait_for_timeout(500)
-        retenue.liberer()
-        assert _attendre(locuteur, yann, page=b) == yann
-        b.wait_for_load_state("networkidle")
-        expect(b.locator("#bandeau-conflit")).to_have_count(0)
-        expect(b.locator("#loc-current")).to_contain_text("Yann QA")
-        corps = [json.loads(d) for m, u, d in b.envois if m == "PUT" and u.endswith("/locuteur")]
-        assert corps == [{"personnage_id": zed, "personnage_vu": None},
-                         {"personnage_id": yann, "personnage_vu": zed}], corps
-    finally:
-        ctx_b.close()
+# Ils se jouaient ici dans le mode Annotation de l'Atelier, parti au basculement d'ANN-7. Ils
+# s'écrivent dans la page Annotation, où leurs gardes vivent : le choix refusé, sa version et
+# « Remplacer par la mienne » (`test_e2e_annotation_page.test_un_locuteur_change_ailleurs_
+# ouvre_le_bandeau`, `…test_un_personnage_change_ailleurs_ouvre_le_bandeau`), le retrait
+# refusé et « Garder l'autre », deux choix coup sur coup
+# (`test_e2e_annotation_locuteur.py`).

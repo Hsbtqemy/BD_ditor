@@ -1,20 +1,22 @@
-"""CONC-3 — un enregistrement d'annotation ne réécrit que ce qu'il change.
+"""L'annotation d'une région : la NOTE, et elle seule (CONC-3 ; ANN-7, le basculement).
 
-Mesuré le 2026-09-16 à deux navigateurs sur la même bulle : l'Atelier renvoyait la note ET
-les tags chargés à la sélection, si bien que la note de A effaçait en silence le tag que B
-venait de poser, et que le tag suivant de B effaçait la note de A. Ces tests tiennent la
-route (`main.put_annotation`) et l'annulation (`undo._inverser_annotation`) ; la garde à
-deux navigateurs vit dans `tests/test_e2e_annotation_a_deux.py`.
+CONC-3 — mesuré le 2026-09-16 à deux navigateurs sur la même bulle : l'Atelier renvoyait la
+note ET les tags chargés à la sélection, si bien que la note de A effaçait en silence le tag
+que B venait de poser. Les tags sont partis avec le basculement d'ANN-7 : l'annotation ne
+porte plus que la note, et `PUT …/annotation` refuse par un 422 nommé les champs d'hier
+(`tags`, `tags_ajoutes`, `tags_retires`, I7) au lieu de les ignorer — un écran d'hier
+croirait avoir posé ses tags. Ce que les tables du vocabulaire portent encore jusqu'à la
+migration (posé ici en base, `conftest.poser_tags`) n'est ni montré ni réécrit.
 """
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-import autorisation  # noqa: E402
-import main  # noqa: E402
-from conftest import direct_query  # noqa: E402
+from conftest import direct_query, poser_tags  # noqa: E402
 
 
 def _bulle(client, planche_id):
@@ -24,114 +26,75 @@ def _bulle(client, planche_id):
     return rep.json()["id"]
 
 
-def _etat(client, rid, headers=None):
-    a = client.get(f"/api/regions/{rid}/annotation", headers=headers).json()
-    return a["note"], {t["label"] for t in a["tags"]}
-
-
 def _nb_actes(db_path, rid):
     return direct_query(db_path, "SELECT COUNT(*) AS n FROM evenement "
                                  "WHERE cible_table = 'annotations' AND cible_id = ?",
                         (rid,))[0]["n"]
 
 
-def test_la_note_seule_ne_touche_pas_aux_tags_poses_entre_temps(client, planche):
-    """La mesure 1 de CONC-3, au niveau de la route : B ajoute un tag, A n'envoie que sa note."""
+def test_l_annotation_ne_rend_plus_que_la_note(client, planche, db_path):
     rid = _bulle(client, planche["id"])
-    client.put(f"/api/regions/{rid}/annotation", json={"note": "", "tags": ["depart"]})
-
-    rep = client.put(f"/api/regions/{rid}/annotation", json={"tags_ajoutes": ["tag-de-b"]})
+    poser_tags(db_path, rid, ["d-hier"])
+    rep = client.put(f"/api/regions/{rid}/annotation", json={"note": "une note"})
     assert rep.status_code == 200, rep.text
-    rep = client.put(f"/api/regions/{rid}/annotation", json={"note": "note de A"})
-    assert rep.status_code == 200, rep.text
-
-    assert _etat(client, rid) == ("note de A", {"depart", "tag-de-b"}), (
-        "la note seule a réécrit la liste des tags")
+    assert "tags" not in rep.json()
+    lue = client.get(f"/api/regions/{rid}/annotation").json()
+    assert lue["note"] == "une note" and "tags" not in lue
 
 
-def test_un_tag_ajoute_ne_touche_pas_a_la_note(client, planche):
-    """Le sens inverse, mesuré aussi : le tag de B effaçait la note de A."""
+@pytest.mark.parametrize("champ", ["tags", "tags_ajoutes", "tags_retires"])
+def test_les_champs_d_hier_sont_refuses_en_le_disant(client, planche, db_path, champ):
+    """I7 (Hugo, 2026-11-05) — refusés par un 422 qui dit que les tags n'existent plus, et
+    rien n'est écrit, la note envoyée avec eux non plus."""
     rid = _bulle(client, planche["id"])
-    client.put(f"/api/regions/{rid}/annotation", json={"note": "note de A"})
-    rep = client.put(f"/api/regions/{rid}/annotation", json={"tags_ajoutes": ["tag-de-b"]})
-    assert rep.status_code == 200, rep.text
-    assert _etat(client, rid) == ("note de A", {"tag-de-b"})
+    rep = client.put(f"/api/regions/{rid}/annotation", json={"note": "n", champ: ["x"]})
+    assert rep.status_code == 422, rep.text
+    assert "n'existent plus" in rep.json()["detail"] and champ in rep.json()["detail"]
+    assert not direct_query(db_path, "SELECT id FROM annotations WHERE region_id = ?", (rid,))
+    assert _nb_actes(db_path, rid) == 0
 
 
-def test_retirer_ne_retire_que_le_tag_nomme(client, planche, db_path):
+def test_une_liste_vide_d_hier_est_refusee_aussi(client, planche):
+    """`tags: []` est un champ d'hier comme un autre : l'accepter dirait à l'écran qui
+    l'envoie qu'il a vidé des tags."""
     rid = _bulle(client, planche["id"])
-    client.put(f"/api/regions/{rid}/annotation", json={"note": "n", "tags": ["x", "y"]})
-    rep = client.put(f"/api/regions/{rid}/annotation", json={"tags_retires": ["X"]})
-    assert rep.status_code == 200, rep.text
-    assert _etat(client, rid) == ("n", {"y"}), "le libellé se normalise comme à l'ajout"
+    rep = client.put(f"/api/regions/{rid}/annotation", json={"note": "n", "tags": []})
+    assert rep.status_code == 422, rep.text
 
-    actes = _nb_actes(db_path, rid)
-    rep = client.put(f"/api/regions/{rid}/annotation", json={"tags_retires": ["absent"]})
+
+def test_vider_la_note_supprime_l_annotation(client, planche, db_path):
+    """Une annotation sans note n'a plus rien à porter : elle part, et ce qu'elle portait
+    d'hier avec elle (la suppression est journalisée, son instantané garde tout)."""
+    rid = _bulle(client, planche["id"])
+    poser_tags(db_path, rid, ["seul"], note="une note")
+    rep = client.put(f"/api/regions/{rid}/annotation", json={"note": "   "})
     assert rep.status_code == 200, rep.text
-    assert _nb_actes(db_path, rid) == actes, (
-        "un enregistrement qui ne change rien a été journalisé : Ctrl+Z ne déferait rien de visible")
+    assert rep.json()["note"] is None
+    assert not direct_query(db_path, "SELECT id FROM annotations WHERE region_id = ?", (rid,))
+    assert _nb_actes(db_path, rid) == 1
 
 
 def test_une_requete_vide_ne_change_rien(client, planche, db_path):
     rid = _bulle(client, planche["id"])
-    client.put(f"/api/regions/{rid}/annotation", json={"note": "garder", "tags": ["t"]})
+    client.put(f"/api/regions/{rid}/annotation", json={"note": "garder"})
     actes = _nb_actes(db_path, rid)
     rep = client.put(f"/api/regions/{rid}/annotation", json={})
     assert rep.status_code == 200, rep.text
-    assert _etat(client, rid) == ("garder", {"t"})
+    assert rep.json()["note"] == "garder"
     assert _nb_actes(db_path, rid) == actes
 
 
-def test_la_liste_entiere_et_les_differences_ensemble_sont_refusees(client, planche):
+def test_la_meme_note_ne_se_journalise_pas(client, planche, db_path):
+    """Un enregistrement qui ne change rien ne devient pas un Ctrl+Z qui ne défait rien."""
     rid = _bulle(client, planche["id"])
-    rep = client.put(f"/api/regions/{rid}/annotation",
-                     json={"tags": ["a"], "tags_ajoutes": ["b"]})
-    assert rep.status_code == 422, rep.text
-    assert "tags_ajoutes" in rep.json()["detail"]
+    client.put(f"/api/regions/{rid}/annotation", json={"note": "même"})
+    actes = _nb_actes(db_path, rid)
+    client.put(f"/api/regions/{rid}/annotation", json={"note": "même"})
+    assert _nb_actes(db_path, rid) == actes
 
 
-def test_la_liste_entiere_remplace_toujours(client, planche):
-    """Les appelants qui envoient `note` et `tags` ensemble gardent leur sens d'avant."""
+def test_vider_une_note_absente_ne_fait_rien(client, planche, db_path):
     rid = _bulle(client, planche["id"])
-    client.put(f"/api/regions/{rid}/annotation", json={"note": "a", "tags": ["x", "y"]})
-    client.put(f"/api/regions/{rid}/annotation", json={"note": "b", "tags": ["z"]})
-    assert _etat(client, rid) == ("b", {"z"})
-
-
-def test_retirer_le_dernier_tag_d_une_annotation_sans_note_la_supprime(client, planche, db_path):
-    """La règle « vide = supprimée » vaut aussi quand on y arrive par différence."""
-    rid = _bulle(client, planche["id"])
-    client.put(f"/api/regions/{rid}/annotation", json={"tags_ajoutes": ["seul"]})
-    # Sans ce témoin, le test passait sur l'ancienne route, qui ignorait `tags_ajoutes` et
-    # ne créait donc jamais l'annotation dont il vérifie la disparition.
-    assert direct_query(db_path, "SELECT id FROM annotations WHERE region_id = ?", (rid,))
-    client.put(f"/api/regions/{rid}/annotation", json={"tags_retires": ["seul"]})
-    assert not direct_query(db_path, "SELECT id FROM annotations WHERE region_id = ?", (rid,))
-
-
-def test_annuler_sa_note_ne_defait_pas_le_tag_de_l_autre(client, planche, db_path, monkeypatch):
-    """L'annulation restaurait l'instantané AVANT entier : annuler la note de A rendait la
-    liste de tags d'avant, donc effaçait le tag posé par B entre-temps. Elle défait
-    désormais ce que l'acte a changé, et rien d'autre — dans les deux sens."""
-    rid = _bulle(client, planche["id"])
-    client.put(f"/api/regions/{rid}/annotation", json={"note": "avant", "tags": ["depart"]})
-
-    monkeypatch.setattr(main, "AUTH_PROXY", True)
-    monkeypatch.setattr(autorisation, "AUTH_PROXY", True)
-    a = {"Remote-User": "personne-a", "Remote-Groups": "bd-admins"}
-    b = {"Remote-User": "personne-b", "Remote-Groups": "bd-admins"}
-
-    assert client.put(f"/api/regions/{rid}/annotation", json={"note": "note de A"},
-                      headers=a).status_code == 200
-    assert client.put(f"/api/regions/{rid}/annotation", json={"tags_ajoutes": ["tag-de-b"]},
-                      headers=b).status_code == 200
-
-    rep = client.post("/api/undo", headers=a)
+    rep = client.put(f"/api/regions/{rid}/annotation", json={"note": ""})
     assert rep.status_code == 200, rep.text
-    assert _etat(client, rid, a) == ("avant", {"depart", "tag-de-b"}), (
-        "annuler la note de A a emporté le tag de B")
-
-    rep = client.post("/api/undo", headers=b)
-    assert rep.status_code == 200, rep.text
-    assert _etat(client, rid, b) == ("avant", {"depart"}), (
-        "annuler le tag de B n'a pas rendu exactement l'état d'avant son geste")
+    assert _nb_actes(db_path, rid) == 0

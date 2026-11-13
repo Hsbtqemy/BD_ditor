@@ -197,8 +197,8 @@ def test_resegmentation_transfere_annotation_case(client, planche, monkeypatch):
     client.post(f"/api/planches/{planche['id']}/segmenter")
     case = next(x for x in client.get(
         f"/api/planches/{planche['id']}/regions").json() if x["type"] == "case")
-    client.put(f"/api/regions/{case['id']}/annotation",
-               json={"note": "SCENENUIT", "tags": ["nuit"]})
+    client.put(f"/api/regions/{case['id']}/annotation", json={"note": "SCENENUIT"})
+    import database
     # re-segmentation : une nouvelle case recouvrant l'ancienne → annotation transférée
     monkeypatch.setattr(seg, "run_kumiko",
                         lambda path: {"size": [400, 500], "panels": [[0, 0, 400, 480]]})
@@ -207,9 +207,36 @@ def test_resegmentation_transfere_annotation_case(client, planche, monkeypatch):
     new_case = next(x for x in client.get(
         f"/api/planches/{planche['id']}/regions").json() if x["type"] == "case")
     ann = client.get(f"/api/regions/{new_case['id']}/annotation").json()
-    assert ann["note"] == "SCENENUIT" and "nuit" in [t["label"] for t in ann["tags"]]
-    res2 = client.get("/api/recherche", params={"q": "nuit"}).json()["results"]
+    assert ann["note"] == "SCENENUIT"
+    res2 = client.get("/api/recherche", params={"q": "SCENENUIT"}).json()["results"]
     assert any(r["region_id"] == new_case["id"] for r in res2)   # cherchable, sur la nouvelle case
+
+
+def test_resegmentation_ne_garde_pas_une_case_aux_seuls_tags_d_hier(client, planche,
+                                                                    monkeypatch):
+    """ANN-7, le basculement (relecture croisée du commit des coutures, constat 2) : une
+    case que la nouvelle segmentation ne recouvre pas, et qui ne porte qu'une ligne
+    d'annotation sans note (ce que laissait une ligne aux seuls tags d'hier, que la v39
+    retire ; une base retouchée peut en porter), n'est plus du travail — elle part, comme une
+    case nue, au lieu d'être conservée. Le décor est relu."""
+    import database
+    from conftest import direct_query
+    monkeypatch.setattr("main.kumiko_available", lambda: True)
+    monkeypatch.setattr(seg, "run_kumiko",
+                        lambda path: {"size": [400, 500], "panels": [[0, 0, 50, 50]]})
+    client.post(f"/api/planches/{planche['id']}/segmenter")
+    case = next(x for x in client.get(
+        f"/api/planches/{planche['id']}/regions").json() if x["type"] == "case")
+    with database.connect() as c:
+        c.execute("INSERT INTO annotations (region_id, note) VALUES (?, NULL)", (case["id"],))
+    assert direct_query(database.DB_PATH, "SELECT note FROM annotations WHERE region_id = ?",
+                        (case["id"],)) == [{"note": None}]
+    monkeypatch.setattr(seg, "run_kumiko",
+                        lambda path: {"size": [400, 500], "panels": [[300, 400, 50, 50]]})
+    res = client.post(f"/api/planches/{planche['id']}/segmenter").json()
+    assert res["annotations_transferees"] == 0 and res["annotations_preservees"] == 0
+    regions = client.get(f"/api/planches/{planche['id']}/regions").json()
+    assert not any(x["id"] == case["id"] for x in regions)
 
 
 def test_resegmentation_conserve_case_annotee_sans_recouvrement(client, planche, monkeypatch):
@@ -221,8 +248,7 @@ def test_resegmentation_conserve_case_annotee_sans_recouvrement(client, planche,
     client.post(f"/api/planches/{planche['id']}/segmenter")
     case = next(x for x in client.get(
         f"/api/planches/{planche['id']}/regions").json() if x["type"] == "case")
-    client.put(f"/api/regions/{case['id']}/annotation",
-               json={"note": "ZONEORPHELINE", "tags": ["isole"]})
+    client.put(f"/api/regions/{case['id']}/annotation", json={"note": "ZONEORPHELINE"})
     # re-segmentation : la nouvelle case ne recouvre PAS l'ancienne case annotée
     monkeypatch.setattr(seg, "run_kumiko",
                         lambda path: {"size": [400, 500], "panels": [[300, 400, 50, 50]]})
@@ -342,8 +368,8 @@ def test_resegmentation_s2_fusion_conserve_les_deux(client, planche, monkeypatch
     cases = [x for x in client.get(
         f"/api/planches/{planche['id']}/regions").json() if x["type"] == "case"]
     assert len(cases) == 2
-    client.put(f"/api/regions/{cases[0]['id']}/annotation", json={"note": "CASEHAUT", "tags": []})
-    client.put(f"/api/regions/{cases[1]['id']}/annotation", json={"note": "CASEBAS", "tags": []})
+    client.put(f"/api/regions/{cases[0]['id']}/annotation", json={"note": "CASEHAUT"})
+    client.put(f"/api/regions/{cases[1]['id']}/annotation", json={"note": "CASEBAS"})
     # re-segmentation : UNE seule case couvrant les deux (fusion)
     monkeypatch.setattr(seg, "run_kumiko", lambda path: {
         "size": [400, 500], "panels": [[0, 0, 400, 500]]})

@@ -1,4 +1,7 @@
-"""Routes d'analyse linguistique — filtre par tag (ANA-1) et scope hiérarchique.
+"""Routes d'analyse linguistique — filtres, concordance, croisement, exports.
+
+Les filtres par tag (ANA-1), par attribut et la portée héritée de la case sont partis avec
+le basculement d'ANN-7 ; leurs anciens paramètres sont refusés par un 422 nommé (I7).
 
 Les tokens sont semés EN DIRECT dans la table `tokens` (via une connexion SQLite
 séparée) plutôt que par le NLP : la couche spaCy est optionnelle et souvent absente
@@ -8,14 +11,12 @@ les efface quand spaCy est absent). Couvre aussi la dette QA-3 (cf. docs/backlog
 """
 import sqlite3
 
+import pytest
+
 
 def _region(client, planche_id, type="bulle"):
     return client.post(f"/api/planches/{planche_id}/regions",
                        json={"type": type, "x": 10, "y": 10, "w": 50, "h": 40}).json()["id"]
-
-
-def _tags(client, region_id, tags):
-    client.put(f"/api/regions/{region_id}/annotation", json={"note": "", "tags": tags})
 
 
 def _seed(db_path, region_id, tokens, parent_id=None):
@@ -30,83 +31,6 @@ def _seed(db_path, region_id, tokens, parent_id=None):
         conn.commit()
     finally:
         conn.close()
-
-
-def test_frequences_filtre_par_tag(client, album, planche, db_path):
-    a, b = _region(client, planche["id"]), _region(client, planche["id"])
-    _tags(client, a, ["colère"])
-    _tags(client, b, ["joie"])
-    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
-    _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
-
-    tout = client.get("/api/analyse/frequences", params={"champ": "lemme"}).json()
-    assert {"crier", "rire"} <= {r["lemme"] for r in tout["results"]}
-
-    filtre = client.get("/api/analyse/frequences",
-                        params={"champ": "lemme", "tags": "colère"}).json()
-    assert {r["lemme"] for r in filtre["results"]} == {"crier"}
-
-
-def test_concordance_filtre_par_tag(client, album, planche, db_path):
-    a, b = _region(client, planche["id"]), _region(client, planche["id"])
-    _tags(client, a, ["colère"])
-    _tags(client, b, ["joie"])
-    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
-    _seed(db_path, b, [(0, "CRIE", "crier", "VERB", "")])
-
-    assert client.get("/api/analyse/concordance",
-                      params={"lemme": "crier"}).json()["count"] == 2
-    r = client.get("/api/analyse/concordance",
-                   params={"lemme": "crier", "tags": "colère"}).json()
-    assert r["count"] == 1 and r["results"][0]["region_id"] == a
-
-
-def test_comparaison_par_tags(client, album, planche, db_path):
-    a, b = _region(client, planche["id"]), _region(client, planche["id"])
-    _tags(client, a, ["colère"])
-    _tags(client, b, ["joie"])
-    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
-    _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
-
-    res = client.get("/api/analyse/comparaison",
-                     params={"champ": "lemme", "a_tags": "colère", "b_tags": "joie"}).json()
-    assert "crier" in {x["valeur"] for x in res["sur_a"]}
-    assert "rire" in {x["valeur"] for x in res["sur_b"]}
-
-
-def test_tag_scope_herite_vs_propre(client, album, planche, db_path):
-    """Un tag posé sur la CASE doit (hérité) ou non (propre) atteindre les tokens
-    de sa bulle enfant."""
-    case = _region(client, planche["id"], type="case")
-    bulle = _region(client, planche["id"])
-    _tags(client, case, ["scene1"])
-    _seed(db_path, bulle, [(0, "PARLE", "parler", "VERB", "")], parent_id=case)
-
-    herite = client.get("/api/analyse/frequences",
-                        params={"champ": "lemme", "tags": "scene1"}).json()
-    assert {r["lemme"] for r in herite["results"]} == {"parler"}
-
-    propre = client.get("/api/analyse/frequences",
-                        params={"champ": "lemme", "tags": "scene1", "tag_scope": "propre"}).json()
-    assert propre["results"] == []
-
-
-def test_recherche_tag_scope(client, album, planche, db_path):
-    """Cohérence Recherche ↔ Analyse : un tag posé sur la CASE atteint sa bulle
-    enfant en `herite` (drill depuis Exploration), pas en `propre` (défaut)."""
-    case = _region(client, planche["id"], type="case")
-    bulle = _region(client, planche["id"])
-    _tags(client, case, ["scene1"])
-    conn = sqlite3.connect(db_path)
-    conn.execute("UPDATE regions SET parent_id = ? WHERE id = ?", (case, bulle))
-    conn.commit(); conn.close()
-
-    propre = client.get("/api/recherche", params={"tags": "scene1"}).json()
-    assert {r["region_id"] for r in propre["results"]} == {case}   # la case seule
-
-    herite = client.get("/api/recherche",
-                        params={"tags": "scene1", "tag_scope": "herite"}).json()
-    assert {r["region_id"] for r in herite["results"]} == {case, bulle}   # + la bulle enfant
 
 
 # --------------------------------------------------------------------------- #
@@ -127,32 +51,6 @@ def test_frequences_par_locuteur(client, album, planche, db_path):
     assert {r["lemme"] for r in res["results"]} == {"crier"}
 
 
-def test_frequences_par_attribut_du_locuteur(client, album, planche, db_path):
-    a, b = _region(client, planche["id"]), _region(client, planche["id"])
-    pa, pb = _perso(client, "A"), _perso(client, "B")
-    client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": pa})
-    client.put(f"/api/regions/{b}/locuteur", json={"personnage_id": pb})
-    d = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
-    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "rural"}).json()["id"]
-    client.put(f"/api/personnages/{pa}/attributs", json={"valeur_id": v})   # A est « rural »
-    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
-    _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
-    res = client.get("/api/analyse/frequences", params={"champ": "lemme", "attributs": v}).json()
-    assert {r["lemme"] for r in res["results"]} == {"crier"}
-
-
-def test_frequences_par_situation_de_case(client, album, planche, db_path):
-    """L'attribut de SITUATION est posé sur la case ; la bulle enfant en hérite."""
-    case = _region(client, planche["id"], type="case")
-    bulle = _region(client, planche["id"])
-    d = client.post("/api/attributs/dimensions", json={"cible": "case", "nom": "formalite"}).json()["id"]
-    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "soutenu"}).json()["id"]
-    client.put(f"/api/regions/{case}/attributs", json={"valeur_id": v})
-    _seed(db_path, bulle, [(0, "PARLE", "parler", "VERB", "")], parent_id=case)
-    res = client.get("/api/analyse/frequences", params={"champ": "lemme", "attributs": v}).json()
-    assert {r["lemme"] for r in res["results"]} == {"parler"}
-
-
 def test_comparaison_par_locuteur(client, album, planche, db_path):
     a, b = _region(client, planche["id"]), _region(client, planche["id"])
     pa, pb = _perso(client, "A"), _perso(client, "B")
@@ -164,37 +62,6 @@ def test_comparaison_par_locuteur(client, album, planche, db_path):
                      params={"champ": "lemme", "a_personnage": pa, "b_personnage": pb}).json()
     assert "crier" in {x["valeur"] for x in res["sur_a"]}
     assert "rire" in {x["valeur"] for x in res["sur_b"]}
-
-
-def test_requete_these_rural_x_soutenu(client, album, planche, db_path):
-    """LA requête-thèse : « lemmes des personnages RURAUX dans les scènes SOUTENUES ».
-    Combine un attribut de LOCUTEUR et un attribut de SITUATION (ET). Deux contrôles
-    (rural mais scène familière ; scène soutenue mais locuteur citadin) sont exclus."""
-    do = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
-    rural = client.post(f"/api/attributs/dimensions/{do}/valeurs", json={"valeur": "rural"}).json()["id"]
-    df = client.post("/api/attributs/dimensions", json={"cible": "case", "nom": "formalite"}).json()["id"]
-    soutenu = client.post(f"/api/attributs/dimensions/{df}/valeurs", json={"valeur": "soutenu"}).json()["id"]
-    ru, ci = _perso(client, "Paysan"), _perso(client, "Citadin")
-    client.put(f"/api/personnages/{ru}/attributs", json={"valeur_id": rural})
-
-    c_sout = _region(client, planche["id"], type="case")     # scène soutenue
-    client.put(f"/api/regions/{c_sout}/attributs", json={"valeur_id": soutenu})
-    c_fam = _region(client, planche["id"], type="case")      # scène familière (non taguée)
-
-    b_cible = _region(client, planche["id"])   # rural × soutenu  -> ATTENDU
-    client.put(f"/api/regions/{b_cible}/locuteur", json={"personnage_id": ru})
-    b_ctrl1 = _region(client, planche["id"])   # rural × familier -> exclu
-    client.put(f"/api/regions/{b_ctrl1}/locuteur", json={"personnage_id": ru})
-    b_ctrl2 = _region(client, planche["id"])   # citadin × soutenu -> exclu
-    client.put(f"/api/regions/{b_ctrl2}/locuteur", json={"personnage_id": ci})
-
-    _seed(db_path, b_cible, [(0, "ESPERE", "espérer", "VERB", "")], parent_id=c_sout)
-    _seed(db_path, b_ctrl1, [(0, "GUEULE", "gueuler", "VERB", "")], parent_id=c_fam)
-    _seed(db_path, b_ctrl2, [(0, "DEVISE", "deviser", "VERB", "")], parent_id=c_sout)
-
-    res = client.get("/api/analyse/frequences",
-                     params={"champ": "lemme", "attributs": [rural, soutenu]}).json()
-    assert {r["lemme"] for r in res["results"]} == {"espérer"}
 
 
 # --------------------------------------------------------------------------- #
@@ -225,30 +92,77 @@ def test_concordance_sans_pivot_grammatical(client, album, planche, db_path):
 def test_facette_id_inconnu_404(client, album, planche):
     assert client.get("/api/analyse/frequences",
                       params={"champ": "lemme", "personnage": 9999}).status_code == 404
-    assert client.get("/api/analyse/frequences",
-                      params={"champ": "lemme", "attributs": 9999}).status_code == 404
 
 
-def test_recherche_par_personnage_et_attribut(client, album, planche, db_path):
-    """Cohérence du drill : Recherche filtre aussi par locuteur et par attribut."""
+def test_recherche_par_personnage(client, album, planche, db_path):
+    """Cohérence du drill : la Recherche filtre aussi par locuteur."""
     a, b = _region(client, planche["id"]), _region(client, planche["id"])
     pa, pb = _perso(client, "A"), _perso(client, "B")
     client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": pa})
     client.put(f"/api/regions/{b}/locuteur", json={"personnage_id": pb})
     r = client.get("/api/recherche", params={"personnage": pa}).json()
     assert {x["region_id"] for x in r["results"]} == {a}
-    d = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
-    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "rural"}).json()["id"]
-    client.put(f"/api/personnages/{pa}/attributs", json={"valeur_id": v})
-    r = client.get("/api/recherche", params={"attributs": v}).json()
-    assert {x["region_id"] for x in r["results"]} == {a}
 
 
 def test_concordance_critere_vide_422(client, album, planche):
-    """Régression : un tag vide passe le garde brut mais ne produit aucune clause →
-    422 (et non un « WHERE » vide → 500)."""
-    assert client.get("/api/analyse/concordance", params={"tags": " "}).status_code == 422
-    assert client.get("/api/analyse/concordance", params={"tags": ""}).status_code == 422
+    """Régression : un critère qui passe le garde brut mais ne produit aucune clause (un
+    lemme réduit à « * ») → 422, et non un « WHERE » vide → 500. Le cas d'origine était un
+    tag vide."""
+    rep = client.get("/api/analyse/concordance", params={"lemme": "*"})
+    assert rep.status_code == 422, rep.text
+
+
+# --------------------------------------------------------------------------- #
+# ANN-7, I7 — les anciens paramètres du vocabulaire, refusés en le disant
+# --------------------------------------------------------------------------- #
+# FastAPI ignore un paramètre inconnu : un lien d'hier filtré par tag rendrait le corpus
+# entier en ayant l'air filtré. Chaque route qui les acceptait les refuse par un 422 nommé.
+_ROUTES_FILTREES = [
+    ("/api/analyse/frequences", {"champ": "lemme"}),
+    ("/api/analyse/lemmes", {}),
+    ("/api/analyse/frequences.csv", {"champ": "lemme"}),
+    ("/api/analyse/concordance", {"lemme": "crier"}),
+    ("/api/analyse/concordance.csv", {"lemme": "crier"}),
+    ("/api/analyse/comparaison", {"champ": "lemme"}),
+    ("/api/analyse/comparaison.csv", {"champ": "lemme"}),
+    ("/api/analyse/croisement", {"axe_x": "pos", "axe_y": "type"}),
+    ("/api/analyse/croisement.csv", {"axe_x": "pos", "axe_y": "type"}),
+    ("/api/recherche", {"q": "x"}),
+    ("/api/recherche/export.csv", {"q": "x"}),
+]
+
+
+@pytest.mark.parametrize("route,base", _ROUTES_FILTREES, ids=[r for r, _ in _ROUTES_FILTREES])
+@pytest.mark.parametrize("ancien", ["tags", "tag_scope", "attributs", "a_tags", "b_tags",
+                                    "a_attributs", "b_attributs"])
+def test_un_ancien_parametre_du_vocabulaire_est_refuse_en_le_disant(client, album, route,
+                                                                      base, ancien):
+    rep = client.get(route, params={**base, ancien: "1"})
+    assert rep.status_code == 422, rep.text
+    assert "n'existent plus" in rep.json()["detail"] and ancien in rep.json()["detail"]
+
+
+def test_deux_anciens_parametres_sont_nommes_tous_deux(client, album):
+    rep = client.get("/api/recherche", params={"q": "x", "tags": "1", "attributs": "2"})
+    assert rep.status_code == 422, rep.text
+    assert rep.json()["detail"].startswith(
+        "Les tags et les attributs n'existent plus : « attributs », « tags » ne sont plus "
+        "acceptés."), rep.json()["detail"]
+
+
+@pytest.mark.parametrize("route,base", _ROUTES_FILTREES, ids=[r for r, _ in _ROUTES_FILTREES])
+def test_sans_ancien_parametre_la_route_repond(client, album, route, base):
+    """Le témoin : sans paramètre d'hier, aucune de ces routes ne refuse par le 422 des
+    tags — sans quoi le test ci-dessus passerait sur une route qui refuse tout."""
+    rep = client.get(route, params=base)
+    assert "n'existent plus" not in rep.text
+
+
+@pytest.mark.parametrize("axe", ["tag", "dim:3"])
+def test_un_axe_d_hier_du_croisement_est_refuse_en_le_disant(client, album, axe):
+    rep = client.get("/api/analyse/croisement", params={"axe_x": axe, "axe_y": "pos"})
+    assert rep.status_code == 422, rep.text
+    assert "n'existent plus" in rep.json()["detail"]
 
 
 def test_concordance_expose_le_contexte_kwic(client, album, planche, db_path):
@@ -274,78 +188,9 @@ def test_concordance_expose_le_contexte_kwic(client, album, planche, db_path):
     assert row["citation"] and row["citation"]["texte"]   # citation dérivée
 
 
-# --------------------------------------------------------------------------- #
-# Croisements 2D (ANA-2 / B3)
-# --------------------------------------------------------------------------- #
-def test_croisement_tag_x_pos(client, album, planche, db_path):
-    """Matrice tag × POS : marges = fréquences réelles, cellules = comptes, total cohérent."""
-    a, b = _region(client, planche["id"]), _region(client, planche["id"])
-    _tags(client, a, ["colère"])
-    _tags(client, b, ["joie"])
-    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", ""), (1, "FORT", "fort", "ADJ", "")])
-    _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
-
-    r = client.get("/api/analyse/croisement", params={"axe_x": "tag", "axe_y": "pos"}).json()
-    assert r["filtre_x"] == "tags" and r["filtre_y"] == "pos"       # noms de drill
-    marges = {x["libelle"]: x["total"] for x in r["x"]}
-    assert marges["colère"] == 2 and marges["joie"] == 1
-    xi = next(i for i, x in enumerate(r["x"]) if x["libelle"] == "colère")
-    cellules = {r["y"][j]["libelle"]: r["grille"][xi][j] for j in range(len(r["y"]))}
-    assert cellules.get("VERB") == 1 and cellules.get("ADJ") == 1
-    assert r["total"] == 3
-
-
-def test_croisement_axe_dimension_porte_la_cle_de_drill(client, album, planche, db_path):
-    """Axe dimension (valeur via la CASE) : la clé de cellule est le valeur_id (pour drill
-    par `attributs`), le libellé la valeur, et l'axe est nommé par la dimension."""
-    a = _region(client, planche["id"], type="case")
-    dim = client.post("/api/attributs/dimensions",
-                      json={"cible": "case", "nom": "valence"}).json()["id"]
-    val = client.post(f"/api/attributs/dimensions/{dim}/valeurs",
-                      json={"valeur": "positive"}).json()["id"]
-    conn = sqlite3.connect(db_path)
-    conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)", (a, val))
-    conn.commit()
-    conn.close()
-    _seed(db_path, a, [(0, "MOT", "mot", "NOUN", "")])
-
-    r = client.get("/api/analyse/croisement",
-                   params={"axe_x": f"dim:{dim}", "axe_y": "pos"}).json()
-    assert r["filtre_x"] == "attributs" and r["libelle_x"] == "valence"
-    x0 = next(x for x in r["x"] if x["libelle"] == "positive")
-    assert x0["cle"] == val and x0["total"] == 1
-
-
-def test_croisement_dimension_sans_faux_vide(client, album, planche, db_path):
-    """Régression : un locuteur portant des valeurs de DEUX dimensions ne doit pas produire
-    une fausse ligne « (vide) » quand on croise par UNE dimension — le filtre de dimension
-    porte sur l'affectation, pas seulement sur la valeur jointe."""
-    a = _region(client, planche["id"])
-    p = _perso(client, "Zorglub")
-    client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": p})
-    d1 = client.post("/api/attributs/dimensions",
-                     json={"cible": "personnage", "nom": "genre"}).json()["id"]
-    v1 = client.post(f"/api/attributs/dimensions/{d1}/valeurs",
-                     json={"valeur": "homme"}).json()["id"]
-    d2 = client.post("/api/attributs/dimensions",
-                     json={"cible": "personnage", "nom": "origine"}).json()["id"]
-    v2 = client.post(f"/api/attributs/dimensions/{d2}/valeurs",
-                     json={"valeur": "minorité"}).json()["id"]
-    client.put(f"/api/personnages/{p}/attributs", json={"valeur_id": v1})
-    client.put(f"/api/personnages/{p}/attributs", json={"valeur_id": v2})
-    _seed(db_path, a, [(0, "MOT", "mot", "NOUN", "")])
-
-    r = client.get("/api/analyse/croisement",
-                   params={"axe_x": f"dim:{d1}", "axe_y": "pos"}).json()
-    assert {x["libelle"]: x["total"] for x in r["x"]} == {"homme": 1}   # aucune « (vide) »
-    assert r["total"] == 1
-
-
 def test_croisement_axe_inconnu_422(client, album, planche):
-    assert client.get("/api/analyse/croisement",
-                      params={"axe_x": "farfelu", "axe_y": "pos"}).status_code == 422
-    assert client.get("/api/analyse/croisement",
-                      params={"axe_x": "dim:99999", "axe_y": "pos"}).status_code == 404
+    rep = client.get("/api/analyse/croisement", params={"axe_x": "farfelu", "axe_y": "pos"})
+    assert rep.status_code == 422 and "Axe inconnu" in rep.json()["detail"]
 
 
 # --------------------------------------------------------------------------- #
@@ -521,47 +366,38 @@ def test_le_nom_du_fichier_dit_le_prefixe(client, album, planche, db_path):
 
 
 # --------------------------------------------------------------------------- #
-# ANA-6 — une ligne de concordance porte ses tags et sa note
+# ANA-6 — une ligne de concordance porte sa note (ses tags sont partis : ANN-7)
 # --------------------------------------------------------------------------- #
-def test_une_ligne_porte_ses_tags_propres_puis_herites_et_sa_note(client, album, planche,
-                                                                  db_path):
-    """Propres d'abord, hérités de la case ensuite — et un tag porté par les deux est
-    PROPRE, il ne se répète pas. Sans les hérités, une ligne trouvée par un tag de case
-    (la portée par défaut du filtre) n'afficherait rien qui explique sa présence."""
+def test_une_ligne_porte_sa_note_et_plus_de_tags(client, album, planche, db_path):
+    """La note d'une ligne, et rien d'autre : les tags d'hier (posés en base) n'y sont plus,
+    ni ceux de la ligne ni ceux de sa case."""
+    from conftest import poser_tags
     case = _region(client, planche["id"], type="case")
     bulle, nue = _region(client, planche["id"]), _region(client, planche["id"])
-    _tags(client, case, ["colère", "menace"])
-    client.put(f"/api/regions/{bulle}/annotation",
-               json={"note": "Premier ultimatum.", "tags": ["menace", "refus"]})
+    poser_tags(db_path, case, ["colère"])
+    client.put(f"/api/regions/{bulle}/annotation", json={"note": "Premier ultimatum."})
+    poser_tags(db_path, bulle, ["refus"])
     _seed(db_path, bulle, [(0, "DIS", "dire", "VERB", "")], parent_id=case)
     _seed(db_path, nue, [(0, "DIT", "dire", "VERB", "")])
 
     lignes = {r["region_id"]: r for r in
               client.get("/api/analyse/concordance", params={"lemme": "dire"}).json()["results"]}
-    assert lignes[bulle]["tags"] == [{"label": "menace", "herite": False},
-                                     {"label": "refus", "herite": False},
-                                     {"label": "colère", "herite": True}]
     assert lignes[bulle]["note"] == "Premier ultimatum."
-    assert lignes[nue]["tags"] == [] and lignes[nue]["note"] == ""   # rien, et pas None
-    assert "parent_id" not in lignes[bulle]                          # sert, ne sort pas
+    assert lignes[nue]["note"] == ""                                 # rien, et pas None
+    assert "tags" not in lignes[bulle] and "parent_id" not in lignes[bulle]
 
 
-def test_l_export_de_concordance_porte_tags_et_note_en_fin_de_ligne(client, album, planche,
-                                                                    db_path):
-    """Deux colonnes AJOUTÉES en fin de ligne : un script qui lit les douze premières par
-    position ne voit rien changer. L'hérité se DIT (`case:`), le séparateur est celui de
-    l'export de la Recherche."""
+def test_l_export_de_concordance_porte_la_note_en_fin_de_ligne(client, album, planche,
+                                                               db_path):
+    """La note en dernière colonne ; la colonne `tags` est RETIRÉE, et non laissée vide
+    (cadrage d'ANN-7, « se tranchent en route »)."""
     import csv
     import io
-    case = _region(client, planche["id"], type="case")
     bulle = _region(client, planche["id"])
-    _tags(client, case, ["colère"])
-    client.put(f"/api/regions/{bulle}/annotation",
-               json={"note": "=CMD()", "tags": ["refus"]})
-    _seed(db_path, bulle, [(0, "DIS", "dire", "VERB", "")], parent_id=case)
+    client.put(f"/api/regions/{bulle}/annotation", json={"note": "=CMD()"})
+    _seed(db_path, bulle, [(0, "DIS", "dire", "VERB", "")])
 
     texte = client.get("/api/analyse/concordance.csv", params={"lemme": "dire"}).text
     tete, ligne = list(csv.reader(io.StringIO(texte.lstrip("﻿"))))[:2]
-    assert tete[-2:] == ["tags", "note"] and len(tete) == 14
-    assert ligne[-2] == "refus|case:colère"
+    assert tete[-1] == "note" and "tags" not in tete and len(tete) == 13
     assert ligne[-1] == "'=CMD()"             # une note est du texte libre : `_csv_safe`

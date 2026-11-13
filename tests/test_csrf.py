@@ -111,7 +111,8 @@ def test_le_refus_porte_quand_meme_la_politique_de_securite(nu):
 
 
 def test_les_imports_de_fichier_sont_bordes(nu, album, png_bytes):
-    """Les deux routes multipart, qui sont les plus franchement forgeables.
+    """Les routes multipart, qui sont les plus franchement forgeables (l'import de
+    vocabulaire, qui en était, est parti avec le basculement d'ANN-7).
 
     Un `<form enctype="multipart/form-data">` d'un site voisin les atteignait sans le
     moindre script : c'est la forme la plus ancienne et la plus simple d'une CSRF, et la
@@ -120,10 +121,6 @@ def test_les_imports_de_fichier_sont_bordes(nu, album, png_bytes):
     r = nu.post(f"/api/albums/{album['id']}/import",
                 files={"file": ("p.png", png_bytes, "image/png")})
     assert r.status_code == 403, "l'import de planche accepte encore un multipart forgé"
-
-    r = nu.post("/api/lexique/importer",
-                files={"file": ("v.csv", b"domaine;dimension\n", "text/csv")})
-    assert r.status_code == 403, "l'import de vocabulaire accepte encore un multipart forgé"
 
 
 def test_le_frontend_pose_exactement_l_en_tete_que_la_garde_attend():
@@ -156,7 +153,9 @@ def test_le_frontend_pose_exactement_l_en_tete_que_la_garde_attend():
     # la distingue : elle est déjà couverte par l'assertion ci-dessus.
     mutants = [(c, m.start()) for c, s in sources.items()
                for m in re.finditer(r'method:\s*["\']?(POST|PUT|PATCH|DELETE)', s)]
-    assert len(mutants) >= 3, (
+    # Deux depuis le basculement d'ANN-7 (le zip de figures, l'import de l'Administration) :
+    # l'import de vocabulaire de l'Exploration, qui en était un troisième, est parti.
+    assert len(mutants) >= 2, (
         f"seulement {len(mutants)} appel(s) `fetch` à méthode LITTÉRALE trouvé(s) : le "
         "balayage ne voit plus ce qu'il garde, et deviendrait vert en ne mesurant rien")
     for chemin, pos in mutants:

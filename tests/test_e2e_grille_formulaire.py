@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import grille_tableur  # noqa: E402
 from conftest import ECRITURE, make_png  # noqa: E402
 from grilles_decor import grille_active_vivante  # noqa: E402
+from config import GRILLE_DE_TRAVAIL_NOM  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -44,6 +45,12 @@ SURFACES_HORS_PERIMETRE = {
 }
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+
+def _autres(grilles):
+    """Les grilles du projet hors sa grille de travail (ANN-7), née avec lui."""
+    return [g for g in grilles if g["nom"] != GRILLE_DE_TRAVAIL_NOM]
 
 
 def _http(base):
@@ -106,7 +113,7 @@ def test_construire_une_grille_de_deux_rubriques_la_publier_l_activer(page, live
     expect(page.locator("#fm-titre")).to_have_text("Lieux")
     expect(page).to_have_url(re.compile(r"[?&]grille=\d+"))
     with _http(base) as c:
-        (g,) = c.get(f"/api/projets/{projet}/grilles").json()["grilles"]
+        (g,) = _autres(c.get(f"/api/projets/{projet}/grilles").json()["grilles"])
     gid = g["id"]
     assert [(v["numero"], v["etat"]) for v in g["versions"]] == [(1, "brouillon")]
     # La question B, dans « Toute la grille », pose un DÉFAUT et le dit sous ses choix : lue

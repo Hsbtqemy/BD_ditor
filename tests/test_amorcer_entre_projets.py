@@ -581,7 +581,7 @@ def test_une_demande_que_seul_un_autre_projet_tient_ne_se_lit_pas_ici(client, tr
     bulle = _sql(database.DB_PATH, "SELECT id FROM regions WHERE planche_id = ? "
                                    "AND type = 'bulle'", (pl,))[0]["id"]
     _ok(client.put(f"/api/regions/{bulle}/annotation", headers=ADMIN,
-                   json={"note": "à part", "tags": []}))
+                   json={"note": "à part"}))
     ligne = _demander_ailleurs(client, trois, "d1", "annotations")
     assert _ok(client.get(f"/api/projets/{trois['repli']}/demandes-recues",
                           headers=RESP2)) == []

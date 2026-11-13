@@ -1,19 +1,17 @@
-"""Personnages, attribution et vocabulaire facetté (ANN-2, A5, piste B).
+"""Personnages et attribution (ANN-2, A5).
 
 Le registre des ENTITÉS — personnage, locuteur d'une zone de texte, présence dans une
-case —, ses alignements sur des référentiels externes (A5), et le vocabulaire FACETTÉ
-qui le décrit : domaines, dimensions, valeurs, et l'affectation de ces valeurs à un
-personnage ou à une région.
+case — et ses alignements sur des référentiels externes (A5).
 
-L'affectation vivait ailleurs, après le lexique, par accrétion : elle est remontée ici
-avant l'extraction. C'est l'« attribution » du titre — la séparer du registre aurait
-fabriqué un module qui ment sur son contenu, ce que le fichier unique pouvait se
-permettre et qu'un module ne peut plus.
+Le vocabulaire FACETTÉ qui le décrivait — domaines, dimensions, valeurs, et leur
+affectation à un personnage ou à une région — vivait ici jusqu'au basculement d'ANN-7 :
+ses routes sont retirées, la situation d'une case et le profil d'un personnage deviennent
+des grilles (`docs/ann7-tranche3-cadrage.md`).
 
 Ce qui N'est PAS ici, et c'est délibéré : `_clause_personnage` et `_get_personnage`
 vivent dans `socle.py`. La portée d'un personnage est DÉRIVÉE de ses apparitions
-(AUTH-2) et le lexique s'en sert aussi ; les garder ici aurait obligé le module du
-lexique à remonter vers celui-ci, puis vers `main`.
+(AUTH-2) et d'autres modules s'en servent ; les garder ici les aurait obligés à remonter
+vers celui-ci, puis vers `main`.
 
 Bloc sorti de `main.py` (ARCH-1), le plus gros des quatre — 659 lignes. Chemins et
 contrat d'API inchangés : un routeur inclus apparaît dans `app.routes` comme une route
@@ -31,15 +29,13 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 import autorisation
 import conflit
 import journal
-from config import CIBLES_ATTRIBUT, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUATION
+from config import TYPES_LOCUTEUR, TYPES_PRESENCE
 from database import est_bac_a_sable
 
 from socle import (
-    AlignementIn, AttributIn, DimensionDomaineIn, DimensionIn, DomaineIn, FusionIn,
-    LexiqueIn, LocuteurIn, PersonnageIn, PersonnageUpdate, PresenceIn, ValeurIn,
-    _attributs_de, _clause_personnage, _exiger_une_rive, _get_dimension, _get_personnage,
-    _get_region, _get_valeur, _norm_tag, _patch_lexique, _rive_d_un_album,
-    _rive_d_un_personnage, _rive_d_un_terme, _row, _rows, _sans_accents, db, portee_courante,
+    AlignementIn, FusionIn, LocuteurIn, PersonnageIn, PersonnageUpdate, PresenceIn,
+    _clause_personnage, _exiger_une_rive, _get_personnage, _get_region, _rive_d_un_album,
+    _rive_d_un_personnage, _row, _rows, _sans_accents, db, portee_courante,
 )
 
 router = APIRouter()
@@ -206,7 +202,7 @@ def update_personnage(personnage_id: int, payload: PersonnageUpdate,
 def delete_personnage(personnage_id: int, conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
     _get_personnage(conn, portee, personnage_id, ecriture=True)
-    conn.execute("DELETE FROM personnages WHERE id = ?", (personnage_id,))   # CASCADE : détache liens/attributs
+    conn.execute("DELETE FROM personnages WHERE id = ?", (personnage_id,))   # CASCADE : détache les liens
     conn.commit()
 
 
@@ -215,8 +211,10 @@ def fusionner_personnage(personnage_id: int, payload: FusionIn,
                          conn: sqlite3.Connection = Depends(db),
                          portee: autorisation.Portee = Depends(portee_courante)):
     """Fusionne `personnage_id` (doublon) DANS `cible_id` (canonique) : réaffecte les
-    liens locuteur et les attributs, puis supprime le doublon. Idempotent sur les
-    affectations (INSERT OR IGNORE). Soupape du modèle mentions→entités (curation)."""
+    liens locuteur et les alignements, puis supprime le doublon. Idempotent sur les
+    affectations (INSERT OR IGNORE). Soupape du modèle mentions→entités (curation). (Le
+    profil, `personnage_attribut`, suivait aussi jusqu'au basculement d'ANN-7 : il ne se lit
+    plus, et part avec le doublon.)"""
     if payload.cible_id == personnage_id:
         raise HTTPException(422, "Un personnage ne peut être fusionné avec lui-même")
     _get_personnage(conn, portee, personnage_id, ecriture=True)
@@ -227,11 +225,6 @@ def fusionner_personnage(personnage_id: int, payload: FusionIn,
                      _rive_d_un_personnage(conn, payload.cible_id))
     # locuteur : une zone a au plus un locuteur (region_id PK) → réaffectation directe.
     conn.execute("UPDATE bulle_locuteur SET personnage_id = ? WHERE personnage_id = ?",
-                 (payload.cible_id, personnage_id))
-    # attributs : éviter le doublon (personnage_id, valeur_id) → OR IGNORE ; le reste du
-    # doublon part au DELETE (CASCADE).
-    conn.execute("INSERT OR IGNORE INTO personnage_attribut (personnage_id, valeur_id) "
-                 "SELECT ?, valeur_id FROM personnage_attribut WHERE personnage_id = ?",
                  (payload.cible_id, personnage_id))
     # alignements d'autorité (A5) : mêmes règles — dédupliqués par (personnage_id, uri).
     conn.execute("INSERT OR IGNORE INTO personnage_alignement (personnage_id, source, uri) "
@@ -506,533 +499,4 @@ def clear_presence(region_id: int, personnage_vu: Optional[int] = None,
     if ancien:
         journal.journaliser(conn, "delien", "personnage_presence", region_id,
                             avant={"personnage_id": ancien["personnage_id"]})
-    conn.commit()
-
-
-# --- DOMAINES (piste B) : champ analytique émergent qui REGROUPE des dimensions (émotions,
-#     représentation…). Orthogonal à `cible`. Même patron contrôlé-ouvert + lexique SKOS que
-#     les dimensions. Cf. docs/domaines.md.
-def _get_domaine(conn, portee: autorisation.Portee, dom_id, *, ecriture: bool = False):
-    """Terme du vocabulaire, VISIBLE (404 sinon) et, si `ecriture`, MODIFIABLE.
-
-    Le refus d'écriture est un 403 et non un 404, contrairement aux données : le
-    terme vient d'être listé, prétendre qu'il n'existe pas serait incohérent — et
-    le refus ne parle que des droits de l'appelant, il ne fuit rien.
-    """
-    ou, params = portee.clause_terme("t.collection_id")
-    d = _row(conn.execute(
-        f"SELECT t.* FROM domaine t WHERE t.id = ? AND {ou}", (dom_id, *params)))
-    if d is None:
-        raise HTTPException(404, f"Domaine {dom_id} introuvable")
-    if ecriture and not portee.peut_ecrire_terme(d.get("collection_id")):
-        raise HTTPException(403, "Ce terme du vocabulaire est en lecture seule "
-                                 "pour vous.")
-    return d
-
-
-@router.get("/api/domaines")
-def list_domaines(conn: sqlite3.Connection = Depends(db),
-                  portee: autorisation.Portee = Depends(portee_courante)):
-    """Domaines + nombre de dimensions rattachées + couche lexique (pour l'organisation/l'analyse).
-
-    AUTH-2 — un domaine est un terme du vocabulaire : visible s'il est global
-    (`collection_id` NULL) ou s'il appartient à une collection qu'on lit. Le compte de
-    dimensions suit la même règle, sinon il dirait combien d'axes existent ailleurs."""
-    ou, params = portee.clause_terme("d.collection_id")
-    ou_dim, p_dim = portee.clause_terme("x.collection_id")
-    return _rows(conn.execute(
-        f"SELECT d.id, d.nom, d.definition, d.note_portee, d.etat, d.collection_id, "
-        f"       (SELECT COUNT(*) FROM attribut_dimension x "
-        f"         WHERE x.domaine_id = d.id AND {ou_dim}) AS nb_dimensions "
-        f"FROM domaine d WHERE {ou} ORDER BY d.nom", [*p_dim, *params]))
-
-
-@router.post("/api/domaines", status_code=201)
-def create_domaine(payload: DomaineIn, conn: sqlite3.Connection = Depends(db),
-                   portee: autorisation.Portee = Depends(portee_courante)):
-    """AUTH-2 — même garde que la création de tag : enrichir un vocabulaire partagé
-    suppose de pouvoir écrire quelque part.
-
-    **Créer ne rend pas ce qu'on ne lit pas** (AUTH-11, 2026-09-24). Le nom étant unique
-    dans TOUTE l'instance (`domaine.nom UNIQUE`), l'`ON CONFLICT(nom) DO NOTHING`
-    ci-dessous n'écrit rien sur un domaine existant — mais le `SELECT *` qui suit rendait
-    ce domaine entier, qu'on le lise ou non : qui écrivait dans une collection recevait en
-    201 la définition, la note de portée et le `collection_id` d'un domaine local à une
-    collection qu'il ne lit pas. Même forme, même remède que `POST /api/tags` (`b1c49d0`) :
-    l'existant se lit sur EXACTEMENT la clé que compare l'`ON CONFLICT` — le nom
-    normalisé —, et un domaine qu'on ne VOIT pas (`portee.clause_terme`) répond **409**
-    sans rien en dire ni rien écrire. Le verrou d'écriture (`conflit.verrouiller`) couvre
-    tout le trajet : pris avant de lire l'existant, il tient pendant l'`INSERT` et la
-    lecture du terme rendu, et ne tombe qu'au `commit`, qui vient APRÈS cette lecture.
-    Sans lui — ou avec un rendu lu après le `commit` —, un `PATCH …/lexique` concurrent
-    qui rattacherait le domaine à une collection illisible entre la garde et le `SELECT *`
-    le ferait rendre quand même.
-
-    Un domaine visible garde le comportement d'avant, lecture seule comprise : le
-    `DO NOTHING` ne le modifie pas, et le rendre ne dit rien qu'on ne lise déjà. Le 409
-    confirme en revanche que le nom est pris, où qu'il vive — un bit par nom deviné, le
-    même oracle que celui déjà accepté pour `socle._ensure_tags` et `POST /api/tags` ; une
-    LIMITE écrite, que l'unicité (nom, collection) fermera avec `COL-1`."""
-    if not portee.peut_ecrire_quelque_part():
-        raise HTTPException(403, "Créer un domaine demande un droit d'écriture sur au "
-                                 "moins une collection.")
-    nom = _norm_tag(payload.nom)
-    if not nom:
-        raise HTTPException(422, "Nom de domaine vide")
-    conflit.verrouiller(conn)      # l'existant se lit sous le verrou d'écriture
-    ou, params = portee.clause_terme("d.collection_id")
-    existant = conn.execute(f"SELECT {ou} AS visible FROM domaine d WHERE d.nom = ?",
-                            (*params, nom)).fetchone()
-    if existant is not None and not existant["visible"]:
-        raise HTTPException(409, "Ce nom de domaine est déjà pris : choisissez-en un autre.")
-    conn.execute("INSERT INTO domaine (nom) VALUES (?) ON CONFLICT(nom) DO NOTHING", (nom,))
-    rendu = _row(conn.execute("SELECT * FROM domaine WHERE nom = ?", (nom,)))
-    conn.commit()                  # le verrou tombe ici, APRÈS la lecture du rendu
-    return rendu
-
-
-@router.patch("/api/domaines/{dom_id}")
-def rename_domaine(dom_id: int, payload: DomaineIn, conn: sqlite3.Connection = Depends(db),
-                   portee: autorisation.Portee = Depends(portee_courante)):
-    """Renomme un domaine (préserve son regroupement de dimensions, contrairement à un
-    supprimer/recréer). Le nom reste normalisé et UNIQUE."""
-    _get_domaine(conn, portee, dom_id, ecriture=True)
-    nom = _norm_tag(payload.nom)
-    if not nom:
-        raise HTTPException(422, "Nom de domaine vide")
-    if conn.execute("SELECT 1 FROM domaine WHERE nom = ? AND id <> ?", (nom, dom_id)).fetchone():
-        raise HTTPException(409, f"Domaine « {nom} » déjà existant.")
-    conn.execute("UPDATE domaine SET nom = ? WHERE id = ?", (nom, dom_id))
-    conn.commit()
-    return _row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,)))
-
-
-@router.delete("/api/domaines/{dom_id}", status_code=204)
-def delete_domaine(dom_id: int, conn: sqlite3.Connection = Depends(db),
-                   portee: autorisation.Portee = Depends(portee_courante)):
-    """Supprime un domaine. Ses dimensions ne sont PAS détruites : `domaine_id` repasse à NULL
-    (ON DELETE SET NULL) — elles redeviennent « hors domaine » (soupape *promotion*)."""
-    _get_domaine(conn, portee, dom_id, ecriture=True)
-    conn.execute("DELETE FROM domaine WHERE id = ?", (dom_id,))
-    conn.commit()
-
-
-@router.patch("/api/domaines/{dom_id}/lexique")
-def patch_domaine_lexique(dom_id: int, payload: LexiqueIn, conn: sqlite3.Connection = Depends(db),
-                          portee: autorisation.Portee = Depends(portee_courante)):
-    """Documente un domaine (même couche SKOS que dimensions/valeurs/tags).
-
-    AUTH-11 (2026-09-25) — le verrou d'écriture (`conflit.verrouiller`) est pris avant toute
-    lecture : les gardes du rangement (termes liés, emport de la branche) et l'écriture
-    voient le même état. Sans lui, une dimension créée entre la garde et l'UPDATE, dans
-    l'ancienne collection d'un domaine qu'on range, restait derrière lui (mesuré par la
-    relecture) — et l'argument « les droits des emportés sont ceux de la racine » en
-    dépend aussi."""
-    conflit.verrouiller(conn)
-    _get_domaine(conn, portee, dom_id, ecriture=True)
-    promus = _patch_lexique(conn, "domaine", dom_id, payload, portee)
-    return {**_row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,))),
-            "promus": promus}
-
-
-# --- Attributs FACETTÉS & ÉMERGENTS : dimensions (axes) / valeurs canoniques /
-#     affectations. Vocabulaire NON figé — créé au fil de l'eau. Valeurs et noms de
-#     dimension normalisés (comme les tags) → agrégeables. Cf. docs/personnages-et-attribution.md.
-@router.get("/api/attributs/dimensions")
-def list_dimensions(cible: Optional[str] = None, conn: sqlite3.Connection = Depends(db),
-                    portee: autorisation.Portee = Depends(portee_courante)):
-    """Dimensions (axes émergents) + nombre de valeurs + domaine de rattachement (v20).
-    `cible` filtre 'personnage' | 'case'.
-
-    AUTH-2 — mêmes règles que les domaines : le terme est visible s'il est global ou
-    local à une collection qu'on lit, et le compte de valeurs est filtré pareillement.
-    Le NOM du domaine de rattachement est un terme lui aussi : il se filtre, sinon une
-    dimension globale nommerait le domaine privé auquel on l'a rattachée. Il revient donc
-    à `null` quand le domaine n'est pas visible — la dimension, elle, reste."""
-    ou, p_dim = portee.clause_terme("d.collection_id")
-    ou_val, p_val = portee.clause_terme("v.collection_id")
-    ou_dom, p_dom = portee.clause_terme("dom.collection_id")
-    sql = (f"SELECT d.id, d.cible, d.nom, d.domaine_id, "
-           f"       (SELECT nom FROM domaine dom WHERE dom.id = d.domaine_id "
-           f"          AND {ou_dom}) AS domaine, "
-           f"       (SELECT COUNT(*) FROM attribut_valeur v "
-           f"         WHERE v.dimension_id = d.id AND {ou_val}) AS nb_valeurs "
-           f"FROM attribut_dimension d WHERE {ou} ")
-    params = [*p_dom, *p_val, *p_dim]
-    if cible:
-        sql += "AND d.cible = ? "
-        params.append(cible)
-    sql += "ORDER BY d.cible, d.nom"
-    return _rows(conn.execute(sql, params))
-
-
-@router.post("/api/attributs/dimensions", status_code=201)
-def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db),
-                     portee: autorisation.Portee = Depends(portee_courante)):
-    """Crée une dimension (un axe émergent), ou rend celle qui existe déjà.
-
-    **Créer ne rend pas ce qu'on ne lit pas** (AUTH-11, 2026-09-24) — même défaut et même
-    remède que `POST /api/domaines` juste au-dessus : la clé `(cible, nom)` étant unique
-    dans toute l'instance, le `SELECT *` qui suit l'`ON CONFLICT … DO NOTHING` rendait en
-    201 une dimension locale à une collection qu'on ne lit pas, définition, note de
-    portée, `collection_id` et `domaine_id` compris. Une dimension existante qu'on ne VOIT
-    pas répond donc **409**, sans rien en dire ni rien écrire ; l'existant se lit sur la
-    clé exacte de l'`ON CONFLICT` (la cible et le nom normalisé). Le verrou d'écriture est
-    pris avant cette lecture et ne tombe qu'au `commit`, qui suit la lecture du terme
-    rendu : la garde, l'`INSERT` et le rendu voient le même état. Une dimension visible
-    garde le comportement d'avant, lecture seule comprise (`DO NOTHING` ne la modifie
-    pas). Le 409 confirme qu'un nom est pris : le même oracle d'un bit que
-    `socle._ensure_tags` et `POST /api/tags`, LIMITE écrite que l'unicité par collection
-    fermera avec `COL-1`."""
-    if not portee.peut_ecrire_quelque_part():
-        raise HTTPException(403, "Créer une dimension demande un droit d'écriture sur au "
-                                 "moins une collection.")
-    if payload.cible not in CIBLES_ATTRIBUT:
-        raise HTTPException(422, f"Cible invalide : {payload.cible} (personnage | case).")
-    nom = _norm_tag(payload.nom)
-    if not nom:
-        raise HTTPException(422, "Nom de dimension vide")
-    conflit.verrouiller(conn)      # l'existant se lit sous le verrou d'écriture
-    ou, params = portee.clause_terme("d.collection_id")
-    existant = conn.execute(f"SELECT {ou} AS visible FROM attribut_dimension d "
-                            f"WHERE d.cible = ? AND d.nom = ?",
-                            (*params, payload.cible, nom)).fetchone()
-    if existant is not None and not existant["visible"]:
-        raise HTTPException(409, "Ce nom de dimension est déjà pris : choisissez-en un "
-                                 "autre.")
-    # AUTH-2 — la dimension HÉRITE de la portée de son domaine. Un terme ne peut pas être
-    # plus global que celui dont il dépend : une dimension globale rattachée à un domaine
-    # privé se montrait à tout le monde, et nommait le domaine au passage. Sans domaine,
-    # la dimension reste globale, comme avant.
-    cid = None
-    if payload.domaine_id is not None:
-        dom = _get_domaine(conn, portee, payload.domaine_id, ecriture=True)    # 404 si le domaine n'existe pas
-        cid = dom["collection_id"]
-    conn.execute("INSERT INTO attribut_dimension (cible, nom, domaine_id, collection_id) "
-                 "VALUES (?, ?, ?, ?) ON CONFLICT(cible, nom) DO NOTHING",
-                 (payload.cible, nom, payload.domaine_id, cid))
-    rendu = _row(conn.execute("SELECT * FROM attribut_dimension WHERE cible = ? AND nom = ?",
-                              (payload.cible, nom)))
-    conn.commit()                  # le verrou tombe ici, APRÈS la lecture du rendu
-    return rendu
-
-
-@router.patch("/api/attributs/dimensions/{dim_id}/domaine")
-def patch_dimension_domaine(dim_id: int, payload: DimensionDomaineIn,
-                            conn: sqlite3.Connection = Depends(db),
-                            portee: autorisation.Portee = Depends(portee_courante)):
-    """Rattache une dimension à un domaine (ou l'en détache avec `domaine_id: null`).
-
-    **Un rattachement ne déplace JAMAIS une portée** — renversement daté, tranché par Hugo
-    le 2026-09-24 (AUTH-11). v24 faisait suivre la portée : une dimension GLOBALE passée
-    sous un domaine PRIVÉ y descendait avec ses valeurs globales — ce qui les retirait sans
-    un mot à toutes les autres collections —, et une dimension LOCALE passée sous un
-    domaine GLOBAL devenait globale — ce qui publiait son nom à toute l'instance. Deux
-    déplacements que personne n'avait demandés, par un geste de rangement.
-
-    Désormais :
-    - sous un domaine GLOBAL, ou de la même collection que la dimension : permis, et rien
-      ne bouge (une dimension plus locale que son domaine est légitime, A4) ;
-    - sous un domaine LOCAL à une autre collection que la sienne — dimension globale
-      comprise, qui serait plus globale que son domaine (v24) : **409**, qui dit de ranger
-      d'abord la dimension dans la collection du domaine (`PATCH …/lexique`, menu Portée du
-      📖 Lexique) — sans promettre que ce rangement réussira : depuis le 2026-09-25, il est
-      refusé à son tour si un terme lié à la dimension est rangé dans une troisième
-      collection, et son propre 409 le dit. C'est ce geste-là qui déplace la portée — la
-      dimension, ses valeurs GLOBALES qui descendent avec elle, et, si elle est la racine
-      de sa branche, ses valeurs restées dans son ancienne collection (option β, même
-      jour). La réponse nomme ces dernières dans `promus`, pas les valeurs globales
-      descendues ; l'écran recharge le lexique après le rangement. Pour une dimension
-      déjà rangée sous un domaine de sa collection, le vrai chemin est de la détacher, la
-      ranger, puis la rattacher : rangée seule, elle serait le milieu d'une branche, et
-      son propre rangement serait refusé. Le message nomme le domaine, que l'appelant
-      vient de choisir et lit ; rien d'autre.
-
-    Le verrou d'écriture (`conflit.verrouiller`) est pris avant de lire la dimension et le
-    domaine, comme dans les autres routes d'AUTH-11 : la garde et l'écriture voient le même
-    état, et un `PATCH …/lexique` concurrent ne peut pas changer une portée entre les deux.
-
-    DÉTACHER ne promeut pas. `domaine_id: null` laisse la portée en place, alors que la
-    création sans domaine naît globale : les deux ne sont pas le même geste. Sortir une
-    dimension de son domaine est un rangement ; la rendre globale au passage serait une
-    publication que personne n'a demandée.
-
-    L'import de vocabulaire refuse les mêmes cas (`lexique_import`, motif
-    `parent_ailleurs`).
-    """
-    conflit.verrouiller(conn)      # la garde et l'écriture voient le même état
-    dim = _get_dimension(conn, portee, dim_id, ecriture=True)
-    if payload.domaine_id is not None:
-        dom = _get_domaine(conn, portee, payload.domaine_id, ecriture=True)
-        # COL-4 — ni sous un domaine d'un bac à sable depuis le corpus, ni l'inverse.
-        _exiger_une_rive(conn, _rive_d_un_terme(conn, dim["collection_id"]),
-                         _rive_d_un_terme(conn, dom["collection_id"]))
-        if dom["collection_id"] is not None and dim["collection_id"] != dom["collection_id"]:
-            raise HTTPException(409, f"Le domaine « {dom['nom']} » est propre à une "
-                                     f"collection, et cette dimension n'y est pas rangée. "
-                                     f"Rangez d'abord la dimension dans la collection du "
-                                     f"domaine (📖 Lexique, menu Portée) — si elle est déjà "
-                                     f"sous un autre domaine, détachez-la avant —, puis "
-                                     f"rattachez-la ; si ce rangement est refusé à son tour, "
-                                     f"son refus dit quel terme lié l'en empêche.")
-    conn.execute("UPDATE attribut_dimension SET domaine_id = ? WHERE id = ?",
-                 (payload.domaine_id, dim_id))
-    conn.commit()
-    return _row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,)))
-
-
-@router.delete("/api/attributs/dimensions/{dim_id}", status_code=204)
-def delete_dimension(dim_id: int, conn: sqlite3.Connection = Depends(db),
-                     portee: autorisation.Portee = Depends(portee_courante)):
-    _get_dimension(conn, portee, dim_id, ecriture=True)
-    conn.execute("DELETE FROM attribut_dimension WHERE id = ?", (dim_id,))   # CASCADE : valeurs + affectations
-    conn.commit()
-
-
-@router.get("/api/attributs/dimensions/{dim_id}/valeurs")
-def list_valeurs(dim_id: int, conn: sqlite3.Connection = Depends(db),
-                 portee: autorisation.Portee = Depends(portee_courante)):
-    """AUTH-2 — `nb_usages` comptait TOUS les emplois du corpus. Il ne compte plus que
-    les régions lisibles (côté case) et les personnages visibles (côté locuteur) : sinon
-    la fréquence d'une valeur trahit le volume d'annotation des autres."""
-    _get_dimension(conn, portee, dim_id)
-    ou_terme, p_terme = portee.clause_terme("v.collection_id")
-    ou_album, p_album = portee.clause_album("pl.album_id")
-    ou_perso, p_perso = _clause_personnage(portee)
-    return _rows(conn.execute(
-        f"SELECT v.id, v.dimension_id, v.valeur, "
-        f"       ((SELECT COUNT(*) FROM personnage_attribut pa JOIN personnages p "
-        f"           ON p.id = pa.personnage_id "
-        f"         WHERE pa.valeur_id = v.id AND {ou_perso}) "
-        f"      + (SELECT COUNT(*) FROM region_attribut ra "
-        f"           JOIN regions r   ON r.id = ra.region_id "
-        f"           JOIN planches pl ON pl.id = r.planche_id "
-        f"         WHERE ra.valeur_id = v.id AND {ou_album})) AS nb_usages "
-        f"FROM attribut_valeur v WHERE v.dimension_id = ? AND {ou_terme} ORDER BY v.valeur",
-        [*p_perso, *p_album, dim_id, *p_terme]))
-
-
-@router.post("/api/attributs/dimensions/{dim_id}/valeurs", status_code=201)
-def create_valeur(dim_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db),
-                  portee: autorisation.Portee = Depends(portee_courante)):
-    """Crée une valeur canonique sous une dimension, ou rend celle qui existe déjà.
-
-    La dimension est gardée d'abord (`_get_dimension(ecriture=True)`) : invisible → 404,
-    visible en lecture seule → 403, AVANT qu'on regarde les valeurs — ce qui vit sous une
-    dimension qu'on ne peut pas modifier n'est donc jamais interrogé.
-
-    **Créer ne rend pas ce qu'on ne lit pas** (AUTH-11, 2026-09-24) — même défaut et même
-    remède que `POST /api/domaines` et `POST /api/attributs/dimensions` : la clé
-    `(dimension_id, valeur)` étant unique quelle que soit la portée, une valeur LOCALE à
-    une collection qu'on ne lit pas peut vivre sous une dimension qu'on lit et modifie
-    (une dimension globale, typiquement), et le `SELECT *` qui suit l'`ON CONFLICT … DO
-    NOTHING` la rendait entière en 201 — définition, note de portée, `collection_id`.
-    Une valeur existante qu'on ne VOIT pas répond donc **409**, sans rien en dire ni rien
-    écrire ; l'existant se lit sur la clé exacte de l'`ON CONFLICT` (la dimension et la
-    valeur normalisée). Le verrou d'écriture est pris avant toute lecture — la dimension
-    comprise — et ne tombe qu'au `commit`, qui suit la lecture de la valeur rendue : les
-    gardes, l'`INSERT` et le rendu voient le même état. Une valeur visible garde le
-    comportement d'avant (`DO NOTHING` ne la modifie pas). Le 409 confirme qu'une valeur
-    est prise sous cette dimension : le même oracle d'un bit que `socle._ensure_tags` et
-    `POST /api/tags`, LIMITE écrite que l'unicité par collection fermera avec `COL-1`."""
-    conflit.verrouiller(conn)      # la dimension et l'existant se lisent sous le verrou
-    dim = _get_dimension(conn, portee, dim_id, ecriture=True)
-    valeur = _norm_tag(payload.valeur)
-    if not valeur:
-        raise HTTPException(422, "Valeur vide")
-    ou, params = portee.clause_terme("v.collection_id")
-    existant = conn.execute(f"SELECT {ou} AS visible FROM attribut_valeur v "
-                            f"WHERE v.dimension_id = ? AND v.valeur = ?",
-                            (*params, dim_id, valeur)).fetchone()
-    if existant is not None and not existant["visible"]:
-        raise HTTPException(409, "Cette valeur est déjà prise dans cette dimension : "
-                                 "choisissez-en une autre.")
-    # AUTH-2 — même héritage qu'un cran plus haut : la valeur prend la portée de sa
-    # dimension. La route ne posait aucun `collection_id`, si bien que toute valeur
-    # naissait GLOBALE — y compris sous un axe d'analyse local à une étude. Le dommage
-    # n'est pas le mot (« palpable » ne dit rien) mais ce qu'il traîne : les routes à plat
-    # renvoient le NOM de sa dimension.
-    conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
-                 "VALUES (?, ?, ?) ON CONFLICT(dimension_id, valeur) DO NOTHING",
-                 (dim_id, valeur, dim["collection_id"]))
-    rendu = _row(conn.execute("SELECT * FROM attribut_valeur WHERE dimension_id = ? "
-                              "AND valeur = ?", (dim_id, valeur)))
-    conn.commit()                  # le verrou tombe ici, APRÈS la lecture du rendu
-    return rendu
-
-
-@router.delete("/api/attributs/valeurs/{val_id}", status_code=204)
-def delete_valeur(val_id: int, conn: sqlite3.Connection = Depends(db),
-                  portee: autorisation.Portee = Depends(portee_courante)):
-    _get_valeur(conn, portee, val_id, ecriture=True)
-    conn.execute("DELETE FROM attribut_valeur WHERE id = ?", (val_id,))   # CASCADE : affectations
-    conn.commit()
-
-
-@router.get("/api/attributs/valeurs")
-def list_valeurs_plat(cible: Optional[str] = None, conn: sqlite3.Connection = Depends(db),
-                      portee: autorisation.Portee = Depends(portee_courante)):
-    """Toutes les valeurs (avec leur dimension), à plat — sert les facettes d'analyse
-    (évite un N+1 dimensions→valeurs). `cible` filtre 'personnage' | 'case'.
-
-    AUTH-2 — mêmes deux filtres qu'ailleurs : les TERMES visibles, et des `nb_usages`
-    comptés sur le seul sous-corpus lisible. La dimension jointe est filtrée elle aussi :
-    c'est elle qui porte le nom, donc la fuite (cf. `_attributs_de`)."""
-    ou_terme, p_terme = portee.clause_terme("v.collection_id")
-    ou_dim, p_dim = portee.clause_terme("d.collection_id")
-    ou_album, p_album = portee.clause_album("pl.album_id")
-    ou_perso, p_perso = _clause_personnage(portee)
-    sql = (f"SELECT v.id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible, "
-           f"       ((SELECT COUNT(*) FROM personnage_attribut pa JOIN personnages p "
-           f"           ON p.id = pa.personnage_id "
-           f"         WHERE pa.valeur_id = v.id AND {ou_perso}) "
-           f"      + (SELECT COUNT(*) FROM region_attribut ra "
-           f"           JOIN regions r   ON r.id = ra.region_id "
-           f"           JOIN planches pl ON pl.id = r.planche_id "
-           f"         WHERE ra.valeur_id = v.id AND {ou_album})) AS nb_usages "
-           f"FROM attribut_valeur v JOIN attribut_dimension d ON d.id = v.dimension_id "
-           f"WHERE {ou_terme} AND {ou_dim} ")
-    params = [*p_perso, *p_album, *p_terme, *p_dim]
-    if cible:
-        sql += "AND d.cible = ? "
-        params.append(cible)
-    sql += "ORDER BY d.cible, d.nom, v.valeur"
-    return _rows(conn.execute(sql, params))
-
-
-@router.put("/api/attributs/valeurs/{val_id}")
-def rename_valeur(val_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db),
-                  portee: autorisation.Portee = Depends(portee_courante)):
-    """Renomme une valeur (curation). Conflit avec une valeur existante de la même
-    dimension → 409 (utiliser la fusion à la place)."""
-    v = _get_valeur(conn, portee, val_id, ecriture=True)
-    valeur = _norm_tag(payload.valeur)
-    if not valeur:
-        raise HTTPException(422, "Valeur vide")
-    if _row(conn.execute("SELECT id FROM attribut_valeur "
-                         "WHERE dimension_id = ? AND valeur = ? AND id <> ?",
-                         (v["dimension_id"], valeur, val_id))):
-        raise HTTPException(409, "Cette valeur existe déjà dans la dimension — fusionnez-les.")
-    conn.execute("UPDATE attribut_valeur SET valeur = ? WHERE id = ?", (valeur, val_id))
-    conn.commit()
-    return _get_valeur(conn, portee, val_id, ecriture=True)
-
-
-@router.post("/api/attributs/valeurs/{val_id}/fusion")
-def fusionner_valeur(val_id: int, payload: FusionIn, conn: sqlite3.Connection = Depends(db),
-                     portee: autorisation.Portee = Depends(portee_courante)):
-    """Fusionne la valeur `val_id` DANS `cible_id` (même dimension) : réaffecte les
-    affectations (personnages + cases) en INSERT OR IGNORE, puis supprime le doublon."""
-    if payload.cible_id == val_id:
-        raise HTTPException(422, "Une valeur ne peut être fusionnée avec elle-même")
-    v = _get_valeur(conn, portee, val_id, ecriture=True)
-    cible = _get_valeur(conn, portee, payload.cible_id, ecriture=True)
-    if v["dimension_id"] != cible["dimension_id"]:
-        raise HTTPException(422, "On ne fusionne que deux valeurs d'une même dimension.")
-    # COL-4 — une valeur d'un bac à sable ne se fond pas dans une valeur du corpus, ni
-    # l'inverse : ses emplois passeraient la frontière.
-    _exiger_une_rive(conn, _rive_d_un_terme(conn, v["collection_id"]),
-                     _rive_d_un_terme(conn, cible["collection_id"]))
-    for table, col in (("personnage_attribut", "personnage_id"), ("region_attribut", "region_id")):
-        conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) "
-                     f"SELECT {col}, ? FROM {table} WHERE valeur_id = ?", (payload.cible_id, val_id))
-    conn.execute("DELETE FROM attribut_valeur WHERE id = ?", (val_id,))   # CASCADE purge le reste
-    conn.commit()
-    return _get_valeur(conn, portee, payload.cible_id, ecriture=True)
-
-
-
-
-
-
-def _affecter(conn, portee, table, col, oid, valeur_id, cible_attendue):
-    """Affecte une valeur à une cible, après contrôle de cohérence de la dimension.
-
-    COL-3, tranche 2 — l'attribut d'une CASE s'écrit au journal (`lien`, cible
-    `region_attribut`, `cible_id` = la région, la valeur dans la charge) : c'est du travail
-    sur l'album, et « qui perd quoi » le compte avant d'effacer
-    (`autorisation.sql_actes_sur_album`). `region_attribut` n'a pas d'auteur ;
-    le journal en tient lieu. Un attribut de PERSONNAGE ne s'écrit pas : il ne tient à
-    aucun album. Re-poser un attribut déjà là n'écrit rien."""
-    v = _get_valeur(conn, portee, valeur_id)
-    if _get_dimension(conn, portee, v["dimension_id"])["cible"] != cible_attendue:
-        raise HTTPException(422, f"Cette valeur n'appartient pas à une dimension de {cible_attendue}.")
-    # COL-4 — une valeur d'un bac à sable ne se pose que dans ce bac à sable. Une valeur du
-    # corpus posée dans un bac à sable n'y emporte rien hors de lui : permis.
-    rive = _rive_d_un_terme(conn, v["collection_id"])
-    if rive and table == "region_attribut":
-        album = conn.execute("SELECT pl.album_id FROM regions r JOIN planches pl "
-                             "ON pl.id = r.planche_id WHERE r.id = ?", (oid,)).fetchone()
-        _exiger_une_rive(conn, rive, _rive_d_un_album(conn, album[0]) if album else 0)
-    elif rive:
-        # Un personnage du registre (rive 0), ou né dans un AUTRE bac à sable.
-        _exiger_une_rive(conn, rive, _rive_d_un_personnage(conn, oid))
-    pose = conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) VALUES (?, ?)",
-                        (oid, valeur_id)).rowcount
-    if pose and table == "region_attribut":
-        journal.journaliser(conn, "lien", "region_attribut", oid,
-                            apres={"valeur_id": valeur_id})
-    conn.commit()
-
-
-@router.get("/api/personnages/{personnage_id}/attributs")
-def list_personnage_attributs(personnage_id: int, conn: sqlite3.Connection = Depends(db),
-                              portee: autorisation.Portee = Depends(portee_courante)):
-    _get_personnage(conn, portee, personnage_id)
-    return _attributs_de(conn, portee, "personnage_attribut", "personnage_id", personnage_id)
-
-
-@router.put("/api/personnages/{personnage_id}/attributs")
-def add_personnage_attribut(personnage_id: int, payload: AttributIn,
-                            conn: sqlite3.Connection = Depends(db),
-                            portee: autorisation.Portee = Depends(portee_courante)):
-    _get_personnage(conn, portee, personnage_id, ecriture=True)
-    _affecter(conn, portee, "personnage_attribut", "personnage_id", personnage_id, payload.valeur_id, "personnage")
-    return _attributs_de(conn, portee, "personnage_attribut", "personnage_id", personnage_id)
-
-
-@router.delete("/api/personnages/{personnage_id}/attributs/{valeur_id}", status_code=204)
-def remove_personnage_attribut(personnage_id: int, valeur_id: int,
-                               conn: sqlite3.Connection = Depends(db),
-                               portee: autorisation.Portee = Depends(portee_courante)):
-    _get_personnage(conn, portee, personnage_id, ecriture=True)
-    _get_valeur(conn, portee, valeur_id)   # la route sœur de S3 : retirer demande de voir
-    conn.execute("DELETE FROM personnage_attribut WHERE personnage_id = ? AND valeur_id = ?",
-                 (personnage_id, valeur_id))
-    conn.commit()
-
-
-@router.get("/api/regions/{region_id}/attributs")
-def list_region_attributs(region_id: int, conn: sqlite3.Connection = Depends(db),
-                          portee: autorisation.Portee = Depends(portee_courante)):
-    _get_region(conn, portee, region_id)
-    return _attributs_de(conn, portee, "region_attribut", "region_id", region_id)
-
-
-@router.put("/api/regions/{region_id}/attributs")
-def add_region_attribut(region_id: int, payload: AttributIn,
-                        conn: sqlite3.Connection = Depends(db),
-                        portee: autorisation.Portee = Depends(portee_courante)):
-    region = _get_region(conn, portee, region_id, ecriture=True)
-    # ANN-8 (décision du 2026-10-22) — seule une case reçoit une situation (422).
-    if region["type"] not in TYPES_SITUATION:
-        raise HTTPException(422, "Seule une case reçoit une situation : cette région est de "
-                                 f"type « {region['type']} ».")
-    _affecter(conn, portee, "region_attribut", "region_id", region_id, payload.valeur_id, "case")
-    return _attributs_de(conn, portee, "region_attribut", "region_id", region_id)
-
-
-@router.delete("/api/regions/{region_id}/attributs/{valeur_id}", status_code=204)
-def remove_region_attribut(region_id: int, valeur_id: int,
-                           conn: sqlite3.Connection = Depends(db),
-                           portee: autorisation.Portee = Depends(portee_courante)):
-    _get_region(conn, portee, region_id, ecriture=True)
-    # Retirer une valeur demande de la VOIR, comme la poser (`_affecter`) : sans quoi, son
-    # identifiant suffisait à effacer la situation locale d'une collection qu'on ne lit pas
-    # (relecture de la suite d'ANN-8, S3). 404, la valeur n'existe pas pour l'appelant.
-    _get_valeur(conn, portee, valeur_id)
-    if conn.execute("DELETE FROM region_attribut WHERE region_id = ? AND valeur_id = ?",
-                    (region_id, valeur_id)).rowcount:
-        journal.journaliser(conn, "delien", "region_attribut", region_id,
-                            avant={"valeur_id": valeur_id})
     conn.commit()

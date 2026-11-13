@@ -1,9 +1,10 @@
 """Tests E2E des deux correctifs d'AUDIT-2 que seul un navigateur peut constater.
 
-`F1` (le thème traverse les onglets) et `D1/D2` (le nuage de tags n'est plus figé) sont
+`F1` (le thème traverse les onglets) et `D1/D2` (le nuage de tags n'est plus figé) étaient
 des comportements de NAVIGATEUR : le premier repose sur l'événement `storage`, qui ne se
-déclenche que dans les autres onglets ; le second sur la reconstruction du nuage et sur
-la survie de la sélection à cette reconstruction. Un test serveur n'en voit rien, et un
+déclenche que dans les autres onglets ; le second reposait sur la reconstruction du nuage,
+parti avec le basculement d'ANN-7 — à sa place, le lien d'hier filtré par tag, qui doit
+dire qu'il ne filtre plus (I7). Un test serveur n'en voit rien, et un
 test qui lirait le SOURCE pour y chercher `addEventListener("storage")` déclarerait la
 règle couverte sans l'être — c'est exactement le défaut que SANTE-1 a mesuré.
 
@@ -12,8 +13,9 @@ Marqués `e2e` → hors du run par défaut (`pytest -m e2e`).
 # UX-10 — ce que cet audit COUVRE, et ce qu'il écarte avec sa raison.
 #
 # Cet audit suit deux CORRECTIFS nommés (AUDIT-2 F1 et D1/D2), pas un inventaire d'écrans :
-# le thème qui traverse les onglets, et le nuage de tags qui se reconstruit sans perdre sa
-# sélection. Il va donc là où ces deux comportements vivent, et nulle part ailleurs.
+# le thème qui traverse les onglets, et le nuage de tags qui se reconstruisait sans perdre
+# sa sélection (parti avec le basculement d'ANN-7). Il va donc là où ces comportements
+# vivent, et nulle part ailleurs.
 SURFACES_AUDITEES = ("/recherche", "/corpus", "/exploration")
 SURFACES_HORS_PERIMETRE = {
     "/annotation": (
@@ -43,8 +45,7 @@ pytestmark = pytest.mark.e2e
 
 @pytest.fixture
 def corpus_tags(live_server):
-    """Un album, une planche, une région ANNOTÉE — un tag n'entre dans le nuage que
-    s'il a au moins une occurrence (`loadTags` filtre sur `frequence > 0`)."""
+    """Un album, une planche, une région transcrite."""
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "AUDIT-2"}).json()["id"]
@@ -53,8 +54,6 @@ def corpus_tags(live_server):
         rid = c.post(f"/api/planches/{pid}/regions",
                      json={"type": "bulle", "x": 10, "y": 10, "w": 120, "h": 80}).json()["id"]
         c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"})
-        c.put(f"/api/regions/{rid}/annotation",
-              json={"note": "", "tags": ["dialogue"]})
         return {"base": live_server, "album": aid, "planche": pid, "region": rid,
                 "client": lambda: httpx.Client(base_url=live_server, trust_env=False,
                                                timeout=30, headers=ECRITURE)}
@@ -106,51 +105,20 @@ def test_le_theme_traverse_les_onglets_deja_ouverts(context, corpus_tags):
     b.evaluate("() => localStorage.clear()")
     expect(a.locator("html")).to_have_attribute("data-theme", "light")
 
-def test_le_nuage_de_tags_reflete_un_tag_cree_depuis(page, corpus_tags):
-    """D1/D2 — le nuage était bâti une fois, au démarrage, et jamais relu.
-
-    Les tags naissent dans la VISIONNEUSE, souvent dans un autre onglet : celui de la
-    Recherche restait figé sur l'état du chargement. Le revoir se fait en revenant sur
-    l'onglet, ce que `visibilitychange` signale — et c'est le moment exact où il a pu
-    changer.
-    """
-    page.goto(f"{corpus_tags['base']}/recherche", wait_until="networkidle")
-    expect(page.locator(".cloud-tag", has_text="dialogue")).to_have_count(1)
-    expect(page.locator(".cloud-tag", has_text="onomatopée")).to_have_count(0)
-
-    # Un tag naît ailleurs — ici par l'API, ce que fait la Visionneuse d'un autre onglet.
-    with corpus_tags["client"]() as c:
-        c.put(f"/api/regions/{corpus_tags['region']}/annotation",
-              json={"note": "", "tags": ["dialogue", "onomatopée"]})
-
-    # Tant qu'on ne revient pas sur l'onglet, rien ne bouge : la page ne sonde pas.
-    expect(page.locator(".cloud-tag", has_text="onomatopée")).to_have_count(0)
-
-    # Le retour sur l'onglet est le signal. En headless, `bring_to_front` ne rend pas
-    # l'autre page CACHÉE — `document.hidden` y reste faux et l'événement ne part
-    # jamais : mesuré, la première version de ce test échouait pour cette raison et non
-    # pour un défaut du correctif. On émet donc l'événement, ce qui teste le HANDLER et
-    # laisse au navigateur ce qui est son travail. Limite assumée : brancher l'écoute
-    # sur `focus` plutôt que sur `visibilitychange` ferait rougir ce test, mais le
-    # brancher sur les DEUX le laisserait vert sans qu'on l'ait voulu.
-    page.evaluate("() => document.dispatchEvent(new Event('visibilitychange'))")
-    expect(page.locator(".cloud-tag", has_text="onomatopée")).to_have_count(1)
-
-
-def test_un_tag_deep_linke_reste_surligne_dans_le_nuage(page, corpus_tags):
-    """D1/D2, l'autre moitié : la sélection SURVIT à la reconstruction du nuage.
-
-    `loadTags()` n'est pas attendu au démarrage. Arrivé après `restoreFromUrl()`, il
-    reconstruisait les boutons sans leur marque `.active` : le filtre restait actif et
-    invisible, et le tag deep-linké n'apparaissait surligné qu'une fois sur deux, selon
-    laquelle des deux requêtes répondait en premier. Course latente, jamais signalée.
-    """
-    page.goto(f"{corpus_tags['base']}/recherche?tags=dialogue", wait_until="networkidle")
-
-    # La puce du filtre actif ET le bouton du nuage doivent tous deux le montrer :
-    # c'est leur DÉSACCORD qui était le défaut, pas l'absence de l'un des deux.
-    expect(page.locator(".active-tag", has_text="dialogue")).to_have_count(1)
-    expect(page.locator(".cloud-tag.active", has_text="dialogue")).to_have_count(1)
+@pytest.mark.parametrize("surface,zone", [("/recherche", "#result-count"),
+                                          ("/exploration", "#dist-info")])
+def test_un_lien_d_hier_filtre_par_tag_dit_qu_il_ne_filtre_plus(page, corpus_tags, surface,
+                                                                 zone):
+    """ANN-7, I7 — un lien d'hier (`?tags=…`, un « drill » enregistré, un favori) : la page
+    ne rend pas le corpus entier en ayant l'air filtrée. Elle envoie le paramètre au
+    serveur, qui le refuse en le disant, et l'écran dit ce refus. Le geste suivant s'en
+    passe : changer un filtre relance une recherche ordinaire."""
+    page.goto(f"{corpus_tags['base']}{surface}?tags=dialogue", wait_until="networkidle")
+    expect(page.locator(zone)).to_contain_text("n'existent plus")
+    expect(page.locator(zone)).to_contain_text("« tags »")
+    page.select_option("#f-album", str(corpus_tags["album"]))
+    expect(page.locator(zone)).not_to_contain_text("n'existent plus")
+    assert "tags=" not in page.url
 
 
 # --------------------------------------------------------------------------- #
@@ -171,7 +139,7 @@ def _faux_resultats(n):
     # mieux qu'une inclusion qui laisserait le décor vieillir en silence.
     return {"q": "x", "count": n, "sans_terme": False,
             "results": [{"region_id": i, "type": "bulle", "x": 0, "y": 0, "w": 10, "h": 10,
-                         "ocr_texte": f"texte {i}", "note": None, "tags": [],
+                         "ocr_texte": f"texte {i}", "note": None,
                          "album_id": 1, "album_titre": "Décor", "planche_id": 1,
                          "planche_numero": 1, "citation": None}
                         for i in range(1, n + 1)]}

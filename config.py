@@ -81,6 +81,16 @@ GRILLE_DU_BAC = BASE_DIR / "tools" / "grille-modele.csv"
 GRILLE_DU_BAC_LISTES = BASE_DIR / "tools" / "grille-modele-listes-qualificatifs.csv"
 GRILLE_DU_BAC_NOM = "Grille d'exemple"
 GRILLE_DU_BAC_PORTE_SUR = "mots"
+# La grille de TRAVAIL de chaque projet (ANN-7, le basculement ; « les étiquettes de
+# travail », Hugo, 2026-11-05 : « des choses en cours qu'on ne sait pas parfaitement nommer,
+# du work in progress à reprendre »). Une grille OUVERTE, VIDE, sur toute zone, qui naît avec
+# chaque projet — bacs à sable compris — et où tout annotateur crée une étiquette en la
+# posant. Vide, nommée, elle n'est pas un vocabulaire : rien d'une grille n'est dans le code,
+# seuls ce nom et cette note le sont (`grille_import.installer_grille_de_travail`).
+GRILLE_DE_TRAVAIL_NOM = "Travail en cours"
+GRILLE_DE_TRAVAIL_NOTE = ("Les étiquettes de travail du projet : ce qu'on ne sait pas encore "
+                          "nommer. Elles se renomment, se fusionnent, ou passent dans une "
+                          "vraie grille.")
 
 # Déconnexion (INFRA-1). Derrière le proxy d'authentification (Authelia), l'URL de
 # logout vit sur le sous-domaine du PORTAIL, cible comprise :
@@ -278,29 +288,23 @@ TYPE_DETAIL = "detail"
 
 # Types de régions qui reçoivent un LOCUTEUR (ANN-6) : celles qui portent du texte — la
 # bulle, le cartouche (un récitatif a un narrateur) et la zone de texte. Ni la case, ni la
-# boîte personnage : la première reçoit une situation, la seconde une présence. C'est
+# boîte personnage : la seconde reçoit une présence. C'est
 # aujourd'hui la même liste que les régions transcrites (`pipeline.ocr.TEXT_TYPES`,
 # `database._TYPES_TEXTE`, `TEXT_TYPES` dans `static/viewer.js`), et elle a pourtant son
 # nom : « porte du texte » et « quelqu'un y parle » sont deux questions, que rien n'oblige
 # à répondre pareil demain. La route la tient (`PUT /api/regions/{id}/locuteur`), l'écran
-# aussi, et `tests/test_e2e_atelier_annotation.py` mesure leur accord type par type.
+# aussi, et `tests/test_e2e_annotation_locuteur.py` mesure leur accord type par type.
 TYPES_LOCUTEUR = ("bulle", "cartouche", "texte")
 
-# Types de régions qui MONTRENT un personnage (§14, brique (a) : la boîte porte l'identité),
-# et types qui reçoivent une SITUATION (`region_attribut`, une dimension de cible « case »).
+# Types de régions qui MONTRENT un personnage (§14, brique (a) : la boîte porte l'identité).
 # ANN-8 (Hugo, 2026-10-21) — le miroir du locuteur : une région qui change de type perd ce
 # que son nouveau type ne montre pas (`database.retirer_liens_caches`), et l'annulation ne
-# le repose que sur un type qui le montre. L'écran n'offre le bloc Personnage qu'à la boîte
-# et le bloc Situation qu'à la case, et leurs routes d'attribution gardent le type (422),
-# comme celle du locuteur (`PUT /api/regions/{id}/personnage`, `…/attributs`, décision du
-# 2026-10-22) ; lire et retirer restent ouverts à tout type.
+# le repose que sur un type qui le montre. L'écran n'offre le personnage qu'à la boîte, et sa
+# route d'attribution garde le type (422), comme celle du locuteur
+# (`PUT /api/regions/{id}/personnage`, décision du 2026-10-22) ; lire et retirer restent
+# ouverts à tout type. (La SITUATION d'une case, `TYPES_SITUATION`, suivait la même règle
+# jusqu'au basculement d'ANN-7, qui l'a retirée.)
 TYPES_PRESENCE = ("personnage",)
-TYPES_SITUATION = ("case",)
-
-# Cibles d'un attribut facetté (ANN-2) : un axe émergent s'applique soit au profil
-# (socio)linguistique d'un PERSONNAGE, soit à la situation d'une CASE (scène).
-# Cf. docs/personnages-et-attribution.md (§13).
-CIBLES_ATTRIBUT = ("personnage", "case")
 
 # Jeu d'étiquettes POS universel (UPOS) — vocabulaire CONTRÔLÉ pour la correction
 # grammaticale humaine (cf. docs/correction-grammaticale.md). C'est aussi le jeu que

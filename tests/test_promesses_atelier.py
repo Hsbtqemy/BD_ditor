@@ -34,14 +34,15 @@ MODULE_JOUEUR = DOSSIER / "test_e2e_transcription_promesses.py"
 RAISON_MINIMALE = 30   # « à voir » et « hors sujet » ne sont pas des raisons
 JOUEE = "jouée par "
 
-# Les quatre modes de l'Atelier. Une annonce ne vaut pas forcément dans tous, et depuis le
+# Les trois modes de l'Atelier — quatre jusqu'au basculement d'ANN-7, qui a retiré le mode
+# Annotation et son badge « A ». Une annonce ne vaut pas forcément dans tous, et depuis le
 # 2026-09-24 c'est même le sujet : les badges de raccourci s'ÉTEIGNENT pendant la
 # Transcription, où la touche ne peut pas marcher. Le recensement compare donc MODE PAR
 # MODE — une union aurait gardé les badges au tableau et n'aurait rien vu s'éteindre.
-MODES = ("navigation", "edition", "annotation", "transcription")
+MODES = ("navigation", "edition", "transcription")
 PARTOUT = MODES
 # Éteints pendant la Transcription : cf. `.modes.sans-raccourcis` dans `style.css`.
-HORS_TRANSCRIPTION = ("navigation", "edition", "annotation")
+HORS_TRANSCRIPTION = ("navigation", "edition")
 # Les libellés qui vivent DANS le panneau : `#transcription[hidden]` les retire ailleurs.
 PANNEAU = ("transcription",)
 # `#panel-edition` est `hidden` hors du mode Édition.
@@ -66,15 +67,14 @@ REDIT_LA_BARRE_D_AIDE = (
 # choses — dans quels modes l'annonce est FAITE, et comment la promesse est tenue :
 # « jouée par <test> », ou la raison de ne pas la jouer.
 #
-# Six porteurs, douze touches distinctes, quatorze couples.
+# Six porteurs, onze touches distinctes, treize couples.
 # ---------------------------------------------------------------------------
 PROMESSES = {
-    # Les quatre badges de mode : un `<kbd>` VISIBLE dans le bouton, et lui SEUL depuis
+    # Les trois badges de mode : un `<kbd>` VISIBLE dans le bouton, et lui SEUL depuis
     # le 2026-09-24 — le `title` ne porte plus que le nom. Une promesse à deux endroits
     # est un endroit qu'on oublie d'éteindre.
     ("button.mode-btn", "N"): (HORS_TRANSCRIPTION, BADGES),
     ("button.mode-btn", "E"): (HORS_TRANSCRIPTION, BADGES),
-    ("button.mode-btn", "A"): (HORS_TRANSCRIPTION, BADGES),
     ("button.mode-btn", "T"): (HORS_TRANSCRIPTION, BADGES),
 
     # Déplacement d'une région dans l'arbre de structure (nœud courant seulement).

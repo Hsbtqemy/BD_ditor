@@ -426,7 +426,7 @@ def test_qui_perd_quoi_se_lit_par_qui_peut_effacer(client, efface):
     X1, et `importeur` a travaillé dans un autre projet. L'administrateur, lui, lit tout,
     noms compris."""
     _ok(client.put(f"/api/regions/{_bulle(efface['db'], efface['x1'])}/annotation",
-                   headers=ECRIVAIN, json={"note": "à moi", "tags": []}))
+                   headers=ECRIVAIN, json={"note": "à moi"}))
     vue = _ok(client.get(f"/api/albums/{efface['x1']}/travail-des-autres", headers=PROPRIO))
     assert [e["agent"] for e in vue["travail_des_autres"]] == ["ecrivain"]
     assert vue["travail_des_autres"][0]["gestes"] == {"annotations": 1}

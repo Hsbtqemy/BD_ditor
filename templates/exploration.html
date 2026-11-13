@@ -66,10 +66,7 @@
         <span aria-hidden="true">×</span>
         <select id="f-axe-y" aria-label="Axe des colonnes (croisement)"></select>
       </span>
-      <label class="muted small" title="Inclure les tags posés sur la case parente (sinon, seul le tag propre à la région compte)"><input type="checkbox" id="f-tagscope" checked> tag hérité de la case</label>
       <span class="nav-spacer"></span>
-      <button id="btn-lexique" class="ghost small" type="button" data-parcours="exploration-lexique"
-              title="Documenter le vocabulaire : définitions, notes de portée, état (lexique situé SKOS)">📖 Lexique</button>
       <button id="btn-accord" class="ghost small" type="button" data-parcours="exploration-lexique"
               title="Rapport d'accord modèle↔humain : part des corrections que le modèle NLP retrouve seul">🎯 Accord</button>
       <button id="btn-accord-inter" class="ghost small" type="button" data-parcours="exploration-lexique"
@@ -94,10 +91,7 @@
             <option value="">Provenance : toutes</option>
             <option value="auto">auto</option><option value="corrige">corrigé</option><option value="valide">validé</option>
           </select>
-          <select id="f-tags" aria-label="Filtrer par tag"><option value="">Tag : tous</option></select>
           <select id="f-personnage" aria-label="Filtrer par locuteur"><option value="">Locuteur : tous</option></select>
-          <div id="f-attr-chips" class="attr-chips" role="group"
-               aria-label="Filtrer par attribut — profil du locuteur ou situation de scène (un clic = un critère de plus)"></div>
         </div>
       </div>
 
@@ -118,10 +112,7 @@
             <option value="">Provenance : toutes</option>
             <option value="auto">auto</option><option value="corrige">corrigé</option><option value="valide">validé</option>
           </select>
-          <select id="b-tags" aria-label="Sous-corpus B — filtrer par tag"><option value="">Tag : tous</option></select>
           <select id="b-personnage" aria-label="Sous-corpus B — filtrer par locuteur"><option value="">Locuteur : tous</option></select>
-          <div id="b-attr-chips" class="attr-chips" role="group"
-               aria-label="Sous-corpus B — filtrer par attribut (profil du locuteur ou situation de scène)"></div>
         </div>
       </div>
     </div>
@@ -148,30 +139,6 @@
     <div id="croise" class="croise" hidden
          tabindex="0" role="region" aria-label="Tableau de croisement"></div>
   </main>
-
-  <!-- ───────── Lexique situé (A4) — documentation SKOS du vocabulaire (modale) ───────── -->
-  <div id="lexique-modal" hidden>
-    <div class="modal-box lexique-box">
-      <h3 id="lexique-title">Lexique situé</h3>
-      <p class="muted small">Documenter le vocabulaire du corpus : <b>définition</b> (sens),
-        <b>note de portée</b> (cadre d'emploi ici), <b>état</b> (provisoire → défini) et
-        <b>portée</b> (global ou propre à une collection). Réemployable en SKOS à l'export.</p>
-      <div id="lex-resume" class="muted small" role="status" aria-live="polite"></div>
-      <div id="lex-body"></div>
-      <!-- Bilan du dernier import (AUTH-11) : synthèse + détail borné, hors de #lex-body
-           que le rechargement réécrit. Rempli par exploration.js (afficherBilanImport). -->
-      <div id="lex-import-bilan" class="small" hidden></div>
-      <p id="lex-import-note" class="muted small" hidden></p>
-      <div class="modal-actions">
-        <label class="lex-import-portee small">Importer dans
-          <select id="lex-import-portee"></select>
-        </label>
-        <button id="lex-import" class="ghost small" type="button">Importer un tableur…</button>
-        <input id="lex-import-file" type="file" accept=".csv,text/csv" hidden>
-        <button id="lex-close" class="ghost small" type="button">Fermer</button>
-      </div>
-    </div>
-  </div>
 
   <!-- ───────── Accord modèle↔humain (NLP-1) — rapport de qualité de l'index (modale) ───────── -->
   <div id="accord-modal" hidden>
@@ -211,8 +178,6 @@
 <script src="/static/lib/projet.js"></script>
 <script src="/static/lib/dialog.js"></script>
 <script src="/static/lib/resultats.js"></script>
-<script src="/static/lib/bilan-import.js"></script>
-<script src="/static/lib/gestes-tag.js"></script>
 <script src="/static/lib/membres-projet.js"></script>
 <script src="/static/lib/bac-a-sable.js"></script>
 <script src="/static/bac-a-sable.js"></script><!-- COL-4 : « Mon bac à sable » et sa ligne, sur les six surfaces -->

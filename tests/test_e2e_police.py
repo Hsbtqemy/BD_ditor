@@ -62,7 +62,7 @@ def decor(live_server):
         rid = c.post(f"/api/planches/{pid}/regions",
                      json={"type": "bulle", "x": 10, "y": 10, "w": 120, "h": 80}).json()["id"]
         c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"}, timeout=180)
-        c.put(f"/api/regions/{rid}/annotation", json={"note": "colère", "tags": ["emotion"]})
+        c.put(f"/api/regions/{rid}/annotation", json={"note": "colère"})
     finally:
         c.close()
     return {"base": live_server, "album": aid, "planche": pid, "region": rid}
@@ -247,7 +247,7 @@ POLICES_BANDE = (16, 20, 24)
 # Jusqu'à 1920, parce que sous une préférence de 24 les libellés ne reparaissent qu'à
 # 1536 px — un balayage arrêté à 1280 n'y aurait vu que des libellés clipés.
 LARGEURS_BALAYEES = range(320, 1921, 10)
-COMMANDES_BANDE = {"navigation", "edition", "annotation", "transcription",
+COMMANDES_BANDE = {"navigation", "edition", "transcription",
                    "#btn-traitement", "#btn-donnees"}
 INDICATEURS_BARRE = {"#stat-cases", "#stat-annotees", "#stat-mode", "#stat-zoom",
                      "#stat-coords"}
@@ -587,10 +587,12 @@ def test_une_bande_pressee_s_enroule_sans_se_plier(page, decor_bande):
     sonde de reflow sait voir. Sans `nowrap`, il passerait sur plusieurs lignes dans
     une barre qui n'en attend qu'une — en silence, c'est le défaut d'origine.
 
-    Des boutons de mode plus larges que la fenêtre s'ENROULENT : à 320 px, quatre boutons
+    Des boutons de mode plus larges que la fenêtre s'ENROULENT : à 320 px, les boutons
     élargis ne tiennent plus sur une rangée, et aucun ne doit sortir de la bande. Sans le
-    `flex-wrap` de `.modes`, le quatrième est coupé au bord droit — ce que la capture du
+    `flex-wrap` de `.modes`, le dernier est coupé au bord droit — ce que la capture du
     2026-10-09 montrait sous une préférence de 24, avant que les boutons soient resserrés.
+    Ils étaient quatre, élargis à 6rem ; depuis le basculement d'ANN-7 ils sont trois, et
+    9rem les fait encore déborder d'une rangée de 320 px.
     """
     _ouvrir_bande(page, decor_bande, 16, 1280)
     ecrire = "(t) => { document.querySelector('#stat-cases').textContent = t; }"
@@ -618,12 +620,12 @@ def test_une_bande_pressee_s_enroule_sans_se_plier(page, decor_bande):
     page.evaluate(ecrire, "")
     m = _mesurer(page, 320)
     page.evaluate("""() => { for (const b of document.querySelectorAll('.mode-btn'))
-                               b.style.minWidth = '6rem'; }""")
+                               b.style.minWidth = '9rem'; }""")
     m = page.evaluate(_BANDES)
     modes = {"elements": [x for x in m["bande"]["elements"]
                           if x["nom"] in COMMANDES_BANDE and not x["nom"].startswith("#")]}
     vus = [quoi for quoi, _ in _defauts(m["bande"], "la bande 2")]
     assert _rangees(modes) > 1 and vus == [], (
-        f"quatre boutons de mode élargis à 6rem dans 320 px : ils tiennent sur "
+        f"trois boutons de mode élargis à 9rem dans 320 px : ils tiennent sur "
         f"{_rangees(modes)} rangée(s) et la garde dit {vus or 'que rien ne sort'}. Ils "
         "devaient s'enrouler, et rester tous dans la bande.")

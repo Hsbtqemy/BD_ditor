@@ -489,24 +489,13 @@ def test_le_mono_poste_exporte_sans_rien_nommer(client, db_path, deux_albums):
 
 def test_ce_qui_sort_suit_la_portee_d_export_pas_celle_de_lecture(client, db_path, sortie):
     """Voir n'est pas emporter. Bob LIT c2 et n'y exporte rien. Un tag local à c2, posé sur
-    une région de l'album qu'il exporte au titre de c1, lui est montré à l'écran — et ne
-    part dans aucun des exports : l'album en trois formats, et la Recherche."""
-    from conftest import ADMIN
-    from test_autorisation import _poser_tag
-    from test_autorisation import _poser_sql
-    # ANN-8 — un tag local ne se pose plus hors de sa collection : posé global, puis rendu
-    # local à c2, l'état que laisse un tag devenu local après avoir servi.
-    _poser_tag(db_path, "grille-b")
+    une région de l'album qu'il exporte au titre de c1, ne part dans aucun des exports :
+    l'album en trois formats, et la Recherche. (Le tag est d'HIER, posé en base : aucune
+    route ne le pose ni ne le montre plus depuis le basculement d'ANN-7.)"""
+    from conftest import poser_tags
     r1, a1, bob = sortie["r1"]["id"], sortie["a1"]["id"], sortie["bob"]
-    r = client.put(f"/api/regions/{r1}/annotation", json={"note": "", "tags": ["grille-b"]},
-                   headers=ADMIN)
-    assert r.status_code == 200, r.text
-    _poser_sql(db_path, "UPDATE tags SET collection_id = ? WHERE label = 'grille-b'",
-               (sortie["c2"],))
+    poser_tags(db_path, r1, ["grille-b"], collection_id=sortie["c2"])
     _poser_export(db_path, sortie["c1"], "bob")
-    vus = {t["label"] for t in
-           client.get(f"/api/regions/{r1}/annotation", headers=bob).json()["tags"]}
-    assert vus == {"grille-b"}, "le décor doit montrer le tag à l'écran"
     for route, params in (("/api/export/json", {"album_id": a1}),
                           ("/api/export/csv", {"album_id": a1}),
                           ("/api/export/tei", {"album_id": a1}),

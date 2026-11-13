@@ -11,7 +11,8 @@ C'est ce que faisait la modale 📖 Lexique dès qu'elle portait un terme : chaq
 `dialog.js` ne le connaissait pas. Mesuré le 2026-10-09 avec trois domaines : Tab tournait
 sur trois arrêts — le champ, « + Domaine », le premier terme — et ni les deux autres termes,
 ni l'import, ni « Fermer » ne s'atteignaient au clavier. Trouvé à la main pendant une passe
-de QA.
+de QA. La modale 📖 Lexique est partie avec le basculement d'ANN-7 ; les deux cas qu'elle
+avait révélés se plantent désormais dans la modale 🎯 Accord.
 
 **La liste attendue ne vient PAS de `dialog.js`**, sans quoi ce test serait le miroir de ce
 qu'il juge : un sélecteur qui oublie un élément l'oublierait des deux côtés, et le parcours
@@ -36,7 +37,7 @@ from grilles_decor import grille_active_vivante  # noqa: E402
 pytestmark = pytest.mark.e2e
 
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source. Les trois surfaces auditées
-# sont celles qui chargent `dialog.js` ; les neuf modales s'y répartissent (cf. `MODALES`) —
+# sont celles qui chargent `dialog.js` ; les huit modales s'y répartissent (cf. `MODALES`) —
 # la neuvième, le guide complet de la page Annotation (ANN-7, tranche 2).
 SURFACES_AUDITEES = ("/", "/annotation", "/corpus", "/exploration")
 SURFACES_HORS_PERIMETRE = {
@@ -46,14 +47,11 @@ SURFACES_HORS_PERIMETRE = {
                        "des sections de la page et non des boîtes à piège",
 }
 
-DOMAINES = ("alpha", "beta", "gamma")
-
-
 @pytest.fixture
 def decor(live_server):
-    """De quoi peupler les neuf modales : un album et sa bulle annotée, trois domaines au
-    lexique, et une SECONDE collection portant l'album — sans elle, l'export part sans
-    rien demander et sa modale ne s'ouvre jamais."""
+    """De quoi peupler les huit modales : un album et sa bulle annotée, et une SECONDE
+    collection portant l'album — sans elle, l'export part sans rien demander et sa modale
+    ne s'ouvre jamais."""
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "Clavier", "auteur": "X"}).json()["id"]
@@ -62,9 +60,7 @@ def decor(live_server):
         rid = c.post(f"/api/planches/{pid}/regions",
                      json={"type": "bulle", "x": 10, "y": 10, "w": 120, "h": 80}).json()["id"]
         c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"}, timeout=180)
-        c.put(f"/api/regions/{rid}/annotation", json={"note": "colère", "tags": ["emotion"]})
-        for nom in DOMAINES:
-            c.post("/api/domaines", json={"nom": nom}).raise_for_status()
+        c.put(f"/api/regions/{rid}/annotation", json={"note": "colère"})
         cid = c.post("/api/collections", json={"nom": "Seconde étude"}).json()["id"]
         c.put(f"/api/albums/{aid}/collections/{cid}").raise_for_status()
         # La grille fictive, active : le guide complet de la page Annotation a de quoi
@@ -75,7 +71,7 @@ def decor(live_server):
     return {"base": live_server, "album": aid, "planche": pid, "region": rid}
 
 
-# ── Les neuf modales, chacune dans un état peuplé ───────────────────────────────────────
+# ── Les huit modales, chacune dans un état peuplé ───────────────────────────────────────
 #
 # Clé : l'élément que `BDDialog.register` reçoit. `boite` est ce que le piège enferme,
 # `ouvrir` le geste qui y mène — celui de l'écran, pas un `hidden = false` posé à la main,
@@ -83,12 +79,6 @@ def decor(live_server):
 def _atelier(d, region=False):
     url = f"/?album={d['album']}&planche={d['planche']}"
     return url + (f"&region={d['region']}" if region else "")
-
-
-def _lexique(page, d):
-    page.goto(d["base"] + "/exploration", wait_until="networkidle")
-    page.click("#btn-lexique")
-    page.locator("#lexique-modal:not([hidden]) details").first.wait_for(timeout=5000)
 
 
 def _accord(page, d):
@@ -157,7 +147,6 @@ def _guide_grille(page, d):
 
 
 MODALES = {
-    "#lexique-modal":      {"boite": "#lexique-modal .modal-box", "ouvrir": _lexique},
     "#accord-modal":       {"boite": "#accord-modal .modal-box", "ouvrir": _accord},
     "#accord-inter-modal": {"boite": "#accord-inter-modal .modal-box", "ouvrir": _accord_inter},
     "#album-modal":        {"boite": "#album-modal .modal-box", "ouvrir": _album},
@@ -256,25 +245,21 @@ def _exiger_le_tour(page, quoi, boite, minimum=2):
 
 @pytest.mark.parametrize("modale", list(MODALES))
 def test_tab_dessert_tous_les_arrets_de_la_modale(page, decor, modale):
-    """Les neuf modales, telles que l'écran les ouvre : aucune n'a d'arrêt que Tab ne
-    dessert pas. Celle du lexique est la seule à avoir échoué — elle est la seule à
-    porter des `<summary>` —, et les six autres sont là pour le jour où une autre en
-    gagnera un."""
+    """Les huit modales, telles que l'écran les ouvre : aucune n'a d'arrêt que Tab ne
+    dessert pas. Celle du lexique, partie avec le basculement d'ANN-7, est la seule à avoir
+    échoué — elle était la seule à porter des `<summary>` ; les autres sont là pour le jour
+    où une autre en gagnera un."""
     m = MODALES[modale]
     m["ouvrir"](page, decor)
-    noms = _exiger_le_tour(page, modale, m["boite"])
-    if modale == "#lexique-modal":
-        termes = [x for x in noms if x.startswith("summary")]
-        assert len(termes) >= len(DOMAINES), (
-            f"le lexique ne montre que {len(termes)} terme(s) focalisable(s) — {termes} : "
-            "le décor n'y a pas ses trois domaines, et c'est sur eux que le piège butait.")
+    _exiger_le_tour(page, modale, m["boite"])
 
 
 # ── Ce que les modales d'aujourd'hui ne peuvent pas dire ────────────────────────────────
 #
-# Le correctif tient en deux lignes qui se COUVRENT l'une l'autre dans le lexique tel
-# qu'il est : le sélecteur connaît désormais `<summary>`, et le piège ne renvoie plus au
-# début un focus qu'il ne connaît pas. Chacune suffit à rendre le tour ci-dessus complet,
+# Le correctif tient en deux lignes qui se COUVRAIENT l'une l'autre dans le lexique tel
+# qu'il était : le sélecteur connaît désormais `<summary>`, et le piège ne renvoie plus au
+# début un focus qu'il ne connaît pas. Le lexique parti (ANN-7), on plante dans la modale
+# 🎯 Accord. Chacune suffit à rendre le tour ci-dessus complet,
 # donc aucune des deux ne tomberait seule — mesuré par mutation. On PLANTE donc les deux
 # cas où une seule joue, par le DOM : une balise `<style>` serait refusée par la CSP,
 # mais on n'en a pas besoin ici.
@@ -292,13 +277,13 @@ def test_un_terme_en_bord_de_boite_est_un_bord(page, decor):
     connu repartirait au dernier connu, par-dessus lui —, et l'ouverture de la modale ne
     pourrait pas lui donner le focus.
     """
-    _lexique(page, decor)
-    boite = MODALES["#lexique-modal"]["boite"]
+    _accord(page, decor)
+    boite = MODALES["#accord-modal"]["boite"]
     page.evaluate(_PLANTER, [boite, "afterbegin",
                              "<details><summary>terme de tête</summary><p>…</p></details>"])
     page.evaluate(_PLANTER, [boite, "beforeend",
                              "<details><summary>terme de queue</summary><p>…</p></details>"])
-    noms = _exiger_le_tour(page, "lexique, un terme à chaque bord", boite, minimum=5)
+    noms = _exiger_le_tour(page, "accord, un terme à chaque bord", boite, minimum=3)
     aux_bords = (noms[0].startswith("summary « terme de tête")
                  and noms[-1].startswith("summary « terme de queue"))
     assert aux_bords, (
@@ -315,11 +300,13 @@ def test_un_focalisable_inconnu_n_est_pas_un_cul_de_sac(page, decor):
     navigateur le dessert, `dialog.js` ne le connaît pas, et on ne l'y ajoute pas : aucune
     modale n'en porte. Tab doit le traverser dans les deux sens.
     """
-    _lexique(page, decor)
-    boite = MODALES["#lexique-modal"]["boite"]
-    page.evaluate(_PLANTER, ["#lex-import-portee", "beforebegin",
+    _accord(page, decor)
+    boite = MODALES["#accord-modal"]["boite"]
+    page.evaluate(_PLANTER, [boite, "afterbegin",
+                             "<details><summary>terme de tête</summary><p>…</p></details>"])
+    page.evaluate(_PLANTER, ["#accord-close", "beforebegin",
                              '<span contenteditable="true" id="inconnu">inconnu</span>'])
-    noms = _exiger_le_tour(page, "lexique, un focalisable inconnu au milieu", boite, minimum=5)
+    noms = _exiger_le_tour(page, "accord, un focalisable inconnu au milieu", boite, minimum=3)
     assert "span#inconnu" in noms and noms[0] != "span#inconnu" != noms[-1], (
         f"le champ planté n'est pas un arrêt du MILIEU de la boîte — {noms} : ce test ne "
         "mesure plus ce pour quoi il existe.")
@@ -327,7 +314,7 @@ def test_un_focalisable_inconnu_n_est_pas_un_cul_de_sac(page, decor):
 
 # ── Un groupe de boutons radio n'est qu'UN arrêt (AUTH-11) ──────────────────────────────
 #
-# Le tour des neuf modales ci-dessus ouvre celle de l'export telle qu'elle naît : la
+# Le tour des huit modales ci-dessus ouvre celle de l'export telle qu'elle naît : la
 # PREMIÈRE collection cochée. Dans cet état-là, le premier bouton radio de la liste du
 # piège est aussi le premier arrêt du navigateur, et le tour est juste par coïncidence.
 # Il suffit de choisir la seconde collection — le seul geste que la boîte propose — pour
@@ -434,7 +421,6 @@ def test_un_groupe_radio_sans_coche_ne_laisse_pas_sortir(page, decor, touche):
 # s'ouvrent depuis le menu « Données », replié avec la modale ouverte : leur déclencheur ne
 # se voit plus, et l'hôte désigne le bouton du menu (`retour`).
 RETOUR = {
-    "#lexique-modal": "#btn-lexique",
     "#accord-modal": "#btn-accord",
     "#accord-inter-modal": "#btn-accord-inter",
     "#album-modal": "#detail-edit",
@@ -448,7 +434,7 @@ RETOUR = {
 # Ce qui, dans chaque boîte, ne prend pas le focus : son titre (le nom de la boîte), et sa
 # marge — un clic dans le coin haut-gauche, sur la boîte elle-même.
 _TITRE = {
-    "#lexique-modal": "#lexique-title", "#accord-modal": "#accord-title",
+    "#accord-modal": "#accord-title",
     "#accord-inter-modal": "#accord-inter-title", "#album-modal": "#modal-title",
     "#suppr-modal": "#sp-titre", "#sharedocs": "#sd-title",
     "#figure-modal": "#figure-title", "#export-modal": "#export-title",
@@ -499,7 +485,7 @@ def test_un_clic_dans_le_vide_garde_echap(page, decor, modale, endroit):
 
 
 @pytest.mark.parametrize("touche", ["Tab", "Shift+Tab"])
-@pytest.mark.parametrize("modale", ["#album-modal", "#lexique-modal"])
+@pytest.mark.parametrize("modale", ["#album-modal", "#accord-modal"])
 def test_un_clic_dans_le_vide_garde_tab_dans_la_boite(page, decor, modale, touche):
     """Après le même clic, Tab entre dans la boîte par son premier arrêt, Maj+Tab par son
     dernier : la boîte focalisée n'est pas un arrêt, et rien ne sort derrière le voile."""
@@ -525,7 +511,7 @@ _PERDRE = """(sel) => {
 
 
 @pytest.mark.parametrize("touche", ["Escape", "Tab", "Shift+Tab"])
-@pytest.mark.parametrize("modale", ["#album-modal", "#lexique-modal"])
+@pytest.mark.parametrize("modale", ["#album-modal", "#accord-modal"])
 def test_un_focus_perdu_rend_le_clavier_a_la_modale(page, decor, modale, touche):
     """L'élément focalisé quitte le document — le sort d'un bouton qu'un rendu remplace :
     le focus retombe sur `body` sans aucun clic. Échap ferme toujours, Tab et Maj+Tab

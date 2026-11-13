@@ -68,10 +68,7 @@ def decor(client, db_path, derriere_proxy):
     d.update(grille_active(client, d["p"]))
     perso = ok(client.post("/api/personnages", headers=LEA, json={"nom": "Zed"}), 200, 201)
     d["perso"] = perso["id"]
-    dim = ok(client.post("/api/attributs/dimensions", headers=LEA,
-                         json={"cible": "case", "nom": "lieu"}), 201)["id"]
-    d["valeur"] = ok(client.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=LEA,
-                                 json={"valeur": "cuisine"}), 201)["id"]
+    d["db"] = db_path
     return d
 
 
@@ -89,10 +86,6 @@ def semer(client, d, table, qui=STAG):
     if table == "annotations":
         ok(client.put(f"/api/regions/{z['case']}/annotation", headers=qui,
                       json={"note": "vu"}))
-        return z["case"]
-    if table == "region_attribut":
-        ok(client.put(f"/api/regions/{z['case']}/attributs", headers=qui,
-                      json={"valeur_id": d["valeur"]}))
         return z["case"]
     if table == "bulle_locuteur":
         ok(client.put(f"/api/regions/{z['bulle']}/locuteur", headers=qui,
@@ -170,6 +163,24 @@ def test_le_travail_d_un_autre_dans_cette_table_se_lit_avant_d_effacer(client, d
         c.close()
 
 
+def test_la_situation_d_hier_ne_se_lit_plus_sous_qui_perd_quoi(client, decor):
+    """ANN-7, le basculement (« se tranchent en route », au plus prudent) : une situation
+    posée par un autre — son `lien` au journal, ce qui reste d'elle depuis la v39 — ne compte
+    plus sous « qui perd quoi » : ce qu'elle a posé n'existe plus. Mutant tué :
+    `region_attribut` remis dans `autorisation._CIBLES_DE_REGION`."""
+    from conftest import poser_attribut
+    z = decor["zones"]
+    poser_attribut(decor["db"], cible="case", dimension="lieu", valeur="cuisine",
+                   region_id=z["case"], agent=STAG["Remote-User"])
+    c = database.get_connection()
+    try:
+        assert c.execute("SELECT COUNT(*) FROM evenement WHERE cible_table = "
+                         "'region_attribut' AND cible_id = ?", (z["case"],)).fetchone()[0] == 1
+        assert not _travail_d_un_autre(c, decor)
+    finally:
+        c.close()
+
+
 @pytest.mark.parametrize("table", database.TABLES_D_ANNOTATION)
 def test_repartir_de_zero_vide_cette_table(client, decor, table):
     semer(client, decor, table)
@@ -187,7 +198,7 @@ def test_repartir_de_zero_vide_cette_table(client, decor, table):
 # Les tables qui peuvent porter du travail sur une CASE — celles que la re-segmentation
 # doit lire pour la garder. Le locuteur vit sur une zone de texte, la présence sur une boîte
 # personnage : la segmentation ne supprime que des cases.
-SUR_UNE_CASE = ("annotations", "region_attribut", "releve", "doute", "doute_message", "passe")
+SUR_UNE_CASE = ("annotations", "releve", "doute", "doute_message", "passe")
 
 
 @pytest.mark.parametrize("table", SUR_UNE_CASE)

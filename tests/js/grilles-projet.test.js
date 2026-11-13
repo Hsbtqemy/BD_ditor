@@ -206,3 +206,18 @@ test("sur une grille fermée, l'entrée qui disparaît n'attend que « retirer �
   assert.deepEqual(G.choixDeReponse(vue.aRepondre[0], null).map((c) => c.valeur), ["retirer"]);
   assert.equal(G.importable(vue, { cri: "retirer" }).ok, true);
 });
+
+test("la grille de travail (le mode libre) : « Désactiver » s'y montre éteint, et dit pourquoi", () => {
+  const travail = G.etat({ ouverte: true, travail: true, retiree_le: null,
+                           versions: [v(1, "vivante", ["bulle"])], active: { numero: 1, etat: "vivante" } });
+  assert.equal(travail.desactiver, true);
+  assert.match(travail.desactiverRaison, /grille de travail du projet/);
+  const autre = G.etat({ ouverte: true, retiree_le: null, versions: [v(1, "vivante", ["bulle"])],
+                         active: { numero: 1, etat: "vivante" } });
+  assert.equal(autre.desactiverRaison, null);
+  // Pas active (une base d'avant) : rien à désactiver, rien à dire.
+  const inactive = G.etat({ ouverte: true, travail: true, retiree_le: null,
+                            versions: [v(1, "vivante")], active: null });
+  assert.equal(inactive.desactiver, false);
+  assert.equal(inactive.desactiverRaison, null);
+});

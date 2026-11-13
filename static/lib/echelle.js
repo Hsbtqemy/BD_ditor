@@ -36,7 +36,7 @@
     { valeur: "transcription", court: "+ la transcription", ajoute: "le texte des bulles" },
     { valeur: "grammaire", court: "+ la grammaire relue", ajoute: "lemmes et catégories corrigés" },
     { valeur: "annotations", court: "+ les annotations",
-      ajoute: "notes, tags, attributs de case, locuteurs, présences" },
+      ajoute: "notes, locuteurs, présences" },
   ];
   const VALEURS = CRANS.map((c) => c.valeur);
   /* Les crans VERS lesquels on repart de zéro : tous sauf le plus haut, au-dessus duquel il
@@ -92,7 +92,6 @@
   const MOTS = {
     regions: ["région", "régions"], textes: ["texte", "textes"],
     corrections: ["correction", "corrections"], annotations: ["annotation", "annotations"],
-    tags: ["tag", "tags"], attributs: ["attribut de case", "attributs de case"],
     locuteurs: ["locuteur", "locuteurs"], presences: ["présence", "présences"],
     noms: ["nom de détail", "noms de détail"],
     planches_devalidees: ["validation de planche", "validations de planche"],
@@ -106,7 +105,7 @@
      précédent — la table de `database.compter_le_travail`, cran par cran. */
   const AJOUTS = {
     images: [], decoupage: ["regions"], transcription: ["textes"], grammaire: ["corrections"],
-    annotations: ["annotations", "tags", "attributs", "locuteurs", "presences", "noms"],
+    annotations: ["annotations", "locuteurs", "presences", "noms"],
   };
 
   /* L'ÉCHELLE EN TABLEAU (écran de la 3b, « l'aperçu se lit DANS l'échelle ») : une ligne par
@@ -131,42 +130,31 @@
     });
   }
 
-  /* Sous le tableau, au cran des annotations seulement : les tags et attributs qui RESTENT
-     (comptés, jamais nommés, E5) et les fiches de personnage qui deviennent lisibles (E6).
-     `arrivee` : le nom de la collection d'arrivée. Rend { restent, aide, personnages } —
-     chaînes vides quand il n'y a rien à dire. */
-  function sousLEchelle(apercu, cran, arrivee) {
-    const vide = { restent: "", aide: "", personnages: "" };
-    if (!apercu || cran !== "annotations") return vide;
-    const l = apercu.laisses || {};
-    const restent = ["tags", "attributs"].filter((k) => Number(l[k]) > 0).map((k) => compte(k, l[k]));
+  /* Sous le tableau, au cran des annotations seulement : les fiches de personnage qui
+     deviennent lisibles (E6). Rend { personnages } — une chaîne vide quand il n'y a rien à
+     dire. (Les tags et attributs de case qui RESTAIENT, comptés, s'y disaient jusqu'au
+     basculement d'ANN-7.) */
+  function sousLEchelle(apercu, cran) {
+    if (!apercu || cran !== "annotations") return { personnages: "" };
     const n = Number(apercu.personnages) || 0;
     return {
-      restent: restent.length ? `Restent : ${restent.join(", ")}` : "",
-      aide: restent.length
-        ? `Locaux à une collection que ${g(arrivee)} ne voit pas : ils ne suivent pas, et ne `
-          + "sont pas nommés." : "",
       personnages: n ? `${nf(n)} fiche${n > 1 ? "s" : ""} de personnage deviennent lisibles ici`
         : "",
     };
   }
 
   /* L'aperçu d'une DEMANDE d'en partir, pour qui y répond (le bloc ⚑, la fiche du projet
-     source, « À faire ») : ce qui part avec la copie, ce qui reste, ce qui devient lisible.
+     source, « À faire ») : ce qui part avec la copie, ce qui devient lisible.
      `apercu` : `database.compter_le_travail` au cran demandé, que le serveur joint à la
-     demande ; null quand il ne le peut pas (la collection d'arrivée supprimée). */
+     demande ; null quand il ne le peut pas (la collection d'arrivée supprimée). (Ce qui
+     RESTAIT — les tags et attributs de case — s'y comptait jusqu'au basculement d'ANN-7.) */
   function apercuDemande(apercu, arrivee) {
-    if (!apercu) return { partent: [], restent: [], personnages: "", rien: false };
+    if (!apercu) return { partent: [], personnages: "", rien: false };
     const c = apercu.copies || {};
     const partent = Object.keys(MOTS).filter((k) => Number(c[k]) > 0).map((k) => compte(k, c[k]));
-    const l = apercu.laisses || {};
-    const restent = ["tags", "attributs"].filter((k) => Number(l[k]) > 0).map((k) => compte(k, l[k]));
     const n = Number(apercu.personnages) || 0;
     return {
-      partent, restent, rien: !partent.length,
-      aide: restent.length
-        ? `Locaux à une collection que ${g(arrivee || "la collection d'arrivée")} ne voit pas : `
-          + "ils ne suivent pas, et ne sont pas nommés." : "",
+      partent, rien: !partent.length,
       personnages: n ? `${nf(n)} fiche${n > 1 ? "s" : ""} de personnage deviennent lisibles dans `
         + `${g(arrivee || "la collection d'arrivée")}` : "",
     };
@@ -237,7 +225,7 @@
 
   /* « Part », en nombres, validations comprises — les comptes que l'aperçu rend
      (`database.compter_repartir`), dans l'ordre de l'échelle. */
-  const ORDRE_PART = ["regions", "textes", "corrections", "annotations", "attributs",
+  const ORDRE_PART = ["regions", "textes", "corrections", "annotations",
                       "locuteurs", "presences", "noms", "planches_devalidees"];
   function part(comptes) {
     const c = comptes || {};
@@ -368,7 +356,7 @@
       aide: "Corrections grammaticales" },
     { cle: "annotations", libelle: "annotations",
       sortes: ["annotations", "bulle_locuteur", "personnage_presence", "region_attribut"],
-      perdu: "annotations", aide: "Notes, tags, locuteurs, présences, attributs de case" },
+      perdu: "annotations", aide: "Notes, locuteurs, présences" },
     { cle: "validations", libelle: "validations", sortes: ["planches"], perdu: "annotations",
       aide: "Validations et relectures de planche" },
     { cle: "document", libelle: "notice et scans", sortes: ["document"], perdu: null,
@@ -585,8 +573,7 @@
       <p class="muted small perd-note" title="${esc(t.aide)}">${esc(t.note)} <span aria-hidden="true">ⓘ</span><span class="sr-only"> : ${esc(t.aide)}</span></p></section>`;
   }
 
-  /* L'aperçu d'une demande d'en partir, en nombres : ce qui part, ce qui reste (compté,
-     jamais nommé), ce qui devient lisible. */
+  /* L'aperçu d'une demande d'en partir, en nombres : ce qui part, ce qui devient lisible. */
   function htmlApercuDemande(apercu, arrivee) {
     const a = apercuDemande(apercu, arrivee);
     if (!apercu) {
@@ -596,8 +583,6 @@
     return `<div class="apercu"><h5>Partent avec la copie</h5>${a.rien
       ? `<p class="muted small">Aucun travail à ce cran sur cette copie.</p>`
       : `<ul>${a.partent.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`}
-      ${a.restent.length ? `<p class="small apercu-reste">Restent : ${esc(a.restent.join(", "))}
-        <span class="muted" title="${esc(a.aide)}" aria-hidden="true">ⓘ</span><span class="sr-only"> — ${esc(a.aide)}</span></p>` : ""}
       ${a.personnages ? `<p class="small">${esc(a.personnages)}</p>` : ""}</div>`;
   }
 

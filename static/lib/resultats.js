@@ -56,7 +56,7 @@
      absent de la réponse se lit 0, jamais « undefined ». */
   const CHIFFRES_CORPUS = [
     ["albums", "album"], ["planches", "planche"], ["regions", "région"],
-    ["transcrites", "transcrite"], ["annotees", "annotée"], ["tags", "tag"],
+    ["transcrites", "transcrite"], ["annotees", "annotée"],
   ];
   function chiffresCorpus(c) {
     return CHIFFRES_CORPUS.map(([cle, mot]) => {
@@ -71,7 +71,7 @@
      leurs requêtes). « Aucune donnée (relancer l'indexation NLP ?) » s'affichait aussi à qui
      n'avait aucun corpus ouvert — l'arrivant qui n'a que son bac à sable — et se lisait
      comme une panne. `texte` : l'écran ne compte que des mots transcrits (l'Exploration) ;
-     sans lui, une note ou un tag suffisent à trouver quelque chose (la Recherche). `null` :
+     sans lui, une note suffit à trouver quelque chose (la Recherche). `null` :
      aucune cause connue — corpus illisible, ou qui porte de quoi répondre —, l'appelant
      garde son message. */
   function causeVide(c, options) {

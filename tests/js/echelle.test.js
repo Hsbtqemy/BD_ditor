@@ -47,8 +47,8 @@ test("les mots d'un cran : jusqu'où, vers où, le bouton, la puce", () => {
 /* ── « Copie… » : l'échelle en tableau ───────────────────────────────────────────── */
 
 const APERCU = { copies: { regions: 1840, textes: 1310, corrections: 0, annotations: 420,
-                           tags: 610, attributs: 230, locuteurs: 980, presences: 0 },
-                 laisses: { tags: 38, attributs: 0 }, personnages: 9, etat: "demande",
+                           locuteurs: 980, presences: 0 },
+                 laisses: { releves: 0 }, personnages: 9, etat: "demande",
                  repondra: "proprietaire" };
 
 test("une ligne par cran, ce qu'elle AJOUTE en nombres, grise quand la source n'a pas ce travail", () => {
@@ -60,8 +60,12 @@ test("une ligne par cran, ce qu'elle AJOUTE en nombres, grise quand la source n'
   assert.equal(l[2].texte, "1 310 textes");
   assert.equal(l[3].vide, true);
   assert.equal(l[3].texte, "rien : la source n'a pas ce travail");
-  assert.equal(l[4].texte, "420 annotations · 610 tags · 230 attributs de case · 980 locuteurs",
-               "un compte nul ne s'écrit pas");
+  assert.equal(l[4].texte, "420 annotations · 980 locuteurs", "un compte nul ne s'écrit pas");
+  // ANN-7, le basculement : un aperçu d'hier qui compterait encore tags et attributs de case
+  // ne les fait pas lire.
+  const hier = E.lignesEchelle({ copies: { ...APERCU.copies, tags: 610, attributs: 230 } });
+  assert.equal(hier[4].texte, "420 annotations · 980 locuteurs");
+  assert.ok(!/tag|attribut/.test(E.CRANS[4].ajoute), E.CRANS[4].ajoute);
 });
 
 test("sans aperçu, l'échelle dit ce que chaque cran ajoute en mots, sans rien supposer", () => {
@@ -70,14 +74,14 @@ test("sans aperçu, l'échelle dit ce que chaque cran ajoute en mots, sans rien 
   assert.equal(l[2].texte, "le texte des bulles");
 });
 
-test("sous le tableau : ce qui reste et ce qui devient lisible, au cran des annotations seulement", () => {
-  const s = E.sousLEchelle(APERCU, "annotations", "Exercices");
-  assert.equal(s.restent, "Restent : 38 tags");
-  assert.ok(s.aide.includes("« Exercices » ne voit pas"));
-  assert.ok(!/«[^»]*tag/.test(s.restent), "jamais un libellé");
-  assert.equal(s.personnages, "9 fiches de personnage deviennent lisibles ici");
-  assert.deepEqual(E.sousLEchelle(APERCU, "grammaire", "X"), { restent: "", aide: "", personnages: "" });
-  assert.deepEqual(E.sousLEchelle(null, "annotations", "X"), { restent: "", aide: "", personnages: "" });
+test("sous le tableau : ce qui devient lisible, au cran des annotations seulement", () => {
+  const s = E.sousLEchelle(APERCU, "annotations");
+  assert.deepEqual(s, { personnages: "9 fiches de personnage deviennent lisibles ici" });
+  assert.deepEqual(E.sousLEchelle(APERCU, "grammaire"), { personnages: "" });
+  assert.deepEqual(E.sousLEchelle(null, "annotations"), { personnages: "" });
+  // ANN-7, le basculement : des tags laissés par un aperçu d'hier ne se disent plus.
+  assert.deepEqual(E.sousLEchelle({ ...APERCU, laisses: { tags: 38 } }, "annotations"),
+                   { personnages: "9 fiches de personnage deviennent lisibles ici" });
 });
 
 test("la réponse attendue : immédiat aux images seules, sinon ce que le serveur a dit", () => {
@@ -308,10 +312,12 @@ test("« attend … » : qui tient le travail, ou c'est à l'administrateur", ()
     ["Marion Dumas", "groupe lettrage"]);
 });
 
-test("l'aperçu d'une demande : ce qui part, ce qui reste sans nom, ce qui devient lisible", () => {
+test("l'aperçu d'une demande : ce qui part, ce qui devient lisible", () => {
   const a = E.apercuDemande(APERCU, "Exercices");
   assert.ok(a.partent.includes("1 840 régions"));
-  assert.deepEqual(a.restent, ["38 tags"]);
+  assert.ok(!("restent" in a));
+  assert.ok(!E.apercuDemande({ copies: { tags: 3, attributs: 2 } }).partent.length,
+            "le vocabulaire d'hier ne part plus");
   assert.ok(a.personnages.includes("9 fiches de personnage deviennent lisibles dans « Exercices »"));
   assert.equal(E.apercuDemande(null).rien, false);
   assert.ok(E.htmlApercuDemande(null).includes("n'a pas pu être compté"));

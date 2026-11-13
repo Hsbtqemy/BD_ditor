@@ -155,8 +155,6 @@ def test_un_personnage_apparait_par_la_zone_ou_il_parle(client, parole, db_path,
     lea = {"Remote-User": "lea"}
     registre = {p["nom"]: p["nb_bulles"] for p in client.get("/api/personnages", headers=lea).json()}
     assert registre == {"Narrateur": 1, "Tintin": 1}
-    assert client.get(f"/api/personnages/{parole['narrateur']}/attributs",
-                      headers=lea).status_code == 200
     # Le témoin : quelqu'un qui ne lit rien ne voit ni l'un ni l'autre — la lectrice ne les
     # voit donc pas « parce que tout le monde les voit ».
     assert client.get("/api/personnages", headers={"Remote-User": "zoe"}).json() == []

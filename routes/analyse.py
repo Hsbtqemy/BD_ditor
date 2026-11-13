@@ -25,9 +25,9 @@ from pipeline import nlp
 from vraisemblance import log_vraisemblance
 
 from socle import (
-    TokenCorrectionIn, _auteur, _clause_lemme, _csv_response, _csv_safe, _get_dimension,
-    _cle_tag, _get_personnage, _get_region, _get_valeur, _portee_d_export, _rows, db,
-    portee_courante,
+    TokenCorrectionIn, _auteur, _clause_lemme, _csv_response, _csv_safe, _get_personnage,
+    _get_region, _portee_d_export, _rows, db, motif_du_vocabulaire, portee_courante,
+    refuser_le_vocabulaire,
 )
 
 router = APIRouter()
@@ -50,8 +50,8 @@ PLAFOND_COMPARAISON = 200
 PLAFOND_CROISEMENT = 50
 PLAFOND_EXPORT = 5000
 
-def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=None,
-                     tag_scope="herite", personnage=None, attributs=None, auteur=None):
+def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance,
+                     personnage=None, auteur=None):
     """Clauses WHERE communes aux requêtes par token (sur la vue `tokens_effectifs` te,
     jointe à regions r / planches p). Valeurs EFFECTIVES (correction humaine ⊕ auto).
 
@@ -87,26 +87,6 @@ def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=No
     if auteur:
         # INFRA-2 : tokens portant une correction de cet auteur (qui a corrigé/validé là).
         where.append("te.corr_auteur = ?"); params.append(auteur)
-    # Filtre par TAGS (annotation humaine) — un EXISTS par tag ⇒ ET (toutes présentes),
-    # comme /api/recherche. `tag_scope` : 'propre' = la région porte le tag ;
-    # 'herite' (défaut) = la région OU sa case parente (profondeur ≤ 2 ; une émotion /
-    # situation est souvent taguée sur la case). Cf. docs/personnages-et-attribution.md.
-    if tags:
-        cible = ("a2.region_id = r.id" if tag_scope == "propre"
-                 else "a2.region_id IN (r.id, r.parent_id)")
-        # Un tag qu'on ne lit pas ne filtre rien — la même règle que `_joindre_tags`, qui
-        # ne l'affiche pas : sinon son nom resterait un critère opérant sans être visible.
-        ou_tag, p_tag = portee.clause_terme("tg.collection_id")
-        for label in (_cle_tag(t) for t in tags):   # ANN-8 : par la clé du libellé
-            if not label:
-                continue
-            where.append(
-                "EXISTS (SELECT 1 FROM annotation_tags at2 "
-                "        JOIN tags tg ON tg.id = at2.tag_id "
-                "        JOIN annotations a2 ON a2.id = at2.annotation_id "
-                f"       WHERE {cible} AND cle_tag(tg.label) = ? AND {ou_tag})")
-            params.append(label)
-            params.extend(p_tag)
     # Filtre par LOCUTEUR (ANN-2) : la zone de texte — bulle, cartouche ou texte
     # (ANN-6) — est attribuée à ce personnage. Aucun filtre de type : la jointure suit
     # `region_id`, et c'est la route d'attribution qui dit quelles zones parlent.
@@ -114,44 +94,32 @@ def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=No
         where.append("EXISTS (SELECT 1 FROM bulle_locuteur bl "
                      "WHERE bl.region_id = r.id AND bl.personnage_id = ?)")
         params.append(personnage)
-    # Filtre par ATTRIBUT (valeur_id) : profil du LOCUTEUR (dimension 'personnage') OU
-    # situation de la CASE (dimension 'case' ; région ou case parente). Un (EXISTS OR
-    # EXISTS) par valeur ⇒ ET entre attributs. Une valeur n'existe que dans UNE des deux
-    # tables (garde de cohérence à l'affectation), donc tester les deux est neutre.
-    for vid in (attributs or []):
-        where.append(
-            "(EXISTS (SELECT 1 FROM bulle_locuteur bl JOIN personnage_attribut pa "
-            "         ON pa.personnage_id = bl.personnage_id "
-            "         WHERE bl.region_id = r.id AND pa.valeur_id = ?) "
-            " OR EXISTS (SELECT 1 FROM region_attribut ra "
-            "            WHERE ra.region_id IN (r.id, r.parent_id) AND ra.valeur_id = ?))")
-        params.extend([vid, vid])
+    # Les filtres par TAG et par ATTRIBUT (profil du locuteur, situation de la case) sont
+    # partis avec le basculement d'ANN-7 ; la tranche 4 filtrera par les relevés.
     return where, params, len(where) - 1
 
 
-def _valider_facette(conn, portee: autorisation.Portee, personnage=None, attributs=None):
-    """404 si un id de facette (personnage / valeur d'attribut) n'existe pas — évite
+def _valider_facette(conn, portee: autorisation.Portee, personnage=None):
+    """404 si l'id de la facette « personnage » n'existe pas — évite
     un résultat vide silencieux sur un id erroné (revue ANN-2 #6).
 
     AUTH-11 — et 404 aussi, au mot près, s'il existe mais qu'on ne le VOIT pas : les
     accesseurs gardés tranchent, avec le message qu'on rendait à un identifiant libre. Ne
-    vérifier que l'existence faisait de ce contrôle un oracle — 200 pour une valeur d'une
-    collection qu'on ne lit pas, ou un locuteur qui n'apparaît que là, 404 pour le reste —
+    vérifier que l'existence faisait de ce contrôle un oracle — 200 pour un locuteur qui
+    n'apparaît que dans une collection qu'on ne lit pas, 404 pour le reste —
     et énumérer les identifiants disait lesquels existent ailleurs."""
     if personnage is not None:
         _get_personnage(conn, portee, personnage)
-    for vid in (attributs or []):
-        _get_valeur(conn, portee, vid)
 
 
-@router.get("/api/analyse/frequences")
-@router.get("/api/analyse/lemmes")          # alias rétro-compat (champ=lemme)
+@router.get("/api/analyse/frequences", dependencies=[Depends(refuser_le_vocabulaire)])
+@router.get("/api/analyse/lemmes",            # alias rétro-compat (champ=lemme)
+            dependencies=[Depends(refuser_le_vocabulaire)])
 def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
                        type: Optional[str] = None, pos: Optional[str] = None,
                        lemme: Optional[str] = None, morph: Optional[str] = None,
                        provenance: Optional[str] = None, auteur: Optional[str] = None,
-                       tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
-                       personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
+                       personnage: Optional[int] = None,
                        limit: int = 100,
                        conn: sqlite3.Connection = Depends(db),
                        portee: autorisation.Portee = Depends(portee_courante)):
@@ -161,12 +129,12 @@ def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
     des champs lexicaux et distributions (Exploration)."""
     return {"champ": champ,
             "results": _frequences_rows(conn, portee, champ, album, type, pos, lemme,
-                                        morph, provenance, auteur, tags, tag_scope,
-                                        personnage, attributs, limit, PLAFOND_FREQ)}
+                                        morph, provenance, auteur, personnage, limit,
+                                        PLAFOND_FREQ)}
 
 
 def _frequences_rows(conn, portee, champ, album, type, pos, lemme, morph, provenance,
-                     auteur, tags, tag_scope, personnage, attributs, limit, plafond):
+                     auteur, personnage, limit, plafond):
     """Cœur de la distribution — PARTAGÉ par la route JSON et son export CSV (ANA-7).
 
     Extrait pour que l'export ne réécrive pas le calcul : deux chemins finiraient par
@@ -182,9 +150,9 @@ def _frequences_rows(conn, portee, champ, album, type, pos, lemme, morph, proven
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     limit = max(1, min(limit, plafond))
-    _valider_facette(conn, portee, personnage, attributs)
-    where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
-                                     personnage, attributs, auteur)
+    _valider_facette(conn, portee, personnage)
+    where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance,
+                                         personnage, auteur)
     cols = "te.lemme, te.pos" if champ == "lemme" else f"te.{champ}"
     sql = (f"SELECT {cols}, COUNT(*) AS freq "
            "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
@@ -200,15 +168,13 @@ def _frequences_rows(conn, portee, champ, album, type, pos, lemme, morph, proven
 # son cœur la portée d'EXPORT (`_portee_d_export`) et non celle de lecture : l'écran
 # montre tout ce qu'on lit, le fichier n'emporte que ce qu'on a le droit de sortir, et
 # c'est un 403 si l'on n'exporte nulle part. Les cœurs n'ont rien appris : c'est une
-# Portee de plus, que `clause_album` et `clause_terme` consomment telle quelle.
-@router.get("/api/analyse/frequences.csv")
+# Portee de plus, que `clause_album` consomme telle quelle.
+@router.get("/api/analyse/frequences.csv", dependencies=[Depends(refuser_le_vocabulaire)])
 def analyse_frequences_export(champ: str = "lemme", album: Optional[int] = None,
                               type: Optional[str] = None, pos: Optional[str] = None,
                               lemme: Optional[str] = None, morph: Optional[str] = None,
                               provenance: Optional[str] = None, auteur: Optional[str] = None,
-                              tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
                               personnage: Optional[int] = None,
-                              attributs: Optional[list[int]] = Query(None),
                               conn: sqlite3.Connection = Depends(db),
                               portee: autorisation.Portee = Depends(portee_courante)):
     """Export CSV de la distribution — MÊMES critères que `/api/analyse/frequences` (ANA-7).
@@ -218,8 +184,8 @@ def analyse_frequences_export(champ: str = "lemme", album: Optional[int] = None,
     `recherche_export` avait déjà prise.
     """
     lignes = _frequences_rows(conn, _portee_d_export(portee), champ, album, type, pos,
-                              lemme, morph, provenance, auteur, tags, tag_scope,
-                              personnage, attributs, PLAFOND_EXPORT, PLAFOND_EXPORT)
+                              lemme, morph, provenance, auteur, personnage,
+                              PLAFOND_EXPORT, PLAFOND_EXPORT)
     cols = (["lemme", "pos", "frequence"] if champ == "lemme" else [champ, "frequence"])
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
@@ -256,13 +222,12 @@ def _nom_export(vue: str, precision: Optional[str], lignes, tronque=None) -> str
     return f"{vue}{bout}{coupe}.csv"
 
 
-@router.get("/api/analyse/concordance")
+@router.get("/api/analyse/concordance", dependencies=[Depends(refuser_le_vocabulaire)])
 def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
                         morph: Optional[str] = None, provenance: Optional[str] = None,
                         auteur: Optional[str] = None,
                         album: Optional[int] = None, type: Optional[str] = None,
-                        tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
-                        personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
+                        personnage: Optional[int] = None,
                         limit: int = 200, conn: sqlite3.Connection = Depends(db),
                         portee: autorisation.Portee = Depends(portee_courante)):
     """Concordance grammaticale : occurrences de tokens (valeurs EFFECTIVES) répondant
@@ -270,25 +235,25 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     chaque emploi en contexte multimodal (socle de Recherche+++). Au moins un critère
     grammatical (lemme / pos / morph) est requis."""
     results = _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur,
-                                album, type, tags, tag_scope, personnage, attributs,
-                                limit, PLAFOND_CONCORDANCE)
+                                album, type, personnage, limit, PLAFOND_CONCORDANCE)
     return {"count": len(results), "results": results}
 
 
 def _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur, album, type,
-                      tags, tag_scope, personnage, attributs, limit, plafond):
+                      personnage, limit, plafond):
     """Cœur de la concordance KWIC — PARTAGÉ par la route JSON et son export CSV (ANA-7)."""
-    if not (lemme or pos or morph or tags or personnage or attributs or auteur):
-        raise HTTPException(422, "Préciser au moins un critère (grammatical, tag, personnage, attribut ou auteur).")
+    if not (lemme or pos or morph or personnage or auteur):
+        raise HTTPException(422, "Préciser au moins un critère (grammatical, personnage "
+                                 "ou auteur).")
     limit = max(1, min(limit, plafond))
-    _valider_facette(conn, portee, personnage, attributs)
-    where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
-                                     personnage, attributs, auteur)
-    if not _n:      # critères fournis mais aucun effectif (p.ex. tag vide) → évite un
+    _valider_facette(conn, portee, personnage)
+    where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance,
+                                         personnage, auteur)
+    if not _n:      # critères fournis mais aucun effectif (p.ex. un lemme « * ») → évite un
         # sous-corpus « tout ce qui est visible », qui n'est pas ce qu'on a demandé
         raise HTTPException(422, "Aucun critère de recherche effectif.")
     sql = ("SELECT te.region_id, te.ordre, te.texte, te.lemme, te.pos, te.morph, "
-           "       te.provenance, r.type, r.parent_id, p.id AS planche_id, "
+           "       te.provenance, r.type, p.id AS planche_id, "
            "       p.numero AS planche_numero, a.id AS album_id, a.titre AS album_titre, "
            "       r.ocr_texte, loc.nom AS locuteur, an.note AS note "
            "FROM tokens_effectifs te "
@@ -305,55 +270,16 @@ def _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur, album
     cits = citations_regions(conn, [r["region_id"] for r in results])
     for r in results:
         r["citation"] = cits.get(r["region_id"])   # chaque ligne KWIC se cite
-    _joindre_tags(conn, portee, results)
+        r["note"] = r["note"] or ""
     return results
 
 
-def _joindre_tags(conn, portee, lignes) -> None:
-    """Pose sur chaque ligne ses TAGS — ceux de sa région, puis ceux de sa case (ANA-6).
-
-    Les HÉRITÉS sont là parce que c'est la portée par défaut du filtre
-    (`tag_scope=herite`) : sans eux, une ligne trouvée par un tag posé sur la case
-    n'afficherait rien qui explique sa présence. Un tag porté par les deux est PROPRE, et
-    ne se répète pas en hérité.
-
-    Filtrés par `clause_terme`, et ce n'est pas une précaution : un tag peut devenir LOCAL
-    après avoir été posé (lexique situé), et un album vit dans plusieurs collections. Une
-    région qu'on lit peut donc porter un tag d'une collection qu'on ne lit pas — son nom
-    est alors un morceau de grille d'analyse qui n'est pas à nous.
-
-    Une seule requête pour tout le jeu, jamais une par ligne : la concordance s'exporte
-    jusqu'au plafond d'export. `parent_id` sert ici et ne sort pas.
-    """
-    parents = {r["region_id"]: r.pop("parent_id") for r in lignes}
-    cibles = sorted(set(parents) | {p for p in parents.values() if p is not None})
-    par_region: dict = {}
-    if cibles:
-        ou, pp = portee.clause_terme("tg.collection_id")
-        marques = ",".join("?" * len(cibles))
-        for row in conn.execute(
-                "SELECT an.region_id, tg.label FROM annotation_tags at "
-                "JOIN tags tg ON tg.id = at.tag_id "
-                "JOIN annotations an ON an.id = at.annotation_id "
-                f"WHERE an.region_id IN ({marques}) AND {ou} ORDER BY tg.label",
-                (*cibles, *pp)):
-            par_region.setdefault(row["region_id"], []).append(row["label"])
-    for r in lignes:
-        propres = par_region.get(r["region_id"], [])
-        herites = [t for t in par_region.get(parents[r["region_id"]], []) if t not in propres]
-        r["tags"] = ([{"label": t, "herite": False} for t in propres]
-                     + [{"label": t, "herite": True} for t in herites])
-        r["note"] = r["note"] or ""
-
-
-@router.get("/api/analyse/concordance.csv")
+@router.get("/api/analyse/concordance.csv", dependencies=[Depends(refuser_le_vocabulaire)])
 def analyse_concordance_export(lemme: Optional[str] = None, pos: Optional[str] = None,
                                morph: Optional[str] = None, provenance: Optional[str] = None,
                                auteur: Optional[str] = None, album: Optional[int] = None,
                                type: Optional[str] = None,
-                               tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
                                personnage: Optional[int] = None,
-                               attributs: Optional[list[int]] = Query(None),
                                conn: sqlite3.Connection = Depends(db),
                                portee: autorisation.Portee = Depends(portee_courante)):
     """Export CSV de la concordance — MÊMES critères que `/api/analyse/concordance` (ANA-7).
@@ -363,13 +289,13 @@ def analyse_concordance_export(lemme: Optional[str] = None, pos: Optional[str] =
     commentaire dit « le CSV est l'artefact que le chercheur emporte pour citer ».
     """
     lignes = _concordance_rows(conn, _portee_d_export(portee), lemme, pos, morph,
-                               provenance, auteur, album, type, tags, tag_scope,
-                               personnage, attributs, PLAFOND_EXPORT, PLAFOND_EXPORT)
+                               provenance, auteur, album, type, personnage,
+                               PLAFOND_EXPORT, PLAFOND_EXPORT)
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator=chr(10))
     w.writerow(["citation", "album", "planche", "region_id", "type", "locuteur",
                 "texte", "lemme", "pos", "morph", "provenance", "ocr_texte",
-                "tags", "note"])
+                "note"])
     for r in lignes:
         cit = r.get("citation") or {}
         w.writerow([cit.get("texte", ""), _csv_safe(r["album_titre"]),
@@ -378,19 +304,16 @@ def analyse_concordance_export(lemme: Optional[str] = None, pos: Optional[str] =
                     _csv_safe(r["texte"]), _csv_safe(r["lemme"]), _csv_safe(r["pos"]),
                     _csv_safe(r["morph"] or ""), r["provenance"],
                     _csv_safe(r["ocr_texte"] or ""),
-                    # Même séparateur que l'export de la Recherche ; l'hérité se DIT.
-                    _csv_safe("|".join(("case:" if t["herite"] else "") + t["label"]
-                                       for t in r["tags"])),
                     _csv_safe(r["note"])])
     return _csv_response(buf.getvalue(), _nom_export("concordance", lemme or pos or morph, lignes))
 
 
-def _distribution(conn, portee, champ, album, type, pos, morph, provenance, tags=None,
-                  tag_scope="herite", personnage=None, attributs=None, auteur=None):
+def _distribution(conn, portee, champ, album, type, pos, morph, provenance,
+                  personnage=None, auteur=None):
     """Compte {valeur: fréquence} d'un champ (lemme|pos|morph) sur un sous-corpus, et
     le total. Sur les valeurs EFFECTIVES. `champ` doit être validé par l'appelant."""
-    where, params, _n = _analyse_filtres(portee, album, type, pos, None, morph, provenance, tags, tag_scope,
-                                     personnage, attributs, auteur)
+    where, params, _n = _analyse_filtres(portee, album, type, pos, None, morph, provenance,
+                                         personnage, auteur)
     sql = (f"SELECT te.{champ} AS v, COUNT(*) AS f "
            "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
            "JOIN planches p ON p.id = r.planche_id ")
@@ -401,19 +324,17 @@ def _distribution(conn, portee, champ, album, type, pos, morph, provenance, tags
     return d, sum(d.values())
 
 
-@router.get("/api/analyse/comparaison")
+@router.get("/api/analyse/comparaison", dependencies=[Depends(refuser_le_vocabulaire)])
 def analyse_comparaison(champ: str = "lemme",
                         a_album: Optional[int] = None, a_type: Optional[str] = None,
                         a_pos: Optional[str] = None, a_morph: Optional[str] = None,
                         a_provenance: Optional[str] = None, a_auteur: Optional[str] = None,
-                        a_tags: Optional[list[str]] = Query(None),
                         b_album: Optional[int] = None, b_type: Optional[str] = None,
                         b_pos: Optional[str] = None, b_morph: Optional[str] = None,
-                        a_personnage: Optional[int] = None, a_attributs: Optional[list[int]] = Query(None),
+                        a_personnage: Optional[int] = None,
                         b_provenance: Optional[str] = None, b_auteur: Optional[str] = None,
-                        b_tags: Optional[list[str]] = Query(None),
-                        b_personnage: Optional[int] = None, b_attributs: Optional[list[int]] = Query(None),
-                        tag_scope: str = "herite", metrique: str = "diff",
+                        b_personnage: Optional[int] = None,
+                        metrique: str = "diff",
                         limit: int = 50, conn: sqlite3.Connection = Depends(db),
                         portee: autorisation.Portee = Depends(portee_courante)):
     """Compare deux sous-corpus A et B : valeurs (lemme|pos|morph) les plus
@@ -423,9 +344,9 @@ def analyse_comparaison(champ: str = "lemme",
     d'occurrences au lieu de favoriser les mots fréquents. Le côté ne dépend pas du
     choix : les deux mesures ont toujours le même signe."""
     out, ta, tb = _comparaison_rows(
-        conn, portee, champ, tag_scope,
-        (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur),
-        (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur),
+        conn, portee, champ,
+        (a_album, a_type, a_pos, a_morph, a_provenance, a_personnage, a_auteur),
+        (b_album, b_type, b_pos, b_morph, b_provenance, b_personnage, b_auteur),
         metrique)
     limit = max(1, min(limit, PLAFOND_COMPARAISON))
     return {"champ": champ, "metrique": metrique, "total_a": ta, "total_b": tb,
@@ -433,7 +354,7 @@ def analyse_comparaison(champ: str = "lemme",
             "sur_b": [x for x in reversed(out[-limit:]) if x[metrique] < 0]}
 
 
-def _comparaison_rows(conn, portee, champ, tag_scope, cote_a, cote_b, metrique="diff"):
+def _comparaison_rows(conn, portee, champ, cote_a, cote_b, metrique="diff"):
     """Cœur de la comparaison A/B — PARTAGÉ par la route JSON et son export CSV (ANA-7).
 
     Rend la liste ENTIÈRE, triée par différence décroissante, et les deux totaux. La
@@ -450,14 +371,14 @@ def _comparaison_rows(conn, portee, champ, tag_scope, cote_a, cote_b, metrique="
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     if metrique not in ("diff", "ll"):
         raise HTTPException(422, "metrique invalide (diff | ll).")
-    (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur) = cote_a
-    (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur) = cote_b
-    _valider_facette(conn, portee, a_personnage, a_attributs)
-    _valider_facette(conn, portee, b_personnage, b_attributs)
-    da, ta = _distribution(conn, portee, champ, a_album, a_type, a_pos, a_morph, a_provenance, a_tags, tag_scope,
-                           a_personnage, a_attributs, a_auteur)
-    db_, tb = _distribution(conn, portee, champ, b_album, b_type, b_pos, b_morph, b_provenance, b_tags, tag_scope,
-                            b_personnage, b_attributs, b_auteur)
+    (a_album, a_type, a_pos, a_morph, a_provenance, a_personnage, a_auteur) = cote_a
+    (b_album, b_type, b_pos, b_morph, b_provenance, b_personnage, b_auteur) = cote_b
+    _valider_facette(conn, portee, a_personnage)
+    _valider_facette(conn, portee, b_personnage)
+    da, ta = _distribution(conn, portee, champ, a_album, a_type, a_pos, a_morph, a_provenance,
+                           a_personnage, a_auteur)
+    db_, tb = _distribution(conn, portee, champ, b_album, b_type, b_pos, b_morph, b_provenance,
+                            b_personnage, b_auteur)
     out = []
     for v in set(da) | set(db_):
         fa, fb = da.get(v, 0), db_.get(v, 0)
@@ -471,21 +392,17 @@ def _comparaison_rows(conn, portee, champ, tag_scope, cote_a, cote_b, metrique="
     return out, ta, tb
 
 
-@router.get("/api/analyse/comparaison.csv")
+@router.get("/api/analyse/comparaison.csv", dependencies=[Depends(refuser_le_vocabulaire)])
 def analyse_comparaison_export(champ: str = "lemme",
                                a_album: Optional[int] = None, a_type: Optional[str] = None,
                                a_pos: Optional[str] = None, a_morph: Optional[str] = None,
                                a_provenance: Optional[str] = None, a_auteur: Optional[str] = None,
-                               a_tags: Optional[list[str]] = Query(None),
                                a_personnage: Optional[int] = None,
-                               a_attributs: Optional[list[int]] = Query(None),
                                b_album: Optional[int] = None, b_type: Optional[str] = None,
                                b_pos: Optional[str] = None, b_morph: Optional[str] = None,
                                b_provenance: Optional[str] = None, b_auteur: Optional[str] = None,
-                               b_tags: Optional[list[str]] = Query(None),
                                b_personnage: Optional[int] = None,
-                               b_attributs: Optional[list[int]] = Query(None),
-                               tag_scope: str = "herite", metrique: str = "diff",
+                               metrique: str = "diff",
                                conn: sqlite3.Connection = Depends(db),
                                portee: autorisation.Portee = Depends(portee_courante)):
     """Export CSV de la comparaison A/B — MÊMES critères que `/api/analyse/comparaison`.
@@ -498,9 +415,9 @@ def analyse_comparaison_export(champ: str = "lemme",
     ligne de commentaire, qui décalerait l'en-tête pour un tableur.
     """
     out, ta, tb = _comparaison_rows(
-        conn, _portee_d_export(portee), champ, tag_scope,
-        (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur),
-        (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur),
+        conn, _portee_d_export(portee), champ,
+        (a_album, a_type, a_pos, a_morph, a_provenance, a_personnage, a_auteur),
+        (b_album, b_type, b_pos, b_morph, b_provenance, b_personnage, b_auteur),
         metrique)
     lignes = out[:PLAFOND_EXPORT]
     buf = io.StringIO()
@@ -519,15 +436,13 @@ def analyse_comparaison_export(champ: str = "lemme",
     return _csv_response(buf.getvalue(), _nom_export("comparaison", champ, lignes))
 
 
-@router.get("/api/analyse/croisement.csv")
+@router.get("/api/analyse/croisement.csv", dependencies=[Depends(refuser_le_vocabulaire)])
 def analyse_croisement_export(axe_x: str, axe_y: str, forme: str = "plat",
                               album: Optional[int] = None, type: Optional[str] = None,
                               pos: Optional[str] = None, lemme: Optional[str] = None,
                               morph: Optional[str] = None, provenance: Optional[str] = None,
                               auteur: Optional[str] = None,
-                              tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
                               personnage: Optional[int] = None,
-                              attributs: Optional[list[int]] = Query(None),
                               conn: sqlite3.Connection = Depends(db),
                               portee: autorisation.Portee = Depends(portee_courante)):
     """Export CSV du tableau croisé — MÊMES critères que `/api/analyse/croisement` (ANA-7).
@@ -550,8 +465,8 @@ def analyse_croisement_export(axe_x: str, axe_y: str, forme: str = "plat",
     if forme not in ("plat", "matrice"):
         raise HTTPException(422, "forme invalide (plat | matrice).")
     d = _croisement_data(conn, _portee_d_export(portee), axe_x, axe_y, album, type, pos,
-                         lemme, morph, provenance, auteur, tags, tag_scope, personnage,
-                         attributs, PLAFOND_EXPORT, PLAFOND_EXPORT)
+                         lemme, morph, provenance, auteur, personnage,
+                         PLAFOND_EXPORT, PLAFOND_EXPORT)
     tronque = d["x_tronque"] or d["y_tronque"]
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator=chr(10))
@@ -576,8 +491,9 @@ def analyse_croisement_export(axe_x: str, axe_y: str, forme: str = "plat",
 
 # --- Tableaux croisés 2D (ANA-2) : contingence TOKEN × TOKEN sur deux facettes. Réutilise
 #     `_analyse_filtres` pour le sous-corpus ; chaque axe est une colonne du token/région
-#     (POS, type, provenance, auteur) ou une facette « fan-out » (locuteur, tag, dimension
-#     d'attribut) jointe en LEFT JOIN (NULL = absence). Grain TOKEN : les cases sans texte ne
+#     (POS, type, provenance, auteur) ou une facette « fan-out » (le locuteur) jointe en
+#     LEFT JOIN (NULL = absence) ; les axes « tag » et « dimension d'attribut » sont partis
+#     avec le basculement d'ANN-7. Grain TOKEN : les cases sans texte ne
 #     sont pas comptées (limite assumée). Cf. docs/domaines.md / backlog ANA-2.
 _AXES_SIMPLES = {
     "pos":        ("te.pos",         "pos",        "catégorie (POS)"),
@@ -588,12 +504,13 @@ _AXES_SIMPLES = {
 }
 
 
-def _axe_croisement(kind, sfx, tag_scope, conn, portee):
+def _axe_croisement(kind, sfx):
     """Un axe → (joins, expr_valeur, expr_cle, params, filtre_concordance, libellé). `sfx`
     (x|y) désambiguïse les alias entre les deux axes. `expr_cle` = clé de drill (id pour
-    locuteur/dimension, sinon = la valeur). `portee` sert aux deux axes dont les libellés
-    SONT des termes, les tags et les dimensions (AUTH-11) : un terme qu'on ne lit pas n'a
-    pas à devenir une ligne."""
+    le locuteur, sinon = la valeur).
+
+    ANN-7, I7 — les axes `tag` et `dim:<id>` d'hier (un lien enregistré) sont refusés par
+    le 422 nommé des tags, et non par « axe inconnu » : ils ont existé."""
     if kind in _AXES_SIMPLES:
         expr, filtre, lib = _AXES_SIMPLES[kind]
         return "", expr, expr, [], filtre, lib
@@ -602,77 +519,32 @@ def _axe_croisement(kind, sfx, tag_scope, conn, portee):
         joins = (f"LEFT JOIN bulle_locuteur {bl} ON {bl}.region_id = r.id "
                  f"LEFT JOIN personnages {lo} ON {lo}.id = {bl}.personnage_id")
         return joins, f"{lo}.nom", f"{lo}.id", [], "personnage", "locuteur"
-    if kind == "tag":
-        an, at, tg, tz = f"anx_{sfx}", f"atx_{sfx}", f"tgx_{sfx}", f"tzx_{sfx}"
-        cible = (f"{an}.region_id = r.id" if tag_scope == "propre"
-                 else f"{an}.region_id IN (r.id, r.parent_id)")
-        # La portée des termes se pose sur la LIAISON, pas sur le tag joint : posée sur le
-        # tag, une région portant un tag lisible ET un illisible produirait une seconde
-        # ligne sans libellé, comptée comme une région sans tag.
-        ou_tag, p_tag = portee.clause_terme(f"{tz}.collection_id")
-        joins = (f"LEFT JOIN annotations {an} ON {cible} "
-                 f"LEFT JOIN annotation_tags {at} ON {at}.annotation_id = {an}.id "
-                 f"AND {at}.tag_id IN (SELECT {tz}.id FROM tags {tz} WHERE {ou_tag}) "
-                 f"LEFT JOIN tags {tg} ON {tg}.id = {at}.tag_id")
-        return joins, f"{tg}.label", f"{tg}.label", p_tag, "tags", "tag"
-    if kind.startswith("dim:"):
-        try:
-            dim_id = int(kind[4:])
-        except ValueError:
-            raise HTTPException(422, f"Axe dimension invalide : {kind}")
-        # AUTH-11 — par l'accesseur gardé : une dimension qu'on ne lit pas répond comme une
-        # dimension absente. Lue par son seul identifiant, elle rendait son NOM, qui devient
-        # le libellé de l'axe — une grille d'analyse, pas un mot.
-        d = _get_dimension(conn, portee, dim_id)
-        # Le filtre de dimension porte sur l'AFFECTATION (valeur_id d'un attribut de cette
-        # dimension), pas sur la valeur jointe : sinon un locuteur/case portant AUSSI d'autres
-        # dimensions produirait une fausse ligne « (vide) » (fan-out sur toutes les dimensions).
-        # La portée des valeurs s'y pose aussi, sur la LIAISON comme pour l'axe des tags : une
-        # valeur qu'on ne lit pas ne fait pas de ligne, et une case qui ne porte qu'elle compte
-        # parmi les « (vide) ».
-        av, vz = f"avx_{sfx}", f"vzx_{sfx}"
-        ou_val, p_val = portee.clause_terme(f"{vz}.collection_id")
-        sous = (f"{{}}.valeur_id IN (SELECT {vz}.id FROM attribut_valeur {vz} "
-                f"WHERE {vz}.dimension_id = ? AND {ou_val})")
-        if d["cible"] == "personnage":                       # valeur via le LOCUTEUR
-            bl, pa = f"bld_{sfx}", f"pax_{sfx}"
-            joins = (f"LEFT JOIN bulle_locuteur {bl} ON {bl}.region_id = r.id "
-                     f"LEFT JOIN personnage_attribut {pa} ON {pa}.personnage_id = {bl}.personnage_id "
-                     f"  AND {sous.format(pa)} "
-                     f"LEFT JOIN attribut_valeur {av} ON {av}.id = {pa}.valeur_id")
-        else:                                                # valeur via la CASE (région/parent)
-            ra = f"rax_{sfx}"
-            joins = (f"LEFT JOIN region_attribut {ra} ON {ra}.region_id IN (r.id, r.parent_id) "
-                     f"  AND {sous.format(ra)} "
-                     f"LEFT JOIN attribut_valeur {av} ON {av}.id = {ra}.valeur_id")
-        return joins, f"{av}.valeur", f"{av}.id", [dim_id, *p_val], "attributs", d["nom"]
+    if kind == "tag" or kind.startswith("dim:"):
+        raise HTTPException(422, motif_du_vocabulaire([f"axe_{sfx}={kind}"]))
     raise HTTPException(422, f"Axe inconnu : {kind} (pos|morph|type|provenance|auteur|"
-                             "locuteur|tag|dim:<id>)")
+                             "locuteur)")
 
 
-@router.get("/api/analyse/croisement")
+@router.get("/api/analyse/croisement", dependencies=[Depends(refuser_le_vocabulaire)])
 def analyse_croisement(axe_x: str, axe_y: str,
                        album: Optional[int] = None, type: Optional[str] = None,
                        pos: Optional[str] = None, lemme: Optional[str] = None,
                        morph: Optional[str] = None, provenance: Optional[str] = None,
                        auteur: Optional[str] = None,
-                       tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
-                       personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
+                       personnage: Optional[int] = None,
                        limit: int = 20, conn: sqlite3.Connection = Depends(db),
                        portee: autorisation.Portee = Depends(portee_courante)):
     """Tableau croisé 2D (contingence) : compte les TOKENS effectifs par (axe_x × axe_y) sur
-    un sous-corpus filtré. Axes : pos|morph|type|provenance|auteur|locuteur|tag|dim:<id>. Un
-    axe « fan-out » (tag/dimension) fait compter le token dans CHAQUE valeur présente (NULL =
-    absence → ligne « (vide) »). Marges = fréquences réelles (les cellules visibles peuvent
-    moins sommer à cause du top-N). Cellule → preuves (concordance)."""
+    un sous-corpus filtré. Axes : pos|morph|type|provenance|auteur|locuteur. L'axe du
+    locuteur est « fan-out » (NULL = absence → ligne « (vide) »). Marges = fréquences
+    réelles (les cellules visibles peuvent moins sommer à cause du top-N). Cellule →
+    preuves (concordance)."""
     return _croisement_data(conn, portee, axe_x, axe_y, album, type, pos, lemme, morph,
-                            provenance, auteur, tags, tag_scope, personnage, attributs,
-                            limit, PLAFOND_CROISEMENT)
+                            provenance, auteur, personnage, limit, PLAFOND_CROISEMENT)
 
 
 def _croisement_data(conn, portee, axe_x, axe_y, album, type, pos, lemme, morph,
-                     provenance, auteur, tags, tag_scope, personnage, attributs,
-                     limit, plafond):
+                     provenance, auteur, personnage, limit, plafond):
     """Cœur du tableau croisé — PARTAGÉ par la route JSON et son export CSV (ANA-7).
 
     À retenir en le lisant : les MARGES (`x[].total`, `y[].total`) sont calculées sur
@@ -681,11 +553,11 @@ def _croisement_data(conn, portee, axe_x, axe_y, album, type, pos, lemme, morph,
     matrice, dont la colonne « Total » ne sommerait alors pas à ses propres cases.
     """
     limit = max(1, min(limit, plafond))
-    _valider_facette(conn, portee, personnage, attributs)
-    jx, ex, cx, px, fx, lx = _axe_croisement(axe_x, "x", tag_scope, conn, portee)
-    jy, ey, cy, py, fy, ly = _axe_croisement(axe_y, "y", tag_scope, conn, portee)
-    where, wparams, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
-                                      personnage, attributs, auteur)
+    _valider_facette(conn, portee, personnage)
+    jx, ex, cx, px, fx, lx = _axe_croisement(axe_x, "x")
+    jy, ey, cy, py, fy, ly = _axe_croisement(axe_y, "y")
+    where, wparams, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance,
+                                          personnage, auteur)
     sql = (f"SELECT {ex} AS vx, {cx} AS cx, {ey} AS vy, {cy} AS cy, COUNT(*) AS n "
            "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
            "JOIN planches p ON p.id = r.planche_id "

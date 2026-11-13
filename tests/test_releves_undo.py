@@ -450,3 +450,85 @@ def test_le_409_nomme_l_auteur_et_non_le_dernier_retoucheur(client, decor, db_pa
     refus = undo(client, attendu=(409,))["detail"]
     assert refus["conflit"]["champ"] == "releve"
     assert refus["conflit"]["auteur"]["login"] == "lea"
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée du mode libre — Ctrl+Z ne fabrique ni le doublon (J3) ni un second relevé
+# d'une entrée « une seule fois », sur la cardinalité d'AUJOURD'HUI
+# --------------------------------------------------------------------------- #
+def _travail_libre(client, decor, db_path):
+    from test_grille_de_travail import _travail
+    return _travail(client, decor, db_path)
+
+
+def _sentiments(db_path, t, b):
+    return _q(db_path, "SELECT id, variante_cle, une FROM releve WHERE grille_id = ? "
+                       "AND region_id = ? AND entree_cle = 'sentiment' ORDER BY id",
+              (t["grille_id"], b))
+
+
+def _passer(client, refus):
+    ok(client.post("/api/undo/passer", headers=STAG,
+                   json={"evenement_id": refus["passable"]["evenement_id"]}))
+
+
+def test_ctrl_z_d_un_retrait_ne_rend_pas_un_doublon(client, decor, db_path):
+    t = _travail_libre(client, decor, db_path)
+    b = decor["zones"]["bulle"]
+    r = poser(client, t, region_id=b, nouvelle_entree={"libelle": "sentiment : perte"})
+    ok(client.delete(f"/api/releves/{r['id']}", headers=STAG), 204)
+    # Un autre écran repose la même valeur : Ctrl+Z la rendrait deux fois.
+    poser(client, t, qui=LEA, region_id=b, entree_cle="sentiment", variante_cle="perte")
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["champ"] == "releve"
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+    assert [x["variante_cle"] for x in _sentiments(db_path, t, b)] == ["perte"]
+    _passer(client, refus)
+    assert [x["variante_cle"] for x in _sentiments(db_path, t, b)] == ["perte"]
+
+
+def test_ctrl_z_d_une_modification_ne_rend_pas_un_doublon(client, decor, db_path):
+    t = _travail_libre(client, decor, db_path)
+    b = decor["zones"]["bulle"]
+    r = poser(client, t, region_id=b, nouvelle_entree={"libelle": "sentiment : perte"})
+    ok(client.put(f"/api/releves/{r['id']}", headers=STAG,
+                  json={"nouvelle_variante": "tristesse", "vu": {"variante_cle": "perte"}}))
+    poser(client, t, qui=LEA, region_id=b, entree_cle="sentiment", variante_cle="perte")
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+    assert sorted(x["variante_cle"] for x in _sentiments(db_path, t, b)) == [
+        "perte", "tristesse"]
+
+
+def test_ctrl_z_suit_la_cardinalite_d_aujourd_hui(client, decor, db_path):
+    """L'entrée est passée à « une seule fois » depuis le retrait : rendre « perte » à côté de
+    « tristesse » contredirait la cardinalité que l'instantané (`une = 0`) ne connaît pas."""
+    t = _travail_libre(client, decor, db_path)
+    b = decor["zones"]["bulle"]
+    r = poser(client, t, region_id=b, nouvelle_entree={"libelle": "sentiment : perte"})
+    ok(client.delete(f"/api/releves/{r['id']}", headers=STAG), 204)
+    poser(client, t, qui=LEA, region_id=b, nouvelle_entree={"libelle": "sentiment : tristesse"})
+    ok(client.patch(f"/api/grilles/{t['grille_id']}/entrees/sentiment", headers=ADMIN,
+                    json={"cardinalite": "une"}))
+    refus = undo(client, attendu=(409,))["detail"]
+    assert refus["conflit"]["auteur"]["login"] == "lea"
+    assert [(x["variante_cle"], x["une"]) for x in _sentiments(db_path, t, b)] == [
+        ("tristesse", 1)]
+
+
+def test_ctrl_z_rend_le_drapeau_une_de_la_cardinalite_d_aujourd_hui(client, decor, db_path):
+    """Seul sur sa cible, le relevé rendu porte le drapeau de la cardinalité ACTUELLE : sans
+    quoi l'entrée « une seule fois » recevait ensuite un second relevé sur la même bulle."""
+    t = _travail_libre(client, decor, db_path)
+    b = decor["zones"]["bulle"]
+    r = poser(client, t, region_id=b, nouvelle_entree={"libelle": "sentiment : perte"})
+    ok(client.delete(f"/api/releves/{r['id']}", headers=STAG), 204)
+    ok(client.patch(f"/api/grilles/{t['grille_id']}/entrees/sentiment", headers=ADMIN,
+                    json={"cardinalite": "une"}))
+    undo(client)
+    assert [(x["variante_cle"], x["une"]) for x in _sentiments(db_path, t, b)] == [("perte", 1)]
+    second = client.post("/api/releves", headers=LEA,
+                         json={"grille_id": t["grille_id"], "version": 1, "region_id": b,
+                               "nouvelle_entree": {"libelle": "sentiment : tristesse"}})
+    assert second.status_code == 409 and "releve_existant" in second.json()["detail"], \
+        second.text

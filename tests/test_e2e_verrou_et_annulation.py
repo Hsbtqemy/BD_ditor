@@ -8,8 +8,11 @@
 - **Un Ctrl+Z lent le dit.** Le premier après un redémarrage attendait le moteur de langue
   9 à 17 s sans rien afficher. La requête est tenue en vol par le test : l'attente est
   certaine, pas chronométrée.
-- **Annuler la suppression d'une case rend son locuteur et sa situation, à l'écran.** Le
-  serveur est mesuré par `tests/test_undo_liens.py` ; ici, ce que l'Atelier montre ensuite.
+- **Annuler la suppression d'une case rend son locuteur, à l'écran.** Le serveur est mesuré
+  par `tests/test_undo_liens.py` ; ici, ce que l'Atelier montre ensuite — la case revenue
+  sur la planche — et, depuis le basculement d'ANN-7, le locuteur dans le Contexte de la
+  page Annotation, où il se lit désormais. La situation d'hier ne revient plus : elle ne se
+  lit nulle part, et l'instantané ne la porte plus.
 """
 import re
 
@@ -27,8 +30,8 @@ pytestmark = pytest.mark.e2e
 SURFACES_AUDITEES = ("/",)
 SURFACES_HORS_PERIMETRE = {
     "/annotation": (
-        "la page Annotation (ANN-7, tranche 2) n'a pas ce geste : le verrou "
-        "d'une planche et l'annulation vit dans l'Atelier, que ce module audite"),
+        "la page Annotation n'a pas le verrou d'une planche ; elle n'est visitée ici que pour "
+        "lire le locuteur rendu par l'annulation de l'Atelier"),
     "/corpus": "le verrou y est un geste de liste (la planche dans la fiche d'un album), "
                "hors du panneau d'annotation que ce fichier lit",
     "/recherche": "ni verrou ni Ctrl+Z : la Recherche lit le corpus",
@@ -38,8 +41,10 @@ SURFACES_HORS_PERIMETRE = {
 
 
 @pytest.fixture
-def decor(live_server):
-    """Une case avec une situation ; dessous, un cartouche avec un locuteur."""
+def decor(live_server, tmp_path):
+    """Une case avec une situation ; dessous, un cartouche avec un locuteur. La situation se
+    pose EN BASE : ses routes sont parties avec le basculement d'ANN-7, la table vit jusqu'à
+    la migration qui la retire."""
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE) as c:
         aid = c.post("/api/albums", json={"titre": "E2E verrou"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",
@@ -50,13 +55,10 @@ def decor(live_server):
                            json={"type": "cartouche", "x": 60, "y": 60, "w": 280, "h": 120,
                                  "parent_id": case}).json()["id"]
         tintin = c.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
-        dim = c.post("/api/attributs/dimensions", json={"cible": "case", "nom": "lieu"}).json()["id"]
-        val = c.post(f"/api/attributs/dimensions/{dim}/valeurs", json={"valeur": "falaise"}).json()["id"]
-        assert c.put(f"/api/regions/{case}/attributs", json={"valeur_id": val}).status_code == 200
         assert c.put(f"/api/regions/{cartouche}/locuteur",
                      json={"personnage_id": tintin}).status_code == 200
-    return {"base": live_server, "album": aid, "planche": pid, "case": case,
-            "cartouche": cartouche}
+    return {"base": live_server, "base_sqlite": tmp_path / "live.sqlite", "album": aid,
+            "planche": pid, "case": case, "cartouche": cartouche}
 
 
 def _ouvrir(page, d, region=None):
@@ -133,9 +135,10 @@ def test_annuler_la_suppression_d_une_case_rend_son_locuteur_a_l_ecran(page, dec
     assert rep.value.json()["liens_non_rendus"] == 0
     expect(page.locator("#toasts .toast", has_text="suppression d'une région")).to_be_visible()
 
-    _ouvrir(page, d, d["cartouche"])
-    page.locator('button[data-mode="annotation"]').click()
-    expect(page.locator("#loc-current")).to_contain_text("Tintin", timeout=15000)
-    _ouvrir(page, d, d["case"])
-    page.locator('button[data-mode="annotation"]').click()
-    expect(page.locator("#sit-current")).to_contain_text("falaise", timeout=15000)
+    # La case et son cartouche reviennent sur la planche ouverte, sans recharger.
+    expect(page.locator(f"#overlay [data-id='{d['case']}']")).to_have_count(1, timeout=15000)
+    expect(page.locator(f"#overlay [data-id='{d['cartouche']}']")).to_have_count(1)
+
+    page.goto(f"{d['base']}/annotation?album={d['album']}&planche={d['planche']}"
+              f"&region={d['cartouche']}", wait_until="networkidle")
+    expect(page.locator("#an-loc-nom")).to_have_text("Tintin", timeout=15000)

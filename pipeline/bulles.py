@@ -14,7 +14,7 @@ import importlib.util
 import sqlite3
 
 from config import DATA_DIR
-from database import unindex_region
+from database import SQL_NOTE_POSEE, unindex_region
 from pipeline.ordering import reorder_planche
 
 HF_REPO = "ogkalu/comic-speech-bubble-detector-yolov8m"
@@ -169,18 +169,17 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
         # autre client, ou Ctrl+Z qui rend le cadre et garde la marque, n'y passent pas :
         # c'est ici que le travail se garde.
         doomed = conn.execute(
-            """WITH RECURSIVE doomed(id) AS (
+            f"""WITH RECURSIVE doomed(id) AS (
                    SELECT id FROM regions
                    WHERE planche_id = ? AND type = 'bulle' AND source = 'auto'
                      AND touche = 0
                      AND TRIM(COALESCE(ocr_texte, '')) = ''
+                     -- ANN-7, le basculement : une NOTE posée ; des tags d'hier seuls, non.
                      AND NOT EXISTS (SELECT 1 FROM annotations a
-                                     WHERE a.region_id = regions.id)
-                     -- ANN-7 (G20 b) : un relevé, une passe, une situation sont du travail.
+                                     WHERE a.region_id = regions.id AND {SQL_NOTE_POSEE})
+                     -- ANN-7 (G20 b) : un relevé, une passe sont du travail.
                      AND NOT EXISTS (SELECT 1 FROM releve x WHERE x.region_id = regions.id)
                      AND NOT EXISTS (SELECT 1 FROM passe x WHERE x.region_id = regions.id)
-                     AND NOT EXISTS (SELECT 1 FROM region_attribut x
-                                     WHERE x.region_id = regions.id)
                    UNION ALL
                    SELECT r.id FROM regions r JOIN doomed d ON r.parent_id = d.id
                ) SELECT id FROM doomed""", (planche_id,)).fetchall()

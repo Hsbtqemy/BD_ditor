@@ -32,11 +32,7 @@ test("une région créée sur la planche ouverte : son identifiant vient de la r
 
 test("ce qui ne change l'empreinte d'aucune région ne touche rien", () => {
   for (const [m, c] of [["POST", "/api/personnages"], ["PUT", "/api/personnages/3"],
-                        ["PUT", "/api/personnages/3/attributs"],
                         ["DELETE", "/api/personnages/3/alignements/2"],
-                        ["PATCH", "/api/tags/5/lexique"],
-                        ["POST", "/api/attributs/dimensions"],
-                        ["POST", "/api/attributs/dimensions/2/valeurs"],
                         ["PATCH", "/api/planches/7/verrou"], ["PATCH", "/api/planches/7/validation"],
                         ["PUT", "/api/regions/4/tokens/2"], ["POST", "/api/regions/4/grammaire/valider"],
                         ["POST", "/api/albums/2/import"], ["POST", "/api/sharedocs/importer"],
@@ -49,7 +45,7 @@ test("ce que le module ne sait pas placer a tout touché : jamais un signal faux
   for (const [m, c] of [["POST", "/api/undo"], ["POST", "/api/planches/7/segmenter"],
                         ["POST", "/api/regions/4/deplacer"],
                         ["POST", "/api/planches/7/reordonner"], ["DELETE", "/api/personnages/3"],
-                        ["POST", "/api/personnages/3/fusion"], ["PUT", "/api/tags/5"],
+                        ["POST", "/api/personnages/3/fusion"],
                         ["POST", "/api/inconnue"]]) {
     assert.deepEqual(S.regionsTouchees(m, c, {}, 7), { tout: true }, `${m} ${c}`);
   }
@@ -183,4 +179,35 @@ test("l'infobulle compte les zones dont les relevés ont changé, à part des r�
                "La planche a changé ailleurs : 1 région modifiée, des relevés sur 3 zones. "
                + "Actualiser la recharge, sans perdre votre saisie.");
   assert.equal(S.nombre({ creees: ["releves:9"], modifiees: [4], supprimees: [] }), 2);
+});
+
+
+test("le mode libre : le plan d'une grille ouverte entre dans les clés, touché par ses gestes", () => {
+  assert.deepEqual(S.cles({ regions: { 4: "a" }, releves: {}, plans: { 3: "p" } }),
+                   { 4: "a", "plan:3": "p" });
+  // Un geste sur une grille touche son plan ; une pose ou une modification aussi (elle a pu
+  // faire naître une étiquette), avec sa zone.
+  assert.deepEqual(S.regionsTouchees("PATCH", "/api/grilles/3/entrees/ironie", {}, 7, OU),
+                   { ids: [], sousArbre: false, plans: [3] });
+  assert.deepEqual(S.regionsTouchees("PUT", "/api/grilles/3/ordre", {}, 7, OU),
+                   { ids: [], sousArbre: false, plans: [3] });
+  assert.deepEqual(S.regionsTouchees("POST", "/api/releves", { id: 5, region_id: 4, grille_id: 3 }, 7, OU),
+                   { ids: [4], sousArbre: false, plans: [3] });
+  assert.deepEqual(S.regionsTouchees("PUT", "/api/releves/5", { id: 5, region_id: 4, grille_id: 3 }, 7, OU),
+                   { ids: [4], sousArbre: false, plans: [3] });
+  // Changé ailleurs : signalé ; touché ici : adopté.
+  const base = { 4: "a", "plan:3": "p" };
+  const ailleurs = S.comparer(base, { 4: "a", "plan:3": "p2" }, vide());
+  assert.deepEqual(ailleurs.autres, { creees: [], modifiees: ["plan:3"], supprimees: [] });
+  const ici = S.comparer(base, { 4: "a", "plan:3": "p2" },
+                         { tout: false, ids: new Set(), plans: new Set([3]) });
+  assert.deepEqual(ici.autres.modifiees, []);
+  assert.equal(ici.base["plan:3"], "p2");
+  // L'infobulle le dit à part des relevés.
+  assert.equal(S.titre({ creees: [], modifiees: ["plan:3"], supprimees: [] }),
+               "La planche a changé ailleurs : des étiquettes. "
+               + "Actualiser la recharge, sans perdre votre saisie.");
+  assert.equal(S.titre({ creees: [], modifiees: ["releves:4", "plan:3", "plan:5"], supprimees: [] }),
+               "La planche a changé ailleurs : des relevés sur 1 zone, les étiquettes de 2 grilles. "
+               + "Actualiser la recharge, sans perdre votre saisie.");
 });

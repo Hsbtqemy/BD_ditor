@@ -61,11 +61,11 @@ test("0 et 1 au singulier, au-delà au pluriel", () => {
 
 test("les chiffres du corpus s'accordent chacun à son nombre", () => {
   const html = chiffresCorpus({ albums: 1, planches: 1, regions: 0, transcrites: 2,
-                                annotees: 1, tags: 5 });
+                                annotees: 1, tags: 5 });   // un `tags` d'hier ne se dit plus
   assert.equal(html,
     '<span class="stat"><b>1</b> album</span><span class="stat"><b>1</b> planche</span>'
     + '<span class="stat"><b>0</b> région</span><span class="stat"><b>2</b> transcrites</span>'
-    + '<span class="stat"><b>1</b> annotée</span><span class="stat"><b>5</b> tags</span>');
+    + '<span class="stat"><b>1</b> annotée</span>');
   // Une réponse incomplète : 0, jamais « undefined ».
   assert.doesNotMatch(chiffresCorpus({}), /undefined/);
   assert.match(chiffresCorpus({ albums: 3 }), /<b>3<\/b> albums/);
@@ -84,7 +84,7 @@ test("sans album, l'écran vide dit qu'il n'y a rien à lire", () => {
 
 test("des albums sans texte : l'Exploration le dit, la Recherche non", () => {
   assert.match(causeVide({ albums: 2, transcrites: 0 }, { texte: true }), /Aucune zone transcrite/);
-  // La Recherche trouve aussi par une note ou un tag : pas de cause à donner.
+  // La Recherche trouve aussi par une note : pas de cause à donner.
   assert.equal(causeVide({ albums: 2, transcrites: 0 }), null);
 });
 

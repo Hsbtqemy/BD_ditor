@@ -416,17 +416,30 @@
   }
 
   /* Les ONGLETS : les grilles actives que la collection choisie ne masque pas, dans l'ordre
-     où le serveur les rend (par nom). */
+     où le serveur les rend (par nom) — la GRILLE DE TRAVAIL en tête, l'onglet « Mode libre »
+     (le mode libre, tranché sur maquette par Hugo le 2026-11-06 : un onglet permanent, le
+     premier). Elle se reconnaît à son drapeau `travail`, jamais à son nom (J2). */
   function grillesVisibles(actives, collection) {
-    return (Array.isArray(actives) ? actives : []).filter((g) => !masquee(g, collection));
+    const l = (Array.isArray(actives) ? actives : []).filter((g) => !masquee(g, collection));
+    return [...l.filter((g) => g.travail), ...l.filter((g) => !g.travail)];
   }
 
-  /* La grille à ouvrir : celle qu'on voulait si elle est visible, sinon la première. */
+  /* La grille à ouvrir : celle qu'on voulait si elle est visible ; sinon la première qui
+     n'est pas la grille de travail — un projet qui a activé une grille la retrouve —, et le
+     Mode libre quand il est seul. */
   function grilleAOuvrir(visibles, voulue) {
     const l = Array.isArray(visibles) ? visibles : [];
     const v = entier(voulue);
     if (v !== null && l.some((g) => g.id === v)) return v;
-    return l.length ? l[0].id : null;
+    const autre = l.find((g) => !g.travail);
+    return autre ? autre.id : l.length ? l[0].id : null;
+  }
+
+  /* Le nom d'un ONGLET : « Mode libre » pour la grille de travail, quel que soit son nom. */
+  const NOM_MODE_LIBRE = "Mode libre";
+  function nomOnglet(grille) {
+    if (!grille) return "";
+    return grille.travail ? NOM_MODE_LIBRE : grille.nom;
   }
 
   const ETATS_VERSION = { publiee: "publiée", vivante: "vivante", brouillon: "brouillon" };
@@ -436,7 +449,7 @@
   function infobulleGrille(grille, plan) {
     if (!grille) return "";
     const v = grille.version || {};
-    const parts = [grille.nom];
+    const parts = [grille.travail ? `${NOM_MODE_LIBRE} — « ${grille.nom} »` : grille.nom];
     if (grille.ouverte) parts.push("ouverte : elle s'enrichit en posant");
     else if (v.numero) parts.push(`version ${v.numero} (${ETATS_VERSION[v.etat] || v.etat})`);
     const note = plan && plan.note;
@@ -446,7 +459,9 @@
   /* Le PLAN en arbre : les rubriques de tête dans leur ordre, chacune avec ses entrées puis
      ses sous-rubriques, à toute profondeur. Les entrées RETIRÉES n'y sont pas ; une entrée
      sans rubrique (ou d'une rubrique absente) va dans un groupe à part, en dernier
-     (`cle: ""`). Rend `[{ cle, libelle, profondeur, entrees, enfants }]`. */
+     (`cle: ""`) — PLAT (`plat: true`) quand la grille n'a aucune rubrique : rien ne s'y
+     intitule « Sans rubrique » (le mode libre, point 8 de la maquette). Rend `[{ cle,
+     libelle, profondeur, entrees, enfants, plat? }]`. */
   function arbre(plan) {
     const rubriques = (plan && plan.rubriques) || [];
     const parCle = new Map(rubriques.map((r) => [r.cle, { cle: r.cle, libelle: r.libelle,
@@ -472,7 +487,11 @@
     };
     const vus = new Set();
     tete.forEach((n) => profondeur(n, 0, vus));
-    if (seul.entrees.length) { seul.profondeur = 0; tete.push(seul); }
+    if (seul.entrees.length) {
+      seul.profondeur = 0;
+      if (!rubriques.length) seul.plat = true;
+      tete.push(seul);
+    }
     return tete;
   }
 
@@ -831,7 +850,17 @@
      ordre. L'entité (« X, partout ») n'est pas offerte : le serveur la refuse jusqu'à
      l'étage de projet des personnages (G3). */
   function optionsPorteSur(plan, zone, caseRegion) {
-    const entrees = ((plan && plan.entrees) || []).filter((e) => !e.retiree);
+    // Une grille OUVERTE pose aussi ce qui va naître : une étiquette tapée prend la cible de
+    // sa version — sans quoi une grille de travail vide disait « Porte sur — » (point 8) —,
+    // et, SANS défaut, celle de ce qu'on désigne (Hugo, 2026-11-12) : tout ce qu'une entrée
+    // neuve peut viser d'ici.
+    const ouverte = !!(plan && plan.grille && plan.grille.ouverte);
+    const neuve = !ouverte ? []
+      : (plan.porte_sur || []).length ? [entreeNeuve(plan, "")]
+      : [["mots"], zone && !zone.pseudo ? [zone.type] : null, ["case"], ["planche"]]
+        .filter(Boolean).map((c) => ({ pose: c[0] === "mots" ? "mots"
+          : c[0] === "planche" ? "planche" : "zone", cibles: c }));
+    const entrees = [...((plan && plan.entrees) || []).filter((e) => !e.retiree), ...neuve];
     const out = [];
     const texte = !!zone && !zone.pseudo && estTexte(zone.type);
     const sur = (type) => entrees.some((e) => e.pose === "zone" && (e.cibles || []).includes(type));
@@ -910,16 +939,38 @@
              ...(motsDuReleve(x).length ? { mots: motsDuReleve(x) } : {}) };
   }
 
+  /* « nom : valeur » (ANN-7, « les variables aussi », Hugo, 2026-11-05) : le nom d'une
+     entrée à variantes et sa variante, séparés au PREMIER deux-points, chacun sans ses
+     espaces ; `null` sans deux-points. Un côté peut revenir vide : à l'appelant de refuser. */
+  function nomEtValeur(libelle) {
+    const t = String(libelle || "");
+    const i = t.indexOf(":");
+    if (i < 0) return null;
+    return { nom: t.slice(0, i).replace(/\s+/g, " ").trim(),
+             valeur: t.slice(i + 1).replace(/\s+/g, " ").trim() };
+  }
+
+  /* L'entrée de ce NOM dans le plan (comparée comme le filtre compare), retirée exceptée. */
+  function entreeDeNom(plan, nom) {
+    const n = normaliser(nom);
+    return ((plan && plan.entrees) || []).find((e) => !e.retiree && normaliser(e.libelle) === n)
+      || null;
+  }
+
   /* L'entrée qui NAÎT en la posant dans une grille ouverte (G14) : simple, sans rubrique,
-     sur la cible de la version — pour savoir où la poser avant qu'elle existe. Dans une
-     grille SANS défaut, sur ce qu'on désigne (`ctx`, celui de `cibleDePose`), la règle du
-     serveur (Hugo, 2026-11-12) : la planche, la case, des mots, sinon la sorte de la zone. */
+     sur la cible de la version — pour savoir où la poser avant qu'elle existe. « nom :
+     valeur » la fait naître À VARIANTES, sous son nom (le serveur fait naître la variante).
+     Dans une grille SANS défaut, sur ce qu'on désigne (`ctx`, celui de `cibleDePose`), la
+     règle du serveur (Hugo, 2026-11-12) : la planche, la case, des mots, sinon la sorte de
+     la zone. */
   function entreeNeuve(plan, libelle, ctx) {
     const defaut = (plan && plan.porte_sur) || [];
     const cibles = defaut.length ? defaut : cibleDesignee(ctx);
     const pose = cibles.includes("mots") ? "mots" : cibles.includes("planche") ? "planche"
       : cibles.includes("entite") ? "entite" : "zone";
-    return { cle: null, libelle, forme: "simple", cibles, pose, cardinalite: "plusieurs",
+    const nv = nomEtValeur(libelle);
+    return { cle: null, libelle: nv ? nv.nom : libelle, forme: nv ? "variantes" : "simple",
+             cibles, pose, cardinalite: "plusieurs",
              cible_declaree: defaut.length ? [] : cibles, rubriques: [], variantes: [] };
   }
 
@@ -928,6 +979,7 @@
     const zone = c.zone, laCase = c.caseRegion;
     if (c.porte === "planche") return ["planche"];
     if (c.porte === "case" && laCase && !laCase.pseudo) return ["case"];
+    if (c.porte === "zone" && zone && !zone.pseudo) return [zone.type];
     if (rangs(c.mots).length && zone && !zone.pseudo && estTexte(zone.type)) return ["mots"];
     if (zone && !zone.pseudo) return [zone.type];
     return ["planche"];
@@ -936,7 +988,8 @@
   /* LE GESTE d'un clic dans la grille, sur une entrée (`choix` vide), une variante
      (`{ variante }`) ou un qualificatif (`{ qualificatif }`), selon ce qui est déjà posé sur
      la cible. Cocher pose, recocher sur le même passage retire ; une autre variante
-     REMPLACE (en place, avec `vu`) ; un qualificatif s'ajoute ou s'ôte (UN ensemble). Une
+     REMPLACE (en place, avec `vu`) — sauf sur une entrée « plusieurs » d'une cible entière,
+     où elle s'AJOUTE (J3) ; un qualificatif s'ajoute ou s'ôte (UN ensemble). Une
      entrée « plusieurs » sur une cible entière ajoute un relevé à chaque clic (on en retire
      un dans la liste). Rend `{ action: "poser", corps }`, `{ action: "retirer", releve, vu }`
      ou `{ action: "modifier", releve, corps, vu }`. */
@@ -945,6 +998,13 @@
     const r = (existants || [])[0] || null;
     const vu = vuDuReleve;
     if (entree.forme === "variantes") {
+      // « plusieurs » sur une cible entière (J3) : des PUCES qui se cochent une à une — une
+      // valeur posée se retire, une autre s'ajoute à côté, jamais à la place.
+      if (ch.variante && marquePlusieurs(entree)) {
+        const x = (existants || []).find((y) => y.variante_cle === ch.variante);
+        return x ? { action: "retirer", releve: x, vu: vu(x) }
+          : { action: "poser", corps: { variante_cle: ch.variante } };
+      }
       if (!ch.variante) return r ? { action: "retirer", releve: r, vu: vu(r) } : null;
       if (!r) return { action: "poser", corps: { variante_cle: ch.variante } };
       if (r.variante_cle === ch.variante) return { action: "retirer", releve: r, vu: vu(r) };
@@ -1050,13 +1110,22 @@
 
   /* LE BANDEAU de la cardinalité (un second relevé d'une entrée « une ») : le relevé déjà
      là, et ce que « Remplacer par la mienne » enverrait — un `PUT` de CE relevé avec `vu`
-     égal à ce qu'il porte. `null` si le refus n'est pas celui-là. */
-  function remplacementCardinalite(detail, corps) {
+     égal à ce qu'il porte. `null` si le refus n'est pas celui-là.
+     `nouvelle` : le libellé TAPÉ quand le refus vient de « Créer « … » » — « sentiment :
+     tristesse » sur une bulle qui porte « sentiment : perte ». Sa valeur part par son
+     libellé (`nouvelle_variante`) : elle n'existe peut-être pas encore, et sans elle le
+     remplacement n'envoyait rien à changer — la valeur tapée se perdait (vu sur la recette
+     le 2026-11-06). */
+  function remplacementCardinalite(detail, corps, nouvelle) {
     const ex = detail && detail.releve_existant;
     if (!ex) return null;
     const changer = {};
     const vu = {};
-    if (corps && corps.variante_cle !== undefined) {
+    const nv = nouvelle ? nomEtValeur(nouvelle) : null;
+    if (nv && nv.valeur) {
+      changer.nouvelle_variante = nv.valeur;
+      vu.variante_cle = ex.variante_cle || null;
+    } else if (corps && corps.variante_cle !== undefined) {
       changer.variante_cle = corps.variante_cle;
       vu.variante_cle = ex.variante_cle || null;
     }
@@ -1068,12 +1137,35 @@
   }
 
   /* « Créer « … » » dans une grille OUVERTE (G14) : le libellé à créer, si la requête ne
-     nomme exactement aucun résultat ; `null` sinon, et toujours pour une grille fermée. */
-  function creerDansLeFiltre(grille, requete, resultats) {
+     nomme exactement aucun résultat ; `null` sinon, et toujours pour une grille fermée.
+     « nom : valeur » se crée — ou s'AJOUTE comme variante à l'entrée « nom » à variantes
+     qui existe — si ses deux côtés sont écrits, si « nom » n'est pas une entrée sans
+     variantes, si la variante n'existe pas déjà (`plan`, la version affichée) et si
+     l'appelant peut lui ajouter une valeur (`raisonValeurNouvelle`, J5) : la ligne n'offre
+     pas ce que le serveur refuserait. */
+  function creerDansLeFiltre(grille, requete, resultats, plan) {
     const t = String(requete || "").trim();
     if (!grille || !grille.ouverte || !t) return null;
+    const nv = nomEtValeur(t);
+    if (nv) {
+      if (!nv.nom || !nv.valeur) return null;
+      const e = entreeDeNom(plan, nv.nom);
+      if (e && e.forme !== "variantes") return null;
+      const v = normaliser(nv.valeur);
+      if (e && (e.variantes || []).some((x) => normaliser(x.libelle) === v)) return null;
+      if (raisonValeurNouvelle(e)) return null;
+      return `${nv.nom} : ${nv.valeur}`;
+    }
     const n = normaliser(t);
     return (resultats || []).some((r) => normaliser(r.libelle) === n) ? null : t;
+  }
+
+  /* Ce que dit la ligne « Créer » du filtre : « Ajouter « forêt » à « lieu » » quand
+     l'entrée à variantes existe, « Créer « … » » sinon. */
+  function libelleDeCreation(plan, libelle) {
+    const nv = nomEtValeur(libelle);
+    const e = nv ? entreeDeNom(plan, nv.nom) : null;
+    return e ? `Ajouter « ${nv.valeur} » à « ${e.libelle} »` : `Créer « ${libelle} »`;
   }
 
   /* ── Commit 4 : « terminée », le parcours ── */
@@ -1475,6 +1567,231 @@
     return type ? `${MASCULINS.has(type) ? "le" : "la"} ${nomType(type)}` : "la zone";
   }
 
+  /* ── Le MODE LIBRE : l'écran (tranché sur maquette par Hugo le 2026-11-06 ; cadrage
+     `docs/ann7-mode-libre-cadrage.md`) ──
+     L'onglet « Mode libre » est la grille de travail du projet. On y crée une étiquette par un
+     champ À LUI ; ce qu'Entrée fera se dit dessous ; les valeurs d'une étiquette sont des
+     puces qui se cochent ; « ✎ » la remanie sur place ; « ↕ Ranger » la range à la main. Ce
+     qu'on peut y faire se lit dans `remaniable`, la question que le serveur pose sur l'ACTE
+     (J5) — jamais dans le rôle. Rien de ceci n'est une garde : le serveur refuse ce qu'il
+     refuse, l'écran n'offre que ce qu'il accepterait. */
+
+  /* LA SAISIE du champ de création : « nom », « nom : valeur », « nom : a ; b ». Les
+     deux-points séparent au PREMIER, comme le serveur ; « ; » sépare plusieurs valeurs (une
+     valeur qui en contient un ne se tape donc pas ici : elle naît par le renommage de ✎).
+     Les valeurs vides et les doublons (comparés comme le filtre) tombent. `null` pour une
+     saisie vide. */
+  function lireSaisie(texte) {
+    const t = String(texte === null || texte === undefined ? "" : texte).replace(/\s+/g, " ").trim();
+    if (!t) return null;
+    const nv = nomEtValeur(t);
+    if (!nv) return { nom: t, valeurs: [] };
+    const vus = new Set();
+    const valeurs = [];
+    for (const morceau of nv.valeur.split(";")) {
+      const v = morceau.replace(/\s+/g, " ").trim();
+      const n = normaliser(v);
+      if (v && !vus.has(n)) { vus.add(n); valeurs.push(v); }
+    }
+    return { nom: nv.nom, valeurs };
+  }
+
+  /* Ce qu'un geste de REMANIEMENT demande, et pourquoi il est éteint : la phrase dite sur
+     place quand on clique un geste qu'on n'a pas (maquette du 2026-11-06), `null` s'il est
+     offert. `passer` (« Passer dans une grille… », J8) suit `fusionner` : structurer est aux
+     responsables. */
+  const RAISON_RARE = "Fusionner, retirer et définir : les responsables du projet";
+  const RARES = ["etat", "fusionner", "passer", "retirer"];
+  function raisonRemanier(e, geste) {
+    const r = (e && e.remaniable) || {};
+    if (r[geste === "passer" ? "fusionner" : geste]) return null;
+    if (RARES.includes(geste)) return RAISON_RARE;
+    if (geste === "ranger") return "Les étiquettes se rangent par les annotateurs du projet";
+    if (e && e.etat === "defini") {
+      return `« ${e.libelle} » est définie : seuls les responsables la changent`;
+    }
+    return "Les étiquettes se renomment par les annotateurs du projet";
+  }
+
+  /* Une valeur NOUVELLE sous l'entrée `e` : l'ajouter est un remaniement (J5), aux
+     responsables sur une étiquette définie — la règle du serveur, que le plan dit entrée par
+     entrée (`remaniable`). La raison qui l'éteint, `null` si elle est offerte, ou si le plan
+     ne dit rien. Lue par le champ de création (`ceQuEntreeFera`) et par la ligne « Créer »
+     du filtre d'une grille ouverte (`creerDansLeFiltre`) : une règle, écrite une fois. */
+  function raisonValeurNouvelle(e) {
+    return e && e.remaniable && !e.remaniable.ajouter_valeur
+      ? raisonRemanier(e, "ajouter_valeur") : null;
+  }
+
+  /* Les gestes de ✎ et ce qui les éteint, en une table : `{ geste: raison | null }`. */
+  const GESTES_DU_CRAYON = ["renommer", "ajouter_valeur", "etat", "fusionner", "passer", "retirer"];
+  function gestesOfferts(e) {
+    return Object.fromEntries(GESTES_DU_CRAYON.map((g) => [g, raisonRemanier(e, g)]));
+  }
+
+  /* « ✎ » lui-même : offert dès qu'UN de ses gestes l'est ; éteint sinon, avec la raison du
+     renommage (« … est définie », pour un annotateur sur une étiquette définie). */
+  function raisonCrayon(e) {
+    const o = gestesOfferts(e);
+    return GESTES_DU_CRAYON.some((g) => o[g] === null) ? null : o.renommer;
+  }
+
+  /* L'ÉTAT d'une étiquette, dit dans ✎ seulement (« provisoire partout, dans la grille libre,
+     c'est trop », Hugo) : son mot et son infobulle. */
+  function etatEnMots(e) {
+    return e && e.etat === "provisoire"
+      ? { mot: "provisoire",
+          aide: "Née en la tapant : tout annotateur du projet la renomme et lui ajoute une valeur" }
+      : { mot: "✓ définie",
+          aide: "Écrite au formulaire ou par l'import : seuls les responsables la changent" };
+  }
+
+  /* CE QU'ENTRÉE FERA dans le champ de création, sur la grille de travail `plan` : une ligne
+     `{ ok, chemin, libelle, gestes }`, ou `null` pour une saisie vide. `posees(entree)` rend
+     les relevés de cette entrée sur la cible courante (ce qui est « déjà posé ici »).
+     `gestes` : les POSES à envoyer, dans l'ordre, chacune défaite par son propre Ctrl+Z —
+     `{ nouvelle }` (une étiquette, ou « nom : valeur », qui naît en posant),
+     `{ entree_cle, variante_cle? }` (l'existante), `{ entree_cle, nouvelle }` (une valeur
+     nouvelle d'une étiquette qui existe, par son libellé). Entrée sur un nom qui existe pose
+     l'EXISTANTE. Une ligne éteinte (`ok: false`) dit pourquoi rien ne partira. */
+  function ceQuEntreeFera(plan, texte, posees) {
+    const s = lireSaisie(texte);
+    if (!s) return null;
+    const off = (chemin, libelle) => ({ ok: false, chemin, libelle, gestes: [] });
+    const ici = (x) => (typeof posees === "function" && posees(x)) || [];
+    if (!s.nom) return off("nom manquant", "Tapez un nom avant « : »");
+    const e = entreeDeNom(plan, s.nom);
+    if (!e) {
+      const lib = s.valeurs.length ? `${s.nom} : ${s.valeurs.join(", ")}` : s.nom;
+      return { ok: true, chemin: "nouvelle étiquette", libelle: `Créer « ${lib} » et poser`,
+               gestes: s.valeurs.length ? s.valeurs.map((v) => ({ nouvelle: `${s.nom} : ${v}` }))
+                 : [{ nouvelle: s.nom }] };
+    }
+    if (e.forme !== "variantes") {
+      if (s.valeurs.length) return off("étiquette simple", `« ${e.libelle} » n'a pas de valeurs`);
+      if (ici(e).length) return off("déjà posée", `« ${e.libelle} » est déjà posée ici`);
+      return { ok: true, chemin: "existe déjà", libelle: `Poser « ${e.libelle} »`,
+               gestes: [{ entree_cle: e.cle }] };
+    }
+    if (!s.valeurs.length) {
+      return off("à valeurs",
+                 `Choisissez une valeur de « ${e.libelle} », ou tapez « ${e.libelle} : … »`);
+    }
+    const poses = ici(e);
+    const items = s.valeurs.map((v) => {
+      const x = (e.variantes || []).find((y) => normaliser(y.libelle) === normaliser(v)) || null;
+      return { saisie: v, variante: x, deja: !!x && poses.some((r) => r.variante_cle === x.cle) };
+    });
+    const aPoser = items.filter((i) => !i.deja);
+    if (!aPoser.length) {
+      return off("déjà posée", `« ${e.libelle} : ${items.map((i) => i.variante.libelle).join(", ")} » `
+                 + "est déjà posée ici");
+    }
+    const neuves = aPoser.filter((i) => !i.variante);
+    // Ajouter une valeur est un remaniement (J5) : sur une étiquette définie, aux responsables.
+    if (neuves.length && raisonValeurNouvelle(e)) {
+      return off("valeur nouvelle", raisonValeurNouvelle(e));
+    }
+    const libelle = aPoser.length === 1 && neuves.length === 1
+      ? `Ajouter « ${neuves[0].saisie} » à « ${e.libelle} » et poser`
+      : `Poser « ${e.libelle} : ${aPoser.map((i) => (i.variante ? i.variante.libelle
+        : `${i.saisie} (nouvelle)`)).join(", ")} »`;
+    return { ok: true, chemin: neuves.length ? "valeur nouvelle" : "existe déjà", libelle,
+             gestes: aPoser.map((i) => (i.variante ? { entree_cle: e.cle, variante_cle: i.variante.cle }
+               : { entree_cle: e.cle, nouvelle: `${e.libelle} : ${i.saisie}` })) };
+  }
+
+  /* « Créer « … » dans Mode libre » : depuis une grille FERMÉE choisie, un nom ABSENT de son
+     filtre — rien n'y répond — se crée, ou se pose s'il existe déjà, dans la grille de travail,
+     sans changer d'onglet (maquette du 2026-11-06). `null` sur une grille ouverte (elle crée
+     chez elle), sans grille de travail, quand le filtre trouve quelque chose, ou quand Entrée
+     n'y ferait rien. */
+  function dansModeLibre(choisie, travail, requete, resultats, planTravail, posees) {
+    const t = String(requete || "").trim();
+    if (!choisie || choisie.ouverte || !travail || !t || !planTravail) return null;
+    if ((resultats || []).length) return null;
+    const a = ceQuEntreeFera(planTravail, t, posees);
+    if (!a || !a.ok) return null;
+    return { ...a, libelle: `${a.libelle.replace(/ et poser$/, "")} dans ${NOM_MODE_LIBRE}` };
+  }
+
+  /* L'ORDRE de la liste du Mode libre : un tri d'écran, retenu sur le poste, pour soi (clé
+     `bd-annotation-tri`, sous try/catch, le patron de `bd-annotation-guide`). « À la main »
+     est l'ordre de la grille, commun au projet ; une étiquette y naît en bas, si bien qu'il
+     suit la création tant que personne n'a rangé. Les tris par emploi et par récence
+     demanderaient des comptes sur tout le projet, que la page ne lit pas. */
+  const TRIS = [{ cle: "main", libelle: "À la main" }, { cle: "alpha", libelle: "A → Z" }];
+  const TRI_DEFAUT = "main";
+  const CLE_TRI = "bd-annotation-tri";
+  function lireTri(stockage) {
+    try {
+      const v = stockage ? stockage.getItem(CLE_TRI) : null;
+      return TRIS.some((t) => t.cle === v) ? v : TRI_DEFAUT;
+    } catch (e) { return TRI_DEFAUT; }
+  }
+  function retenirTri(stockage, tri) {
+    try {
+      if (!stockage || !TRIS.some((t) => t.cle === tri)) return false;
+      stockage.setItem(CLE_TRI, tri);
+      return true;
+    } catch (e) { return false; }
+  }
+  function trierEntrees(entrees, tri) {
+    const l = Array.isArray(entrees) ? entrees.slice() : [];
+    if (tri !== "alpha") return l;
+    return l.sort((a, b) => String(a.libelle).localeCompare(String(b.libelle), "fr",
+                                                            { sensitivity: "base" })
+      || String(a.cle).localeCompare(String(b.cle)));
+  }
+
+  /* « ↕ RANGER » : le corps de `PUT /api/grilles/{id}/ordre` qui déplace l'entrée `cle`
+     parmi ses sœurs (même rubrique). Le serveur compte ses places parmi TOUTES les sœurs,
+     retirées comprises, et `vu` est leur ordre tel que l'écran le voyait (CONC-3) ; l'écran
+     ne montre que les vivantes, et c'est parmi elles qu'on monte ou descend d'un cran
+     (`deplacement`, `sens` −1 ou +1) ou qu'on dépose avant une autre (`deplacementAvant`,
+     `avant` sa clé, `null` pour la fin). `null` quand rien ne bougerait. */
+  function soeurs(plan, cle) {
+    const l = (plan && plan.entrees) || [];
+    const e = l.find((x) => x.cle === cle);
+    if (!e) return null;
+    const rub = e.rubrique_cle === undefined ? null : e.rubrique_cle;
+    return l.filter((x) => (x.rubrique_cle === undefined ? null : x.rubrique_cle) === rub);
+  }
+  function deplacement(plan, cle, sens) {
+    const fr = soeurs(plan, cle);
+    if (!fr) return null;
+    const vivantes = fr.filter((x) => !x.retiree).map((x) => x.cle);
+    const i = vivantes.indexOf(cle);
+    const j = i + (sens > 0 ? 1 : -1);
+    if (i < 0 || j < 0 || j >= vivantes.length) return null;
+    const neufs = fr.map((x) => x.cle).filter((k) => k !== cle);
+    return { quoi: "entree", cle, place: neufs.indexOf(vivantes[j]) + (sens > 0 ? 1 : 0),
+             vu: fr.map((x) => x.cle) };
+  }
+  function deplacementAvant(plan, cle, avant) {
+    const fr = soeurs(plan, cle);
+    if (!fr || avant === cle) return null;
+    const tout = fr.map((x) => x.cle);
+    if (avant !== null && avant !== undefined && !tout.includes(avant)) return null;
+    const neufs = tout.filter((k) => k !== cle);
+    const place = avant === null || avant === undefined ? neufs.length : neufs.indexOf(avant);
+    if (place < 0 || place === tout.indexOf(cle)) return null;
+    return { quoi: "entree", cle, place, vu: tout };
+  }
+
+  /* Les phrases des confirmations sur place de ✎. */
+  function nReleves(n) { return `${n} relevé${n > 1 ? "s" : ""}`; }
+  function retraitEnMots(e, n) {
+    return n > 0
+      ? `Retirer « ${e.libelle} » : elle ne se pose plus ; ${n > 1 ? `ses ${n} relevés restent`
+        : "son relevé reste"}, à revoir.`
+      : `Retirer « ${e.libelle} » : personne ne la pose, elle disparaît.`;
+  }
+  function fusionEnMots(dans, n) {
+    return `${nReleves(n)} ${n > 1 ? "passent" : "passe"} à « ${dans} ».`;
+  }
+  const BILAN_J8 = "Le bilan, relevé par relevé : une tranche à part (J8)";
+
   /* La boîte du guide REPLIÉE ou dépliée (Hugo, passe du jalon 1 : la liste de ce qui est
      posé veut plus de place) : retenue sur le poste, clé `bd-annotation-guide`, sous
      try/catch — sans stockage, elle est dépliée. */
@@ -1503,11 +1820,17 @@
            teinteDeRubrique, champEnConflit, optionsPorteSur, cibleDePose, porteApresPose, relevesSurLaCible, geste, libelleReleve, motEtat,
            listeSurLaZone, lireReglage, retenirReglage, grillesMontrees,
            remplacementCardinalite, creerDansLeFiltre, vuDuReleve, entreeNeuve,
+           nomEtValeur, libelleDeCreation,
            ciblesVisees, visePlanche, assurerPlanche, parcours, rangDansParcours,
            suivanteDuParcours, cibleDePasse, passesSurLaCible, rubriquesDeTete, terminee,
            signataires, aRouvrir, caseTerminee, casesEnDoute, CAUSES, causesEnMots,
            passageAncre, issueEnMots, changerEnPlace, isoDeSqlite, cleDeLecture, aRevoir,
            relevesParCase, decompte, zonesTerminees, nomDuLien, relevesDeSurface, ciblePosee,
-           CLE_GUIDE, lireGuideReplie, retenirGuideReplie };
+           CLE_GUIDE, lireGuideReplie, retenirGuideReplie,
+           NOM_MODE_LIBRE, nomOnglet, lireSaisie, RAISON_RARE, raisonRemanier, gestesOfferts,
+           raisonValeurNouvelle,
+           raisonCrayon, etatEnMots, ceQuEntreeFera, dansModeLibre, TRIS, TRI_DEFAUT, CLE_TRI,
+           lireTri, retenirTri, trierEntrees, deplacement, deplacementAvant, retraitEnMots,
+           fusionEnMots, BILAN_J8 };
 
 });

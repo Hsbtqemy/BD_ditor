@@ -13,6 +13,9 @@ Qui fait quoi (R8) — les décisions d'accès d'une grille sont celles de SON p
   grille, corriger une coquille, activer, désactiver : qui GÈRE le projet (`peut_gerer_projet` —
   son responsable, l'administrateur qui passe outre). 404 sur une grille ou un projet qu'on
   ne voit pas, 403 nommé sur ce qu'on voit sans le gérer ;
+- sur une entrée PROVISOIRE d'une grille OUVERTE, renommer l'entrée ou une valeur et ajouter
+  une valeur : aussi tout ANNOTATEUR du projet (J5 (c), `Portee.peut_remanier_entree`) — le
+  plan rend, entrée par entrée, ce que l'appelant peut y faire (`remaniable`) ;
 - masquer dans une collection : qui l'ADMINISTRE (`peut_administrer`, G7) ;
 - lire le plan publié (ou vivant), et son tableur : `Portee.clause_grille`, la seule question
   neuve ; lire un brouillon : qui gère le projet — « le brouillon reste chez ses auteurs ».
@@ -75,6 +78,22 @@ def _get_grille(conn, portee: autorisation.Portee, grille_id: int, *,
     return g
 
 
+# J2 (le cadrage du mode libre, tranché par Hugo le 2026-11-06) — LA grille de travail d'un
+# projet porte son mode libre : elle se renomme, elle ne se retire, ne se désactive ni ne se
+# supprime. La règle la plus prudente que le cadrage permet (« tant qu'elle porte quelque
+# chose ») : TOUJOURS, vide ou non — rien ne rend une grille de travail à un projet après sa
+# naissance et la migration, et un projet sans elle n'aurait plus de mode libre. Elle part
+# avec son projet (`grille_import.grille_sans_rien`), jamais seule.
+_MOTIF_TRAVAIL = ("C'est la grille de travail du projet, qui porte son mode libre : elle se "
+                  "renomme, mais ne se {geste} pas.")
+
+
+def _refuser_la_grille_de_travail(g: dict, geste: str) -> None:
+    """409 nommé sur la grille de travail (J2)."""
+    if g.get("travail"):
+        raise HTTPException(409, _MOTIF_TRAVAIL.format(geste=geste))
+
+
 def _get_version(conn, g: dict, numero: int) -> dict:
     """La version `numero` de la grille `g` ; un brouillon n'existe que pour qui gère le
     projet (404 sinon, comme une version qui n'existe pas)."""
@@ -96,7 +115,8 @@ def _vue_grille(conn, g: dict) -> dict:
                 if v["etat"] != grilles.ETAT_BROUILLON or g["gerable"]]
     act = grilles.activation(conn, g["projet_id"], g["id"])
     return {"id": g["id"], "nom": g["nom"], "projet_id": g["projet_id"],
-            "ouverte": bool(g["ouverte"]), "retiree_le": g["retiree_le"],
+            "ouverte": bool(g["ouverte"]), "travail": bool(g["travail"]),
+            "retiree_le": g["retiree_le"],
             "gerable": g["gerable"], "versions": versions,
             "active": {"numero": act["numero"], "etat": act["etat"]} if act else None}
 
@@ -123,6 +143,7 @@ def grilles_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
             "SELECT collection_id FROM collection_grille_masquee WHERE grille_id = ? "
             "ORDER BY collection_id", (r["id"],)) if portee.peut_lire(m["collection_id"])]
         actives.append({"id": r["id"], "nom": r["nom"], "ouverte": bool(r["ouverte"]),
+                        "travail": bool(r["travail"]),
                         "version": {"numero": r["numero"], "etat": r["etat"],
                                     "porte_sur": list(grilles.cibles_de(r["cible"]))},
                         "masquee_dans": masquee})
@@ -150,13 +171,19 @@ def plan_de_version(grille_id: int, numero: int, emplois: bool = Query(False),
     définitions, structures, exemples, pièges —, de quoi filtrer côté écran sans aller-
     retour. Un brouillon, à qui gère le projet seulement.
 
+    Chaque entrée porte `remaniable` : `{geste: bool}` pour les gestes sur place de la page
+    Annotation (`autorisation.GESTES_D_ENTREE`), la question posée sur l'ACTE
+    (`Portee.peut_remanier_entree`) — dans la version VIVANTE d'une grille ouverte ; tous faux
+    ailleurs, une grille fermée se remaniant au formulaire, dans son brouillon.
+
     `emplois` (le formulaire de construction) : ce que les relevés emploient dans la grille
     (`grille_ecriture.emplois`) — des comptes, sans personne —, à qui GÈRE le projet ; la clé
     est absente pour les autres, qui n'écrivent pas la grille."""
     g = _get_grille(conn, portee, grille_id)
     v = _get_version(conn, g, numero)
-    corps = {"grille": {"id": g["id"], "nom": g["nom"], "ouverte": bool(g["ouverte"])},
-             **grilles.plan(conn, v["id"])}
+    corps = {"grille": {"id": g["id"], "nom": g["nom"], "ouverte": bool(g["ouverte"]),
+                        "travail": bool(g["travail"])},
+             **_avec_remaniable(conn, portee, g, v, grilles.plan(conn, v["id"]))}
     if emplois and g["gerable"]:
         corps["emplois"] = grille_ecriture.emplois(conn, g, v, grilles.contenu(conn, v["id"]))
     return corps
@@ -342,9 +369,10 @@ def retirer_grille(grille_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
     """RETIRE une grille : elle ne s'active plus, ne reçoit plus de version ; ses relevés
     restent. Seule la retraite s'écrit sur la grille (« en usage » se dérive). 409 nommé sur
-    une grille encore active — la désactiver d'abord."""
+    une grille encore active — la désactiver d'abord —, et sur la grille de travail (J2)."""
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id, gerer=True)
+    _refuser_la_grille_de_travail(g, "retire")
     if conn.execute("SELECT 1 FROM projet_grille WHERE grille_id = ?",
                     (grille_id,)).fetchone():
         raise HTTPException(409, "Cette grille est active : désactivez-la d'abord dans son "
@@ -363,9 +391,11 @@ def supprimer_grille(grille_id: int, conn: sqlite3.Connection = Depends(db),
                      portee: autorisation.Portee = Depends(portee_courante)):
     """Supprime une grille que rien n'emploie — « la suppression suit l'emploi » : ni active,
     ni porteuse d'un relevé ou d'une passe (409 nommé sinon ; les relevés tiennent à leur
-    grille). Le chemin qui libère un projet qu'on veut supprimer (G18)."""
+    grille). Le chemin qui libère un projet qu'on veut supprimer (G18). Jamais la grille de
+    travail (J2, 409 nommé) : elle part avec son projet."""
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id, gerer=True)
+    _refuser_la_grille_de_travail(g, "supprime")
     if conn.execute("SELECT 1 FROM projet_grille WHERE grille_id = ?",
                     (grille_id,)).fetchone():
         raise HTTPException(409, "Cette grille est active : désactivez-la d'abord.")
@@ -532,12 +562,15 @@ def desactiver_grille(projet_id: int, grille_id: int, conn: sqlite3.Connection =
                       portee: autorisation.Portee = Depends(portee_courante)):
     """DÉSACTIVE une grille : ses relevés restent, en LECTURE (« Désactiver une grille dans un
     projet ne supprime aucun relevé », 2026-10-22) — toute écriture sur eux est alors
-    refusée par un 409 nommé. 404 si elle n'y est pas active."""
+    refusée par un 409 nommé. 404 si elle n'y est pas active. Jamais la grille de travail
+    (J2, 409 nommé) : sans elle, le projet n'aurait plus de mode libre."""
     _get_projet(conn, portee, projet_id, gerer=True, motif=_MOTIF_GERER)
     conflit.verrouiller(conn)
     act = grilles.activation(conn, projet_id, grille_id)
     if act is None:
         raise HTTPException(404, "Cette grille n'est pas active dans ce projet.")
+    travail = conn.execute("SELECT travail FROM grille WHERE id = ?", (grille_id,)).fetchone()
+    _refuser_la_grille_de_travail({"travail": bool(travail and travail[0])}, "désactive")
     conn.execute("DELETE FROM projet_grille WHERE projet_id = ? AND grille_id = ?",
                  (projet_id, grille_id))
     journal.journaliser(conn, "delien", "grille", grille_id,
@@ -596,8 +629,9 @@ def demasquer_grille(collection_id: int, grille_id: int, conn: sqlite3.Connectio
 # « liste:sources », « case:sources/objet », « grille », et pour un ordre les frères qu'il
 # range, « ordre:entree:sons ») — c'est par elle que le 409 trouve
 # l'auteur d'une valeur. À qui gère le projet : 404 sur une grille qu'on ne voit pas, 403
-# nommé sur une grille qu'on lit sans la gérer. Ctrl+Z ne défait rien de cela, comme de
-# l'import. La réponse rend le PLAN de la version écrite (`grilles.plan`), que le formulaire
+# nommé sur une grille qu'on lit sans la gérer — hors des gestes du mode libre (J5 (c) et
+# « Ranger » : `_exiger_remaniement`). Ctrl+Z ne défait rien de cela, comme de l'import,
+# sauf le déplacement d'une étiquette de la grille de travail (`undo._inverser_ordre`). La réponse rend le PLAN de la version écrite (`grilles.plan`), que le formulaire
 # redessine.
 Cible = Optional[Union[str, list[str]]]
 
@@ -653,6 +687,7 @@ class _ChampsEntree(_Strict):
     cible: Cible = None
     cardinalite: Optional[str] = None
     liste_cle: Optional[str] = None
+    etat: Optional[str] = None
     variantes: Optional[list[VarianteIn]] = None
 
 
@@ -721,6 +756,12 @@ def _norme(champ: str, valeur, *, cle=None):
         return grille_ecriture.forme(valeur)
     if champ == "cardinalite":
         return grille_ecriture.cardinalite(valeur)
+    if champ == "etat":
+        e = grille_ecriture.etat(valeur)
+        if e is None:
+            raise _refus("etat_inconnu", f"« {valeur} » n'est pas un état d'entrée",
+                         "dites « provisoire » ou « defini »", cle=cle, colonne="etat")
+        return e
     if champ in ("cible", "porte_sur"):
         stockee, erreur = grille_ecriture.cibles(valeur)
         if erreur:
@@ -764,26 +805,59 @@ def _version_montree(conn, g):
             or grilles.derniere_version(conn, g["id"], grilles.ETAT_PUBLIEE))
 
 
-def _reponse(conn, g, v, *, cree: bool, cle=None, a_savoir=(), fusions=()) -> dict:
-    """La réponse d'un geste : la version écrite, son PLAN que le formulaire redessine, et ce
-    que les relevés y emploient (`grille_ecriture.emplois`) — de quoi n'offrir ensuite que
-    les gestes que le serveur accepte."""
+def _avec_remaniable(conn, portee, g, v, plan: dict) -> dict:
+    """Le plan, chaque entrée portant `remaniable` (J5 (c)) : ce que l'appelant peut y faire
+    sur place, geste par geste. Hors de la version vivante d'une grille ouverte, rien."""
+    vivante = bool(g["ouverte"]) and v["etat"] == grilles.ETAT_VIVANTE
+    annotateur = vivante and autorisation.ecrit_dans_le_projet(conn, portee, g["projet_id"])
+    for e in plan["entrees"]:
+        e["remaniable"] = {
+            geste: vivante and portee.peut_remanier_entree(
+                g["projet_id"], geste, annotateur=annotateur, ouverte=True,
+                provisoire=e["etat"] == grilles.ENTREE_PROVISOIRE,
+                travail=bool(g["travail"]))
+            for geste in autorisation.GESTES_D_ENTREE}
+    return plan
+
+
+def _reponse(conn, g, v, *, cree: bool, cle=None, a_savoir=(), fusions=(),
+             portee=None) -> dict:
+    """La réponse d'un geste : la version écrite, son PLAN que le formulaire redessine (avec
+    `remaniable` quand la portée est connue), et ce que les relevés y emploient
+    (`grille_ecriture.emplois`, à qui gère le projet : la clé du plan, `emplois`, ne se rend
+    qu'à lui) — de quoi n'offrir ensuite que les gestes que le serveur accepte."""
     v = dict(v)
-    return {"grille_id": g["id"], "version": {"numero": v["numero"], "etat": v["etat"]},
-            "brouillon_cree": cree, "cle": cle, "a_savoir": list(a_savoir),
-            "fusions": [{k: f[k] for k in ("de", "dans", "releve_ids")} for f in fusions],
-            "plan": grilles.plan(conn, v["id"]),
-            "emplois": grille_ecriture.emplois(conn, g, v, grilles.contenu(conn, v["id"]))}
+    plan = grilles.plan(conn, v["id"])
+    if portee is not None:
+        plan = _avec_remaniable(conn, portee, g, v, plan)
+    corps = {"grille_id": g["id"], "version": {"numero": v["numero"], "etat": v["etat"]},
+             "brouillon_cree": cree, "cle": cle, "a_savoir": list(a_savoir),
+             "fusions": [{k: f[k] for k in ("de", "dans", "releve_ids")} for f in fusions],
+             "plan": plan}
+    if g.get("gerable", True):
+        corps["emplois"] = grille_ecriture.emplois(conn, g, v, grilles.contenu(conn, v["id"]))
+    return corps
 
 
-def _ecrire(conn, portee, grille_id: int, geste) -> dict:
+def _ecrire(conn, portee, grille_id: int, geste, *, gerer: bool = True) -> dict:
     """Le patron de chaque geste du formulaire. `geste(g, v, avant, apres, ref)` change
     `apres` (une copie du contenu de la version en écriture) et rend `{"cle", "actes",
     "reponses"?, "note"?}` — `actes` : (type, objet, avant, après) à écrire au journal ; vide,
     rien ne change, et rien ne s'écrit (pas même un brouillon). Ici : le verrou, le droit, la
-    version, la relecture entière (`grille_ecriture.ecrire`), le journal, le commit."""
+    version, la relecture entière (`grille_ecriture.ecrire`), le journal, le commit.
+
+    `gerer=False` (J5 (c)) : la grille n'a qu'à être LISIBLE ; le geste pose alors sa question
+    sur l'acte et l'entrée (`_exiger_remaniement`), avant d'écrire quoi que ce soit. Mais qui
+    ne gère pas le projet n'atteint ainsi que la version VIVANTE d'une grille OUVERTE, et
+    seulement s'il y pose (`ecrit_dans_le_projet`) : ailleurs, le 403 de la gestion, AVANT de
+    chercher la version ou la clé — sans quoi un corps vide rendait le plan du BROUILLON d'une
+    grille fermée à qui ne le lit pas, et un 404 contre un 403 disait quelles clés il porte
+    (relecture croisée du mode libre)."""
     conflit.verrouiller(conn)
-    g = _get_grille(conn, portee, grille_id, gerer=True)
+    g = _get_grille(conn, portee, grille_id, gerer=gerer)
+    if not gerer and not g["gerable"] and not (
+            g["ouverte"] and autorisation.ecrit_dans_le_projet(conn, portee, g["projet_id"])):
+        raise HTTPException(403, _MOTIF_GERER)
     conn.execute("SAVEPOINT geste")       # ce qu'on défait si rien ne change, et rien d'autre
     try:
         v, cree = grille_ecriture.version_en_ecriture(conn, g, par=portee.utilisateur)
@@ -794,7 +868,8 @@ def _ecrire(conn, portee, grille_id: int, geste) -> dict:
             conn.execute("ROLLBACK TO geste")
             conn.execute("RELEASE geste")
             conn.commit()
-            return _reponse(conn, g, _version_montree(conn, g), cree=False, cle=fait["cle"])
+            return _reponse(conn, g, _version_montree(conn, g), cree=False, cle=fait["cle"],
+                            portee=portee)
         a_savoir, fusions = grille_ecriture.ecrire(conn, g, v, avant, apres,
                                                    note=fait.get("note", v["note"]),
                                                    reponses=fait.get("reponses"))
@@ -811,7 +886,39 @@ def _ecrire(conn, portee, grille_id: int, geste) -> dict:
                             apres=_charge(objet, v["numero"], ap))
     conn.commit()
     return _reponse(conn, g, v, cree=cree, cle=fait["cle"], a_savoir=a_savoir,
-                    fusions=fusions)
+                    fusions=fusions, portee=portee)
+
+
+_MOTIF_RESPONSABLE = ("Fusionner, retirer une étiquette ou changer son état revient aux "
+                      "responsables du projet.")
+
+
+def _exiger_remaniement(conn, portee, g, v, entree: dict, geste: str, champs=()) -> None:
+    """J5 (c) : le geste `geste` sur `entree` (son contenu AVANT le geste), par l'appelant —
+    `Portee.peut_remanier_entree` — ; 403 nommé sinon. Qui ne gère pas le projet ne touche,
+    sur une entrée provisoire, qu'à des NOMS (`champs` : ceux que le corps envoie — un
+    libellé, rien d'autre) ; une définition, une forme, une cible restent au formulaire."""
+    if portee.peut_gerer_projet(g["projet_id"]):
+        return
+    if set(champs) - {"libelle", "cle"}:
+        raise HTTPException(403, _MOTIF_GERER)
+    if geste in autorisation.GESTES_DE_RESPONSABLE:
+        raise HTTPException(403, _MOTIF_RESPONSABLE)
+    ouverte = bool(g["ouverte"]) and v["etat"] == grilles.ETAT_VIVANTE
+    annotateur = autorisation.ecrit_dans_le_projet(conn, portee, g["projet_id"])
+    provisoire = entree.get("etat") == grilles.ENTREE_PROVISOIRE
+    if portee.peut_remanier_entree(g["projet_id"], geste, annotateur=annotateur,
+                                   ouverte=ouverte, provisoire=provisoire,
+                                   travail=bool(g["travail"])):
+        return
+    if geste == "ranger":
+        raise HTTPException(403, "Les étiquettes du mode libre se rangent par tout annotateur "
+                                 "du projet ; une autre grille se range au formulaire, par "
+                                 "ses responsables." if annotateur else _MOTIF_GERER)
+    if annotateur and ouverte and not provisoire:
+        raise HTTPException(403, grille_ecriture.MOTIF_ENTREE_DEFINIE.format(
+            libelle=entree["libelle"]))
+    raise HTTPException(403, _MOTIF_GERER)
 
 
 def _modifier(objet: str, cible: dict, d: dict, champs, *, conn, g, vu, cle=None):
@@ -1048,7 +1155,8 @@ def creer_entree(grille_id: int, payload: EntreeIn, conn: sqlite3.Connection = D
         e = {"rubrique_cle": None, "rang": grille_ecriture.rang_suivant(apres["entrees"]),
              "forme": "simple", "libelle": libelle, "definition": None, "structure": None,
              "piege": None, "precision": None, "lien": False, "cible": None,
-             "cardinalite": None, "liste_cle": None, "retiree": False, "exemples": [],
+             "cardinalite": None, "liste_cle": None, "retiree": False,
+             "etat": grilles.ENTREE_DEFINIE, "exemples": [],
              "variantes": {}}
         e.update({c: _norme(c, d[c], cle=cle) for c in grille_ecriture.CHAMPS_ENTREE
                   if c in d and c != "libelle"})
@@ -1067,7 +1175,13 @@ def modifier_entree(grille_id: int, cle: str, payload: EntreePatch,
     lui AJOUTE des variantes (`variantes` : c'est ainsi qu'une entrée devient « à variantes »).
     Quitter « des cases d'une liste » délie sa liste ; quitter « une variante » demande
     d'avoir retiré ses variantes (422). Sur une grille ouverte, une entrée employée ne change
-    ni de forme ni de liste (409, la règle du réimport). `vu` : les champs de l'entrée."""
+    ni de forme ni de liste (409, la règle du réimport). Son ÉTAT (`etat` : « provisoire »
+    ou « defini », v39) se change ici aussi, 422 nommé pour un autre mot. `vu` : les champs
+    de l'entrée, l'état compris.
+
+    J5 (c) : sur une entrée PROVISOIRE d'une grille ouverte, tout annotateur du projet la
+    RENOMME (`libelle`) et lui AJOUTE une valeur (`variantes`, leur seul libellé) ; le reste,
+    l'état compris, à qui gère le projet (403 nommé)."""
     d = payload.model_dump(exclude_unset=True)
     vu = d.pop("vu", None)
     neuves = d.pop("variantes", None) or []
@@ -1076,6 +1190,13 @@ def modifier_entree(grille_id: int, cle: str, payload: EntreePatch,
         e = apres["entrees"].get(cle)
         if e is None:
             raise _introuvable("Entrée", cle, v)
+        if "etat" in d:
+            _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "etat")
+        if d:
+            _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "renommer", d)
+        for x in neuves:
+            _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "ajouter_valeur",
+                                {k for k, y in x.items() if y is not None})
         champs = dict(d)
         if ("forme" in champs and _norme("forme", champs["forme"]) != "qualificatifs"
                 and "liste_cle" not in champs):
@@ -1088,7 +1209,7 @@ def modifier_entree(grille_id: int, cle: str, payload: EntreePatch,
             actes.append(("creation", f"variante:{cle}/{vc}", None,
                           {c: e["variantes"][vc][c] for c in grille_ecriture.CHAMPS_VARIANTE}))
         return {"cle": cle, "actes": actes}
-    return _ecrire(conn, portee, grille_id, geste)
+    return _ecrire(conn, portee, grille_id, geste, gerer=False)
 
 
 @router.delete("/api/grilles/{grille_id}/entrees/{cle}")
@@ -1112,7 +1233,9 @@ def supprimer_entree(grille_id: int, cle: str, conn: sqlite3.Connection = Depend
                     "SELECT DISTINCT variante_cle FROM releve WHERE grille_id = ? "
                     "AND version_id = ? AND entree_cle = ? AND variante_cle IS NOT NULL",
                     (g["id"], v["id"], cle))}
-                vers = grille_import._vers_possibles(avant, sans, cle, employees)
+                vers = grille_import.vers_sans_double(
+                    conn, g["id"], v["id"], avant, cle,
+                    grille_import._vers_possibles(avant, sans, cle, employees))
                 choix.append(grille_import.FUSIONNER)
             raise grille_import.Refus(
                 409, f"{n} relevé(s) portent « {e['libelle']} » : elle ne se supprime pas. "
@@ -1191,24 +1314,30 @@ def fusionner_entree(grille_id: int, cle: str, payload: FusionIn,
 def creer_variante(grille_id: int, cle: str, payload: VarianteIn,
                    conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
-    """Une variante de plus sous une entrée à variantes (422 sous une autre forme)."""
+    """Une variante de plus sous une entrée à variantes (422 sous une autre forme). J5 (c) :
+    sur une entrée provisoire d'une grille ouverte, tout annotateur du projet l'ajoute — son
+    libellé seul ; le reste à qui gère le projet."""
     def geste(g, v, avant, apres, ref):
         e = apres["entrees"].get(cle)
         if e is None:
             raise _introuvable("Entrée", cle, v)
-        vc = _variante_neuve(e, payload.model_dump(exclude_unset=True),
-                             (ref or {}).get("entrees", {}).get(cle), entree_cle=cle)
+        x = payload.model_dump(exclude_unset=True)
+        _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "ajouter_valeur",
+                            {k for k, y in x.items() if y is not None})
+        vc = _variante_neuve(e, x, (ref or {}).get("entrees", {}).get(cle), entree_cle=cle)
         return {"cle": vc, "actes": [("creation", f"variante:{cle}/{vc}", None,
                                       {c: e["variantes"][vc][c]
                                        for c in grille_ecriture.CHAMPS_VARIANTE})]}
-    return _ecrire(conn, portee, grille_id, geste)
+    return _ecrire(conn, portee, grille_id, geste, gerer=False)
 
 
 @router.patch("/api/grilles/{grille_id}/entrees/{cle}/variantes/{variante_cle}")
 def modifier_variante(grille_id: int, cle: str, variante_cle: str, payload: VariantePatch,
                       conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
-    """Modifie une variante : son nom, ce que lit l'annotateur. `vu` : ses champs."""
+    """Modifie une variante : son nom, ce que lit l'annotateur. `vu` : ses champs. J5 (c) :
+    sur une entrée provisoire d'une grille ouverte, tout annotateur du projet la RENOMME ; le
+    reste à qui gère le projet."""
     d = payload.model_dump(exclude_unset=True)
     vu = d.pop("vu", None)
 
@@ -1216,11 +1345,12 @@ def modifier_variante(grille_id: int, cle: str, variante_cle: str, payload: Vari
         x = (apres["entrees"].get(cle) or {}).get("variantes", {}).get(variante_cle)
         if x is None:
             raise _introuvable("Variante", f"{cle}/{variante_cle}", v)
+        _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "renommer", d)
         objet = f"variante:{cle}/{variante_cle}"
         av, ap = _modifier(objet, x, d, grille_ecriture.CHAMPS_VARIANTE, conn=conn, g=g,
                            vu=vu, cle=cle)
         return {"cle": variante_cle, "actes": [("modification", objet, av, ap)] if ap else []}
-    return _ecrire(conn, portee, grille_id, geste)
+    return _ecrire(conn, portee, grille_id, geste, gerer=False)
 
 
 @router.delete("/api/grilles/{grille_id}/entrees/{cle}/variantes/{variante_cle}")
@@ -1439,12 +1569,21 @@ def ranger_dans_la_grille(grille_id: int, payload: OrdreIn,
     dans le brouillon comme tout geste du formulaire, et un brouillon qui ne change QUE
     l'ordre se publie. `vu` : l'ordre des frères que l'écran voyait — périmé, 409 de CONC-3,
     qui nomme qui l'a changé. Au journal, un acte sous la grille, dont l'objet nomme les
-    frères (« ordre:entree:<rubrique> »). Une place hors des frères : 422."""
+    frères (« ordre:entree:<rubrique> »). Une place hors des frères : 422.
+
+    « ↕ Ranger » (tranché sur maquette le 2026-11-06) : dans la GRILLE DE TRAVAIL, tout
+    annotateur du projet range une ENTRÉE (`Portee.peut_remanier_entree`, geste « ranger ») ;
+    l'ordre est celui de la grille, commun au projet, et une entrée neuve naît en bas
+    (`routes/releves._entree_par_nom`). Ctrl+Z défait ce déplacement-là
+    (`undo._inverser_ordre`). Le reste — une rubrique, une variante, une case, ou une autre
+    grille — à qui gère le projet (403 nommé)."""
     if payload.quoi not in _ORDONNABLES:
         raise HTTPException(422, f"« quoi » est l'un de : {', '.join(_ORDONNABLES)}.")
 
     def geste(g, v, avant, apres, ref):
         quoi, cle = payload.quoi, payload.cle
+        if quoi != "entree" and not g["gerable"]:
+            raise HTTPException(403, _MOTIF_GERER)
         if quoi == "rubrique":
             r = apres["rubriques"].get(cle)
             if r is None:
@@ -1456,6 +1595,7 @@ def ranger_dans_la_grille(grille_id: int, payload: OrdreIn,
             e = apres["entrees"].get(cle)
             if e is None:
                 raise _introuvable("Entrée", cle, v)
+            _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "ranger")
             objets, parent = apres["entrees"], e["rubrique_cle"]
             freres = [k for k in grilles._par_rang(objets)
                       if objets[k]["rubrique_cle"] == parent]
@@ -1487,4 +1627,4 @@ def ranger_dans_la_grille(grille_id: int, payload: OrdreIn,
         _ranger(objets, freres, neufs)
         return {"cle": cle, "actes": [("modification", objet, {"ordre": freres},
                                        {"ordre": neufs, "deplace": cle})]}
-    return _ecrire(conn, portee, grille_id, geste)
+    return _ecrire(conn, portee, grille_id, geste, gerer=False)

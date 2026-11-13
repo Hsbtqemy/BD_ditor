@@ -10,6 +10,9 @@ Ce qui revient se décide lien par lien, sous les trois questions d'AUTH-14 : l'
 désigné existe-t-il encore, est-il celui de l'acte, l'agent le voit-il maintenant. Un lien
 qui échoue ne revient pas ; la région, elle, revient — c'est l'objet de l'acte —, et la
 réponse dit COMBIEN de liens sont restés en route, sans rien dire de l'objet.
+
+ANN-7, le basculement : la situation d'une case et les tags ne se lisent plus. L'instantané
+ne les porte plus, et Ctrl+Z ne les rend pas — ni ne les compte.
 """
 import sqlite3
 
@@ -39,11 +42,13 @@ def _region(client, planche_id, headers=ADMIN, **kw):
                            headers=headers), 201).json()["id"]
 
 
-def _valeur(client, cible, dimension, valeur):
-    d = _ok(client.post("/api/attributs/dimensions", json={"cible": cible, "nom": dimension},
-                        headers=ADMIN), 200, 201).json()["id"]
-    return _ok(client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": valeur},
-                           headers=ADMIN), 200, 201).json()["id"]
+def _situer(rid, dimension, valeur):
+    """La situation d'une case d'HIER : l'acte qui la posait, au journal (ANN-7, la v39 a
+    détruit sa table). Rien ne la montre, rien ne la rend."""
+    import database
+    from conftest import poser_attribut
+    poser_attribut(database.DB_PATH, cible="case", dimension=dimension, valeur=valeur,
+                   region_id=rid, agent="admin")
 
 
 def _perso(client, nom, headers=ADMIN):
@@ -52,14 +57,11 @@ def _perso(client, nom, headers=ADMIN):
 
 
 def _liens(db_path, rid):
-    """Ce qui pend à une région : son locuteur, sa présence, ses attributs."""
+    """Ce qui pend à une région : son locuteur, sa présence."""
     def un(table):
         r = _sql(db_path, f"SELECT personnage_id FROM {table} WHERE region_id = ?", (rid,))
         return r[0]["personnage_id"] if r else None
-    return {"locuteur": un("bulle_locuteur"), "presence": un("personnage_presence"),
-            "attributs": [r["valeur_id"] for r in _sql(
-                db_path, "SELECT valeur_id FROM region_attribut WHERE region_id = ? "
-                         "ORDER BY valeur_id", (rid,))]}
+    return {"locuteur": un("bulle_locuteur"), "presence": un("personnage_presence")}
 
 
 def _decor(client, planche):
@@ -69,28 +71,31 @@ def _decor(client, planche):
     case = _region(client, pid)
     cartouche = _region(client, pid, type="cartouche", parent_id=case, w=20, h=10)
     boite = _region(client, pid, type="personnage", parent_id=case, x=25, w=20, h=20)
-    lieu = _valeur(client, "case", "lieu", "falaise")
     tintin, milou = _perso(client, "Tintin"), _perso(client, "Milou")
-    _ok(client.put(f"/api/regions/{case}/attributs", json={"valeur_id": lieu}, headers=ADMIN), 200)
+    _situer(case, "lieu", "falaise")
     _ok(client.put(f"/api/regions/{cartouche}/locuteur", json={"personnage_id": tintin},
                    headers=ADMIN), 200)
     _ok(client.put(f"/api/regions/{boite}/personnage", json={"personnage_id": milou},
                    headers=ADMIN), 200)
     _ok(client.put(f"/api/regions/{cartouche}/annotation",
-                   json={"note": "voix off", "tags": ["récit"]}, headers=ADMIN), 200)
-    return {"case": case, "cartouche": cartouche, "boite": boite, "lieu": lieu,
+                   json={"note": "voix off"}, headers=ADMIN), 200)
+    import database
+    from conftest import poser_tags
+    poser_tags(database.DB_PATH, cartouche, ["récit"], agent="admin")   # l'acte d'hier
+    return {"case": case, "cartouche": cartouche, "boite": boite,
             "tintin": tintin, "milou": milou}
 
 
-def test_annuler_la_suppression_rend_locuteur_presence_et_situation(client, planche, db_path):
+def test_annuler_la_suppression_rend_locuteur_et_presence(client, planche, db_path):
+    """… et ni la situation ni les tags d'hier (ANN-7, le basculement) : rien ne les
+    montre plus."""
     d = _decor(client, planche)
     _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
-    assert _liens(db_path, d["cartouche"]) == {"locuteur": None, "presence": None, "attributs": []}
+    assert _liens(db_path, d["cartouche"]) == {"locuteur": None, "presence": None}
 
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert (res["acte"], res["cible_table"]) == ("suppression", "regions")
-    assert res["liens_non_rendus"] == 0
-    assert _liens(db_path, d["case"])["attributs"] == [d["lieu"]]
+    assert res["liens_non_rendus"] == 0 and "tags_non_rendus" not in res
     assert _liens(db_path, d["cartouche"])["locuteur"] == d["tintin"]
     assert _liens(db_path, d["boite"])["presence"] == d["milou"]
     # Ce qui revenait déjà revient toujours.
@@ -98,59 +103,42 @@ def test_annuler_la_suppression_rend_locuteur_presence_et_situation(client, plan
                 (d["cartouche"],))[0]["note"] == "voix off"
     # Et l'écran le relit par ses routes, pas seulement en base.
     assert client.get(f"/api/regions/{d['cartouche']}/locuteur").json()["locuteur"]["id"] == d["tintin"]
-    assert [a["valeur"] for a in client.get(f"/api/regions/{d['case']}/attributs").json()] == ["falaise"]
+    # (la situation ne se relit plus par une route : ANN-7.)
 
 
 def test_l_instantane_de_suppression_porte_les_liens(client, planche, db_path):
     """Le journal garde les IDENTIFIANTS des liens, et seulement eux : aucun nom de
-    personnage, aucun mot du vocabulaire n'entre dans l'instantané."""
+    personnage n'entre dans l'instantané — et, depuis le basculement d'ANN-7, ni la situation
+    ni les tags."""
     import json
     d = _decor(client, planche)
     _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
     avant = json.loads(_sql(db_path, "SELECT avant FROM evenement WHERE type = 'suppression' "
                                      "AND cible_table = 'regions' ORDER BY id DESC LIMIT 1")[0]["avant"])
-    assert avant["attributs"] == [d["lieu"]]
+    assert "attributs" not in avant
     enfants = {e["id"]: e for e in avant["enfants"]}
+    assert enfants[d["cartouche"]]["annotation"] == {"note": "voix off"}
     assert enfants[d["cartouche"]]["locuteur"] == d["tintin"]
     assert enfants[d["boite"]]["presence"] == d["milou"]
     brut = json.dumps(avant, ensure_ascii=False)
-    for mot in ("Tintin", "Milou", "falaise", "lieu"):
+    for mot in ("Tintin", "Milou", "falaise", "lieu", "récit"):
         assert mot not in brut, f"« {mot} » est entré dans l'instantané : {brut}"
 
 
 def test_un_lien_dont_l_objet_a_disparu_ne_revient_pas_et_se_compte(client, planche, db_path):
-    """Le personnage supprimé entre-temps, la valeur aussi : la case et le cartouche
-    reviennent, sans ces deux liens — ils seraient partis de toute façon avec ce qu'ils
-    désignaient. La présence, elle, revient."""
+    """Le personnage supprimé entre-temps : la case et le cartouche reviennent, sans ce
+    lien — il serait parti de toute façon avec ce qu'il désignait. La présence, elle,
+    revient."""
     d = _decor(client, planche)
     _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
     _ok(client.delete(f"/api/personnages/{d['tintin']}", headers=ADMIN), 200, 204)
-    _ok(client.delete(f"/api/attributs/valeurs/{d['lieu']}", headers=ADMIN), 200, 204)
 
     res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
     assert res["acte"] == "suppression"
-    assert res["liens_non_rendus"] == 2
-    assert _liens(db_path, d["case"]) == {"locuteur": None, "presence": None, "attributs": []}
+    assert res["liens_non_rendus"] == 1
+    assert _liens(db_path, d["case"]) == {"locuteur": None, "presence": None}
     assert _liens(db_path, d["cartouche"])["locuteur"] is None
     assert _liens(db_path, d["boite"])["presence"] == d["milou"]
-
-
-def test_une_valeur_nee_apres_l_acte_n_est_pas_celle_de_la_case(client, planche, db_path):
-    """`attribut_valeur` n'a pas d'`AUTOINCREMENT` : la valeur supprimée rend son
-    identifiant à la suivante. Née APRÈS la suppression, ce n'est plus la situation de la
-    case, et elle ne s'y pose pas."""
-    d = _decor(client, planche)
-    _ok(client.delete(f"/api/regions/{d['case']}", headers=ADMIN), 204)
-    _ok(client.delete(f"/api/attributs/valeurs/{d['lieu']}", headers=ADMIN), 200, 204)
-    autre = _valeur(client, "case", "lieu", "grotte")
-    assert autre == d["lieu"], "le décor suppose l'identifiant repris"
-    # Les dates sont à la seconde : la reprise est datée après l'acte, comme elle le serait.
-    _sql(db_path, "UPDATE attribut_valeur SET date_creation = datetime('now', '+1 minute') "
-                  "WHERE id = ?", (autre,))
-
-    res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
-    assert res["liens_non_rendus"] == 1
-    assert _liens(db_path, d["case"])["attributs"] == []
 
 
 def test_un_personnage_que_l_agent_ne_voit_plus_ne_revient_pas(client, planche, db_path,

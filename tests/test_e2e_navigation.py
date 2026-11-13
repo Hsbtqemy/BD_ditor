@@ -9,6 +9,7 @@ Marqués `e2e` → hors du run rapide par défaut (`pytest -m e2e` pour les lanc
 Skippés proprement si Playwright n'est pas installé.
 """
 import re
+import urllib.parse
 from urllib.parse import quote
 
 import httpx
@@ -287,7 +288,10 @@ def test_recherche_resultat_apercu_et_lien_edition(page, seeded_ocr):
     assert f"region={s['region']}" in href and "retour=" in href
     # UX-6 — le lien nomme la page comme la navigation : « Atelier », jamais « Visionneuse ».
     expect(page.locator("#preview-edit")).to_have_text("✏️ Atelier")
-    expect(card).to_have_attribute("title", re.compile(r"dans l'Atelier$"))
+    # ANN-7 — la carte porte le bouton qui ouvre l'aperçu, et à côté la ligne de ses relevés :
+    # l'infobulle est celle du bouton.
+    expect(card.locator(".r-ouvrir")).to_have_attribute("title", re.compile(r"dans l'Atelier$"))
+    expect(card.locator(".r-ouvrir")).to_have_attribute("role", "button")
 
 
 def test_visionneuse_menu_import_export(page, live_server):
@@ -653,24 +657,24 @@ def test_modale_sharedocs_accessible_et_echap(page, live_server):
 def test_boutons_mode_aria_pressed(page, live_server):
     """Les boutons de mode exposent leur état sélectionné aux lecteurs d'écran
     (aria-pressed), mis à jour AU CLIC comme AU RACCOURCI clavier ; l'indicateur de
-    mode est une région live → la bascule au clavier (N/E/A/T) est annoncée même
+    mode est une région live → la bascule au clavier (N/E/T) est annoncée même
     quand le focus n'est pas sur les boutons."""
     page.goto(f"{live_server}/", wait_until="networkidle")
     nav = page.locator('.mode-btn[data-mode="navigation"]')
     edi = page.locator('.mode-btn[data-mode="edition"]')
-    ann = page.locator('.mode-btn[data-mode="annotation"]')
     expect(nav).to_have_attribute("aria-pressed", "true", timeout=15000)
     expect(edi).to_have_attribute("aria-pressed", "false")
 
     edi.click()                                   # clic → Édition actif, Navigation off
     expect(edi).to_have_attribute("aria-pressed", "true")
     expect(nav).to_have_attribute("aria-pressed", "false")
+    expect(page.locator("#stat-mode")).to_have_text("Mode : Édition")
 
-    page.keyboard.press("a")                      # raccourci → Annotation
-    expect(ann).to_have_attribute("aria-pressed", "true")
+    page.keyboard.press("n")                      # raccourci → Navigation
+    expect(nav).to_have_attribute("aria-pressed", "true")
     expect(edi).to_have_attribute("aria-pressed", "false")
     # l'indicateur de mode (région live) reflète la bascule
-    expect(page.locator("#stat-mode")).to_have_text("Mode : Annotation")
+    expect(page.locator("#stat-mode")).to_have_text("Mode : Navigation")
     expect(page.locator("#stat-mode")).to_have_attribute("aria-live", "polite")
 
 
@@ -680,9 +684,12 @@ def test_filtres_recherche_ont_un_nom_accessible(page, live_server):
     le texte de l'option par défaut)."""
     page.goto(f"{live_server}/recherche", wait_until="networkidle")
     expect(page.locator("#q")).to_have_attribute(
-        "aria-label", "Rechercher dans les dialogues, notes et tags", timeout=15000)
+        "aria-label", "Rechercher dans les dialogues, les notes et les étiquettes",
+        timeout=15000)
     expect(page.locator("#f-album")).to_have_attribute("aria-label", "Filtrer par album")
     expect(page.locator("#f-type")).to_have_attribute("aria-label", "Filtrer par type de région")
+    # ANN-7 — « Porte… », cachée tant qu'aucune grille n'est lue : nommée aussi.
+    expect(page.locator("#f-porte")).to_have_attribute("aria-label", "Filtrer par relevé")
     # facettes grammaticales (dans un <details>) : nommées aussi
     expect(page.locator("#f-pos")).to_have_attribute(
         "aria-label", "Filtrer par catégorie grammaticale (POS)")
@@ -843,7 +850,6 @@ def _dans_le_mode(page, mode, libelle):
 
 
 @pytest.mark.parametrize("touche, mode, libelle", [
-    ("a", "annotation", "Annotation"),
     ("e", "edition", "Édition"),
 ])
 def test_f5_rouvre_dans_le_mode_ou_l_on_etait(page, seeded_modes, touche, mode, libelle):
@@ -863,19 +869,61 @@ def test_f5_rouvre_dans_le_mode_ou_l_on_etait(page, seeded_modes, touche, mode, 
     expect(page).to_have_url(re.compile(rf"region={s['b2']}(?:&|$)"))
 
 
-def test_f5_en_annotation_recharge_l_annotation_de_la_region(page, seeded_modes):
-    """L'Annotation entre comme au clavier : elle charge l'annotation de la région."""
+# ANN-7, le basculement (I7, Hugo, 2026-11-05) — le mode Annotation n'est plus. Ce qui y
+# menait mène à la page Annotation, sur la zone courante, par le chemin d'« Annoter ↗ » :
+# une adresse d'hier en `mode=annotation` (un lien enregistré, un rechargement), et la touche
+# `A`. Ce qu'on mesure est l'ARRIVÉE — la page, et la zone qu'elle ouvre —, et ce que
+# l'historique garde : l'adresse d'hier ne s'y laisse pas (Précédent n'y ramènerait que pour
+# repartir), la touche, geste de l'utilisateur, s'y laisse comme un clic sur le lien.
+_PAGE_ANNOTATION = re.compile(r"/annotation\?")
+
+
+def _sur_la_page_annotation(page, s, region):
+    expect(page).to_have_url(_PAGE_ANNOTATION, timeout=15000)
+    url = page.url
+    for cle, val in (("album", s["album"]), ("planche", s["planche"]), ("region", region)):
+        assert re.search(rf"[?&]{cle}={val}(?:&|$)", url), (cle, url)
+    retour = re.search(r"[?&]retour=([^&]+)", url)
+    assert retour, f"pas de retour vers l'Atelier : {url}"
+    vers = urllib.parse.unquote(retour.group(1))
+    assert vers.startswith("/?") and f"region={region}" in vers, vers
+    assert "mode=" not in vers, f"le retour remènerait au mode d'hier : {vers}"
+    expect(page.locator("#an-tete-zone")).to_contain_text("bulle", timeout=15000)
+
+
+def test_une_adresse_d_hier_en_annotation_mene_a_la_page_annotation(page, seeded_modes):
     s = seeded_modes
-    c = httpx.Client(base_url=s["base"], trust_env=False, timeout=30, headers=ECRITURE)
-    try:
-        r = c.put(f"/api/regions/{s['b2']}/annotation",
-                  json={"note": "note gardée"})
-        assert r.status_code < 300, r.text
-    finally:
-        c.close()
+    page.goto(f"{s['base']}/recherche", wait_until="networkidle")
     page.goto(_atelier(s, s["b2"], "&mode=annotation"), wait_until="networkidle")
-    _dans_le_mode(page, "annotation", "Annotation")
-    expect(page.locator("#note-input")).to_have_value("note gardée")
+    _sur_la_page_annotation(page, s, s["b2"])
+    # L'adresse d'hier n'est pas restée dans l'historique : Précédent ramène d'où l'on venait.
+    page.go_back(wait_until="networkidle")
+    expect(page).to_have_url(re.compile(r"/recherche"), timeout=15000)
+
+
+def test_la_touche_a_mene_a_la_page_annotation_sur_la_zone(page, seeded_modes):
+    s = seeded_modes
+    page.goto(_atelier(s, s["b2"]), wait_until="networkidle")
+    expect(page.locator("#region-id")).to_have_text(f"#{s['b2']}", timeout=15000)
+    expect(page.locator('.mode-btn[data-mode="annotation"]')).to_have_count(0)
+    page.keyboard.press("a")
+    _sur_la_page_annotation(page, s, s["b2"])
+    # Un geste de l'utilisateur : Précédent ramène à l'Atelier, sur la même zone.
+    page.go_back(wait_until="networkidle")
+    expect(page.locator("#region-id")).to_have_text(f"#{s['b2']}", timeout=15000)
+    _dans_le_mode(page, "navigation", "Navigation")
+
+
+def test_la_touche_a_dans_un_champ_s_ecrit_et_ne_part_pas(page, seeded_modes):
+    """En Transcription, le focus est dans la zone de saisie : « a » est une lettre."""
+    s = seeded_modes
+    page.goto(_atelier(s, s["b1"], "&mode=transcription"), wait_until="networkidle")
+    _dans_le_mode(page, "transcription", "Transcription")
+    expect(page.locator("#tr-text")).to_be_focused()
+    page.keyboard.press("End")
+    page.keyboard.press("a")
+    expect(page.locator("#tr-text")).to_have_value("PREMIEREa")
+    assert "/annotation" not in page.url, page.url
 
 
 def test_f5_en_transcription_rouvre_sur_la_meme_bulle(page, seeded_modes):

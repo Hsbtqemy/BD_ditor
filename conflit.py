@@ -34,7 +34,6 @@ LIBELLES = {
     # (`undo._garder_liens_du_type`).
     "locuteur": "le locuteur",
     "presence": "le personnage montré",
-    "situation": "la situation",
     # ANN-7 (tranche 1, R9) : les valeurs uniques d'un relevé, d'un doute, d'une passe.
     "variante_cle": "la variante",
     "qualificatifs": "les qualificatifs",

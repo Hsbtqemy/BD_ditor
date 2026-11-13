@@ -19,6 +19,10 @@ from conftest import ADMIN
 from grilles_decor import (ANA, LEA, MODELE, MODELE_LISTES, SAM, STAG, ZOE, grille_active,
                            importer, monter, ok)
 
+# La grille de travail de chaque projet (ANN-7) n'est pas l'objet de ce fichier : cf.
+# `conftest.sans_grille_de_travail`.
+pytestmark = pytest.mark.usefixtures("sans_grille_de_travail")
+
 
 @pytest.fixture
 def decor(client, db_path, derriere_proxy):

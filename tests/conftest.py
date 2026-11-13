@@ -91,6 +91,21 @@ def derriere_proxy(monkeypatch):
 
 
 @pytest.fixture
+def sans_grille_de_travail(monkeypatch):
+    """Les projets naissent SANS leur grille de travail (ANN-7, le basculement, commit 2 bis).
+
+    Pour les fichiers qui éprouvent l'import, l'écriture et l'activation d'AUTRES grilles :
+    ils comptent les grilles d'un projet, en désignent par leur identifiant, et la grille de
+    travail, ajoutée à chaque naissance, s'y lirait comme une grille de plus sans rien
+    éprouver. Elle a ses tests (`test_grille_de_travail.py`). À demander AVANT `data_dir`
+    (`pytest.mark.usefixtures` au niveau du module), pour que le projet de repli d'une base
+    neuve naisse sans elle aussi."""
+    import grille_import
+    monkeypatch.setattr(grille_import, "installer_grille_de_travail",
+                        lambda conn, pid, **_: None)
+
+
+@pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     """Redirige base + dossiers data vers un tmp jetable et init la base."""
     db_file = tmp_path / "test.sqlite"
@@ -238,6 +253,60 @@ def direct_query(db_file: Path, sql: str, params=()):
     conn.row_factory = sqlite3.Row
     try:
         return [dict(r) for r in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+
+
+# ANN-7, le basculement — ce qui RESTE du vocabulaire d'hier dans une base migrée : son
+# JOURNAL. La v39 a détruit les tables des tags, des dimensions, des valeurs et de leurs
+# affectations ; le journal, append-only, garde les actes qui les posaient, et c'est sur eux
+# que se mesure ce qui ne doit plus revenir (Ctrl+Z, « qui perd quoi », les sorties). Ces
+# deux aides écrivent ces actes tels que les routes d'hier les écrivaient, et la note si on la
+# donne ; elles ne posent plus aucune ligne de vocabulaire — il n'a plus de table.
+def poser_tags(db_file: Path, region_id: int, labels, *, collection_id=None, espace=0,
+               note=None, agent=None):
+    """L'acte d'HIER qui posait ces tags sur la région (`annotations`, l'instantané entier,
+    tags compris, au nom d'`agent` s'il est donné), et la note si elle est donnée (alors
+    l'annotation vit, et la région est réindexée). Rend {libellé: None} : aucun tag n'a
+    d'identifiant depuis la v39. `collection_id` et `espace` ne disent plus rien."""
+    import journal
+    assert Path(db_file) == Path(database.DB_PATH), "la base du test, celle de `data_dir`"
+    conn = database.get_connection()
+    try:
+        a = conn.execute("SELECT note FROM annotations WHERE region_id = ?",
+                         (region_id,)).fetchone()
+        avant = None if a is None else {"note": a["note"], "tags": []}
+        if (note or "").strip():
+            conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, ?) "
+                         "ON CONFLICT(region_id) DO UPDATE SET note = excluded.note",
+                         (region_id, note))
+        apres = {"note": note if note is not None else (a["note"] if a else None),
+                 "tags": sorted(labels)}
+        if agent is not None:
+            journal.journaliser(conn, "creation" if avant is None else "modification",
+                                "annotations", region_id, avant=avant, apres=apres,
+                                agent=agent)
+        database.reindex_region(conn, region_id)
+        conn.commit()
+        return {label: None for label in labels}
+    finally:
+        conn.close()
+
+
+def poser_attribut(db_file: Path, *, cible: str, dimension: str, valeur: str,
+                   region_id=None, personnage_id=None, collection_id=None, agent=None):
+    """L'acte d'HIER qui posait une situation sur une case (`lien` sous `region_attribut`,
+    au nom d'`agent`) ; un profil n'était pas journalisé, et ne laisse rien. Rend
+    {dimension_id: None, valeur_id: None}."""
+    import journal
+    conn = sqlite3.connect(db_file)
+    try:
+        if region_id is not None and agent is not None:
+            journal.journaliser(conn, "lien", "region_attribut", region_id,
+                                apres={"valeur_id": 0, "dimension": dimension,
+                                       "valeur": valeur}, agent=agent)
+        conn.commit()
+        return {"dimension_id": None, "valeur_id": None}
     finally:
         conn.close()
 

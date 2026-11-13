@@ -39,7 +39,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import database  # noqa: E402  (collection_row / collection_album_ids / contributions_album)
 from config import DB_PATH, BASE_DIR  # noqa: E402
 from _commun import version_outil, forcer_utf8  # noqa: E402  (provenance de l'outil — paradonnée / stdout)
-from _commun import (HorsDuCorpus, clause_vocabulaire,  # noqa: E402  (COL-4 : ni bac à sable
+from _commun import (HorsDuCorpus,  # noqa: E402  (COL-4 : ni bac à sable
                      exiger_hors_isoles)                               # ni jeu ne sortent)
 
 
@@ -365,41 +365,6 @@ def datacite_xml(d: dict) -> str:
 # --------------------------------------------------------------------------- #
 # Construction : lecture de la base → notices album + collection
 # --------------------------------------------------------------------------- #
-def _sujets(conn, collection_id=None) -> list:
-    """Sujets = valeurs du vocabulaire facetté + étiquettes (tags) du périmètre.
-
-    AUTH-11 : ces deux listes sortaient GLOBALES, et la notice DataCite de la collection A
-    publiait donc, en clair et dans un dépôt pérenne, le vocabulaire d'analyse des autres
-    études de l'instance. Elles suivent désormais l'APPARTENANCE du terme — global ⊕ local
-    à la collection déposée (`database.clause_appartenance`), la règle que suit déjà le
-    « % défini ». `collection_id=None` vaut corpus entier et ne filtre rien.
-
-    La valeur est filtrée AVEC SON AXE, comme dans `metadonnees_collection._cartes` et
-    `socle._attributs_de`. Une valeur restée globale sous un axe devenu local existe (v24
-    fait descendre la portée à la création, pas rétroactivement) : la borner sur elle
-    seule faisait sortir, dans les `subjects` de la notice, un mot que les records du même
-    dépôt ne portent pas. Deux fichiers du même dépôt qui ne disent pas le même
-    vocabulaire se contredisent, et c'est le genre d'écart qu'un entrepôt garde pour
-    toujours.
-    """
-    # COL-4 — sans le vocabulaire local à un bac à sable ou au jeu (`clause_vocabulaire`).
-    ou_val, p_val = clause_vocabulaire(collection_id, "v.collection_id")
-    ou_dim, p_dim = clause_vocabulaire(collection_id, "d.collection_id")
-    ou_tag, p_tag = clause_vocabulaire(collection_id, "t.collection_id")
-    vals = [r[0] for r in conn.execute(
-        f"SELECT DISTINCT v.valeur FROM attribut_valeur v "
-        f"JOIN attribut_dimension d ON d.id = v.dimension_id "
-        f"WHERE {ou_val} AND {ou_dim} ORDER BY v.valeur", [*p_val, *p_dim])]
-    tags = [r[0] for r in conn.execute(
-        f"SELECT t.label FROM tags t WHERE {ou_tag} ORDER BY t.label", p_tag)]
-    vus, out = set(), []
-    for s in vals + tags:
-        if s and s not in vus:
-            vus.add(s)
-            out.append(s)
-    return out
-
-
 def _plage(debut, fin):
     if not (debut or fin):
         return None
@@ -471,7 +436,11 @@ def construire(conn, collection_id=None, publisher="BéDéditeur", annee_depot=N
             "licence": licence, "licence_uri": licence_uri,
             "base_legale": row["base_legale"],
             "access_rights": row["statut_diffusion"],
-            "subjects": _sujets(conn, collection_id), "related": related,
+            # ANN-7, le basculement — plus de `subjects` : ils étaient les valeurs du
+            # vocabulaire facetté et les tags de la collection, qui ne sortent plus. La clé
+            # est RETIRÉE (aucun `dc:subject`, aucun `subjects` DataCite), pas laissée
+            # vide ; les sérialiseurs savent encore les écrire, pour la tranche 4.
+            "related": related,
             "publisher": publisher, "publication_year": annee_depot,
         }
         collection_out = _serialiser(rec)

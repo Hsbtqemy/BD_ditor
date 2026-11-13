@@ -58,16 +58,17 @@ def _planche_etat(db, pl):
 # Ce qui RESTE à chaque cran d'arrivée (le décor porte deux régions, un texte, une
 # correction, une annotation, un attribut visible et un caché — deux en base —, un
 # locuteur, une présence). Les tokens se régénèrent depuis le texte qui reste, au nombre
-# que donne le moteur : ils ne se comptent qu'où ils doivent être nuls.
+# que donne le moteur : ils ne se comptent qu'où ils doivent être nuls. ANN-7, le
+# basculement : les attributs de case d'hier n'ont plus de table (v39).
 RESTE = {
     "grammaire": {"regions": 2, "textes": 1, "corrections": 1, "annotations": 0,
-                  "attributs": 0, "locuteurs": 0, "presences": 0},
+                  "locuteurs": 0, "presences": 0},
     "transcription": {"regions": 2, "textes": 1, "corrections": 0, "annotations": 0,
-                      "attributs": 0, "locuteurs": 0, "presences": 0},
+                      "locuteurs": 0, "presences": 0},
     "decoupage": {"regions": 2, "textes": 0, "tokens": 0, "corrections": 0,
-                  "annotations": 0, "attributs": 0, "locuteurs": 0, "presences": 0},
+                  "annotations": 0, "locuteurs": 0, "presences": 0},
     "images": {"regions": 0, "textes": 0, "tokens": 0, "corrections": 0, "annotations": 0,
-               "attributs": 0, "locuteurs": 0, "presences": 0},
+               "locuteurs": 0, "presences": 0},
 }
 
 
@@ -89,9 +90,9 @@ def test_chaque_cran_retire_ce_qui_est_au_dessus_et_rien_d_autre(client, source,
         assert etat["statut"] == "segmentee"
     # L'index plein texte suit : plus de note ni de tag nulle part ; le texte seulement où
     # il reste.
-    lignes = _sql(db_path, "SELECT ocr_texte, note, tags_concat FROM recherche "
+    lignes = _sql(db_path, "SELECT ocr_texte, note, etiquettes FROM recherche "
                            "WHERE region_id IN (?, ?)", (source["case"], source["bulle"]))
-    assert all(not (l["note"] or l["tags_concat"]) for l in lignes)
+    assert all(not (l["note"] or l["etiquettes"]) for l in lignes)
     textes = [l["ocr_texte"] for l in lignes if l["ocr_texte"]]
     assert textes == (["TINTIN ET LES OTAGES"] if cran in ("grammaire", "transcription")
                       else [])
@@ -133,6 +134,29 @@ def test_une_copie_sans_rien_d_autre_qu_un_nom_repart(client, source, db_path):
     assert _sql(db_path, "SELECT nom FROM regions WHERE id = ?", (d,))[0]["nom"] is None
 
 
+def test_une_ligne_aux_seuls_tags_d_hier_n_est_pas_du_travail(client, planche, db_path):
+    """ANN-7, le basculement (relecture croisée du commit des coutures, constat 2). Une
+    ligne d'annotation sans note — ce que portait une ligne aux seuls tags d'hier, que la
+    v39 retire, et qu'une base retouchée peut encore porter — n'est rien qu'on montre : elle ne fait pas monter le niveau de travail au cran des annotations, l'aperçu
+    ne la compte pas, et repartir de zéro ne dit pas « 1 annotation part » — mais la retire
+    quand même. Comme la copie, qui ne recopie qu'une note posée (`SQL_NOTE_POSEE`)."""
+    rid = _ok(client.post(f"/api/planches/{planche['id']}/regions", headers=ADMIN,
+                          json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}), 201)["id"]
+    _sql(db_path, "INSERT INTO annotations (region_id, note) VALUES (?, NULL)", (rid,))
+    album = planche["album_id"]
+    conn = database.get_connection()
+    try:
+        assert database.niveau_de_travail(conn, album) == database.rang_du_cran(
+            database.CRAN_DECOUPAGE)
+        assert database.compter_repartir(conn, album, "decoupage")["annotations"] == 0
+        comptes = database.repartir_de_zero(conn, album, "decoupage")
+        conn.commit()
+    finally:
+        conn.close()
+    assert comptes["annotations"] == 0
+    assert _sql(db_path, "SELECT id FROM annotations WHERE region_id = ?", (rid,)) == []
+
+
 def test_on_ne_repart_que_vers_plus_bas(client, source):
     _ok(_repartir(client, source["a"], "transcription", LEA))
     for cran in ("transcription", "grammaire"):
@@ -170,7 +194,7 @@ def test_ctrl_z_ne_remonte_pas_au_dela(client, source, db_path):
     reg = _ok(client.post(f"/api/planches/{pl}/regions", headers=LEA,
                           json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)["id"]
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=LEA,
-                   json={"note": "ironie, vraiment", "tags": ["dialogue", "secret"]}))
+                   json={"note": "ironie, vraiment"}))
     _ok(client.put(f"/api/regions/{reg}", headers=LEA, json={"ocr_texte": "AILLEURS"}))
     _ok(_repartir(client, source["a"], "grammaire", LEA))
     # Le plus récent : le texte posé sur l'autre album — il s'annule.
@@ -237,7 +261,7 @@ def test_une_planche_repart_seule_et_le_reste_s_annule_encore(client, source, db
                          json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}), 201)["id"]
     _ok(client.put(f"/api/regions/{r2}", headers=LEA, json={"ocr_texte": "SECONDE"}))
     _ok(client.put(f"/api/regions/{source['bulle']}/annotation", headers=LEA,
-                   json={"note": "après coup", "tags": ["dialogue"]}))
+                   json={"note": "après coup"}))
     r = client.post(f"/api/planches/{source['pl']}/repartir", json={"cran": "images"},
                     headers=LEA)
     rendu = _ok(r)

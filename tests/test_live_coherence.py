@@ -46,13 +46,13 @@ def test_ecriture_puis_lecture_immediate_coherentes(live_server):
     # Réchauffe le NLP HORS mesure : la 1re écriture déclenche le chargement à froid
     # de spaCy (~10 s) — ici on teste la course écriture→lecture, pas cette latence.
     c.put(f"/api/regions/{reg}/annotation",
-          json={"note": "WARMUP", "tags": []}, timeout=120)
+          json={"note": "WARMUP"}, timeout=120)
 
     N = 30
     miss = 0
     for i in range(N):
         note = f"NOTE-{i}-UNIQUE"
-        c.put(f"/api/regions/{reg}/annotation", json={"note": note, "tags": [f"t{i}"]})
+        c.put(f"/api/regions/{reg}/annotation", json={"note": note})
         got = c.get(f"/api/regions/{reg}/annotation").json()
         if got.get("note") != note:
             miss += 1

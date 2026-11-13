@@ -34,15 +34,22 @@ import grilles
 from grille_import import Refus, _faute
 from grilles import CARDINALITES, FORMES, propre
 
-# Les champs d'une entrée que le formulaire écrit (les six questions du catalogue et « ce que
-# lit l'annotateur »), et ceux d'une variante, d'une rubrique, d'une liste, d'une case.
+# Les champs d'une entrée que le formulaire écrit (les six questions du catalogue, « ce que
+# lit l'annotateur » et son ÉTAT, provisoire ou défini — v39), et ceux d'une variante, d'une
+# rubrique, d'une liste, d'une case.
 CHAMPS_ENTREE = ("libelle", "rubrique_cle", "forme", "definition", "structure", "piege",
-                 "exemples", "precision", "lien", "cible", "cardinalite", "liste_cle")
+                 "exemples", "precision", "lien", "cible", "cardinalite", "liste_cle", "etat")
 CHAMPS_VARIANTE = ("libelle", "definition", "structure", "piege", "exemples")
 CHAMPS_RUBRIQUE = ("libelle", "parent_cle")
 CHAMPS_LISTE = ("libelle",)
 CHAMPS_CASE = ("libelle", "definition")
 CHAMPS_VERSION = ("porte_sur", "note")
+
+# Le refus d'un remaniement sur place (J5) sur une entrée DÉFINIE, à un annotateur : la même
+# phrase par la route des variantes (`routes/grilles.py`) et par la pose qui ferait naître une
+# valeur (`routes/releves.py`).
+MOTIF_ENTREE_DEFINIE = ("« {libelle} » est définie : seuls les responsables du projet la "
+                        "renomment ou lui ajoutent une valeur.")
 
 
 # --------------------------------------------------------------------------- #
@@ -109,6 +116,12 @@ def cibles(valeur) -> tuple[str | None, str | None]:
 
 def forme(valeur) -> str | None:
     return grille_tableur.forme_lue(valeur) if valeur is not None else None
+
+
+def etat(valeur) -> str | None:
+    """L'état d'une entrée (`grilles.ETATS_ENTREE`), ou None s'il n'en est pas un."""
+    v = propre(valeur)
+    return v if v in grilles.ETATS_ENTREE else None
 
 
 def cardinalite(valeur) -> str | None:
@@ -186,7 +199,8 @@ def emplois(conn, g, v: dict, c: dict) -> dict:
     Rend `{"entrees": {cle: n}, "variantes": {cle: {vc: n}}, "cases": {qc: n},
     "fusionner_dans": {cle: [...]}}` — les seuls objets employés ; `fusionner_dans` (dans une
     version VIVANTE seulement) : les entrées où la fusion se ferait, la règle du refus de
-    `routes/grilles.supprimer_entree` (`grille_import._vers_possibles`)."""
+    `routes/grilles.supprimer_entree` (`grille_import._vers_possibles`), sans celles où ses
+    relevés se contrediraient (`grille_import.vers_sans_double`)."""
     entrees, variantes = {}, {}
     for r in conn.execute("SELECT entree_cle, variante_cle, COUNT(*) AS n FROM releve "
                           "WHERE grille_id = ? GROUP BY entree_cle, variante_cle", (g["id"],)):
@@ -207,7 +221,9 @@ def emplois(conn, g, v: dict, c: dict) -> dict:
                 "AND version_id = ? AND entree_cle = ? AND variante_cle IS NOT NULL",
                 (g["id"], v["id"], cle))}
             sans = {**c, "entrees": {k: x for k, x in c["entrees"].items() if k != cle}}
-            fusionner[cle] = grille_import._vers_possibles(c, sans, cle, employees)
+            fusionner[cle] = grille_import.vers_sans_double(
+                conn, g["id"], v["id"], c, cle,
+                grille_import._vers_possibles(c, sans, cle, employees))
     return {"entrees": entrees, "variantes": variantes, "cases": cases,
             "fusionner_dans": fusionner}
 
@@ -393,6 +409,9 @@ def ecrire(conn: sqlite3.Connection, g, v: dict, avant: dict, apres: dict, *,
         raise Refus(409, "Une fusion ne s'écrit que dans une grille ouverte.")
     grille_import.effacer_plan(conn, v["id"])
     grille_import.ecrire_plan(conn, v["id"], apres)
+    if v["etat"] == grilles.ETAT_VIVANTE:
+        grille_import.reporter_cardinalites(conn, g["id"], v["id"], avant, apres)
+        grille_import.reindexer_libelles(conn, g["id"], v["id"], avant, apres, fusions)
     conn.execute("UPDATE grille_version SET cible = ?, note = ? WHERE id = ?",
                  (apres["cible"], note, v["id"]))
     conn.execute("UPDATE grille_version SET empreinte = ? WHERE id = ?",

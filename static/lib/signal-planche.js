@@ -29,7 +29,13 @@
    et `releves:planche` ; une écriture sur un relevé, un doute ou une passe touche la zone
    du relevé, que la page connaît (`ou`). Toucher une région touche aussi ses relevés, et
    l'inverse : la limite écrite plus haut vaut pour les deux. L'Atelier ne lit que les
-   régions : un relevé posé ailleurs ne lui signale rien, puisqu'il n'en montre rien. */
+   régions : un relevé posé ailleurs ne lui signale rien, puisqu'il n'en montre rien.
+
+   LE PLAN DES GRILLES OUVERTES (ANN-7, le mode libre) : la route rend aussi `plans`, une
+   empreinte par grille ouverte active, que `cles` range sous `plan:<id>`. Une écriture de la
+   page sur une grille (`/api/grilles/<id>/…`) touche son plan ; une POSE ou une modification
+   de relevé aussi (elle a pu faire naître une étiquette ou une valeur : `grille_id` de la
+   réponse) — l'erreur, là encore, va du côté du signal manqué. */
 (function (root, factory) {
   const api = factory();
   if (typeof module !== "undefined" && module.exports) module.exports = api;  // Node (tests)
@@ -43,16 +49,14 @@
   const INTERVALLE_MS = 30000;
 
   /* Les écritures qui ne changent l'empreinte d'AUCUNE région : le registre des personnages
-     (créer, renommer, son profil, ses alignements), le lexique, l'état d'une planche, la
+     (créer, renommer, ses alignements), l'état d'une planche, la
      grammaire d'une région (elle n'entre pas dans l'empreinte), l'import de planches,
      ShareDocs et « Passer ce geste ». Tout le reste qui n'est pas placé plus bas vaut
      `tout`. */
   const SANS_EFFET = [
     /^\/api\/personnages(\?|$)/,                                   // POST : créer
     /^\/api\/personnages\/\d+(\?|$)/,                               // PUT : renommer
-    /^\/api\/personnages\/\d+\/(attributs|alignements)(\/|\?|$)/,
-    /\/lexique(\?|$)/,
-    /^\/api\/attributs\/dimensions(\/\d+\/valeurs)?(\?|$)/,          // POST : créer
+    /^\/api\/personnages\/\d+\/alignements(\/|\?|$)/,
     /^\/api\/planches\/\d+\/(statut|relecture|validation|verrou|role)(\?|$)/,
     /^\/api\/regions\/\d+\/(tokens|grammaire)(\/|\?|$)/,
     /^\/api\/albums\/\d+\/import(\?|$)/,
@@ -95,6 +99,14 @@
      « doute » — rend `{ region_id, planche_id }` d'après ce que l'écran a lu, ou `null`. */
   function zoneDe(x) {
     if (!x) return null;
+    const plans = x.grille_id !== null && x.grille_id !== undefined ? { plans: [Number(x.grille_id)] } : {};
+    if (x.region_id !== null && x.region_id !== undefined) return { ids: [Number(x.region_id)], sousArbre: false, ...plans };
+    if (x.planche_id !== null && x.planche_id !== undefined) return { ids: [], sousArbre: false, planche: true, ...plans };
+    return null;
+  }
+
+  function zoneSansPlan(x) {
+    if (!x) return null;
     if (x.region_id !== null && x.region_id !== undefined) return { ids: [Number(x.region_id)], sousArbre: false };
     if (x.planche_id !== null && x.planche_id !== undefined) return { ids: [], sousArbre: false, planche: true };
     return null;
@@ -105,12 +117,14 @@
     const tout = { tout: true };
     if (/^\/api\/releves(\?|$)/.test(p)) return m === "POST" ? zoneDe(reponse) || tout : tout;
     const r = p.match(/^\/api\/releves\/(\d+)(\/doutes)?(\?|$)/);
-    if (r) return zoneDe(reponse && !r[2] ? reponse : null) || zoneDe(lire("releve", Number(r[1]))) || tout;
+    if (r) return zoneDe(reponse && !r[2] ? reponse : null) || zoneSansPlan(lire("releve", Number(r[1]))) || tout;
     const d = p.match(/^\/api\/doutes\/(\d+)\/(messages|levee)(\?|$)/);
     if (d) {
-      return zoneDe(reponse && reponse.releve_id != null ? lire("releve", Number(reponse.releve_id)) : null)
-        || zoneDe(lire("doute", Number(d[1]))) || tout;
+      return zoneSansPlan(reponse && reponse.releve_id != null ? lire("releve", Number(reponse.releve_id)) : null)
+        || zoneSansPlan(lire("doute", Number(d[1]))) || tout;
     }
+    const g = p.match(/^\/api\/grilles\/(\d+)\//);
+    if (g && m !== "GET") return { ids: [], sousArbre: false, plans: [Number(g[1])] };
     const pl = p.match(/^\/api\/planches\/(\d+)\/passes\//);
     if (pl) return Number(pl[1]) === plancheId ? { ids: [], sousArbre: false, planche: true } : null;
     return undefined;
@@ -119,9 +133,11 @@
   /* Les clés d'une empreinte pour la page Annotation : les régions, et les relevés de chaque
      zone sous `releves:<id>` (`releves:planche` pour la surface). */
   const PREFIXE = "releves:";
+  const PREFIXE_PLAN = "plan:";
   function cles(reponse) {
     const out = { ...((reponse && reponse.regions) || {}) };
     for (const [k, v] of Object.entries((reponse && reponse.releves) || {})) out[PREFIXE + k] = v;
+    for (const [k, v] of Object.entries((reponse && reponse.plans) || {})) out[PREFIXE_PLAN + k] = v;
     return out;
   }
 
@@ -129,13 +145,18 @@
      par l'identifiant de la zone, ou par `planche` pour la surface. */
   function touchee(cle, touchees) {
     const ids = touchees && touchees.ids ? touchees.ids : new Set();
+    if (String(cle).startsWith(PREFIXE_PLAN)) {
+      const plans = touchees && touchees.plans ? touchees.plans : new Set();
+      return plans.has(Number(String(cle).slice(PREFIXE_PLAN.length)));
+    }
     if (!String(cle).startsWith(PREFIXE)) return ids.has(Number(cle));
     const reste = String(cle).slice(PREFIXE.length);
     return reste === "planche" ? !!(touchees && touchees.planche) : ids.has(Number(reste));
   }
 
   /* Une région se nomme par son identifiant (un nombre) ; les relevés d'une zone, par leur clé. */
-  const nom = (cle) => (String(cle).startsWith(PREFIXE) ? String(cle) : Number(cle));
+  const nom = (cle) => (String(cle).startsWith(PREFIXE) || String(cle).startsWith(PREFIXE_PLAN)
+    ? String(cle) : Number(cle));
   const ordre = (a, b) => (typeof a === typeof b ? (typeof a === "number" ? a - b : a < b ? -1 : a > b ? 1 : 0)
     : typeof a === "number" ? -1 : 1);
 
@@ -178,14 +199,20 @@
     }
     // Les relevés (la page Annotation) : sur combien de zones ils ont changé.
     const zones = new Set(["creees", "modifiees", "supprimees"]
-      .flatMap((k) => autres[k].filter((x) => typeof x !== "number")));
+      .flatMap((k) => autres[k].filter((x) => typeof x !== "number" && !x.startsWith(PREFIXE_PLAN))));
     if (zones.size) {
       morceaux.push(`des relevés sur ${zones.size} zone${zones.size > 1 ? "s" : ""}`);
+    }
+    // Le mode libre : les étiquettes d'une grille ouverte (son plan).
+    const plans = new Set(["creees", "modifiees", "supprimees"]
+      .flatMap((k) => autres[k].filter((x) => typeof x === "string" && x.startsWith(PREFIXE_PLAN))));
+    if (plans.size) {
+      morceaux.push(plans.size > 1 ? `les étiquettes de ${plans.size} grilles` : "des étiquettes");
     }
     if (!morceaux.length) return "";
     return `La planche a changé ailleurs : ${morceaux.join(", ")}. `
       + "Actualiser la recharge, sans perdre votre saisie.";
   }
 
-  return { INTERVALLE_MS, regionsTouchees, comparer, nombre, titre, cles, PREFIXE };
+  return { INTERVALLE_MS, regionsTouchees, comparer, nombre, titre, cles, PREFIXE, PREFIXE_PLAN };
 });

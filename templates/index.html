@@ -40,9 +40,6 @@
       <button class="mode-btn" data-mode="edition" title="Édition" aria-pressed="false">
         <span class="dot"></span> <span class="mode-label">Édition</span> <kbd aria-hidden="true">E</kbd>
       </button>
-      <button class="mode-btn" data-mode="annotation" title="Annotation" aria-pressed="false">
-        <span class="dot"></span> <span class="mode-label">Annotation</span> <kbd aria-hidden="true">A</kbd>
-      </button>
       <button class="mode-btn" data-mode="transcription" title="Transcription" aria-pressed="false">
         <span class="dot"></span> <span class="mode-label">Transcription</span> <kbd aria-hidden="true">T</kbd>
       </button>
@@ -127,8 +124,8 @@
                 title="Tracer une nouvelle zone sur la planche ; dans une case, elle devient une bulle. À la souris, il suffit de glisser sur le fond.">✎ Tracer</button>
         <div class="breadcrumb" id="breadcrumb"></div>
         <button id="btn-tiroir-panneau" class="icon-btn tiroir-bascule" aria-expanded="false"
-                aria-controls="panel" aria-label="Afficher le panneau d'annotation"
-                title="Panneau d'annotation">▤</button>
+                aria-controls="panel" aria-label="Afficher le panneau Structure et zone"
+                title="Structure et zone">▤</button>
       </div>
       <div id="stage">
         <div id="canvas">
@@ -184,7 +181,8 @@
             <button id="btn-fig-open" class="ghost small" type="button" hidden></button>
             <!-- « Annoter ↗ » (ANN-7, H2) : cette zone dans la page Annotation, le pendant de son
                  « Ouvrir dans l'Atelier ↗ ». Ici et non dans la bande des outils, dont le seuil
-                 est mesuré au pixel. Le mode Annotation reste, jusqu'au basculement. -->
+                 est mesuré au pixel. Depuis le basculement, c'est là qu'on annote : le mode
+                 Annotation de l'Atelier n'est plus, et la touche A mène où mène ce lien. -->
             <a id="btn-annoter" class="ghost small btn-annoter" href="/annotation"
                title="Annoter cette zone dans la page Annotation">Annoter ↗</a>
           </div>
@@ -220,107 +218,6 @@
           <p class="edit-hint muted"><kbd>Maj</kbd>+glisser dans une case = créer
             une sous-région (rattachée automatiquement).</p>
           <button id="btn-delete-region" class="danger small">Supprimer la région</button>
-        </div>
-
-        <!-- Mode annotation : tags + note -->
-        <div id="panel-annotation" class="panel-section" hidden>
-          <!-- Locuteur (qui parle) — pour les zones de texte : bulle, cartouche, texte
-               (ANN-6). Le nom accessible du champ est complété par `loadLocuteur`, qui
-               sait de quelle zone il s'agit ; celui-ci vaut tant qu'aucune n'est chargée. -->
-          <div id="loc-section" hidden>
-            <h3>Locuteur</h3>
-            <div id="loc-current" class="loc-current"></div>
-            <div class="tag-input-wrap">
-              <input type="text" id="loc-input" placeholder="Attribuer un personnage…"
-                     autocomplete="off" aria-label="Attribuer un locuteur">
-              <div id="loc-suggest" class="tag-suggest" hidden></div>
-            </div>
-            <!-- Profil (socio)linguistique du personnage — s'applique à TOUT le corpus -->
-            <div id="perso-attr-section" hidden>
-              <div class="attr-label muted small">Profil du personnage (tout le corpus)</div>
-              <div id="perso-attr-current" class="loc-current"></div>
-              <div class="tag-input-wrap">
-                <input type="text" id="perso-attr-input" placeholder="dimension : valeur…"
-                       autocomplete="off" aria-label="Ajouter un attribut de profil au personnage"
-                       aria-describedby="perso-attr-aide">
-                <div id="perso-attr-suggest" class="tag-suggest" hidden></div>
-              </div>
-              <!-- ANN-6 — la même phrase que sous « Situation » (cf. `#sit-aide`, plus bas) :
-                   ce champ attend la même syntaxe, et son erreur coûte plus cher — le
-                   profil d'un personnage vaut pour tout le corpus. -->
-              <p id="perso-attr-aide" class="attr-aide muted">Respectez la syntaxe «&nbsp;dimension&nbsp;: valeur&nbsp;». Exemple&nbsp;: <span class="attr-exemple">registre&nbsp;: familier</span></p>
-            </div>
-            <!-- Alignement d'autorité (A5) — relie l'entité à un référentiel externe (skos:exactMatch) -->
-            <div id="loc-align-section" hidden>
-              <div class="attr-label muted small">Autorité (référentiels externes)</div>
-              <div id="loc-align-current" class="loc-current"></div>
-              <div class="tag-input-wrap">
-                <input type="text" id="loc-align-input" placeholder="URI Wikidata / VIAF / IdRef…"
-                       autocomplete="off" aria-label="Aligner le personnage sur une URI d'autorité">
-              </div>
-            </div>
-          </div>
-          <!-- Personnage (qui est montré) — pour les boîtes personnage : identité + profil -->
-          <div id="perso-section" hidden>
-            <h3>Personnage</h3>
-            <div id="perso-current" class="loc-current"></div>
-            <div class="tag-input-wrap">
-              <input type="text" id="perso-input" placeholder="Identifier le personnage…"
-                     autocomplete="off" aria-label="Identifier le personnage de la boîte">
-              <div id="perso-suggest" class="tag-suggest" hidden></div>
-            </div>
-            <!-- Même profil corpus que par le locuteur — atteignable ici, muets compris -->
-            <div id="perso-profil-section" hidden>
-              <div class="attr-label muted small">Profil du personnage (tout le corpus)</div>
-              <div id="perso-profil-current" class="loc-current"></div>
-              <div class="tag-input-wrap">
-                <input type="text" id="perso-profil-input" placeholder="dimension : valeur…"
-                       autocomplete="off" aria-label="Ajouter un attribut de profil au personnage"
-                       aria-describedby="perso-profil-aide">
-                <div id="perso-profil-suggest" class="tag-suggest" hidden></div>
-              </div>
-              <!-- ANN-6 — le même champ, atteint par la boîte personnage : la même phrase,
-                   sous un identifiant à elle (deux blocs peuvent être dans le document). -->
-              <p id="perso-profil-aide" class="attr-aide muted">Respectez la syntaxe «&nbsp;dimension&nbsp;: valeur&nbsp;». Exemple&nbsp;: <span class="attr-exemple">registre&nbsp;: familier</span></p>
-            </div>
-            <!-- Alignement d'autorité (A5) — même entité corpus, atteignable depuis la boîte -->
-            <div id="perso-align-section" hidden>
-              <div class="attr-label muted small">Autorité (référentiels externes)</div>
-              <div id="perso-align-current" class="loc-current"></div>
-              <div class="tag-input-wrap">
-                <input type="text" id="perso-align-input" placeholder="URI Wikidata / VIAF / IdRef…"
-                       autocomplete="off" aria-label="Aligner le personnage sur une URI d'autorité">
-              </div>
-            </div>
-          </div>
-          <!-- Situation (scène) — pour les cases -->
-          <div id="situation-section" hidden>
-            <h3>Situation (scène)</h3>
-            <div id="sit-current" class="loc-current"></div>
-            <div class="tag-input-wrap">
-              <input type="text" id="sit-input" placeholder="dimension : valeur…"
-                     autocomplete="off" aria-label="Ajouter un attribut de situation à la case"
-                     aria-describedby="sit-aide">
-              <div id="sit-suggest" class="tag-suggest" hidden></div>
-            </div>
-            <!-- ANN-6 — la syntaxe attendue, dite SOUS le champ. Sans les deux points, Entrée
-                 ne fait rien et ne dit rien : « falaise » tapé seul restait dans le champ,
-                 sans requête ni message (mesuré le 2026-10-12), et l'indication du champ
-                 disparaît à la première frappe. La saisie, elle, n'a pas changé. Les
-                 espaces insécables tiennent chaque deux-points à son mot quand la phrase
-                 se replie ; l'exemple, lui, ne se coupe pas. -->
-            <p id="sit-aide" class="attr-aide muted">Respectez la syntaxe «&nbsp;dimension&nbsp;: valeur&nbsp;». Exemple&nbsp;: <span class="attr-exemple">lieu&nbsp;: falaise</span></p>
-          </div>
-          <h3>Tags</h3>
-          <div id="tag-chips" class="tag-chips"></div>
-          <div class="tag-input-wrap">
-            <input type="text" id="tag-input" placeholder="Ajouter un tag…"
-                   autocomplete="off">
-            <div id="tag-suggest" class="tag-suggest" hidden></div>
-          </div>
-          <h3>Note</h3>
-          <textarea id="note-input" placeholder="Note libre…" rows="6"></textarea>
-          <div id="save-state" class="save-state muted">Enregistré</div>
         </div>
 
         <!-- OCR (lecture seule pour l'instant) -->
@@ -543,9 +440,6 @@
 <script src="/static/lib/conflit.js"></script>
 <script src="/static/lib/annulation.js"></script>
 <script src="/static/lib/signal-planche.js"></script>
-<script src="/static/lib/propositions.js"></script>
-<script src="/static/lib/champ-personnage.js"></script><!-- le champ « personnage », commun avec la page Annotation -->
-<script src="/static/lib/alignements.js"></script><!-- l'alignement d'autorité d'un personnage, commun avec la page Annotation -->
 <script src="/static/lib/membres-projet.js"></script>
 <script src="/static/lib/bac-a-sable.js"></script>
 <script src="/static/bac-a-sable.js"></script><!-- COL-4 : « Mon bac à sable » et sa ligne, sur les six surfaces -->

@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 from config import DATA_DIR, KUMIKO_DIR
-from database import avancer_statut, reindex_region, unindex_region
+from database import SQL_NOTE_POSEE, avancer_statut, reindex_region, unindex_region
 from pipeline import interruption
 from pipeline.ordering import reorder_planche
 
@@ -216,7 +216,7 @@ def _best_overlap(old: dict, new_cases: list[dict], seuil: float = SEUIL_RECOUVR
 def _transfer_case_annotations(conn: sqlite3.Connection, old_cases: list[dict],
                                new_cases: list[dict]) -> list[int]:
     """Transfère l'annotation d'une ancienne case vers la NOUVELLE case qui la
-    recouvre le mieux (préserve note + tags de panneau à travers une
+    recouvre le mieux (préserve la note de panneau à travers une
     re-segmentation). Re-pointe la ligne `annotations` et ré-indexe le FTS.
     Ne transfère QUE si la fusion est SANS AMBIGUÏTÉ : une nouvelle case ciblée par
     DEUX anciennes cases annotées (Kumiko a fusionné deux cases que l'humain avait
@@ -229,7 +229,9 @@ def _transfer_case_annotations(conn: sqlite3.Connection, old_cases: list[dict],
     # case annotée, puis comptage des anciennes par nouvelle (S2 — détection de fusion).
     cible = {}
     for old in old_cases:
-        if conn.execute("SELECT 1 FROM annotations WHERE region_id = ?",
+        # Une NOTE posée (ANN-7, le basculement) : une ligne d'hier aux seuls tags ne se
+        # transfère pas, et part avec sa case.
+        if conn.execute(f"SELECT 1 FROM annotations WHERE region_id = ? AND {SQL_NOTE_POSEE}",
                         (old["id"],)).fetchone() is None:
             continue
         best = _best_overlap(old, new_cases)
@@ -337,14 +339,15 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
         # Après transfert, une ancienne case qui PORTE ENCORE du travail humain —
         # annotation OU correction grammaticale (cf. docs/correction-grammaticale.md
         # §7) — est conservée plutôt que supprimée : jamais de perte de travail humain.
-        # ANN-7 (G20 b, Hugo, 2026-10-25) — une SITUATION (`region_attribut`), un RELEVÉ, une
-        # PASSE sont du travail humain aussi : une case qui ne portait qu'eux était supprimée
-        # à la re-segmentation, et eux avec elle (défaut d'avant, lu, corrigé ici). Aucun
-        # transfert vers la nouvelle case : le transfert d'annotation refuse déjà l'ambiguïté.
+        # ANN-7 (G20 b, Hugo, 2026-10-25) — un RELEVÉ, une PASSE sont du travail humain
+        # aussi : une case qui ne portait qu'eux était supprimée à la re-segmentation, et eux
+        # avec elle (défaut d'avant, lu, corrigé ici). Aucun transfert vers la nouvelle case :
+        # le transfert d'annotation refuse déjà l'ambiguïté. (La situation d'une case en
+        # était aussi jusqu'au basculement d'ANN-7, qui l'a retirée.)
         preserved = [c["id"] for c in old_cases if conn.execute(
-            "SELECT EXISTS(SELECT 1 FROM annotations WHERE region_id = :r) "
+            f"SELECT EXISTS(SELECT 1 FROM annotations WHERE region_id = :r "
+            f"              AND {SQL_NOTE_POSEE}) "
             "    OR EXISTS(SELECT 1 FROM token_correction WHERE region_id = :r) "
-            "    OR EXISTS(SELECT 1 FROM region_attribut WHERE region_id = :r) "
             "    OR EXISTS(SELECT 1 FROM releve WHERE region_id = :r) "
             "    OR EXISTS(SELECT 1 FROM passe WHERE region_id = :r)",
             {"r": c["id"]}).fetchone()[0]]

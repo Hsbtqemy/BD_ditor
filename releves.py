@@ -20,6 +20,42 @@ def qualificatifs_de(conn: sqlite3.Connection, releve_id: int) -> list:
         "ORDER BY qualificatif_cle", (releve_id,))]
 
 
+def existant_une(conn: sqlite3.Connection, *, region_id, planche_id, grille_id: int,
+                 entree_cle: str):
+    """Le relevé `une` de cette entrée déjà posé sur cette cible (Q6), ou None. Lu sous le
+    verrou de l'appelant — la pose, et Ctrl+Z qui rend un relevé."""
+    return conn.execute(
+        "SELECT * FROM releve WHERE COALESCE(region_id, 0) = ? AND COALESCE(planche_id, 0) = ? "
+        "AND grille_id = ? AND entree_cle = ? AND une = 1",
+        (region_id or 0, planche_id or 0, grille_id, entree_cle)).fetchone()
+
+
+def doublon(conn: sqlite3.Connection, *, region_id, planche_id, grille_id: int,
+            entree_cle: str, variante_cle, qualificatifs, precision, lien_region_id,
+            sauf=None):
+    """Le relevé qui porte DÉJÀ cette valeur sur cette cible ENTIÈRE (J3, Hugo, 2026-11-06 :
+    « jamais la même valeur deux fois sur une zone »), ou None. Une valeur, c'est la variante
+    quand il y en a une ; sans variante, le relevé à l'identique — ses qualificatifs (UN
+    ensemble), sa précision, son lien. Un relevé sur des MOTS n'est jamais une cible
+    entière : l'appelant ne pose pas la question. `sauf` : le relevé qu'on modifie. Lu sous
+    le verrou de l'appelant, comme la cardinalité — la pose, la modification, et Ctrl+Z
+    qui rend une valeur (`undo._inverser_releve`)."""
+    lignes = conn.execute(
+        "SELECT * FROM releve WHERE COALESCE(region_id, 0) = ? AND COALESCE(planche_id, 0) = ? "
+        "AND grille_id = ? AND entree_cle = ? AND id IS NOT ? "
+        "AND NOT EXISTS (SELECT 1 FROM releve_mot m WHERE m.releve_id = releve.id) "
+        "ORDER BY id", (region_id or 0, planche_id or 0, grille_id, entree_cle, sauf)).fetchall()
+    voulus = sorted(set(qualificatifs or []))
+    for r in lignes:
+        if variante_cle:
+            if r["variante_cle"] == variante_cle:
+                return r
+        elif (r["variante_cle"] is None and qualificatifs_de(conn, r["id"]) == voulus
+              and r["precision"] == precision and r["lien_region_id"] == lien_region_id):
+            return r
+    return None
+
+
 def instantane(conn: sqlite3.Connection, releve_id: int, *, profond: bool = False) -> dict:
     """L'état d'un relevé, pour le journal : ses colonnes, ses qualificatifs (triés), son
     passage — `mots` (les rangs, dans l'ordre) et `formes` —, et, `profond`, ses doutes et
@@ -61,7 +97,9 @@ def instantanes_de_la_region(conn: sqlite3.Connection, region_id: int) -> tuple[
 def rendre(conn: sqlite3.Connection, snap: dict) -> None:
     """Recrée un relevé depuis son instantané profond, sous son identifiant — ses mots, ses
     qualificatifs, ses doutes et leur fil. Lève `sqlite3.IntegrityError` si quelque chose
-    s'y oppose (l'identifiant, la cardinalité `une`, une clé) ; l'appelant décide."""
+    s'y oppose (l'identifiant, la cardinalité `une`, une clé) ; l'appelant décide. Ses
+    ÉTIQUETTES reviennent dans l'index (J6, `database.reindex_etiquettes`)."""
+    from database import reindex_etiquettes        # import paresseux (database importe ce module)
     conn.execute(
         "INSERT INTO releve (id, region_id, planche_id, grille_id, version_id, entree_cle, "
         "variante_cle, precision, lien_region_id, lien_texte, texte_ancre, une, origine_id, "
@@ -87,6 +125,7 @@ def rendre(conn: sqlite3.Connection, snap: dict) -> None:
                          "VALUES (?, ?, ?, ?, ?)",
                          [(m["id"], d["id"], m["auteur"], m["date"], m["texte"])
                           for m in d["messages"]])
+    reindex_etiquettes(conn, [snap["region_id"]])
 
 
 def reancrer_releves(conn: sqlite3.Connection, region_id: int) -> int:

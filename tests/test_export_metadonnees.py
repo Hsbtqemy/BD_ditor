@@ -731,7 +731,7 @@ def test_aucun_login_d_annotateur_ne_sort_au_depot(corpus, album, tmp_path):
 # région annotée du vrai corpus, qui doit sortir. Les autres fichiers d'outils importent
 # cette fixture (`isoles`) avec celles dont elle dépend.
 from test_bac_a_sable import LEA, RESP, _copie, decor, jeu  # noqa: E402,F401
-from conftest import make_png  # noqa: E402
+from conftest import make_png, poser_tags  # noqa: E402
 
 
 @pytest.fixture
@@ -741,20 +741,20 @@ def isoles(client, decor, data_dir):
     reg_bac = client.post(f"/api/planches/{planche}/regions", headers=LEA,
                           json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
     assert client.put(f"/api/regions/{reg_bac}/annotation", headers=LEA,
-                      json={"note": "n", "tags": ["mot-du-bac"]}).status_code == 200
-    # L'axe local à la base, posé en SQL : ce que les routes laissent créer dans un bac à
-    # sable n'est pas l'objet de ce test, seulement ce que les outils en laissent sortir.
-    conn = sqlite3.connect(db)
-    conn.execute("INSERT INTO attribut_dimension (cible, nom, collection_id) "
-                 "VALUES ('case', 'axe-du-bac', ?)", (decor["base"],))
-    conn.commit()
-    conn.close()
+                      json={"note": "n"}).status_code == 200
+    # Le tag, que plus aucune route ne pose (ANN-7), en base : né dans l'espace du bac à
+    # sable et local à sa base, comme la route d'hier le faisait naître.
+    poser_tags(db, reg_bac, ["mot-du-bac"], collection_id=decor["base"],
+               espace=decor["bac"]["id"], agent="lea")
+    # L'axe d'hier « axe-du-bac » n'a plus de table où vivre (ANN-7, la v39) : son nom ne
+    # doit sortir de nulle part, et le test le cherche encore.
     pl = client.post(f"/api/albums/{decor['reel']}/import", headers=RESP,
                      files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
     reg_reel = client.post(f"/api/planches/{pl}/regions", headers=RESP,
                            json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
     assert client.put(f"/api/regions/{reg_reel}/annotation", headers=RESP,
-                      json={"note": "n", "tags": ["mot-du-corpus"]}).status_code == 200
+                      json={"note": "n"}).status_code == 200
+    poser_tags(db, reg_reel, ["mot-du-corpus"], agent="resp")
     conn = sqlite3.connect(db)
     conn.row_factory = sqlite3.Row
     try:
@@ -781,9 +781,14 @@ def test_metadonnees_n_emporte_ni_bac_a_sable_ni_jeu(isoles):
     assert r.returncode == 0, r.stderr
     doc = json.loads(r.stdout)["metadonnees_collection"]
     assert [a["titre"] for a in doc["albums"]] == ["Réel"]
-    labels = {t["label"] for t in doc["tags"]}
-    assert "mot-du-corpus" in labels and "mot-du-bac" not in labels
-    assert "axe-du-bac" not in {d["nom"] for d in doc["vocabulaire"]}
+    # ANN-7, le basculement : plus aucun terme d'hier ne sort, ni du bac à sable ni du
+    # corpus ; les clés du vocabulaire sont retirées.
+    for mot in ("mot-du-corpus", "mot-du-bac", "axe-du-bac"):
+        assert mot not in r.stdout, mot
+    assert not {"tags", "vocabulaire", "domaines"} & set(doc)
+    notes = [rg.get("annotation", {}).get("note") for a in doc["albums"]
+             for p in a["planches"] for rg in p["regions"]]
+    assert notes == ["n"], notes                    # la note du vrai corpus sort, elle
     assert "albums" not in doc["perimetre"]         # le corpus entier garde sa forme
 
 
@@ -801,7 +806,9 @@ def test_metadonnees_tables_sans_les_actes_du_bac_a_sable(isoles, tmp_path):
     assert str(isoles["evt_reel"]) in evts and str(isoles["evt_bac"]) not in evts
     assert colonne("albums", "id") == [str(isoles["reel"])]
     assert str(isoles["reg_bac"]) not in colonne("regions", "id")
-    assert "mot-du-bac" not in colonne("tags", "label")
+    # ANN-7, le basculement : la table des tags est retirée, pas laissée vide.
+    assert not (out / "tags.csv").exists()
+    assert colonne("annotations", "note") == ["n"]
 
 
 @pytest.mark.parametrize("quelle", ["base", "jeu_col"])
@@ -818,22 +825,28 @@ def test_la_fiche_ne_compte_ni_bac_a_sable_ni_jeu(isoles):
     assert r.returncode == 0, r.stderr
     fiche = json.loads(r.stdout)["description_collection"]
     assert fiche["couverture"]["albums"] == 1
-    assert fiche["couverture"]["annotations"]["tags_distincts"] == 1     # mot-du-corpus
-    assert "axe-du-bac" not in {d["nom"] for d in fiche["vocabulaire"]["dimensions"]}
+    # ANN-7, le basculement : la fiche ne compte plus que les notes (celle du vrai corpus),
+    # et son bloc `vocabulaire` est retiré.
+    assert fiche["couverture"]["annotations"] == {"notes": 1}
+    assert "vocabulaire" not in fiche
+    assert "axe-du-bac" not in r.stdout and "mot-du-bac" not in r.stdout
     assert "albums_scope" not in fiche["perimetre"]
 
 
-def test_le_pourcent_defini_ne_compte_ni_bac_a_sable_ni_jeu(isoles):
-    """Le « % défini » des deux outils, en corpus entier : ni le tag ni l'axe du bac à
-    sable (ils comptaient, `database.lexique_resume` sans `clause`)."""
-    totaux = {"tags": 1, "dimensions": 0}             # mot-du-corpus ; aucun axe hors bac
+def test_le_pourcent_defini_ne_sort_plus(isoles):
+    """Le « % défini » des deux outils (A4) comptait les termes du vocabulaire d'hier ; il
+    ne comptait ni le tag ni l'axe du bac à sable (COL-4). ANN-7, le basculement : il ne
+    sort plus du tout — ni bloc `vocabulaire` dans la fiche, ni `lexique` dans la
+    paradonnée des enregistrements. La clé est retirée, pas laissée à zéro : un « 0 %
+    défini » se lirait comme un vocabulaire non documenté."""
     r = _run("description_collection.py", isoles["db"], isoles["data"], "--json", "-")
-    lex = json.loads(r.stdout)["description_collection"]["vocabulaire"]["lexique"]
-    assert {k: lex["par_type"][k]["total"] for k in totaux} == totaux, lex
+    assert r.returncode == 0, r.stderr
+    assert "vocabulaire" not in json.loads(r.stdout)["description_collection"]
+    assert "pct_defini" not in r.stdout
     r = _run("metadonnees_collection.py", isoles["db"], isoles["data"], "--json", "-")
+    assert r.returncode == 0, r.stderr
     doc = json.loads(r.stdout)["metadonnees_collection"]
-    lex = next(v["lexique"] for v in doc.values() if isinstance(v, dict) and "lexique" in v)
-    assert {k: lex["par_type"][k]["total"] for k in totaux} == totaux, lex
+    assert "lexique" not in doc["paradonnee"] and "pct_defini" not in r.stdout
 
 
 def test_iiif_n_emporte_ni_bac_a_sable_ni_jeu(isoles, tmp_path):

@@ -45,7 +45,7 @@ from database import (DEMANDE_REJOINDRE, LONGUEUR_MOTIF, NATURES,
                       etat_embargo, nature_du_projet,
                       nom_reserve, poser_projet_de_copie,
                       projet_d_album, projet_de_collection,
-                      collection_de_base, projet_de_jeu, projet_par_defaut, ranger_copie,
+                      projet_de_jeu, projet_par_defaut, ranger_copie,
                       un_proprietaire_tient_toute_la_copie)
 
 from socle import (
@@ -54,7 +54,6 @@ from socle import (
     _MOTIF_BAC_ACCES, _MOTIF_BAC_ANNUAIRE, _MOTIF_BAC_SANS_DEMANDE, _MOTIF_BAC_SANS_FONDS,
     _bac_a_sable_de,
     _get_album, _get_collection, _get_projet, _plan_rejoindre, _refuser_le_bac_a_sable,
-    _rive_d_un_terme,
     _refuser_le_jeu, _rows, db, portee_courante,
 )
 
@@ -458,15 +457,7 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
     # COL-3, tranche 3 — les demandes qui la nomment comme ARRIVÉE sont refusées : son
     # identifiant se réattribue, et une demande acceptée plus tard rangerait ailleurs.
     _clore_demandes_vers(conn, portee, collection_id)
-    # COL-4 — dans un bac à sable, ses termes ne deviennent pas GLOBAUX (`ON DELETE SET
-    # NULL`) : ils passeraient la frontière, et survivraient à l'effacement chez tout le
-    # monde. Ils rejoignent la base du bac à sable, où ils restent locaux.
     projet = projet_de_collection(conn, collection_id)
-    if _rive_d_un_terme(conn, collection_id):
-        base = collection_de_base(conn, projet)
-        for table in ("tags", "domaine", "attribut_dimension", "attribut_valeur"):
-            conn.execute(f"UPDATE {table} SET collection_id = ? WHERE collection_id = ?",
-                         (base, collection_id))
     conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
     # … et sa `suppression` le dit, comme celle d'un effacement : sa ligne partie, plus rien ne
     # relierait les actes faits sur elle à un projet isolé (`database.sql_acte_isole`).
@@ -826,9 +817,8 @@ def list_collections_album(album_id: int, conn: sqlite3.Connection = Depends(db)
 
     L'appartenance est N-N depuis la v14, et c'est porteur de sens : un même album peut
     nourrir deux études. La liste est donc PARTIELLE quand l'album est partagé avec une
-    étude à laquelle on ne participe pas — même compromis que les attributs d'un objet
-    partagé (cf. `_attributs_de`) : mieux vaut ne pas montrer que révéler l'existence
-    d'une étude voisine.
+    étude à laquelle on ne participe pas : mieux vaut ne pas montrer que révéler
+    l'existence d'une étude voisine.
 
     UX-18 — le filtre vit dans `socle._collections_lues_d_albums`, que `GET /api/albums`
     lit aussi pour rendre l'appartenance de tous les albums en une lecture.

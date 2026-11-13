@@ -1,9 +1,11 @@
-/* Tests unitaires du champ « personnage » (static/lib/champ-personnage.js), COMMUN à l'Atelier
-   (le locuteur, l'identité d'une boîte) et à la page Annotation (le locuteur du Contexte).
+/* Tests unitaires du champ « personnage » (static/lib/champ-personnage.js), monté par la page
+   Annotation (le locuteur et l'identité d'une boîte du Contexte) ; l'Atelier le montait aussi
+   jusqu'au basculement d'ANN-7, qui a retiré son mode Annotation.
    Lancés par `node --test tests/js` (et via tests/test_js_unit.py sous pytest). Le module
    est sorti de `viewer.js` tel quel (ANN-7, tranche 2, commit 8) : ces tables jouent ses
    règles sur un document de papier ; la page elle-même se joue dans un navigateur
-   (test_e2e_atelier_propositions.py, test_e2e_annotation_page.py). */
+   (test_e2e_annotation_propositions.py, test_e2e_annotation_locuteur.py,
+   test_e2e_annotation_page.py). */
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");

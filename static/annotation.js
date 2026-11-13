@@ -92,6 +92,13 @@ const S = {
   // Au doigt et sans souris (commit 12)
   tracer: false,               // « Tracer une zone » armé
   doigt: null,                 // « Étendre », « Ajouter un mot » : le mode, ou null
+  // Le MODE LIBRE (maquette du 2026-11-06) : l'onglet de la grille de travail
+  creer: "",                   // la saisie du champ « + Nouvelle étiquette… »
+  tri: "main",                 // l'ordre de sa liste, retenu sur le poste (`bd-annotation-tri`)
+  ranger: false,               // « ↕ Ranger » armé
+  edition: null,               // l'étiquette dont « ✎ » est ouvert (sa clé)
+  ajoutVal: null,              // l'étiquette dont « + valeur » est ouvert
+  conf: null,                  // { cle, k, … } : ce que ✎ confirme, ou dit, sur place
 };
 let tourContexte = 0;          // la lecture du Contexte la plus récente gagne
 /* Les écritures PARTIES, par sorte. Une lecture commencée avant l'une d'elles peut revenir
@@ -397,7 +404,7 @@ function rendreTete() {
   const rang = A.rangDansParcours(et, S.caseIx, S.zoneId);
   const rangTete = $("#an-tete-rang");
   if (g && rang >= 0) {
-    rangTete.textContent = `zone ${rang + 1} / ${et.length} de « ${g.nom} »`;
+    rangTete.textContent = `zone ${rang + 1} / ${et.length} de « ${A.nomOnglet(g)} »`;
     rangTete.title = "Rang de la zone dans le parcours de la grille ouverte";
   } else {
     rangTete.textContent = c && !c.case.pseudo && nCases ? `${S.caseIx + 1} / ${nCases}` : "";
@@ -1449,6 +1456,13 @@ function grilleOuverte() {
   return S.grilles.find((g) => g.id === S.grilleId) || null;
 }
 
+/* La grille de TRAVAIL du projet, si la collection ne la masque pas : l'onglet « Mode libre ».
+   Elle se reconnaît à son drapeau, jamais à son nom (J2). */
+function grilleDeTravail() {
+  return A.grillesVisibles(S.grilles, S.collection).find((g) => g.travail) || null;
+}
+function estModeLibre() { const g = grilleOuverte(); return !!(g && g.travail); }
+
 /* Les grilles actives du projet courant, et le plan de chacune (lu une fois par version,
    gardé pour la page). Une liste illisible n'empêche rien : la colonne reste vide. */
 async function chargerGrilles(voulue) {
@@ -1496,6 +1510,7 @@ function rendreGrille() {
   marquerCollection();
   rendreAfficher();
   rendreOnglets();
+  rendreLibre();
   rendrePorte();
   rendreCorps();
   rendreListe();
@@ -1521,7 +1536,7 @@ function rendreOnglets() {
                           tabindex: choisi ? "0" : "-1",
                           title: A.infobulleGrille(g, planDe(g)) },
               fini ? el("span", { classe: "an-fini", "aria-hidden": "true", texte: "✓ " }) : null,
-              g.nom, n ? el("span", { classe: "an-n", texte: ` (${n})` }) : null,
+              A.nomOnglet(g), n ? el("span", { classe: "an-n", texte: ` (${n})` }) : null,
               fini ? el("span", { classe: "sr-only", texte: " — terminée ici" }) : null);
   })));
   const corps = $("#an-grille-corps");
@@ -1547,8 +1562,8 @@ function rendreCorps() {
   const ailleurs = $("#an-ailleurs");
   const arbre = $("#an-plan");
   const champ = $("#an-filtre");
-  champ.placeholder = g && g.ouverte ? "Chercher dans la grille ouverte…"
-    : "Chercher dans la grille…";
+  champ.placeholder = g && g.travail ? `Chercher dans le ${A.NOM_MODE_LIBRE}…`
+    : g && g.ouverte ? "Chercher dans la grille ouverte…" : "Chercher dans la grille…";
   if (!plan) {
     arbre.replaceChildren(el("p", { classe: "muted", texte: "—" }));
     res.hidden = true;
@@ -1573,11 +1588,25 @@ function rendreCorps() {
   S.etats = new Map(plan.entrees.map((e) => [e.cle,
     A.relevesSurLaCible(S.releves, g.id, e.cle, A.cibleDePose(e, ctx))]));
   const tete = A.arbre(plan).filter((r) => S.vue === "*" || r.cle === S.vue);
-  redessinerSansPerdreLeFocus(arbre, () => arbre.replaceChildren(
-    ...tete.map((r) => rubrique(g, plan, r, n, 3))));
+  const saisies = saisiesDuPlan();
+  redessinerSansPerdreLeFocus(arbre, () => {
+    arbre.replaceChildren(...tete.map((r) => rubrique(g, plan, r, n, 3)));
+    rendreSaisiesDuPlan(saisies);
+  });
+  if (g.travail) rendreLibre();
+}
+
+/* Les entrées d'un nœud : dans le Mode libre, triées comme on l'a choisi, avec ✎. */
+function entreesDuNoeud(g, plan, noeud, n) {
+  if (!g.travail) return noeud.entrees.map((e) => entree(e, plan, n));
+  const vivantes = noeud.entrees.map((e) => e.cle);
+  return A.trierEntrees(noeud.entrees, S.ranger ? "main" : S.tri)
+    .map((e) => entreeLibre(e, plan, n, vivantes));
 }
 
 function rubrique(g, plan, noeud, n, niveau) {
+  // Une grille sans rubrique : ses entrées, sans intitulé (point 8 du mode libre).
+  if (noeud.plat) return el("div", { classe: "an-plat" }, ...entreesDuNoeud(g, plan, noeud, n));
   const cle = `${g.id}:${noeud.cle}`;
   const ouvert = !S.replis.has(cle);
   const compte = n.parRubrique.get(noeud.cle) || 0;
@@ -1597,14 +1626,16 @@ function rubrique(g, plan, noeud, n, niveau) {
                  tete ? el("i", { classe: `an-rub-filet ${teinte}`, "aria-hidden": "true" }) : null,
                  titre);
   if (!ouvert) return sec;
-  for (const e of noeud.entrees) sec.append(entree(e, plan, n));
+  for (const x of entreesDuNoeud(g, plan, noeud, n)) sec.append(x);
   for (const x of noeud.enfants) sec.append(rubrique(g, plan, x, n, niveau + 1));
   return sec;
 }
 
-function marques(e, n) {
+function marques(e, n, libre) {
   const cible = A.marqueCible(e);
   const compte = n.parEntree.get(e.cle) || 0;
+  // Dans le Mode libre, les puces disent d'elles-mêmes qu'une étiquette se pose plusieurs fois.
+  if (libre) return [el("span", { classe: "an-cnt", texte: compte ? String(compte) : "" })];
   return [
     cible ? el("span", { classe: "an-marque", texte: cible,
                          title: "Se pose sur elle d'elle-même, quel que soit « Porte sur »" })
@@ -1624,16 +1655,18 @@ function entree(e, plan, n) {
   if (e.forme === "variantes") {
     // Le titre ne pose rien (il montre le guide), mais il s'éteint avec le reste de la
     // grille sur un album qu'on ne fait que lire (passe des correctifs, 2026-10-30).
+    const libre = estModeLibre();
     const tete = el("button", { type: "button", classe: `an-ent-btn an-ent-tete${guide ? " guide" : ""}`,
                                 "data-guide-e": e.cle, id: `an-ent-${e.cle}`,
                                 "aria-disabled": lecture },
                     el("span", { classe: "an-ent-lib", texte: e.libelle }),
-                    el("span", { classe: "muted small", texte: "une parmi" }), ...marques(e, n));
+                    A.marquePlusieurs(e) ? null : el("span", { classe: "muted small", texte: "une parmi" }),
+                    ...marques(e, n, libre));
     const vars = el("div", { classe: "an-vars" }, ...(e.variantes || []).map((v) =>
       el("button", { type: "button",
                      classe: `ghost an-var${S.guide && S.guide.e === e.cle && S.guide.v === v.cle ? " guide" : ""}`,
                      "data-guide-e": e.cle, "data-guide-v": v.cle, "data-pose": "1",
-                     "aria-pressed": String(!!r0 && r0.variante_cle === v.cle),
+                     "aria-pressed": String(poses.some((x) => x.variante_cle === v.cle)),
                      "aria-disabled": lecture, texte: v.libelle })));
     return el("div", { classe: "an-ent", role: "group", "aria-labelledby": `an-ent-${e.cle}` },
               tete, vars);
@@ -1652,7 +1685,7 @@ function entree(e, plan, n) {
        liste ? el("span", { classe: "muted small",
                             texte: `+ ${liste.libelle || liste.cle}` }) : null,
        e.lien ? el("span", { classe: "muted small", texte: "↔ une autre zone" }) : null,
-       ...marques(e, n)));
+       ...marques(e, n, estModeLibre())));
   if (liste) {
     bloc.append(el("div", { classe: "an-vars an-quals", role: "group",
                             "aria-label": `${liste.libelle || liste.cle} pour ${e.libelle}` },
@@ -1671,21 +1704,29 @@ function rendreResultats(plan, filtre) {
   const res = $("#an-resultats");
   const champ = $("#an-filtre");
   const trouves = A.chercher(plan, filtre);
-  const aCreer = ecrivable() ? A.creerDansLeFiltre(grilleOuverte(), filtre, trouves) : null;
-  if (aCreer) trouves.push({ creer: aCreer, libelle: `Créer « ${aCreer} »`,
-                             chemin: `dans ${grilleOuverte().nom}`, exemple: null });
+  const rien = !trouves.length;
+  const g = grilleOuverte();
+  // Une grille OUVERTE crée chez elle — sauf le Mode libre, qui a son champ à lui ; une grille
+  // FERMÉE propose « Créer « … » dans Mode libre », sans changer d'onglet (maquette, point 1).
+  const aCreer = ecrivable() && !g.travail ? A.creerDansLeFiltre(g, filtre, trouves, plan) : null;
+  if (aCreer) trouves.push({ creer: aCreer, libelle: A.libelleDeCreation(plan, aCreer),
+                             chemin: `dans ${g.nom}`, exemple: null });
+  const t = ecrivable() ? grilleDeTravail() : null;
+  const libre = t ? A.dansModeLibre(g, t, filtre, trouves, planDe(t), poseesSur(t)) : null;
+  if (libre) trouves.push({ libre, libelle: libre.libelle, chemin: A.NOM_MODE_LIBRE, exemple: null });
   S.resultats = trouves;
   if (S.actif >= trouves.length) S.actif = 0;
+  const vide = () => el("li", { role: "option", "aria-disabled": "true",
+                                "aria-selected": "false", id: "an-res-vide",
+                                classe: "an-res-vide muted", texte: `Rien pour « ${filtre} »` });
   if (!trouves.length) {
-    res.replaceChildren(el("li", { role: "option", "aria-disabled": "true",
-                                   "aria-selected": "false", id: "an-res-vide",
-                                   classe: "an-res-vide muted",
-                                   texte: `Rien pour « ${filtre} »` }));
+    res.replaceChildren(vide());
     champ.removeAttribute("aria-activedescendant");
   } else {
-    res.replaceChildren(...trouves.map((r, i) => el("li", {
+    // Rien dans la grille fermée : on le dit, au-dessus de « Créer « … » dans Mode libre ».
+    res.replaceChildren(...(rien ? [vide()] : []), ...trouves.map((r, i) => el("li", {
       role: "option", id: `an-res-${i}`, "data-res": i, "aria-selected": String(i === S.actif),
-      classe: `an-res${i === S.actif ? " actif" : ""}${r.creer ? " an-res-creer" : ""}` },
+      classe: `an-res${i === S.actif ? " actif" : ""}${r.creer || r.libre ? " an-res-creer" : ""}` },
       el("span", { classe: "an-res-chemin", texte: r.chemin }),
       el("span", { classe: "an-res-lib", texte: r.libelle }),
       r.exemple ? el("span", { classe: "an-res-ex", texte: r.exemple }) : null)));
@@ -1698,7 +1739,7 @@ function rendreResultats(plan, filtre) {
   ailleurs.replaceChildren(...(autres.length ? [
     el("span", { classe: "muted small", texte: "Aussi dans : " }),
     ...autres.map((o) => el("button", { type: "button", classe: "ghost small an-ailleurs-btn",
-                                        "data-grille": o.x.id, texte: `${o.x.nom} (${o.n})` })),
+                                        "data-grille": o.x.id, texte: `${A.nomOnglet(o.x)} (${o.n})` })),
   ] : []));
 }
 
@@ -1778,7 +1819,7 @@ function ouvrirGuideComplet() {
   const plan = planDe(g);
   if (!plan) return;
   const v = g.version || {};
-  $("#an-guide-titre").textContent = `Guide — ${g.nom}`
+  $("#an-guide-titre").textContent = `Guide — ${A.nomOnglet(g)}`
     + (v.numero && !g.ouverte ? ` (version ${v.numero})` : "");
   const gc = A.guideComplet(plan);
   const corps = $("#an-guide-corps");
@@ -1816,6 +1857,15 @@ function fermerGuideComplet() { $("#an-guide-modal").hidden = true; }
 function poserResultat(r) {
   if (!r) return;
   if (r.creer) { creer(r.creer); return; }
+  if (r.libre) {
+    uneSeuleFois(JSON.stringify(["libre-filtre", r.libre.gestes]), async () => {
+      if (!(await poserDansLeTravail(r.libre.gestes))) return;
+      S.filtre = "";
+      $("#an-filtre").value = "";
+      rendreCorps();
+    });
+    return;
+  }
   montrerGuide(r.entree_cle, r.variante_cle);
   poser(r.entree_cle, { variante: r.variante_cle, qualificatif: r.qualificatif_cle });
 }
@@ -1823,6 +1873,10 @@ function poserResultat(r) {
 function choisirGrille(id) {
   if (id === S.grilleId) return;
   S.grilleId = id;
+  S.edition = null;
+  S.conf = null;
+  S.ajoutVal = null;
+  S.ranger = false;
   S.vue = "*";
   S.guide = null;
   S.actif = 0;
@@ -1955,6 +2009,666 @@ function brancherGrille() {
   if (window.BDDialog) {
     BDDialog.register(modale, { box: ".modal-box", labelledby: "an-guide-titre",
                                 onClose: fermerGuideComplet });
+  }
+}
+
+/* ───────────── Le MODE LIBRE (maquette tranchée par Hugo le 2026-11-06) ─────────────
+   L'onglet « Mode libre » est la grille de travail du projet, le premier. Un champ À LUI,
+   « + Nouvelle étiquette… », crée et pose ; ce qu'Entrée fera se dit dessous, sur une ligne
+   qui flotte au-dessus de la liste (rien ne bouge pendant la frappe). Les valeurs d'une
+   étiquette sont des puces qui se cochent (J3). « ✎ » remanie une étiquette sur place — le nom
+   et les valeurs renommés en place, « + valeur », et dessous les gestes rares, confirmés sur
+   place, sans modale ; un geste qu'on n'a pas reste visible, éteint, et dit pourquoi au clic.
+   L'ordre : un tri d'écran retenu sur le poste, et « ↕ Ranger », l'ordre de la grille, commun
+   au projet. Ce qui s'offre se lit dans `remaniable` (J5), la question du serveur sur l'acte ;
+   chaque écriture porte `vu` (CONC-3), et un conflit ouvre le bandeau de la page. La règle —
+   la saisie, ce qu'Entrée fera, les gestes offerts, le tri, les déplacements — est dans
+   `BDAnnotation`. */
+
+/* Les relevés d'une entrée sur la cible courante, pour « déjà posée ici ». */
+function poseesSur(g) {
+  const ctx = contexteDePose();
+  return (e) => A.relevesSurLaCible(S.releves, g.id, e.cle, A.cibleDePose(e, ctx));
+}
+
+/* Ce qu'Entrée fera dans le champ de création, dans le Mode libre ouvert, ou `null`. */
+function analyseDuChamp() {
+  const g = grilleOuverte();
+  const plan = planDe(g);
+  if (!g || !g.travail || !plan) return null;
+  const a = A.ceQuEntreeFera(plan, S.creer, poseesSur(g));
+  if (a && a.ok && !ecrivable()) return { ok: false, chemin: "lecture", libelle: LECTURE, gestes: [] };
+  return a;
+}
+
+function rendreQuoi() {
+  const q = $("#an-quoi");
+  const champ = $("#an-creer");
+  const a = analyseDuChamp();
+  const montre = !!a && document.activeElement === champ;
+  q.hidden = !montre;
+  if (!a) {
+    q.replaceChildren();
+    champ.removeAttribute("aria-activedescendant");
+    return;
+  }
+  q.replaceChildren(el("li", {
+    role: "option", id: "an-quoi-0", "data-quoi": "0", "aria-selected": String(a.ok),
+    "aria-disabled": a.ok ? null : "true",
+    classe: `an-res${a.ok ? " actif an-res-creer" : " an-res-off"}` },
+  el("span", { classe: "an-res-chemin", texte: a.ok ? `${a.chemin} · Entrée` : a.chemin }),
+  el("span", { classe: "an-res-lib", texte: a.libelle })));
+  if (montre) champ.setAttribute("aria-activedescendant", "an-quoi-0");
+  else champ.removeAttribute("aria-activedescendant");
+}
+
+/* L'en-tête du Mode libre : le champ, sa ligne, l'ordre et « ↕ Ranger ». Ailleurs, rien. */
+function rendreLibre() {
+  const g = grilleOuverte();
+  const libre = !!(g && g.travail);
+  $("#an-libre").hidden = !libre;
+  if (!libre) { S.ranger = false; return; }
+  const plan = planDe(g);
+  const vivantes = plan ? plan.entrees.filter((e) => !e.retiree) : [];
+  rendreQuoi();
+  const tri = $("#an-tri");
+  if (!tri.options.length) tri.replaceChildren(...A.TRIS.map((t) => option(t.cle, t.libelle)));
+  tri.value = S.tri;
+  // Une grille vide : le champ seul (point 8) ; la rangée garde sa place, pour que la première
+  // étiquette ne fasse rien sauter.
+  $("#an-libre-ordre").classList.toggle("vide", !vivantes.length);
+  if (!vivantes.length) S.ranger = false;
+  const b = $("#an-ranger");
+  const raison = raisonRanger(vivantes);
+  b.setAttribute("aria-pressed", String(S.ranger));
+  b.textContent = S.ranger ? "Fini" : "↕ Ranger";
+  if (raison && !S.ranger) {
+    b.setAttribute("aria-disabled", "true");
+    b.title = raison;
+  } else {
+    b.removeAttribute("aria-disabled");
+    b.title = S.ranger ? "Revenir aux étiquettes"
+      : "Ranger les étiquettes : glisser la poignée ⠿, ou ↑ ↓. L'ordre vaut pour tout le projet.";
+  }
+}
+
+function raisonRanger(vivantes) {
+  if (S.tri !== "main") return "On range dans l'ordre « À la main »";
+  const e = vivantes.find((x) => !A.raisonRemanier(x, "ranger"));
+  return e ? null : A.raisonRemanier(vivantes[0], "ranger");
+}
+
+/* Une étiquette du Mode libre : la pose telle que la grille la dessine, et « ✎ » à côté ; sa
+   ligne d'édition quand ✎ est ouvert ; sa rangée quand on range. `vivantes` : les clés de ses
+   sœurs dans l'ordre de la grille. */
+function entreeLibre(e, plan, n, vivantes) {
+  if (S.ranger) return rangee(e, vivantes);
+  if (S.edition === e.cle) return entreeEnEdition(e, plan);
+  const bloc = entree(e, plan, n);
+  bloc.classList.add("an-libre-ent");
+  bloc.dataset.ent = e.cle;
+  const premier = bloc.firstElementChild;
+  const ligne = el("div", { classe: "an-libre-ligne" });
+  premier.replaceWith(ligne);
+  ligne.append(premier, crayon(e));
+  const c = confDe(e);
+  if (c) bloc.append(c);
+  return bloc;
+}
+
+function crayon(e) {
+  const raison = A.raisonCrayon(e);
+  return el("button", { type: "button", classe: "ghost small an-crayon", "data-crayon": e.cle,
+                        "aria-label": `Modifier « ${e.libelle} »`,
+                        title: raison || `Modifier « ${e.libelle} »`,
+                        "aria-disabled": raison ? "true" : null, texte: "✎" });
+}
+
+function rangee(e, vivantes) {
+  const i = vivantes.indexOf(e.cle);
+  const raison = A.raisonRemanier(e, "ranger");
+  const off = (bout) => (raison || bout ? "true" : null);
+  return el("div", { classe: "an-ent an-libre-ent an-rangee", "data-ent": e.cle,
+                     "data-drag": raison ? null : e.cle, draggable: raison ? null : "true" },
+    el("span", { classe: "an-poignee", "aria-hidden": "true", title: "Glisser pour déplacer",
+                 texte: "⠿" }),
+    el("span", { classe: "an-ent-lib", texte: e.libelle }),
+    el("span", { classe: "nav-spacer" }),
+    el("button", { type: "button", classe: "ghost small an-crayon", "data-monter": e.cle,
+                   "aria-label": `Monter « ${e.libelle} »`, title: raison || "Monter",
+                   "aria-disabled": off(i <= 0), texte: "↑" }),
+    el("button", { type: "button", classe: "ghost small an-crayon", "data-descendre": e.cle,
+                   "aria-label": `Descendre « ${e.libelle} »`, title: raison || "Descendre",
+                   "aria-disabled": off(i < 0 || i >= vivantes.length - 1), texte: "↓" }));
+}
+
+/* La ligne d'édition de ✎ : le nom et les valeurs EN PLACE, l'état à côté du nom (seul
+   endroit où il se lit), « + valeur », les gestes rares, et ce qu'ils confirment. */
+function entreeEnEdition(e) {
+  const o = A.gestesOfferts(e);
+  const etat = A.etatEnMots(e);
+  const champ = (attrs) => el("input", { type: "text", autocomplete: "off", spellcheck: "false",
+                                         ...attrs });
+  const bloc = el("div", { classe: "an-ent an-libre-ent an-edition", "data-ent": e.cle,
+                           role: "group", "aria-label": `Modifier « ${e.libelle} »` },
+    el("div", { classe: "an-libre-ligne" },
+       champ({ classe: "an-renom", "data-renom": e.cle, value: e.libelle, id: `an-ent-${e.cle}`,
+               "aria-label": "Nom de l'étiquette", readonly: o.renommer ? true : null,
+               title: o.renommer }),
+       el("span", { classe: "an-etat-ent", title: etat.aide, texte: etat.mot }),
+       el("button", { type: "button", classe: "ghost small an-crayon", "data-fin": e.cle,
+                      texte: "Fini" })));
+  if (e.forme === "variantes") {
+    const vars = el("div", { classe: "an-vars", role: "group",
+                             "aria-label": `Les valeurs de « ${e.libelle} »` },
+      ...(e.variantes || []).map((v) => champ({
+        classe: "an-renomv", "data-renomv": `${e.cle}|${v.cle}`, value: v.libelle,
+        "aria-label": `Valeur « ${v.libelle} »`, readonly: o.renommer ? true : null,
+        title: o.renommer })));
+    vars.append(S.ajoutVal === e.cle
+      ? champ({ classe: "an-addv", "data-addv": e.cle, placeholder: "valeur",
+                "aria-label": `Nouvelle valeur de « ${e.libelle} »`,
+                title: "Entrée : ajoute la valeur et la pose ici. Échap : renonce." })
+      : el("button", { type: "button", classe: "ghost an-var an-plusv", "data-plusv": e.cle,
+                       "aria-disabled": o.ajouter_valeur ? "true" : null,
+                       title: o.ajouter_valeur || `Ajouter une valeur à « ${e.libelle} », et la poser ici`,
+                       texte: "+ valeur" }));
+    bloc.append(vars);
+  }
+  const rare = (geste, texte) => el("button", { type: "button", classe: "ghost small",
+                                                "data-geste": geste, "data-c": e.cle,
+                                                "aria-disabled": o[geste] ? "true" : null,
+                                                title: o[geste], texte });
+  bloc.append(el("div", { classe: "an-gestes-rares" },
+    rare("etat", e.etat === "provisoire" ? "Définir" : "Remettre provisoire"),
+    rare("fusionner", "Fusionner dans…"),
+    rare("passer", "Passer dans une grille…"),
+    rare("retirer", "Retirer…")));
+  const c = confDe(e);
+  if (c) bloc.append(c);
+  return bloc;
+}
+
+/* Ce que ✎ confirme, ou dit, SUR PLACE (sans modale) : la raison d'un geste éteint, la fusion
+   et sa liste, le retrait et ce qu'il fait des relevés, « Passer dans une grille… ». */
+function confDe(e) {
+  const c = S.conf;
+  if (!c || c.cle !== e.cle) return null;
+  const bouton = (texte, attrs) => el("button", { type: "button", classe: "ghost small", ...attrs,
+                                                  texte });
+  const annuler = (texte = "Annuler") => bouton(texte, { "data-conf-annuler": "1" });
+  const boite = (classe, ...enfants) => el("div", { classe: `an-conf${classe}`, role: "status" },
+                                            ...enfants);
+  const ligne = (...x) => el("div", { classe: "an-conf-l" }, ...x);
+  if (c.k === "raison") return boite("", el("p", { texte: c.txt }), ligne(annuler("Compris")));
+  if (c.k === "attente") return boite("", el("p", { classe: "muted", texte: "Lecture…" }));
+  if (c.k === "fusionner") {
+    if (!c.n) {
+      return boite("", el("p", { texte: `Personne ne pose « ${e.libelle} » : rien à fusionner. `
+                                   + "Retirez-la plutôt." }), ligne(annuler()));
+    }
+    if (!c.vers.length) {
+      return boite("", el("p", { texte: `Aucune étiquette ne peut recevoir les relevés de `
+                                   + `« ${e.libelle} » sans rien perdre.` }), ligne(annuler()));
+    }
+    const dans = c.vers.find((x) => x.cle === c.choix) || c.vers[0];
+    return boite("",
+      ligne(el("label", { for: "an-conf-vers", texte: `Fusionner « ${e.libelle} » dans` }),
+            el("select", { id: "an-conf-vers", "data-conf-vers": e.cle },
+               ...c.vers.map((x) => { const o = option(x.cle, x.libelle); o.selected = x.cle === dans.cle; return o; }))),
+      el("p", { classe: "muted small", texte: A.fusionEnMots(dans.libelle, c.n) }),
+      ligne(bouton("Fusionner", { classe: "primary small", "data-conf-ok": "fusionner" }), annuler()));
+  }
+  if (c.k === "retirer") {
+    return boite(" an-conf-danger", el("p", { texte: A.retraitEnMots(e, c.n) }),
+      ligne(bouton("Retirer", { classe: "ghost small an-btn-danger", "data-conf-ok": "retirer" }),
+            annuler()));
+  }
+  if (c.k === "passer") {
+    return boite("", el("p", { texte: `Passer « ${e.libelle} » dans une grille` }),
+      c.txt ? el("p", { classe: "muted small", texte: c.txt }) : null,
+      ligne(bouton("Voir le bilan…", { "data-conf-bilan": "1", "aria-disabled": "true",
+                                       title: A.BILAN_J8 }), annuler()));
+  }
+  return null;
+}
+
+/* Le plan qu'un geste du formulaire rend, gardé pour la page (la réponse ne porte pas la
+   grille, que le plan lu au chargement garde). */
+function garderPlan(g, plan) {
+  const cle = `${g.id}:${g.version.numero}`;
+  const ancien = S.plans.get(cle);
+  S.plans.set(cle, { ...plan, grille: (ancien && ancien.grille)
+    || { id: g.id, nom: g.nom, ouverte: g.ouverte, travail: g.travail } });
+}
+
+/* Un geste sur la GRILLE de travail (✎, « ↕ Ranger ») : `chemin` sous `/api/grilles/{id}`. Un
+   409 de CONC-3 ouvre le bandeau de la page, qui garde la saisie ; un autre refus se dit. Rend
+   la réponse, ou `null`. `contexte` : `{ e, quoi, mienne? }`. */
+async function ecrireGrille(g, methode, chemin, corps, contexte) {
+  if (conflitOuvert()) return null;
+  try {
+    const rep = await apiSend(methode, `/api/grilles/${g.id}${chemin}`, corps);
+    if (rep && rep.plan) garderPlan(g, rep.plan);
+    return rep || {};
+  } catch (err) {
+    const d = err && err.detail;
+    if (err.statut === 409 && d && d.conflit) {
+      S.conflit = { sorte: "grille", detail: d, g, methode, chemin, corps, ...contexte };
+      rendreGuide();
+      annoncer(BDConflit.titreConflit(d.conflit));
+      focusAuBandeau();
+      return null;
+    }
+    toast(err.message || "Refusé.", "error");
+    annoncer(err.message || "Refusé.");
+    return null;
+  }
+}
+
+function entreeDuLibre(cle) {
+  const plan = planDe(grilleOuverte());
+  return estModeLibre() && plan ? plan.entrees.find((x) => x.cle === cle) || null : null;
+}
+
+const enUrl = encodeURIComponent;
+
+async function renommerEntree(cle, valeur) {
+  const g = grilleOuverte();
+  const e = entreeDuLibre(cle);
+  const nom = String(valeur || "").replace(/\s+/g, " ").trim();
+  if (!e || !nom || nom === e.libelle || A.raisonRemanier(e, "renommer")) return;
+  const rep = await ecrireGrille(g, "PATCH", `/entrees/${enUrl(cle)}`,
+                                 { libelle: nom, vu: { libelle: e.libelle } },
+                                 { e, quoi: "Votre nom n'est pas enregistré.", mienne: nom });
+  if (!rep) return;
+  annoncer(`Renommée : ${nom}`);
+  apresEcriture();
+}
+
+async function renommerValeur(cle, vc, valeur) {
+  const g = grilleOuverte();
+  const e = entreeDuLibre(cle);
+  const v = e && (e.variantes || []).find((x) => x.cle === vc);
+  const nom = String(valeur || "").replace(/\s+/g, " ").trim();
+  if (!v || !nom || nom === v.libelle || A.raisonRemanier(e, "renommer")) return;
+  const rep = await ecrireGrille(g, "PATCH", `/entrees/${enUrl(cle)}/variantes/${enUrl(vc)}`,
+                                 { libelle: nom, vu: { libelle: v.libelle } },
+                                 { e, quoi: "Votre nom n'est pas enregistré.", mienne: nom });
+  if (!rep) return;
+  annoncer(`Renommée : ${e.libelle} · ${nom}`);
+  apresEcriture();
+}
+
+/* « + valeur » : la valeur s'ajoute à l'étiquette, puis se pose sur la cible courante. */
+async function ajouterValeur(cle, valeur) {
+  const g = grilleOuverte();
+  const e = entreeDuLibre(cle);
+  const nom = String(valeur || "").replace(/\s+/g, " ").trim();
+  S.ajoutVal = null;
+  if (!e || !nom) { rendreCorps(); return; }
+  let vc = ((e.variantes || []).find((x) => A.normaliser(x.libelle) === A.normaliser(nom)) || {}).cle;
+  if (!vc) {
+    if (A.raisonRemanier(e, "ajouter_valeur")) { rendreCorps(); return; }
+    const rep = await ecrireGrille(g, "POST", `/entrees/${enUrl(cle)}/variantes`, { libelle: nom },
+                                   { e, quoi: "Votre valeur n'est pas enregistrée.", mienne: nom });
+    if (!rep) { rendreCorps(); return; }
+    vc = rep.cle;
+    annoncer(`Valeur ajoutée : ${e.libelle} · ${nom}`);
+  }
+  rendreCorps();
+  if (vc && ecrivable()) await poser(cle, { variante: vc });
+  remettreLeFocus($(`[data-plusv="${CSS.escape(cle)}"]`) || $("#an-creer"));
+}
+
+async function definir(cle) {
+  const g = grilleOuverte();
+  const e = entreeDuLibre(cle);
+  if (!e || A.raisonRemanier(e, "etat")) return;
+  const etat = e.etat === "provisoire" ? "defini" : "provisoire";
+  const rep = await ecrireGrille(g, "PATCH", `/entrees/${enUrl(cle)}`,
+                                 { etat, vu: { etat: e.etat } },
+                                 { e, quoi: "Votre changement n'est pas enregistré." });
+  if (!rep) return;
+  annoncer(etat === "defini" ? `Définie : ${e.libelle}` : `Provisoire : ${e.libelle}`);
+  rendreCorps();
+}
+
+/* Les comptes de la grille (`emplois`, à qui la gère) : combien de relevés portent l'étiquette,
+   et où elle se fusionnerait (la règle du serveur, `_vers_possibles`). */
+async function lireEmplois(g) {
+  const d = await apiGet(`/api/grilles/${g.id}/versions/${g.version.numero}?emplois=1`);
+  return d.emplois || { entrees: {}, fusionner_dans: {} };
+}
+
+async function ouvrirConf(cle, k) {
+  const g = grilleOuverte();
+  const e = entreeDuLibre(cle);
+  if (!e) return;
+  if (k === "passer") { S.conf = { cle, k }; rendreCorps(); return; }
+  S.conf = { cle, k: "attente" };
+  rendreCorps();
+  let em;
+  try { em = await lireEmplois(g); } catch (err) {
+    S.conf = { cle, k: "raison", txt: err.message || "Les comptes de la grille n'ont pas pu être lus." };
+    rendreCorps();
+    return;
+  }
+  if (!S.conf || S.conf.cle !== cle) return;           // fermé pendant la lecture
+  const plan = planDe(g);
+  const vers = ((em.fusionner_dans || {})[cle] || [])
+    .map((k2) => plan.entrees.find((x) => x.cle === k2)).filter(Boolean)
+    .map((x) => ({ cle: x.cle, libelle: x.libelle }));
+  S.conf = { cle, k, n: (em.entrees || {})[cle] || 0, vers, choix: vers.length ? vers[0].cle : null };
+  rendreCorps();
+}
+
+/* Un geste qui fait partir l'étiquette (fusion, retrait) : la ligne se ferme, et le focus va au
+   champ de création plutôt qu'à `body`. */
+async function confirmer(k) {
+  const g = grilleOuverte();
+  const c = S.conf;
+  const e = c && entreeDuLibre(c.cle);
+  if (!e) return;
+  let rep;
+  if (k === "fusionner") {
+    rep = await ecrireGrille(g, "POST", `/entrees/${enUrl(e.cle)}/fusion`, { dans: c.choix },
+                             { e, quoi: "Votre fusion n'est pas enregistrée." });
+  } else {
+    rep = c.n ? await ecrireGrille(g, "POST", `/entrees/${enUrl(e.cle)}/retrait`, {},
+                                   { e, quoi: "Votre retrait n'est pas enregistré." })
+      : await ecrireGrille(g, "DELETE", `/entrees/${enUrl(e.cle)}`, undefined,
+                           { e, quoi: "Votre retrait n'est pas enregistré." });
+  }
+  if (!rep) return;
+  const dans = k === "fusionner" ? (c.vers.find((x) => x.cle === c.choix) || {}).libelle : null;
+  S.conf = null;
+  S.edition = null;
+  annoncer(k === "fusionner" ? `Fusionnée dans ${dans} : ${e.libelle}` : `Retirée : ${e.libelle}`);
+  await relireReleves();                    // les relevés ont changé d'entrée, ou passent à revoir
+  if (focusTombe()) remettreLeFocus($("#an-creer"));
+}
+
+/* « ↕ Ranger » : un cran, ou un dépôt. */
+async function deplacer(corps) {
+  const g = grilleOuverte();
+  const e = corps && entreeDuLibre(corps.cle);
+  if (!e) return;
+  const rep = await ecrireGrille(g, "PUT", "/ordre", corps,
+                                 { e, quoi: "Votre rangement n'est pas enregistré." });
+  if (!rep) return;
+  annoncer(`Déplacée : ${e.libelle}`);
+  rendreCorps();
+}
+
+/* Les POSES du champ de création (ou de « Créer « … » dans Mode libre »), dans la grille de
+   travail, l'une après l'autre ; chacune se défait par son propre Ctrl+Z. La première qui
+   échoue arrête les suivantes, et son refus se dit (le bandeau pour la cardinalité). Rend vrai
+   si toutes sont parties. */
+async function poserDansLeTravail(gestes) {
+  if (conflitOuvert()) return false;
+  const g = grilleDeTravail();
+  if (!g || !planDe(g)) return false;
+  if (!ecrivable()) { direLecture(); return false; }
+  let derniere = null;
+  for (const x of gestes) {
+    const plan = planDe(g);
+    const e = x.entree_cle ? plan.entrees.find((y) => y.cle === x.entree_cle) : A.entreeNeuve(plan, x.nouvelle, contexteDePose());
+    if (!e) return false;
+    const cible = A.cibleDePose(e, contexteDePose());
+    if (cible.erreur) { toast(cible.erreur, "error"); annoncer(cible.erreur); return false; }
+    const corps = x.variante_cle ? { variante_cle: x.variante_cle }
+      : e.forme === "qualificatifs" ? { qualificatifs: [] } : {};
+    const vue = await ecrire(g, e, cible, { action: "poser", corps }, x.nouvelle || null);
+    if (!vue) return false;
+    derniere = vue;
+    listeSurLaCible(cible);
+  }
+  // L'étiquette qu'on vient de poser se montre, là où elle est rangée.
+  const ligne = derniere && derniere.entree_cle
+    && document.querySelector(`#an-plan [data-ent="${CSS.escape(derniere.entree_cle)}"]`);
+  if (ligne && ligne.getClientRects().length) ligne.scrollIntoView({ block: "nearest" });
+  return true;
+}
+
+async function executerSaisie() {
+  const a = analyseDuChamp();
+  if (!a) return;
+  if (!a.ok) { annoncer(a.libelle); return; }
+  const champ = $("#an-creer");
+  await uneSeuleFois(JSON.stringify(["libre", S.creer]), async () => {
+    if (await poserDansLeTravail(a.gestes)) {
+      S.creer = "";
+      champ.value = "";
+    }
+    rendreQuoi();
+  });
+}
+
+/* « + » : le Mode libre et son champ, depuis n'importe quel onglet (hors d'un champ). */
+function allerAuChampDeCreation() {
+  const g = grilleDeTravail();
+  if (!g) return false;
+  if (S.grilleId !== g.id) choisirGrille(g.id);
+  if (enFeuille() && !feuilleOuverte()) ouvrirFeuille(false);
+  $("#an-creer").focus();
+  return true;
+}
+
+/* Ce que l'utilisateur a tapé dans un champ d'édition et qui n'est pas parti : un redessin le
+   garde (le bloc se redessine à chaque écriture de la page). */
+let SAISIES_A_JETER = false;
+function saisiesDuPlan() {
+  const m = new Map();
+  if (SAISIES_A_JETER) { SAISIES_A_JETER = false; return m; }
+  for (const i of document.querySelectorAll("#an-plan input[data-renom], #an-plan input[data-renomv], #an-plan input[data-addv]")) {
+    if (i.value !== i.defaultValue) m.set(repereDe(i), i.value);
+  }
+  return m;
+}
+function rendreSaisiesDuPlan(m) {
+  if (!m.size) return;
+  for (const i of document.querySelectorAll("#an-plan input[data-renom], #an-plan input[data-renomv], #an-plan input[data-addv]")) {
+    const v = m.get(repereDe(i));
+    if (v !== undefined) i.value = v;
+  }
+}
+
+function fermerEdition(cle, revenir) {
+  S.edition = null;
+  S.ajoutVal = null;
+  if (S.conf && S.conf.cle === cle) S.conf = null;
+  SAISIES_A_JETER = true;
+  rendreCorps();
+  if (revenir) remettreLeFocus($(`#an-plan [data-crayon="${CSS.escape(cle)}"]`) || $("#an-creer"));
+}
+
+function brancherModeLibre() {
+  S.tri = A.lireTri(stockageLocal());
+  const champ = $("#an-creer");
+  champ.addEventListener("input", () => { S.creer = champ.value; rendreQuoi(); });
+  champ.addEventListener("focus", rendreQuoi);
+  champ.addEventListener("blur", () => setTimeout(rendreQuoi, 0));
+  champ.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (!champ.value) return;
+      e.preventDefault();
+      champ.value = "";
+      S.creer = "";
+      rendreQuoi();
+    } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (!e.repeat) executerSaisie();
+    }
+  });
+  const quoi = $("#an-quoi");
+  quoi.addEventListener("mousedown", (e) => e.preventDefault());   // le champ garde le focus
+  quoi.addEventListener("click", (e) => { if (e.target.closest("[data-quoi]")) executerSaisie(); });
+  $("#an-tri").addEventListener("change", (e) => {
+    S.tri = A.TRIS.some((t) => t.cle === e.target.value) ? e.target.value : A.TRI_DEFAUT;
+    A.retenirTri(stockageLocal(), S.tri);
+    if (S.tri !== "main") S.ranger = false;
+    rendreLibre();
+    rendreCorps();
+  });
+  $("#an-ranger").addEventListener("click", (e) => {
+    const b = e.currentTarget;
+    if (b.getAttribute("aria-disabled") === "true") { toast(b.title); annoncer(b.title); return; }
+    S.ranger = !S.ranger;
+    S.edition = null;
+    S.conf = null;
+    S.ajoutVal = null;
+    rendreLibre();
+    rendreCorps();
+  });
+  const plan = $("#an-plan");
+  plan.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b || !estModeLibre()) return;
+    const d = b.dataset;
+    const eteint = b.getAttribute("aria-disabled") === "true";
+    const dire = (cle, txt) => { S.conf = { cle, k: "raison", txt }; rendreCorps(); annoncer(txt); };
+    if (d.crayon) {
+      if (eteint) { dire(d.crayon, b.title); return; }
+      S.edition = d.crayon;
+      S.conf = null;
+      S.ajoutVal = null;
+      rendreCorps();
+      const nom = $(`#an-plan [data-renom="${CSS.escape(d.crayon)}"]`);
+      if (nom) nom.focus();
+    } else if (d.fin) {
+      fermerEdition(d.fin, true);
+    } else if (d.plusv) {
+      if (eteint) { dire(d.plusv, b.title); return; }
+      S.ajoutVal = d.plusv;
+      rendreCorps();
+      const x = $(`#an-plan [data-addv="${CSS.escape(d.plusv)}"]`);
+      if (x) x.focus();
+    } else if (d.geste) {
+      if (eteint) { dire(d.c, b.title); return; }
+      if (d.geste === "etat") definir(d.c);
+      else ouvrirConf(d.c, d.geste);
+    } else if (d.confAnnuler) {
+      const cle = S.conf && S.conf.cle;
+      S.conf = null;
+      rendreCorps();
+      if (cle && focusTombe()) {
+        remettreLeFocus($(`#an-plan [data-crayon="${CSS.escape(cle)}"]`)
+                        || $(`#an-plan [data-geste][data-c="${CSS.escape(cle)}"]`) || $("#an-creer"));
+      }
+    } else if (d.confBilan) {
+      if (S.conf) { S.conf.txt = A.BILAN_J8; rendreCorps(); annoncer(A.BILAN_J8); }
+    } else if (d.confOk) {
+      confirmer(d.confOk);
+    } else if (d.monter || d.descendre) {
+      const cle = d.monter || d.descendre;
+      if (eteint) { annoncer(b.title); return; }
+      deplacer(A.deplacement(planDe(grilleOuverte()), cle, d.monter ? -1 : 1));
+    }
+  });
+  plan.addEventListener("change", (e) => {
+    if (e.target.matches("[data-conf-vers]") && S.conf) { S.conf.choix = e.target.value; rendreCorps(); }
+  });
+  // Les champs d'édition : Entrée enregistre, Échap renonce ; quitter le champ enregistre.
+  plan.addEventListener("keydown", (e) => {
+    const t = e.target;
+    if (!t.matches || !estModeLibre()) return;
+    const ent = t.closest("[data-ent]");
+    const cle = ent ? ent.dataset.ent : null;
+    if (t.matches("input[data-addv]")) {
+      if (e.key === "Enter") { e.preventDefault(); if (!e.repeat) ajouterValeur(cle, t.value); }
+      else if (e.key === "Escape") {
+        e.preventDefault();
+        S.ajoutVal = null;
+        SAISIES_A_JETER = true;
+        rendreCorps();
+        remettreLeFocus($(`#an-plan [data-plusv="${CSS.escape(cle)}"]`));
+      }
+      return;
+    }
+    if (t.matches("input[data-renom], input[data-renomv]")) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (t.readOnly) { dire2(cle, t.title); return; }
+        enregistrerChamp(t);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        t.value = t.defaultValue;
+        fermerEdition(cle, true);
+      }
+      return;
+    }
+    if (e.key === "Escape" && cle && (S.conf || S.edition === cle)) {
+      e.preventDefault();
+      if (S.conf) { S.conf = null; rendreCorps(); return; }
+      fermerEdition(cle, true);
+    }
+  });
+  const dire2 = (cle, txt) => { S.conf = { cle, k: "raison", txt }; rendreCorps(); annoncer(txt); };
+  plan.addEventListener("beforeinput", (e) => {
+    const t = e.target;
+    if (t.matches && t.matches("input[readonly][data-renom], input[readonly][data-renomv]")) {
+      const ent = t.closest("[data-ent]");
+      if (ent) dire2(ent.dataset.ent, t.title);
+    }
+  });
+  plan.addEventListener("focusout", (e) => {
+    const t = e.target;
+    if (t.matches && t.matches("input[data-renom], input[data-renomv]") && !t.readOnly
+        && t.isConnected && t.value !== t.defaultValue) enregistrerChamp(t);
+  });
+  // Ranger à la souris : glisser la poignée ⠿, déposer avant ou après une sœur.
+  let glisse = null;
+  const effacerCibles = () => plan.querySelectorAll(".an-cible-avant, .an-cible-apres, .an-glisse")
+    .forEach((x) => x.classList.remove("an-cible-avant", "an-cible-apres", "an-glisse"));
+  plan.addEventListener("dragstart", (e) => {
+    const r = e.target.closest && e.target.closest("[data-drag]");
+    if (!r) return;
+    glisse = r.dataset.drag;
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", glisse); } catch (_) { /* rien */ }
+    r.classList.add("an-glisse");
+  });
+  plan.addEventListener("dragover", (e) => {
+    const r = e.target.closest && e.target.closest("[data-drag]");
+    if (!r || !glisse) return;
+    e.preventDefault();
+    plan.querySelectorAll(".an-cible-avant, .an-cible-apres")
+      .forEach((x) => x.classList.remove("an-cible-avant", "an-cible-apres"));
+    const b = r.getBoundingClientRect();
+    r.classList.add(e.clientY < b.top + b.height / 2 ? "an-cible-avant" : "an-cible-apres");
+  });
+  plan.addEventListener("drop", (e) => {
+    const r = e.target.closest && e.target.closest("[data-drag]");
+    if (!r || !glisse) return;
+    e.preventDefault();
+    const b = r.getBoundingClientRect();
+    let avant = r.dataset.drag;
+    if (e.clientY >= b.top + b.height / 2) {
+      const s = r.nextElementSibling;
+      avant = s && s.dataset && s.dataset.drag ? s.dataset.drag : null;
+    }
+    const cle = glisse;
+    glisse = null;
+    effacerCibles();
+    deplacer(A.deplacementAvant(planDe(grilleOuverte()), cle, avant));
+  });
+  plan.addEventListener("dragend", () => { glisse = null; effacerCibles(); });
+  // « + » mène au champ de création, hors d'un champ de saisie (« / » garde le filtre).
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "+" || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.closest("input, textarea, select, [contenteditable]") || t.isContentEditable)) return;
+    if (modaleOuverte()) return;
+    if (allerAuChampDeCreation()) e.preventDefault();
+  });
+}
+
+function enregistrerChamp(t) {
+  if (t.matches("[data-renom]")) renommerEntree(t.dataset.renom, t.value);
+  else {
+    const [cle, vc] = t.dataset.renomv.split("|");
+    renommerValeur(cle, vc, t.value);
   }
 }
 
@@ -2311,12 +3025,18 @@ async function ecrire(g, e, cible, gst, nouvelle) {
       const vue = await apiSend("POST", "/api/releves", corps);
       remplacerReleve(vue);
       if (nouvelle) await rechargerPlan(g);
-      annoncer(`Posé : ${A.libelleReleve(vue, planDe(g))}`);
+      annoncer(`Posé : ${A.libelleReleve(vue, planDe(g))}`
+               + (g.travail && g.id !== S.grilleId ? ` (${A.NOM_MODE_LIBRE})` : ""));
+      apresEcriture();
+      return vue;
     } else if (gst.action === "modifier") {
       const vue = await apiSend("PUT", `/api/releves/${gst.releve.id}`,
                                 { ...gst.corps, vu: gst.vu });
       remplacerReleve(vue);
-      annoncer(`Changé : ${A.libelleReleve(vue, plan)}`);
+      // Une valeur nommée par son libellé a pu NAÎTRE (« Remplacer » après « nom : valeur ») :
+      // le plan la porte désormais.
+      if (gst.corps && gst.corps.nouvelle_variante !== undefined) await rechargerPlan(g);
+      annoncer(`Changé : ${A.libelleReleve(vue, planDe(g))}`);
     } else if (gst.action === "retirer") {
       await apiSend("DELETE", `/api/releves/${gst.releve.id}`, { vu: gst.vu });
       oterReleve(gst.releve.id);
@@ -2353,7 +3073,8 @@ function refus(err, contexte) {
   }
   if (err.statut === 409 && d && d.releve_existant) {
     S.conflit = { sorte: "cardinalite", detail: d, ...contexte,
-                  remplacement: A.remplacementCardinalite(d, contexte.gst.corps) };
+                  remplacement: A.remplacementCardinalite(d, contexte.gst.corps,
+                                                          contexte.nouvelle) };
     rendreGuide();
     annoncer(d.message);
     focusAuBandeau();
@@ -2441,6 +3162,23 @@ function bandeau() {
   const lignes = [];
   if (cf.sorte === "contexte") {
     lignes.push(...bandeauDuContexte(cf));
+  } else if (cf.sorte === "grille") {
+    // Le Mode libre : deux écrans qui renomment, ou rangent, la même étiquette.
+    const c = cf.detail.conflit;
+    const actuelle = c.valeur_actuelle;
+    const nomDe = (k) => { const x = (planDe(cf.g) || { entrees: [] }).entrees.find((y) => y.cle === k); return x ? x.libelle : k; };
+    const version = Array.isArray(actuelle) ? actuelle.map(nomDe).join(", ")
+      : actuelle === null || actuelle === undefined || actuelle === "" ? "—" : String(actuelle);
+    lignes.push(el("p", { classe: "an-bandeau-titre", id: "an-cf-titre" },
+                   el("span", { "aria-hidden": "true", texte: "⚠ " }),
+                   BDConflit.titreConflit(c)));
+    lignes.push(el("p", { texte: cf.quoi || "Votre changement n'est pas enregistré." }));
+    if (cf.mienne) {
+      lignes.push(el("p", { classe: "an-bandeau-version" },
+                     el("span", { classe: "muted", texte: "Le vôtre : " }), cf.mienne));
+    }
+    lignes.push(el("p", { classe: "an-bandeau-version" },
+                   el("span", { classe: "muted", texte: "Version enregistrée : " }), version));
   } else if (cf.sorte === "valeur") {
     const c = cf.detail.conflit;
     const actuelle = c.valeur_actuelle;
@@ -2485,6 +3223,27 @@ async function resoudreConflit(garderMienne) {
   if (cf.sorte === "contexte") {
     rendreGuide();
     await resoudreConflitDuContexte(cf, garderMienne);
+    rendreGuide();
+    focusApresConflit(cf);
+    await reprendreRetenues();
+    noteEnAttente();
+    return;
+  }
+  if (cf.sorte === "grille") {
+    if (garderMienne) {
+      // On renvoie SA version, gardée cette fois sur la valeur qu'on vient de lire.
+      const c = cf.detail.conflit;
+      const vu = Array.isArray(cf.corps.vu) ? c.valeur_actuelle
+        : { ...(cf.corps.vu || {}), [c.champ]: c.valeur_actuelle };
+      const rep = await ecrireGrille(cf.g, cf.methode, cf.chemin, { ...cf.corps, vu },
+                                     { e: cf.e, quoi: cf.quoi, mienne: cf.mienne });
+      if (rep) annoncer("Votre version est enregistrée.");
+    } else {
+      SAISIES_A_JETER = true;
+      await rechargerPlan(cf.g);
+      annoncer("La version enregistrée est gardée.");
+    }
+    apresEcriture();
     rendreGuide();
     focusApresConflit(cf);
     await reprendreRetenues();
@@ -2549,7 +3308,7 @@ function rendreListe() {
   const c = caseCourante();
   const m = A.grillesMontrees(S.reglage, S.grilles, S.grilleId);
   const autres = [...m].filter((id) => id !== S.grilleId).length;
-  bouton.textContent = `Relevés : ${g ? g.nom : "—"}${autres ? ` + ${autres}` : ""} ▾`;
+  bouton.textContent = `Relevés : ${g ? A.nomOnglet(g) : "—"}${autres ? ` + ${autres}` : ""} ▾`;
   if (!z) { titre.textContent = "—"; liste.replaceChildren(); rendreBarre(); return; }
   // La liste suit « Porte sur » : des mots désignés ne la restreignent que si l'on pose
   // sur des mots (passe du jalon 1 : « toute la bulle » ne changeait rien tant qu'un mot
@@ -2620,7 +3379,7 @@ function itemReleve(r) {
        etat ? el("span", { classe: `an-etat an-etat-${r.etat}`, texte: etat }) : null,
        r.doute ? el("span", { classe: "an-etat an-etat-doute", texte: "doute",
                               title: "Un doute est ouvert : Synthèse › À revoir" }) : null,
-       g && g.id !== S.grilleId ? el("span", { classe: "an-pose-gr", texte: g.nom }) : null));
+       g && g.id !== S.grilleId ? el("span", { classe: "an-pose-gr", texte: A.nomOnglet(g) }) : null));
   // Les gestes d'une ligne tiennent ensemble : la précision se réduit, ✕ reste à sa droite
   // (passe du jalon 1 : à 1 400 px, ✕ passait sous le champ).
   const actes = el("span", { classe: `an-pose-actes${gestes && e && e.precision ? " avec-prec" : ""}` });
@@ -2664,12 +3423,12 @@ function rendrePopover() {
   redessinerSansPerdreLeFocus(pop, () => pop.replaceChildren(...S.grilles.map((x) => el("label", { classe: "an-pop-l" },
     el("input", { type: "checkbox", "data-voir": x.id, checked: m.has(x.id),
                   disabled: x.id === S.grilleId }),
-    ` ${x.nom}`, x.id === S.grilleId ? el("span", { classe: "muted small", texte: " · ouverte" })
+    ` ${A.nomOnglet(x)}`, x.id === S.grilleId ? el("span", { classe: "muted small", texte: " · ouverte" })
       : A.masquee(x, S.collection) ? el("span", { classe: "muted small", texte: " · masquée ici" }) : null)),
   el("div", { classe: "an-pop-gestes" },
      el("button", { type: "button", classe: "ghost small", "data-voir-tout": "1", texte: "Toutes" }),
      el("button", { type: "button", classe: "ghost small", "data-voir-seule": "1",
-                    texte: `${g ? g.nom : "La grille"} seule` }))));
+                    texte: `${g ? A.nomOnglet(g) : "La grille"} seule` }))));
 }
 
 function changerReglage(ids) {
@@ -3180,7 +3939,7 @@ function ligneSynthese(r) {
     passage ? el("span", { classe: "an-pose-pass", texte: `« ${passage} »` }) : null,
     etat ? el("span", { classe: `an-etat an-etat-${r.etat}`, texte: etat }) : null,
     r.doute ? el("span", { classe: "an-etat an-etat-doute", texte: "doute" }) : null,
-    g && g.id !== S.grilleId ? el("span", { classe: "an-pose-gr", texte: g.nom }) : null);
+    g && g.id !== S.grilleId ? el("span", { classe: "an-pose-gr", texte: A.nomOnglet(g) }) : null);
 }
 
 function rendreSynthese() {
@@ -3386,7 +4145,7 @@ function vueDecompte() {
     if (!d.total && (!zt || !zt.total)) return null;
     return el("section", { classe: "an-dc" },
       el("h3", { classe: "an-dc-titre" },
-         el("span", { texte: `${g ? g.nom : `Grille ${id}`} · ${d.total}` }),
+         el("span", { texte: `${g ? A.nomOnglet(g) : `Grille ${id}`} · ${d.total}` }),
          g && A.masquee(g, S.collection) ? el("span", { classe: "muted small", texte: "masquée ici" }) : null,
          zt && zt.total ? el("span", { classe: "muted small", texte: `zones terminées ${zt.n} / ${zt.total}` })
            : null),
@@ -3525,7 +4284,7 @@ function brancherSynthese() {
    règle — et sa limite — est dans `lib/signal-planche.js`. */
 const SIG = { plancheId: null, base: null, touchees: null, gen: 0, jeton: 0, enVol: 0,
               ecritures: 0, rebaseReleves: false };
-const toucheesVides = () => ({ tout: false, ids: new Set(), planche: false });
+const toucheesVides = () => ({ tout: false, ids: new Set(), planche: false, plans: new Set() });
 
 /* La zone d'un relevé, ou du relevé d'un doute, d'après ce que la page a lu. */
 function zoneLue(sorte, id) {
@@ -3540,6 +4299,7 @@ function noterTouchees(t) {
   if (!SIG.touchees) SIG.touchees = toucheesVides();
   if (t.tout) { SIG.touchees.tout = true; return; }
   for (const id of t.ids || []) SIG.touchees.ids.add(id);
+  for (const id of t.plans || []) SIG.touchees.plans.add(id);
   if (t.planche) SIG.touchees.planche = true;
 }
 
@@ -3641,6 +4401,9 @@ function saisieSousLesDoigts() {
     const r = S.releves.find((x) => x.id === Number(a.dataset.releve));
     return !!r && A.champModifie(a.value, r.precision);
   }
+  if (a.matches("input[data-renom], input[data-renomv], input[data-addv]") && !a.readOnly) {
+    return a.value.trim() !== "" && a.value !== a.defaultValue;
+  }
   const z = zoneCourante();
   if (!z) return false;
   return (a.id === "an-nom" && A.champModifie(a.value, z.nom))
@@ -3668,6 +4431,9 @@ async function actualiserPlanche() {
   const ou = { caseIx: S.caseIx, zoneId: S.zoneId };
   const region = zone !== null ? zone : (caseCourante() && caseCourante().case.id);
   S.mots = null;                                    // le texte a pu changer ailleurs
+  // Le mode libre : le plan d'une grille OUVERTE change sans changer de version (une
+  // étiquette née, renommée ou rangée ailleurs) ; on le relit.
+  await Promise.all(S.grilles.filter((g) => g.ouverte).map((g) => rechargerPlan(g)));
   await ouvrirPlanche(S.planche.id, region === undefined ? null : region, ou);
   if (sel.length && S.zoneId === zone) {
     await chargerMots();
@@ -3789,7 +4555,8 @@ function ouvrirFeuille(focaliser) {
   // Au doigt, pas sur le filtre : le clavier virtuel couvrirait la feuille qu'on vient d'ouvrir.
   let doigt = false;
   try { doigt = window.matchMedia("(pointer: coarse)").matches; } catch (e) { doigt = false; }
-  (doigt ? $("#an-grille-fermer") : $("#an-filtre")).focus({ preventScroll: true });
+  (doigt ? $("#an-grille-fermer") : estModeLibre() ? $("#an-creer") : $("#an-filtre"))
+    .focus({ preventScroll: true });
 }
 
 function fermerFeuille(rendreFocus) {
@@ -3822,7 +4589,7 @@ function apresDesignation() {
 function rendreBarre() {
   const g = grilleOuverte();
   const titre = $("#an-poses-titre").textContent;
-  $("#an-barre-sel").textContent = g ? `${titre} · ${g.nom}` : titre;
+  $("#an-barre-sel").textContent = g ? `${titre} · ${A.nomOnglet(g)}` : titre;
 }
 
 function brancherEtroit() {
@@ -3980,7 +4747,7 @@ function nomDeLaPasse() {
   if (!g) return "";
   const r = rubriqueVue();
   const rub = r && (planDe(g) || { rubriques: [] }).rubriques.find((x) => x.cle === r);
-  return g.nom + (rub ? ` › ${rub.libelle}` : "");
+  return A.nomOnglet(g) + (rub ? ` › ${rub.libelle}` : "");
 }
 
 function rendrePied() {
@@ -4004,7 +4771,7 @@ function rendrePied() {
   const nom = nomDeLaPasse();
   if (rang < 0) {
     etat.textContent = `${nom} : hors parcours`;
-    etat.title = `« ${g.nom} » ne parcourt pas ce type de zone.`;
+    etat.title = `« ${A.nomOnglet(g)} » ne parcourt pas ce type de zone.`;
     fin.title = etat.title;
     return;
   }
@@ -4116,6 +4883,11 @@ async function annulerPage() {
   }
   if (conflitOuvert()) return;
   const res = await BDAnnulation.annuler({ apiSend, toast });
+  if (res && res.cible_table === "grille") {
+    await Promise.all(S.grilles.filter((g) => g.ouverte).map((g) => rechargerPlan(g)));
+    rendreGrille();
+    return;
+  }
   if (!res || !res.planche_id) return;
   if (S.planche && res.planche_id === S.planche.id) {
     await ouvrirPlanche(S.planche.id, res.region_id === undefined ? null : res.region_id,
@@ -4156,6 +4928,7 @@ async function demarrer() {
   preparerRetour();
   brancher();
   brancherGrille();
+  brancherModeLibre();
   brancherPose();
   brancherParcours();
   brancherSynthese();

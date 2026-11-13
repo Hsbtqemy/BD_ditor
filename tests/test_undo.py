@@ -15,7 +15,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import conflit  # noqa: E402
 import undo  # noqa: E402
-from conftest import ADMIN, direct_query  # noqa: E402
+from conftest import ADMIN, direct_query, poser_tags  # noqa: E402
 
 
 def _regions(db_path):
@@ -58,11 +58,13 @@ def test_undo_modification_region(client, planche, db_path):
 
 def test_undo_suppression_region_cascade(client, planche, db_path):
     """Le geste le plus dangereux : la suppression cascade est restaurée à l'identique
-    (sous-arbre + annotation + tags, mêmes id)."""
+    (sous-arbre + annotation, mêmes id). Les tags d'hier, eux, ne reviennent plus (ANN-7, le
+    basculement : l'instantané ne porte plus que la note)."""
     case = _creer_region(client, planche["id"], type="case")
     bulle = _creer_region(client, planche["id"], type="bulle", parent_id=case["id"],
                           ocr_texte="SALUT")
-    client.put(f"/api/regions/{bulle['id']}/annotation", json={"note": "cri", "tags": ["emotion"]})
+    client.put(f"/api/regions/{bulle['id']}/annotation", json={"note": "cri"})
+    poser_tags(db_path, bulle["id"], ["emotion"])          # un tag d'hier (ANN-7) : rien
     client.delete(f"/api/regions/{case['id']}")
     assert case["id"] not in _regions(db_path) and bulle["id"] not in _regions(db_path)
 
@@ -72,19 +74,15 @@ def test_undo_suppression_region_cascade(client, planche, db_path):
     assert case["id"] in regs and bulle["id"] in regs   # sous-arbre restauré, mêmes id
     ann = _un(db_path, "SELECT note FROM annotations WHERE region_id = ?", (bulle["id"],))
     assert ann["note"] == "cri"
-    tags = direct_query(db_path,
-        "SELECT t.label FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
-        "JOIN annotations a ON a.id = at.annotation_id WHERE a.region_id = ?", (bulle["id"],))
-    assert [t["label"] for t in tags] == ["emotion"]
 
 
 # --------------------------------------------------------------------------- #
 # Annotations
 # --------------------------------------------------------------------------- #
 def test_undo_annotation_modif_puis_creation(client, region, db_path):
-    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "A", "tags": ["x"]})
-    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "B", "tags": ["y"]})
-    res = client.post("/api/undo").json()               # annule la modification → A/x
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "A"})
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "B"})
+    res = client.post("/api/undo").json()               # annule la modification → A
     assert res["acte"] == "modification" and res["cible_table"] == "annotations"
     assert _un(db_path, "SELECT note FROM annotations WHERE region_id = ?",
                (region["id"],))["note"] == "A"
@@ -94,13 +92,53 @@ def test_undo_annotation_modif_puis_creation(client, region, db_path):
 
 
 def test_undo_suppression_annotation(client, region, db_path):
-    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "garder", "tags": ["t"]})
-    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "", "tags": []})  # vidée → supprimée
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "garder"})
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": ""})  # vidée → supprimée
     assert _un(db_path, "SELECT 1 FROM annotations WHERE region_id = ?", (region["id"],)) is None
     res = client.post("/api/undo").json()               # annule la suppression → restaurée
     assert res["acte"] == "suppression"
     assert _un(db_path, "SELECT note FROM annotations WHERE region_id = ?",
                (region["id"],))["note"] == "garder"
+
+
+def test_un_geste_d_hier_qui_n_a_change_que_des_tags_est_passe(client, region, db_path):
+    """ANN-7, le basculement : un acte d'avant dont seuls les tags ont changé (la note
+    égale des deux côtés) n'a plus rien à rétablir. Il est PASSÉ, seconde phrase d'AUTH-14,
+    sans rien écrire sur l'annotation ; le Ctrl+Z suivant défait le geste d'avant. Mutant
+    tué : la garde « note inchangée » retirée de `undo._inverser_annotation` — l'acte
+    réussirait sans rien défaire de visible."""
+    client.put(f"/api/regions/{region['id']}/annotation", json={"note": "garder"})
+    poser_tags(db_path, region["id"], ["hier"], agent="anonyme")   # l'acte d'hier, en base
+    acte = _un(db_path, "SELECT id, avant, apres FROM evenement WHERE cible_table = "
+                        "'annotations' ORDER BY id DESC LIMIT 1", ())
+    assert json.loads(acte["avant"])["note"] == json.loads(acte["apres"])["note"] == "garder"
+    rep = client.post("/api/undo")
+    assert rep.status_code == 409, rep.text
+    assert rep.json()["detail"]["message"] == undo.PHRASE_IRRETABLISSABLE.format(
+        description="modification d'une annotation")
+    assert _un(db_path, "SELECT note FROM annotations WHERE region_id = ?",
+               (region["id"],))["note"] == "garder"
+    res = client.post("/api/undo").json()               # le geste d'avant : la création
+    assert (res["acte"], res["cible_table"]) == ("creation", "annotations")
+    assert _un(db_path, "SELECT 1 FROM annotations WHERE region_id = ?", (region["id"],)) is None
+
+
+def test_des_tags_d_hier_seuls_n_empechent_pas_d_annuler_sa_creation(client, planche, db_path):
+    """ANN-7, le basculement (relecture croisée du commit des coutures, constat 2). Un acte
+    d'hier n'a posé que des TAGS sur ma bulle — une ligne d'annotation sans note, que rien
+    ne montre plus. Ctrl+Z le passe (409, « l'état d'avant ne peut plus être rétabli »),
+    puis le Ctrl+Z suivant défait MA création : la ligne aux seuls tags n'est pas du travail
+    d'un autre, et part avec la région. Elle comptait (`snapshot_annotation` rend
+    `{"note": None}`, pas `None`), et le second Ctrl+Z répondait le 409 de CONC-3 « modifié
+    par anonyme » ; la copie, elle, ne la comptait déjà pas (une note posée)."""
+    r = _creer_region(client, planche["id"], type="bulle")
+    # L'acte d'hier, au journal ; la ligne aux seuls tags, la v39 l'a retirée.
+    poser_tags(db_path, r["id"], ["hier"], agent="anonyme")
+    assert client.post("/api/undo").status_code == 409
+    rep = client.post("/api/undo")
+    assert rep.status_code == 200, rep.text
+    assert (rep.json()["acte"], rep.json()["cible_table"]) == ("creation", "regions")
+    assert r["id"] not in _regions(db_path)
 
 
 # --------------------------------------------------------------------------- #
@@ -1245,15 +1283,9 @@ def test_le_mono_poste_n_a_pas_de_delai(client, planche, db_path):
 # Trouvé par la relecture croisée d'ANN-8 le 2026-10-21 (`test_h5_…`, dans sa copie) :
 # `_garder_creation` ne regardait que les colonnes, l'annotation et les enfants ; supprimer
 # la région emportait le locuteur, le personnage montré et la situation par CASCADE, sans
-# instantané pour les rendre. Les gestes de l'auteur de la création sont annulés AVANT elle
-# (ou ne s'annulent pas : la situation) ; ce qui reste et vient d'un autre se garde.
-def _situation(client, nom):
-    d = client.post("/api/attributs/dimensions", headers=ADMIN,
-                    json={"cible": "case", "nom": nom}).json()["id"]
-    return client.post(f"/api/attributs/dimensions/{d}/valeurs", headers=ADMIN,
-                       json={"valeur": "intérieur"}).json()["id"]
-
-
+# instantané pour les rendre. Les gestes de l'auteur de la création sont annulés AVANT elle ;
+# ce qui reste et vient d'un autre se garde. (La situation, qui en était, ne se pose plus
+# depuis le basculement d'ANN-7.)
 def _creation_refusee(client, rid, champ, login, db_path):
     n = _ev_count(db_path)
     res = client.post("/api/undo", headers=PROPRIO)
@@ -1284,30 +1316,6 @@ def test_annuler_la_creation_d_une_boite_n_emporte_pas_le_personnage_montre_d_un
     _poser(client, rid, "personnage", zed, STAGIAIRE)
     _creation_refusee(client, rid, "presence", "stagiaire", db_path)
     assert _lien(db_path, "personnage_presence", rid) == zed
-
-
-def test_annuler_la_creation_d_une_case_n_emporte_pas_la_situation_d_un_autre(
-        client, planche, db_path, derriere_proxy):
-    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="case")["id"]
-    v = _situation(client, "lieu")
-    assert client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v},
-                      headers=STAGIAIRE).status_code == 200
-    _creation_refusee(client, rid, "situation", "stagiaire", db_path)
-    assert _un(db_path, "SELECT 1 x FROM region_attribut WHERE region_id = ?", (rid,))
-
-
-def test_annuler_la_creation_d_une_case_qualifiee_par_son_auteur_passe(
-        client, planche, db_path, derriere_proxy):
-    """La situation ne s'annule pas (hors Ctrl+Z) : posée par l'auteur de la case lui-même,
-    elle ne doit pas rendre sa création inannulable. Le Ctrl+Z la défait avec la case,
-    comme avant."""
-    rid = _creer_region(client, planche["id"], headers=PROPRIO, type="case")["id"]
-    v = _situation(client, "lieu")
-    assert client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v},
-                      headers=PROPRIO).status_code == 200
-    res = client.post("/api/undo", headers=PROPRIO)
-    assert res.status_code == 200, res.text
-    assert rid not in _regions(db_path)
 
 
 def test_un_lien_pose_puis_retire_par_un_autre_ne_bloque_pas(

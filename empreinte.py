@@ -16,20 +16,21 @@ touchées (`static/lib/signal-planche.js`).
 
 **Ce qu'elle couvre** : ce que l'Atelier montre d'une région et que « Actualiser » rendrait —
 type, géométrie, rattachement, rang parmi ses sœurs (l'arbre de structure), texte transcrit,
-note, tags, locuteur, personnage montré, situation. Pas la provenance, ni la grammaire (le
+note, locuteur, personnage montré. Pas la provenance, ni la grammaire (le
 dernier gagne, CONC-4). Le rang ne change que par « monter / descendre » (il échange deux
 sœurs), « réordonner » et les passes automatiques ; après chacun de ces gestes, l'écran qui
 les fait relit ses régions, donc reprend sa base : le rang de la voisine n'y est jamais un
 faux signal. Une création prend le rang suivant sans toucher aux autres.
 
-**Bornée comme la planche, et comme ce qu'on en LIT.** La route passe par l'accesseur gardé
-de la planche (404 hors portée). Les tags et les valeurs de situation se filtrent comme à
-l'écran (`clause_terme` — le terme ET sa dimension, `socle._attributs_de`) : une empreinte qui
-compterait un tag local à une collection qu'on ne lit pas signalerait « changé » sans rien à
-montrer, et dirait qu'un travail invisible bouge sur cette région.
+**Bornée comme la planche.** La route passe par l'accesseur gardé de la planche (404 hors
+portée), et rien de ce qu'elle condense ne se lit plus étroitement que la planche. (Les tags
+et la situation d'une case y entraient, filtrés par la portée des termes, jusqu'au
+basculement d'ANN-7.)
 
 **Les relevés à part** (ANN-7, tranche 2) : `empreintes_releves`, que la route rend sous
-`releves` pour la page Annotation, et que l'Atelier ne lit pas.
+`releves` pour la page Annotation, et que l'Atelier ne lit pas. **Et le plan des grilles
+ouvertes** (ANN-7, le mode libre) : `empreintes_plans`, sous `plans`, que la page Annotation
+lit seule — une étiquette créée, renommée ou rangée ailleurs.
 
 Un condensé court (12 caractères hexadécimaux) : il ne sert qu'à comparer deux états de la
 même région, et rien n'en sort qui ne soit déjà lisible par la route des régions.
@@ -41,47 +42,30 @@ import json
 import sqlite3
 from collections import defaultdict
 
+import grilles
+from database import projet_d_album
 
-def empreintes(conn: sqlite3.Connection, planche_id: int, portee) -> dict[str, str]:
+
+def empreintes(conn: sqlite3.Connection, planche_id: int) -> dict[str, str]:
     """{identifiant de région (texte) → condensé} pour toutes les régions de la planche."""
-    ou_tag, p_tag = portee.clause_terme("t.collection_id")
-    ou_val, p_val = portee.clause_terme("v.collection_id")
-    ou_dim, p_dim = portee.clause_terme("d.collection_id")
     sur_la_planche = "JOIN regions r ON r.id = {}.region_id WHERE r.planche_id = ?"
 
     notes = dict(conn.execute(
         "SELECT a.region_id, a.note FROM annotations a " + sur_la_planche.format("a"),
         (planche_id,)).fetchall())
-    tags = defaultdict(list)
-    for rid, label in conn.execute(
-            "SELECT a.region_id, t.label FROM annotations a "
-            "JOIN annotation_tags at ON at.annotation_id = a.id JOIN tags t ON t.id = at.tag_id "
-            "JOIN regions r ON r.id = a.region_id "
-            f"WHERE r.planche_id = ? AND {ou_tag}", (planche_id, *p_tag)):
-        tags[rid].append(label)
     locuteurs = dict(conn.execute(
         "SELECT x.region_id, x.personnage_id FROM bulle_locuteur x " + sur_la_planche.format("x"),
         (planche_id,)).fetchall())
     montres = dict(conn.execute(
         "SELECT x.region_id, x.personnage_id FROM personnage_presence x "
         + sur_la_planche.format("x"), (planche_id,)).fetchall())
-    situations = defaultdict(list)
-    for rid, vid in conn.execute(
-            "SELECT x.region_id, v.id FROM region_attribut x "
-            "JOIN attribut_valeur v ON v.id = x.valeur_id "
-            "JOIN attribut_dimension d ON d.id = v.dimension_id "
-            "JOIN regions r ON r.id = x.region_id "
-            f"WHERE r.planche_id = ? AND {ou_val} AND {ou_dim}",
-            (planche_id, *p_val, *p_dim)):
-        situations[rid].append(vid)
 
     resultat = {}
     for r in conn.execute("SELECT id, type, x, y, w, h, parent_id, ordre, ocr_texte "
                           "FROM regions WHERE planche_id = ? ORDER BY id", (planche_id,)):
         rid = r[0]
         canon = [r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8] or "", notes.get(rid) or "",
-                 sorted(tags.get(rid, [])), locuteurs.get(rid), montres.get(rid),
-                 sorted(situations.get(rid, []))]
+                 locuteurs.get(rid), montres.get(rid)]
         brut = json.dumps(canon, ensure_ascii=False, separators=(",", ":"))
         resultat[str(rid)] = hashlib.sha1(brut.encode("utf-8")).hexdigest()[:12]
     return resultat
@@ -144,4 +128,32 @@ def empreintes_releves(conn: sqlite3.Connection, planche_id: int) -> dict[str, s
     for k, canon in zones.items():
         brut = json.dumps(canon, ensure_ascii=False, separators=(",", ":"))
         resultat[k] = hashlib.sha1(brut.encode("utf-8")).hexdigest()[:12]
+    return resultat
+
+
+def empreintes_plans(conn: sqlite3.Connection, planche_id: int) -> dict[str, str]:
+    """ANN-7, le mode libre — l'empreinte du PLAN de chaque grille OUVERTE active dans le
+    projet de l'album de la planche, `{identifiant de grille (texte) → condensé}` : sa version
+    vivante change sans changer de numéro (une étiquette née en posant, renommée, rangée,
+    retirée ; une valeur ajoutée), et la page Annotation, qui garde le plan qu'elle a lu, ne
+    le voyait qu'au rechargement (le cadrage du mode libre, « Le signal « ⟳ Actualiser » »).
+    Une grille FERMÉE n'y est pas : sa version publiée ne change plus (hors d'une coquille,
+    qui ne touche aucun relevé).
+
+    Ce qui compte : le contenu entier de la version (`grilles.contenu`) — libellés, rangs,
+    états, variantes, cases. Qui lit la planche lit le plan d'une grille active dans son
+    projet (`clause_grille`, moitié (b)) : aucune borne de plus. La page Annotation la lit,
+    l'Atelier l'ignore."""
+    album = conn.execute("SELECT album_id FROM planches WHERE id = ?", (planche_id,)).fetchone()
+    if album is None:
+        return {}
+    resultat = {}
+    for gid, vid in conn.execute(
+            "SELECT pg.grille_id, pg.version_id FROM projet_grille pg "
+            "JOIN grille g ON g.id = pg.grille_id JOIN grille_version v ON v.id = pg.version_id "
+            "WHERE pg.projet_id = ? AND g.ouverte = 1 AND v.etat = ? ORDER BY pg.grille_id",
+            (projet_d_album(conn, album[0]), grilles.ETAT_VIVANTE)).fetchall():
+        brut = json.dumps(grilles.contenu(conn, vid), sort_keys=True, ensure_ascii=False,
+                          separators=(",", ":"))
+        resultat[str(gid)] = hashlib.sha1(brut.encode("utf-8")).hexdigest()[:12]
     return resultat

@@ -3,8 +3,7 @@ import database
 from conftest import direct_query
 
 
-TABLES = {"albums", "planches", "regions", "tags", "annotations",
-          "annotation_tags", "recherche"}
+TABLES = {"albums", "planches", "regions", "annotations", "recherche"}
 
 
 def test_schema_cree_toutes_les_tables(data_dir, db_path):

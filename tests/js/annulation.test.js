@@ -16,15 +16,16 @@ test("se charge sans document", () => {
 test("le message d'un Ctrl+Z réussi dit ce qui n'a pas été rendu", () => {
   assert.deepEqual(U.messageAnnule({ description: "pose d'un relevé" }),
                    { texte: "Annulé : pose d'un relevé", duree: 4000 });
-  const m = U.messageAnnule({ description: "x", liens_non_rendus: 2, tags_non_rendus: 1,
-                              releves_non_rendus: 3 });
-  assert.match(m.texte, /2 liens non rendus/);
-  assert.match(m.texte, /1 tag non rendu \(supprimé depuis/);
+  const m = U.messageAnnule({ description: "x", liens_non_rendus: 2, releves_non_rendus: 3 });
+  assert.match(m.texte, /2 liens non rendus \(personnage disparu/);
   assert.match(m.texte, /3 relevés non rendus \(grille désactivée/);
   assert.equal(m.duree, 8000);
   assert.match(U.messageAnnule({ description: "x", releves_non_rendus: 1 }).texte,
                /1 relevé non rendu \(/);
-  assert.equal(U.messageAnnule({ description: "x", tags_non_rendus: 1 }).duree, 8000);
+  // ANN-7, le basculement : le serveur ne rend plus `tags_non_rendus`, et l'écran ne le lit
+  // plus — un ancien champ ne dirait rien.
+  assert.deepEqual(U.messageAnnule({ description: "x", tags_non_rendus: 1 }),
+                   { texte: "Annulé : x", duree: 4000 });
 });
 
 test("le raccourci : Ctrl/⌘+Z hors d'un champ de saisie", () => {

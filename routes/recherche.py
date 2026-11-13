@@ -33,26 +33,204 @@ from database import (citations_regions, est_bac_a_sable, sql_projet_d_album,
                       sql_region_sortante)
 from pipeline import nlp
 
-from socle import (_clause_lemme, _cle_tag, _csv_response, _csv_safe, _get_projet,
-                   _portee_d_export, _rows, _sql_a_montrer, db, portee_courante)
+from socle import (_clause_lemme, _csv_response, _csv_safe, _get_projet,
+                   _portee_d_export, _rows, _sql_annotee, db, portee_courante,
+                   refuser_le_vocabulaire)
 
 router = APIRouter()
 
+# Les colonnes de l'index plein texte que la Recherche interroge (cf. `_recherche_rows`) :
+# les dialogues, les notes, les ÉTIQUETTES — les libellés des relevés des grilles OUVERTES
+# (ANN-7, J6, `database.sql_etiquettes`) — et les lemmes.
+COLONNES_CHERCHEES = "ocr_texte note etiquettes lemmes"
 
-def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, provenance, limit,
-                    tag_scope="propre", personnage=None, attributs=None):
-    """Construit et exécute la requête de recherche (régions + contexte, tags joints).
+
+# --------------------------------------------------------------------------- #
+# Les RELEVÉS dans la Recherche (ANN-7, le mode libre ; J7, élargi par Hugo le 2026-11-06)
+# --------------------------------------------------------------------------- #
+# Le filtre « porte… » : `porte=<grille>/<sorte>/…`, répétable. Une valeur de `porte` est UN
+# filtre ; deux filtres se combinent par « et » ; les dernières parties d'un filtre sont ses
+# VALEURS, qui se combinent par « ou ». La barre oblique sépare, parce qu'aucun identifiant de
+# grille ne la porte (`grille_ecriture.cle_donnee` la refuse, à l'import comme au formulaire).
+#   <g>/entree/<e1>[/<e2>…]               une entrée (toute variante), l'une OU l'autre
+#   <g>/variante/<e>/<v1>[/<v2>…]         l'entrée <e> posée avec l'une de ces variantes
+#   <g>/rubrique/<r1>[/<r2>…]             une entrée rangée sous l'une de ces rubriques, ou
+#                                         sous l'une de leurs sous-rubriques
+#   <g>/qualificatif/<liste>/<q1>[/<q2>…] un relevé qui coche l'une de ces cases de la liste
+# De N'IMPORTE QUELLE grille, ouverte ou fermée — celle qu'on peut lire (`clause_grille`,
+# 404 sinon, comme sa fiche) ; une entrée se reconnaît par sa CLÉ, quelle que soit la version
+# de son relevé (une rubrique se lit dans la version de chaque relevé). Les relevés de la
+# PLANCHE n'y entrent pas : la Recherche rend des régions (l'héritance d'une case vers ses
+# bulles attend la tranche 4).
+SORTES_PORTE = ("entree", "variante", "rubrique", "qualificatif")
+PORTE_FILTRES_MAX, PORTE_VALEURS_MAX = 20, 50
+_PORTE_FORME = ("« porte » s'écrit <grille>/entree/<entrée>…, <grille>/variante/<entrée>/"
+                "<variante>…, <grille>/rubrique/<rubrique>… ou <grille>/qualificatif/<liste>/"
+                "<case>…")
+
+
+def _lire_porte(valeur: str) -> dict:
+    """Une valeur de `porte`, lue — `{grille_id, sorte, parent, valeurs}` —, ou 422 nommé."""
+    parts = [p.strip() for p in str(valeur or "").split("/")]
+    if len(parts) < 3 or not parts[0].isdigit() or parts[1] not in SORTES_PORTE \
+            or any(not p for p in parts[2:]):
+        raise HTTPException(422, f"{_PORTE_FORME} : « {valeur} » ne se lit pas.")
+    sorte = parts[1]
+    parent = None
+    valeurs = parts[2:]
+    if sorte in ("variante", "qualificatif"):
+        if len(valeurs) < 2:
+            raise HTTPException(422, f"{_PORTE_FORME} : « {valeur} » ne nomme pas de valeur.")
+        parent, valeurs = valeurs[0], valeurs[1:]
+    if len(valeurs) > PORTE_VALEURS_MAX:
+        raise HTTPException(422, f"Un filtre « porte » tient {PORTE_VALEURS_MAX} valeurs au "
+                                 "plus.")
+    return {"grille_id": int(parts[0]), "sorte": sorte, "parent": parent,
+            "valeurs": list(dict.fromkeys(valeurs))}
+
+
+def _entrees_sous_les_rubriques(conn, grille_id: int, rubriques) -> list:
+    """`(version, entrée)` de chaque entrée rangée, dans sa version, sous l'une de ces
+    rubriques ou l'une de leurs descendantes — version par version : une rubrique se lit
+    dans la version de chaque relevé."""
+    paires = []
+    for (vid,) in conn.execute("SELECT id FROM grille_version WHERE grille_id = ?",
+                               (grille_id,)).fetchall():
+        parents = {r[0]: r[1] for r in conn.execute(
+            "SELECT cle, parent_cle FROM grille_rubrique WHERE version_id = ?", (vid,))}
+        dedans = set()
+        for cle in parents:
+            vus, x = set(), cle
+            while x is not None and x not in vus:
+                if x in rubriques:
+                    dedans.add(cle)
+                    break
+                vus.add(x)
+                x = parents.get(x)
+        if dedans:
+            paires += [(vid, e[0]) for e in conn.execute(
+                f"SELECT cle FROM grille_entree WHERE version_id = ? AND rubrique_cle IN "
+                f"({', '.join('?' * len(dedans))})", (vid, *sorted(dedans)))]
+    return paires
+
+
+def _clause_porte(conn, portee, filtres) -> tuple[list, list]:
+    """Les clauses `EXISTS` des filtres « porte » sur la région `r`, et leurs paramètres.
+    Chaque grille nommée doit être LISIBLE (`clause_grille`) : 404 sinon, le même qu'une
+    grille qui n'existe pas."""
+    if len(filtres) > PORTE_FILTRES_MAX:
+        raise HTTPException(422, f"La Recherche tient {PORTE_FILTRES_MAX} filtres « porte » au "
+                                 "plus.")
+    lus = [_lire_porte(f) for f in filtres]
+    ou, p_ou = portee.clause_grille("g.id")
+    for gid in sorted({f["grille_id"] for f in lus}):
+        if conn.execute(f"SELECT 1 FROM grille g WHERE g.id = ? AND {ou}",
+                        (gid, *p_ou)).fetchone() is None:
+            raise HTTPException(404, f"Grille {gid} introuvable")
+    clauses, params = [], []
+    for f in lus:
+        v = f["valeurs"]
+        marques = ", ".join("?" * len(v))
+        base = "SELECT 1 FROM releve _pr WHERE _pr.region_id = r.id AND _pr.grille_id = ?"
+        if f["sorte"] == "entree":
+            clauses.append(f"EXISTS ({base} AND _pr.entree_cle IN ({marques}))")
+            params += [f["grille_id"], *v]
+        elif f["sorte"] == "variante":
+            clauses.append(f"EXISTS ({base} AND _pr.entree_cle = ? "
+                           f"AND _pr.variante_cle IN ({marques}))")
+            params += [f["grille_id"], f["parent"], *v]
+        elif f["sorte"] == "rubrique":
+            paires = _entrees_sous_les_rubriques(conn, f["grille_id"], set(v))
+            if not paires:
+                clauses.append("0")
+                continue
+            valeurs = ", ".join("(?, ?)" for _ in paires)
+            clauses.append(f"EXISTS ({base} AND (_pr.version_id, _pr.entree_cle) IN "
+                           f"(VALUES {valeurs}))")
+            params += [f["grille_id"], *[x for p in paires for x in p]]
+        else:
+            clauses.append(
+                "EXISTS (SELECT 1 FROM releve _pr JOIN releve_qualificatif _pq "
+                "ON _pq.releve_id = _pr.id JOIN grille_entree _pe "
+                "ON _pe.version_id = _pr.version_id AND _pe.cle = _pr.entree_cle "
+                "WHERE _pr.region_id = r.id AND _pr.grille_id = ? AND _pe.liste_cle = ? "
+                f"AND _pq.qualificatif_cle IN ({marques}))")
+            params += [f["grille_id"], f["parent"], *v]
+    return clauses, params
+
+
+def _releves_des_resultats(conn, region_ids) -> dict:
+    """{région → ses relevés}, de TOUTES les grilles, ouvertes ou fermées, pour qu'un résultat
+    les lise en ligne (« Grille : entrée · variante ») et en isole un d'un clic (`porte`, la
+    valeur du filtre qui le désigne ; une case cochée a la sienne). Les libellés se lisent
+    dans la version de chaque relevé. Bornés comme l'album : ce sont les régions que la
+    Recherche rend déjà, sous `clause_album` — et qui lit une région lit le plan des grilles
+    de ses relevés (`clause_grille`, moitié (c)). Rien de qui les a posés. La grille de
+    travail d'abord, puis les autres par leur nom."""
+    sortie = {rid: [] for rid in region_ids}
+    if not region_ids:
+        return sortie
+    ids = sorted(sortie)
+    lignes, qualifs = [], {}
+    for debut in range(0, len(ids), 500):
+        paquet = ids[debut:debut + 500]
+        marques = ", ".join("?" * len(paquet))
+        lignes += conn.execute(
+            "SELECT rl.id, rl.region_id, rl.grille_id, g.nom AS grille, g.ouverte, g.travail, "
+            "rl.entree_cle, e.libelle AS entree, e.liste_cle, rl.variante_cle, "
+            "v.libelle AS variante "
+            "FROM releve rl JOIN grille g ON g.id = rl.grille_id "
+            "LEFT JOIN grille_entree e ON e.version_id = rl.version_id AND e.cle = rl.entree_cle "
+            "LEFT JOIN grille_variante v ON v.version_id = rl.version_id "
+            "AND v.entree_cle = rl.entree_cle AND v.cle = rl.variante_cle "
+            f"WHERE rl.region_id IN ({marques})", paquet).fetchall()
+        for q in conn.execute(
+                "SELECT rq.releve_id, rq.qualificatif_cle, q.libelle FROM releve_qualificatif rq "
+                "JOIN releve rl ON rl.id = rq.releve_id "
+                "LEFT JOIN grille_entree e ON e.version_id = rl.version_id "
+                "AND e.cle = rl.entree_cle "
+                "LEFT JOIN grille_qualificatif q ON q.version_id = rl.version_id "
+                "AND q.liste_cle = e.liste_cle AND q.cle = rq.qualificatif_cle "
+                f"WHERE rl.region_id IN ({marques}) ORDER BY rq.qualificatif_cle", paquet):
+            qualifs.setdefault(q[0], []).append((q[1], q[2]))
+    lignes.sort(key=lambda r: (not r["travail"], r["grille"], r["grille_id"], r["id"]))
+    for r in lignes:
+        g = r["grille_id"]
+        porte = (f"{g}/variante/{r['entree_cle']}/{r['variante_cle']}" if r["variante_cle"]
+                 else f"{g}/entree/{r['entree_cle']}")
+        sortie[r["region_id"]].append({
+            "id": r["id"], "grille_id": g, "grille": r["grille"],
+            "ouverte": bool(r["ouverte"]), "travail": bool(r["travail"]),
+            "entree_cle": r["entree_cle"], "entree": r["entree"] or r["entree_cle"],
+            "variante_cle": r["variante_cle"],
+            "variante": (r["variante"] or r["variante_cle"]) if r["variante_cle"] else None,
+            "qualificatifs": [
+                {"cle": qc, "libelle": lib or qc,
+                 **({"porte": f"{g}/qualificatif/{r['liste_cle']}/{qc}"}
+                    if r["liste_cle"] else {})}
+                for qc, lib in qualifs.get(r["id"], [])],
+            "porte": porte})
+    return sortie
+
+
+def _recherche_rows(conn, portee, q, album, type, pos, lemme, morph, provenance, limit,
+                    personnage=None, porte=()):
+    """Construit et exécute la requête de recherche (régions + contexte).
     Partagé par /api/recherche (JSON) et l'export CSV — une seule logique de requête.
 
     AUTH-2 — la portée est un paramètre OBLIGATOIRE, et c'est ici que se referme le piège
     le plus vicieux du dépôt : la table FTS `recherche` est DÉNORMALISÉE et globale (elle
-    agrège OCR + note + tags + lemmes) et ne porte aucune trace d'album ni de collection.
+    agrège OCR + note + lemmes) et ne porte aucune trace d'album ni de collection.
     Une requête plein texte non filtrée renverrait donc le contenu de tout le corpus,
     quelle que soit la rigueur des routes de lecture par identifiant. Le filtre passe par
     la jointure `albums a` déjà présente, pas par la table FTS.
 
     COL-4 (S8) — ni bac à sable ni jeu, pour personne (`Portee.pour_le_corpus`).
+
+    ANN-7 — `porte` : les filtres « porte… » (`_clause_porte`) ; chaque résultat rend les
+    relevés de sa zone (`releves`, `_releves_des_resultats`).
     """
+    clauses_porte, params_porte = (_clause_porte(conn, portee, porte) if porte else ([], []))
     portee = portee.pour_le_corpus()
     where, params = [], []
     ou, params_portee = portee.clause_album("a.id")
@@ -78,6 +256,10 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
         # (1) PRÉFIXE échappé sur le texte brut (ET implicite) : « otage » → « otages ».
         #     Insensible aux accents (tokenizer FTS remove_diacritics).
         raw = " ".join('"' + t.replace('"', '""') + '"*' for t in q.split())
+        # ANN-7 — le préfixe cherche dans les dialogues, les notes, les étiquettes des grilles
+        # ouvertes (J6) et les lemmes : les colonnes que nomme `COLONNES_CHERCHEES`. Une
+        # colonne de l'index qu'elle ne nomme pas n'est pas cherchée.
+        raw = f"{{{COLONNES_CHERCHEES}}} : ({raw})"
         # (2) LEMMES : on lemmatise aussi la requête et on la matche sur la colonne
         #     `lemmes` → attrape ce que le préfixe rate (cheval↔chevaux, conjugaisons,
         #     élisions). Moteur optionnel : si spaCy absent, lemmatise() renvoie ""
@@ -98,27 +280,6 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
     if type:
         where.append("r.type = ?")
         params.append(type)
-    if tags:
-        # un paramètre `tags` par tag (robuste aux virgules dans les labels).
-        # tag_scope : 'propre' = la région porte le tag ; 'herite' = la région OU sa
-        # case parente — aligné sur /api/analyse/* pour que la descente aux preuves
-        # (drill Exploration → Recherche) ne perde pas les tokens tagués au niveau case.
-        cible = ("a2.region_id = r.id" if tag_scope == "propre"
-                 else "a2.region_id IN (r.id, r.parent_id)")
-        # Un tag qu'on ne lit pas ne filtre rien : sans la portée des termes, chercher son
-        # nom dirait quelles régions le portent, sans jamais l'afficher.
-        ou_tag, p_tag = portee.clause_terme("tg.collection_id")
-        wanted = [_cle_tag(t) for t in tags if _cle_tag(t)]   # ANN-8 : par la clé du libellé
-        for label in wanted:
-            where.append(
-                "EXISTS (SELECT 1 FROM annotation_tags at "
-                "        JOIN tags tg ON tg.id = at.tag_id "
-                "        JOIN annotations a2 ON a2.id = at.annotation_id "
-                f"       WHERE {cible} AND cle_tag(tg.label) = ? AND {ou_tag})"
-            )
-            params.append(label)
-            params.extend(p_tag)
-
     # Facettes GRAMMATICALES (lot 3) : la région contient-elle un token (valeur
     # EFFECTIVE) répondant aux critères ? EXISTS sur tokens_effectifs, scopé à la région.
     if pos or lemme or morph or provenance:
@@ -140,29 +301,19 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
                          "WHERE te.region_id = r.id AND " + " AND ".join(tw) + ")")
             params.extend(tp)
 
-    # Facettes ANN-2 : locuteur de la zone de texte, et attribut (profil du locuteur OU situation
-    # de la case) — alignées sur /api/analyse/* pour que le drill Exploration→Recherche colle.
+    # Facette ANN-2 : le locuteur de la zone de texte — alignée sur /api/analyse/* pour que
+    # le drill Exploration→Recherche colle. (Le locuteur n'a pas besoin de la garde des
+    # termes : il ne cherche que dans les régions qu'on lit, où un locuteur qu'on ne voit
+    # pas n'apparaît par définition nulle part.) Le filtre par ATTRIBUT est parti avec le
+    # basculement d'ANN-7, comme celui par tag.
     if personnage is not None:
         where.append("EXISTS (SELECT 1 FROM bulle_locuteur bl "
                      "WHERE bl.region_id = r.id AND bl.personnage_id = ?)")
         params.append(personnage)
-    # AUTH-11 — une valeur qu'on ne lit pas ne filtre rien, comme un tag : sans cette clause,
-    # chercher son identifiant dirait quelles régions la portent. Elle répond alors ce que
-    # répond un identifiant libre, aucun résultat. (Le locuteur n'a pas besoin de la même
-    # garde : il ne cherche que dans les régions qu'on lit, où un locuteur qu'on ne voit
-    # pas n'apparaît par définition nulle part.)
-    ou_val, p_val = portee.clause_terme("vz.collection_id")
-    for vid in (attributs or []):
-        where.append(f"EXISTS (SELECT 1 FROM attribut_valeur vz WHERE vz.id = ? AND {ou_val})")
-        params.append(vid)
-        params.extend(p_val)
-        where.append(
-            "(EXISTS (SELECT 1 FROM bulle_locuteur bl JOIN personnage_attribut pa "
-            "         ON pa.personnage_id = bl.personnage_id "
-            "         WHERE bl.region_id = r.id AND pa.valeur_id = ?) "
-            " OR EXISTS (SELECT 1 FROM region_attribut ra "
-            "            WHERE ra.region_id IN (r.id, r.parent_id) AND ra.valeur_id = ?))")
-        params.extend([vid, vid])
+
+    # ANN-7 — « porte… » : un `EXISTS` par filtre (« et » entre eux), sous la clause d'album.
+    where.extend(clauses_porte)
+    params.extend(params_porte)
 
     sql = base
     if where:
@@ -175,24 +326,13 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
     except sqlite3.OperationalError as exc:
         raise HTTPException(400, f"Requête de recherche invalide : {exc}")
 
-    # Joint les tags de chaque résultat — ceux dont on lit le TERME, pas tous. La portée
-    # d'album ne suffit pas : un tag peut devenir local après avoir été posé, et un album
-    # vit dans plusieurs collections, donc une région qu'on lit peut porter le tag d'une
-    # collection qu'on ne lit pas. Son nom est un morceau de grille d'analyse, que
-    # `/api/tags` masquait déjà et que la Recherche montrait — ici comme dans son CSV.
-    ou_tag, p_tag = portee.clause_terme("tg.collection_id")
     for row in results:
-        row["tags"] = [t["label"] for t in _rows(conn.execute(
-            f"""SELECT tg.label FROM annotation_tags at
-               JOIN tags tg ON tg.id = at.tag_id
-               JOIN annotations an ON an.id = at.annotation_id
-               WHERE an.region_id = ? AND {ou_tag} ORDER BY tg.label""",
-            (row["region_id"], *p_tag),
-        ))]
         row["url_web"] = "/" + row["chemin_web"] if row["chemin_web"] else None
     cits = citations_regions(conn, [row["region_id"] for row in results])
+    releves = _releves_des_resultats(conn, [row["region_id"] for row in results])
     for row in results:
         row["citation"] = cits.get(row["region_id"])
+        row["releves"] = releves[row["region_id"]]
     return results
 
 
@@ -223,29 +363,30 @@ def _sans_terme_cherchable(q: str) -> bool:
     return bool(q.strip()) and not any(c.isalnum() for c in q)
 
 
-@router.get("/api/recherche")
+@router.get("/api/recherche", dependencies=[Depends(refuser_le_vocabulaire)])
 def recherche(q: str = "", album: Optional[int] = None,
-              type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
+              type: Optional[str] = None,
               pos: Optional[str] = None, lemme: Optional[str] = None,
               morph: Optional[str] = None, provenance: Optional[str] = None,
-              tag_scope: str = "propre",
-              personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
+              personnage: Optional[int] = None, porte: list[str] = Query([]),
               limit: int = 100, conn: sqlite3.Connection = Depends(db),
               portee: autorisation.Portee = Depends(portee_courante)):
+    """La Recherche : le champ (`q`), les filtres d'album, de type, de grammaire, de locuteur,
+    et « porte… » (`porte`, répétable : cf. `_lire_porte`). Chaque résultat rend ses relevés
+    (`releves`), de toutes les grilles."""
     limit = max(1, min(limit, 500))   # borne : évite LIMIT -1 (= tout le corpus) / DoS
-    results = _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph,
-                              provenance, limit, tag_scope, personnage, attributs)
+    results = _recherche_rows(conn, portee, q, album, type, pos, lemme, morph,
+                              provenance, limit, personnage, porte)
     return {"q": q, "count": len(results), "results": results,
             "sans_terme": _sans_terme_cherchable(q)}
 
 
-@router.get("/api/recherche/export.csv")
+@router.get("/api/recherche/export.csv", dependencies=[Depends(refuser_le_vocabulaire)])
 def recherche_export(q: str = "", album: Optional[int] = None,
-                     type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
+                     type: Optional[str] = None,
                      pos: Optional[str] = None, lemme: Optional[str] = None,
                      morph: Optional[str] = None, provenance: Optional[str] = None,
-                     tag_scope: str = "propre",
-                     personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
+                     personnage: Optional[int] = None, porte: list[str] = Query([]),
                      conn: sqlite3.Connection = Depends(db),
                      portee: autorisation.Portee = Depends(portee_courante)):
     """Export CSV du jeu de résultats courant (mêmes critères que /api/recherche).
@@ -253,16 +394,21 @@ def recherche_export(q: str = "", album: Optional[int] = None,
 
     DROIT-2 — le fichier n'emporte que ce qu'on a le droit de SORTIR : la portée
     d'export, pas celle de lecture. L'écran peut donc montrer plus de résultats que le
-    fichier n'en porte, et c'est exactement la décision : voir n'est pas emporter."""
-    results = _recherche_rows(conn, _portee_d_export(portee), q, album, type, tags, pos,
-                              lemme, morph, provenance, 5000, tag_scope,
-                              personnage, attributs)
+    fichier n'en porte, et c'est exactement la décision : voir n'est pas emporter.
+
+    ANN-7 — le filtre « porte… » s'y applique (le même cœur) : le fichier porte les zones qui
+    portent ces relevés. Il ne porte PAS les relevés eux-mêmes — ni colonne, ni libellé :
+    ce qui sort des grilles est la tranche 4."""
+    results = _recherche_rows(conn, _portee_d_export(portee), q, album, type, pos,
+                              lemme, morph, provenance, 5000, personnage, porte)
     buf = io.StringIO()
     # `planche` = numéro ÉDITORIAL (cité), `citation` = repère complet « pl·c(·b) » ;
     # le CSV est l'artefact que le chercheur emporte pour citer. Cf.
     # docs/numerotation-et-citation.md.
+    # ANN-7 — la colonne `tags` est RETIRÉE, et non laissée vide (cadrage, « se tranchent
+    # en route ») : une colonne toujours vide se lirait « aucun tag », pas « plus de tags ».
     cols = ["album", "planche", "citation", "region_id", "type",
-            "ocr_texte", "note", "tags"]
+            "ocr_texte", "note"]
     w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     w.writeheader()
     for r in results:
@@ -273,8 +419,7 @@ def recherche_export(q: str = "", album: Optional[int] = None,
                     "citation": cit.get("texte", ""),
                     "region_id": r["region_id"], "type": r["type"],
                     "ocr_texte": _csv_safe(r["ocr_texte"] or ""),
-                    "note": _csv_safe(r["note"] or ""),
-                    "tags": _csv_safe("|".join(r["tags"]))})
+                    "note": _csv_safe(r["note"] or "")})
     return _csv_response(buf.getvalue(), "recherche.csv")
 
 
@@ -290,17 +435,16 @@ def corpus_stats(bac_a_sable: Optional[int] = None, conn: sqlite3.Connection = D
     passent pas le paramètre et restent aveugles aux bacs. Borné comme le reste : 404 sur
     un projet qu'on ne nomme pas — le bac d'un autre, pour un administrateur comme pour
     tous (`Portee.clause_projet`) — ou qui n'est pas un bac à sable ; et chaque compte
-    garde la clause de la portée, qui ne rend du bac que ce qu'on y lit. Ses tags sont
-    ceux de son espace de libellés (`tags.espace`, v35), qu'on lit."""
+    garde la clause de la portée, qui ne rend du bac que ce qu'on y lit."""
     if bac_a_sable is None:
         portee = portee.pour_le_corpus()
-        dans, p_dans, espace = "1", [], 0
+        dans, p_dans = "1", []
     else:
         _get_projet(conn, portee, bac_a_sable)
         if not est_bac_a_sable(conn, bac_a_sable):
             raise HTTPException(404, f"Projet {bac_a_sable} introuvable")
         dans = f"IN (SELECT _a.id FROM albums _a WHERE {sql_projet_d_album('_a')} = ?)"
-        p_dans, espace = [bac_a_sable], bac_a_sable
+        p_dans = [bac_a_sable]
     # AUTH-2 : des compteurs GLOBAUX diraient combien d'albums et de planches existent
     # ailleurs — la composition du corpus fuit par les nombres aussi bien que par les
     # titres. Chaque sous-requête est donc rattachée à son album, puis filtrée.
@@ -311,33 +455,25 @@ def corpus_stats(bac_a_sable: Optional[int] = None, conn: sqlite3.Connection = D
         ou, oup, our = (f"({ou}) AND alb.id {dans}", f"({oup}) AND pl.album_id {dans}",
                         f"({our}) AND plr.album_id {dans}")
         pp = [*pp, *p_dans]
-    ou_tag, p_tag = portee.clause_terme("t.collection_id")
-    ou_tag, p_tag = f"({ou_tag}) AND t.espace = ?", [*p_tag, espace]
-    # AUTH-11 : « annotées » compte les annotations qui ont quelque chose à MONTRER —
-    # une note, ou un tag dont on lit le terme (cf. `socle._sql_a_montrer`). Compter la
-    # ligne nue faisait dire au compteur qu'on a annoté ce qu'on ne peut pas ouvrir.
-    ou_montrer, p_montrer = _sql_a_montrer(portee, "an")
+    # « annotées » compte les RÉGIONS annotées — une note non vide ou un relevé (ANN-7, I4,
+    # `socle._sql_annotee`) : la même règle que la coche de l'arbre et `nb_annotees`.
+    annotee = _sql_annotee("r")
     row = conn.execute(
         f"""SELECT
              (SELECT COUNT(*) FROM albums alb WHERE {ou})   AS albums,
              (SELECT COUNT(*) FROM planches pl WHERE {oup}) AS planches,
              (SELECT COUNT(*) FROM regions r
                 JOIN planches plr ON plr.id = r.planche_id WHERE {our})  AS regions,
-             (SELECT COUNT(*) FROM annotations an JOIN regions r ON r.id = an.region_id
+             (SELECT COUNT(*) FROM regions r
                 JOIN planches plr ON plr.id = r.planche_id
-                WHERE {our} AND {ou_montrer}) AS annotees,
+                WHERE {our} AND {annotee}) AS annotees,
              (SELECT COUNT(*) FROM regions r
                 JOIN planches plr ON plr.id = r.planche_id
                 WHERE {our} AND TRIM(COALESCE(r.ocr_texte, '')) <> '') AS transcrites,
-             -- `tags` suit la règle du VOCABULAIRE et non celle des données : visible
-             -- s'il est global ou local à une collection qu'on lit (cf. clause_terme).
-             (SELECT COUNT(*) FROM tags t WHERE {ou_tag}) AS tags,
              (SELECT COUNT(*) FROM planches pl
                 WHERE {oup} AND pl.validee IS NOT NULL) AS validees""",
-        # 3 clauses d'album, puis la 4e SUIVIE de celle des annotations à montrer
-        # (AUTH-11), puis la 5e, celle des tags et la 6e d'album — dans l'ORDRE
-        # d'apparition dans le SQL ci-dessus.
-        [*pp * 4, *p_montrer, *pp, *p_tag, *pp],
+        # six clauses d'album, dans l'ordre d'apparition dans le SQL ci-dessus.
+        [*pp * 6],
     ).fetchone()
     res = dict(row)
     # Distribution des planches par statut (pour la barre d'avancement du corpus).

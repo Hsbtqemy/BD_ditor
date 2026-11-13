@@ -16,16 +16,6 @@ def test_ecriture_persistee_sur_disque(client, db_path):
     assert rows and rows[0]["titre"] == "Persist"
 
 
-def test_tag_finissant_par_chiffre_conserve(client, region):
-    """Un tag terminé par un chiffre (ex. 'tome1') ne doit pas être tronqué."""
-    r = client.put(f"/api/regions/{region['id']}/annotation",
-                   json={"note": "", "tags": ["tome1", "case2"]})
-    labels = {t["label"] for t in r.json()["tags"]}
-    assert labels == {"tome1", "case2"}
-    res = client.get("/api/recherche", params={"q": "tome1"}).json()["results"]
-    assert any(x["region_id"] == region["id"] for x in res)
-
-
 def test_suppression_region_nettoie_fts(client, planche, db_path):
     """Supprimer une région (et sa descendance) retire ses lignes FTS."""
     parent = client.post(f"/api/planches/{planche['id']}/regions",
@@ -162,7 +152,8 @@ def test_lot3_recherche_facette_grammaticale(client, planche):
     assert exp.text.startswith("﻿")                                     # BOM (Excel/Windows)
     lignes = exp.text.lstrip("﻿").strip().splitlines()
     # en-tête (la colonne `citation` a été ajoutée par la numérotation éditoriale)
-    assert lignes[0] == "album,planche,citation,region_id,type,ocr_texte,note,tags"
+    # ANN-7 — la colonne `tags` est retirée, et non laissée vide.
+    assert lignes[0] == "album,planche,citation,region_id,type,ocr_texte,note"
     assert any(str(rid) in l for l in lignes[1:])                            # la région exportée
 
 
@@ -384,7 +375,7 @@ def test_resegmentation_preserve_ocr_et_fts_propre(client, album, db_path):
     client.post(f"/api/planches/{p['id']}/segmenter")
     case_id = client.get(f"/api/planches/{p['id']}/regions").json()[0]["id"]
     # une case annotée (FTS) + une bulle océrisée enfant (FTS)
-    client.put(f"/api/regions/{case_id}/annotation", json={"note": "ANNOTCASE", "tags": []})
+    client.put(f"/api/regions/{case_id}/annotation", json={"note": "ANNOTCASE"})
     child = client.post(f"/api/planches/{p['id']}/regions",
                         json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
                               "parent_id": case_id, "ocr_texte": "GARDE"}).json()
@@ -516,26 +507,6 @@ def test_recherche_limit_borne(client, planche):
     assert res["count"] == 1
 
 
-def test_recherche_tags_repetes_et_virgule(client, planche):
-    """Tags transmis en paramètres RÉPÉTÉS (pas join ',') : un label contenant
-    une virgule n'est plus scindé, et plusieurs tags = ET logique."""
-    r1 = client.post(f"/api/planches/{planche['id']}/regions",
-                     json={"type": "bulle", "x": 0, "y": 0, "w": 5, "h": 5}).json()
-    r2 = client.post(f"/api/planches/{planche['id']}/regions",
-                     json={"type": "bulle", "x": 6, "y": 0, "w": 5, "h": 5}).json()
-    client.put(f"/api/regions/{r1['id']}/annotation",
-               json={"note": "", "tags": ["paris, france", "jour"]})
-    client.put(f"/api/regions/{r2['id']}/annotation",
-               json={"note": "", "tags": ["jour"]})
-    # le label à virgule n'est pas scindé : seule r1 le porte
-    res = client.get("/api/recherche", params={"tags": ["paris, france"]}).json()["results"]
-    assert [x["region_id"] for x in res] == [r1["id"]]
-    # deux tags répétés = ET : seule r1 a les deux
-    res2 = client.get("/api/recherche",
-                      params={"tags": ["paris, france", "jour"]}).json()["results"]
-    assert [x["region_id"] for x in res2] == [r1["id"]]
-
-
 def test_export_tei_filtre_caracteres_non_xml(client, planche):
     """G1 : des caractères de contrôle non-XML dans l'OCR ne doivent PAS produire
     un TEI corrompu — l'export reste un XML bien formé (re-parsable)."""
@@ -566,7 +537,7 @@ def test_export_csv_neutralise_injection_de_formule(client, album, planche):
     reg = client.post(f"/api/planches/{planche['id']}/regions",
                       json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
                             "ocr_texte": "=SUM(1+1)"}).json()
-    client.put(f"/api/regions/{reg['id']}/annotation", json={"note": "@evil", "tags": []})
+    client.put(f"/api/regions/{reg['id']}/annotation", json={"note": "@evil"})
     for url, params in ((f"/api/export/csv", {"album_id": album["id"]}),
                         ("/api/recherche/export.csv", {"q": "SUM"})):
         txt = client.get(url, params=params).text
@@ -1790,6 +1761,135 @@ def test_une_panne_dans_l_epilogue_ferme_quand_meme_l_activite(client, planche, 
     assert len(runs) == avant + 1
     assert runs[-1]["date_fin"], (
         "une panne d'épilogue laisse l'activité OUVERTE alors que tout le travail est fait")
+
+
+def test_une_transcription_corrigee_pendant_la_reindexation_garde_son_analyse(
+        client, planche, db_path, monkeypatch):
+    """ANN-7, la v39 : `tools/reindex_nlp.py` se lance à côté de l'instance ouverte.
+
+    `reindex_all` lisait TOUS les textes au départ, puis écrivait chaque lot sur ce qu'il avait
+    lu : une transcription corrigée pendant l'analyse de son lot recevait les tokens et les
+    lemmes de son ANCIEN texte, et sa correction grammaticale était ré-ancrée sur eux — « otage »
+    revenait au rang 1 d'un texte où il est au rang 2. Une région dont le texte a changé entre
+    l'analyse et l'écriture n'est plus écrite : sa route l'a réindexée.
+
+    Et le verrou ne se tient plus à parcourir l'index : `region_id` est UNINDEXED, et un
+    `DELETE … WHERE region_id = ?` par région le parcourait entier (jusqu'à 7,5 s par lot à
+    +30 000 régions). Les lignes s'effacent par `rowid` — une région qui en portait deux n'en
+    garde qu'une. Le moteur de langue est une doublure : le test ne dépend pas de spaCy."""
+    import database
+    import pipeline.nlp as nlp
+
+    def analyse(texte):
+        mots = (texte or "").lower().split()
+        return " ".join(mots), [{"ordre": i, "texte": m, "lemme": m, "pos": "NOUN",
+                                 "morph": ""} for i, m in enumerate(mots)]
+
+    monkeypatch.setattr(nlp, "analyse", analyse)
+    url = f"/api/planches/{planche['id']}/regions"
+    rid = client.post(url, json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                                 "ocr_texte": "LE OTAGE"}).json()["id"]
+    double = client.post(url, json={"type": "bulle", "x": 20, "y": 1, "w": 9, "h": 9,
+                                    "ocr_texte": "MILLE SABORDS"}).json()["id"]
+    conn = database.get_connection()
+    try:
+        conn.execute("INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, etat, "
+                     "auteur) VALUES (?, 1, 'otage', 'otage', 'NOUN', 'corrige', 'lea')", (rid,))
+        conn.execute("INSERT INTO recherche (region_id, ocr_texte, note, etiquettes, lemmes) "
+                     "VALUES (?, 'MILLE SABORDS', '', '', '')", (double,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    saisie = {"faite": False}
+
+    def analyse_batch(textes):
+        if not saisie["faite"]:            # un annotateur corrige pendant l'analyse du lot
+            saisie["faite"] = True
+            autre = database.get_connection()
+            try:
+                autre.execute("UPDATE regions SET ocr_texte = 'LE GRAND OTAGE' WHERE id = ?",
+                              (rid,))
+                database.reindex_region(autre, rid)
+                autre.commit()
+            finally:
+                autre.close()
+        return [analyse(t) for t in textes]
+
+    monkeypatch.setattr(nlp, "analyse_batch", analyse_batch)
+    ecrits = []
+    conn = database.get_connection()
+    try:
+        conn.set_trace_callback(ecrits.append)
+        database.reindex_all(conn)
+        conn.set_trace_callback(None)
+        tokens = [r[0] for r in conn.execute(
+            "SELECT texte FROM tokens WHERE region_id = ? ORDER BY ordre", (rid,))]
+        lemmes = conn.execute("SELECT lemmes FROM recherche WHERE region_id = ?",
+                              (rid,)).fetchone()[0]
+        correction = tuple(conn.execute("SELECT ordre, obsolete FROM token_correction "
+                                        "WHERE region_id = ?", (rid,)).fetchone())
+        lignes = conn.execute("SELECT COUNT(*) FROM recherche WHERE region_id = ?",
+                              (double,)).fetchone()[0]
+    finally:
+        conn.close()
+    assert tokens == ["le", "grand", "otage"]
+    assert "grand" in lemmes.split()
+    assert correction == (2, 0)
+    assert lignes == 1
+    parcours = [s for s in ecrits if "DELETE FROM recherche" in s and "region_id" in s]
+    assert not parcours, parcours
+
+
+def test_la_reindexation_relit_les_textes_sous_le_verrou(client, planche, db_path, monkeypatch):
+    """La relecture qui écarte une région changée pendant l'analyse se fait SOUS le verrou
+    d'écriture, pris avant elle : une transcription qui arriverait entre la relecture et
+    l'écriture attend le lot (puis reçoit, au-delà du délai, le 409 « réessayer ») au lieu
+    d'être recouverte par l'analyse de l'ancien texte. La saisie est tentée pendant que le
+    lot lit ses lignes d'index, après la relecture, avec un délai court."""
+    import sqlite3
+
+    import database
+    import pipeline.nlp as nlp
+
+    def analyse(texte):
+        mots = (texte or "").lower().split()
+        return " ".join(mots), [{"ordre": i, "texte": m, "lemme": m, "pos": "NOUN",
+                                 "morph": ""} for i, m in enumerate(mots)]
+
+    monkeypatch.setattr(nlp, "analyse", analyse)
+    monkeypatch.setattr(nlp, "analyse_batch", lambda textes: [analyse(t) for t in textes])
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "LE OTAGE"}).json()["id"]
+    saisie = {"tentee": False, "refusee": False}
+
+    def pendant(sql):
+        if "SELECT rowid, region_id FROM recherche" in sql and not saisie["tentee"]:
+            saisie["tentee"] = True
+            autre = sqlite3.connect(database.DB_PATH, timeout=0.1)
+            try:
+                autre.execute("UPDATE regions SET ocr_texte = 'LE PETIT OTAGE' WHERE id = ?",
+                              (rid,))
+                autre.commit()
+            except sqlite3.OperationalError:
+                saisie["refusee"] = True
+            finally:
+                autre.close()
+
+    conn = database.get_connection()
+    try:
+        conn.set_trace_callback(pendant)
+        database.reindex_all(conn)
+        conn.set_trace_callback(None)
+        texte = conn.execute("SELECT ocr_texte FROM regions WHERE id = ?", (rid,)).fetchone()[0]
+        tokens = [r[0] for r in conn.execute(
+            "SELECT texte FROM tokens WHERE region_id = ? ORDER BY ordre", (rid,))]
+    finally:
+        conn.close()
+    assert saisie["tentee"]
+    assert saisie["refusee"], "la saisie est passée entre la relecture et l'écriture"
+    assert tokens == texte.lower().split()
 
 
 @pytest.mark.parametrize("lemme,repli,exact", [

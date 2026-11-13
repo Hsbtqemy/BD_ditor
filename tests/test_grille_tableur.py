@@ -22,6 +22,10 @@ import grilles
 from grilles_decor import (LEA, MODELE, MODELE_LISTES, SAM, STAG, ZOE, csv_de, flux, importer,
                            monter, ok)
 
+# La grille de travail de chaque projet (ANN-7) n'est pas l'objet de ce fichier : cf.
+# `conftest.sans_grille_de_travail`.
+pytestmark = pytest.mark.usefixtures("sans_grille_de_travail")
+
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 # Le gabarit EN MOTS : les questions pour titres, les réponses en mots, une ligne de

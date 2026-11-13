@@ -988,13 +988,18 @@ def reconcilier_ouverte(conn, grille_id: int, version_id: int, avant: dict, apre
                 "fusionnez dans une entrée du fichier de même forme, posée de la même façon "
                 "(et qui porte ses variantes) : " + (", ".join(vers) or "aucune ici")
                 + " ; ou retirez-la", cle=cle_))
-        elif _fusion_en_double(conn, grille_id, version_id, cle_, reponse[1]):
-            fautes.append(_faute(
-                "fusion_en_double", f"fusionner « {e['libelle']} » dans « {reponse[1]} » "
-                "poserait deux fois, sur une même cible, une entrée qui ne s'y pose qu'une fois",
-                "retirez-la plutôt, ou retirez d'abord l'un des deux relevés", cle=cle_))
         else:
-            fusions.append({"de": cle_, "dans": reponse[1], "releves": n})
+            # `une` : la cardinalité EFFECTIVE de l'entrée d'arrivée, telle que la version
+            # l'écrira — ses relevés reportés la prennent (`_fusionner`).
+            une = _cardinalite_de(apres["entrees"][reponse[1]], apres) == "une"
+            if _fusion_en_double(conn, grille_id, version_id, cle_, reponse[1], une=une):
+                fautes.append(_faute(
+                    "fusion_en_double", f"fusionner « {e['libelle']} » dans « {reponse[1]} » "
+                    "poserait deux fois, sur une même cible, une entrée qui ne s'y pose qu'une "
+                    "fois — ou la même valeur deux fois",
+                    "retirez-la plutôt, ou retirez d'abord les relevés en trop", cle=cle_))
+            else:
+                fusions.append({"de": cle_, "dans": reponse[1], "releves": n, "une": une})
     # Ce qui change SOUS des relevés posés, dans une version vivante.
     for cle_, x in apres["entrees"].items():
         e = avant["entrees"].get(cle_)
@@ -1010,6 +1015,19 @@ def reconcilier_ouverte(conn, grille_id: int, version_id: int, avant: dict, apre
                     "gardez sa forme et sa liste ; pour changer, écrivez une autre entrée "
                     "et fusionnez-y celle-ci", cle=cle_,
                     colonne="forme" if champ == "forme" else "liste"))
+        if (_cardinalite_de(x, apres) == "une" and _cardinalite_de(e, avant) != "une"):
+            # J3 (« se tranchent en route », le plus prudent) : passer à « une seule fois »
+            # une entrée dont deux relevés vivent sur une même cible les ferait se contredire
+            # — la règle de `_fusion_en_double`. Sans contradiction, ses relevés suivent
+            # (`reporter_cardinalites`).
+            n = _cibles_en_double(conn, grille_id, version_id, cle_)
+            if n:
+                fautes.append(_faute(
+                    "cardinalite_contredite",
+                    f"« {e['libelle']} » passerait à « une seule fois » alors que {n} cible(s) "
+                    "en portent déjà plusieurs relevés",
+                    "retirez d'abord les relevés en trop, ou gardez « plusieurs »", cle=cle_,
+                    colonne="cardinalite"))
         for vc, n in employes.items():
             if vc is not None and vc not in x["variantes"]:
                 fautes.append(_faute(
@@ -1145,31 +1163,137 @@ def employes_qui_disparaissent(conn, grille_id: int, avants, apres: dict) -> lis
     return fautes
 
 
-def _fusion_en_double(conn, grille_id: int, version_id: int, de: str, dans: str) -> bool:
-    """Reporter les relevés de `de` sur `dans` poserait-il deux relevés « une seule fois »
-    de la même entrée sur la même cible ? L'index de la cardinalité le refuserait."""
+def _fusion_en_double(conn, grille_id: int, version_id: int, de: str, dans: str, *,
+                      une: bool) -> bool:
+    """Reporter les relevés de `de` sur `dans` ferait-il se contredire une cible ?
+
+    - `une` (la cardinalité EFFECTIVE de `dans`, telle que la version l'écrira) : une cible
+      qui porte un relevé de `de` en porterait alors PLUSIEURS de `dans` — ceux de `de`
+      entre eux compris : une étiquette « plusieurs » (« sentiment : perte », « sentiment :
+      tristesse » sur une même bulle, J3) ne se fond pas dans une entrée « une seule fois »
+      (relecture croisée du mode libre ; le refus d'un passage à « une », sur une fusion) ;
+    - sinon, la même VARIANTE deux fois sur une même cible entière — le doublon que la pose
+      refuse (J3, `releves.doublon`), qu'une fusion ne doit pas fabriquer."""
+    if une:
+        return conn.execute(
+            "SELECT 1 FROM releve WHERE grille_id = ? AND version_id = ? AND entree_cle IN "
+            "(?, ?) GROUP BY COALESCE(region_id, 0), COALESCE(planche_id, 0) "
+            "HAVING COUNT(*) > 1 AND SUM(entree_cle = ?) > 0 LIMIT 1",
+            (grille_id, version_id, de, dans, de)).fetchone() is not None
     return conn.execute(
         "SELECT 1 FROM releve a JOIN releve b ON COALESCE(a.region_id, 0) = "
         "COALESCE(b.region_id, 0) AND COALESCE(a.planche_id, 0) = COALESCE(b.planche_id, 0) "
-        "AND b.grille_id = a.grille_id AND b.entree_cle = ? AND b.une = 1 "
-        "WHERE a.grille_id = ? AND a.version_id = ? AND a.entree_cle = ? AND a.une = 1 "
+        "AND b.grille_id = a.grille_id AND b.version_id = a.version_id AND b.entree_cle = ? "
+        "WHERE a.grille_id = ? AND a.version_id = ? AND a.entree_cle = ? "
+        "AND a.variante_cle IS NOT NULL AND a.variante_cle = b.variante_cle "
+        "AND NOT EXISTS (SELECT 1 FROM releve_mot m WHERE m.releve_id IN (a.id, b.id)) "
         "LIMIT 1", (dans, grille_id, version_id, de)).fetchone() is not None
+
+
+def vers_sans_double(conn, grille_id: int, version_id: int, c: dict, cle_: str,
+                     vers: list) -> list:
+    """Parmi les entrées `vers` (`_vers_possibles`, une règle du contenu seul), celles où la
+    fusion de `cle_` ne serait pas refusée sur ses relevés (`_fusion_en_double`, la
+    cardinalité lue dans le contenu `c`) : ce que l'écran offre dans « Fusionner dans… »,
+    pour ne pas offrir ce que le serveur refuserait."""
+    return [k for k in vers
+            if not _fusion_en_double(conn, grille_id, version_id, cle_, k,
+                                     une=_cardinalite_de(c["entrees"][k], c) == "une")]
+
+
+def _cardinalite_de(e: dict, c: dict) -> str:
+    """La cardinalité EFFECTIVE d'une entrée du contenu `c` (`grilles.cardinalite_effective`,
+    sa cible ou celle de la version)."""
+    return grilles.cardinalite_effective(
+        e, grilles.cibles_de(e.get("cible")) or grilles.cibles_de(c.get("cible")))
+
+
+def _cibles_en_double(conn, grille_id: int, version_id: int, entree_cle: str) -> int:
+    """Le nombre de cibles qui portent PLUSIEURS relevés de cette entrée, dans la version."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM releve WHERE grille_id = ? AND version_id = ? "
+        "AND entree_cle = ? GROUP BY COALESCE(region_id, 0), COALESCE(planche_id, 0) "
+        "HAVING COUNT(*) > 1)", (grille_id, version_id, entree_cle)).fetchone()[0]
+
+
+def reporter_cardinalites(conn, grille_id: int, version_id: int, avant: dict,
+                          apres: dict) -> None:
+    """Après l'écriture d'une version VIVANTE : les relevés d'une entrée dont la cardinalité
+    EFFECTIVE a changé — déclarée, ou « Porte sur » qui change le défaut — suivent (`une`,
+    figé à la pose). Sans quoi, passée à « une seule fois », l'entrée gardait des relevés
+    `une = 0` que ni la relecture de la pose ni l'index ne voyaient, et recevait un second
+    relevé sur la même cible (mesuré par le cadrage du mode libre). `reconcilier_ouverte` a
+    refusé le passage à `une` d'une entrée qui se contredirait : l'index ne lève pas ici."""
+    for cle_, x in apres["entrees"].items():
+        e = avant["entrees"].get(cle_)
+        if e is None:
+            continue
+        neuve = _cardinalite_de(x, apres)
+        if neuve == _cardinalite_de(e, avant):
+            continue
+        conn.execute("UPDATE releve SET une = ? WHERE grille_id = ? AND version_id = ? "
+                     "AND entree_cle = ?", (int(neuve == "une"), grille_id, version_id, cle_))
+
+
+def reindexer_libelles(conn, grille_id: int, version_id: int, avant: dict, apres: dict,
+                       fusions=()) -> list:
+    """Après l'écriture d'une version VIVANTE (donc d'une grille ouverte, la seule dont les
+    libellés entrent dans l'index plein texte, J6) : les ÉTIQUETTES des régions dont un
+    relevé lit un libellé qui a CHANGÉ — une entrée, une variante, une case renommée —, et
+    celles des relevés FUSIONNÉS (`fusions`, avec leurs `releve_ids`), sont réécrites
+    (`database.reindex_etiquettes`). APRÈS `ecrire_plan` : c'est le plan neuf qu'elles
+    lisent. Un retrait, une entrée remise, un ordre ne changent aucun libellé. Rend les
+    régions réécrites."""
+    from database import regions_des_releves, reindex_etiquettes   # import paresseux
+    av_e, ap_e = avant["entrees"], apres["entrees"]
+    entrees = {k for k, x in ap_e.items() if k in av_e and av_e[k]["libelle"] != x["libelle"]}
+    variantes = {(k, vc) for k, x in ap_e.items() if k in av_e
+                 for vc, v in x["variantes"].items()
+                 if vc in av_e[k]["variantes"]
+                 and av_e[k]["variantes"][vc]["libelle"] != v["libelle"]}
+    cases = {(lc, qc) for lc, l in apres["listes"].items() if lc in avant["listes"]
+             for qc, q in l["qualificatifs"].items()
+             if qc in avant["listes"][lc]["qualificatifs"]
+             and avant["listes"][lc]["qualificatifs"][qc]["libelle"] != q["libelle"]}
+    regions = set(regions_des_releves(conn, [i for f in fusions
+                                             for i in f.get("releve_ids") or []]))
+    if entrees or variantes:
+        for r in conn.execute("SELECT region_id, entree_cle, variante_cle FROM releve "
+                              "WHERE grille_id = ? AND version_id = ? AND region_id IS NOT NULL",
+                              (grille_id, version_id)):
+            if r["entree_cle"] in entrees or (r["entree_cle"], r["variante_cle"]) in variantes:
+                regions.add(r["region_id"])
+    if cases:
+        listes = {k: x.get("liste_cle") for k, x in ap_e.items()}
+        for r in conn.execute("SELECT r.region_id, r.entree_cle, q.qualificatif_cle "
+                              "FROM releve r JOIN releve_qualificatif q ON q.releve_id = r.id "
+                              "WHERE r.grille_id = ? AND r.version_id = ? "
+                              "AND r.region_id IS NOT NULL", (grille_id, version_id)):
+            if (listes.get(r["entree_cle"]), r["qualificatif_cle"]) in cases:
+                regions.add(r["region_id"])
+    reindex_etiquettes(conn, regions)
+    return sorted(regions)
 
 
 def _fusionner(conn, grille_id: int, version_id: int, fusion: dict) -> list:
     """Reporte les relevés d'une entrée sur une autre (« fusionner dans… »), et rend leurs
     identifiants. `reconcilier_ouverte` a dit le doublon d'une cardinalité `une` ; relu ici
-    sous le verrou de l'appelant, il refuse encore, au lieu de tomber sur l'index."""
+    sous le verrou de l'appelant, il refuse encore, au lieu de tomber sur l'index. Les relevés
+    reportés prennent le drapeau `une` de l'entrée d'arrivée (`fusion["une"]`, sa cardinalité
+    effective) : sans quoi, née « plusieurs », l'étiquette fondue laissait à une entrée « une
+    seule fois » des relevés `une = 0`, que ni la pose ni l'index ne voyaient."""
     ids = [r[0] for r in conn.execute(
         "SELECT id FROM releve WHERE grille_id = ? AND version_id = ? AND entree_cle = ? "
         "ORDER BY id", (grille_id, version_id, fusion["de"]))]
-    if _fusion_en_double(conn, grille_id, version_id, fusion["de"], fusion["dans"]):
+    if _fusion_en_double(conn, grille_id, version_id, fusion["de"], fusion["dans"],
+                         une=fusion["une"]):
         raise Refus(409, f"Fusionner « {fusion['de']} » dans « {fusion['dans']} » poserait "
                          "deux fois une entrée qui ne se pose qu'une fois sur la même cible. "
                          "Retirez-la plutôt, ou retirez d'abord l'un des deux relevés. Rien "
                          "n'est importé.")
-    conn.execute("UPDATE releve SET entree_cle = ? WHERE grille_id = ? AND version_id = ? "
-                 "AND entree_cle = ?", (fusion["dans"], grille_id, version_id, fusion["de"]))
+    conn.execute("UPDATE releve SET entree_cle = ?, une = ? WHERE grille_id = ? "
+                 "AND version_id = ? AND entree_cle = ?",
+                 (fusion["dans"], int(fusion["une"]), grille_id, version_id, fusion["de"]))
     return ids
 
 
@@ -1189,7 +1313,9 @@ def ecrire_version(conn: sqlite3.Connection, grille_id: int, c: dict, *, numero:
 
 
 def ecrire_plan(conn: sqlite3.Connection, vid: int, c: dict) -> None:
-    """Les lignes du plan d'une version, depuis un contenu normalisé."""
+    """Les lignes du plan d'une version, depuis un contenu normalisé. Une entrée qui ne dit
+    pas son ÉTAT (un tableur ne le porte pas) est ÉCRITE, donc DÉFINIE (J4) — même dans une
+    grille ouverte : seule une entrée née en posant naît provisoire."""
     conn.executemany(
         "INSERT INTO grille_rubrique (version_id, cle, libelle, parent_cle, rang) "
         "VALUES (?, ?, ?, ?, ?)",
@@ -1198,10 +1324,11 @@ def ecrire_plan(conn: sqlite3.Connection, vid: int, c: dict) -> None:
         conn.execute(
             "INSERT INTO grille_entree (version_id, cle, rubrique_cle, rang, forme, libelle, "
             "definition, structure, piege, precision, lien, cible, cardinalite, liste_cle, "
-            "retiree) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "retiree, etat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (vid, k, e["rubrique_cle"], e["rang"], e["forme"], e["libelle"], e["definition"],
              e["structure"], e["piege"], e["precision"], int(bool(e["lien"])), e["cible"],
-             e["cardinalite"], e["liste_cle"], int(bool(e.get("retiree")))))
+             e["cardinalite"], e["liste_cle"], int(bool(e.get("retiree"))),
+             e.get("etat") or grilles.ENTREE_DEFINIE))
         for i, texte in enumerate(e["exemples"]):
             conn.execute("INSERT INTO grille_exemple (version_id, entree_cle, variante_cle, "
                          "rang, texte) VALUES (?, ?, NULL, ?, ?)", (vid, k, i, texte))
@@ -1411,6 +1538,13 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
     else:
         gid = g["id"]
     etat = grilles.ETAT_VIVANTE if ouverte else grilles.ETAT_BROUILLON
+    # Une entrée que le fichier porte DÉJÀ garde son état (v39) : le tableur ne le dit pas,
+    # et réimporter ne change pas ce qu'elle était — une étiquette née en posant reste
+    # provisoire tant qu'un responsable ne l'a pas définie. Une entrée neuve est définie
+    # (`ecrire_plan`).
+    for k, e in c["entrees"].items():
+        if "etat" not in e and avant is not None and k in avant["entrees"]:
+            e["etat"] = avant["entrees"][k]["etat"]
     trace = {}
     en_place = reference if vivante else brouillon
     if en_place is not None:
@@ -1426,6 +1560,9 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
                      "importee_par = ?, importee_le = datetime('now') WHERE id = ?",
                      (c["cible"], note, emp, par, en_place["id"]))
         ecrire_plan(conn, en_place["id"], c)
+        if vivante:
+            reporter_cardinalites(conn, gid, en_place["id"], avant, c)
+            reindexer_libelles(conn, gid, en_place["id"], avant, c, fusions)
         numero = en_place["numero"]
     else:
         derniere = grilles.derniere_version(conn, gid)
@@ -1477,6 +1614,65 @@ def installer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees, flux_li
     return gid
 
 
+def installer_grille_de_travail(conn: sqlite3.Connection, projet_id: int, *,
+                                agent: str | None = None,
+                                agent_type: str = "humain") -> int | None:
+    """La grille de TRAVAIL d'un projet qui naît (ANN-7, le basculement ; Hugo, 2026-11-05) :
+    OUVERTE, VIDE, sur toute zone (les types de `grilles.CIBLES_ZONE`), active dans sa
+    version vivante 1, et à PERSONNE — aucun `cree_par`, comme la grille d'un bac à sable : le
+    journal garde seul l'acte, sous `grille`. Tout annotateur y fait naître une étiquette en
+    la posant (G14), « lieu : forêt » compris (`routes/releves._entree_neuve`).
+
+    Rien d'une grille n'est dans le code : une grille vide et nommée n'est pas un vocabulaire,
+    et son nom vit dans `config.GRILLE_DE_TRAVAIL_NOM`. Elle se DÉSIGNE par son drapeau
+    (`grille.travail`, J2, v39 : au plus une par projet), et non par ce nom, qui se change.
+    Jamais dans le projet de jeu ; rien si le projet a déjà la sienne (rejouée, elle ne double
+    rien). Une autre grille du projet qui porterait déjà ce nom lui laisse le sien : la
+    grille de travail prend « … 2 », « … 3 » (un nom est unique dans son projet). Ne commite
+    pas ; rend l'identifiant, ou None. `agent`, `agent_type` : qui la journalise — par défaut
+    l'humain de la requête, qui fait naître le projet ; la migration v39 se nomme."""
+    import database                              # import paresseux, cf. `importer`
+    import journal
+    from config import GRILLE_DE_TRAVAIL_NOM, GRILLE_DE_TRAVAIL_NOTE
+    if database.est_jeu(conn, projet_id) or conn.execute(
+            "SELECT 1 FROM grille WHERE projet_id = ? AND travail = 1",
+            (projet_id,)).fetchone():
+        return None
+    nom, n = GRILLE_DE_TRAVAIL_NOM, 1
+    while nom_pris(conn, projet_id, nom):
+        n += 1
+        nom = f"{GRILLE_DE_TRAVAIL_NOM} {n}"
+    cible = grilles.ecrire_cibles(grilles.CIBLES_ZONE)
+    gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte, travail) "
+                       "VALUES (?, ?, 1, 1)", (projet_id, nom)).lastrowid
+    ecrire_version(conn, gid, {"cible": cible, "rubriques": {}, "entrees": {}, "listes": {}},
+                   numero=1, etat=grilles.ETAT_VIVANTE, note=GRILLE_DE_TRAVAIL_NOTE, par=None)
+    journal.journaliser(conn, "creation", "grille", gid,
+                        apres={"projet_id": projet_id, "nom": nom,
+                               "ouverte": True, "porte_sur": cible, "travail": True,
+                               "version": {"numero": 1, "etat": grilles.ETAT_VIVANTE}},
+                        agent=agent, agent_type=agent_type)
+    activer(conn, projet_id=projet_id, grille_id=gid, numero=1, agent=agent,
+            agent_type=agent_type)
+    return gid
+
+
+def grille_sans_rien(conn: sqlite3.Connection, grille_id: int) -> bool:
+    """La grille de TRAVAIL d'un projet (`grille.travail`, J2) qui ne porte RIEN : aucune
+    entrée dans aucune de ses versions, aucun relevé, aucune passe. Elle n'est pas un
+    vocabulaire — née avec le projet, on n'y a rien posé — et part avec son projet
+    (`socle._supprimer_projet`). Toute AUTRE grille, même vide, a été créée exprès : elle
+    retient son projet (G18)."""
+    porte = conn.execute(
+        "SELECT NOT COALESCE((SELECT travail FROM grille WHERE id = ?), 0), "
+        "       EXISTS (SELECT 1 FROM grille_entree e JOIN grille_version v "
+        "               ON v.id = e.version_id WHERE v.grille_id = ?), "
+        "       EXISTS (SELECT 1 FROM releve WHERE grille_id = ?), "
+        "       EXISTS (SELECT 1 FROM passe WHERE grille_id = ?)",
+        (grille_id, grille_id, grille_id, grille_id)).fetchone()
+    return not any(porte)
+
+
 def version_activable(conn: sqlite3.Connection, grille_id: int):
     """La version qu'on ACTIVERAIT sans en dire le numéro : la vivante d'une grille ouverte,
     la publiée la plus récente d'une fermée ; None s'il n'y en a pas (un brouillon seul)."""
@@ -1488,7 +1684,7 @@ def version_activable(conn: sqlite3.Connection, grille_id: int):
 
 
 def activer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, numero: int,
-            par=None) -> bool:
+            par=None, agent: str | None = None, agent_type: str = "humain") -> bool:
     """ACTIVE la grille sur le projet dans la version `numero` (R4) — publiée pour une
     grille fermée, vivante pour une ouverte. Un projet n'active que SES grilles (le
     catalogue n'existe pas) ; une grille retirée ne s'active plus ; changer la version
@@ -1526,7 +1722,8 @@ def activer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, numero:
     journal.journaliser(conn, "lien", "grille", grille_id,
                         avant={"projet_id": projet_id, "version": act["numero"]}
                         if act else None,
-                        apres={"projet_id": projet_id, "version": v["numero"]})
+                        apres={"projet_id": projet_id, "version": v["numero"]},
+                        agent=agent, agent_type=agent_type)
     return True
 
 

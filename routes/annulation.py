@@ -27,8 +27,7 @@ import conflit
 import undo
 from pipeline import nlp
 
-from socle import (_get_personnage, _get_planche, _get_region, _get_valeur, db,
-                   portee_courante)
+from socle import _get_personnage, _get_planche, _get_region, db, portee_courante
 
 router = APIRouter()
 
@@ -50,25 +49,36 @@ def _ecrivable(conn: sqlite3.Connection, portee: autorisation.Portee):
             # l'écrire ne demande que d'écrire quelque part — le plancher de la route.
             for pid in lieux.get("personnages", []):
                 _get_personnage(conn, portee, pid)
-            # ANN-8 — la valeur d'un attribut de case que rendrait l'annulation d'une
-            # suppression : un terme, qui se VOIT par la portée des termes. La route qui la
-            # pose ne demande que de la voir (`_affecter`) : la même question ici.
-            for vid in lieux.get("valeurs", []):
-                _get_valeur(conn, portee, vid)
-            # ANN-8 — un tag que l'annulation retrouverait par sa CLÉ (`undo._tag_a_rendre`)
-            # doit être un tag que l'agent VOIT : sinon, deux lignes de même clé lui feraient
-            # poser celle d'une collection qu'il ne lit pas.
-            ou, params = portee.clause_terme("t.collection_id")
-            for tid in lieux.get("tags", []):
-                if conn.execute(f"SELECT 1 FROM tags t WHERE t.id = ? AND {ou}",
-                                (tid, *params)).fetchone() is None:
+            # « ↕ Ranger » (ANN-7, le mode libre) : la grille de travail, que l'agent doit
+            # pouvoir ranger MAINTENANT — la question de la route.
+            for gid in lieux.get("grilles", []):
+                if not _peut_ranger(conn, portee, gid):
                     return False
+            # (ANN-8 y éprouvait aussi la valeur d'un attribut de case et le tag que
+            # l'annulation reposerait : le basculement d'ANN-7 les a retirés.)
         except HTTPException as refus:
             if refus.status_code == 404:
                 return False
             raise
         return True
     return peut
+
+
+def _peut_ranger(conn: sqlite3.Connection, portee: autorisation.Portee, grille_id: int) -> bool:
+    """L'agent peut-il ranger les étiquettes de cette grille, maintenant ? La question de
+    `PUT /api/grilles/{id}/ordre` (`Portee.peut_remanier_entree`, geste « ranger ») ; une
+    grille qu'il ne lit plus : non, sans rien dire d'elle."""
+    ou, params = portee.clause_grille("g.id")
+    g = conn.execute(f"SELECT g.* FROM grille g WHERE g.id = ? AND {ou}",
+                     (grille_id, *params)).fetchone()
+    if g is None:
+        return False
+    vivante = conn.execute("SELECT 1 FROM grille_version WHERE grille_id = ? "
+                           "AND etat = 'vivante'", (grille_id,)).fetchone() is not None
+    return portee.peut_remanier_entree(
+        g["projet_id"], "ranger", ouverte=bool(g["ouverte"]) and vivante, provisoire=False,
+        travail=bool(g["travail"]),
+        annotateur=autorisation.ecrit_dans_le_projet(conn, portee, g["projet_id"]))
 
 
 def _ecrit_quelque_part(portee: autorisation.Portee) -> bool:
@@ -97,8 +107,7 @@ def _agent_undo(portee: autorisation.Portee):
 def undo_prochain(conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     """Aperçu : ce que ferait la prochaine annulation (ou `null` s'il n'y a rien à annuler)."""
-    return undo.apercu(conn, agent=_agent_undo(portee),
-                       voit=undo.voit_valeur(_ecrivable(conn, portee)))
+    return undo.apercu(conn, agent=_agent_undo(portee))
 
 
 @router.post("/api/undo")
@@ -213,4 +222,4 @@ def undo_passer(payload: PasserIn, conn: sqlite3.Connection = Depends(db),
     undo.ecarter(conn, e)
     conn.commit()
     return {"evenement_id": e["id"],
-            "description": undo.apercu_de(e, voit=undo.voit_valeur(ecrivable))}
+            "description": undo.apercu_de(e)}

@@ -4,6 +4,7 @@ Le décor de la relecture croisée (cadrage) : une base qui porte le jeu, trois 
 dont un expiré, une copie gardée au fonds dans l'un, un document importé dans un autre — et
 un vrai projet à côté, qui ne doit rien perdre.
 """
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from test_bac_a_sable import DOC_GRAMMAIRE, HUGO, LEA, RESP, SAM, _copie, _sql
 from test_jeu import DOC_EXEMPLE, DOC_PARCOURS, DOC_STOCK_SERVEUR, ecrire_jeu
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+import crosswalk_depot  # noqa: E402
 import effacer_bacs_a_sable  # noqa: E402
 import preparer_jeu  # noqa: E402
 
@@ -62,8 +64,11 @@ def decor(client, db_path, jeu, derriere_proxy):
     planche = _copie({"bac": bac, "db": db_path}, "exemple")["planche_ids"][0]
     region = client.post(f"/api/planches/{planche}/regions", headers=SAM,
                          json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()["id"]
-    client.put(f"/api/regions/{region}/annotation", headers=SAM,
-               json={"note": "essai", "tags": ["mot-de-sam"]})
+    client.put(f"/api/regions/{region}/annotation", headers=SAM, json={"note": "essai"})
+    # Un tag d'hier né local au bac, posé en base : aucune route ne le pose plus (ANN-7).
+    from conftest import poser_tags
+    poser_tags(db_path, region, ["mot-de-sam"], espace=bac["id"],
+               collection_id=bac["base"]["id"])
     client.post("/api/collections", headers=SAM,
                 json={"nom": "Chez Sam", "projet_id": bac["id"]})
     # Le bac à sable de resp, avec une copie GARDÉE au fonds ; celui de hugo, expiré. Rien
@@ -114,6 +119,25 @@ def _effacer(projet_id, portee=autorisation.TOTALE, motif="effacement"):
 # --------------------------------------------------------------------------- #
 # Le chemin de l'effacement
 # --------------------------------------------------------------------------- #
+def test_le_vocabulaire_d_un_bac_efface_ne_sort_pas_au_depot_d_une_vraie_collection(
+        client, decor):
+    """ANN-7, le basculement (relecture croisée du commit des coutures, constat 1). La v39
+    a détruit les tables du vocabulaire d'hier : l'effacement d'un bac à sable n'a plus rien
+    à en décider, et rien du tag né dans le bac — que le journal nomme encore — ne sort au
+    dépôt d'une VRAIE collection. Anti-vacuité, la notice nomme sa collection."""
+    def notice():
+        conn = database.get_connection()
+        try:
+            return json.dumps(crosswalk_depot.construire(conn, collection_id=decor["col"]),
+                              ensure_ascii=False)
+        finally:
+            conn.close()
+    avant = notice()
+    assert "Corpus" in avant and "mot-de-sam" not in avant
+    _effacer(decor["bac"]["id"])
+    assert "mot-de-sam" not in notice(), "le tag du bac effacé sort au dépôt"
+
+
 def test_effacer_un_bac_a_sable_emporte_tout_ce_qu_il_porte(client, decor):
     db, pid = decor["db"], decor["bac"]["id"]
     avant = _etat_du_reel(db)
@@ -125,8 +149,6 @@ def test_effacer_un_bac_a_sable_emporte_tout_ce_qu_il_porte(client, decor):
     assert _sql(db, "SELECT COUNT(*) AS n FROM projet_acces WHERE projet_id = ?",
                 (pid,)) == [{"n": 0}]
     assert _sql(db, f"SELECT id FROM collection WHERE projet_id = ?", (pid,)) == []
-    # Le tag né local part avec lui ; il ne devient pas global.
-    assert _sql(db, "SELECT id FROM tags WHERE label = 'mot-de-sam'") == []
     # Le document importé part avec sa dernière copie, et ses images.
     assert _sql(db, "SELECT id FROM albums WHERE id = ?", (decor["importe"],)) == []
     assert images_importees and not any((decor["data"] / c).exists()

@@ -24,6 +24,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 from playwright.sync_api import expect  # noqa: E402
+from config import GRILLE_DE_TRAVAIL_NOM  # noqa: E402
 
 from conftest import ECRITURE, du_projet, make_png  # noqa: E402
 from grilles_decor import grille_active_vivante  # noqa: E402
@@ -529,6 +530,32 @@ def test_creer_une_entree_dans_une_grille_ouverte_et_releves(page, decor):
                                                                                     timeout=15000)
 
 
+def test_lieu_foret_se_pose_dans_la_grille_de_travail(page, decor):
+    """ANN-7, le basculement (« Les variables aussi », Hugo, 2026-11-05) : dans la grille de
+    travail du projet, « lieu : forêt » se crée en le tapant, puis « lieu : grotte »
+    s'ajoute à l'entrée qui existe ; « lieu : forêt » retapé ne propose plus de créer. Le
+    mode libre (maquette du 2026-11-06) : on tape dans le champ de création, À LUI ; le
+    filtre de l'onglet ne crée plus rien."""
+    with _http(decor) as c:
+        actives = c.get(f"/api/projets/{decor['projet']}/grilles").json()["actives"]
+    travail = next(g["id"] for g in actives if g["nom"] == GRILLE_DE_TRAVAIL_NOM)
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f"#an-onglet-{travail}").click()
+    champ = page.locator("#an-creer")
+    champ.fill("lieu : forêt")
+    expect(page.locator("#an-quoi")).to_contain_text("Créer « lieu : forêt » et poser")
+    champ.press("Enter")
+    expect(page.locator("#an-annonce")).to_contain_text("Posé")
+    poses = [x for x in _releves(decor) if x["grille_id"] == travail]
+    assert [(x["entree_cle"], x["variante_cle"]) for x in poses] == [("lieu", "foret")]
+    champ.fill("lieu : grotte")
+    expect(page.locator("#an-quoi")).to_contain_text("Ajouter « grotte » à « lieu » et poser")
+    champ.fill("lieu : Forêt")
+    expect(page.locator("#an-quoi [data-quoi]")).to_have_attribute("aria-disabled", "true")
+    page.locator("#an-filtre").fill("lieu : grotte")
+    expect(page.locator("#an-resultats .an-res-creer")).to_have_count(0)
+
+
 # --------------------------------------------------------------------------- #
 # « Terminée », le parcours, Ctrl+Z (commit 4)
 # --------------------------------------------------------------------------- #
@@ -866,15 +893,17 @@ def test_synthese_releves_par_case_puis_decompte(page, decor):
     expect(_mot(page, 0)).to_have_attribute("aria-selected", "true")
     # Le Décompte : toute la planche, par rubrique, entrée, variante ; zones terminées.
     page.locator('#an-syn-vues [data-syn="decompte"]').click()
-    expect(corps.locator(".an-dc-titre")).to_contain_text("Signaux · 4")
-    expect(corps.locator(".an-dc-titre")).to_contain_text("zones terminées 0 / 5")
+    # Une grille par titre : « Signaux », et la grille de travail du projet (ANN-7), vide.
+    titre = corps.locator(".an-dc-titre", has_text="Signaux")
+    expect(titre).to_contain_text("Signaux · 4")
+    expect(titre).to_contain_text("zones terminées 0 / 5")
     lignes = corps.locator(".an-dc-l")
     expect(lignes.filter(has_text="crié")).to_contain_text("1")
     expect(lignes.filter(has_text="A. Sons")).to_contain_text("2")
     # Cette zone : la bulle, sa case et la planche — le regard de c2 n'y est pas.
     corps.locator('[data-portee="zone"]').click()
-    expect(corps.locator(".an-dc-titre")).to_contain_text("Signaux · 3")
-    expect(corps.locator(".an-dc-titre")).to_contain_text("zones terminées 0 / 3")
+    expect(titre).to_contain_text("Signaux · 3")
+    expect(titre).to_contain_text("zones terminées 0 / 3")
     expect(lignes.filter(has_text="regard caméra")).to_have_count(0)
     # Le retour à la planche : la minicarte est là, la Synthèse cachée.
     page.locator("#an-ong-planche").click()
@@ -2729,8 +2758,10 @@ def _deuxieme_grille(d, nom="Lexique"):
 def test_un_onglet_de_grille_non_ouvert_garde_le_focus(page, decor, touche):
     _deuxieme_grille(decor)
     _ouvrir(page, decor, decor["bulle"])
-    fermee = page.locator('#an-onglets [aria-selected="false"]').get_attribute("data-grille")
-    onglet = page.locator(f"#an-onglet-{fermee}")
+    # « Lexique » s'ouvre (l'ordre des noms) ; le projet a aussi sa grille de travail
+    # (ANN-7) : l'onglet non ouvert se désigne par sa grille, « Signaux ».
+    onglet = page.locator(f"#an-onglet-{decor['grille']}")
+    expect(onglet).to_have_attribute("aria-selected", "false")
     _au_clavier(page, page.locator('#an-onglets [aria-selected="true"]'))
     onglet.focus()                                 # tabindex="-1" : un non-ouvert n'a pas de Tab
     page.keyboard.press(touche)
@@ -2750,7 +2781,8 @@ def test_les_cases_de_releves_gardent_le_focus(page, decor, touche):
     _deuxieme_grille(decor)
     _ouvrir(page, decor, decor["bulle"])
     page.locator("#an-releves-btn").click()
-    autre = page.locator("#an-releves-pop [data-voir]:not([disabled])").get_attribute("data-voir")
+    autre = page.locator("#an-releves-pop [data-voir]:not([disabled])").first.get_attribute(
+        "data-voir")
     case = page.locator(f'#an-releves-pop [data-voir="{autre}"]')
     expect(case).to_be_visible()
     _au_clavier(page, case)
@@ -4299,3 +4331,377 @@ def test_actualiser_et_changer_de_case_gardent_la_designation(page, decor):
     expect(page.locator("#an-mini-mode")).to_be_hidden()
     assert next(r for r in _releves(decor) if r["id"] == lien["id"])["lien"]["region_id"] \
         == decor["cartouche"]
+
+
+def test_une_etiquette_nee_ailleurs_se_signale_et_actualiser_la_montre(page, decor):
+    """ANN-7, le mode libre : le plan d'une grille OUVERTE change sans changer de version —
+    une étiquette écrite sur un autre écran ne paraissait qu'au rechargement. L'empreinte de la
+    planche porte le plan (`plans`) : « ⟳ Actualiser » paraît, et le plan relu la montre."""
+    with _http(decor) as c:
+        actives = c.get(f"/api/projets/{decor['projet']}/grilles").json()["actives"]
+    travail = next(g["id"] for g in actives if g["travail"])
+    _ouvrir(page, decor, decor["bulle"])
+    page.locator(f"#an-onglet-{travail}").click()
+    bouton = page.locator("#an-actualiser")
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_hidden()
+    with _http(decor) as c:
+        r = c.post(f"/api/grilles/{travail}/entrees", json={"libelle": "écrite ailleurs"})
+        assert r.status_code == 201, r.text
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_visible()
+    expect(bouton).to_have_attribute(
+        "title", "La planche a changé ailleurs : des étiquettes. "
+                 "Actualiser la recharge, sans perdre votre saisie.")
+    expect(page.locator("#an-plan", has_text="écrite ailleurs")).to_have_count(0)
+    bouton.click()
+    expect(bouton).to_be_hidden()
+    expect(page.locator("#an-plan", has_text="écrite ailleurs")).to_have_count(1)
+
+
+# --------------------------------------------------------------------------- #
+# Le MODE LIBRE — l'écran tranché sur maquette par Hugo le 2026-11-06
+# --------------------------------------------------------------------------- #
+def _travail(d):
+    with _http(d) as c:
+        actives = c.get(f"/api/projets/{d['projet']}/grilles").json()["actives"]
+    return next(g["id"] for g in actives if g["travail"])
+
+
+def _plan_du_travail(d, gid):
+    with _http(d) as c:
+        return c.get(f"/api/grilles/{gid}/versions/1").json()
+
+
+def _ordre_ecrit(d, gid):
+    return [e["libelle"] for e in _plan_du_travail(d, gid)["entrees"] if not e["retiree"]]
+
+
+def _poser_libre(c, region, gid, libelle):
+    r = c.post("/api/releves", json={"region_id": region, "grille_id": gid, "version": 1,
+                                     "nouvelle_entree": {"libelle": libelle}})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def _libre(page, d):
+    """Ouvre la page sur la bulle, puis l'onglet « Mode libre »."""
+    gid = _travail(d)
+    _ouvrir(page, d, d["bulle"])
+    page.locator(f"#an-onglet-{gid}").click()
+    expect(page.locator("#an-creer")).to_be_visible()
+    return gid
+
+
+def test_un_projet_neuf_n_a_que_le_champ_ni_tiret_ni_sans_rubrique(page, live_server):
+    """Point 8 de la maquette : le champ seul — jamais un tiret, jamais « Sans rubrique » —,
+    et la première étiquette ne fait rien sauter."""
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=180,
+                      headers=ECRITURE) as c:
+        aid = c.post("/api/albums", json={"titre": "Neuf"}).json()["id"]
+        pid = c.post(f"/api/albums/{aid}/import",
+                     files={"file": ("p.png", make_png(800, 1000), "image/png")}).json()["id"]
+        case = c.post(f"/api/planches/{pid}/regions",
+                      json={"type": "case", "x": 20, "y": 20, "w": 700, "h": 900}).json()["id"]
+        bulle = c.post(f"/api/planches/{pid}/regions",
+                       json={"type": "bulle", "x": 60, "y": 60, "w": 200, "h": 120,
+                             "parent_id": case}).json()["id"]
+    page.goto(f"{live_server}/annotation?album={aid}&planche={pid}&region={bulle}",
+              wait_until="networkidle")
+    onglets = page.locator("#an-onglets [role=tab]")
+    expect(onglets).to_have_count(1, timeout=15000)
+    expect(onglets).to_have_text(["Mode libre"])
+    expect(onglets.first).to_have_attribute("aria-selected", "true")
+    champ = page.locator("#an-creer")
+    expect(champ).to_be_visible()
+    expect(champ).to_have_attribute("placeholder", "+ Nouvelle étiquette…")
+    expect(page.locator("#an-plan")).to_have_text("")
+    expect(page.locator("#an-porte")).not_to_contain_text("—")
+    expect(page.locator("#an-porte")).to_contain_text("toute la bulle")
+    ordre = page.locator("#an-libre-ordre")
+    assert ordre.evaluate("(e) => getComputedStyle(e).visibility") == "hidden"
+    hauteur = lambda: page.evaluate(  # noqa: E731
+        "() => Math.round(document.querySelector('.an-gr-tete').getBoundingClientRect().height)")
+    avant = hauteur()
+    champ.fill("ironie")
+    quoi = page.locator("#an-quoi")
+    expect(quoi).to_be_visible()
+    expect(quoi).to_contain_text("Créer « ironie » et poser")
+    # La ligne FLOTTE : elle ne pousse ni l'en-tête ni la liste.
+    assert hauteur() == avant
+    with page.expect_response(lambda r: r.url.endswith("/api/releves")
+                              and r.request.method == "POST") as rep:
+        champ.press("Enter")
+    assert rep.value.status == 201, rep.value.text()
+    ironie = page.locator("#an-plan [role=checkbox]", has_text="ironie")
+    expect(ironie).to_have_attribute("aria-checked", "true")
+    expect(champ).to_have_value("")
+    expect(champ).to_be_focused()
+    expect(page.locator("#an-plan")).not_to_contain_text("Sans rubrique")
+    assert ordre.evaluate("(e) => getComputedStyle(e).visibility") == "visible"
+    assert hauteur() == avant
+
+
+def test_depuis_une_grille_fermee_creer_dans_mode_libre_sans_changer_d_onglet(page, decor):
+    gid = _travail(decor)
+    _ouvrir(page, decor, decor["bulle"])
+    signaux = page.locator(f"#an-onglet-{decor['grille']}")
+    expect(signaux).to_have_attribute("aria-selected", "true")
+    # Le Mode libre est le PREMIER onglet, et s'appelle ainsi quel que soit son nom.
+    expect(page.locator("#an-onglets [role=tab]").first).to_have_text("Mode libre")
+    page.locator("#an-filtre").fill("mélancolie")
+    ligne = page.locator("#an-resultats .an-res-creer")
+    expect(ligne).to_contain_text("Créer « mélancolie » dans Mode libre")
+    expect(page.locator("#an-resultats .an-res-vide")).to_have_text("Rien pour « mélancolie »")
+    expect(page.locator("#an-filtre")).to_have_attribute("aria-activedescendant", "an-res-0")
+    with page.expect_response(lambda r: r.url.endswith("/api/releves")
+                              and r.request.method == "POST") as rep:
+        page.locator("#an-filtre").press("Enter")
+    assert rep.value.status == 201, rep.value.text()
+    expect(page.locator("#an-annonce")).to_have_text("Posé : mélancolie (Mode libre)")
+    expect(signaux).to_have_attribute("aria-selected", "true")
+    expect(page.locator("#an-filtre")).to_have_value("")
+    poses = [r for r in _releves(decor) if r["grille_id"] == gid]
+    assert len(poses) == 1 and poses[0]["region_id"] == decor["bulle"]
+    # Un nom auquel la grille fermée répond ne se propose pas ailleurs.
+    page.locator("#an-filtre").fill("cri")
+    expect(page.locator("#an-resultats .an-res").first).to_be_visible()
+    expect(page.locator("#an-resultats .an-res-creer")).to_have_count(0)
+
+
+def test_point_virgule_pose_plusieurs_valeurs_et_les_puces_se_cochent(page, decor):
+    gid = _libre(page, decor)
+    onglet = page.locator(f"#an-onglet-{gid}")
+    expect(onglet).to_contain_text("Mode libre")
+    champ = page.locator("#an-creer")
+    champ.fill("sentiment : perte ; tristesse")
+    expect(page.locator("#an-quoi")).to_contain_text(
+        "Créer « sentiment : perte, tristesse » et poser")
+    with page.expect_response(lambda r: r.url.endswith("/api/releves")
+                              and r.request.method == "POST"
+                              and "tristesse" in (r.request.post_data or "")):
+        champ.press("Enter")
+    expect(champ).to_have_value("")
+    vus = lambda: sorted(r["variante_cle"] for r in _releves(decor) if r["grille_id"] == gid)  # noqa: E731
+    assert vus() == ["perte", "tristesse"]
+    perte = page.locator("#an-plan .an-var", has_text="perte")
+    tristesse = page.locator("#an-plan .an-var", has_text="tristesse")
+    expect(perte).to_have_attribute("aria-pressed", "true")
+    expect(tristesse).to_have_attribute("aria-pressed", "true")
+    ent = page.locator('#an-plan [data-ent="sentiment"]')
+    expect(ent).not_to_contain_text("une parmi")
+    expect(ent).not_to_contain_text("plusieurs")
+    expect(page.locator("#an-plan")).not_to_contain_text("Sans rubrique")
+    # Décocher retire CETTE valeur, et elle seule ; cocher la repose.
+    with page.expect_response(lambda r: "/api/releves/" in r.url and r.request.method == "DELETE"):
+        perte.click()
+    expect(perte).to_have_attribute("aria-pressed", "false")
+    expect(tristesse).to_have_attribute("aria-pressed", "true")
+    assert vus() == ["tristesse"]
+    with page.expect_response(lambda r: r.url.endswith("/api/releves") and r.request.method == "POST"):
+        perte.click()
+    expect(perte).to_have_attribute("aria-pressed", "true")
+    assert vus() == ["perte", "tristesse"]
+    # Ce qu'Entrée ferait se dit, éteint, quand tout est déjà posé.
+    champ.fill("sentiment : perte")
+    off = page.locator("#an-quoi [data-quoi]")
+    expect(off).to_have_attribute("aria-disabled", "true")
+    expect(off).to_contain_text("« sentiment : perte » est déjà posée ici")
+    champ.press("Enter")
+    page.wait_for_timeout(300)
+    assert vus() == ["perte", "tristesse"]
+    # Entrée sur un nom qui existe pose l'existante, avec la valeur nouvelle.
+    champ.fill("SENTIMENT : joie")
+    expect(page.locator("#an-quoi")).to_contain_text("Ajouter « joie » à « sentiment » et poser")
+
+
+def test_crayon_renomme_en_place_definit_et_passer_dit_son_bilan_eteint(page, decor):
+    gid = _travail(decor)
+    with _http(decor) as c:
+        _poser_libre(c, decor["bulle"], gid, "ironie")
+    _libre(page, decor)
+    crayon = page.locator('#an-plan [data-crayon="ironie"]')
+    expect(crayon).to_have_attribute("aria-label", "Modifier « ironie »")
+    crayon.click()
+    nom = page.locator('#an-plan [data-renom="ironie"]')
+    expect(nom).to_be_focused()
+    etat = page.locator('#an-plan [data-ent="ironie"] .an-etat-ent')
+    expect(etat).to_have_text("provisoire")
+    expect(etat).to_have_attribute("title", re.compile("Née en la tapant"))
+    nom.fill("ironie mordante")
+    with page.expect_response(lambda r: "/entrees/ironie" in r.url and r.request.method == "PATCH") as rep:
+        nom.press("Enter")
+    assert rep.value.status == 200, rep.value.text()
+    expect(page.locator("#an-annonce")).to_have_text("Renommée : ironie mordante")
+    assert "ironie mordante" in _ordre_ecrit(decor, gid)
+    expect(nom).to_have_value("ironie mordante")
+    # « Définir » : le geste du responsable ; l'état se lit dans ✎, à côté du nom.
+    with page.expect_response(lambda r: "/entrees/ironie" in r.url and r.request.method == "PATCH"):
+        page.locator('#an-plan [data-geste="etat"][data-c="ironie"]').click()
+    expect(etat).to_have_text("✓ définie")
+    expect(page.locator('#an-plan [data-geste="etat"][data-c="ironie"]')).to_have_text(
+        "Remettre provisoire")
+    # « Passer dans une grille… » : sa confirmation montre « Voir le bilan… » ÉTEINT (J8).
+    page.locator('#an-plan [data-geste="passer"][data-c="ironie"]').click()
+    bilan = page.locator("#an-plan [data-conf-bilan]")
+    expect(bilan).to_have_attribute("aria-disabled", "true")
+    expect(bilan).to_have_attribute("title", re.compile(r"une tranche à part \(J8\)"))
+    bilan.click(force=True)
+    expect(page.locator("#an-plan .an-conf")).to_contain_text("une tranche à part (J8)")
+    page.locator("#an-plan [data-conf-annuler]").click()
+    expect(page.locator("#an-plan .an-conf")).to_have_count(0)
+    # « Fini » referme, et rend le focus à ✎. Dans la liste, rien ne dit l'état.
+    page.locator('#an-plan [data-fin="ironie"]').click()
+    expect(crayon).to_be_focused()
+    expect(page.locator('#an-plan [data-ent="ironie"]')).not_to_contain_text("définie")
+
+
+def test_crayon_fusionne_puis_retire_confirmes_sur_place(page, decor):
+    gid = _travail(decor)
+    with _http(decor) as c:
+        _poser_libre(c, decor["bulle"], gid, "ironie")
+        _poser_libre(c, decor["cartouche"], gid, "humour")
+        _poser_libre(c, decor["cartouche"], gid, "vide")
+        # « vide » n'est plus posée nulle part : la retirer la fait disparaître.
+        rid = next(r["id"] for r in c.get(f"/api/planches/{decor['planche']}/releves").json()["releves"]
+                   if r["entree_cle"] == "vide")
+        assert c.request("DELETE", f"/api/releves/{rid}", json={}).status_code in (200, 204)
+    _libre(page, decor)
+    page.locator('#an-plan [data-crayon="ironie"]').click()
+    page.locator('#an-plan [data-geste="fusionner"][data-c="ironie"]').click()
+    vers = page.locator("#an-conf-vers")
+    expect(vers).to_be_visible()
+    expect(vers.locator("option")).to_contain_text(["humour"])
+    vers.select_option("humour")
+    expect(page.locator("#an-plan .an-conf")).to_contain_text("1 relevé passe à « humour ».")
+    with page.expect_response(lambda r: r.url.endswith("/entrees/ironie/fusion")) as rep:
+        page.locator('#an-plan [data-conf-ok="fusionner"]').click()
+    assert rep.value.status == 200, rep.value.text()
+    expect(page.locator('#an-plan [data-ent="ironie"]')).to_have_count(0)
+    expect(page.locator("#an-creer")).to_be_focused()
+    bulle = [r["entree_cle"] for r in _releves(decor)
+             if r["grille_id"] == gid and r["region_id"] == decor["bulle"]]
+    assert bulle == ["humour"]
+    page.locator('#an-plan [data-crayon="vide"]').click()
+    page.locator('#an-plan [data-geste="retirer"][data-c="vide"]').click()
+    expect(page.locator("#an-plan .an-conf")).to_contain_text(
+        "Retirer « vide » : personne ne la pose, elle disparaît.")
+    with page.expect_response(lambda r: r.url.endswith("/entrees/vide")
+                              and r.request.method == "DELETE") as rep:
+        page.locator('#an-plan [data-conf-ok="retirer"]').click()
+    assert rep.value.status == 200, rep.value.text()
+    expect(page.locator('#an-plan [data-ent="vide"]')).to_have_count(0)
+    assert "vide" not in _ordre_ecrit(decor, gid)
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_annotateur_voit_crayon_eteint_sur_une_etiquette_definie(page, live_server):
+    """J5 : un annotateur renomme une étiquette PROVISOIRE ; sur une étiquette définie, ✎ est
+    ÉTEINT, focalisable, et dit pourquoi au clic ; les gestes rares sont aux responsables."""
+    admin = {"Remote-User": "decor", "Remote-Groups": "bd-admins"}
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=180,
+                      headers={**ECRITURE, **admin}) as c:
+        cid = c.post("/api/collections", json={"nom": "Étude libre"}).json()["id"]
+        du_projet(c, cid, "utilisateur", "stagiaire", headers={**ECRITURE, **admin})
+        assert c.put(f"/api/collections/{cid}/acces", json={
+            "genre": "utilisateur", "principal": "stagiaire", "niveau": "ecriture"}).status_code == 200
+        aid = c.post("/api/albums", json={"titre": "Libre", "collection_id": cid}).json()["id"]
+        pid = c.post(f"/api/albums/{aid}/import",
+                     files={"file": ("p.png", make_png(800, 1000), "image/png")}).json()["id"]
+        case = c.post(f"/api/planches/{pid}/regions",
+                      json={"type": "case", "x": 20, "y": 20, "w": 700, "h": 900}).json()["id"]
+        bulle = c.post(f"/api/planches/{pid}/regions",
+                       json={"type": "bulle", "x": 60, "y": 60, "w": 200, "h": 120,
+                             "parent_id": case}).json()["id"]
+        projet = c.get(f"/api/collections").json()
+        projet = next(x["projet_id"] for x in projet if x["id"] == cid)
+        gid = next(g["id"] for g in c.get(f"/api/projets/{projet}/grilles").json()["actives"]
+                   if g["travail"])
+        _poser_libre(c, bulle, gid, "ironie")
+        _poser_libre(c, bulle, gid, "lieu")
+        assert c.patch(f"/api/grilles/{gid}/entrees/lieu",
+                       json={"etat": "defini"}).status_code == 200
+    page.set_extra_http_headers({"Remote-User": "stagiaire"})
+    page.goto(f"{live_server}/annotation?album={aid}&planche={pid}&region={bulle}",
+              wait_until="networkidle")
+    expect(page.locator(f"#an-onglet-{gid}")).to_have_attribute("aria-selected", "true",
+                                                                 timeout=15000)
+    lieu = page.locator('#an-plan [data-crayon="lieu"]')
+    raison = "« lieu » est définie : seuls les responsables la changent"
+    expect(lieu).to_have_attribute("aria-disabled", "true")
+    expect(lieu).to_have_attribute("title", raison)
+    lieu.focus()
+    expect(lieu).to_be_focused()                  # éteint, mais focalisable
+    page.keyboard.press("Enter")
+    conf = page.locator('#an-plan [data-ent="lieu"] .an-conf')
+    expect(conf).to_be_visible()
+    expect(conf).to_have_text(re.compile(re.escape(raison)))
+    expect(page.locator('#an-plan [data-renom="lieu"]')).to_have_count(0)
+    # Sur l'étiquette provisoire, ✎ s'ouvre ; ses gestes rares sont éteints, et le disent.
+    page.locator('#an-plan [data-crayon="ironie"]').click()
+    fusion = page.locator('#an-plan [data-geste="fusionner"][data-c="ironie"]')
+    expect(fusion).to_have_attribute("aria-disabled", "true")
+    fusion.click(force=True)
+    expect(page.locator('#an-plan [data-ent="ironie"] .an-conf')).to_contain_text(
+        "Fusionner, retirer et définir : les responsables du projet")
+    nom = page.locator('#an-plan [data-renom="ironie"]')
+    nom.fill("ironie fine")
+    with page.expect_response(lambda r: "/entrees/ironie" in r.url and r.request.method == "PATCH") as rep:
+        nom.press("Enter")
+    assert rep.value.status == 200, rep.value.text()
+
+
+def test_ranger_au_clavier_et_ctrl_z_defait_le_deplacement(page, decor):
+    gid = _travail(decor)
+    with _http(decor) as c:
+        for nom in ("alpha", "bravo", "charlie"):
+            assert c.post(f"/api/grilles/{gid}/entrees", json={"libelle": nom}).status_code == 201
+    _libre(page, decor)
+    libs = page.locator("#an-plan .an-ent-lib")
+    expect(libs).to_have_text(["alpha", "bravo", "charlie"])
+    expect(page.locator("#an-tri")).to_have_value("main")
+    ranger = page.locator("#an-ranger")
+    ranger.click()
+    expect(ranger).to_have_text("Fini")
+    expect(ranger).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#an-plan .an-poignee")).to_have_count(3)
+    expect(page.locator('#an-plan [data-monter="alpha"]')).to_have_attribute("aria-disabled", "true")
+    bas = page.locator('#an-plan [data-descendre="alpha"]')
+    bas.focus()
+    with page.expect_response(lambda r: r.url.endswith(f"/api/grilles/{gid}/ordre")) as rep:
+        page.keyboard.press("Enter")
+    assert rep.value.status == 200, rep.value.text()
+    expect(libs).to_have_text(["bravo", "alpha", "charlie"])
+    expect(bas).to_be_focused()
+    assert _ordre_ecrit(decor, gid) == ["bravo", "alpha", "charlie"]
+    with page.expect_response(lambda r: r.url.endswith("/api/undo")) as rep:
+        page.keyboard.press("Control+z")
+    assert rep.value.status == 200, rep.value.text()
+    expect(libs).to_have_text(["alpha", "bravo", "charlie"])
+    assert _ordre_ecrit(decor, gid) == ["alpha", "bravo", "charlie"]
+    # A → Z : un tri d'écran, retenu sur le poste ; « ↕ Ranger » attend « À la main ».
+    ranger.click()
+    expect(ranger).to_have_text("↕ Ranger")
+    page.locator("#an-tri").select_option("alpha")
+    expect(ranger).to_have_attribute("aria-disabled", "true")
+    page.reload(wait_until="networkidle")
+    page.locator(f"#an-onglet-{gid}").click()
+    expect(page.locator("#an-tri")).to_have_value("alpha")
+
+
+def test_plus_mene_au_champ_de_creation_et_slash_au_filtre(page, decor):
+    gid = _travail(decor)
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator(f"#an-onglet-{decor['grille']}")).to_have_attribute("aria-selected", "true")
+    page.locator("#an-mots").focus()
+    page.keyboard.press("+")
+    expect(page.locator(f"#an-onglet-{gid}")).to_have_attribute("aria-selected", "true")
+    expect(page.locator("#an-creer")).to_be_focused()
+    expect(page.locator("#an-creer")).to_have_value("")       # le « + » ne s'écrit pas
+    page.locator("#an-mots").focus()
+    page.keyboard.press("/")
+    expect(page.locator("#an-filtre")).to_be_focused()
+    expect(page.locator(f"#an-onglet-{gid}")).to_have_attribute("aria-selected", "true")
+    # Dans un champ, « + » s'écrit.
+    page.keyboard.press("+")
+    expect(page.locator("#an-filtre")).to_have_value("+")

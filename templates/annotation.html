@@ -248,6 +248,27 @@
                  title="Accents, apostrophes et exemples compris ; « X par Y » pour un qualificatif. ↓ ↑ pour choisir, Échap pour vider.">
           <kbd aria-hidden="true">/</kbd>
         </label>
+        <!-- Le MODE LIBRE (maquette du 2026-11-06) : dans l'onglet de la grille de travail, un
+             champ de création À LUI, distinct du filtre ; ce qu'Entrée fera flotte dessous, sans
+             rien faire bouger ; l'ordre de la liste et « ↕ Ranger ». -->
+        <div id="an-libre" class="an-libre" hidden>
+          <div class="an-creer-bloc">
+            <label class="an-creer-wrap">
+              <input type="text" id="an-creer" aria-controls="an-quoi" aria-autocomplete="list"
+                     autocomplete="off" spellcheck="false" placeholder="+ Nouvelle étiquette…"
+                     aria-label="Créer une étiquette et la poser"
+                     title="« nom » pour une étiquette simple, « nom : valeur » pour une étiquette à valeurs, « nom : valeur ; valeur » pour en poser plusieurs. Entrée crée et pose sur la zone ; un nom qui existe pose l'existante.">
+              <kbd aria-hidden="true">+</kbd>
+            </label>
+            <ul id="an-quoi" class="an-resultats an-quoi" role="listbox"
+                aria-label="Ce qu'Entrée fera" hidden></ul>
+          </div>
+          <div id="an-libre-ordre" class="an-gr-ligne an-libre-ordre">
+            <label for="an-tri" class="an-gr-lbl">Ordre</label>
+            <select id="an-tri" title="L'ordre de la liste, retenu sur ce poste, pour vous"></select>
+            <button id="an-ranger" class="ghost small" type="button" aria-pressed="false">↕ Ranger</button>
+          </div>
+        </div>
       </div>
       <div id="an-grille-corps" class="an-grille-corps" role="tabpanel" aria-labelledby="an-grille-titre">
         <div id="an-plan" class="an-plan"></div>
@@ -303,7 +324,7 @@
   </div>
 
   <!-- La fiche d'un personnage (ANN-7), ouverte par « Fiche » du locuteur ou d'une boîte :
-       ses alignements d'autorité (A5), le module de l'Atelier (`lib/alignements.js`). Une
+       ses alignements d'autorité (A5), le module sorti de l'Atelier (`lib/alignements.js`). Une
        modale `BDDialog` : rien ne bouge derrière elle. -->
   <div id="an-fiche-modal" hidden>
     <div class="modal-box an-fiche-box">
@@ -330,8 +351,8 @@
 <script src="/static/lib/atelier.js"></script><!-- le filtre de collection, partagé avec l'Atelier -->
 <script src="/static/lib/conflit.js"></script><!-- les mots du bandeau de CONC-3 -->
 <script src="/static/lib/propositions.js"></script><!-- les homonymes du champ « personnage » -->
-<script src="/static/lib/champ-personnage.js"></script><!-- le locuteur et le personnage d'une boîte, communs avec l'Atelier -->
-<script src="/static/lib/alignements.js"></script><!-- la fiche d'un personnage, commune avec l'Atelier -->
+<script src="/static/lib/champ-personnage.js"></script><!-- le locuteur et le personnage d'une boîte -->
+<script src="/static/lib/alignements.js"></script><!-- la fiche d'un personnage -->
 <script src="/static/lib/annulation.js"></script><!-- Ctrl+Z, commun avec l'Atelier -->
 <script src="/static/lib/signal-planche.js"></script><!-- « ⟳ Actualiser », commun avec l'Atelier -->
 <script src="/static/lib/annotation.js"></script>
