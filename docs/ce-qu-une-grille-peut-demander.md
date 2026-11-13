@@ -19,7 +19,9 @@ ouvrez *Mon bac à sable*, puis la page Annotation.
   personne ne lui a écrit de définition.
 - **Où se posent ses entrées, sauf exception ?** Des mots, une zone, une case… C'est un défaut,
   pas une restriction : la réponse à la question 2 ci-dessous pour toutes les entrées qui ne
-  disent pas la leur, chacune pouvant en choisir une autre.
+  disent pas la leur, chacune pouvant en choisir une autre. Il est **facultatif** : une grille
+  naît sans lui, et chaque entrée dit alors où elle se pose. Il se pose ensuite, quand la
+  construction a montré qu'il servait.
 
 ## Six questions, pour chaque entrée
 

@@ -331,3 +331,28 @@ test("« Corriger dans le formulaire ↗ » mène à l'objet que le plan connaî
   assert.equal(F.cibleDeFaute({ cle: "nouvelle", colonne: "forme" }, PLAN), null);
   assert.equal(F.cibleDeFaute({ cle: "ecole" }, null), null);
 });
+
+/* --- Une grille sans défaut (Hugo, 2026-11-12) ---------------------------------------- */
+
+test("sans défaut, une entrée sans cible attend à la question 2, et retient la publication", () => {
+  const sans = { ...PLAN, porte_sur: [] };
+  assert.deepEqual(F.ciblesDeReponse({ choix: "aucun", sortes: [] }), []);
+  const e = E("ecole");
+  assert.deepEqual(F.manques(e, null, sans),
+                   [{ q: 2, texte: "Dites où elle se pose : la grille n'a pas de défaut." }]);
+  // Une entrée qui dit la sienne n'attend rien ; avec un défaut, rien n'attend non plus.
+  assert.deepEqual(F.manques(E("x", { cible_declaree: ["case"] }), null, sans), []);
+  assert.deepEqual(F.manques(e, null, PLAN), []);
+  // Une réponse en cours l'emporte : « une zone » sans sorte dit sa propre attente.
+  assert.equal(F.manques(e, { cible: { choix: "zone", sortes: [] } }, sans)[0].texte,
+               "Cochez au moins une sorte de zone.");
+  assert.equal(F.aCompleter(sans, new Map()), 4);
+  assert.equal(F.aCompleter(PLAN, new Map()), 0);
+});
+
+test("« Aucun défaut » compte les entrées vivantes qui suivent le défaut", () => {
+  const plan = { ...PLAN, entrees: [E("a"), E("b", { cible_declaree: ["planche"] }),
+                                    E("c", { retiree: true }), E("d")] };
+  assert.equal(F.suiventLeDefaut(plan), 2);
+  assert.equal(F.suiventLeDefaut({ ...plan, porte_sur: [] }), 0);
+});

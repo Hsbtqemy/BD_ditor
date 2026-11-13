@@ -911,13 +911,26 @@
   }
 
   /* L'entrée qui NAÎT en la posant dans une grille ouverte (G14) : simple, sans rubrique,
-     sur la cible de la version — pour savoir où la poser avant qu'elle existe. */
-  function entreeNeuve(plan, libelle) {
-    const cibles = (plan && plan.porte_sur) || [];
+     sur la cible de la version — pour savoir où la poser avant qu'elle existe. Dans une
+     grille SANS défaut, sur ce qu'on désigne (`ctx`, celui de `cibleDePose`), la règle du
+     serveur (Hugo, 2026-11-12) : la planche, la case, des mots, sinon la sorte de la zone. */
+  function entreeNeuve(plan, libelle, ctx) {
+    const defaut = (plan && plan.porte_sur) || [];
+    const cibles = defaut.length ? defaut : cibleDesignee(ctx);
     const pose = cibles.includes("mots") ? "mots" : cibles.includes("planche") ? "planche"
       : cibles.includes("entite") ? "entite" : "zone";
     return { cle: null, libelle, forme: "simple", cibles, pose, cardinalite: "plusieurs",
-             cible_declaree: [], rubriques: [], variantes: [] };
+             cible_declaree: defaut.length ? [] : cibles, rubriques: [], variantes: [] };
+  }
+
+  function cibleDesignee(ctx) {
+    const c = ctx || {};
+    const zone = c.zone, laCase = c.caseRegion;
+    if (c.porte === "planche") return ["planche"];
+    if (c.porte === "case" && laCase && !laCase.pseudo) return ["case"];
+    if (rangs(c.mots).length && zone && !zone.pseudo && estTexte(zone.type)) return ["mots"];
+    if (zone && !zone.pseudo) return [zone.type];
+    return ["planche"];
   }
 
   /* LE GESTE d'un clic dans la grille, sur une entrée (`choix` vide), une variante

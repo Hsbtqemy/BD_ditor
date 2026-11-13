@@ -2415,8 +2415,9 @@ async function creer(libelle) {
   const g = grilleOuverte();
   const plan = planDe(g);
   if (!g || !g.ouverte || !plan || !ecrivable()) return;
-  const e = A.entreeNeuve(plan, libelle);
-  const cible = A.cibleDePose(e, contexteDePose());
+  const ctx = contexteDePose();
+  const e = A.entreeNeuve(plan, libelle, ctx);
+  const cible = A.cibleDePose(e, ctx);
   if (cible.erreur) { toast(cible.erreur, "error"); annoncer(cible.erreur); return; }
   await uneSeuleFois(JSON.stringify(["creer", g.id, libelle]), async () => {
     if (await ecrire(g, e, cible, { action: "poser", corps: {} }, libelle)) listeSurLaCible(cible);

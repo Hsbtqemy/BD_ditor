@@ -699,6 +699,21 @@ test("l'entrée qui naît en la posant suit la cible de la version", () => {
   assert.deepEqual(A.entreeNeuve({ porte_sur: ["case"] }, "Paris").pose, "zone");
   assert.deepEqual(A.entreeNeuve({ porte_sur: ["case"] }, "Paris").cibles, ["case"]);
   assert.deepEqual(A.entreeNeuve({ porte_sur: ["planche"] }, "Paris").pose, "planche");
+  assert.deepEqual(A.entreeNeuve({ porte_sur: ["case"] }, "Paris").cible_declaree, []);
+  // Sans défaut, ce qu'on désigne, écrit sur elle (Hugo, 2026-11-12) : la règle du serveur.
+  const bulleZ = { id: 3, type: "bulle" }, caseZ = { id: 2, type: "case" };
+  const sans = { porte_sur: [] };
+  const neuve = (ctx) => A.entreeNeuve(sans, "Paris", ctx);
+  assert.deepEqual(neuve({ zone: bulleZ, caseRegion: caseZ, mots: [1] }).cibles, ["mots"]);
+  assert.deepEqual(neuve({ zone: bulleZ, caseRegion: caseZ, mots: [] }).cibles, ["bulle"]);
+  assert.equal(neuve({ zone: bulleZ, caseRegion: caseZ, mots: [] }).pose, "zone");
+  assert.deepEqual(neuve({ zone: bulleZ, caseRegion: caseZ, porte: "case" }).cibles, ["case"]);
+  assert.deepEqual(neuve({ zone: bulleZ, porte: "planche" }).cibles, ["planche"]);
+  assert.deepEqual(neuve({ zone: { id: 9, type: "case", pseudo: true } }).cibles, ["planche"]);
+  assert.deepEqual(neuve({ zone: bulleZ, mots: [] }).cible_declaree, ["bulle"]);
+  // La pose qui suit vise bien la zone désignée.
+  assert.deepEqual(A.cibleDePose(neuve({ zone: bulleZ, caseRegion: caseZ, mots: [] }),
+                                 { zone: bulleZ, caseRegion: caseZ, mots: [] }), { region_id: 3 });
   assert.deepEqual(A.vuDuReleve(rel(1, {})), { variante_cle: null, qualificatifs: [] });
   // Les qualificatifs vus forment un ENSEMBLE : ils partent triés, dans un ordre stable.
   assert.deepEqual(A.vuDuReleve(rel(1, { qualificatifs: ["objet", "hors-champ"] })).qualificatifs,

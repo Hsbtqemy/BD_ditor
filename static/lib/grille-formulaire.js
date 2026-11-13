@@ -104,10 +104,11 @@
   }
 
   /* Une réponse à la question 2 → les cibles à envoyer (`[]` : comme la grille), ou `null`
-     tant qu'elle n'est pas complète (une zone sans sorte). */
+     tant qu'elle n'est pas complète (une zone sans sorte). « aucun » est la réponse de la
+     question B d'une grille SANS défaut (Hugo, 2026-11-12) : `[]` aussi. */
   function ciblesDeReponse(rep) {
     if (!rep) return null;
-    if (rep.choix === "grille") return [];
+    if (rep.choix === "grille" || rep.choix === "aucun") return [];
     if (rep.choix === "zone") {
       const s = ordonner(rep.sortes);
       return s.length ? s : null;
@@ -164,6 +165,11 @@
     const m = [];
     if (a.cible && a.cible.choix === "zone" && !ordonner(a.cible.sortes).length) {
       m.push({ q: 2, texte: "Cochez au moins une sorte de zone." });
+    } else if (!a.cible && !ordonner(e.cible_declaree).length
+               && !ordonner(plan && plan.porte_sur).length) {
+      // Une grille sans défaut : chaque entrée dit où elle se pose (Hugo, 2026-11-12). Le
+      // serveur la garde au brouillon, et en retient la publication.
+      m.push({ q: 2, texte: "Dites où elle se pose : la grille n'a pas de défaut." });
     }
     if (a.forme === "variantes" && !(e.variantes || []).length) {
       m.push({ q: 4, texte: "Ajoutez au moins une variante." });
@@ -175,6 +181,14 @@
     }
     if (a.precision) m.push({ q: 5, texte: "Donnez un nom au champ à écrire." });
     return m;
+  }
+
+  /* Les entrées qui SUIVENT le défaut de la grille : vivantes, sans cible à elles. Ce que
+     « Aucun défaut » écrirait sur elles (Hugo, 2026-11-12). 0 sans défaut. */
+  function suiventLeDefaut(plan) {
+    if (!ordonner(plan && plan.porte_sur).length) return 0;
+    return ((plan && plan.entrees) || [])
+      .filter((e) => !e.retiree && !ordonner(e.cible_declaree).length).length;
   }
 
   /* Les listes qu'une entrée peut nommer : celles qui ont au moins une case (`liste_vide`). */
@@ -613,5 +627,6 @@
     corpsEntree, exemplesDeTexte, texteDExemples, offresEntree, formesPossibles, offresVariante, offresCase,
     offresRubrique, offresListe, placesDeRubrique, cheminDeRubrique, ouSEcrit, noteDeVersion,
     versionMontree, publiable, lignesDuPlan, freres, deplacer, planDApercu, cibleDeFaute,
+    suiventLeDefaut,
   };
 });

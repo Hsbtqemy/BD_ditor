@@ -2369,6 +2369,7 @@ const FM = {
   sel: { t: "grille", cle: "" },
   att: new Map(),        // entrée → ce qui attend (`BDGrilleFormulaire.repondre`)
   attPorte: null,        // « Porte sur » : une zone sans sorte, en attente
+  sansDefaut: null,      // « Aucun défaut » en attente de confirmation : n entrées le recevront
   neuf: null,            // { t, parent } : une entrée, une rubrique, une liste sans nom encore
   guideVar: null,        // la variante dont le guide est déplié
   confirme: null,        // « supprimer » | « fusionner » | « publier »
@@ -2391,7 +2392,7 @@ function fmEntree(cle) {
 
 function fmReinitialiser() {
   Object.assign(FM, { ouvert: false, grilleId: null, neuve: null, plan: null, emplois: null,
-                      version: null, sel: { t: "grille", cle: "" }, attPorte: null, neuf: null,
+                      version: null, sel: { t: "grille", cle: "" }, attPorte: null, sansDefaut: null, neuf: null,
                       guideVar: null, confirme: null, conflit: null, retenue: null,
                       apercu: null });
   FM.att = new Map();
@@ -2457,7 +2458,7 @@ async function fmOuvrir(grilleId, sel, opts = {}) {
     }
     if (sel) FM.sel = sel;
   } else {
-    FM.neuve = { nom: "", ouverte: false, porte: null };
+    FM.neuve = { nom: "", ouverte: false };
   }
   if (opts.pousser !== false) pjEcrireAdresse(true);
   pjTaireSauf(null);
@@ -2647,15 +2648,14 @@ function fmChange(t) {
     const choix = t.name === "fm-porte" ? v : "zone";
     const rep = { choix, sortes: choix === "zone" ? fmSortesCochees("data-fm-porte-zone") : [] };
     const cibles = F.ciblesDeReponse(rep);
-    if (FM.neuve) { FM.neuve.porte = rep; fmRendre(); return true; }
     FM.attPorte = cibles === null ? rep : null;
+    FM.sansDefaut = null;
     if (cibles === null) { fmRendre(); return true; }
-    fmGeste(() => {
-      const avant = F.ordonner(FM.plan.porte_sur);
-      if (avant.join("|") === cibles.join("|")) return null;
-      return { methode: "PATCH", chemin: fmChemin(),
-               corps: { porte_sur: cibles, vu: { porte_sur: avant } } };
-    }, { relire: true });
+    // Retirer le défaut l'écrit sur les entrées qui le suivaient : le dire AVANT d'appliquer
+    // (Hugo, 2026-11-12).
+    const n = choix === "aucun" ? F.suiventLeDefaut(FM.plan) : 0;
+    if (n) { FM.sansDefaut = n; fmRendre(); return true; }
+    fmPorteSur(cibles);
     return true;
   }
   // Une entrée.
@@ -2843,14 +2843,24 @@ function fmChoisir(t, cle) {
   fmRendre();
 }
 
+function fmPorteSur(cibles) {
+  const F = BDGrilleFormulaire;
+  fmGeste(() => {
+    const avant = F.ordonner(FM.plan.porte_sur);
+    if (avant.join("|") === cibles.join("|")) return null;
+    return { methode: "PATCH", chemin: fmChemin(),
+             corps: { porte_sur: cibles, vu: { porte_sur: avant } } };
+  }, { relire: true });
+}
+
 async function fmCreerGrille() {
   const p = pjProjet(), n = FM.neuve;
   if (!p || !n) return;
-  const cibles = BDGrilleFormulaire.ciblesDeReponse(n.porte);
   let r;
   try {
+    // Le nom et la nature seulement : la grille naît sans défaut (Hugo, 2026-11-12).
     r = await apiSend("POST", `/api/projets/${p.id}/grilles`,
-                      { nom: n.nom.trim(), ouverte: !!n.ouverte, porte_sur: cibles });
+                      { nom: n.nom.trim(), ouverte: !!n.ouverte });
   } catch (e) { fmMsg(fmTexteDuRefus(e), true); return; }
   await pgCharger(p);
   FM.neuve = null;
@@ -2877,6 +2887,12 @@ function fmClic(b) {
   if (d.fmRemplacer) { fmResoudre(true); return true; }
   if (d.fmGarder) { fmResoudre(false); return true; }
   if (d.fmCreer) { fmCreerGrille(); return true; }
+  if (d.fmSansDefaut) {
+    const ok = d.fmSansDefaut === "ok";
+    FM.sansDefaut = null;
+    if (ok) fmPorteSur([]); else fmRendre();
+    return true;
+  }
   if (d.fmSelT) { fmChoisir(d.fmSelT, d.fmSelC || ""); return true; }
   if (d.fmApE) {
     if (s.t !== "entree" || s.cle !== d.fmApE) fmChoisir("entree", d.fmApE);
@@ -3055,12 +3071,14 @@ function fmZones(attr, sortes, actif, ajouterCase) {
 }
 
 /* La question 2, et « Porte sur » de la grille, partagent leurs réponses. */
-function fmReponsesCible(nom, rep, avecGrille, porteGrille, attr) {
+function fmReponsesCible(nom, rep, avecGrille, porteGrille, attr, avecAucun) {
   const F = BDGrilleFormulaire;
   const zone = rep && rep.choix === "zone";
   const sortes = (rep && rep.sortes) || [];
   const choix = rep ? rep.choix : null;
-  return (avecGrille ? fmRadio(nom, "grille", choix, `Comme la grille · ${esc(F.ciblesEnMots(porteGrille))}`,
+  return (avecAucun ? fmRadio(nom, "aucun", choix, "Aucun défaut",
+                              "chaque entrée dit où elle se pose") : "")
+    + (avecGrille ? fmRadio(nom, "grille", choix, `Comme la grille · ${esc(F.ciblesEnMots(porteGrille))}`,
                                "") : "")
     + fmRadio(nom, "mots", choix, "Des mots", "dans une bulle, un cartouche ou un texte")
     + fmRadio(nom, "zone", choix, "Une zone entière", "",
@@ -3100,7 +3118,8 @@ function fmTeteHtml() {
         <button type="button" class="ghost small" data-fm-confirme="publier">Annuler</button></div></div>` : "";
   return `${retour}<div class="fm-tete-l"><h3 id="fm-titre" tabindex="-1">${esc(g.nom)}</h3>
       <p class="pj-sous"><span class="pj-puce">${esc(ou.etiquette)}</span><span class="pj-puce">${esc(e.etiquette)}</span>
-        <span class="muted small">porte sur ${esc(F.ciblesEnMots(FM.plan.porte_sur))}</span></p></div>
+        ${(FM.plan.porte_sur || []).length ? `<span class="muted small">porte sur ${esc(
+          F.ciblesEnMots(FM.plan.porte_sur))}</span>` : ""}</p></div>
     <div class="fm-tete-gestes">${gestes}</div>${confirme}`;
 }
 
@@ -3162,8 +3181,10 @@ function fmFicheGrille() {
   const F = BDGrilleFormulaire;
   if (FM.neuve) {
     const n = FM.neuve;
-    const pret = n.nom.trim() && F.ciblesDeReponse(n.porte);
-    const raison = !n.nom.trim() ? "Donnez-lui un nom." : "Dites sur quoi elle porte (B).";
+    // Le nom et la nature : où se posent ses entrées se décide en la construisant (B se
+    // pose ensuite, dans « Toute la grille » ; Hugo, 2026-11-12).
+    const pret = !!n.nom.trim();
+    const raison = "Donnez-lui un nom.";
     return `<div class="lf-tete"><div><p class="fm-genre">Toute la grille</p>
         <label class="sr-only" for="fm-g-nom">Nom de la grille</label>
         <input id="fm-g-nom" class="fm-lib" value="${esc(n.nom)}" maxlength="200" placeholder="Nom de la grille"
@@ -3171,16 +3192,23 @@ function fmFicheGrille() {
       ${fmQuestion("A", { titre: "Fermée ou ouverte ?", aide: "Fermée : elle change par versions, publiées, qui ne bougent plus. Ouverte : une seule version, vivante ; on tape un mot qu'elle n'a pas et une entrée simple naît. La réponse ne change plus une fois la grille créée." },
         fmRadio("ouverte", "non", n.ouverte ? "oui" : "non", "Fermée", "on la publie, puis elle ne bouge plus")
         + fmRadio("ouverte", "oui", n.ouverte ? "oui" : "non", "Ouverte", "une seule version, qui s'enrichit en posant"))}
-      ${fmQuestion("B", null,
-        fmReponsesCible("porte", n.porte, false, [], "data-fm-porte-zone") + fmNoteDeQuestion("B"),
-        n.porte && n.porte.choix === "zone" && !F.ciblesDeReponse(n.porte) ? "Cochez au moins une sorte de zone." : "")}
       <div class="pg-gestes fm-creer"><button type="button" class="primary small" data-fm-creer="1"${pret
         ? "" : ` aria-disabled="true" title="${esc(raison)}"`}>Créer la grille</button>
         <span class="muted small">${pret ? "" : esc(raison)}</span></div>`;
   }
   const g = fmGrille(), p = FM.plan;
-  const rep = FM.attPorte || F.reponseCible(p.porte_sur);
+  const sansDefaut = !F.ordonner(p.porte_sur).length;
+  const rep = FM.attPorte || (FM.sansDefaut ? { choix: "aucun", sortes: [] }
+    : sansDefaut ? { choix: "aucun", sortes: [] } : F.reponseCible(p.porte_sur));
   const nv = (p.entrees || []).reduce((n, e) => n + (e.variantes || []).length, 0);
+  const avant = F.ciblesEnMots(p.porte_sur);
+  const confirmer = FM.sansDefaut ? `<div class="pg-confirme fm-confirme" role="group"
+      aria-label="Retirer le défaut"><p class="small">« ${esc(avant)} » s'écrira sur ${esc(F.pluriel(
+      FM.sansDefaut, "entrée"))} qui le ${FM.sansDefaut > 1 ? "suivent" : "suit"} : rien ne change pour
+      ${FM.sansDefaut > 1 ? "elles" : "elle"}.</p>
+      <div class="pg-gestes"><button type="button" class="primary small" data-fm-sans-defaut="ok"
+        >Retirer le défaut</button><button type="button" class="ghost small"
+        data-fm-sans-defaut="annuler">Annuler</button></div></div>` : "";
   return `<div class="lf-tete"><div><p class="fm-genre">Toute la grille</p>
       <label class="sr-only" for="fm-g-nom">Nom de la grille</label>
       <input id="fm-g-nom" class="fm-lib" value="${esc(g.nom)}" maxlength="200" title="Unique dans le projet"></div></div>
@@ -3190,7 +3218,8 @@ function fmFicheGrille() {
       + fmRadio("ouverte", "oui", g.ouverte ? "oui" : "non", "Ouverte", "une seule version, qui s'enrichit en posant", "",
                 "La nature d'une grille ne change pas après sa création."))}
     ${fmQuestion("B", null,
-      fmReponsesCible("porte", rep, false, [], "data-fm-porte-zone") + fmNoteDeQuestion("B"),
+      fmReponsesCible("porte", rep, false, [], "data-fm-porte-zone", true) + confirmer
+        + fmNoteDeQuestion("B"),
       FM.attPorte ? "Cochez au moins une sorte de zone." : "")}
     ${fmNoteDeVersion(g)}
     <section class="fm-section"><h4>Dans le plan</h4><p class="muted small">${esc([
@@ -3287,7 +3316,8 @@ function fmFicheEntree() {
   const precisionVal = FM.retenue && FM.retenue.id === "fm-e-precision" ? FM.retenue.valeur : r.precision.nom;
   return `${tete(gestes)}${confirme}${etat}
     ${fmQuestion(1, null, rubriques)}
-    ${fmQuestion(2, null, fmReponsesCible("cible", r.cible, true, p.porte_sur, "data-fm-zone"), mq(2))}
+    ${fmQuestion(2, null, fmReponsesCible("cible", r.cible, F.ordonner(p.porte_sur).length > 0,
+      p.porte_sur, "data-fm-zone"), mq(2))}
     ${fmQuestion(3, null, fmRadio("card", "ordinaire", r.cardinalite, `Comme d'ordinaire · ${defaut}`,
         `sur ${esc(F.ciblesEnMots(r.ciblesEffectives))}`)
       + fmRadio("card", "une", r.cardinalite, "Une seule fois", "")
