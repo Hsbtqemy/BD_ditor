@@ -279,7 +279,12 @@ def test_un_409_de_valeur_vue_garde_la_saisie(page, live_server):
     expect(page.locator("#fm-e-definition")).to_have_value("la mienne")
     _, plan = _plan(base, gid)
     assert next(e for e in plan["entrees"] if e["cle"] == "cri")["definition"] == "l'autre"
-    page.get_by_role("button", name="Remplacer par la mienne").click()
+    # Le bandeau se ferme AVANT que le geste reparte (le plan est relu d'abord) : attendre
+    # la réponse du PATCH, sans quoi le plan se relit avant elle (image, 2026-11-13).
+    with page.expect_response(lambda r: r.request.method == "PATCH"
+                              and r.url.endswith("/entrees/cri")) as rep:
+        page.get_by_role("button", name="Remplacer par la mienne").click()
+    assert rep.value.status == 200
     expect(page.locator(".fm-conflit")).to_have_count(0)
     expect(page.locator("#fm-e-definition")).to_have_value("la mienne")
     _, plan = _plan(base, gid)
