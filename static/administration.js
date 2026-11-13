@@ -1985,6 +1985,7 @@ const GR = {
   donnees: null,         // la réponse de `GET /api/projets/{id}/grilles`
   erreur: null,
   publier: null,         // la grille dont « Publier… » est ouvert
+  fin: null,             // la fin dont la confirmation est ouverte : { id, geste }
   imp: null,             // l'import ouvert : { grilleId, nomGrille, fichier, vue, reponses, … }
 };
 
@@ -1994,7 +1995,7 @@ async function pgCharger(p) {
   try { d = await apiGet(`/api/projets/${id}/grilles`); }
   catch (e) { erreur = e.message || "échec"; }
   if (PJ.sel !== id) return;                 // la fiche a changé pendant la lecture
-  if (GR.projet !== id) { GR.imp = null; GR.publier = null; }
+  if (GR.projet !== id) { GR.imp = null; GR.publier = null; GR.fin = null; }
   GR.projet = id;
   GR.donnees = d;
   GR.erreur = erreur;
@@ -2045,7 +2046,19 @@ function pgListe(p) {
           data-gr-version="${e.activer}">Activer la v${e.activer}</button>` : "")
       + (e.desactiver ? `<button type="button" class="ghost small" data-gr-desactiver="${g.id}"${
           e.desactiverRaison ? ` aria-disabled="true" title="${esc(e.desactiverRaison)}"` : ""}
-          >Désactiver</button>` : "");
+          >Désactiver</button>` : "")
+      + (e.supprimerBrouillon ? `<button type="button" class="ghost small" data-gr-fin="${g.id}"
+          data-gr-geste="brouillon">Supprimer le brouillon v${e.supprimerBrouillon}…</button>` : "")
+      + (e.fin ? `<button type="button" class="ghost small" data-gr-fin="${g.id}"
+          data-gr-geste="${e.fin.geste}"${e.fin.raison
+            ? ` aria-disabled="true" title="${esc(e.fin.raison)}"` : ""}>${e.fin.geste === "retirer"
+            ? "Retirer…" : "Supprimer…"}</button>` : "");
+    const fin = GR.fin && GR.fin.id === g.id ? B.confirmation(g, e, GR.fin.geste) : null;
+    const confirmeFin = fin ? `<div class="pg-confirme" role="group" aria-label="${esc(fin.bouton)}">
+        <p class="small">${esc(fin.texte)}</p>
+        <div class="pg-gestes"><button type="button" class="danger small"
+          data-gr-fin-ok="${g.id}" data-gr-geste="${GR.fin.geste}">${esc(fin.bouton)}</button><button
+          type="button" class="ghost small" data-gr-fin-annuler="${g.id}">Annuler</button></div></div>` : "";
     const confirme = GR.publier === g.id && e.publier ? `<div class="pg-confirme">
         <p class="small">Publiée, la version ${e.publier} ne change plus, hors d'une coquille.
           L'activer est un autre geste.</p>
@@ -2057,7 +2070,7 @@ function pgListe(p) {
         <span class="pg-nom" tabindex="-1">${esc(g.nom)}</span>
         <span class="pj-puce">${esc(e.etiquette)}</span>${e.porteSur
           ? ` <span class="muted small">porte sur ${esc(e.porteSur)}</span>` : ""}</div>
-      <div class="pg-gestes">${gestes}</div>${confirme}</li>`;
+      <div class="pg-gestes">${gestes}</div>${confirme}${confirmeFin}</li>`;
   }).join("")}</ul>`;
 }
 
@@ -2186,6 +2199,7 @@ function pgBilanRedessiner(focus) {
 async function pgOuvrirImport(grilleId) {
   const g = grilleId ? pgGrille(grilleId) : null;
   GR.publier = null;
+  GR.fin = null;
   GR.imp = { grilleId: g ? g.id : null, nomGrille: g ? g.nom : "", fichier: null, nom: "",
              vue: null, reponses: {}, enVol: false, noms: null };
   pjTaireSauf(null);
@@ -2268,9 +2282,12 @@ async function pgGeste(id, faire, message) {
   try { await faire(p, g); }
   catch (e) { pjMsg(msg, e.message || "Échec", true); return; }
   GR.publier = null;
+  GR.fin = null;
   await pgCharger(p);
-  const nom = document.querySelector(`[data-gr-ligne="${id}"] .pg-nom`);
-  if (nom) nom.focus();
+  // Une grille supprimée n'a plus de ligne : le focus va au titre du bloc, jamais à `body`.
+  const nom = document.querySelector(`[data-gr-ligne="${id}"] .pg-nom`)
+    || document.querySelector("#pj-grilles-titre");
+  if (nom) { if (!nom.hasAttribute("tabindex")) nom.setAttribute("tabindex", "-1"); nom.focus(); }
   pjMsg(msg, message(g));
 }
 
@@ -2298,9 +2315,43 @@ function pgClic(b) {
     pgEnvoyer(false);
     return true;
   }
+  if (d.grFin) {
+    // Éteint (active, ou grille de travail) : le clic dit pourquoi, et rien ne s'ouvre.
+    if (b.getAttribute("aria-disabled") === "true") {
+      pjMsg($("#pj-grilles-msg"), b.title);
+      return true;
+    }
+    const id = Number(d.grFin), geste = d.grGeste;
+    GR.fin = GR.fin && GR.fin.id === id && GR.fin.geste === geste ? null : { id, geste };
+    GR.publier = null;
+    pjTaireSauf(null);
+    pgListeRedessiner(GR.fin ? `[data-gr-fin-ok="${id}"]`
+      : `[data-gr-fin="${id}"][data-gr-geste="${geste}"]`);
+    return true;
+  }
+  if (d.grFinAnnuler) {
+    const id = Number(d.grFinAnnuler), geste = GR.fin && GR.fin.geste;
+    GR.fin = null;
+    pgListeRedessiner(`[data-gr-fin="${id}"][data-gr-geste="${geste}"]`);
+    return true;
+  }
+  if (d.grFinOk) {
+    const id = Number(d.grFinOk), geste = d.grGeste, g0 = pgGrille(id);
+    const n = g0 && BDGrillesProjet.etat(g0).supprimerBrouillon;
+    const faire = geste === "retirer"
+      ? (p, g) => apiSend("POST", `/api/grilles/${g.id}/retrait`)
+      : geste === "brouillon"
+        ? (p, g) => apiSend("DELETE", `/api/grilles/${g.id}/versions/${n}`)
+        : (p, g) => apiSend("DELETE", `/api/grilles/${g.id}`);
+    pgGeste(id, faire, (g) => geste === "retirer" ? `« ${g.nom} » est retirée : ses relevés restent lisibles.`
+      : geste === "brouillon" ? `Le brouillon v${n} de « ${g.nom} » est supprimé.`
+        : `« ${g.nom} » est supprimée.`);
+    return true;
+  }
   if (d.grPublier) {
     const id = Number(d.grPublier);
     GR.publier = GR.publier === id ? null : id;
+    GR.fin = null;
     pjTaireSauf(null);
     pgListeRedessiner(GR.publier ? `[data-gr-publier-ok="${id}"]` : `[data-gr-publier="${id}"]`);
     return true;
@@ -3003,6 +3054,12 @@ function fmClic(b) {
       relire: true, message: "La grille est active dans le projet : elle paraît dans la page Annotation." });
     return true;
   }
+  if (d.fmDesactiver) {
+    const p = pjProjet();
+    fmGeste(() => ({ methode: "DELETE", chemin: `/api/projets/${p.id}/grilles/${FM.grilleId}/activation` }), {
+      relire: true, message: "La grille n'est plus active : ses relevés restent, en lecture." });
+    return true;
+  }
   if (d.fmReimporter) {
     const id = FM.grilleId;
     fmFermer();
@@ -3115,7 +3172,12 @@ function fmTeteHtml() {
         >Publier la v${e.publier}…</button>` : "")
     + (e.activer ? `<button type="button" class="${g.ouverte ? "primary" : "ghost"} small" data-fm-activer="1"
         data-fm-version="${e.activer}"${g.ouverte ? eteint : ""}>${g.ouverte ? "Activer dans le projet"
-        : `Activer la v${e.activer}`}</button>` : "");
+        : `Activer la v${e.activer}`}</button>` : "")
+    // Le pendant d'« Activer », comme sur la ligne de la grille (Hugo, 2026-11-13) ; éteint
+    // sur la grille de travail, qui ne se désactive pas.
+    + (e.desactiver ? `<button type="button" class="ghost small" data-fm-desactiver="1"${
+        e.desactiverRaison ? ` aria-disabled="true" title="${esc(e.desactiverRaison)}"` : ""}
+        >Désactiver</button>` : "");
   const confirme = FM.confirme === "publier" && e.publier ? `<div class="pg-confirme fm-confirme">
       <p class="small">Publiée, la version ${e.publier} ne change plus, hors d'une coquille.
         L'activer est un autre geste.</p>

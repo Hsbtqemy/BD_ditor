@@ -110,6 +110,20 @@
       telecharger.push({ numero: brouillon.numero, libelle: `le brouillon v${brouillon.numero}` });
     }
     const activable = retiree ? null : reference;
+    // La FIN d'une grille (Hugo, 2026-11-13) : employée, elle se retire — ses relevés restent
+    // lisibles ; personne ne l'emploie, elle se supprime. Les deux attendent qu'elle soit
+    // désactivée, et jamais sur la grille de travail : le geste s'y montre ÉTEINT, avec sa
+    // raison. Les comptes ne viennent qu'à qui gère le projet : sans eux, aucun geste.
+    let fin = null;
+    if (typeof g.releves === "number") {
+      const employee = g.releves + (g.passes || 0) > 0;
+      if (!(retiree && employee)) {
+        fin = { geste: employee ? "retirer" : "supprimer", releves: g.releves,
+                passes: g.passes || 0,
+                raison: g.travail ? RAISON_TRAVAIL
+                  : active ? "Elle est active dans le projet : désactivez-la d'abord." : null };
+      }
+    }
     return {
       etiquette,
       porteSur: porteSurEnMots(((reference || brouillon || {}).porte_sur) || []),
@@ -120,7 +134,31 @@
         ? activable.numero : null,
       desactiver: !!active,
       desactiverRaison: active && g.travail ? RAISON_TRAVAIL : null,
+      fin,
+      // Un brouillon se supprime ; seul, la grille part avec lui, ce que « fin » offre déjà.
+      supprimerBrouillon: !g.ouverte && brouillon && versions.length > 1 ? brouillon.numero : null,
     };
+  }
+
+  /* Ce que dit la confirmation d'une fin — `geste` : « supprimer », « retirer » ou
+     « brouillon » — et le bouton qui la fait. */
+  function confirmation(g, e, geste) {
+    const nom = `« ${g.nom} »`;
+    if (geste === "brouillon") {
+      return { texte: `Le brouillon v${e.supprimerBrouillon} part, avec tout ce qu'il change. `
+                 + "Les versions publiées restent.",
+               bouton: `Supprimer le brouillon v${e.supprimerBrouillon}` };
+    }
+    if (geste === "retirer") {
+      const n = e.fin ? e.fin.releves : 0;
+      return { texte: `Retirée, ${nom} ne s'active plus et ne reçoit plus de version. `
+                 + (n ? `${pluriel(n, "relevé")} ${n > 1 ? "restent lisibles" : "reste lisible"}.`
+                   : "Ce qu'elle porte reste lisible.") + " Ce geste ne s'annule pas.",
+               bouton: "Retirer la grille" };
+    }
+    return { texte: `${nom} part : personne ne l'emploie, aucun relevé ne se perd. `
+               + "Ce geste ne s'annule pas.",
+             bouton: "Supprimer la grille" };
   }
 
   /* --- 2. Le bilan d'un import, en mots ---------------------------------------------- */
@@ -349,6 +387,6 @@
   return {
     CIBLES_MOTS, TYPE_CLASSEUR, pluriel, porteSurEnMots, etat, ouEnMots, fauteEnMots,
     nomsDuPlan, changementsEnMots, vaNaitreEnMots, lireReponse, choixDeReponse, importable,
-    reponsesPourEnvoi, declarationEnMots, estUnClasseur,
+    reponsesPourEnvoi, declarationEnMots, estUnClasseur, confirmation,
   };
 });

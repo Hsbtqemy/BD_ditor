@@ -221,3 +221,61 @@ test("la grille de travail (le mode libre) : « Désactiver » s'y montre étein
   assert.equal(inactive.desactiver, false);
   assert.equal(inactive.desactiverRaison, null);
 });
+
+/* --- La fin d'une grille (Hugo, 2026-11-13) ------------------------------------------ */
+
+test("personne ne l'emploie : elle se supprime ; employée, elle se retire", () => {
+  const base = { nom: "S", ouverte: false, retiree_le: null, versions: [v(1, "publiee")],
+                 active: null, travail: false };
+  const libre = G.etat({ ...base, releves: 0, passes: 0 });
+  assert.deepEqual(libre.fin, { geste: "supprimer", releves: 0, passes: 0, raison: null });
+  assert.equal(G.etat({ ...base, releves: 3, passes: 0 }).fin.geste, "retirer");
+  // Une passe sans relevé l'emploie aussi : le serveur refuse alors de la supprimer.
+  assert.equal(G.etat({ ...base, releves: 0, passes: 1 }).fin.geste, "retirer");
+  // Sans les comptes (qui ne gère pas le projet), aucun geste.
+  assert.equal(G.etat(base).fin, null);
+});
+
+test("active ou grille de travail : le geste s'éteint et dit pourquoi", () => {
+  const base = { nom: "S", ouverte: false, retiree_le: null, versions: [v(1, "publiee")],
+                 releves: 0, passes: 0 };
+  const active = G.etat({ ...base, active: { numero: 1, etat: "publiee" }, travail: false });
+  assert.match(active.fin.raison, /désactivez-la d'abord/);
+  const travail = G.etat({ ...base, ouverte: true, versions: [v(1, "vivante")], active: null,
+                           travail: true });
+  assert.match(travail.fin.raison, /grille de travail du projet/);
+});
+
+test("retirée et employée, plus rien ; retirée sans emploi, elle se supprime", () => {
+  const base = { nom: "S", ouverte: false, retiree_le: "2026-11-13", versions: [v(1, "publiee")],
+                 active: null, travail: false };
+  assert.equal(G.etat({ ...base, releves: 2, passes: 0 }).fin, null);
+  assert.equal(G.etat({ ...base, releves: 0, passes: 0 }).fin.geste, "supprimer");
+});
+
+test("un brouillon se supprime à côté d'une version publiée, jamais seul", () => {
+  const base = { nom: "S", ouverte: false, retiree_le: null, active: null, travail: false,
+                 releves: 0, passes: 0 };
+  assert.equal(G.etat({ ...base, versions: [v(1, "publiee"), v(2, "brouillon")] })
+    .supprimerBrouillon, 2);
+  // Seul, la grille part avec lui : « Supprimer… » le fait déjà.
+  assert.equal(G.etat({ ...base, versions: [v(1, "brouillon")] }).supprimerBrouillon, null);
+  assert.equal(G.etat({ ...base, ouverte: true, versions: [v(1, "vivante")] })
+    .supprimerBrouillon, null);
+});
+
+test("la confirmation dit ce qui part et ce qui reste", () => {
+  const g = { nom: "Sons", ouverte: false, retiree_le: null, active: null, travail: false,
+              versions: [v(1, "publiee"), v(2, "brouillon")], releves: 0, passes: 0 };
+  const e = G.etat(g);
+  assert.deepEqual(G.confirmation(g, e, "supprimer"), {
+    texte: "« Sons » part : personne ne l'emploie, aucun relevé ne se perd. "
+      + "Ce geste ne s'annule pas.", bouton: "Supprimer la grille" });
+  assert.equal(G.confirmation(g, e, "brouillon").bouton, "Supprimer le brouillon v2");
+  const g3 = { ...g, releves: 3 };
+  assert.equal(G.confirmation(g3, G.etat(g3), "retirer").texte,
+    "Retirée, « Sons » ne s'active plus et ne reçoit plus de version. 3 relevés restent "
+    + "lisibles. Ce geste ne s'annule pas.");
+  const g1 = { ...g, releves: 1 };
+  assert.match(G.confirmation(g1, G.etat(g1), "retirer").texte, /1 relevé reste lisible\./);
+});

@@ -114,11 +114,19 @@ def _vue_grille(conn, g: dict) -> dict:
                                       "ORDER BY numero", (g["id"],))
                 if v["etat"] != grilles.ETAT_BROUILLON or g["gerable"]]
     act = grilles.activation(conn, g["projet_id"], g["id"])
-    return {"id": g["id"], "nom": g["nom"], "projet_id": g["projet_id"],
-            "ouverte": bool(g["ouverte"]), "travail": bool(g["travail"]),
-            "retiree_le": g["retiree_le"],
-            "gerable": g["gerable"], "versions": versions,
-            "active": {"numero": act["numero"], "etat": act["etat"]} if act else None}
+    vue = {"id": g["id"], "nom": g["nom"], "projet_id": g["projet_id"],
+           "ouverte": bool(g["ouverte"]), "travail": bool(g["travail"]),
+           "retiree_le": g["retiree_le"],
+           "gerable": g["gerable"], "versions": versions,
+           "active": {"numero": act["numero"], "etat": act["etat"]} if act else None}
+    if g["gerable"]:
+        # Ce qu'elle porte, pour que la fiche offre le bon geste de fin (Hugo, 2026-11-13) :
+        # employée, elle se RETIRE ; personne ne l'emploie, elle se SUPPRIME. Les comptes
+        # de `supprimer_grille`, à qui gère le projet seulement, comme ses brouillons.
+        vue["releves"], vue["passes"] = conn.execute(
+            "SELECT (SELECT COUNT(*) FROM releve WHERE grille_id = ?), "
+            "(SELECT COUNT(*) FROM passe WHERE grille_id = ?)", (g["id"], g["id"])).fetchone()
+    return vue
 
 
 # --------------------------------------------------------------------------- #

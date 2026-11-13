@@ -267,3 +267,106 @@ def test_la_grille_de_travail_ne_s_offre_pas_a_desactiver(page, live_server):
     assert envois == []
     autre = page.locator(".pg-grille", has_text="Signaux").locator("[data-gr-desactiver]")
     expect(autre).not_to_have_attribute("aria-disabled", "true")
+
+
+def test_une_grille_se_supprime_ou_se_retire_depuis_sa_ligne(page, live_server):
+    """Hugo, 2026-11-13 : « On ne peut pas supprimer de grille ? » — le serveur le savait,
+    l'écran ne l'offrait pas. Active, le geste est ÉTEINT et le dit ; désactivée et sans
+    emploi, « Supprimer… » la supprime ; employée, « Retirer… » la retire, ses relevés
+    restant lisibles. Chaque fois une confirmation, et l'état relu par l'API."""
+    base = live_server
+    with _http(base) as c:
+        libre = grille_active_vivante(c, nom="Libre", ouverte=True)
+        projet, lid = libre["projet_id"], libre["grille_id"]
+        sid = grille_active_vivante(c, nom="Signaux", projet_id=projet)["grille_id"]
+        aid = c.post("/api/albums", json={"titre": "E2E fin"}).json()["id"]
+        pid = c.post(f"/api/albums/{aid}/import",
+                     files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+        bulle = c.post(f"/api/planches/{pid}/regions",
+                       json={"type": "bulle", "x": 10, "y": 10, "w": 100, "h": 60}).json()["id"]
+        c.put(f"/api/regions/{bulle}", json={"ocr_texte": "AAAH ! OUILLE"})
+        r = c.post("/api/releves", json={"grille_id": lid, "version": 1, "region_id": bulle,
+                                         "entree_cle": "cri", "mots": [0]})
+        assert r.status_code == 201, r.text
+    _ouvrir(page, base, projet)
+    signaux = page.locator(".pg-grille", has_text="Signaux")
+    supprimer = signaux.get_by_role("button", name="Supprimer…")
+    # Active : éteint, focalisable, et le clic dit pourquoi sans rien envoyer.
+    expect(supprimer).to_have_attribute("aria-disabled", "true")
+    envois = []
+    page.on("request", lambda r: envois.append(r.url) if r.method == "DELETE" else None)
+    supprimer.focus()
+    page.keyboard.press("Enter")
+    expect(page.locator("#pj-grilles-msg")).to_contain_text("désactivez-la d'abord")
+    page.wait_for_timeout(300)
+    assert envois == []
+    with page.expect_response(lambda r: r.request.method == "DELETE"
+                              and r.url.endswith("/activation")):
+        signaux.get_by_role("button", name="Désactiver").click()
+    expect(supprimer).not_to_have_attribute("aria-disabled", "true")
+    supprimer.click()
+    expect(signaux.locator(".pg-confirme")).to_contain_text(
+        "« Signaux » part : personne ne l'emploie, aucun relevé ne se perd.")
+    signaux.get_by_role("button", name="Annuler").click()
+    expect(signaux.locator(".pg-confirme")).to_have_count(0)
+    expect(supprimer).to_be_focused()
+    supprimer.click()
+    with page.expect_response(lambda r: r.request.method == "DELETE"
+                              and r.url.endswith(f"/api/grilles/{sid}")) as rep:
+        signaux.get_by_role("button", name="Supprimer la grille").click()
+    assert rep.value.status == 204
+    expect(page.locator(".pg-grille", has_text="Signaux")).to_have_count(0)
+    expect(page.locator("#pj-grilles-msg")).to_contain_text("« Signaux » est supprimée.")
+    expect(page.locator("#pj-grilles-titre")).to_be_focused()
+    # Employée : elle se retire, et ne s'offre plus ensuite qu'à télécharger.
+    ligne = page.locator(".pg-grille", has_text="Libre")
+    with page.expect_response(lambda r: r.request.method == "DELETE"
+                              and r.url.endswith("/activation")):
+        ligne.get_by_role("button", name="Désactiver").click()
+    ligne.get_by_role("button", name="Retirer…").click()
+    expect(ligne.locator(".pg-confirme")).to_contain_text("1 relevé reste lisible.")
+    with page.expect_response(lambda r: r.url.endswith(f"/api/grilles/{lid}/retrait")) as rep:
+        ligne.get_by_role("button", name="Retirer la grille").click()
+    assert rep.value.status == 200
+    expect(ligne.locator(".pj-puce")).to_have_text("retirée")
+    expect(ligne.get_by_role("button", name="Retirer…")).to_have_count(0)
+    expect(ligne.get_by_role("button", name="Supprimer…")).to_have_count(0)
+    with _http(base) as c:
+        d = c.get(f"/api/projets/{projet}/grilles").json()
+        lus = c.get(f"/api/planches/{pid}/releves").json()
+    assert [g["id"] for g in d["grilles"] if g["id"] == sid] == []
+    assert any(r.get("entree_cle") == "cri" for r in _tous_releves(lus))
+    assert next(g for g in d["grilles"] if g["id"] == lid)["retiree_le"]
+
+
+def _tous_releves(lus):
+    """Les relevés d'une réponse de `GET /api/planches/{id}/releves`, où qu'ils soient rangés."""
+    if isinstance(lus, list):
+        return lus
+    out = []
+    for v in lus.values():
+        if isinstance(v, list):
+            out += [x for x in v if isinstance(x, dict) and "entree_cle" in x]
+        elif isinstance(v, dict):
+            out += _tous_releves(v)
+    return out
+
+
+def test_le_formulaire_desactive_une_grille_active(page, live_server):
+    """Hugo, 2026-11-13 : la tête du formulaire offrait « Activer » sans son pendant. Elle
+    offre « Désactiver » sur une grille active, et l'état se relit par l'API."""
+    base = live_server
+    with _http(base) as c:
+        g = grille_active_vivante(c, nom="Libre", ouverte=True)
+    page.goto(f"{base}/administration?vue=projets&projet={g['projet_id']}&grille={g['grille_id']}",
+              wait_until="networkidle")
+    tete = page.locator(".fm-tete-gestes")
+    with page.expect_response(lambda r: r.request.method == "DELETE"
+                              and r.url.endswith("/activation")) as rep:
+        tete.get_by_role("button", name="Désactiver").click()
+    assert rep.value.status == 204
+    expect(tete.get_by_role("button", name="Activer dans le projet")).to_be_visible()
+    expect(tete.get_by_role("button", name="Désactiver")).to_have_count(0)
+    with _http(base) as c:
+        d = c.get(f"/api/projets/{g['projet_id']}/grilles").json()
+    assert next(x for x in d["grilles"] if x["id"] == g["grille_id"])["active"] is None

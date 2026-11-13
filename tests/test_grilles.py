@@ -527,6 +527,29 @@ def test_une_grille_employee_ne_se_supprime_pas(client, decor, db_path):
     ok(client.delete(f"/api/grilles/{g['grille_id']}", headers=LEA), 204)
 
 
+def test_la_fiche_compte_ce_qu_une_grille_porte_a_qui_la_gere(client, decor, db_path):
+    """Hugo, 2026-11-13 : la fiche d'un projet offre « Retirer… » à une grille employée,
+    « Supprimer… » à une grille que personne n'emploie. Elle lit les comptes de
+    `supprimer_grille` dans la vue de la grille — à qui gère le projet, seulement."""
+    g = grille_active(client, decor["p"])
+    vid = _q(db_path, "SELECT id FROM grille_version")[0]["id"]
+
+    def vue(qui):
+        d = ok(client.get(f"/api/projets/{decor['p']}/grilles", headers=qui))
+        return next((x for x in d.get("grilles") or [] if x["id"] == g["grille_id"]), None)
+    assert (vue(LEA)["releves"], vue(LEA)["passes"]) == (0, 0)
+    c = sqlite3.connect(db_path)
+    c.execute("INSERT INTO releve (region_id, grille_id, version_id, entree_cle) "
+              "VALUES (?, ?, ?, 'cri')", (decor["zones"]["bulle"], g["grille_id"], vid))
+    c.commit()
+    c.close()
+    assert (vue(LEA)["releves"], vue(LEA)["passes"]) == (1, 0)
+    # Un membre qui ne gère pas le projet ne lit que les grilles actives, sans compte.
+    d = ok(client.get(f"/api/projets/{decor['p']}/grilles", headers=SAM))
+    assert "grilles" not in d
+    assert all("releves" not in a and "passes" not in a for a in d["actives"])
+
+
 # --------------------------------------------------------------------------- #
 # Une grille ouverte ; le bac à sable ; le jeu
 # --------------------------------------------------------------------------- #
