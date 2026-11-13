@@ -550,7 +550,9 @@ def _style():
     return {"titre": Font(bold=True), "gros": Font(bold=True, size=14),
             "gris": PatternFill("solid", fgColor="E7E9EE"),
             "tete": PatternFill("solid", fgColor="DCE6F5"),
-            "rouge": PatternFill("solid", fgColor="F4B6B6"),
+            # Une mise en forme CONDITIONNELLE peint le plein par `bgColor` : avec `fgColor`
+            # seul, Excel laissait la case blanche (mesuré dans Excel le 2026-11-13).
+            "rouge": PatternFill("solid", fgColor="F4B6B6", bgColor="F4B6B6"),
             "haut": Alignment(vertical="top", wrap_text=True)}
 
 

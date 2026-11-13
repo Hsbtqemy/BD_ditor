@@ -339,6 +339,11 @@ def test_le_tableur_d_une_grille_sans_defaut_se_relit_tel_quel(client, decor):
     assert "defaut_grille" in wb.defined_names
     rouges = [str(cf.sqref) for cf in wb["2. Les entrées"].conditional_formatting]
     assert any(x.startswith("D2:") for x in rouges)
+    # Excel peint le plein d'une règle par `bgColor` : `fgColor` seul laissait la case
+    # blanche (Hugo, 2026-11-13, mesuré dans Excel).
+    for cf in wb["2. Les entrées"].conditional_formatting:
+        for regle in cf.rules:
+            assert str(regle.dxf.fill.bgColor.rgb).endswith("F4B6B6"), cf.sqref
     files = {"fichier": ("sans-defaut.xlsx", r.content, "application/octet-stream")}
     res = client.post(f"/api/projets/{p}/grilles/import", headers=LEA, files=files,
                       data={"grille_id": str(gid), "a_blanc": "true"})
