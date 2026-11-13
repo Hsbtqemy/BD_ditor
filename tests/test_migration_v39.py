@@ -1,8 +1,9 @@
 """ANN-7, le basculement — la migration v39, sur une VRAIE base v38.
 
 La règle de Hugo (2026-10-16, `CLAUDE.md` § Schéma & migrations) : une migration se vérifie
-sur une base de la version précédente qui a VÉCU. `tests/bases/v38-1a47624.sql` est faite par
-le code du commit qui précède le basculement (I9), ses routes sous trois comptes : elle porte
+sur une base de la version précédente qui a VÉCU. `tests/bases/v38-22580fc.sql` est faite par
+le code de la production qui précède le basculement (I9 ; `22580fc`, refaite le 2026-11-13),
+ses routes sous trois comptes : elle porte
 le vocabulaire que la v39 retire (cinq tags posés onze fois, dont un d'un bac à sable, un
 domaine, deux dimensions, des situations, un profil, une annotation qui ne porte que des
 tags), un relevé dans une grille FERMÉE, et des actes annulables en dernier.
@@ -32,7 +33,7 @@ import main
 import undo
 from config import GRILLE_DE_TRAVAIL_NOM
 
-BASE_V38 = Path(__file__).resolve().parent / "bases" / "v38-1a47624.sql"
+BASE_V38 = Path(__file__).resolve().parent / "bases" / "v38-22580fc.sql"
 # Écrites ICI À LA MAIN : le test qui tirerait son attendu de la constante qu'il éprouve en
 # serait le miroir.
 TABLES_PARTIES = {"tags", "annotation_tags", "domaine", "attribut_dimension",
@@ -72,7 +73,7 @@ def _faits() -> dict:
 
 @pytest.fixture
 def vraie_v38(tmp_path, monkeypatch):
-    """`tests/bases/v38-1a47624.sql`, chargée dans une base du test ; les dossiers d'images
+    """`tests/bases/v38-22580fc.sql`, chargée dans une base du test ; les dossiers d'images
     sont ceux du test, vides."""
     from pipeline import ingest
     db = tmp_path / "vraie.sqlite"

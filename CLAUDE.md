@@ -1436,9 +1436,10 @@ repli), une collection que la responsable de son projet ne lit pas, des copies t
 deux comptes et des demandes d'effacement en attente — la v38 pose `demande.planche_id` et
 `planche_numero`, fait entrer chaque accès hors projet dans son projet (rôle `membre`, ni
 bac à sable ni jeu) et retire `geste_sur_copie`.
-Celle de la v38, `tests/bases/v38-1a47624.sql`, est faite depuis le commit qui PRÉCÈDE le
+Celle de la v38, `tests/bases/v38-22580fc.sql`, est faite depuis un commit qui PRÉCÈDE le
 basculement d'`ANN-7` et non depuis le dernier état v38 (Hugo, 2026-11-05, I9 : ce dernier
-état n'a plus les routes du vocabulaire) ; elle porte ce que la v39 retire — des tags de trois
+état n'a plus les routes du vocabulaire) — la production au moment d'intégrer le
+basculement, refaite le 2026-11-13 (elle venait de `1a47624`, du 2026-11-05) ; elle porte ce que la v39 retire — des tags de trois
 portées (globale, locale, d'un bac à sable), un renommé et un fusionné, des attributs de case
 et de personnage, une annotation qui ne porte que des tags — et des actes annulables
 (`tests/test_migration_v39.py` ; les tests des versions d'avant défont la v39 par
