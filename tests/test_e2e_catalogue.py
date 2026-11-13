@@ -225,6 +225,19 @@ def test_un_original_non_lu_ne_se_situe_pas(page, decor):
     expect(page.locator("#album-detail .genre")).to_have_text("Album · copie de travail")
 
 
+def test_la_carte_dit_la_serie_au_dessus_du_titre(page, decor):
+    """Un titre seul ne dit souvent que « Tome 1 » (Hugo, 2026-11-13) : la série et le tome se
+    lisent au-dessus de lui, sur un album comme sur une copie dont l'original n'est pas lu."""
+    with httpx.Client(base_url=decor["base"], trust_env=False, headers=ADMIN) as c:
+        for a in (decor["seul"], decor["copie"]):
+            _ok(c.put(f"/api/albums/{a}", json={"serie": "Tintin", "tome": "4"}))
+    _ouvrir(page, decor["base"], "lou")
+    for a in (decor["seul"], decor["copie"]):
+        expect(_carte(page, a).locator(".serie")).to_have_text("Tintin · T4")
+    # Le tome est passé au-dessus : la ligne du dessous ne le répète pas.
+    expect(_carte(page, decor["seul"]).locator(".det")).to_have_text("1 pl.")
+
+
 def test_les_marques_disent_ce_qu_on_peut(page, decor):
     _ouvrir(page, decor["base"], "lou", suffixe=f"?collection={decor['etude']}&onglet=albums")
     expect(_carte(page, decor["seul"]).locator(".marque-e")).to_have_text("lecture")

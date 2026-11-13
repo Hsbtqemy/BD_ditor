@@ -2781,6 +2781,9 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
            cursor: pointer; min-width: 0; }
 .carte-b:hover { background: var(--hover); }
 .carte-b[aria-current="true"] { background: color-mix(in srgb, var(--accent-blue) 16%, transparent); }
+.carte-b .serie { color: var(--text-muted); font-size: .8rem; line-height: 1.2;
+                  overflow-wrap: anywhere; }
+.carte-b:hover .serie, .carte-b[aria-current="true"] .serie { color: var(--text); }
 .carte-b .titre { font-weight: 600; overflow-wrap: anywhere; line-height: 1.2; }
 .carte-b .det { color: var(--text-muted); font-size: .85rem; overflow-wrap: anywhere; }
 .carte-b:hover .det, .carte-b[aria-current="true"] .det { color: var(--text); }

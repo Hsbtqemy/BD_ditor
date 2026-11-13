@@ -190,10 +190,15 @@ function htmlCoche(a, nom) {
       aria-label="Sélectionner ${nom ? esc(nom) : `l'album ${esc(a.titre)}`}" ${state.checkedAlbums.has(a.id) ? "checked" : ""}>`;
 }
 
-function htmlBoutonCarte(a, titre, detail, marques) {
+/* `serie` : la série et le tome au-dessus du titre (« Moustache et Trottinette · T11 ») — un
+   titre seul ne dit souvent que « Tome 1 » (Hugo, 2026-11-13). Une copie dépliée sous son
+   original ne la répète pas. */
+function htmlBoutonCarte(a, titre, detail, marques, serie) {
+  const st = serie ? serieTome(a) : "";
   return `<button type="button" class="carte-b album-row" data-id="${a.id}" data-ouvrir-album="${a.id}"
       ${a.id === state.openId ? 'aria-current="true"' : ""}>
     <span class="couv-wrap">${htmlCouverture(a)}</span>
+    ${st ? `<span class="serie">${esc(st)}</span>` : ""}
     <span class="titre">${esc(titre)}</span>
     ${detail ? `<span class="det">${esc(detail)}</span>` : ""}
     ${marques ? `${htmlMarques(a)}${pastilleDemande(a)}` : ""}
@@ -202,14 +207,13 @@ function htmlBoutonCarte(a, titre, detail, marques) {
 
 function htmlCarte(g, horsDe) {
   const a = g.album, o = depliee(g);
-  const tome = [a.tome ? `T${a.tome}` : null, `${a.nb_planches} pl.`].filter(Boolean).join(" · ");
   const detail = g.eteint ? `hors de ${horsDe}`
     : g.seule ? [BDBiblio.nomCopie(a), BDEchelle.puceCopie(a.copie_cran)].filter(Boolean).join(" · ")
-    : tome;
+    : `${a.nb_planches} pl.`;
   const classes = ["carte-a", g.copies.length && !o ? "pile" : "", g.eteint ? "eteinte" : ""];
   return `<li class="${classes.filter(Boolean).join(" ")}" data-carte="${a.id}">
       ${g.eteint ? "" : htmlCoche(a)}
-      ${htmlBoutonCarte(a, a.titre, detail, !g.eteint)}
+      ${htmlBoutonCarte(a, a.titre, detail, !g.eteint, true)}
       ${htmlPli(g)}
     </li>${g.copies.length && o ? g.copies.map((c) => `<li class="carte-a copie" data-carte="${c.id}">
       ${htmlCoche(c, BDBiblio.nomCopie(c))}
@@ -221,7 +225,8 @@ function htmlLigne(a, ici, opts) {
   const o = opts || {};
   const titre = o.copie ? BDBiblio.nomCopie(a) : a.titre;
   const sous = o.eteint ? `hors de ${o.horsDe}`
-    : o.seule ? [BDBiblio.nomCopie(a), BDEchelle.puceCopie(a.copie_cran)].filter(Boolean).join(" · ")
+    : o.seule ? [serieTome(a), BDBiblio.nomCopie(a), BDEchelle.puceCopie(a.copie_cran)]
+      .filter(Boolean).join(" · ")
     : o.copie ? BDEchelle.puceCopie(a.copie_cran) : serieTome(a);
   return `<tr class="col-album${o.copie ? " ligne-copie" : ""}${o.eteint ? " ligne-eteinte" : ""}" data-id="${a.id}">
     <td class="c-chk">${o.eteint ? "" : htmlCoche(a, o.copie ? titre : null)}</td>
