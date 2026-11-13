@@ -117,16 +117,17 @@ pytest --cov=. --cov-report=term-missing        # couverture (dépend des moteur
 
 **Un `-m` sur la ligne de commande ÉCRASE celui de `pytest.ini`, il ne s'y ajoute pas.**
 `addopts` porte `-m "not e2e"` et se préfixe à la ligne ; le dernier `-m` gagne, donc
-`pytest -m "not live"` RÉACTIVE les e2e. Mesuré le 2026-09-07 par `--collect-only` :
-`pytest` → **810** tests · `pytest -m "not live"` → **988** (+177 e2e, dans un Chromium) ·
-`pytest -m "not e2e and not live"` → **809**. Cette page a documenté la forme fautive comme
+`pytest -m "not live"` RÉACTIVE les e2e. Mesuré le 2026-11-13 par `--collect-only` :
+`pytest` → **3 523** tests · `pytest -m "not live"` → **4 747** (+1 225 e2e, dans un
+Chromium) · `pytest -m "not e2e and not live"` → **3 522** (le 2026-09-07 : 810, 988 et
+809). Cette page a documenté la forme fautive comme
 un run PLUS PETIT, et l'erreur n'échoue jamais : elle rend seulement la passe très longue,
 ce qui se lit comme de la lenteur et non comme un défaut. Elle a coûté une demi-heure de
 processeur le jour où on l'a trouvée, sur une passe partie en arrière-plan que plus personne
 ne regardait. Toute exclusion ajoutée doit donc RÉPÉTER `not e2e`.
 
 - **Suite DANS l'image** (QA-5) : `docker build -f deploy/Dockerfile --target test -t bdediteur:suite . && docker run --rm bdediteur:suite`. Le venv local n'est PAS l'artefact livré — mesuré le 2026-08-27 : 451 tests verts en local, trois moteurs morts dans l'image le même jour. L'étape `runtime` reste sans outil de test.
-- **E2E DANS l'image** (QA-5, 2026-09-09) : `docker build -f deploy/Dockerfile --target e2e -t bdediteur:e2e . && docker run --rm bdediteur:e2e` — 184 tests navigateur, ~23 min. Étape distincte parce qu'elle pèse **4,79 Go** contre 3,76 pour `test` : Playwright et son Chromium ne doivent toucher NI le livrable (`runtime` reste `FROM base`) NI la suite ordinaire. Elle a rapporté dès sa première passe un défaut invisible sur le poste — `/administration` débordait de 5 px à 320 px, la même chaîne n'ayant pas la même chasse d'une police à l'autre. **Vérifier l'IMAGE et non le code de retour** : sous un pilote `docker-container`, buildx sort 0 en laissant le résultat dans le cache, sans rien produire ; d'où `--load`.
+- **E2E DANS l'image** (QA-5, 2026-09-09) : `docker build -f deploy/Dockerfile --target e2e -t bdediteur:e2e . && docker run --rm bdediteur:e2e` — 1 225 tests navigateur, **56 min sur quatre processus** (`pytest-xdist`, QA-7, mesuré le 2026-11-13 sur le poste ; `-e BD_E2E_PROCESSUS=0` les joue un par un, et ce sont 2 h 47 pour les 1 291 tests de `22580fc` ; 184 tests et ~23 min en septembre). Étape distincte parce qu'elle pèse **4,79 Go** contre 3,76 pour `test` : Playwright et son Chromium ne doivent toucher NI le livrable (`runtime` reste `FROM base`) NI la suite ordinaire. Elle a rapporté dès sa première passe un défaut invisible sur le poste — `/administration` débordait de 5 px à 320 px, la même chaîne n'ayant pas la même chasse d'une police à l'autre. **Vérifier l'IMAGE et non le code de retour** : sous un pilote `docker-container`, buildx sort 0 en laissant le résultat dans le cache, sans rien produire ; d'où `--load`.
 - Le marqueur `e2e` est exclu par défaut via `pytest.ini` (`addopts = -m "not e2e"`).
 - **Tests JS purs** (`static/lib/*.js`) : lancés par `tests/test_js_unit.py`, qui appelle `node --test tests/js/*.test.js`. Skippés proprement si Node absent. Pas de runner JS séparé.
 - **Accessibilité** : `tests/test_e2e_a11y.py` (marqueur `e2e`) audite les 6 surfaces × thèmes (sombre/clair) via **axe-core** (WCAG 2.1 AA) et échoue à toute violation sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/axe.min.js` (skip si absent — cf. son README).
