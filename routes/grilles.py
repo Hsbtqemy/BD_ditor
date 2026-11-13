@@ -323,9 +323,9 @@ def publier_version(grille_id: int, numero: int, conn: sqlite3.Connection = Depe
         # 2026-11-12) : le brouillon l'attend, la version publiée ne changerait plus.
         noms = ", ".join(f"« {x} »" for x in manquent[:5]) + (" …" if len(manquent) > 5 else "")
         verbe = "ne dit" if len(manquent) == 1 else "ne disent"
-        raise HTTPException(409, f"{noms} {verbe} pas où se poser, et la grille n'a pas de "
-                                 "défaut : répondez à la question 2, ou donnez un défaut à "
-                                 "la grille, avant de publier.")
+        raise HTTPException(409, f"{noms} {verbe} pas où se poser, et la grille ne pose "
+                                 "rien par défaut : répondez à la question 2, ou donnez à la "
+                                 "grille une réponse par défaut, avant de publier.")
     publiee = grilles.derniere_version(conn, grille_id, grilles.ETAT_PUBLIEE)
     if publiee is not None:
         # Un brouillon qui porte exactement la dernière version publiée — même contenu, même

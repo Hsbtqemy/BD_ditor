@@ -2375,7 +2375,7 @@ const FM = {
   sel: { t: "grille", cle: "" },
   att: new Map(),        // entrée → ce qui attend (`BDGrilleFormulaire.repondre`)
   attPorte: null,        // « Porte sur » : une zone sans sorte, en attente
-  sansDefaut: null,      // « Aucun défaut » en attente de confirmation : n entrées le recevront
+  sansDefaut: null,      // « Aucun par défaut » en attente de confirmation : n entrées le recevront
   neuf: null,            // { t, parent } : une entrée, une rubrique, une liste sans nom encore
   guideVar: null,        // la variante dont le guide est déplié
   confirme: null,        // « supprimer » | « fusionner » | « publier »
@@ -3082,7 +3082,7 @@ function fmReponsesCible(nom, rep, avecGrille, porteGrille, attr, avecAucun) {
   const zone = rep && rep.choix === "zone";
   const sortes = (rep && rep.sortes) || [];
   const choix = rep ? rep.choix : null;
-  return (avecAucun ? fmRadio(nom, "aucun", choix, "Aucun défaut",
+  return (avecAucun ? fmRadio(nom, "aucun", choix, "Aucun par défaut",
                               "chaque entrée dit où elle se pose") : "")
     + (avecGrille ? fmRadio(nom, "grille", choix, `Comme la grille · ${esc(F.ciblesEnMots(porteGrille))}`,
                                "") : "")
@@ -3209,11 +3209,11 @@ function fmFicheGrille() {
   const nv = (p.entrees || []).reduce((n, e) => n + (e.variantes || []).length, 0);
   const avant = F.ciblesEnMots(p.porte_sur);
   const confirmer = FM.sansDefaut ? `<div class="pg-confirme fm-confirme" role="group"
-      aria-label="Retirer le défaut"><p class="small">« ${esc(avant)} » s'écrira sur ${esc(F.pluriel(
+      aria-label="Ne plus rien poser par défaut"><p class="small">« ${esc(avant)} » s'écrira sur ${esc(F.pluriel(
       FM.sansDefaut, "entrée"))} qui le ${FM.sansDefaut > 1 ? "suivent" : "suit"} : rien ne change pour
       ${FM.sansDefaut > 1 ? "elles" : "elle"}.</p>
       <div class="pg-gestes"><button type="button" class="primary small" data-fm-sans-defaut="ok"
-        >Retirer le défaut</button><button type="button" class="ghost small"
+        >Ne plus rien poser par défaut</button><button type="button" class="ghost small"
         data-fm-sans-defaut="annuler">Annuler</button></div></div>` : "";
   return `<div class="lf-tete"><div><p class="fm-genre">Toute la grille</p>
       <label class="sr-only" for="fm-g-nom">Nom de la grille</label>

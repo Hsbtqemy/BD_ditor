@@ -169,7 +169,7 @@
                && !ordonner(plan && plan.porte_sur).length) {
       // Une grille sans défaut : chaque entrée dit où elle se pose (Hugo, 2026-11-12). Le
       // serveur la garde au brouillon, et en retient la publication.
-      m.push({ q: 2, texte: "Dites où elle se pose : la grille n'a pas de défaut." });
+      m.push({ q: 2, texte: "Dites où elle se pose : la grille ne pose rien par défaut." });
     }
     if (a.forme === "variantes" && !(e.variantes || []).length) {
       m.push({ q: 4, texte: "Ajoutez au moins une variante." });
@@ -184,7 +184,7 @@
   }
 
   /* Les entrées qui SUIVENT le défaut de la grille : vivantes, sans cible à elles. Ce que
-     « Aucun défaut » écrirait sur elles (Hugo, 2026-11-12). 0 sans défaut. */
+     « Aucun par défaut » écrirait sur elles (Hugo, 2026-11-12). 0 sans défaut. */
   function suiventLeDefaut(plan) {
     if (!ordonner(plan && plan.porte_sur).length) return 0;
     return ((plan && plan.entrees) || [])

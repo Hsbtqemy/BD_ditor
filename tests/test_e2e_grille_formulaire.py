@@ -121,7 +121,7 @@ def test_construire_une_grille_de_deux_rubriques_la_publier_l_activer(page, live
     expect(b.locator(".fm-q-titre")).to_contain_text("Où se posent ses entrées, sauf exception ?")
     expect(b.locator(".fm-q-note")).to_be_visible()
     expect(b.locator(".fm-q-note")).to_have_text("Chaque entrée peut en choisir une autre.")
-    expect(page.get_by_label("Aucun défaut")).to_be_checked()
+    expect(page.get_by_label("Aucun par défaut")).to_be_checked()
     page.get_by_label("La case").check()
     expect(page.locator(".fm-tete-l .pj-sous")).to_contain_text("porte sur la case")
 

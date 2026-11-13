@@ -339,7 +339,7 @@ test("sans défaut, une entrée sans cible attend à la question 2, et retient l
   assert.deepEqual(F.ciblesDeReponse({ choix: "aucun", sortes: [] }), []);
   const e = E("ecole");
   assert.deepEqual(F.manques(e, null, sans),
-                   [{ q: 2, texte: "Dites où elle se pose : la grille n'a pas de défaut." }]);
+                   [{ q: 2, texte: "Dites où elle se pose : la grille ne pose rien par défaut." }]);
   // Une entrée qui dit la sienne n'attend rien ; avec un défaut, rien n'attend non plus.
   assert.deepEqual(F.manques(E("x", { cible_declaree: ["case"] }), null, sans), []);
   assert.deepEqual(F.manques(e, null, PLAN), []);
@@ -350,7 +350,7 @@ test("sans défaut, une entrée sans cible attend à la question 2, et retient l
   assert.equal(F.aCompleter(PLAN, new Map()), 0);
 });
 
-test("« Aucun défaut » compte les entrées vivantes qui suivent le défaut", () => {
+test("« Aucun par défaut » compte les entrées vivantes qui suivent le défaut", () => {
   const plan = { ...PLAN, entrees: [E("a"), E("b", { cible_declaree: ["planche"] }),
                                     E("c", { retiree: true }), E("d")] };
   assert.equal(F.suiventLeDefaut(plan), 2);

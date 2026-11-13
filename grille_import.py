@@ -526,9 +526,9 @@ def lire_tableur(tableur: dict, *, porte_sur=None, reference=None,
             # Sans défaut, chaque entrée dit la sienne (Hugo, 2026-11-12) : un fichier est
             # entier, la faute s'y corrige là où elle est.
             anomalies.append(_faute(
-                "cible_manque", "l'entrée ne dit pas où elle se pose, et la grille n'a pas "
-                "de défaut", "répondez à sa question 2, ou donnez un défaut à la grille "
-                "(feuille « 1. La grille »)", colonne="cible", **ou))
+                "cible_manque", "l'entrée ne dit pas où elle se pose, et la grille ne pose "
+                "rien par défaut", "répondez à sa question 2, ou donnez à la grille une "
+                "réponse par défaut (feuille « 1. La grille »)", colonne="cible", **ou))
         cardinalite = grille_tableur.cardinalite_lue(l["cardinalite"]) or None
         if cardinalite is not None and cardinalite not in CARDINALITES:
             anomalies.append(_faute(
