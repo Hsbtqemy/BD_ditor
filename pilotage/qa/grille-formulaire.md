@@ -29,8 +29,8 @@ pas.
 
 ### Créer une grille fermée, sous `proprio`
 - [x] *Administration › Projets › Projet principal*, bloc « Grilles » : « + Construire une grille » ouvre le formulaire, le champ du nom a le focus, et « Créer la grille » est éteint ; à côté, « Donnez-lui un nom. »
-- [x] Taper « Lieux QA », Tab : « Créer la grille » reste éteint et dit « Dites sur quoi elle porte (B). » ; la question A, « Fermée ou ouverte ? », a « Fermée » coché
-- [x] Question B, cocher « La case » : « Créer la grille » s'allume ; le cliquer : le titre devient « Lieux QA », l'adresse porte `&grille=`, et la tête dit « brouillon v1 »
+- [ ] Taper « Lieux QA », Tab : « Créer la grille » s'allume ; la question A, « Fermée ou ouverte ? », a « Fermée » coché, et il n'y a pas de question B (la grille naît sans défaut, `5411f05`)
+- [ ] « Créer la grille » : le titre devient « Lieux QA », l'adresse porte `&grille=`, et la tête dit « brouillon v1 » ; dans « Toute la grille », question B, cocher « La case » : la tête dit « porte sur la case »
 - [x] Les trois colonnes sont là, le plan à gauche, la fiche au milieu, l'aperçu à droite ; cliquer tour à tour « Toute la grille » puis une rubrique (zone suivante) ne change la largeur d'aucune des trois
 
 ### Deux rubriques, deux entrées, sous `proprio`
@@ -64,7 +64,7 @@ pas.
 - [x] « Remettre en usage » : « Retirer » revient ; la v1 active n'a pas changé (sur la page Annotation, « cri » se pose toujours dans « Sons et images (fictive) »)
 
 ### Une entrée employée, grille ouverte, sous `proprio`
-- [x] Bloc « Grilles », « + Construire une grille » : « Libre QA », « Ouverte », porte sur « La case », « Créer la grille » : la tête dit « ouverte · s'écrit en place »
+- [ ] Bloc « Grilles », « + Construire une grille » : « Libre QA », « Ouverte », « Créer la grille », puis question B « La case » : la tête dit « ouverte · s'écrit en place »
 - [x] « + Rubrique » « Sons », « + Entrée » « bruit », Tab ; « Activer dans le projet », en tête du formulaire (aucune publication : une ouverte n'a qu'une version) : un message dit qu'elle est active dans le projet
 - [x] *Annotation*, la même case, onglet « Libre QA » : poser « bruit » ; revenir au formulaire de « Libre QA », cliquer « bruit » : la fiche dit « 1 relevé la porte. », ses gestes offrent « Retirer » ET « Fusionner dans… », et pas « Supprimer l'entrée… »
 - [x] Sur « bruit », les réponses de la question de forme et de celle de la liste sont éteintes, et leur survol dit pourquoi
