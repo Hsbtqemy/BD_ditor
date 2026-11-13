@@ -1,6 +1,6 @@
 ---
 chantier: QA-7
-statut: à venir
+statut: livré
 ---
 
 # QA-7 — la passe navigateur dans l'image prend plus de trois heures
@@ -16,8 +16,8 @@ jour : « il faudrait que ce soit push cet après-midi »).
 - [x] **Les tests navigateur de `22580fc`, rejoués entiers dans l'image** — attendu : `docker run --rm bdediteur:e2e-22580fc` sur le poste (l'image est déjà construite, rien à refaire) rend 1 286 tests et 0 échec. Coupée le 2026-11-12 vers 22 % (environ 280 tests verts, aucun échec) ; le commit est en production depuis le même jour. Un échec se règle par un correctif sur `dev`, pas par un retour en arrière : les migrations de schéma sont à sens unique. **Rejouée le 2026-11-13, 2 h 47 :** 1 284 tests verts, 6 sautés, 1 rouge. Le rouge, `test_un_409_de_valeur_vue_garde_la_saisie`, est une course du TEST : il relisait le plan avant la réponse du PATCH que « Remplacer par la mienne » renvoie. Corrigé sur `dev`, l'écran ne change pas
 
 ### Faire tenir la passe en une heure
-- [ ] **La passe navigateur dans l'image se répartit sur plusieurs processus** — attendu : `docker run --rm bdediteur:e2e` joue les tests navigateur sur au moins quatre processus (`pytest-xdist`, ajouté au verrou de test), en une heure au plus sur le poste, avec le même nombre de tests et 0 échec. Mesuré le 2026-11-12 : 1 286 tests joués un par un, environ 9 secondes chacun, un seul Chromium, alors que Docker dispose de 8 processeurs. À vérifier d'abord : le serveur de test et sa base sont partagés par toute la session, et plusieurs tests règlent la fenêtre ou la police
-- [ ] **CLAUDE.md dit les comptes et la durée d'aujourd'hui** — attendu : § Tests, les comptes mesurés le 2026-11-12 par `--collect-only` (suite par défaut 3 554, `not live` 4 839, `not e2e and not live` 3 553, e2e 1 286) à la place de ceux du 2026-09-07, et la durée réelle de la passe navigateur dans l'image à la place de « 184 tests, ~23 min »
+- [x] **La passe navigateur dans l'image se répartit sur plusieurs processus** — attendu : `docker run --rm bdediteur:e2e` joue les tests navigateur sur au moins quatre processus (`pytest-xdist`, ajouté au verrou de test), en une heure au plus sur le poste, avec le même nombre de tests et 0 échec. Mesuré le 2026-11-12 : 1 286 tests joués un par un, environ 9 secondes chacun, un seul Chromium, alors que Docker dispose de 8 processeurs. À vérifier d'abord : le serveur de test et sa base sont partagés par toute la session, et plusieurs tests règlent la fenêtre ou la police. **Mesuré le 2026-11-13 sur `2a86605` :** 56 min sur quatre processus (construction de l'image en 3 min de plus), 1 224 tests verts, 6 sautés, 0 rouge. Les 1 225 collectés sont ceux de `dev`, 61 de moins que `22580fc` : le basculement d'ANN-7 a retiré les tests du mode Annotation de l'Atelier et du vocabulaire, et en a ajouté pour la page Annotation, comparés fichier par fichier entre les deux images. Le serveur de test était déjà propre à chaque test ; seul son port se reprend désormais si le serveur meurt au démarrage
+- [x] **CLAUDE.md dit les comptes et la durée d'aujourd'hui** — attendu : § Tests, les comptes mesurés le 2026-11-12 par `--collect-only` (suite par défaut 3 554, `not live` 4 839, `not e2e and not live` 3 553, e2e 1 286) à la place de ceux du 2026-09-07, et la durée réelle de la passe navigateur dans l'image à la place de « 184 tests, ~23 min ». Fait le 2026-11-13 avec les comptes de `dev` après le basculement : 3 523, 4 747, 3 522 et 1 225, et 56 min sur quatre processus
 
 ## Contexte
 
