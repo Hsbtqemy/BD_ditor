@@ -261,7 +261,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Le marqueur d'image vaut ici aussi (hérité de `base`), et le bandeau d'identité précède
 # la suite pour la même raison qu'à l'étape `test` : un journal doit rester lisible sans
 # qu'on reconstruise ce qu'il décrit.
-CMD ["sh", "-c", "python tools/identite_pile.py --identite; python -m pytest -m e2e"]
+#
+# Sur QUATRE processus (QA-7, 2026-11-13) : joués un par un, 1 286 tests prenaient 3 h 20,
+# et la passe ne tenait plus dans l'après-midi d'une fusion. Chaque test a son serveur, sa
+# base et son port (`live_server`) ; `BD_E2E_PROCESSUS` règle le nombre, 0 rend l'ancien
+# déroulé (`-n 0` : sans répartition).
+CMD ["sh", "-c", "python tools/identite_pile.py --identite; python -m pytest -m e2e -n ${BD_E2E_PROCESSUS:-4}"]
 
 # --------------------------------------------------------------------------- #
 # runtime — l'image LIVRÉE  (étape par défaut : la dernière du fichier)

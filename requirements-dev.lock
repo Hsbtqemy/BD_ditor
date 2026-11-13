@@ -26,3 +26,6 @@ pytest==9.0.2
 iiif-prezi3==3.1.1
 pytest-cov==7.0.0
 pytest-playwright==0.8.0
+# Les E2E sur plusieurs processus (QA-7, 2026-11-13) : 1 286 tests joués un par un prenaient
+# 3 h 20 dans l'image. Chaque test a déjà son serveur, sa base et son port.
+pytest-xdist==3.8.0

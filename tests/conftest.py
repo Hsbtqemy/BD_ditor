@@ -288,7 +288,6 @@ def live_server(request, tmp_path):
     voir le corpus, faute d'entrée dans `collection_acces`.
     """
     derriere_proxy = getattr(request, "param", False)
-    port = _free_port()
     env = {**os.environ,
            "BD_DATA_DIR": str(tmp_path),
            "BD_DB_PATH": str(tmp_path / "live.sqlite"),
@@ -321,35 +320,49 @@ def live_server(request, tmp_path):
            # un test. Sans effet ailleurs : seule `GET /api/comptes-et-groupes` la lit.
            "BD_ANNUAIRE_ADRESSE": "doublure:",
            "BD_ANNUAIRE_URL": "https://annuaire.example.fr/"}
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "main:app",
-         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
-        cwd=str(REPO_ROOT), env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    base = f"http://127.0.0.1:{port}"
     poll = httpx.Client(trust_env=False, timeout=1)  # trust_env=False : ignore le proxy
+    proc = None
     try:
-        deadline = time.time() + 25
-        while time.time() < deadline:
-            if proc.poll() is not None:
-                pytest.fail("le serveur uvicorn s'est arrêté au démarrage")
-            try:
-                if poll.get(base + "/api/sante").status_code == 200:
+        # Le port libre se choisit AVANT que le serveur le prenne : entre les deux, un autre
+        # processus de test (`-n 4`, QA-7) peut l'avoir pris. Un serveur mort au démarrage
+        # reprend donc un autre port, trois fois au plus — un vrai échec de démarrage échoue
+        # encore, à la troisième.
+        for essai in range(3):
+            port = _free_port()
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "uvicorn", "main:app",
+                 "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+                cwd=str(REPO_ROOT), env=env,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            base = f"http://127.0.0.1:{port}"
+            deadline = time.time() + 25
+            pret = False
+            while time.time() < deadline:
+                if proc.poll() is not None:
                     break
-            except httpx.HTTPError:
-                pass
-            time.sleep(0.3)
+                try:
+                    if poll.get(base + "/api/sante").status_code == 200:
+                        pret = True
+                        break
+                except httpx.HTTPError:
+                    pass
+                time.sleep(0.3)
+            if pret:
+                break
+            if proc.poll() is None:
+                pytest.fail("serveur uvicorn non disponible dans le délai")
         else:
-            pytest.fail("serveur uvicorn non disponible dans le délai")
+            pytest.fail("le serveur uvicorn s'est arrêté au démarrage, trois fois")
         yield base
     finally:
         poll.close()
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        if proc is not None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
 
 def autres_gestes(page):
