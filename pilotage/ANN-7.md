@@ -20,6 +20,16 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 
 ## Reste
 
+### La mise en production — le week-end du 2026-11-14 (« terminé veut dire en prod », Hugo)
+
+- [ ] Les correctifs du mode libre relevés le 2026-11-11 sont sur `dev` — attendu : les cases « Après Entrée dans le nom d'une étiquette… », « Le bloc ✎ respire », « « Définir » change de nom… », « « + valeur », « cour »… », « Aucun code de cadrage… », « « Passer dans une grille… » éteint… », les deux d'« ⟳ Actualiser », « Quand rien n'est posé… » et « Une étiquette créée depuis une grille fermée… » closes, chacune avec son commit et son test
+- [ ] Les CSV partent en points-virgules — attendu : la case « Les CSV s'ouvrent en colonnes dans un Excel français » close, avec son cliquet
+- [ ] Hugo a joué les passes du lot — attendu : `qa/fin-d-une-grille.md`, la passe des correctifs du mode libre et celle des CSV, toutes leurs cases cochées ou leurs constats devenus des cases de cette fiche
+- [ ] Ce que la maquette du week-end tranche est codé, ou reporté par écrit — attendu : le bilan des changements à la publication, l'écran du masquage et le formulaire à grande police, chacun codé et joué, ou reporté après la mise en production par Hugo ; aucun n'est nécessaire au premier déploiement (publier sans bilan est accepté depuis le 2026-11-04)
+- [ ] Les passes longues du lot sont vertes à la tête de `dev` — attendu : la suite par défaut, le navigateur entier et la suite dans l'image reconstruite, 0 rouge, le poste tenu éveillé
+- [ ] `dev` puis `main` sont poussés, chacun sur le mot de Hugo — attendu : `origin/main` à la tête de `dev`, la v39 jouée en production dans ses trois temps (`docs/exploitation.md`, « Le basculement d'ANN-7 : la migration v39 ») : le relevé en lecture seule relu avec Hugo, le déploiement, la réindexation par le moteur de langue
+- [ ] La production sert la page Annotation et les grilles — attendu : sur `bd.edito-revue.fr`, `GET /api/sante` à jour du commit poussé, `PRAGMA user_version` à 39, chaque projet a sa grille « Travail en cours », et la gestionnaire figure comme responsable du projet de la grille des linguistes (case « La gestionnaire est responsable… », zone « L'ordre »)
+
 ### Tranché par Hugo — 2026-10-14
 
 - [x] **L'outil est agnostique** — attendu : tranché. Le code ne connaît aucun vocabulaire —
