@@ -1552,7 +1552,9 @@ AUTRE y vit — la sienne part avec la région, la doctrine de CONC-4 pour la si
 (pilotage, 2026-10-26) —, ou qu'un relevé d'un autre la désigne par son LIEN
 (`undo._garder_releves_de_creation`) : la suppression brute emportait relevés et passes par
 CASCADE, sans instantané. Un relevé est « d'un autre » par son AUTEUR ou par un acte d'un
-autre à son journal, jamais par son seul dernier retoucheur ; le refus nomme un auteur
+autre à son journal — hors l'acte `fusion` qu'une fusion d'entrées écrit sur chaque relevé
+qu'elle déplace (`grilles.ACTE_FUSION`, qui n'est pas non plus un travail sur l'album) —,
+jamais par son seul dernier retoucheur ; le refus nomme un auteur
 autre que soi lu sur l'objet (`auteur`, puis `modifie_par`), sinon « ailleurs ». Ctrl+Z
 d'une retouche de relevé rend aussi `modifie_par` et `modifie_le`.
 
