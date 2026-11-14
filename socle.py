@@ -1206,7 +1206,9 @@ def _passer_les_gestes_du_bac(conn, projet_id: int) -> int:
     avant que leurs objets partent. Sans lui, Ctrl+Z refusait ces gestes un par un après
     l'effacement — « ne s'annule plus », autant de fois qu'il y en avait. Ceux qu'il voit :
     les actes sur une région VIVANTE du bac à sable, ceux dont la charge nomme l'une de ses
-    planches (une région créée, modifiée ou supprimée). Ceux d'avant le PLANCHER de Ctrl+Z
+    planches (une région créée, modifiée ou supprimée) — d'un TYPE que Ctrl+Z remonte
+    (`undo._TYPES`) : un doute ou une passe, sous `releve`, n'est jamais offert, et ne se
+    passe ni ne se compte (ANN-7). Ceux d'avant le PLANCHER de Ctrl+Z
     (`undo.plancher`, v39) ne sont plus offerts : il n'y a rien à y passer, ni à compter. Ne
     commite pas ; rend le nombre."""
     import undo                                  # import paresseux : `undo` ne dépend de rien ici
@@ -1217,11 +1219,12 @@ def _passer_les_gestes_du_bac(conn, projet_id: int) -> int:
         return 0
     marques = ", ".join("?" * len(planches))
     tables = ", ".join("?" * len(undo._TABLES))
+    types = ", ".join("?" * len(undo._TYPES))
     # ANN-7 — un acte sur la SURFACE d'une planche (`releve_planche`) la désigne par son
     # identifiant de PLANCHE, jamais de région : les deux ne se confondent pas.
     gestes = conn.execute(
         f"SELECT * FROM evenement e WHERE e.agent_type = 'humain' AND e.id > ? "
-        f"AND e.cible_table IN ({tables}) "
+        f"AND e.type IN ({types}) AND e.cible_table IN ({tables}) "
         f"AND ((e.cible_table <> 'releve_planche' "
         f"      AND e.cible_id IN (SELECT r.id FROM regions r WHERE r.planche_id IN ({marques}))) "
         f"     OR (e.cible_table = 'releve_planche' AND e.cible_id IN ({marques})) "
@@ -1231,7 +1234,7 @@ def _passer_les_gestes_du_bac(conn, projet_id: int) -> int:
         f"                 WHERE ((type = 'annulation' AND cible_table = 'evenement') "
         f"                     OR (type = 'abandon' AND cible_table = 'annulation')) "
         f"                   AND cible_id IS NOT NULL) ORDER BY e.id",
-        (undo.plancher(conn), *undo._TABLES, *planches, *planches, *planches,
+        (undo.plancher(conn), *undo._TYPES, *undo._TABLES, *planches, *planches, *planches,
          *planches)).fetchall()
     for e in gestes:
         undo.ecarter(conn, e)

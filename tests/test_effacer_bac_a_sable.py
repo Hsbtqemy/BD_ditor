@@ -349,6 +349,30 @@ def test_ctrl_z_ne_bute_pas_sur_un_bac_a_sable_efface(client, decor):
     assert prochain and prochain["evenement_id"] == attendu, prochain
 
 
+
+def test_l_effacement_ne_passe_que_ce_que_ctrl_z_aurait_offert(client, decor):
+    """Un doute ou une passe, sous `releve`, n'est pas un geste que Ctrl+Z remonte
+    (`undo._TYPES`) : l'effacement ne lui pose aucune trace `abandon` et ne le compte pas."""
+    planche_bac = _copie({"bac": decor["bac"], "db": decor["db"]}, "exemple")["planche_ids"][0]
+    region = client.post(f"/api/planches/{planche_bac}/regions", headers=SAM,
+                         json={"type": "case", "x": 1, "y": 1, "w": 9, "h": 9}).json()["id"]
+    for t in ("doute", "passe"):
+        _sql(decor["db"], "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
+                          "apres) VALUES (?, 'sam', 'humain', 'releve', ?, '{}')", (t, region))
+    hors_pile = [e["id"] for e in _sql(
+        decor["db"], "SELECT id FROM evenement WHERE cible_table = 'releve' AND cible_id = ? "
+                     "AND type IN ('doute', 'passe')", (region,))]
+    annulables = _sql(decor["db"], "SELECT COUNT(*) n FROM evenement WHERE agent_type = 'humain' "
+                                   "AND cible_table = 'regions' AND cible_id = ?", (region,))[0]["n"]
+    r = _effacer(decor["bac"]["id"])
+    passes = {e["cible_id"] for e in _sql(decor["db"], "SELECT cible_id FROM evenement "
+                                                         "WHERE type = 'abandon' "
+                                                         "AND cible_table = 'annulation'")}
+    assert annulables >= 1 and len(hors_pile) == 2 and passes, r
+    assert not passes & set(hors_pile), (hors_pile, passes)
+    assert r["gestes_passes"] == len(passes), (r, passes)
+
+
 # --------------------------------------------------------------------------- #
 # La remise à neuf
 # --------------------------------------------------------------------------- #
