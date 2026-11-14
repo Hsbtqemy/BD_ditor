@@ -5,7 +5,9 @@ statut: interrompu
 
 # ANN-8 — l'annotation d'aujourd'hui : les défauts que l'usage a relevés
 
-**Arrêté sur** — 2026-10-23, `65e4a7e` : **Ctrl+Z d'un lien ne retire plus le geste d'un autre.**
+**Arrêté sur** — 2026-11-14, `338b8d4` : **la fusion de deux personnages reprend leurs personnages montrés** — `personnage_presence` suit le gardé, comme `bulle_locuteur`. Les autres cases ouvertes n'ont pas bougé.
+
+**Plus tôt** — 2026-10-23, `65e4a7e` : **Ctrl+Z d'un lien ne retire plus le geste d'un autre.**
 Trouvé par Hugo à la passe du push (zone « Passer ce geste ») : annuler la pose d'un locuteur
 retirait celui qu'une collègue avait mis depuis — défaut ancien, présent en production depuis
 D1. Garde CONC-3 sur l'annulation d'un `lien`/`delien` de locuteur et de personnage montré
@@ -121,10 +123,10 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   geste passé du même agent, ne bloquent plus son propre Ctrl+Z ; une FUSION de personnages
   faite depuis fait refuser l'annulation d'un lien qu'elle a réaffecté — assumé, écrit dans
   `docs/undo.md`. Relecture croisée et contre-relecture faites
-- [ ] **La fusion de deux personnages reprend aussi leurs « personnages montrés »** — attendu :
+- [x] **La fusion de deux personnages reprend aussi leurs « personnages montrés »** — attendu :
   les présences du doublon passent au personnage gardé. Relevé le 2026-10-23 par la relecture
   croisée : la fusion réaffecte `bulle_locuteur` mais pas `personnage_presence`, dont les lignes
-  du doublon partent par CASCADE — une boîte personnage perd son personnage sans rien dire
+  du doublon partent par CASCADE — une boîte personnage perd son personnage sans rien dire **Le 2026-11-14, `338b8d4` : la fusion réaffecte aussi `personnage_presence` (`region_id` y est la clé, aucun doublon possible) ; `test_la_fusion_reprend_les_personnages_montres`, mutant tombé.**
 
 ### Les champs à propositions — laissé ouvert par le correctif du 2026-10-13
 - [x] **Un nom tapé sans ses accents trouve l'homonyme accentué** — attendu : tranché par Hugo.

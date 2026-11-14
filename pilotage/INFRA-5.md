@@ -5,7 +5,9 @@ statut: interrompu
 
 # INFRA-5 — reprise d'état via sessionStorage
 
-**Arrêté sur** — 2026-10-21, `6ccd8cb` : les quatre cases sont codées, dans le lot 1, sur `dev`
+**Arrêté sur** — 2026-11-14, `57fe163` : **le test du retour sans stockage de session attend la réponse de la recherche**, plus un délai. Restent la passe navigateur entière du lot, qui fermera sa case, la passe de QA du lot 1 et le push.
+
+**Plus tôt** — 2026-10-21, `6ccd8cb` : les quatre cases sont codées, dans le lot 1, sur `dev`
 en local. Restent la passe de QA du lot et le push. D'où `interrompu`.
 
 **Point de départ** — l'URL couvre déjà le rechargement et le partage ; revenir sur
@@ -18,7 +20,7 @@ Recherche ou Exploration **par le menu** repart d'un état vide.
 - [x] Arriver par une URL portant un état explicite l'emporte sur l'état mémorisé — l'URL reste la source de vérité **Fait le 2026-10-21, `6ccd8cb`** (`Nav.etatDeDepart`) : une adresse qui porte un état gagne toujours ; `retour` seul est un contexte et non un état, il ne se mémorise jamais. Trois mutants de la logique pure tués sous Node
 - [x] Une navigation privée, ou un stockage de session indisponible, dégrade proprement vers l'état vide **Fait le 2026-10-21, `6ccd8cb`** : toute lecture et toute écriture sous try/catch ; sans stockage, les pages repartent vides sans erreur de script (joué au navigateur)
 - [ ] La passe de QA du lot 1 joue le retour par le menu sur la Recherche et l'Exploration — attendu : cochée par Hugo
-- [ ] **`test_sans_stockage_de_session_la_page_repart_vide_sans_erreur` ne dépend plus de la charge du poste** — attendu : vert dans une passe navigateur entière lancée pendant qu'une autre suite tourne. Relevé le 2026-10-26 (chaîne de `8a38bb9`, et déjà le 2026-10-24 sur `0602f03`) : il attend 15 s « Aucun résultat. » après une PREMIÈRE recherche, qui charge à froid le modèle de langue ; sous charge, la requête `/api/recherche` dépasse le délai — tracé, elle reste en attente, quelle que soit la feuille de style (une bissection par fichier avait d'abord accusé `style.css` : c'était la charge qui variait). Seul et au repos, vert trois fois sur trois en 20 s. Remède à choisir : préchauffer le modèle dans la fixture (`nlp.prewarm()`), ou allonger ce délai-là
+- [ ] **`test_sans_stockage_de_session_la_page_repart_vide_sans_erreur` ne dépend plus de la charge du poste** — attendu : vert dans une passe navigateur entière lancée pendant qu'une autre suite tourne. Relevé le 2026-10-26 (chaîne de `8a38bb9`, et déjà le 2026-10-24 sur `0602f03`) : il attend 15 s « Aucun résultat. » après une PREMIÈRE recherche, qui charge à froid le modèle de langue ; sous charge, la requête `/api/recherche` dépasse le délai — tracé, elle reste en attente, quelle que soit la feuille de style (une bissection par fichier avait d'abord accusé `style.css` : c'était la charge qui variait). Seul et au repos, vert trois fois sur trois en 20 s. Remède à choisir : préchauffer le modèle dans la fixture (`nlp.prewarm()`), ou allonger ce délai-là **Le 2026-11-14, `57fe163` : le test attend la réponse `/api/recherche` (`expect_response`, 120 s), puis le texte ; vert trois fois sous la suite par défaut, et sous un `spacy.load` retardé de 25 s l'ancienne forme rougit quand la nouvelle passe en 36 s. Reste la passe navigateur entière du lot, qui fermera la case.**
 
 ## Contexte
 
