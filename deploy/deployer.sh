@@ -26,7 +26,11 @@ set -euo pipefail
 URL_PAR_DEFAUT="https://bd.edito-revue.fr"
 url="$URL_PAR_DEFAUT"
 simulation=0
-sans_suite=0
+# La suite dans l'image ne se joue plus ICI par défaut (INFRA-13) : le 2026-11-14, ses
+# 3 457 tests à côté de l'application servie ont gelé ce VPS (3,8 Go, 2 processeurs)
+# quarante-cinq minutes, jusqu'au redémarrage à froid. Elle se joue sur le poste, dans
+# l'image, à la révision poussée, AVANT de pousser `main` (`docs/exploitation.md`).
+avec_suite=0
 forcer=0
 
 usage() {
@@ -37,8 +41,10 @@ Usage : ./deploy/deployer.sh [options]
   --simulation     tout afficher, ne rien exécuter qui modifie l'instance
   --forcer         redéployer même si l'image sert DÉJÀ le commit attendu
                    (ce n'est pas le pull qui décide : cf. étape 2 bis)
-  --sans-suite     NE PAS jouer la suite dans l'image avant de déployer
-                   (à n'employer qu'en urgence : c'est la garde qui a le plus servi)
+  --avec-suite     jouer la suite dans l'image avant de déployer — PAS sur le VPS
+                   de production : elle l'a gelé le 2026-11-14 (INFRA-13). Par
+                   défaut, elle se joue sur le poste avant de pousser `main`
+  --sans-suite     accepté et sans effet : c'est le défaut depuis INFRA-13
   -h, --aide       cette aide
 FIN
 }
@@ -48,7 +54,8 @@ while [ $# -gt 0 ]; do
     --url)        url="${2:?--url attend une URL}"; shift 2 ;;
     --simulation) simulation=1; shift ;;
     --forcer)     forcer=1; shift ;;
-    --sans-suite) sans_suite=1; shift ;;
+    --avec-suite) avec_suite=1; shift ;;
+    --sans-suite) shift ;;
     -h|--aide)    usage; exit 0 ;;
     *)            echo "option inconnue : $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -238,9 +245,11 @@ fi
 
 # ── 3. La suite DANS l'image ─────────────────────────────────────────────────
 # QA-5, mesuré le 2026-08-27 : 451 tests verts dans le venv local et trois moteurs morts
-# dans l'image, le même jour. Le venv n'est pas l'artefact livré.
-if [ "$sans_suite" = 1 ]; then
-  printf '\n\033[1;33mSUITE SAUTÉE\033[0m — --sans-suite. Le venv local ne dit rien de cette image.\n'
+# dans l'image, le même jour. Le venv n'est pas l'artefact livré. Et l'image se mesure
+# sur le poste depuis INFRA-13 : jouée ici, la suite a gelé le VPS le 2026-11-14.
+if [ "$avec_suite" = 0 ]; then
+  printf '\n\033[1;33mSUITE NON JOUÉE ICI\033[0m — elle se joue sur le poste, dans l'"'"'image, avant de pousser main (INFRA-13).\n'
+  printf '   Les moteurs restent éprouvés : à la construction de l'"'"'image (verifier_moteurs.py) et au contrôle final.\n'
 else
   etape "Suite de tests dans l'image (quelques minutes)"
   cd "$racine"

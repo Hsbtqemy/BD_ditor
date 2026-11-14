@@ -116,7 +116,7 @@ def instance(tmp_path):
     (depot / "README.md").write_text("socle\n", encoding="utf-8")
     _commiter(depot, "socle")
 
-    def lancer(servi):
+    def lancer(servi, *options):
         # Le PATH se compose DANS bash : sur Windows un chemin `C:/…` porte un
         # deux-points, qui est le séparateur de PATH — préfixer depuis Python couperait
         # le chemin en deux entrées inexistantes, et le vrai `docker` répondrait.
@@ -126,7 +126,7 @@ def instance(tmp_path):
                "STUB_CID": "c0ffee", "STUB_LABEL": servi}
         return subprocess.run(
             [BASH, "-c", preambule, "_", str(outils),
-             "deploy/deployer.sh", "--simulation"],
+             "deploy/deployer.sh", "--simulation", *options],
             cwd=str(depot), env=env, capture_output=True,
             text=True, encoding="utf-8", errors="replace")
 
@@ -213,3 +213,28 @@ def test_une_image_sans_etiquette_redemarre_en_le_disant(instance):
         f"sans étiquette, le script doit dire qu'il n'a pas pu comparer : {ligne!r}")
     assert "MODIFIÉE" not in ligne, (
         f"rien n'a été constaté, donc rien ne doit être affirmé : {ligne!r}")
+
+
+def test_la_suite_ne_se_joue_plus_sur_le_vps_par_defaut(instance):
+    """INFRA-13 : le 2026-11-14, la suite dans l'image a gelé le VPS de production.
+
+    Elle se joue sur le poste avant de pousser `main` ; le VPS ne la construit ni ne la
+    lance plus, sauf demande expresse. La veille appelle `deployer.sh` sans option : c'est
+    ce défaut qui l'empêche de refaire la panne seule, à trois heures du matin.
+    """
+    depot, lancer = instance
+    (depot / "README.md").write_text("autre chose\n", encoding="utf-8")
+    _commiter(depot, "documentation")
+
+    for options in ((), ("--sans-suite",)):
+        res = lancer("0" * 40, *options)
+        assert res.returncode == 0, f"{options} : {res.stdout}\n{res.stderr}"
+        assert "bdediteur:suite" not in res.stdout, (
+            f"{options or 'sans option'} : le déploiement construit ou joue encore la suite "
+            f"sur le VPS :\n{res.stdout}")
+        assert "SUITE NON JOUÉE ICI" in res.stdout, res.stdout
+
+    res = lancer("0" * 40, "--avec-suite")
+    assert res.returncode == 0, f"{res.stdout}\n{res.stderr}"
+    assert "docker run --rm bdediteur:suite" in res.stdout, (
+        f"--avec-suite doit encore jouer la suite :\n{res.stdout}")
