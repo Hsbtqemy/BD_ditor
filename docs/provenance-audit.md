@@ -45,10 +45,12 @@ par les trois chemins de `metadonnees_collection.py` (JSON, CSV, XLSX).
 revendique. Ils ne sont jamais collectés par `pseudonymes()`, si bien qu'un
 `.get(nom, nom)` les laisse passer sans cas particulier.
 
-**Pourquoi un pseudonyme plutôt que rien.** Le login ne sert bien aucun des deux buts de la
-sortie : pour l'auditabilité, `agent_type` suffit — « machine, puis retouché par un
-humain » ; pour l'attribution scientifique, le support propre est `contribution`, avec son
-ORCID, et un login identifie sans créditer. Mais un graphe PROV où tous les humains se
+**Pourquoi un pseudonyme plutôt que rien.** Pour l'auditabilité, le login n'est pas
+nécessaire : `agent_type` suffit — « machine, puis retouché par un humain ». Pour
+l'attribution scientifique, un login identifie sans créditer, et aucun chemin de crédit
+n'existe aujourd'hui pour qui annote : `contribution` porte les auteurs de l'album
+(scénariste, dessinateur…), sans ORCID (constat d'AUTH-9, 2026-09-07 ; cette page disait
+le contraire jusqu'au 2026-11-14). Mais un graphe PROV où tous les humains se
 confondraient perdrait les **chaînes de révision**, c'est-à-dire l'essentiel. Le pseudonyme
 garde la structure et retire l'identité.
 

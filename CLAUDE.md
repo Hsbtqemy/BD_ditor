@@ -1476,8 +1476,9 @@ pour la migration suivante.
   (`tools/_commun.pseudonymes()`, partagé par `provenance_export.py` — PROV-JSON **et**
   TEI — et par les trois chemins de `metadonnees_collection.py`). **Les moteurs gardent
   leur nom** : ce sont des logiciels, et les nommer EST l'auditabilité du pré-remplissage.
-  Un login ne sert bien aucun des deux buts de la sortie — `agent_type` suffit à l'audit,
-  et l'attribution scientifique a `contribution` avec son ORCID — mais confondre tous les
+  Un login n'est pas nécessaire à l'audit — `agent_type` y suffit — et ne crédite personne ;
+  aucun chemin de crédit n'existe aujourd'hui pour qui annote (`contribution` porte les
+  auteurs de l'album, sans ORCID : AUTH-9). Mais confondre tous les
   humains perdrait les CHAÎNES DE RÉVISION. Le mapping est partagé et corpus-entier
   (deux artefacts qui nommeraient autrement la même personne se contrediraient), et
   ordonné par PREMIÈRE TRACE, sinon un arrivant renumérote tout le monde. Ce n'est pas de
