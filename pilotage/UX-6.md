@@ -5,7 +5,9 @@ statut: interrompu
 
 # UX-6 — écran « par où commencer » et guide utilisateur
 
-**Arrêté sur** — 2026-11-12, `be2562e` : **les deux correctifs tranchés le 2026-11-11** — la phrase d'« Annoter » ne situe plus la grille (`830cf09`), et l'album ne garde sa hauteur stable que là où le texte est à côté de l'image (`be2562e`) ; reste la passe des retouches du 6 novembre, puis la fusion ; `test_la_fenetre_du_guide_ne_recouvre_jamais_son_foyer` reste instable sous charge
+**Arrêté sur** — 2026-11-14, `05a09c3` : **le test du « ? » attend que la page Annotation ait écrit son lieu** — seul rouge de la passe navigateur entière du lot, une course du test. Reste la passe des retouches du 6 novembre, puis la fusion.
+
+**Plus tôt** — 2026-11-12, `be2562e` : **les deux correctifs tranchés le 2026-11-11** — la phrase d'« Annoter » ne situe plus la grille (`830cf09`), et l'album ne garde sa hauteur stable que là où le texte est à côté de l'image (`be2562e`) ; reste la passe des retouches du 6 novembre, puis la fusion ; `test_la_fenetre_du_guide_ne_recouvre_jamais_son_foyer` reste instable sous charge
 seul changé, « Exporter », dit le bac à sable en mots d'arrivant (`cde1e18`) — et l'étape
 « Tracer », faite, apprend ↻, la voie (c) du `c3 · b1` (`502227d`). Sur `dev`, pas poussés.
 La tranche 4 a été poussée le matin même.
