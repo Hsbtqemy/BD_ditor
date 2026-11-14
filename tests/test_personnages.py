@@ -203,6 +203,26 @@ def test_presence_cascade(client, planche):
         assert conn.execute("SELECT COUNT(*) n FROM regions WHERE id=?", (rid,)).fetchone()["n"] == 1
 
 
+def test_la_fusion_reprend_les_personnages_montres(client, planche):
+    """ANN-8 — la fusion réaffecte la PRÉSENCE comme le locuteur : la boîte qui montrait le
+    doublon montre le personnage gardé. Oubliée, la ligne partait par CASCADE avec le
+    doublon, et la boîte perdait son personnage sans rien dire (relecture du 2026-10-23).
+    Une seconde boîte, qui montrait déjà le gardé, le garde."""
+    rid = _boite_perso(client, planche)
+    autre = _boite_perso(client, planche)
+    doublon = client.post("/api/personnages", json={"nom": "le reporter"}).json()["id"]
+    garde = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
+    assert client.put(f"/api/regions/{rid}/personnage",
+                      json={"personnage_id": doublon}).status_code == 200
+    assert client.put(f"/api/regions/{autre}/personnage",
+                      json={"personnage_id": garde}).status_code == 200
+    rep = client.post(f"/api/personnages/{doublon}/fusion", json={"cible_id": garde})
+    assert rep.status_code == 200, rep.text
+    assert client.get(f"/api/regions/{rid}/personnage").json()["personnage"]["id"] == garde
+    assert client.get(f"/api/regions/{autre}/personnage").json()["personnage"]["id"] == garde
+    assert all(x["id"] != doublon for x in client.get("/api/personnages").json())
+
+
 def test_personnage_muet_identifie_depuis_la_boite(client, planche):
     """§14 (a) — clé de voûte : un personnage qui ne parle JAMAIS (aucune bulle) est
     identifié sur une boîte, sans passer par une bulle. (Son PROFIL s'y posait aussi : il
