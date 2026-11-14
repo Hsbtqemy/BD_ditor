@@ -806,10 +806,11 @@ def test_au_doigt_les_cibles_du_mode_libre_font_44_px(doigt, decor):
     expect(doigt.locator('#an-plan [data-renom="sentiment"]')).to_be_visible()
     hauteurs = doigt.evaluate("""() => [...document.querySelectorAll(
       '#an-creer, #an-tri, #an-ranger, #an-plan .an-crayon, #an-plan .an-renom, '
-      + '#an-plan .an-renomv, #an-plan .an-plusv, #an-plan .an-gestes-rares button')]
+      + '#an-plan .an-renomv, #an-plan .an-defn, #an-plan .an-plusv, '
+      + '#an-plan .an-gestes-rares button')]
       .filter((e) => e.getClientRects().length)
       .map((e) => [e.id || e.className, Math.round(e.getBoundingClientRect().height)])""")
-    assert len(hauteurs) >= 9, hauteurs
+    assert len(hauteurs) >= 10, hauteurs
     assert all(h >= 44 for _, h in hauteurs), hauteurs
     # Ranger au doigt : ↑ ↓, aucun geste qui ne passe que par le survol ou le glissé.
     doigt.locator('#an-plan [data-fin="sentiment"]').tap()
@@ -836,6 +837,13 @@ def test_a11y_mode_libre_champ_et_crayon_ouverts(page, decor, theme):
     page.locator("#an-mots").focus()
     expect(page.locator("#an-quoi")).to_be_hidden()
     page.locator('#an-plan [data-crayon="sentiment"]').click()
+    # « ✓ enregistré » montré : son encre se mesure sur le fond du bloc.
+    nom = page.locator('#an-plan [data-renom="sentiment"]')
+    nom.fill("sentiments")
+    with page.expect_response(lambda r: "/entrees/sentiment" in r.url
+                              and r.request.method == "PATCH"):
+        nom.press("Enter")
+    expect(page.locator('#an-plan [data-enregistre="renom:sentiment"]')).to_be_visible()
     page.locator('#an-plan [data-geste="passer"][data-c="sentiment"]').click()
     expect(page.locator("#an-plan .an-conf")).to_be_visible()
     viol = _audit(page)

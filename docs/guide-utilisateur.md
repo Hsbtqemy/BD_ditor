@@ -1092,10 +1092,12 @@ valeur se pose et se défait à part. Depuis une autre grille, un nom qu'elle n'
 valeurs d'une étiquette sont des puces qui se cochent une à une, la même jamais deux fois sur
 la même zone. L'ordre est *À la main* ou *A → Z*, retenu sur votre poste ; **↕ Ranger** change
 l'ordre *À la main*, celui de tout le projet (la poignée ⠿, ou ↑ ↓), et *Fini* le referme.
-**✎** renomme l'étiquette et ses valeurs sur place et en ajoute (*+ valeur*) ; dessous,
-*Définir*, *Fusionner dans…* et *Retirer…* sont aux responsables du projet. Une étiquette née
-en la tapant est *provisoire* : tout annotateur du projet la renomme et lui ajoute des valeurs ;
-une étiquette *définie* ne se renomme et ne reçoit de valeur que par les responsables. Un geste qu'on n'a pas reste
+**✎** renomme l'étiquette et ses valeurs sur place, écrit sa *définition* (lue ensuite dans la
+ligne du guide, au survol de l'étiquette) et en ajoute des valeurs (*+ valeur*) ; Entrée, ou
+quitter le champ, enregistre, et « ✓ enregistré » le dit à droite du champ. Dessous, *Figer*
+(ou *Rouvrir*), *Fusionner dans…* et *Retirer…* sont aux responsables du projet. Une étiquette
+née en la tapant est *provisoire* : tout annotateur du projet la renomme, la définit et lui
+ajoute des valeurs ; une étiquette figée (*définie*) ne change que par les responsables. Un geste qu'on n'a pas reste
 visible, éteint, et dit pourquoi au clic.
 
 **Ce qui est posé** se lit en bas de la grille — sur les mots désignés, sinon sur la zone, et

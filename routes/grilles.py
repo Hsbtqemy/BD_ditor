@@ -901,14 +901,24 @@ _MOTIF_RESPONSABLE = ("Fusionner, retirer une étiquette ou changer son état re
                       "responsables du projet.")
 
 
-def _exiger_remaniement(conn, portee, g, v, entree: dict, geste: str, champs=()) -> None:
+# Ce que le RENOMMAGE d'une ENTRÉE couvre pour qui ne gère pas le projet : son nom, et sa
+# définition (Hugo, 2026-11-11 : « renommer ET ajouter la définition », sous la règle du
+# renommage — tout annotateur du projet sur une étiquette provisoire). Une valeur ne reçoit
+# que son nom.
+CHAMPS_DU_RENOMMAGE = frozenset({"libelle", "cle"})
+CHAMPS_DU_RENOMMAGE_D_ENTREE = CHAMPS_DU_RENOMMAGE | {"definition"}
+
+
+def _exiger_remaniement(conn, portee, g, v, entree: dict, geste: str, champs=(),
+                        permis=CHAMPS_DU_RENOMMAGE) -> None:
     """J5 (c) : le geste `geste` sur `entree` (son contenu AVANT le geste), par l'appelant —
     `Portee.peut_remanier_entree` — ; 403 nommé sinon. Qui ne gère pas le projet ne touche,
-    sur une entrée provisoire, qu'à des NOMS (`champs` : ceux que le corps envoie — un
-    libellé, rien d'autre) ; une définition, une forme, une cible restent au formulaire."""
+    sur une entrée provisoire, qu'aux champs `permis` (`champs` : ceux que le corps envoie —
+    un libellé, et pour une entrée sa définition) ; une forme, une cible, une structure
+    restent au formulaire."""
     if portee.peut_gerer_projet(g["projet_id"]):
         return
-    if set(champs) - {"libelle", "cle"}:
+    if set(champs) - set(permis):
         raise HTTPException(403, _MOTIF_GERER)
     if geste in autorisation.GESTES_DE_RESPONSABLE:
         raise HTTPException(403, _MOTIF_RESPONSABLE)
@@ -1188,8 +1198,9 @@ def modifier_entree(grille_id: int, cle: str, payload: EntreePatch,
     de l'entrée, l'état compris.
 
     J5 (c) : sur une entrée PROVISOIRE d'une grille ouverte, tout annotateur du projet la
-    RENOMME (`libelle`) et lui AJOUTE une valeur (`variantes`, leur seul libellé) ; le reste,
-    l'état compris, à qui gère le projet (403 nommé)."""
+    RENOMME (`libelle`), écrit sa DÉFINITION (`definition`, la règle du renommage, Hugo,
+    2026-11-11) et lui AJOUTE une valeur (`variantes`, leur seul libellé) ; le reste, l'état
+    compris, à qui gère le projet (403 nommé)."""
     d = payload.model_dump(exclude_unset=True)
     vu = d.pop("vu", None)
     neuves = d.pop("variantes", None) or []
@@ -1201,7 +1212,8 @@ def modifier_entree(grille_id: int, cle: str, payload: EntreePatch,
         if "etat" in d:
             _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "etat")
         if d:
-            _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "renommer", d)
+            _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "renommer", d,
+                                permis=CHAMPS_DU_RENOMMAGE_D_ENTREE)
         for x in neuves:
             _exiger_remaniement(conn, portee, g, v, avant["entrees"][cle], "ajouter_valeur",
                                 {k for k, y in x.items() if y is not None})

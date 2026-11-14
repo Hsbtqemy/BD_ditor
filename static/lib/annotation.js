@@ -1598,14 +1598,30 @@
 
   /* Ce qu'un geste de REMANIEMENT demande, et pourquoi il est éteint : la phrase dite sur
      place quand on clique un geste qu'on n'a pas (maquette du 2026-11-06), `null` s'il est
-     offert. `passer` (« Passer dans une grille… », J8) suit `fusionner` : structurer est aux
-     responsables. */
-  const RAISON_RARE = "Fusionner, retirer et définir : les responsables du projet";
+     offert. `passer` (« Passer dans une grille… ») suit `fusionner` : structurer est aux
+     responsables. Chaque geste rare éteint dit le SIEN, en le nommant (passe du mode libre,
+     2026-11-06 : « Passer dans une grille… » ne disait que « Fusionner, retirer et
+     définir ») ; « Figer » et « Rouvrir » sont les deux sens de l'état (Hugo, 2026-11-11). */
+  const RESPONSABLES = " : les responsables du projet";
+  const RAISONS_RARES = {
+    figer: `Figer une étiquette${RESPONSABLES}`,
+    rouvrir: `Rouvrir une étiquette figée${RESPONSABLES}`,
+    fusionner: `Fusionner des étiquettes${RESPONSABLES}`,
+    passer: `Passer une étiquette dans une autre grille${RESPONSABLES}`,
+    retirer: `Retirer une étiquette${RESPONSABLES}`,
+  };
   const RARES = ["etat", "fusionner", "passer", "retirer"];
+  /* Le geste de l'état sur `e`, en mots : « Figer » une étiquette provisoire, « Rouvrir » une
+     étiquette figée (« Définir » et « Remettre provisoire » jusqu'au 2026-11-11 ; « Valider »
+     écarté : il nomme la validation d'une planche). */
+  function gesteEtat(e) {
+    return e && e.etat === "provisoire" ? "Figer" : "Rouvrir";
+  }
   function raisonRemanier(e, geste) {
     const r = (e && e.remaniable) || {};
     if (r[geste === "passer" ? "fusionner" : geste]) return null;
-    if (RARES.includes(geste)) return RAISON_RARE;
+    if (geste === "etat") return RAISONS_RARES[gesteEtat(e) === "Figer" ? "figer" : "rouvrir"];
+    if (RARES.includes(geste)) return RAISONS_RARES[geste];
     if (geste === "ranger") return "Les étiquettes se rangent par les annotateurs du projet";
     if (e && e.etat === "defini") {
       return `« ${e.libelle} » est définie : seuls les responsables la changent`;
@@ -1641,7 +1657,8 @@
   function etatEnMots(e) {
     return e && e.etat === "provisoire"
       ? { mot: "provisoire",
-          aide: "Née en la tapant : tout annotateur du projet la renomme et lui ajoute une valeur" }
+          aide: "Née en la tapant : tout annotateur du projet la renomme, écrit sa définition "
+                + "et lui ajoute une valeur" }
       : { mot: "✓ définie",
           aide: "Écrite au formulaire ou par l'import : seuls les responsables la changent" };
   }
@@ -1790,7 +1807,9 @@
   function fusionEnMots(dans, n) {
     return `${nReleves(n)} ${n > 1 ? "passent" : "passe"} à « ${dans} ».`;
   }
-  const BILAN_J8 = "Le bilan, relevé par relevé : une tranche à part (J8)";
+  /* « Voir le bilan… » de « Passer dans une grille… », éteint : le geste viendra avec sa
+     tranche, et l'écran le dit sans nommer de code de cadrage (passe du mode libre). */
+  const BILAN_PASSER = "Le bilan, relevé par relevé, n'est pas encore là : ce geste viendra plus tard";
 
   /* La boîte du guide REPLIÉE ou dépliée (Hugo, passe du jalon 1 : la liste de ce qui est
      posé veut plus de place) : retenue sur le poste, clé `bd-annotation-guide`, sous
@@ -1827,10 +1846,10 @@
            passageAncre, issueEnMots, changerEnPlace, isoDeSqlite, cleDeLecture, aRevoir,
            relevesParCase, decompte, zonesTerminees, nomDuLien, relevesDeSurface, ciblePosee,
            CLE_GUIDE, lireGuideReplie, retenirGuideReplie,
-           NOM_MODE_LIBRE, nomOnglet, lireSaisie, RAISON_RARE, raisonRemanier, gestesOfferts,
-           raisonValeurNouvelle,
+           NOM_MODE_LIBRE, nomOnglet, lireSaisie, RAISONS_RARES, gesteEtat, raisonRemanier,
+           gestesOfferts, raisonValeurNouvelle,
            raisonCrayon, etatEnMots, ceQuEntreeFera, dansModeLibre, TRIS, TRI_DEFAUT, CLE_TRI,
            lireTri, retenirTri, trierEntrees, deplacement, deplacementAvant, retraitEnMots,
-           fusionEnMots, BILAN_J8 };
+           fusionEnMots, BILAN_PASSER };
 
 });

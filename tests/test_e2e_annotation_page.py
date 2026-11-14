@@ -17,6 +17,7 @@ Les audits transverses (axe dans les deux thèmes, contraste élevé, reflow à 
 police, zoom, masquage, CSP, bande du projet, bac à sable) déclarent la page dans leurs
 propres modules.
 """
+import json
 import re
 
 import httpx
@@ -4528,6 +4529,8 @@ def test_crayon_renomme_en_place_definit_et_passer_dit_son_bilan_eteint(page, de
     etat = page.locator('#an-plan [data-ent="ironie"] .an-etat-ent')
     expect(etat).to_have_text("provisoire")
     expect(etat).to_have_attribute("title", re.compile("Née en la tapant"))
+    marque = page.locator('#an-plan [data-enregistre="renom:ironie"]')
+    expect(marque).to_be_hidden()                       # sa place est tenue, rien ne se voit
     nom.fill("ironie mordante")
     with page.expect_response(lambda r: "/entrees/ironie" in r.url and r.request.method == "PATCH") as rep:
         nom.press("Enter")
@@ -4535,25 +4538,162 @@ def test_crayon_renomme_en_place_definit_et_passer_dit_son_bilan_eteint(page, de
     expect(page.locator("#an-annonce")).to_have_text("Renommée : ironie mordante")
     assert "ironie mordante" in _ordre_ecrit(decor, gid)
     expect(nom).to_have_value("ironie mordante")
-    # « Définir » : le geste du responsable ; l'état se lit dans ✎, à côté du nom.
+    # Entrée ne referme pas ✎, et l'enregistrement SE VOIT, à droite du champ (Hugo,
+    # 2026-11-11) ; la frappe suivante l'efface.
+    expect(marque).to_be_visible()
+    expect(marque).to_have_text("✓ enregistré")
+    expect(nom).to_be_focused()
+    boite_nom, boite_marque = nom.bounding_box(), marque.bounding_box()
+    assert boite_marque["x"] >= boite_nom["x"] + boite_nom["width"], (boite_nom, boite_marque)
+    page.keyboard.press("End")
+    page.keyboard.type("s")
+    expect(marque).to_be_hidden()
+    page.keyboard.press("Backspace")
+    # « Figer » : le geste du responsable ; l'état se lit dans ✎, à côté du nom.
+    figer = page.locator('#an-plan [data-geste="etat"][data-c="ironie"]')
+    expect(figer).to_have_text("Figer")
     with page.expect_response(lambda r: "/entrees/ironie" in r.url and r.request.method == "PATCH"):
-        page.locator('#an-plan [data-geste="etat"][data-c="ironie"]').click()
+        figer.click()
     expect(etat).to_have_text("✓ définie")
-    expect(page.locator('#an-plan [data-geste="etat"][data-c="ironie"]')).to_have_text(
-        "Remettre provisoire")
-    # « Passer dans une grille… » : sa confirmation montre « Voir le bilan… » ÉTEINT (J8).
+    expect(figer).to_have_text("Rouvrir")
+    # « Passer dans une grille… » : sa confirmation montre « Voir le bilan… » ÉTEINT, et sa
+    # raison ne nomme aucun code de cadrage.
     page.locator('#an-plan [data-geste="passer"][data-c="ironie"]').click()
     bilan = page.locator("#an-plan [data-conf-bilan]")
     expect(bilan).to_have_attribute("aria-disabled", "true")
-    expect(bilan).to_have_attribute("title", re.compile(r"une tranche à part \(J8\)"))
+    expect(bilan).to_have_attribute("title", re.compile(r"pas encore là"))
     bilan.click(force=True)
-    expect(page.locator("#an-plan .an-conf")).to_contain_text("une tranche à part (J8)")
+    expect(page.locator("#an-plan .an-conf")).to_contain_text("Le bilan, relevé par relevé")
+    _sans_code_de_cadrage(page, '#an-plan [data-ent="ironie"]')
     page.locator("#an-plan [data-conf-annuler]").click()
     expect(page.locator("#an-plan .an-conf")).to_have_count(0)
     # « Fini » referme, et rend le focus à ✎. Dans la liste, rien ne dit l'état.
     page.locator('#an-plan [data-fin="ironie"]').click()
     expect(crayon).to_be_focused()
     expect(page.locator('#an-plan [data-ent="ironie"]')).not_to_contain_text("définie")
+
+
+_CODE_DE_CADRAGE = re.compile(r"\b(?:[A-Z]{1,5}-\d+|[A-Z]\d{1,2})\b")
+
+
+def _sans_code_de_cadrage(page, selecteur):
+    """Aucun code de cadrage — « (J8) », « CONC-3 » — dans ce qui se LIT sous `selecteur` :
+    son texte visible et chaque infobulle (`title`)."""
+    lus = page.locator(selecteur).evaluate("""(b) => [b.innerText,
+        ...[...b.querySelectorAll('[title]')].map((x) => x.title),
+        ...[...b.querySelectorAll('[aria-label]')].map((x) => x.getAttribute('aria-label')),
+        ...[...b.querySelectorAll('input')].map((x) => x.placeholder)]""")
+    assert lus and lus[0].strip(), "rien n'est lu : la garde ne mord sur rien"
+    fautifs = [t for t in lus if t and _CODE_DE_CADRAGE.search(t)]
+    assert not fautifs, fautifs
+
+
+def test_la_definition_s_ecrit_dans_le_crayon_et_se_lit_dans_le_guide(page, decor):
+    """Hugo, 2026-11-11 : ✎ porte un champ « définition », gardé quand on le quitte, avec
+    `vu` (CONC-3), lu ensuite là où se lit la définition d'une entrée (la ligne du guide)."""
+    gid = _travail(decor)
+    with _http(decor) as c:
+        _poser_libre(c, decor["bulle"], gid, "ironie")
+    _libre(page, decor)
+    page.locator('#an-plan [data-crayon="ironie"]').click()
+    defn = page.locator('#an-plan [data-defn="ironie"]')
+    expect(defn).to_have_attribute("placeholder", "définition")
+    expect(defn).to_have_attribute("autocomplete", "off")
+    defn.fill("Un sens second")
+    # QUITTER le champ l'enregistre, avec la valeur vue.
+    with page.expect_response(lambda r: "/entrees/ironie" in r.url
+                              and r.request.method == "PATCH") as rep:
+        page.keyboard.press("Tab")
+    assert rep.value.status == 200, rep.value.text()
+    assert json.loads(rep.value.request.post_data) == {
+        "definition": "Un sens second", "vu": {"definition": None}}
+    expect(page.locator('#an-plan [data-enregistre="defn:ironie"]')).to_be_visible()
+    plan = _plan_du_travail(decor, gid)
+    assert next(e for e in plan["entrees"] if e["cle"] == "ironie")["definition"] == "Un sens second"
+    page.locator('#an-plan [data-fin="ironie"]').click()
+    expect(page.locator('#an-plan [data-defn="ironie"]')).to_have_count(0)
+    # Elle se lit dans la ligne du guide, au survol de l'étiquette.
+    page.locator('#an-plan [data-guide-e="ironie"]').first.hover()
+    expect(page.locator("#an-guide-contenu")).to_contain_text("Un sens second")
+    # Écrite ailleurs entre-temps : le bandeau de CONC-3, pas un écrasement.
+    page.locator('#an-plan [data-crayon="ironie"]').click()
+    with _http(decor) as c:
+        assert c.patch(f"/api/grilles/{gid}/entrees/ironie",
+                       json={"definition": "Autre chose"}).status_code == 200
+    defn.fill("Un sens tiers")
+    with page.expect_response(lambda r: "/entrees/ironie" in r.url
+                              and r.request.method == "PATCH") as rep:
+        defn.press("Enter")
+    assert rep.value.status == 409, rep.value.text()
+    expect(page.locator("#an-guide-contenu")).to_contain_text("Votre définition n'est pas enregistrée.")
+    plan = _plan_du_travail(decor, gid)
+    assert next(e for e in plan["entrees"] if e["cle"] == "ironie")["definition"] == "Autre chose"
+
+
+def test_plus_valeur_cour_puis_entree_cree_la_valeur_cour(page, decor):
+    """Passe du mode libre (2026-11-11) : la recette a gardé une valeur nommée « Entrée » là où
+    « cour » était tapé. Rejoué ici au CLAVIER, touche par touche, comme on le fait : la
+    valeur s'appelle « cour », se pose sur la zone, et le champ n'offre aucun remplissage."""
+    gid = _travail(decor)
+    with _http(decor) as c:
+        _poser_libre(c, decor["bulle"], gid, "lieu : école")
+    _libre(page, decor)
+    page.locator('#an-plan [data-crayon="lieu"]').click()
+    page.locator('#an-plan [data-plusv="lieu"]').click()
+    champ = page.locator('#an-plan [data-addv="lieu"]')
+    expect(champ).to_be_focused()
+    expect(champ).to_have_attribute("autocomplete", "off")
+    page.keyboard.type("cour", delay=40)
+    with page.expect_response(lambda r: r.url.endswith("/entrees/lieu/variantes")
+                              and r.request.method == "POST") as rep:
+        page.keyboard.press("Enter")
+    assert rep.value.status == 201, rep.value.text()
+    assert json.loads(rep.value.request.post_data) == {"libelle": "cour"}
+    lieu = next(e for e in _plan_du_travail(decor, gid)["entrees"] if e["cle"] == "lieu")
+    assert [v["libelle"] for v in lieu["variantes"]] == ["école", "cour"]
+    expect(page.locator('#an-plan [data-renomv="lieu|cour"]')).to_have_value("cour")
+    poses = sorted(r["variante_cle"] for r in _releves(decor)
+                   if r["grille_id"] == gid and r["region_id"] == decor["bulle"])
+    assert len(poses) == 2 and "cour" in poses, poses
+    for x in page.locator("#an-plan [data-ent='lieu'] input").all():
+        assert x.get_attribute("autocomplete") == "off"
+
+
+def test_le_bloc_du_crayon_respire(page, decor):
+    """Passe du mode libre (2026-11-11), « très resserré avec le focus » : à 1 280 px,
+    l'anneau du focus du nom ne touche pas le cadre du bloc, le champ et la rangée suivante ne
+    se touchent pas, un écart sépare le bloc de l'étiquette suivante."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    gid = _travail(decor)
+    with _http(decor) as c:
+        _poser_libre(c, decor["bulle"], gid, "ironie")
+        _poser_libre(c, decor["bulle"], gid, "humour")
+    _libre(page, decor)
+    page.locator('#an-plan [data-crayon="ironie"]').click()
+    nom = page.locator('#an-plan [data-renom="ironie"]')
+    nom.focus()
+    page.keyboard.press("End")                          # au clavier : l'anneau se dessine
+    mesure = page.evaluate("""() => {
+      const bloc = document.querySelector('#an-plan .an-edition');
+      const nom = bloc.querySelector('[data-renom]');
+      const s = getComputedStyle(nom);
+      const anneau = parseFloat(s.outlineWidth) + parseFloat(s.outlineOffset);
+      const cadre = parseFloat(getComputedStyle(bloc).outlineWidth);
+      const r = (x) => x.getBoundingClientRect();
+      const b = r(bloc), n = r(nom);
+      const rangees = [...bloc.children];
+      const suivante = rangees[rangees.indexOf(nom.closest('.an-libre-ligne')) + 1];
+      const apres = bloc.nextElementSibling;
+      return { anneau, style: s.outlineStyle,
+               haut: n.top - anneau - b.top, gauche: n.left - anneau - b.left,
+               droite: b.right - (n.right + anneau),
+               rangee: r(suivante).top - (n.bottom + anneau),
+               ecart: apres ? r(apres).top - (b.bottom + cadre) : null };
+    }""")
+    assert mesure["style"] != "none" and mesure["anneau"] >= 2, mesure
+    for cote in ("haut", "gauche", "droite", "rangee"):
+        assert mesure[cote] >= 2, (cote, mesure)
+    assert mesure["ecart"] is not None and mesure["ecart"] >= 4, mesure
 
 
 def test_crayon_fusionne_puis_retire_confirmes_sur_place(page, decor):
@@ -4643,7 +4783,30 @@ def test_un_annotateur_voit_crayon_eteint_sur_une_etiquette_definie(page, live_s
     expect(fusion).to_have_attribute("aria-disabled", "true")
     fusion.click(force=True)
     expect(page.locator('#an-plan [data-ent="ironie"] .an-conf')).to_contain_text(
-        "Fusionner, retirer et définir : les responsables du projet")
+        "Fusionner des étiquettes : les responsables du projet")
+    # « Passer dans une grille… » éteint dit pourquoi EN PARLANT DE PASSER (passe du mode
+    # libre) ; « Figer » de même.
+    passer = page.locator('#an-plan [data-geste="passer"][data-c="ironie"]')
+    expect(passer).to_have_attribute("aria-disabled", "true")
+    passer.click(force=True)
+    expect(page.locator('#an-plan [data-ent="ironie"] .an-conf')).to_have_text(re.compile(
+        "Passer une étiquette dans une autre grille : les responsables du projet"))
+    expect(page.locator('#an-plan [data-ent="ironie"] .an-conf')).not_to_contain_text("Fusionner")
+    figer = page.locator('#an-plan [data-geste="etat"][data-c="ironie"]')
+    expect(figer).to_have_text("Figer")
+    figer.click(force=True)
+    expect(page.locator('#an-plan [data-ent="ironie"] .an-conf')).to_contain_text(
+        "Figer une étiquette : les responsables du projet")
+    page.locator('#an-plan [data-ent="ironie"] [data-conf-annuler]').click()
+    # La DÉFINITION suit la règle du renommage : l'annotatrice l'écrit sur une provisoire.
+    defn = page.locator('#an-plan [data-defn="ironie"]')
+    expect(defn).to_be_editable()
+    defn.fill("un sens second")
+    with page.expect_response(lambda r: "/entrees/ironie" in r.url
+                              and r.request.method == "PATCH") as rep:
+        defn.press("Enter")
+    assert rep.value.status == 200, rep.value.text()
+    expect(page.locator('#an-plan [data-enregistre="defn:ironie"]')).to_be_visible()
     nom = page.locator('#an-plan [data-renom="ironie"]')
     nom.fill("ironie fine")
     with page.expect_response(lambda r: "/entrees/ironie" in r.url and r.request.method == "PATCH") as rep:

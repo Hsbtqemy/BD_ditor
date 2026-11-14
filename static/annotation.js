@@ -99,6 +99,7 @@ const S = {
   edition: null,               // l'étiquette dont « ✎ » est ouvert (sa clé)
   ajoutVal: null,              // l'étiquette dont « + valeur » est ouvert
   conf: null,                  // { cle, k, … } : ce que ✎ confirme, ou dit, sur place
+  enregistre: null,            // le champ de ✎ qui vient d'être enregistré (« ✓ enregistré »)
 };
 let tourContexte = 0;          // la lecture du Contexte la plus récente gagne
 /* Les écritures PARTIES, par sorte. Une lecture commencée avant l'une d'elles peut revenir
@@ -2142,8 +2143,26 @@ function rangee(e, vivantes) {
                    "aria-disabled": off(i < 0 || i >= vivantes.length - 1), texte: "↓" }));
 }
 
+/* « ✓ enregistré », à droite d'un champ de ✎ (Hugo, 2026-11-11) : discrète, sa place
+   toujours tenue — elle ne pousse rien en paraissant —, visible après l'enregistrement du
+   champ, effacée à la frappe suivante. `repere` : « renom:<clé> » ou « defn:<clé> ». */
+function marqueEnregistre(repere) {
+  const vue = S.enregistre === repere;
+  return el("span", { classe: `an-enregistre${vue ? " vue" : ""}`, "data-enregistre": repere,
+                      "aria-hidden": vue ? null : "true", texte: "✓ enregistré" });
+}
+function effacerEnregistre() {
+  if (!S.enregistre) return;
+  S.enregistre = null;
+  for (const m of document.querySelectorAll("#an-plan .an-enregistre.vue")) {
+    m.classList.remove("vue");
+    m.setAttribute("aria-hidden", "true");
+  }
+}
+
 /* La ligne d'édition de ✎ : le nom et les valeurs EN PLACE, l'état à côté du nom (seul
-   endroit où il se lit), « + valeur », les gestes rares, et ce qu'ils confirment. */
+   endroit où il se lit), la définition (la règle du renommage, Hugo, 2026-11-11),
+   « + valeur », les gestes rares, et ce qu'ils confirment. */
 function entreeEnEdition(e) {
   const o = A.gestesOfferts(e);
   const etat = A.etatEnMots(e);
@@ -2155,9 +2174,16 @@ function entreeEnEdition(e) {
        champ({ classe: "an-renom", "data-renom": e.cle, value: e.libelle, id: `an-ent-${e.cle}`,
                "aria-label": "Nom de l'étiquette", readonly: o.renommer ? true : null,
                title: o.renommer }),
+       marqueEnregistre(`renom:${e.cle}`),
        el("span", { classe: "an-etat-ent", title: etat.aide, texte: etat.mot }),
        el("button", { type: "button", classe: "ghost small an-crayon", "data-fin": e.cle,
-                      texte: "Fini" })));
+                      texte: "Fini" })),
+    el("div", { classe: "an-libre-ligne an-defn-ligne" },
+       champ({ classe: "an-defn", "data-defn": e.cle, value: e.definition || "",
+               placeholder: "définition", "aria-label": `Définition de « ${e.libelle} »`,
+               readonly: o.renommer ? true : null,
+               title: o.renommer || "Ce que l'étiquette veut dire : lu dans la ligne du guide" }),
+       marqueEnregistre(`defn:${e.cle}`)));
   if (e.forme === "variantes") {
     const vars = el("div", { classe: "an-vars", role: "group",
                              "aria-label": `Les valeurs de « ${e.libelle} »` },
@@ -2180,7 +2206,7 @@ function entreeEnEdition(e) {
                                                 "aria-disabled": o[geste] ? "true" : null,
                                                 title: o[geste], texte });
   bloc.append(el("div", { classe: "an-gestes-rares" },
-    rare("etat", e.etat === "provisoire" ? "Définir" : "Remettre provisoire"),
+    rare("etat", A.gesteEtat(e)),
     rare("fusionner", "Fusionner dans…"),
     rare("passer", "Passer dans une grille…"),
     rare("retirer", "Retirer…")));
@@ -2228,7 +2254,7 @@ function confDe(e) {
     return boite("", el("p", { texte: `Passer « ${e.libelle} » dans une grille` }),
       c.txt ? el("p", { classe: "muted small", texte: c.txt }) : null,
       ligne(bouton("Voir le bilan…", { "data-conf-bilan": "1", "aria-disabled": "true",
-                                       title: A.BILAN_J8 }), annuler()));
+                                       title: A.BILAN_PASSER }), annuler()));
   }
   return null;
 }
@@ -2282,7 +2308,25 @@ async function renommerEntree(cle, valeur) {
                                  { libelle: nom, vu: { libelle: e.libelle } },
                                  { e, quoi: "Votre nom n'est pas enregistré.", mienne: nom });
   if (!rep) return;
+  S.enregistre = `renom:${cle}`;
   annoncer(`Renommée : ${nom}`);
+  apresEcriture();
+}
+
+/* La DÉFINITION d'une étiquette, écrite dans ✎ : envoyée à Entrée et à la sortie du champ,
+   avec la valeur vue (CONC-3) ; vide, elle s'efface. */
+async function definirEntree(cle, valeur) {
+  const g = grilleOuverte();
+  const e = entreeDuLibre(cle);
+  const texte = String(valeur || "").replace(/\s+/g, " ").trim();
+  if (!e || texte === (e.definition || "") || A.raisonRemanier(e, "renommer")) return;
+  const rep = await ecrireGrille(g, "PATCH", `/entrees/${enUrl(cle)}`,
+                                 { definition: texte, vu: { definition: e.definition || null } },
+                                 { e, quoi: "Votre définition n'est pas enregistrée.",
+                                   mienne: texte || "(vide)" });
+  if (!rep) return;
+  S.enregistre = `defn:${cle}`;
+  annoncer(texte ? `Définition enregistrée : ${e.libelle}` : `Définition effacée : ${e.libelle}`);
   apresEcriture();
 }
 
@@ -2330,7 +2374,7 @@ async function definir(cle) {
                                  { etat, vu: { etat: e.etat } },
                                  { e, quoi: "Votre changement n'est pas enregistré." });
   if (!rep) return;
-  annoncer(etat === "defini" ? `Définie : ${e.libelle}` : `Provisoire : ${e.libelle}`);
+  annoncer(etat === "defini" ? `Figée : ${e.libelle}` : `Rouverte : ${e.libelle}`);
   rendreCorps();
 }
 
@@ -2458,17 +2502,19 @@ function allerAuChampDeCreation() {
 /* Ce que l'utilisateur a tapé dans un champ d'édition et qui n'est pas parti : un redessin le
    garde (le bloc se redessine à chaque écriture de la page). */
 let SAISIES_A_JETER = false;
+const CHAMPS_DE_L_EDITION = "#an-plan input[data-renom], #an-plan input[data-renomv], "
+  + "#an-plan input[data-defn], #an-plan input[data-addv]";
 function saisiesDuPlan() {
   const m = new Map();
   if (SAISIES_A_JETER) { SAISIES_A_JETER = false; return m; }
-  for (const i of document.querySelectorAll("#an-plan input[data-renom], #an-plan input[data-renomv], #an-plan input[data-addv]")) {
+  for (const i of document.querySelectorAll(CHAMPS_DE_L_EDITION)) {
     if (i.value !== i.defaultValue) m.set(repereDe(i), i.value);
   }
   return m;
 }
 function rendreSaisiesDuPlan(m) {
   if (!m.size) return;
-  for (const i of document.querySelectorAll("#an-plan input[data-renom], #an-plan input[data-renomv], #an-plan input[data-addv]")) {
+  for (const i of document.querySelectorAll(CHAMPS_DE_L_EDITION)) {
     const v = m.get(repereDe(i));
     if (v !== undefined) i.value = v;
   }
@@ -2476,6 +2522,7 @@ function rendreSaisiesDuPlan(m) {
 
 function fermerEdition(cle, revenir) {
   S.edition = null;
+  S.enregistre = null;
   S.ajoutVal = null;
   if (S.conf && S.conf.cle === cle) S.conf = null;
   SAISIES_A_JETER = true;
@@ -2531,6 +2578,7 @@ function brancherModeLibre() {
     if (d.crayon) {
       if (eteint) { dire(d.crayon, b.title); return; }
       S.edition = d.crayon;
+      S.enregistre = null;
       S.conf = null;
       S.ajoutVal = null;
       rendreCorps();
@@ -2557,7 +2605,7 @@ function brancherModeLibre() {
                         || $(`#an-plan [data-geste][data-c="${CSS.escape(cle)}"]`) || $("#an-creer"));
       }
     } else if (d.confBilan) {
-      if (S.conf) { S.conf.txt = A.BILAN_J8; rendreCorps(); annoncer(A.BILAN_J8); }
+      if (S.conf) { S.conf.txt = A.BILAN_PASSER; rendreCorps(); annoncer(A.BILAN_PASSER); }
     } else if (d.confOk) {
       confirmer(d.confOk);
     } else if (d.monter || d.descendre) {
@@ -2586,7 +2634,7 @@ function brancherModeLibre() {
       }
       return;
     }
-    if (t.matches("input[data-renom], input[data-renomv]")) {
+    if (t.matches("input[data-renom], input[data-renomv], input[data-defn]")) {
       if (e.key === "Enter") {
         e.preventDefault();
         if (t.readOnly) { dire2(cle, t.title); return; }
@@ -2607,15 +2655,20 @@ function brancherModeLibre() {
   const dire2 = (cle, txt) => { S.conf = { cle, k: "raison", txt }; rendreCorps(); annoncer(txt); };
   plan.addEventListener("beforeinput", (e) => {
     const t = e.target;
-    if (t.matches && t.matches("input[readonly][data-renom], input[readonly][data-renomv]")) {
+    if (t.matches && t.matches("input[readonly][data-renom], input[readonly][data-renomv], "
+                               + "input[readonly][data-defn]")) {
       const ent = t.closest("[data-ent]");
       if (ent) dire2(ent.dataset.ent, t.title);
     }
   });
   plan.addEventListener("focusout", (e) => {
     const t = e.target;
-    if (t.matches && t.matches("input[data-renom], input[data-renomv]") && !t.readOnly
-        && t.isConnected && t.value !== t.defaultValue) enregistrerChamp(t);
+    if (t.matches && t.matches("input[data-renom], input[data-renomv], input[data-defn]")
+        && !t.readOnly && t.isConnected && t.value !== t.defaultValue) enregistrerChamp(t);
+  });
+  // « ✓ enregistré » s'efface à la frappe suivante, dans quelque champ de ✎ que ce soit.
+  plan.addEventListener("input", (e) => {
+    if (e.target.matches && e.target.matches("input")) effacerEnregistre();
   });
   // Ranger à la souris : glisser la poignée ⠿, déposer avant ou après une sœur.
   let glisse = null;
@@ -2666,6 +2719,7 @@ function brancherModeLibre() {
 
 function enregistrerChamp(t) {
   if (t.matches("[data-renom]")) renommerEntree(t.dataset.renom, t.value);
+  else if (t.matches("[data-defn]")) definirEntree(t.dataset.defn, t.value);
   else {
     const [cle, vc] = t.dataset.renomv.split("|");
     renommerValeur(cle, vc, t.value);
@@ -4401,6 +4455,7 @@ function saisieSousLesDoigts() {
     const r = S.releves.find((x) => x.id === Number(a.dataset.releve));
     return !!r && A.champModifie(a.value, r.precision);
   }
+  if (a.matches("input[data-defn]") && !a.readOnly) return a.value !== a.defaultValue;
   if (a.matches("input[data-renom], input[data-renomv], input[data-addv]") && !a.readOnly) {
     return a.value.trim() !== "" && a.value !== a.defaultValue;
   }

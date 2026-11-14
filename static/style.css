@@ -4916,9 +4916,22 @@ body.an-designer .an-mz-enfant.t-texte {
 #an-plan .an-crayon[aria-disabled="true"], #an-plan .an-gestes-rares [aria-disabled="true"],
 #an-plan .an-plusv[aria-disabled="true"], #an-plan .an-conf [aria-disabled="true"] {
   border-style: dashed; }
+/* Le bloc ✎ RESPIRE (passe du mode libre, 2026-11-11) : l'anneau du focus (2 px, décalé de
+   2 px) d'un champ ne touche ni le cadre du bloc ni la rangée voisine, et un écart le sépare
+   de l'étiquette suivante — une marge de .6154rem (8 px) partout, deux fois l'anneau. */
 .an-edition { background: var(--hover); outline: 1px solid var(--border); border-radius: 5px;
-              padding: .1538rem 0; }
-.an-edition > .an-libre-ligne { padding: 0 .3077rem; gap: .4615rem; }
+              padding: .6154rem 0; margin: .6154rem 0; }
+.an-edition > .an-libre-ligne { padding: 0 .6154rem; gap: .4615rem; }
+.an-edition > :not(:first-child) { margin-top: .6154rem; }
+.an-edition > :last-child { margin-bottom: 0; }
+.an-defn { flex: 1 1 auto; min-width: 0; font: inherit; font-size: .9231rem;
+           padding: .1538rem .4615rem; background: var(--bg-input); color: var(--text);
+           border: 1px solid var(--border); border-radius: 4px; }
+.an-defn[readonly] { border-style: dashed; }
+/* « ✓ enregistré » : sa place est toujours tenue, elle ne se montre qu'après l'envoi. */
+.an-enregistre { flex: 0 0 auto; font-size: .8462rem; color: var(--text-muted);
+                 white-space: nowrap; visibility: hidden; }
+.an-enregistre.vue { visibility: visible; }
 .an-renom { flex: 1 1 auto; min-width: 0; font: inherit; font-weight: 600;
             padding: .1538rem .4615rem; background: var(--bg-input); color: var(--text);
             border: 1px solid var(--accent-blue); border-radius: 4px; }
@@ -4951,7 +4964,7 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-rangee.an-cible-apres { box-shadow: inset 0 -2px 0 var(--accent-blue); }
 @media (any-pointer: coarse) {
   .an-crayon, .an-plusv, .an-gestes-rares button, .an-conf button, .an-conf select, #an-ranger,
-  #an-tri, #an-creer, .an-libre-ent .an-var, .an-renom, .an-renomv, .an-addv {
+  #an-tri, #an-creer, .an-libre-ent .an-var, .an-renom, .an-renomv, .an-addv, .an-defn {
     min-height: 3.3846rem; }          /* 44 px à la police de base (13 px) */
   .an-crayon { min-width: 3.3846rem; }
 }

@@ -303,7 +303,7 @@ def test_un_annotateur_ne_fait_que_renommer_et_ajouter(client, decor, db_path):
     url = f"/api/grilles/{g}/entrees/ironie"
     r = _patch(client, STAG, url, {"etat": "defini"})
     assert r.status_code == 403 and "changer son état" in r.text, r.text
-    r = _patch(client, STAG, url, {"definition": "un sens second"})
+    r = _patch(client, STAG, url, {"structure": "un sens second"})
     assert r.status_code == 403, r.text
     r = _patch(client, STAG, url, {"libelle": "ironie mordante", "cardinalite": "plusieurs"})
     assert r.status_code == 403, r.text
@@ -329,6 +329,38 @@ def test_une_etiquette_definie_ne_se_renomme_que_par_les_responsables(client, de
     r = _patch(client, STAG, f"/api/grilles/{g}/entrees/sentiment/variantes/perte",
                {"libelle": "deuil"})
     assert r.status_code == 403 and "est définie" in r.text, r.text
+    r = _patch(client, STAG, f"/api/grilles/{g}/entrees/sentiment", {"definition": "un état"})
+    assert r.status_code == 403 and "est définie" in r.text, r.text
+
+
+def test_la_definition_d_une_etiquette_suit_la_regle_du_renommage(client, decor, db_path):
+    """Hugo, 2026-11-11 : ✎ écrit la DÉFINITION d'une étiquette, sous la règle du renommage
+    — tout annotateur du projet sur une étiquette provisoire, les responsables sur une
+    figée —, avec `vu` (CONC-3). Une valeur ne reçoit pas de définition par ce chemin."""
+    t = _travail(client, decor, db_path)
+    g = t["grille_id"]
+    poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "lieu : forêt"})
+    url = f"/api/grilles/{g}/entrees/lieu"
+    r = _patch(client, STAG, url, {"definition": "Où la scène se passe",
+                                   "vu": {"definition": None}})
+    assert r.status_code == 200, r.text
+    assert _plan(client, t)["lieu"]["definition"] == "Où la scène se passe"
+    # Deux écrans qui l'écrivent : la valeur vue nomme l'autre.
+    r = _patch(client, ADMIN, url, {"definition": "Le lieu", "vu": {"definition": None}})
+    assert r.status_code == 409 and "conflit" in r.json()["detail"], r.text
+    # La vider : la même règle.
+    r = _patch(client, STAG, url, {"definition": "", "vu": {"definition": "Où la scène se passe"}})
+    assert r.status_code == 200, r.text
+    assert _plan(client, t)["lieu"]["definition"] is None
+    # Une valeur : son nom seul, pour qui ne gère pas le projet.
+    r = _patch(client, STAG, f"{url}/variantes/foret", {"definition": "des arbres"})
+    assert r.status_code == 403, r.text
+    # Figée, l'étiquette ne se définit plus que par les responsables.
+    assert _patch(client, ADMIN, url, {"etat": "defini"}).status_code == 200
+    r = _patch(client, STAG, url, {"definition": "Où"})
+    assert r.status_code == 403 and "est définie" in r.text, r.text
+    r = _patch(client, ADMIN, url, {"definition": "Où", "vu": {"definition": None}})
+    assert r.status_code == 200, r.text
 
 
 def test_une_valeur_ne_s_ajoute_pas_en_posant_a_une_etiquette_definie(client, decor, db_path):

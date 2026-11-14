@@ -1037,7 +1037,8 @@ class Portee:
           les gestes (`GESTES_D_ENTREE`) — ceux du formulaire, déjà les siens.
         - Un ANNOTATEUR du projet (`annotateur` : il écrit dans un album du projet, le cercle
           de ceux qui posent ; `ecrit_dans_le_projet`) : `GESTES_D_ANNOTATEUR` — renommer
-          l'entrée ou l'une de ses valeurs, ajouter une valeur —, sur une entrée PROVISOIRE
+          l'entrée ou l'une de ses valeurs (écrire la définition de l'entrée en est, Hugo,
+          2026-11-11), ajouter une valeur —, sur une entrée PROVISOIRE
           (née en la tapant, J4) d'une grille OUVERTE, dans sa version vivante. Renommer se
           défait en renommant, et la valeur vue (CONC-3) garde deux renommages croisés ; ce
           qu'un responsable a ÉCRIT (une entrée définie) ne se renomme pas sous lui.

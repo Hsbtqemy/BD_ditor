@@ -1374,17 +1374,25 @@ test("« Créer « … » dans Mode libre » : depuis une grille fermée seuleme
 
 test("les gestes offerts selon `remaniable`, et ce qui éteint ✎", () => {
   const e = (remaniable, etat = "provisoire") => ({ libelle: "ironie", etat, remaniable });
-  const R = A.RAISON_RARE;
+  const R = A.RAISONS_RARES;
   assert.deepEqual(A.gestesOfferts(e(TOUT, "defini")),
                    { renommer: null, ajouter_valeur: null, etat: null, fusionner: null,
                      passer: null, retirer: null });
   assert.deepEqual(A.gestesOfferts(e(ANNOTATEUR)),
-                   { renommer: null, ajouter_valeur: null, etat: R, fusionner: R, passer: R,
-                     retirer: R });
+                   { renommer: null, ajouter_valeur: null, etat: R.figer, fusionner: R.fusionner,
+                     passer: R.passer, retirer: R.retirer });
   const def = "« ironie » est définie : seuls les responsables la changent";
   assert.deepEqual(A.gestesOfferts(e(RIEN, "defini")),
-                   { renommer: def, ajouter_valeur: def, etat: R, fusionner: R, passer: R,
-                     retirer: R });
+                   { renommer: def, ajouter_valeur: def, etat: R.rouvrir, fusionner: R.fusionner,
+                     passer: R.passer, retirer: R.retirer });
+  // Chaque geste rare éteint dit le SIEN (passe du mode libre) : « Passer dans une grille… »
+  // parle de passer, l'état de figer ou de rouvrir.
+  assert.equal(R.passer, "Passer une étiquette dans une autre grille : les responsables du projet");
+  assert.match(R.figer, /^Figer /);
+  assert.match(R.rouvrir, /^Rouvrir /);
+  assert.equal(new Set(Object.values(R)).size, Object.keys(R).length);
+  assert.equal(A.gesteEtat(e(TOUT)), "Figer");
+  assert.equal(A.gesteEtat(e(TOUT, "defini")), "Rouvrir");
   assert.equal(A.raisonCrayon(e(ANNOTATEUR)), null);
   assert.equal(A.raisonCrayon(e(TOUT, "defini")), null);
   assert.equal(A.raisonCrayon(e(RIEN, "defini")), def);
@@ -1450,7 +1458,23 @@ test("les phrases des confirmations sur place", () => {
   assert.equal(A.retraitEnMots(e, 3), "Retirer « ironie » : elle ne se pose plus ; ses 3 relevés restent, à revoir.");
   assert.equal(A.fusionEnMots("humour", 1), "1 relevé passe à « humour ».");
   assert.equal(A.fusionEnMots("humour", 2), "2 relevés passent à « humour ».");
-  assert.match(A.BILAN_J8, /tranche à part \(J8\)/);
+  assert.match(A.BILAN_PASSER, /bilan, relevé par relevé/);
+});
+
+test("aucun code de cadrage ne se lit dans les mots de la page", () => {
+  // Passe du mode libre (2026-11-06) : « Voir le bilan… » disait « (J8) ». Tout texte que
+  // le module rend — ses constantes, ses tables de mots — est balayé, à toute profondeur.
+  const CODE = /\b(?:[A-Z]{1,5}-\d+|[A-Z]\d{1,2})\b/;
+  const vus = [];
+  const balayer = (x, ou, profondeur = 0) => {
+    if (typeof x === "string") { if (CODE.test(x)) vus.push(`${ou} : ${x}`); return; }
+    if (profondeur > 4 || !x || typeof x !== "object") return;
+    for (const [k, v] of Object.entries(x)) balayer(v, `${ou}.${k}`, profondeur + 1);
+  };
+  for (const [nom, v] of Object.entries(A)) balayer(v, nom);
+  assert.ok(Object.keys(A.RAISONS_RARES).length && A.BILAN_PASSER, "le balayage porte sur rien");
+  assert.ok(CODE.test("une tranche à part (J8)") && CODE.test("CONC-3"), "le motif ne mord pas");
+  assert.deepEqual(vus, []);
 });
 
 test("une valeur d'une étiquette « plusieurs » s'ajoute à côté, et se retire seule (J3)", () => {
