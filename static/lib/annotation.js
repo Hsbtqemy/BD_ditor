@@ -266,11 +266,12 @@
      locuteur d'une zone de texte, le personnage d'une boîte, la note de toute zone (la case
      comprise ; pas la case pseudo, qui n'est pas une région). `donnees` :
      `{ locuteur, personnage, note }` lus aux routes — `undefined` tant qu'ils ne sont pas
-     revenus (« … »), `null` quand il n'y en a pas (« — »). */
+     revenus (« … »), `null` quand il n'y en a pas : la valeur est VIDE — « — » se lisait
+     comme une valeur (Hugo, 2026-11-14 ; l'écran garde la hauteur de la ligne). */
   function contexte(zone, donnees) {
     if (!zone || zone.pseudo) return [];
     const d = donnees || {};
-    const valeur = (v) => (v === undefined ? "…" : v === null || v === "" ? "—" : v);
+    const valeur = (v) => (v === undefined ? "…" : v === null || v === "" ? "" : v);
     const nom = (p) => (p === undefined ? undefined : p ? p.nom : null);
     const lignes = [];
     if (estTexte(zone.type)) lignes.push({ cle: "locuteur", libelle: "Locuteur", valeur: valeur(nom(d.locuteur)) });

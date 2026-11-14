@@ -506,7 +506,7 @@ def test_le_locuteur_va_a_la_zone_du_geste_meme_si_l_on_en_change(page, atelier)
     assert _lie(atelier, bulle, "locuteur")["id"] == zed
     assert _lie(atelier, cartouche, "locuteur") is None
     # L'écran, lui, montre toujours le cartouche — sans locuteur.
-    expect(page.locator("#an-loc-nom")).to_have_text("—")
+    expect(page.locator("#an-loc-nom")).to_have_text("")
 
 
 # --------------------------------------------------------------------------- #

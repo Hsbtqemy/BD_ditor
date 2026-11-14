@@ -214,7 +214,7 @@ def test_sans_planche_la_page_s_ouvre_vide_sans_erreur(page, live_server):
     page.on("pageerror", lambda e: erreurs.append(str(e)))
     page.goto(f"{live_server}/annotation", wait_until="networkidle")
     expect(page.locator("#an-album option")).to_have_count(1)
-    expect(page.locator("#an-tete-case")).to_have_text("—")
+    expect(page.locator("#an-tete-case")).to_have_text("")
     assert not erreurs, erreurs
 
 
@@ -994,7 +994,7 @@ def test_une_lectrice_lit_les_doutes_sans_aucun_geste(page, live_server):
     expect(page.locator("#an-plan .an-rub-tete > .an-rub-filet.an-teinte-0").first).to_be_visible()
     # Le Contexte se LIT, sans aucun champ (commit 8).
     page.locator("#an-ong-planche").click()
-    expect(page.locator("#an-note-lu")).to_have_text("—")
+    expect(page.locator("#an-note-lu")).to_have_text("")
     expect(page.locator("#an-note")).to_be_hidden()
     expect(page.locator("#an-loc-nom")).to_have_text("Haddock")
     expect(page.locator("#an-loc-saisie")).to_be_hidden()
@@ -1367,7 +1367,7 @@ def test_le_locuteur_se_choisit_et_se_retire_dans_le_contexte(page, decor):
     with _http(decor) as c:
         assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"]["nom"] == "Tournesol"
     page.locator("#an-loc-retirer").click()
-    expect(page.locator("#an-loc-nom")).to_have_text("—")
+    expect(page.locator("#an-loc-nom")).to_have_text("")
     with _http(decor) as c:
         assert c.get(f"/api/regions/{decor['bulle']}/locuteur").json()["locuteur"] is None
     # Le CARTOUCHE a un locuteur ; la boîte personnage n'en a pas, son personnage s'écrit.
@@ -1412,7 +1412,7 @@ def test_le_personnage_d_une_boite_se_choisit_et_se_retire_dans_le_contexte(page
                               and f"/regions/{decor['boite']}/personnage" in r.url) as rep:
         page.locator("#an-perso-retirer").click()
     assert rep.value.url.endswith(f"?personnage_vu={tournesol}")
-    expect(page.locator("#an-perso-nom")).to_have_text("—")
+    expect(page.locator("#an-perso-nom")).to_have_text("")
     expect(page.locator("#an-perso-retirer")).to_be_hidden()
     expect(page.locator("#an-perso-input")).to_be_focused()
     expect(sur_image.filter(has_text="Tournesol")).to_have_count(0)
@@ -1486,7 +1486,7 @@ def test_la_fiche_d_un_personnage_s_ouvre_du_locuteur_et_de_la_boite(page, decor
     expect(page.locator("#an-tete-zone")).to_contain_text("boîte")   # Échap n'a rien fermé d'autre
     # Sans personnage, pas de fiche.
     page.locator("#an-perso-retirer").click()
-    expect(page.locator("#an-perso-nom")).to_have_text("—")
+    expect(page.locator("#an-perso-nom")).to_have_text("")
     expect(fiche_boite).to_be_hidden()
 
 

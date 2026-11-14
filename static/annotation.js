@@ -398,7 +398,8 @@ function rendreTete() {
   const nCases = S.rangement.filter((e) => !e.case.pseudo).length;
   $("#an-tete-case").textContent = c
     ? (c.case.pseudo ? (c.zones.length ? "Hors des cases" : "La planche")
-      : "Case " + A.etiquette(c.case)) : "—";
+      : "Case " + A.etiquette(c.case)) : "";
+  $("#an-tete-case").classList.toggle("an-vide", !c);
   $("#an-tete-zone").textContent = z && z !== c.case
     ? `${A.nomType(z.type)} ${A.etiquettesDeLaCase(c).get(z.id)}` : "";
   const g = grilleOuverte();
@@ -680,8 +681,8 @@ async function rendreContexte() {
   $("#an-nom-lu").hidden = gestes.has("nom");
   if (detail) {
     $("#an-nom").value = valeurDuChamp("nom", z);
-    $("#an-nom-lu").textContent = z.nom || "—";
-    $("#an-nom-lu").classList.toggle("muted", !z.nom);
+    $("#an-nom-lu").textContent = z.nom || "";
+    $("#an-nom-lu").classList.toggle("an-vide", !z.nom);
   }
   montrer("#an-ctx-tr-t", gestes.has("transcription"));
   montrer("#an-ctx-tr", gestes.has("transcription"));
@@ -708,7 +709,8 @@ async function rendreContexte() {
     } else if (S[L.etat].vu === undefined) montrerLien(lieu, lu, false);
   }
   $("#an-note-lu").textContent = val.get("note");
-  $("#an-note-lu").classList.toggle("muted", ["—", "…"].includes(val.get("note")));
+  $("#an-note-lu").classList.toggle("muted", val.get("note") === "…");
+  $("#an-note-lu").classList.toggle("an-vide", !val.get("note"));
   // Une lecture en échec ne donne aucune valeur VUE : la note reste fermée, plutôt que
   // d'écrire par-dessus ce qu'on n'a pas lu.
   if (note === undefined) return;
@@ -728,8 +730,11 @@ function montrerLien(lieu, p, vu = true) {
   if (vu) st.vu = p ? p.id : null;
   st.p = p;
   const nom = $(idLien(lieu, "nom"));
-  nom.textContent = p === undefined ? "…" : p ? nomDuPersonnage(p) : "—";
+  // Rien de choisi : rien ne s'écrit — « — » se lisait comme un nom (Hugo, 2026-11-14) —, et la
+  // ligne garde sa hauteur ; « … » pendant la lecture reste.
+  nom.textContent = p === undefined ? "…" : p ? nomDuPersonnage(p) : "";
   nom.classList.toggle("muted", !p);
+  nom.classList.toggle("an-vide", p === null);
   const retirer = $(idLien(lieu, "retirer"));
   retirer.hidden = !(p && ecrivable());
   const fiche = $(idLien(lieu, "fiche"));
@@ -1572,7 +1577,7 @@ function rendreCorps() {
   champ.placeholder = g && g.travail ? `Chercher dans le ${A.NOM_MODE_LIBRE}…`
     : g && g.ouverte ? "Chercher dans la grille ouverte…" : "Chercher dans la grille…";
   if (!plan) {
-    arbre.replaceChildren(el("p", { classe: "muted", texte: "—" }));
+    arbre.replaceChildren();
     res.hidden = true;
     arbre.hidden = false;
     ailleurs.replaceChildren();
@@ -2804,7 +2809,7 @@ function rendrePorte() {
     ...(opts.length ? opts.map((o) => el("button", {
       type: "button", classe: "ghost small an-porte-btn", "data-porte": o.cle,
       "aria-pressed": String(o.cle === S.porte), texte: o.libelle }))
-      : [el("span", { classe: "muted", texte: "—" })])));
+      : [])));
 }
 
 /* ── Les mots ── */
@@ -2857,7 +2862,7 @@ function rendreMots() {
   titre.textContent = `Mots ${A.deLa(z.type)} ${A.etiquettesDeLaCase(c).get(z.id)}`;
   const d = S.mots && S.mots.region_id === z.id ? S.mots : null;
   if (!d || !d.mots.length) {
-    boite.replaceChildren(d ? "—" : "…");
+    boite.replaceChildren(d ? "" : "…");     // sans transcription : rien ne s'écrit
     boite.classList.add("muted");
     return;
   }
@@ -4062,7 +4067,7 @@ function rendreSynthese() {
   // Redessiner ne fait perdre ni le focus, ni la place dans une saisie (une réponse, une
   // précision) ; un bouton parti avec son geste (« Garder ») rend le focus à la vue.
   redessinerSansPerdreLeFocus(corps, () => {
-    if (!S.planche) corps.replaceChildren(el("p", { classe: "muted", texte: "—" }));
+    if (!S.planche) corps.replaceChildren();
     else if (S.synVue === "revoir") corps.replaceChildren(...vueARevoir(montres));
     else if (S.synVue === "decompte") corps.replaceChildren(...vueDecompte());
     else corps.replaceChildren(...vueRelevesParCase(montres));
@@ -4259,7 +4264,7 @@ function vueDecompte() {
         el("span", { classe: "an-dc-lib", texte: l.libelle }),
         el("span", { classe: "an-cnt", texte: String(l.n) })))));
   }).filter(Boolean);
-  if (!c) return [portee, el("p", { classe: "muted", texte: "—" })];
+  if (!c) return [portee];
   return [portee, ...(blocs.length ? blocs : [el("p", { classe: "muted", texte: "Aucun relevé à compter." })])];
 }
 

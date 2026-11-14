@@ -195,11 +195,12 @@ test("le Contexte, en lecture : ce qui n'est pas du vocabulaire", () => {
                    [{ cle: "locuteur", libelle: "Locuteur", valeur: "Tintin" },
                     { cle: "note", libelle: "Note", valeur: "ironique" }]);
   assert.deepEqual(A.contexte(bulle, {}).map((l) => l.valeur), ["…", "…"]);
+  // Rien : la valeur est vide — « — » se lisait comme une valeur (Hugo, 2026-11-14).
   assert.deepEqual(A.contexte(bulle, { locuteur: null, note: "" }).map((l) => l.valeur),
-                   ["—", "—"]);
+                   ["", ""]);
   const boite = R(3, "personnage", 0, 0, 1, 1);
   assert.deepEqual(A.contexte(boite, { personnage: { nom: "Milou" }, note: null })
-    .map((l) => [l.cle, l.valeur]), [["personnage", "Milou"], ["note", "—"]]);
+    .map((l) => [l.cle, l.valeur]), [["personnage", "Milou"], ["note", ""]]);
   assert.deepEqual(A.contexte(R(1, "case", 0, 0, 1, 1), { note: "nuit" }).map((l) => l.cle),
                    ["note"]);
   assert.deepEqual(A.contexte({ pseudo: true, type: "case" }, {}), []);

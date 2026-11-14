@@ -156,7 +156,7 @@ def test_attribuer_changer_retirer_un_locuteur_puis_annuler(page, decor, type_zo
     chemin = f"/api/regions/{rid}/locuteur"
     _ouvrir(page, decor, type_zone)
     champ, puce = page.locator("#an-loc-input"), page.locator("#an-loc-nom")
-    expect(puce).to_have_text("—")
+    expect(puce).to_have_text("")
 
     # ATTRIBUER, en créant le personnage à la volée.
     champ.click()
@@ -189,7 +189,7 @@ def test_attribuer_changer_retirer_un_locuteur_puis_annuler(page, decor, type_zo
             as reponse:
         page.locator("#an-loc-retirer").click()
     assert reponse.value.status == 204
-    expect(puce).to_have_text("—", timeout=15000)
+    expect(puce).to_have_text("", timeout=15000)
     assert _locuteur(decor, rid) is None
 
     # ANNULER, deux fois, hors champ de saisie : le retrait d'abord, le changement ensuite.
@@ -409,3 +409,25 @@ def test_apres_le_conflit_la_liste_des_personnages_ne_couvre_pas_la_note(page, d
         expect(note).to_be_focused()
     finally:
         ctx.close()
+
+
+def test_rien_ne_s_ecrit_a_cote_d_un_locuteur_vide_ni_sous_des_mots_absents(page, decor):
+    """Hugo, 2026-11-14 : à côté de « Locuteur » d'une zone qui n'en a pas, et sous « Mots de la
+    bulle » d'une zone sans transcription, rien ne s'écrit — « — » se lisait comme une valeur —,
+    et la ligne garde la hauteur qu'elle avait avec lui."""
+    _ouvrir(page, decor, "bulle")
+    puce = page.locator("#an-loc-nom")
+    expect(puce).to_have_text("")
+    expect(page.locator("#an-ctx-loc")).not_to_contain_text("—")
+    mots = page.locator("#an-mots")
+    expect(page.locator("#an-texte-titre")).to_contain_text("Mots")
+    expect(mots).to_have_text("")
+    for selecteur in ("#an-loc-nom", "#an-mots"):
+        hauteurs = page.locator(selecteur).evaluate("""(e) => {
+          const ligne = e.closest('#an-ctx-loc') || e;
+          const h = [e.getBoundingClientRect().height, ligne.getBoundingClientRect().height];
+          const avant = e.textContent; e.textContent = '—';
+          const h2 = [e.getBoundingClientRect().height, ligne.getBoundingClientRect().height];
+          e.textContent = avant; return [h, h2]; }""")
+        (vide, ligne), (avec, ligne2) = hauteurs
+        assert vide > 0 and abs(vide - avec) < 0.5 and abs(ligne - ligne2) < 0.5, (selecteur, hauteurs)
