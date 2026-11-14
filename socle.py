@@ -1745,7 +1745,8 @@ def _disposition(nom: str) -> str:
 def _csv_response(contenu: str, filename: str) -> Response:
     """Réponse CSV téléchargeable, préfixée d'un BOM UTF-8 pour qu'Excel (Windows) lise
     correctement les accents français. Le contenu s'écrit par `sortie_csv` (séparateur
-    point-virgule, ANN-7). R/pandas : `sep=";"` et `utf-8-sig`."""
+    point-virgule, virgule décimale, ANN-7). R : `read.csv2` ; pandas : `sep=";"`,
+    `decimal=","` et `utf-8-sig`."""
     return Response(content=_BOM + contenu, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": _disposition(filename)})
 

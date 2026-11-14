@@ -404,13 +404,14 @@ parce qu'il mesure des personnes et non un corpus.
 Trois formats, par album : **JSON-LD**, **CSV** et **TEI P5**. Une **sauvegarde** complète de
 la base est également téléchargeable depuis ce menu — réservée aux administrateurs.
 
-**Tous les CSV qui sortent sont séparés par des points-virgules**, en UTF-8 avec BOM :
-l'album, la Recherche, l'Exploration, les exports de dépôt et les rapports de `tools/`. Un
-double-clic les ouvre en colonnes dans un Excel réglé en français, accents compris. Pour les
-relire dans un programme, dites-lui le séparateur : en R, `read.csv2(f, fileEncoding =
-"UTF-8-BOM")` ou `read.csv(f, sep = ";", fileEncoding = "UTF-8-BOM")` ; en pandas,
-`pd.read_csv(f, sep=";", encoding="utf-8-sig")`. Les nombres décimaux gardent le POINT
-(`0.85`) : en R, `read.csv2` attend la virgule décimale, passez-lui `dec = "."`.
+**Tous les CSV qui sortent sont séparés par des points-virgules**, en UTF-8 avec BOM, et
+leurs nombres décimaux s'écrivent avec une **virgule** (`0,8571`) : l'album, la Recherche,
+l'Exploration, les exports de dépôt et les rapports de `tools/`. Un double-clic les ouvre en
+colonnes dans un Excel réglé en français, accents compris, et les décimaux y arrivent en
+nombres. Le texte, lui, sort tel qu'il est écrit : « 1.5 » transcrit dans une bulle reste
+« 1.5 ». Pour les relire dans un programme : en R, `read.csv2(f, fileEncoding =
+"UTF-8-BOM")` — le point-virgule et la virgule décimale sont ses réglages par défaut ; en
+pandas, `pd.read_csv(f, sep=";", decimal=",", encoding="utf-8-sig")`.
 
 **D'un bac à sable, presque rien ne sort** : seule la copie d'un document du jeu ouvert à
 l'export, où l'on n'a rien importé (*Mon bac à sable*, ci-dessous). La fiche d'un album le

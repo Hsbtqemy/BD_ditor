@@ -222,8 +222,9 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   `region_id`, `parent_id` ; `evenement.activite_id` → `activite.id`). Groupables en `.zip`. Écrits avec un **BOM
   UTF-8** (accents lisibles dans Excel, comme l'export de l'app) et séparés par des
   **points-virgules**, comme tout CSV qui sort (ANN-7, 2026-11-11 : un Excel français
-  ouvre ainsi les colonnes au double-clic) — R : `read.csv(f, sep = ";", fileEncoding =
-  "UTF-8-BOM")`, pandas : `pd.read_csv(f, sep=";", encoding="utf-8-sig")`. La fiche CSV
+  ouvre ainsi les colonnes au double-clic), les décimaux à **virgule** (`3,4` cm : le même
+  Excel lit « 3.4 » comme du texte) — R : `read.csv2(f, fileEncoding = "UTF-8-BOM")`,
+  pandas : `pd.read_csv(f, sep=";", decimal=",", encoding="utf-8-sig")`. La fiche CSV
   aussi. Les albums portent aussi
   leurs **contributions** (nom + rôle résolu : bucket DCterms + code MARC) et le catalogue
   **`contribution_roles`** (vocabulaire contrôlé-ouvert). Depuis **A4 (v17)**, `vocabulaire` et

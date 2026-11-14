@@ -84,7 +84,7 @@ def _export_csv(r, chemin):
         for ch in accord.CHAMPS:
             c = r["champs"][ch]
             w.writerow([ch, c["revus"], c["accord"],
-                        "" if c["taux"] is None else f"{c['taux']:.4f}",
+                        "" if c["taux"] is None else sortie_csv.nombre(c["taux"], 4),
                         r["filtre_modele"] or ""])
 
 

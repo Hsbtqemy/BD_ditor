@@ -16,14 +16,23 @@ deux côtés, parce qu'une seule lecture en rate.
    le BOM et se lire au point-virgule, chaque ligne avec autant de cellules que l'en-tête.
    Les outils de `tools/` aussi, en sous-processus, comme on les lance.
 
+3. **La virgule DÉCIMALE** (tranchée par Hugo ensuite : un Excel français lit « 0.8571 »
+   comme du texte) : sur les sorties jouées, aucune cellule n'est un décimal à point, et
+   celles qui doivent porter des décimales en portent bien à virgule — une garde qui ne
+   voit aucun nombre approuve tout. Le texte libre garde son point (« 1.5 » dans une
+   bulle).
+
 Ce qu'il ne garde PAS : les LECTURES de CSV (l'import d'une grille lit déjà du
-point-virgule), ni le séparateur décimal (les nombres gardent le point, `0.85` : à trancher
-à part, cf. `docs/guide-utilisateur.md` § Exporter).
+point-virgule), ni le texte qui MÊLE des nombres à des mots (« 12/30 (40.0%) » dans la
+fiche de description) : c'est une cellule de texte.
 """
 import ast
 import csv
 import io
+import re
+import sqlite3
 import zipfile
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -82,7 +91,7 @@ def test_les_motifs_mordent():
     """Une garde qui cherche ce qui n'existe nulle part approuve tout : `sortie_csv.py`
     construit les deux écrivains, et le motif doit les y trouver ; un module qui l'appelle
     doit être vu comme tel."""
-    assert len(_ecrivains_construits(_arbre(RACINE / "sortie_csv.py"))) == 2
+    assert _ecrivains_construits(_arbre(RACINE / "sortie_csv.py"))
     assert _ecrivains_construits(ast.parse(
         "from csv import writer as w\nw(f)\nimport csv\ncsv.DictWriter(f, [])")) == [2, 4]
     assert _appels_a_l_ecrivain(_arbre(RACINE / "routes" / "analyse.py"))
@@ -153,9 +162,15 @@ def test_tout_module_qui_ecrit_du_csv_est_declare():
 # --------------------------------------------------------------------------- #
 # La forme d'un CSV qui sort
 # --------------------------------------------------------------------------- #
-def _exiger_forme(nom: str, texte: str, bom: bool = True):
+DECIMAL_A_POINT = re.compile("^-?[0-9]+[.][0-9]+$")
+DECIMAL_A_VIRGULE = re.compile("^-?[0-9]+,[0-9]+$")
+
+
+def _exiger_forme(nom: str, texte: str, bom: bool = True) -> int:
     """BOM (sauf déclaré), point-virgule, et une forme RECTANGULAIRE : un fichier en
-    virgules se lit au point-virgule comme une seule colonne, ce que l'en-tête trahit."""
+    virgules se lit au point-virgule comme une seule colonne, ce que l'en-tête trahit. Et
+    aucun décimal à point. Rend le nombre de décimaux à virgule vus, pour que l'appelant
+    exige d'en avoir vu là où il en attend."""
     if bom:
         assert texte.startswith(sortie_csv.BOM), f"{nom} : pas de BOM UTF-8 en tête"
         texte = texte[1:]
@@ -167,6 +182,9 @@ def _exiger_forme(nom: str, texte: str, bom: bool = True):
     assert len(entete) >= 2, f"{nom} : l'en-tête ne se lit pas au point-virgule : {entete}"
     larges = [i for i, l in enumerate(lignes) if l and len(l) != len(entete)]
     assert not larges, f"{nom} : lignes {larges[:5]} d'une autre largeur que l'en-tête"
+    a_point = [c for l in lignes for c in l if DECIMAL_A_POINT.match(c)]
+    assert not a_point, f"{nom} : décimaux à point {a_point[:5]} (virgule attendue)"
+    return sum(1 for l in lignes for c in l if DECIMAL_A_VIRGULE.match(c))
 
 
 def _csv_d_une_reponse(nom: str, rep) -> dict:
@@ -192,6 +210,14 @@ VARIANTES = {
     "/api/collections/{collection_id}/depot/metadonnees": [{"format": "zip"}],
 }
 
+# Les sorties qui DOIVENT porter des décimaux dans le décor ci-dessous : la mesure du
+# cliquet de la virgule décimale ne vaut que là où il y a des nombres à voir.
+DECIMALES_ROUTES = {
+    "/api/analyse/comparaison.csv",                                  # rel_a, diff, ll
+    "/api/analyse/accord.csv",                                       # taux
+    "/api/collections/{collection_id}/depot/metadonnees?format=zip",  # largeur_cm
+}
+
 # Les sorties CSV des routes — ce que le balayage doit trouver, ni plus ni moins. Une
 # porte NEUVE qui rend du CSV tombe ici comme non déclarée : on l'ajoute, et on la lit.
 SORTIES_ROUTES = {
@@ -211,8 +237,40 @@ def _etiquette(chemin: str, extra: dict) -> str:
     return chemin + ("?" + "&".join(f"{k}={v}" for k, v in extra.items()) if extra else "")
 
 
+def _semer_des_decimaux(db_path, region_id, planche_id):
+    """Une résolution (les centimètres dérivés sont décimaux) et un mot relu (le taux
+    d'accord l'est aussi)."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("UPDATE planches SET dpi_x = 300, dpi_y = 300 WHERE id = ?",
+                     (planche_id,))
+        if not conn.execute("SELECT 1 FROM tokens WHERE region_id = ? AND ordre = 0",
+                            (region_id,)).fetchone():
+            conn.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                         "VALUES (?, 0, 'DIS', 'dire', 'VERB', '')", (region_id,))
+        forme = conn.execute("SELECT texte FROM tokens WHERE region_id = ? AND ordre = 0",
+                             (region_id,)).fetchone()[0]
+        conn.execute("INSERT INTO token_correction (region_id, ordre, forme, etat, obsolete) "
+                     "VALUES (?, 0, ?, 'valide', 0)", (region_id, forme))
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        conn.close()
+
+
+def _planche_de(db_path, region_id) -> int:
+    conn = sqlite3.connect(db_path)
+    try:
+        return conn.execute("SELECT planche_id FROM regions WHERE id = ?",
+                            (region_id,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
 def test_toute_route_qui_sort_du_csv_le_sort_au_point_virgule(client, db_path, sortie):
     _poser_export(db_path, sortie["c1"], "bob")
+    r1 = sortie["r1"]["id"]
+    _semer_des_decimaux(db_path, r1, _planche_de(db_path, r1))
     vus = {}
     for porte in sorted(PORTES):
         methode, url, params, corps = _requete(porte, sortie)
@@ -228,9 +286,10 @@ def test_toute_route_qui_sort_du_csv_le_sort_au_point_virgule(client, db_path, s
     assert set(vus) == SORTIES_ROUTES, (
         f"rendent du CSV sans être déclarées : {sorted(set(vus) - SORTIES_ROUTES)} ; "
         f"déclarées sans en rendre : {sorted(SORTIES_ROUTES - set(vus))}")
-    for csvs in vus.values():
-        for nom, texte in csvs.items():
-            _exiger_forme(nom, texte)
+    for etiquette, csvs in vus.items():
+        decimaux = sum(_exiger_forme(nom, texte) for nom, texte in csvs.items())
+        if etiquette in DECIMALES_ROUTES:
+            assert decimaux, f"{etiquette} : aucun décimal à voir, la garde ne mesure rien"
 
 
 def _tableur_de_grille(client, db_path) -> dict:
@@ -253,6 +312,10 @@ def test_le_cliquet_des_routes_voit_une_sortie_en_virgules():
         _exiger_forme("avant", sortie_csv.BOM + d_avant.getvalue())
     with pytest.raises(AssertionError, match="BOM"):
         _exiger_forme("sans BOM", "a;b\r\n1;2\r\n")
+    with pytest.raises(AssertionError, match="décimaux à point"):
+        _exiger_forme("à point", sortie_csv.BOM + "taux;n\r\n0.8571;3\r\n")
+    assert _exiger_forme("à virgule",
+                         sortie_csv.BOM + "taux;n\r\n0,8571;3\r\n") == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -265,8 +328,14 @@ SORTIES_OUTILS = {
 }
 
 
-def test_les_outils_ecrivent_leurs_csv_au_point_virgule(corpus, tmp_path):
+# Les sorties d'outil qui DOIVENT porter des décimaux dans le décor (`_semer_des_decimaux`).
+DECIMALES_OUTILS = {"metadonnees_collection --csv-dir", "metadonnees_collection --zip",
+                    "rapport_accord --csv"}
+
+
+def test_les_outils_ecrivent_leurs_csv_au_point_virgule(corpus, region, tmp_path):
     db, data = corpus["db"], corpus["data"]
+    _semer_des_decimaux(db, region["id"], region["planche_id"])
     vus = {}
 
     def lancer(etiquette, script, *args):
@@ -308,8 +377,10 @@ def test_les_outils_ecrivent_leurs_csv_au_point_virgule(corpus, tmp_path):
         if etiquette == "description_collection --csv -":
             continue
         assert fichiers, f"{etiquette} : aucun CSV écrit"
-        for nom, texte in fichiers.items():
-            _exiger_forme(f"{etiquette} › {nom}", texte)
+        decimaux = sum(_exiger_forme(f"{etiquette} › {nom}", texte)
+                       for nom, texte in fichiers.items())
+        if etiquette in DECIMALES_OUTILS:
+            assert decimaux, f"{etiquette} : aucun décimal à voir, la garde ne mesure rien"
 
 
 def test_l_anti_injection_survit_au_point_virgule(client, album, region):
@@ -323,3 +394,43 @@ def test_l_anti_injection_survit_au_point_virgule(client, album, region):
     lignes = list(csv.DictReader(io.StringIO(rep.text.lstrip(sortie_csv.BOM)),
                                  delimiter=";"))
     assert [l["note"] for l in lignes] == ["'=SOMME(A1;A2)"]
+
+
+# --------------------------------------------------------------------------- #
+# 4. La virgule décimale, à la source
+# --------------------------------------------------------------------------- #
+def test_un_nombre_sort_avec_une_virgule_et_le_texte_tel_quel():
+    """La règle porte sur le TYPE : un `float` et un `Decimal` prennent la virgule, une
+    chaîne qui en a l'allure (« 1.5 » tapé dans une bulle, une date) reste telle quelle."""
+    assert sortie_csv.nombre(0.857142, 4) == "0,8571"
+    assert sortie_csv.nombre(1.5) == "1,5"
+    assert sortie_csv.nombre(-0.25) == "-0,25"
+    assert sortie_csv.nombre(Decimal("2.50")) == "2,50"
+    assert sortie_csv.nombre(3) == "3"
+    for pas_un_nombre in ("1.5", None, True):
+        with pytest.raises(TypeError):
+            sortie_csv.nombre(pas_un_nombre)
+    tampon = io.StringIO()
+    sortie_csv.ecrivain_csv(tampon).writerow(
+        [1.5, "1.5", 3, None, Decimal("0.1"), True, "2026-11-14 10:30:00"])
+    assert tampon.getvalue().strip() == "1,5;1.5;3;;0,1;True;2026-11-14 10:30:00"
+    tampon = io.StringIO()
+    e = sortie_csv.ecrivain_csv_dict(tampon, ["taux", "texte"])
+    e.writeheader()
+    e.writerows([{"taux": 0.5, "texte": "0.5"}])
+    assert tampon.getvalue().splitlines() == ["taux;texte", "0,5;0.5"]
+
+
+def test_le_texte_libre_garde_son_point(client, album, region, db_path):
+    """« 1.5 » transcrit dans une zone sort tel qu'il est transcrit."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("UPDATE regions SET ocr_texte = '1.5' WHERE id = ?", (region["id"],))
+        conn.commit()
+    finally:
+        conn.close()
+    rep = client.get("/api/export/csv", params={"album_id": album["id"]}, headers=ADMIN)
+    assert rep.status_code == 200, rep.text
+    lignes = list(csv.DictReader(io.StringIO(rep.text.lstrip(sortie_csv.BOM)),
+                                 delimiter=";"))
+    assert [l["ocr_texte"] for l in lignes] == ["1.5"]

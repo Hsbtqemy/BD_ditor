@@ -374,5 +374,5 @@ def test_cli_modele(client, album, planche, db_path, data_dir, tmp_path):
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["champs"]["pos"]["accord"] == 0
     assert data["a_la_relecture"]["champs"]["pos"]["accord"] == 1
-    lignes = tab.read_text(encoding="utf-8").splitlines()
+    lignes = tab.read_text(encoding="utf-8-sig").splitlines()
     assert lignes[0].endswith(";releve_sur") and all(l.endswith(";" + SM) for l in lignes[1:])

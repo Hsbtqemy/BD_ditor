@@ -56,6 +56,7 @@ from fastapi.responses import Response
 
 import autorisation
 from config import BASE_DIR
+from sortie_csv import ENCODAGE_FICHIER
 from socle import (_exiger_export, _get_collection, _refuser_le_bac_a_sable,
                    _refuser_le_jeu, db, portee_courante)
 
@@ -198,7 +199,7 @@ def depot_description(collection_id: int,
 def _faire_description(conn, collection_id: int, format: str) -> tuple:
     rollup, agg = description_collection.collecter(conn, collection_id=collection_id)
     if format == "csv":
-        return description_collection.catalogue_csv(agg).encode("utf-8-sig"), "csv"
+        return (description_collection.catalogue_csv(agg).encode(ENCODAGE_FICHIER), "csv")
     return _json_bytes(rollup), "json"
 
 
