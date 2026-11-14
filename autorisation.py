@@ -78,6 +78,7 @@ from database import (CRAN_ANNOTATIONS, DEMANDE_AMORCER_ENTRE_PROJETS,
                       sql_projet_d_album, sql_projet_de, sql_rang_du_cran)
 from grilles import ETAT_PUBLIEE as ETAT_VERSION_PUBLIEE
 from grilles import ETAT_VIVANTE as ETAT_VERSION_VIVANTE
+from grilles import sql_acte_de_fusion
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
 # modifie pas ce qu'on ne voit pas, et on n'administre pas ce qu'on ne peut pas modifier.
@@ -1152,6 +1153,15 @@ def _sql_chaine_des_sources(depart: str) -> str:
         "JOIN copie _tco2 ON _tco2.album_id = _tpp2.album_id) ")
 
 
+# Le REPORT d'un relevé par une FUSION d'entrées (ANN-7, le mode libre ;
+# `grille_import.journaliser_fusion`) n'est pas un travail sur l'album — le patron de
+# l'ordre des planches : la fusion range un vocabulaire, son acte vit sous `grille`, et le
+# relevé reste à qui l'a posé, dont la pose compte. Le compter mettait le responsable qui
+# fusionne dans « qui perd quoi » de chaque album que la grille touche, pour un travail qu'il
+# n'y perd pas. Écarté des quatre sources qui lisent `releve` ou `releve_planche`.
+_SQL_FUSION = sql_acte_de_fusion("_te")
+
+
 def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
     """Les neuf sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
     quand, `FROM … WHERE …`, recopié) — la sorte est la `cible_table` de l'acte, ou le nom
@@ -1177,7 +1187,8 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
         ("_te.agent", "_te.cible_table", "_te.date",
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
          f"JOIN evenement _te ON _te.cible_table IN ({cibles}) AND _te.cible_id = _tr.id "
-         f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain'", "0"),
+         f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain' "
+         f"AND NOT {_SQL_FUSION}", "0"),
         # (La deuxième source, les attributs de case, est retirée : cf. la docstring.)
         ("_tt.auteur", "'token_correction'", "_tt.date_modif",
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
@@ -1190,7 +1201,7 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          "planches _tp CROSS JOIN evenement _te "
          f"WHERE _tp.album_id = {alias} "
          "AND _te.cible_table IN ('planches', 'releve_planche') AND _te.cible_id = _tp.id "
-         "AND _te.agent_type = 'humain'", "0"),
+         f"AND _te.agent_type = 'humain' AND NOT {_SQL_FUSION}", "0"),
         ("_te.agent", "'document'", "_te.date",
          "albums _ta JOIN evenement _te "
          "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
@@ -1209,6 +1220,7 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          # Les DOUTES ne suivent pas une copie : ils ne comptent nulle part comme travail
          # recopié (décision du pilotage, 2026-10-26 ; le pendant de la neuvième source).
          "AND _te.type NOT LIKE 'doute%' "
+         f"AND NOT {_SQL_FUSION} "
          f"AND (_te.cible_table NOT IN ({annotation}) "
          f"OR (_tsrc.rang >= {rang_du_cran(CRAN_ANNOTATIONS)} AND {_SQL_COUCHE_VIT})) "
          "AND (_te.cible_table <> 'regions' OR _te.type <> 'validation' "
@@ -1248,6 +1260,7 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:
          "AND _te.cible_table = 'releve_planche' AND _te.cible_id = _tps.id "
          "AND _te.agent_type = 'humain' AND _te.date <= _trs.borne "
          "AND _te.type NOT LIKE 'doute%' "
+         f"AND NOT {_SQL_FUSION} "
          f"AND {_SQL_RELEVE_DE_LA_CHARGE} = _trs.s", "1"),
     ]
 

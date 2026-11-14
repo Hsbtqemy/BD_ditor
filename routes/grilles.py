@@ -886,12 +886,18 @@ def _ecrire(conn, portee, grille_id: int, geste, *, gerer: bool = True) -> dict:
     except conflit.Perime as exc:
         raise HTTPException(409, exc.detail())
     faites = {f"entree:{f['de']}": f["releve_ids"] for f in fusions}
+    actes = {}
     for type_, objet, av, ap in fait["actes"]:
         if objet in faites and ap is not None:
             ap = {**ap, "releve_ids": faites[objet]}
-        journal.journaliser(conn, type_, "grille", g["id"],
-                            avant=_charge(objet, v["numero"], av),
-                            apres=_charge(objet, v["numero"], ap))
+        actes[objet] = journal.journaliser(conn, type_, "grille", g["id"],
+                                           avant=_charge(objet, v["numero"], av),
+                                           apres=_charge(objet, v["numero"], ap))
+    # Puis un acte par relevé déplacé, qui nomme l'acte de grille qu'il prolonge (ANN-7, le
+    # mode libre : `grille_import.journaliser_fusion`).
+    for f in fusions:
+        grille_import.journaliser_fusion(conn, g["id"], v["numero"], f,
+                                         actes.get(f"entree:{f['de']}"))
     conn.commit()
     return _reponse(conn, g, v, cree=cree, cle=fait["cle"], a_savoir=a_savoir,
                     fusions=fusions, portee=portee)

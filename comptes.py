@@ -27,6 +27,7 @@ import autorisation
 from annuaire import GROUPES_DE_ROLE, Lecture
 from database import (NOM_COLLECTION_DEFAUT, SQL_BACS_EFFACES, collections, sql_acte_isole,
                       sql_est_isole, sql_projet_de)
+from grilles import sql_acte_de_fusion
 
 # Tranché par Hugo le 2026-09-17 : une reprise d'identité ne s'efface jamais du journal, et un
 # mariage laisse la même trace. Sans fenêtre, le signal ne s'éteindrait jamais, et une liste
@@ -90,6 +91,8 @@ def traces(conn) -> tuple[dict, dict, dict, dict]:
         # le vocabulaire, et n'orpheline aucune annotation.
         # `grille` (ANN-7) aussi : importer, publier, activer une grille administre un
         # vocabulaire d'étude ; les RELEVÉS, eux, comptent — qualifier une zone est du travail.
+        # Sauf le REPORT d'un relevé par une fusion d'entrées (`grilles.ACTE_FUSION`) : il
+        # prolonge l'acte de grille, et n'orpheline rien — le relevé reste à qui l'a posé.
         # COL-4 (décision du pilotage, contre-relecture D2) — ni ce qui vit dans un projet
         # ISOLÉ (bac à sable, jeu), ni ce qui est parti avec un bac à sable effacé
         # (`database.sql_acte_isole`), création et invitations du bac comprises : ce qui
@@ -100,6 +103,7 @@ def traces(conn) -> tuple[dict, dict, dict, dict]:
         "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature', 'annulation', "
         "                          'document', 'collection_album', 'demande', 'tags', "
         "                          'grille') "
+        f"  AND NOT {sql_acte_de_fusion('evenement')} "
         f"  AND NOT {sql_acte_isole('evenement')} "
         "GROUP BY agent")}
     # … ni un accès sur une collection d'un projet isolé, pour la même raison.

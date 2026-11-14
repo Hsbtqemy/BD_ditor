@@ -518,8 +518,9 @@ CIBLES_RETENUES = {
         "avant la tranche 4 d'ANN-7, qui décidera de leur sortie (SKOS).",
     "releve":
         "ANN-7 — un relevé posé, modifié ou retiré sur une région, un doute et son fil, une "
-        "passe « terminée ». Rien du relevé ne sort avant la tranche 4, qui décidera de sa "
-        "sortie avec sa grille et sa version : la charge porte une précision et des messages "
+        "passe « terminée », un relevé déplacé par une fusion d'entrées. Rien du relevé ne "
+        "sort avant la tranche 4, qui décidera de sa sortie avec sa grille et sa version : "
+        "la charge porte une précision et des messages "
         "en texte libre, le passage désigné, et la grille d'une étude peut-être en cours. Ces "
         "actes COMPTENT pourtant dans les rangs des pseudonymes (G10), pour que leur sortie ne "
         "renumérote pas tous ceux qui annotent.",
@@ -652,7 +653,12 @@ def evenements_publiables(conn, ordre: str = "ASC"):
 #: `grille` (ANN-7) dès sa naissance, pour la raison de `tags` : qui importe ou publie une
 #: grille administre un vocabulaire, il n'annote pas. Les RELEVÉS, eux, n'y sont pas (G10,
 #: Hugo, 2026-10-25) : ils comptent dans les rangs dès la tranche 1, pour que leur sortie, en
-#: tranche 4, ne renumérote pas tous ceux qui annotent.
+#: tranche 4, ne renumérote pas tous ceux qui annotent. Le REPORT d'un relevé par une
+#: fusion d'entrées (`grilles.ACTE_FUSION`, sous `releve`) garde lui aussi son rang, alors
+#: qu'il range un vocabulaire comme l'acte de grille qu'il prolonge : le choix PRUDENT, à
+#: confirmer par Hugo. L'écarter des rangs sans l'écarter de la sortie ferait sortir l'acte
+#: sous un login le jour où la tranche 4 publiera les relevés ; le garder ne renumérote
+#: personne (il prend rang à sa première trace) et ne coûte qu'un trou possible.
 #:
 #: La même raison vaut pour un PROJET ISOLÉ, mais la coupure n'est pas une cible :
 #: `pseudonymes()` y écarte tout acte, quelle qu'en soit la cible.

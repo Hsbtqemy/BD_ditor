@@ -1282,10 +1282,18 @@ def _fusionner(conn, grille_id: int, version_id: int, fusion: dict) -> list:
     sous le verrou de l'appelant, il refuse encore, au lieu de tomber sur l'index. Les relevés
     reportés prennent le drapeau `une` de l'entrée d'arrivée (`fusion["une"]`, sa cardinalité
     effective) : sans quoi, née « plusieurs », l'étiquette fondue laissait à une entrée « une
-    seule fois » des relevés `une = 0`, que ni la pose ni l'index ne voyaient."""
-    ids = [r[0] for r in conn.execute(
-        "SELECT id FROM releve WHERE grille_id = ? AND version_id = ? AND entree_cle = ? "
-        "ORDER BY id", (grille_id, version_id, fusion["de"]))]
+    seule fois » des relevés `une = 0`, que ni la pose ni l'index ne voyaient.
+
+    L'état de chaque relevé AVANT le report reste sur `fusion` (`releves_avant`) : l'acte que
+    l'appelant écrit ensuite sur chacun (`journaliser_fusion`) le lit. Rien de cette clé ne
+    sort — les réponses et la charge de l'acte de grille ne gardent que `de`, `dans` et
+    `releve_ids`."""
+    lignes = conn.execute(
+        f"SELECT {', '.join(_COLONNES_D_UN_REPORT)} FROM releve WHERE grille_id = ? "
+        "AND version_id = ? AND entree_cle = ? ORDER BY id",
+        (grille_id, version_id, fusion["de"])).fetchall()
+    ids = [r[0] for r in lignes]
+    fusion["releves_avant"] = {r[0]: dict(zip(_COLONNES_D_UN_REPORT, r)) for r in lignes}
     if _fusion_en_double(conn, grille_id, version_id, fusion["de"], fusion["dans"],
                          une=fusion["une"]):
         raise Refus(409, f"Fusionner « {fusion['de']} » dans « {fusion['dans']} » poserait "
@@ -1296,6 +1304,63 @@ def _fusionner(conn, grille_id: int, version_id: int, fusion: dict) -> list:
                  "AND version_id = ? AND entree_cle = ?",
                  (fusion["dans"], int(fusion["une"]), grille_id, version_id, fusion["de"]))
     return ids
+
+
+# Ce qu'un acte de fusion dit d'un relevé, avant et après : ce qui tient à son identité (sa
+# cible, sa grille, sa version) et ce que la fusion change (l'entrée, le drapeau `une`) ; la
+# variante, qui ne change pas — l'entrée d'arrivée porte les variantes employées —, pour lire
+# l'acte seul. Rien d'autre : ni précision, ni passage, ni lien (du texte libre, et des
+# valeurs que la fusion ne touche pas). Et `conflit.auteur_du_champ` ne nomme que qui a CHANGÉ
+# un champ : ni la variante, ni rien de ce que garde CONC-3 n'y change.
+_COLONNES_D_UN_REPORT = ("id", "region_id", "planche_id", "grille_id", "version_id",
+                         "entree_cle", "variante_cle", "une")
+
+
+def journaliser_fusion(conn, grille_id: int, numero: int, fusion: dict,
+                       acte_id: int | None) -> int:
+    """Écrit au journal un acte par relevé qu'une fusion a déplacé (`_fusionner`), sous sa
+    cible ordinaire — la RÉGION (`releve`) ou la PLANCHE (`releve_planche`) —, du type
+    `grilles.ACTE_FUSION` : ni Ctrl+Z ne l'offre, ni « qui perd quoi » ne le compte
+    (`grilles.sql_acte_de_fusion`). À appeler APRÈS l'acte de grille de la fusion, dont
+    `acte_id` est l'identifiant (None si l'appelant n'en a pas écrit) : chaque acte de relevé
+    le nomme (`fusion.acte`), la grille et le numéro de sa version avec, et l'acte de grille
+    nomme déjà ses relevés (`releve_ids`). L'état d'après est relu en base : le drapeau `une`
+    a pu changer encore après le report (`reporter_cardinalites`). Ne commite pas ; rend le
+    nombre d'actes écrits.
+
+    Le journal n'est lu que par des sorties bornées — Ctrl+Z (les actes de l'agent, de ses
+    types), la garde de CONC-3 (qui a changé un champ qu'elle garde), « qui perd quoi »
+    (bornée à qui efface l'album, et qui l'écarte), et aucun export (`releve` est retenu) :
+    écrire l'acte sur un relevé d'un album que le responsable ne lit pas ne lui en montre
+    rien, et ne le montre à personne."""
+    import journal                               # import paresseux, cf. `importer`
+    avants = fusion.get("releves_avant") or {}
+    ids = list(fusion.get("releve_ids") or [])
+    lien = {"acte": acte_id, "grille_id": grille_id, "version": numero,
+            "de": fusion["de"], "dans": fusion["dans"]}
+    n = 0
+    for i in range(0, len(ids), 500):
+        tranche = ids[i:i + 500]
+        apres = {r[0]: dict(zip(_COLONNES_D_UN_REPORT, r)) for r in conn.execute(
+            f"SELECT {', '.join(_COLONNES_D_UN_REPORT)} FROM releve "
+            f"WHERE id IN ({', '.join('?' * len(tranche))})", tranche)}
+        for rid in tranche:
+            ap, av = apres.get(rid), avants.get(rid)
+            if ap is None or av is None:
+                continue
+            charge_av = {"releve_id": rid, **{k: av[k] for k in _COLONNES_D_UN_REPORT[1:]}}
+            charge_ap = {"releve_id": rid, **{k: ap[k] for k in _COLONNES_D_UN_REPORT[1:]},
+                         "fusion": lien}
+            # Deux appels LITTÉRAUX, comme `routes/releves.journaliser_releve` : le cliquet du
+            # journal relève les cibles par AST.
+            if ap["region_id"] is not None:
+                journal.journaliser(conn, grilles.ACTE_FUSION, "releve", ap["region_id"],
+                                    avant=charge_av, apres=charge_ap)
+            else:
+                journal.journaliser(conn, grilles.ACTE_FUSION, "releve_planche",
+                                    ap["planche_id"], avant=charge_av, apres=charge_ap)
+            n += 1
+    return n
 
 
 # --------------------------------------------------------------------------- #
@@ -1569,9 +1634,14 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
         derniere = grilles.derniere_version(conn, gid)
         numero = (derniere["numero"] + 1) if derniere is not None else 1
         ecrire_version(conn, gid, c, numero=numero, etat=etat, note=note, par=par)
-    journal.journaliser(conn, "modification", "grille", gid,
-                        apres={"import": {"numero": numero, "etat": etat, "empreinte": emp,
-                                          "remplace": en_place is not None, **trace}})
+    acte = journal.journaliser(conn, "modification", "grille", gid,
+                               apres={"import": {"numero": numero, "etat": etat,
+                                                 "empreinte": emp,
+                                                 "remplace": en_place is not None, **trace}})
+    # Un acte par relevé déplacé, après l'acte de l'import qu'il prolonge (le mode libre).
+    if trace:                                    # une version vivante, écrite en place
+        for f in fusions:
+            journaliser_fusion(conn, gid, numero, f, acte)
     resultat.update(ecrit=True, verdict=verdict("importe"),
                     version={"numero": numero, "etat": etat,
                              **({"remplace": True} if en_place is not None else {})})

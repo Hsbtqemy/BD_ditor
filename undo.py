@@ -32,6 +32,7 @@ import journal
 from config import TYPE_DETAIL, TYPES_LOCUTEUR, TYPES_PRESENCE
 from database import (CLE_PLANCHER_ANNULATION, NATURE_COLLECTIF, SQL_NOTE_POSEE,
                       annotation_vide, reindex_etiquettes, reindex_region, unindex_region)
+from grilles import sql_acte_de_fusion
 
 # Types d'événements et tables que l'undo sait inverser (le reste est ignoré : ni annulé,
 # ni bloquant — l'undo « saute » un acte non annulable et remonte au précédent).
@@ -372,12 +373,15 @@ def _garder_releves_de_creation(conn, region_id, agent) -> None:
 # La forme FERMÉE (contre-relecture n°2, consigne du pilotage) : son AUTEUR n'est pas l'agent
 # — un auteur inconnu, recopié entre deux projets, est un autre —, ou un autre humain a agi
 # sur lui au journal (sa cible, sa charge `releve_id`), défait ou non. Jamais le seul dernier
-# retoucheur : une retouche de soi ne fait pas passer le relevé d'un autre pour le sien.
+# retoucheur : une retouche de soi ne fait pas passer le relevé d'un autre pour le sien. Ni
+# le report par une FUSION d'entrées (`grilles.ACTE_FUSION`, ANN-7, le mode libre) : il range
+# le vocabulaire, et le relevé reste à qui l'a posé.
 _SQL_RELEVE_D_UN_AUTRE = (
     "(r.auteur IS NOT ? OR EXISTS (SELECT 1 FROM evenement _ue "
     "WHERE ((_ue.cible_table = 'releve' AND _ue.cible_id = r.region_id) "
     "OR (_ue.cible_table = 'releve_planche' AND _ue.cible_id = r.planche_id)) "
     "AND _ue.agent_type = 'humain' AND _ue.agent IS NOT ? "
+    f"AND NOT {sql_acte_de_fusion('_ue')} "
     "AND COALESCE(CASE WHEN json_valid(_ue.apres) THEN json_extract(_ue.apres, '$.releve_id') "
     "END, CASE WHEN json_valid(_ue.avant) THEN json_extract(_ue.avant, '$.releve_id') END) "
     "= r.id))")

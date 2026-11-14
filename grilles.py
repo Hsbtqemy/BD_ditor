@@ -54,6 +54,21 @@ ETATS_VERSION = (ETAT_BROUILLON, ETAT_PUBLIEE, ETAT_VIVANTE)
 ENTREE_PROVISOIRE, ENTREE_DEFINIE = "provisoire", "defini"
 ETATS_ENTREE = (ENTREE_PROVISOIRE, ENTREE_DEFINIE)
 ISSUES_DOUTE = ("garde", "change", "retire")
+# Le TYPE de l'acte qu'une FUSION d'entrées écrit sur chaque relevé qu'elle déplace, sous sa
+# cible ordinaire (`releve` : la région ; `releve_planche` : la planche) — ANN-7, le mode
+# libre (`grille_import.journaliser_fusion`). Un type à lui, comme `doute` et `passe` : hors
+# de la pile de Ctrl+Z (`undo._TYPES`) — l'entrée de départ n'existe plus, et chaque relevé
+# rejoué vers elle serait un acte passé de plus —, et pas un TRAVAIL sur l'album : la fusion
+# range un vocabulaire (son acte sous `grille`), le relevé reste celui de qui l'a posé. Ce
+# qui lit le journal pour dire « qui a travaillé » l'écarte par `sql_acte_de_fusion`.
+ACTE_FUSION = "fusion"
+
+
+def sql_acte_de_fusion(e: str) -> str:
+    """Fragment SQL VRAI si l'acte `e` (un alias de `evenement`) est le report d'un relevé
+    par une fusion d'entrées (`ACTE_FUSION`), sous l'une des deux cibles d'un relevé."""
+    return (f"({e}.type = '{ACTE_FUSION}' "
+            f"AND {e}.cible_table IN ('releve', 'releve_planche'))")
 
 # Le séparateur de plusieurs cibles, dans une cellule du tableur (« bulle | cartouche |
 # texte ») et en base (« bulle|cartouche|texte », dans l'ordre de `CIBLES`).
