@@ -253,6 +253,61 @@ def test_a11y_visionneuse_modes(page, seeded, theme):
         assert not viol, f"Visionneuse/{label} [{theme}] :\n{_fmt(viol)}"
 
 
+def _ouvrir_transcription(page, seeded, largeur, hauteur, zoom):
+    """L'Atelier en mode Transcription, à cette taille de fenêtre et sous ce zoom
+    d'interface — posé en stockage local AVANT le chargement, comme le lit `theme.js`."""
+    page.add_init_script(f"try {{ localStorage.setItem('bd-zoom', '{zoom}') }} catch (e) {{}}")
+    page.set_viewport_size({"width": largeur, "height": hauteur})
+    page.goto(seeded["base"] + SURFACES_AUDITEES["/"](seeded) + "&mode=transcription",
+              wait_until="domcontentloaded")
+    expect(page.locator("#tr-mini img")).to_be_visible(timeout=15000)
+    page.wait_for_function("() => document.querySelector('#tr-mini img').complete")
+    page.wait_for_timeout(300)
+
+
+@pytest.mark.parametrize("largeur, zoom", [(1280, 1), (768, 2)])
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_visionneuse_transcription(page, seeded, theme, largeur, zoom):
+    """Le mode Transcription de l'Atelier, que l'audit ordinaire n'ouvrait pas (A11Y-3).
+    768 px sous un zoom d'interface de 2 : vu le 2026-11-06 sous le guide, la minicarte
+    sans `alt` (`image-alt`, critique) venait de la page et non du guide."""
+    _theme(page, theme)
+    _ouvrir_transcription(page, seeded, largeur, 900, zoom)
+    viol = _audit(page)
+    assert not viol, f"Visionneuse/transcription {largeur} px, zoom {zoom} [{theme}] :\n{_fmt(viol)}"
+
+
+_DEFILEMENT_DE = """async (sel) => {
+  const r = await axe.run({include: [[sel]]},
+                          {runOnly: {type: 'rule', values: ['scrollable-region-focusable']}});
+  return r.violations.flatMap(v => v.nodes.map(n => n.target.join(' '))); }"""
+
+
+def test_a11y_transcription_la_colonne_qui_defile_se_focalise(page, seeded):
+    """A11Y-3 — `#tr-left` DÉFILE quand la planche n'y tient pas, et rien n'y est
+    focalisable : `scrollable-region-focusable` (sérieuse), vue le 2026-11-06 à 768 px sous
+    un zoom d'interface de 2. axe ne juge la règle que sur un cadre qui DÉBORDE : à 768 px
+    sous ce zoom, avec la planche du décor, la colonne ne déborde qu'au-dessous de ~560 px de
+    haut (mesuré le 2026-11-14 : à 900, rien ne dépasse), d'où les 540 px et la précondition
+    — sans elle, l'audit approuverait une règle qu'il n'a pas jouée.
+
+    L'audit est borné à `#tr-left` : à cette hauteur, le tiroir FERMÉ de l'Atelier
+    (`#sidebar`, hors champ par `transform` seul) déborde lui aussi, et `#planche-list`, dont
+    les planches ne se choisissent qu'au clic, y porte la même règle. C'est un autre défaut,
+    de tout l'Atelier et non de la Transcription, relevé à part le 2026-11-14."""
+    _ouvrir_transcription(page, seeded, 768, 540, 2)
+    deborde = page.evaluate("""() => { const e = document.querySelector('#tr-left');
+      return e.scrollHeight > e.clientHeight || e.scrollWidth > e.clientWidth; }""")
+    assert deborde, "#tr-left ne défile pas : l'audit ne jouerait pas la règle du défilement"
+    page.evaluate(_AXE_SRC)
+    assert page.evaluate(_DEFILEMENT_DE, "#tr-left") == []
+    # Et le clavier y entre : le cadre se focalise et défile aux flèches.
+    page.focus("#tr-left")
+    page.keyboard.press("ArrowDown")
+    assert page.evaluate("() => document.activeElement.id") == "tr-left"
+    assert page.get_attribute("#tr-left", "aria-label")      # nommée : le lecteur dit où l'on est
+
+
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # AUTH-1 : proxy déclaré
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_pastille_utilisateur(page, seeded, theme):

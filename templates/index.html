@@ -250,7 +250,10 @@
 
   <!-- ───────── Mode Transcription (plein écran, par-dessus le corps) ───────── -->
   <section id="transcription" data-parcours="atelier-transcription" hidden>
-    <div id="tr-left">
+    <!-- A11Y-3 : la colonne DÉFILE quand la planche ne tient pas (une fenêtre basse, le zoom
+         d'interface), et rien n'y est focalisable — les cadres de la minicarte ne se cliquent
+         qu'à la souris. Focalisable et nommée, elle se fait défiler au clavier. -->
+    <div id="tr-left" tabindex="0" role="region" aria-label="Planche, vue d'ensemble">
       <div id="tr-mini"></div>
     </div>
     <div id="tr-right" data-parcours="atelier-transcription-texte">

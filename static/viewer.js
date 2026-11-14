@@ -1675,6 +1675,11 @@ function buildTrMini() {
   if (!state.planche) return;
   const im = document.createElement("img");
   im.src = state.planche.url_web;
+  // A11Y-3 — la minicarte n'est pas décorative : elle situe la zone en cours dans la
+  // planche, ce que la vignette agrandie (`#tr-crop`) ne dit pas. Son texte ne dit que ce
+  // qu'elle montre ; le cadre de la zone en cours suit `.tr-region.current`.
+  im.alt = state.trRegions.length ? "Planche entière ; la zone en cours y est encadrée"
+                                  : "Planche entière";
   mini.appendChild(im);
   const svg = document.createElementNS(SVGNS, "svg");
   svg.setAttribute("viewBox", `0 0 ${state.planche.largeur_px} ${state.planche.hauteur_px}`);
