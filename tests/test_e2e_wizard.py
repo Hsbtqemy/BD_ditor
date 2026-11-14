@@ -754,6 +754,9 @@ def test_le_point_d_interrogation_rouvre_les_reperes_sur_les_six_surfaces(page, 
             # L'Exploration écrit son état dans l'adresse à sa première exécution, après ses
             # lectures : lue avant, l'adresse « change » sans que le « ? » y soit pour rien.
             page.wait_for_url(re.compile(r"[?&]vue="))
+        if surface == "/annotation":
+            # La page Annotation aussi y écrit son lieu après ses lectures (cf. 88cad4c).
+            page.wait_for_url(re.compile(r"[?&]collection="))
         avant = page.evaluate(ETAT_PAGE)
         aide.click()
         fen = _visite(page)
