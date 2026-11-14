@@ -2,62 +2,62 @@
 passe: Deux personnes sur la même planche — le locuteur refusé sur une valeur périmée, « Actualiser »
 chantier: CONC-4
 duree: 20 min
-derniere: 2026-10-25
 ---
 
-# QA — deux comptes, deux fenêtres, la même bulle : le locuteur ne s'écrase plus, et la planche dit qu'elle a changé
+# QA — deux comptes, deux fenêtres, la même zone : le locuteur ne s'écrase plus, et la planche dit qu'elle a changé
 
-> **Le 2026-11-14 : à réécrire.** Le basculement d'ANN-7 (v39, sur `dev` depuis `2de79fd`) a retiré le vocabulaire d'hier — tags, domaines, dimensions, attributs de case, le panneau 📖 Lexique — et le mode Annotation de l'Atelier. Son décor et ses gestes passent par le mode Annotation ; le locuteur et le personnage montré s'écrivent maintenant sur la page Annotation, avec le même `personnage_vu` et le même bandeau. La réécriture attend les correctifs de « ⟳ Actualiser » relevés sur le mode libre (`pilotage/ANN-7.md`), qu'elle jouera aussi. À ne pas rejouer telle quelle.
+> **Réécrite le 2026-11-14 pour la page Annotation.** La version du 2026-10-25, jouée par Hugo
+> (18 sur 18), passait par le mode Annotation de l'Atelier, que le basculement d'ANN-7 a retiré
+> (v39, sur `dev` depuis `2de79fd`). Son histoire est dans celle de ce fichier. Le locuteur
+> s'écrit maintenant dans le **Contexte** de la page Annotation, avec la même garde
+> (`personnage_vu`). Le bandeau s'ouvre dans la boîte du guide. Cette version joue aussi
+> les correctifs de « ⟳ Actualiser » du 2026-11-14 (`e99e062`) : ce qu'un écran écrit lui-même
+> ne masque plus ce qu'un autre écrit à côté.
 
-**Écrite le 2026-10-25 sur la recette reconstruite sur `24c5e13`, jouée par Hugo le même jour** (18 sur 18), décor de l'état `avant-conc4`. Elle porte sur `CONC-4` : le locuteur et le personnage montré d'une boîte refusent un
-enregistrement fait sur une valeur que l'écran ne voyait plus (le bandeau de `CONC-3`, celui de la
-note) ; la planche ouverte signale, toutes les 30 secondes et au retour sur l'onglet, qu'elle a changé
-ailleurs, et « ⟳ Actualiser » la recharge sans rien perdre ; annuler la création d'une bulle n'emporte
-plus le locuteur qu'un autre lui a donné.
+**Où** — la pile de recette locale, `https://bd.127-0-0-1.sslip.io`, reconstruite sur
+`e99e062` ou après, état `apres-moustache` restauré
+(`C:\temp\bd-recette\etat-de-base.ps1 restaurer apres-moustache`). Au démarrage,
+l'application migre la base en v39. Les mots de passe sont dans
+`C:\temp\bd-recette\comptes.txt`, hors dépôt.
 
-**Les comptes** : `proprio` et `stagiaire`, qui écrivent tous deux dans « esther v1 » (par « Collection
-Test »). Deux fenêtres privées CÔTE À CÔTE, l'Atelier ouvert dans chacune sur « esther v1 », planche 1,
-mode Annotation (`a`). Le panneau de droite porte « Locuteur ». **Ce que la passe ne juge pas** : la
-forme du bouton « ⟳ Actualiser » (sa place est à trancher sur l'écran, voir la dernière zone) ; les
-tests mesurent l'ordre des requêtes et la course, que l'œil ne voit pas.
+**Les comptes** — `proprio` et `stagiaire`, qui écrivent tous deux dans « esther v1 » (par
+« Collection Test »). Deux fenêtres privées CÔTE À CÔTE, chacune sur la page Annotation
+(🖍️ dans la navigation), album « esther v1 », planche 1. La bulle « Haha coucou Esther » est
+« b2 · bulle » de la case c5 : on la choisit dans la rangée « Zones de la case », après avoir
+choisi c5 sur la minicarte. Les zones s'enchaînent dans l'ordre : chacune part de l'état
+laissé par la précédente.
 
-## Reste
+**Rejouée par la session le 2026-11-14**, dans un Chromium à 1 280 px sous les deux identités, sur une copie de l'état `apres-moustache` migrée en v39 et servie par le code de `596ec30` : toutes les cases sauf la dernière, et leurs mots pris à l'écran. Deux écarts relevés en route sont des cases de `pilotage/ANN-7.md`, pas de cette passe.
 
-### Deux personnages pour jouer — compte `proprio`
+**Ce que la passe ne juge pas** — l'ordre des requêtes et la course, que l'œil ne voit pas :
+`tests/test_e2e_annotation_page.py` et `tests/test_e2e_planche_changee.py` les mesurent.
 
-- [x] `proprio`, première bulle de la planche 1, champ « Attribuer un personnage… » : taper `Alpha`, le créer, puis retirer ce locuteur (×) ; même chose avec `Bêta` → les deux personnages existent, la bulle n'a aucun locuteur
+### Deux personnages pour jouer — `proprio`
+- [ ] `proprio`, c5 puis « b2 · bulle » : le Contexte montre « Locuteur » et le champ « Attribuer un personnage… » ; y taper `Alpha`, le créer, puis « × » (« Retirer le locuteur ») ; même chose avec `Bêta` : les deux personnages existent, et la bulle n'a pas de locuteur
 
-### Le locuteur posé de part et d'autre — `proprio` et `stagiaire`, la même bulle
-
-- [x] Les deux fenêtres affichent la première bulle sélectionnée, « Locuteur » vide dans les deux
-- [x] `proprio` attribue `Alpha` → la puce « Alpha » s'affiche chez `proprio`
-- [x] Sans recharger, `stagiaire` attribue `Bêta` → un bandeau s'ouvre au-dessus de la puce : « Votre choix, Bêta, n'est pas enregistré. », il nomme `proprio` et dit qu'il a choisi Alpha, et offre « Remplacer par la mienne » et « Garder l'autre »
-- [x] Tant que le bandeau est ouvert, `stagiaire` ne peut pas changer de bulle ni de mode (un clic ailleurs ne fait rien, ou un message demande de choisir d'abord)
-- [x] `stagiaire`, « Garder l'autre » → le bandeau se ferme, la puce dit « Alpha » ; F5 chez `proprio` : toujours « Alpha »
+### Le locuteur posé des deux côtés — `proprio` et `stagiaire`, la même bulle
+- [ ] Dans les deux fenêtres, c5 puis « b2 · bulle » : le champ « Attribuer un personnage… » est vide des deux côtés
+- [ ] `proprio` attribue `Alpha` : la puce « Alpha » paraît chez `proprio`
+- [ ] Sans recharger, `stagiaire` attribue `Bêta` : en bas de la grille, un bandeau dit « Locuteur modifié par proprio à … », « Votre choix, Bêta, n'est pas enregistré. » et « Version enregistrée : Alpha », et offre « Remplacer par la mienne » et « Garder l'autre » ; la ligne « Locuteur » du Contexte prend l'encre d'alerte et dit « En attente de votre choix », sans que rien ne bouge
+- [ ] Bandeau ouvert, `stagiaire` choisit la planche 2 dans la liste *Planche* : la page reste sur la planche 1, et un message dit « Réglez d'abord le conflit, en bas de la grille. »
+- [ ] `stagiaire`, « Garder l'autre » : le bandeau se ferme et la puce dit « Alpha » ; F5 chez `proprio` : toujours « Alpha »
 
 ### Le retrait contre une attribution — `proprio` et `stagiaire`
+- [ ] `stagiaire`, « × » sur « Alpha » : la bulle n'a plus de locuteur chez `stagiaire`
+- [ ] Sans recharger, `proprio`, qui voit encore « Alpha », attribue `Bêta` : le bandeau s'ouvre chez `proprio` : « Locuteur modifié par stagiaire à … », « Votre choix, Bêta, n'est pas enregistré. », « Version enregistrée : Aucun locuteur »
+- [ ] `proprio`, « Remplacer par la mienne » : la puce dit « Bêta » ; F5 chez `stagiaire`, c5 puis « b2 · bulle » : « Bêta »
 
-- [x] `stagiaire` retire « Alpha » (×) → la bulle n'a plus de locuteur chez `stagiaire`
-- [x] Sans recharger, `proprio` (qui voit encore « Alpha ») attribue `Bêta` → le bandeau s'ouvre chez `proprio` : son choix n'est pas enregistré, `stagiaire` a retiré le locuteur
-- [x] `proprio`, « Remplacer par la mienne » → la puce dit « Bêta » ; F5 chez `stagiaire` : « Bêta »
-
-### La planche signale qu'elle a changé ailleurs — `proprio` et `stagiaire`
-
-- [x] `stagiaire`, mode Transcription (`t`), une AUTRE bulle de la planche 1 : taper `xylophone`, Tab
-- [x] `proprio`, sans recharger : au plus 30 secondes après (ou tout de suite en passant sur un autre onglet puis en revenant), « ⟳ Actualiser » apparaît dans la barre d'outils, et son infobulle dit ce qui a changé
-- [x] `proprio`, commencer à taper une note dans la première bulle SANS l'enregistrer, puis « ⟳ Actualiser » → la bulle de `stagiaire` affiche `xylophone`, et la note en cours de frappe est toujours dans son champ
-- [x] `proprio` : après ses propres enregistrements (une note, un locuteur), « ⟳ Actualiser » ne réapparaît pas tout seul
+### La planche dit qu'elle a changé ailleurs — `proprio` et `stagiaire`
+- [ ] `stagiaire`, c1, puis la zone « ÉCOLE PRIMAIRE » : dans le Contexte, écrire `xylophone` dans la note, puis Tab
+- [ ] `proprio`, sans recharger : au plus 30 secondes après (ou tout de suite, en passant sur un autre onglet puis en revenant), « ⟳ Actualiser » paraît dans la bande du haut, à droite de la liste *Planche*, et son infobulle dit « La planche a changé ailleurs : 1 région modifiée. Actualiser la recharge, sans perdre votre saisie. »
+- [ ] `proprio`, « b2 · bulle » : commencer à taper une note SANS quitter le champ, puis « ⟳ Actualiser » : la zone de `stagiaire` porte la note `xylophone`, et la note que `proprio` tapait est toujours dans son champ, et « ⟳ Actualiser » a disparu
+- [ ] `proprio`, onglet « Mode libre », « ↕ Ranger », ↓ sur la première étiquette s'il y en a deux (sinon « + Nouvelle étiquette… » en crée deux d'abord), « Fini » ; dans la minute qui suit, et après un aller-retour sur un autre onglet : « ⟳ Actualiser » ne paraît pas
+- [ ] `stagiaire`, dans la minute qui suit le rangement de `proprio`, onglet « Mode libre », « ↕ Ranger », ↓, « Fini » ; `proprio`, au plus 30 secondes après : « ⟳ Actualiser » paraît, et son infobulle dit « La planche a changé ailleurs : des étiquettes. … »
 
 ### Annuler une création n'emporte pas le travail de l'autre — `proprio` puis `stagiaire`
-
-- [x] `proprio`, mode Édition (`e`), trace une nouvelle bulle sur la planche 1
-- [x] `stagiaire`, F5, sélectionne cette nouvelle bulle, mode Annotation, lui attribue `Alpha`
-- [x] `proprio`, Échap puis Ctrl+Z, répété : chaque Ctrl+Z défait d'abord un réglage de la bulle (position, taille, type — un par geste fait en la traçant) ; quand on arrive au réglage qui l'a faite bulle, ou à sa création, un message refuse : un autre lui a donné un locuteur, avec « Passer ce geste » ; la bulle reste, avec « Alpha » chez les deux après F5
-
-### La place de « ⟳ Actualiser » — à dire, pas à cocher seulement
-
-- [x] « ⟳ Actualiser » est trouvé sans le chercher, à côté du nom de la planche, dans tous les modes (Annotation, Transcription, Édition) — sinon, écrire ici où on l'attendait
+- [ ] `proprio`, c7, « Tracer une zone », un glissé dans la case agrandie, puis « Texte hors bulle » : la zone naît dans c7, choisie, et la rangée « Zones de la case » dit « b1 · texte »
+- [ ] `stagiaire`, F5, c7, la nouvelle zone : lui attribuer `Alpha`
+- [ ] `proprio`, un clic sur le titre « Case c7 » (hors de tout champ), Ctrl+Z : un message dit « Annulation impossible : le locuteur a été modifié depuis par stagiaire à … » et offre « Passer ce geste » ; la zone reste. F5 des deux côtés : la zone porte « Alpha »
 
 ### Rendre la recette — PowerShell
-
-- [x] `C:\temp\bd-recette\etat-de-base.ps1 restaurer avant-conc4` finit par « bd-app : running »
+- [ ] `C:\temp\bd-recette\etat-de-base.ps1 restaurer apres-moustache` finit par « bd-app : running »
