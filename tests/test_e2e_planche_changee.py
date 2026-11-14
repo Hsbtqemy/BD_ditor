@@ -12,6 +12,7 @@ régions, par l'API (le geste d'un autre écran, ou d'une passe automatique). «
 l'onglet » se joue en émettant `visibilitychange` sur un document visible ; l'intervalle, par
 l'horloge de Playwright.
 """
+import re
 import time
 
 import httpx
@@ -19,6 +20,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 from playwright.sync_api import expect  # noqa: E402
+from playwright.sync_api import TimeoutError as PlaywrightTimeout  # noqa: E402
 
 from conftest import make_png  # noqa: E402
 
@@ -155,6 +157,49 @@ def test_ses_propres_gestes_ne_se_signalent_pas_ceux_d_un_autre_si(page, decor):
                                                   "votre saisie.")
     finally:
         ctx.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_une_ecriture_d_ailleurs_sur_la_region_qu_on_vient_d_ecrire_se_signale(page, decor):
+    """ANN-7, passe du mode libre (556) : Bob transcrit la première bulle ; Alice, sur un AUTRE
+    écran, la retranscrit dans les trente secondes. Ce que Bob avait touché n'était adopté
+    qu'à la vérification suivante, qui y fondait l'écriture d'Alice : rien ne se signalait.
+    Bob relit l'empreinte aussitôt son écriture finie ; celle d'Alice se signale."""
+    s = decor
+    un = s["bulles"][0]
+    ctx_b, b = _ouvrir(page, s["url"] + f"&region={un}")
+    ctx_a, a = None, None
+    try:
+        bouton = b.locator("#planche-actualiser")
+        b.click('.mode-btn[data-mode="transcription"]')
+        expect(b.locator("#tr-text")).to_have_value("PREMIÈRE", timeout=15000)
+        b.click("#tr-text")
+        b.keyboard.press("End")
+        # La relecture qui suit l'écriture, attendue sans en faire la garde : sans elle, c'est
+        # « Actualiser », plus bas, qui tombe.
+        try:
+            with b.expect_response(lambda r: r.url.endswith("/empreinte"), timeout=5000):
+                with b.expect_response(lambda r: r.request.method == "PUT"
+                                       and r.url.endswith(f"/api/regions/{un}")):
+                    b.keyboard.type(" DE BOB")
+        except PlaywrightTimeout:
+            pass
+        expect(bouton).to_be_hidden()
+        ctx_a, a = _ouvrir(page, s["url"] + f"&region={un}", ALICE)
+        a.click('.mode-btn[data-mode="transcription"]')
+        expect(a.locator("#tr-text")).to_have_value("PREMIÈRE DE BOB", timeout=15000)
+        a.click("#tr-text")
+        a.keyboard.press("End")
+        with a.expect_response(lambda r: r.request.method == "PUT"
+                               and r.url.endswith(f"/api/regions/{un}")):
+            a.keyboard.type(" ET D'ALICE")
+        _retour_sur_l_onglet(b)
+        expect(bouton).to_be_visible()
+        expect(bouton).to_have_attribute("title", re.compile("1 région modifiée"))
+    finally:
+        if ctx_a:
+            ctx_a.close()
+        ctx_b.close()
 
 
 def _texte_en_base(s, rid, attendu):

@@ -25,6 +25,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 from playwright.sync_api import expect  # noqa: E402
+from playwright.sync_api import TimeoutError as PlaywrightTimeout  # noqa: E402
 from config import GRILLE_DE_TRAVAIL_NOM  # noqa: E402
 
 from conftest import ECRITURE, du_projet, make_png  # noqa: E402
@@ -130,7 +131,7 @@ def test_choisir_une_case_puis_une_zone_ne_change_la_taille_de_rien(page, decor)
     # Le fond de la case : la case elle-même, et l'adresse nomme la case.
     page.locator("#an-vue-case rect.an-fond").click(position={"x": 5, "y": 200})
     expect(page.locator("#an-tete-zone")).to_have_text("")
-    expect(page.locator("#an-mots")).to_have_text("—")
+    expect(page.locator("#an-mots")).to_have_text("")
     assert f"region={decor['c2']}" in page.url
     assert _boites(page) == avant
 
@@ -4443,6 +4444,10 @@ def test_un_projet_neuf_n_a_que_le_champ_ni_tiret_ni_sans_rubrique(page, live_se
     assert hauteur() == avant
 
 
+def _poses_montrees(page):
+    return page.locator("#an-poses-liste .an-pose").count()
+
+
 def test_depuis_une_grille_fermee_creer_dans_mode_libre_sans_changer_d_onglet(page, decor):
     gid = _travail(decor)
     _ouvrir(page, decor, decor["bulle"])
@@ -4450,6 +4455,8 @@ def test_depuis_une_grille_fermee_creer_dans_mode_libre_sans_changer_d_onglet(pa
     expect(signaux).to_have_attribute("aria-selected", "true")
     # Le Mode libre est le PREMIER onglet, et s'appelle ainsi quel que soit son nom.
     expect(page.locator("#an-onglets [role=tab]").first).to_have_text("Mode libre")
+    expect(page.locator("#an-poses-liste .an-pose")).to_have_count(_poses_montrees(page))
+    avant_creation = _boites(page)
     page.locator("#an-filtre").fill("mélancolie")
     ligne = page.locator("#an-resultats .an-res-creer")
     expect(ligne).to_contain_text("Créer « mélancolie » dans Mode libre")
@@ -4464,6 +4471,17 @@ def test_depuis_une_grille_fermee_creer_dans_mode_libre_sans_changer_d_onglet(pa
     expect(page.locator("#an-filtre")).to_have_value("")
     poses = [r for r in _releves(decor) if r["grille_id"] == gid]
     assert len(poses) == 1 and poses[0]["region_id"] == decor["bulle"]
+    # Une TRACE là où se lit ce qui est posé, sans rien déplacer ni rien écrire de plus (passe
+    # du mode libre) : le Mode libre rejoint les grilles montrées, et le relevé se lit dans la
+    # liste, sous le nom de sa grille.
+    expect(page.locator("#an-releves-btn")).to_contain_text("+ 1")
+    posee = page.locator("#an-poses-liste .an-pose", has_text="mélancolie")
+    expect(posee).to_be_visible()
+    expect(posee.locator(".an-pose-gr")).to_have_text("Mode libre")
+    assert _boites(page) == avant_creation
+    page.locator("#an-releves-btn").click()
+    expect(page.locator(f'#an-releves-pop [data-voir="{gid}"]')).to_be_checked()
+    page.keyboard.press("Escape")
     # Un nom auquel la grille fermée répond ne se propose pas ailleurs.
     page.locator("#an-filtre").fill("cri")
     expect(page.locator("#an-resultats .an-res").first).to_be_visible()
@@ -4554,7 +4572,7 @@ def test_crayon_renomme_en_place_definit_et_passer_dit_son_bilan_eteint(page, de
     expect(figer).to_have_text("Figer")
     with page.expect_response(lambda r: "/entrees/ironie" in r.url and r.request.method == "PATCH"):
         figer.click()
-    expect(etat).to_have_text("✓ définie")
+    expect(etat).to_have_text("✓ figée")
     expect(figer).to_have_text("Rouvrir")
     # « Passer dans une grille… » : sa confirmation montre « Voir le bilan… » ÉTEINT, et sa
     # raison ne nomme aucun code de cadrage.
@@ -4570,7 +4588,7 @@ def test_crayon_renomme_en_place_definit_et_passer_dit_son_bilan_eteint(page, de
     # « Fini » referme, et rend le focus à ✎. Dans la liste, rien ne dit l'état.
     page.locator('#an-plan [data-fin="ironie"]').click()
     expect(crayon).to_be_focused()
-    expect(page.locator('#an-plan [data-ent="ironie"]')).not_to_contain_text("définie")
+    expect(page.locator('#an-plan [data-ent="ironie"]')).not_to_contain_text("figée")
 
 
 _CODE_DE_CADRAGE = re.compile(r"\b(?:[A-Z]{1,5}-\d+|[A-Z]\d{1,2})\b")
@@ -4657,6 +4675,57 @@ def test_plus_valeur_cour_puis_entree_cree_la_valeur_cour(page, decor):
     assert len(poses) == 2 and "cour" in poses, poses
     for x in page.locator("#an-plan [data-ent='lieu'] input").all():
         assert x.get_attribute("autocomplete") == "off"
+
+
+def test_renommer_une_valeur_dit_enregistre_a_sa_droite(page, decor):
+    """Hugo, 2026-11-14 : « ✓ enregistré » vaut aussi pour une VALEUR renommée, à droite de
+    son champ, sa place réservée, effacé à la frappe suivante."""
+    gid = _travail(decor)
+    with _http(decor) as c:
+        _poser_libre(c, decor["bulle"], gid, "lieu : école")
+    _libre(page, decor)
+    page.locator('#an-plan [data-crayon="lieu"]').click()
+    champ = page.locator('#an-plan [data-renomv="lieu|ecole"]')
+    marque = page.locator('#an-plan [data-enregistre="renomv:lieu|ecole"]')
+    expect(marque).to_be_hidden()
+    place = marque.bounding_box()
+    assert place and place["width"] > 0, place           # sa place est tenue, rien ne se voit
+    champ.fill("préau")
+    with page.expect_response(lambda r: "/entrees/lieu/variantes/ecole" in r.url
+                              and r.request.method == "PATCH") as rep:
+        champ.press("Enter")
+    assert rep.value.status == 200, rep.value.text()
+    expect(marque).to_be_visible()
+    expect(marque).to_have_text("✓ enregistré")
+    expect(page.locator('#an-plan [data-enregistre="renom:lieu"]')).to_be_hidden()
+    boite_champ, boite_marque = champ.bounding_box(), marque.bounding_box()
+    assert boite_marque["x"] >= boite_champ["x"] + boite_champ["width"], (boite_champ, boite_marque)
+    assert abs(boite_marque["y"] - place["y"]) < 1, (place, boite_marque)   # rien n'a bougé
+    champ.focus()
+    page.keyboard.press("End")
+    page.keyboard.type("x")
+    expect(marque).to_be_hidden()
+
+
+def test_rien_de_pose_rien_ne_s_ecrit_et_la_ligne_garde_sa_hauteur(page, decor):
+    """Hugo, 2026-11-11 : quand rien n'est posé, rien ne dit « — » sous « Relevés : … ▾ », ni
+    sous « Texte » d'une case — « — » se lisait comme une valeur —, et la ligne garde sa
+    hauteur."""
+    _ouvrir(page, decor, decor["c2"])
+    liste = page.locator("#an-poses-liste")
+    expect(page.locator("#an-poses-titre")).to_contain_text("case")
+    vide = liste.locator(".an-pose-vide")
+    expect(vide).to_have_count(1)
+    expect(liste).to_have_text("")
+    expect(liste).not_to_contain_text("—")
+    mots = page.locator("#an-mots")
+    expect(mots).to_have_text("")
+    expect(page.locator("#an-texte-titre")).to_have_text("Texte")
+    # La ligne vide a la hauteur d'une ligne de texte : y écrire « — » ne la change pas.
+    hauteurs = vide.evaluate("""(li) => { const h = li.getBoundingClientRect().height;
+      li.textContent = '—'; const h2 = li.getBoundingClientRect().height;
+      li.textContent = ''; return [h, h2]; }""")
+    assert hauteurs[0] > 0 and abs(hauteurs[0] - hauteurs[1]) < 0.5, hauteurs
 
 
 def test_le_bloc_du_crayon_respire(page, decor):
@@ -4767,7 +4836,7 @@ def test_un_annotateur_voit_crayon_eteint_sur_une_etiquette_definie(page, live_s
     expect(page.locator(f"#an-onglet-{gid}")).to_have_attribute("aria-selected", "true",
                                                                  timeout=15000)
     lieu = page.locator('#an-plan [data-crayon="lieu"]')
-    raison = "« lieu » est définie : seuls les responsables la changent"
+    raison = "« lieu » est figée : seuls les responsables la changent"
     expect(lieu).to_have_attribute("aria-disabled", "true")
     expect(lieu).to_have_attribute("title", raison)
     lieu.focus()
@@ -4850,6 +4919,105 @@ def test_ranger_au_clavier_et_ctrl_z_defait_le_deplacement(page, decor):
     page.reload(wait_until="networkidle")
     page.locator(f"#an-onglet-{gid}").click()
     expect(page.locator("#an-tri")).to_have_value("alpha")
+
+
+def _ranger_un_cran(pg, gid, cle):
+    """« ↕ Ranger », ↓ sur `cle` au clavier, « Fini » ; rend quand l'écriture est revenue."""
+    pg.locator("#an-ranger").click()
+    bas = pg.locator(f'#an-plan [data-descendre="{cle}"]')
+    bas.focus()
+    with pg.expect_response(lambda r: r.url.endswith(f"/api/grilles/{gid}/ordre")) as rep:
+        pg.keyboard.press("Enter")
+    assert rep.value.status == 200, rep.value.text()
+    pg.locator("#an-ranger").click()
+    expect(pg.locator("#an-ranger")).to_have_text("↕ Ranger")
+
+
+def _deux_ecrans_du_libre(page, decor):
+    gid = _travail(decor)
+    with _http(decor) as c:
+        for nom in ("alpha", "bravo", "charlie"):
+            assert c.post(f"/api/grilles/{gid}/entrees", json={"libelle": nom}).status_code == 201
+    _libre(page, decor)
+    ctx = page.context.browser.new_context(extra_http_headers=ECRITURE)
+    autre = ctx.new_page()
+    _libre(autre, decor)
+    return gid, ctx, autre
+
+
+def _attendre_l_adoption(pg, geste):
+    """La page relit l'empreinte AUSSITÔT après son écriture (passe du mode libre, 556) : on
+    l'attend, sans en faire la garde — c'est « ⟳ Actualiser » qui la fait, à la fin du test,
+    et sans le correctif c'est lui qui tombe (la relecture n'arrive pas, on passe outre)."""
+    try:
+        with pg.expect_response(lambda r: r.url.endswith("/empreinte"), timeout=5000):
+            geste()
+    except PlaywrightTimeout:
+        pass
+
+
+def test_un_rangement_d_ailleurs_ne_se_fond_pas_dans_celui_de_la_page(page, decor):
+    """556 : la page range, puis un AUTRE écran range dans les trente secondes : « ⟳ Actualiser »
+    paraît. Jusqu-là, ce que la page avait touché (`plan:<id>`) n'était adopté qu'à la
+    vérification SUIVANTE, qui y fondait le rangement de l'autre."""
+    gid, ctx, autre = _deux_ecrans_du_libre(page, decor)
+    try:
+        bouton = page.locator("#an-actualiser")
+        _attendre_l_adoption(page, lambda: _ranger_un_cran(page, gid, "alpha"))
+        expect(bouton).to_be_hidden()
+        autre.reload(wait_until="networkidle")
+        autre.locator(f"#an-onglet-{gid}").click()
+        _ranger_un_cran(autre, gid, "bravo")
+        _retour_sur_l_onglet(page)
+        expect(bouton).to_be_visible()
+        expect(bouton).to_have_attribute("title", re.compile("des étiquettes"))
+    finally:
+        ctx.close()
+
+
+def test_apres_ctrl_z_onglet_cache_un_rangement_d_ailleurs_se_signale(page, decor):
+    """556, la seconde moitié : Ctrl+Z (tout ce que touche `POST /api/undo`) s'adopte aussitôt,
+    ONGLET CACHÉ compris ; un rangement fait ailleurs pendant que la page est cachée paraît au
+    retour."""
+    gid, ctx, autre = _deux_ecrans_du_libre(page, decor)
+    try:
+        bouton = page.locator("#an-actualiser")
+        _attendre_l_adoption(page, lambda: _ranger_un_cran(page, gid, "alpha"))
+        page.locator("#an-mots").focus()
+        page.evaluate("Object.defineProperty(document, 'hidden', "
+                      "{configurable: true, get: () => true})")
+        def annuler():
+            with page.expect_response(lambda r: r.url.endswith("/api/undo")) as rep:
+                page.keyboard.press("Control+z")
+            assert rep.value.status == 200, rep.value.text()
+        _attendre_l_adoption(page, annuler)
+        assert _ordre_ecrit(decor, gid) == ["alpha", "bravo", "charlie"]
+        autre.reload(wait_until="networkidle")
+        autre.locator(f"#an-onglet-{gid}").click()
+        _ranger_un_cran(autre, gid, "bravo")
+        page.evaluate("Object.defineProperty(document, 'hidden', "
+                      "{configurable: true, get: () => false})")
+        _retour_sur_l_onglet(page)
+        expect(bouton).to_be_visible()
+        expect(bouton).to_have_attribute("title", re.compile("des étiquettes"))
+    finally:
+        ctx.close()
+
+
+def test_actualiser_ne_parait_pas_chez_qui_vient_de_ranger(page, decor):
+    """557 : dans une fenêtre seule, « ↕ Ranger », ↓, « Fini » : le bouton reste caché — au
+    retour sur l'onglet comme à l'intervalle."""
+    gid = _travail(decor)
+    with _http(decor) as c:
+        for nom in ("alpha", "bravo", "charlie"):
+            assert c.post(f"/api/grilles/{gid}/entrees", json={"libelle": nom}).status_code == 201
+    _libre(page, decor)
+    _ranger_un_cran(page, gid, "alpha")
+    _retour_sur_l_onglet(page)
+    expect(page.locator("#an-actualiser")).to_be_hidden()
+    _ranger_un_cran(page, gid, "alpha")
+    _retour_sur_l_onglet(page)
+    expect(page.locator("#an-actualiser")).to_be_hidden()
 
 
 def test_plus_mene_au_champ_de_creation_et_slash_au_filtre(page, decor):

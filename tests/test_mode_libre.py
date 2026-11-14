@@ -322,15 +322,15 @@ def test_une_etiquette_definie_ne_se_renomme_que_par_les_responsables(client, de
                           "variantes": [{"libelle": "perte"}]})
     assert r.status_code == 201, r.text
     r = _patch(client, STAG, f"/api/grilles/{g}/entrees/sentiment", {"libelle": "émotion"})
-    assert r.status_code == 403 and "est définie" in r.text, r.text
+    assert r.status_code == 403 and "est figée" in r.text, r.text
     r = client.post(f"/api/grilles/{g}/entrees/sentiment/variantes", headers=STAG,
                     json={"libelle": "joie"})
-    assert r.status_code == 403 and "est définie" in r.text, r.text
+    assert r.status_code == 403 and "est figée" in r.text, r.text
     r = _patch(client, STAG, f"/api/grilles/{g}/entrees/sentiment/variantes/perte",
                {"libelle": "deuil"})
-    assert r.status_code == 403 and "est définie" in r.text, r.text
+    assert r.status_code == 403 and "est figée" in r.text, r.text
     r = _patch(client, STAG, f"/api/grilles/{g}/entrees/sentiment", {"definition": "un état"})
-    assert r.status_code == 403 and "est définie" in r.text, r.text
+    assert r.status_code == 403 and "est figée" in r.text, r.text
 
 
 def test_la_definition_d_une_etiquette_suit_la_regle_du_renommage(client, decor, db_path):
@@ -358,7 +358,7 @@ def test_la_definition_d_une_etiquette_suit_la_regle_du_renommage(client, decor,
     # Figée, l'étiquette ne se définit plus que par les responsables.
     assert _patch(client, ADMIN, url, {"etat": "defini"}).status_code == 200
     r = _patch(client, STAG, url, {"definition": "Où"})
-    assert r.status_code == 403 and "est définie" in r.text, r.text
+    assert r.status_code == 403 and "est figée" in r.text, r.text
     r = _patch(client, ADMIN, url, {"definition": "Où", "vu": {"definition": None}})
     assert r.status_code == 200, r.text
 
@@ -376,11 +376,11 @@ def test_une_valeur_ne_s_ajoute_pas_en_posant_a_une_etiquette_definie(client, de
     assert r.status_code == 201, r.text
     refus = poser(client, t, region_id=b, attendu=(403,),
                   nouvelle_entree={"libelle": "sentiment : joie"})
-    assert "est définie" in refus["detail"], refus
+    assert "est figée" in refus["detail"], refus
     r = poser(client, t, region_id=b, nouvelle_entree={"libelle": "sentiment : perte"})
     m = client.put(f"/api/releves/{r['id']}", headers=STAG,
                    json={"nouvelle_variante": "colère", "vu": {"variante_cle": "perte"}})
-    assert m.status_code == 403 and "est définie" in m.text, m.text
+    assert m.status_code == 403 and "est figée" in m.text, m.text
     assert [v["libelle"] for v in _plan(client, t)["sentiment"]["variantes"]] == ["perte"]
     # Un responsable, lui, l'ajoute en posant ; l'annotatrice la pose ensuite, elle existe.
     poser(client, t, qui=ADMIN, region_id=t["zones"]["case"],

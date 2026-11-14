@@ -4932,6 +4932,10 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-enregistre { flex: 0 0 auto; font-size: .8462rem; color: var(--text-muted);
                  white-space: nowrap; visibility: hidden; }
 .an-enregistre.vue { visibility: visible; }
+/* Une ligne qui ne dit RIEN et garde la hauteur d'une ligne de texte (un espace sans chasse,
+   que personne n'entend) : là où l'écran disait « — » (Hugo, 2026-11-11). */
+.an-vide::before { content: "\200b"; }
+.an-var-edit { display: inline-flex; align-items: center; gap: .3077rem; max-width: 100%; }
 .an-renom { flex: 1 1 auto; min-width: 0; font: inherit; font-weight: 600;
             padding: .1538rem .4615rem; background: var(--bg-input); color: var(--text);
             border: 1px solid var(--accent-blue); border-radius: 4px; }

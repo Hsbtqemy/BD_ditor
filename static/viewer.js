@@ -510,9 +510,13 @@ function noterTouchees(t, sousArbre) {
       throw e;
     } finally {
       if (avant) { signalPlanche.enVol--; signalPlanche.ecritures++; }
-      // La base n'a pas pu se prendre pendant l'écriture (un rechargement l'a croisée) :
-      // la prendre dès qu'elle se termine, plutôt qu'au prochain intervalle.
-      if (!signalPlanche.enVol && signalPlanche.base === null) verifierPlanche();
+      // Ce que l'écran vient d'écrire s'ADOPTE AUSSITÔT, onglet caché compris : attendre la
+      // vérification suivante y fondait le changement qu'un autre écran ferait d'ici là
+      // (ANN-7, passe du mode libre, 2026-11-11). La base, si elle n'a pas pu se prendre
+      // pendant l'écriture (un rechargement l'a croisée), se prend de même.
+      if (!signalPlanche.enVol && (avant || signalPlanche.base === null)) {
+        verifierPlanche({ apresEcriture: true });
+      }
     }
   };
 })();
@@ -528,9 +532,12 @@ function rebaserSignal(plancheId) {
   verifierPlanche();
 }
 
-async function verifierPlanche() {
+/* `apresEcriture` : la lecture qui suit une écriture de l'écran, faite même onglet caché —
+   les autres attendent qu'il soit visible. */
+async function verifierPlanche({ apresEcriture = false } = {}) {
   const p = state.planche;
-  if (!p || document.hidden || signalPlanche.enVol || signalPlanche.plancheId !== p.id) return;
+  if (!p || (document.hidden && !apresEcriture) || signalPlanche.enVol
+      || signalPlanche.plancheId !== p.id) return;
   const jeton = ++signalPlanche.jeton, gen = signalPlanche.gen, ecritures = signalPlanche.ecritures;
   let rep = null;
   try { rep = await apiGet(`/api/planches/${p.id}/empreinte`); } catch (_) { return; }

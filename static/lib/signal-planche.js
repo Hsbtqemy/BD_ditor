@@ -16,12 +16,17 @@
      signal dure — et s'éteint de lui-même si l'autre revient exactement à ce qu'on voyait ;
    - ce que dit l'infobulle du bouton (`titre`).
 
-   LIMITE ÉCRITE : une région que l'écran vient de toucher adopte sa nouvelle empreinte à la
-   vérification suivante, et le changement qu'un AUTRE y aurait fait dans le même intervalle
-   s'y fond. Sur le même champ, c'est le 409 de CONC-3 qui le dit à l'enregistrement ; sur un
-   autre champ de la même région, rien jusqu'au prochain changement d'ailleurs. Et une
-   écriture que ce module ne sait pas placer est réputée avoir tout touché (`tout`) :
-   l'erreur va du côté du signal manqué, jamais du côté d'un signal faux.
+   LIMITE ÉCRITE : ce que l'écran vient de toucher adopte sa nouvelle empreinte AUSSITÔT
+   l'écriture finie — les deux pages relisent l'empreinte dès qu'aucune de leurs écritures
+   n'est plus en vol, onglet caché compris (ANN-7, passe du mode libre, 2026-11-11 : jusque-là
+   l'adoption attendait la vérification suivante, trente secondes ou le retour sur l'onglet,
+   et le changement qu'un AUTRE écran y faisait d'ici là s'y fondait sans jamais se signaler).
+   Ne s'y fond plus que ce qu'un autre écrit sur la même clé PENDANT l'aller-retour de
+   l'écriture et de cette relecture. Sur le même champ, c'est le 409 de CONC-3 qui le dit à
+   l'enregistrement ; sur un autre champ de la même région, rien jusqu'au prochain changement
+   d'ailleurs. Et une écriture que ce module ne sait pas placer est réputée avoir tout touché
+   (`tout`, Ctrl+Z compris) : l'erreur va du côté du signal manqué, jamais du côté d'un
+   signal faux.
 
    LA PAGE ANNOTATION (ANN-7, tranche 2) s'en sert aussi, avec l'empreinte des RELEVÉS que la
    route rend à part (`releves` : une clé par zone qui porte un relevé ou une passe, et

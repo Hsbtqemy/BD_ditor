@@ -852,10 +852,11 @@ Une étiquette née « nom : valeur » se pose **plusieurs fois** : « sentiment
 « sentiment : tristesse » laissent deux relevés sur la bulle — jamais deux fois la même valeur
 sur la même zone. L'ordre des étiquettes, *↕ Ranger*, est celui de tout le projet.
 
-### Provisoire ou défini
+### Provisoire ou figée
 
 Une entrée née en la tapant est **provisoire** ; une entrée écrite — par un tableur ou par le
-formulaire — est **définie**, même dans une grille ouverte. Réimporter une grille garde l'état
+formulaire — est **figée**, même dans une grille ouverte. Dans ✎, *Figer* rend une étiquette
+figée, *Rouvrir* la rend provisoire. Réimporter une grille garde l'état
 des entrées qu'elle porte déjà. Rien n'empêche de poser une entrée provisoire : l'état dit ce
 qui est stabilisé, et décide qui peut encore changer l'entrée (ci-dessous). Seuls les
 responsables du projet le changent.
@@ -869,9 +870,9 @@ responsables du projet le changent.
 | Lire le plan d'une version publiée | les membres du projet ; quiconque lit un album d'un projet où la grille est active ; quiconque lit un album qui porte un de ses relevés, même désactivée |
 | La masquer dans une collection | qui **administre** la collection (son propriétaire) — un filtre de ce qu'on propose, pas une garde |
 | Poser, modifier, retirer un relevé ; ouvrir un doute, y répondre, le lever ; marquer une passe « terminée » ou la rouvrir ; dans une grille ouverte, créer une entrée en la tapant | quiconque **écrit** dans l'album, sur une grille active de son projet |
-| Renommer une entrée **provisoire** d'une grille ouverte, ou l'une de ses valeurs ; lui ajouter une valeur | tout annotateur du projet — qui écrit dans l'un de ses albums —, et qui gère le projet |
-| Ranger les entrées de la grille de travail (*↕ Ranger* : l'ordre de tout le projet), définies comprises | les mêmes |
-| Fusionner une entrée dans une autre, la retirer, la dire provisoire ou définie ; renommer une entrée définie ; ranger une autre grille | qui **gère** le projet |
+| Renommer une entrée **provisoire** d'une grille ouverte, ou l'une de ses valeurs ; écrire sa définition ; lui ajouter une valeur | tout annotateur du projet — qui écrit dans l'un de ses albums —, et qui gère le projet |
+| Ranger les entrées de la grille de travail (*↕ Ranger* : l'ordre de tout le projet), figées comprises | les mêmes |
+| Fusionner une entrée dans une autre, la retirer, la figer ou la rouvrir ; renommer une entrée figée ou écrire sa définition ; ranger une autre grille | qui **gère** le projet |
 | Tracer une zone dans une case — un détail d'image, un texte hors bulle —, la nommer, la transcrire, la supprimer | quiconque **écrit** dans l'album ; un détail ne sort d'aucun export avant la tranche 4 |
 
 Un relevé n'a pas de collection : il vit sur une zone ou sur une planche, donc dans l'album,
@@ -1113,9 +1114,9 @@ Une étiquette du Mode libre est celle de votre projet : un collègue d'un autre
 voit pas. Dans le même projet, sa page Annotation affiche *⟳ Actualiser*, qui la fait
 paraître ; et une collection peut masquer le Mode libre (§4).
 
-**À quoi sert l'état *provisoire* / *défini* ?**
+**À quoi sert l'état *provisoire* / *figée* ?**
 À dire ce qui est stabilisé, et qui peut encore changer une entrée : une étiquette provisoire
-se renomme et reçoit des valeurs de tout annotateur du projet ; une définie, de ses
+se renomme, se définit et reçoit des valeurs de tout annotateur du projet ; une figée, de ses
 responsables seulement. Rien n'empêche de poser une entrée provisoire.
 
 **Ma collection est en `restreint`. Mes collègues peuvent-ils voir les scans ?**

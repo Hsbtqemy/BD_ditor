@@ -743,7 +743,7 @@ test("la ligne « Créer » du filtre n'ajoute pas une valeur à une étiquette 
   const o = { ouverte: true };
   assert.equal(A.ceQuEntreeFera(plan, "sentiment : joie", () => []).ok, false);
   assert.equal(A.creerDansLeFiltre(o, "sentiment : joie", [], plan), null);
-  assert.equal(A.raisonValeurNouvelle(defini), "« sentiment » est définie : seuls les responsables la changent");
+  assert.equal(A.raisonValeurNouvelle(defini), "« sentiment » est figée : seuls les responsables la changent");
   // Poser une valeur qui EXISTE reste offert ; à qui peut ajouter (un responsable), la ligne
   // revient ; sans `remaniable` (le plan ne dit rien), rien n'est éteint.
   assert.equal(A.ceQuEntreeFera(plan, "sentiment : perte", () => []).ok, true);
@@ -1341,7 +1341,7 @@ test("ce qu'Entrée fera : la table de vérité des huit cas de la maquette", ()
     ["vieux", [], [true, "Créer « vieux » et poser", [{ nouvelle: "vieux" }]]],
     // Ajouter une valeur à une étiquette DÉFINIE est aux responsables (J5) ; poser une valeur
     // qui existe, non.
-    ["lieu : grotte", [], [false, "« Lieu » est définie : seuls les responsables la changent", []]],
+    ["lieu : grotte", [], [false, "« Lieu » est figée : seuls les responsables la changent", []]],
     ["lieu : foret", [], [true, "Poser « Lieu : forêt »", [{ entree_cle: "lieu", variante_cle: "foret" }]]],
   ];
   for (const [saisie, l, attendu] of cas) {
@@ -1381,7 +1381,7 @@ test("les gestes offerts selon `remaniable`, et ce qui éteint ✎", () => {
   assert.deepEqual(A.gestesOfferts(e(ANNOTATEUR)),
                    { renommer: null, ajouter_valeur: null, etat: R.figer, fusionner: R.fusionner,
                      passer: R.passer, retirer: R.retirer });
-  const def = "« ironie » est définie : seuls les responsables la changent";
+  const def = "« ironie » est figée : seuls les responsables la changent";
   assert.deepEqual(A.gestesOfferts(e(RIEN, "defini")),
                    { renommer: def, ajouter_valeur: def, etat: R.rouvrir, fusionner: R.fusionner,
                      passer: R.passer, retirer: R.retirer });
@@ -1396,7 +1396,7 @@ test("les gestes offerts selon `remaniable`, et ce qui éteint ✎", () => {
   assert.equal(A.raisonCrayon(e(ANNOTATEUR)), null);
   assert.equal(A.raisonCrayon(e(TOUT, "defini")), null);
   assert.equal(A.raisonCrayon(e(RIEN, "defini")), def);
-  // Qui n'annote pas : rien, et la raison ne parle pas de « définie ».
+  // Qui n'annote pas : rien, et la raison ne parle pas de « figée ».
   const lecteur = { ...RIEN, ranger: false };
   assert.match(A.raisonCrayon(e(lecteur)), /annotateurs du projet/);
   assert.match(A.raisonRemanier(e(lecteur), "ranger"), /annotateurs du projet/);
@@ -1405,7 +1405,7 @@ test("les gestes offerts selon `remaniable`, et ce qui éteint ✎", () => {
   assert.equal(A.raisonRemanier({ libelle: "x", etat: "provisoire" }, "renommer"),
                "Les étiquettes se renomment par les annotateurs du projet");
   assert.equal(A.etatEnMots(e(TOUT)).mot, "provisoire");
-  assert.equal(A.etatEnMots(e(TOUT, "defini")).mot, "✓ définie");
+  assert.equal(A.etatEnMots(e(TOUT, "defini")).mot, "✓ figée");
 });
 
 test("l'ordre : « À la main » par défaut, A → Z, retenu sur le poste", () => {

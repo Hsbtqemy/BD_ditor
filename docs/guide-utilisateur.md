@@ -1098,7 +1098,7 @@ ligne du guide, au survol de l'étiquette) et en ajoute des valeurs (*+ valeur*)
 quitter le champ, enregistre, et « ✓ enregistré » le dit à droite du champ. Dessous, *Figer*
 (ou *Rouvrir*), *Fusionner dans…* et *Retirer…* sont aux responsables du projet. Une étiquette
 née en la tapant est *provisoire* : tout annotateur du projet la renomme, la définit et lui
-ajoute des valeurs ; une étiquette figée (*définie*) ne change que par les responsables. Un geste qu'on n'a pas reste
+ajoute des valeurs ; une étiquette *figée* ne change que par les responsables. Un geste qu'on n'a pas reste
 visible, éteint, et dit pourquoi au clic.
 
 **Ce qui est posé** se lit en bas de la grille — sur les mots désignés, sinon sur la zone, et

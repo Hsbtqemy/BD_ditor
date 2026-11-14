@@ -1863,12 +1863,24 @@ function poserResultat(r) {
       if (!(await poserDansLeTravail(r.libre.gestes))) return;
       S.filtre = "";
       $("#an-filtre").value = "";
+      montrerLeTravail();
       rendreCorps();
     });
     return;
   }
   montrerGuide(r.entree_cle, r.variante_cle);
   poser(r.entree_cle, { variante: r.variante_cle, qualificatif: r.qualificatif_cle });
+}
+
+/* Ce qu'on vient de poser dans le Mode libre DEPUIS UNE AUTRE GRILLE laisse sa trace là où se
+   lit ce qui est posé (passe du mode libre, 2026-11-06) : le Mode libre rejoint les grilles
+   que « Relevés : ▾ » montre — un réglage à soi, retenu sur le poste et qui s'y défait —, et
+   le relevé paraît dans la liste, sous le nom de sa grille. Rien ne bouge, rien ne s'écrit
+   en plus : le bouton dit « + 1 ». */
+function montrerLeTravail() {
+  const t = grilleDeTravail();
+  if (!t || A.grillesMontrees(S.reglage, S.grilles, S.grilleId).has(t.id)) return;
+  changerReglage([...(S.reglage || []), t.id]);
 }
 
 function choisirGrille(id) {
@@ -2145,7 +2157,8 @@ function rangee(e, vivantes) {
 
 /* « ✓ enregistré », à droite d'un champ de ✎ (Hugo, 2026-11-11) : discrète, sa place
    toujours tenue — elle ne pousse rien en paraissant —, visible après l'enregistrement du
-   champ, effacée à la frappe suivante. `repere` : « renom:<clé> » ou « defn:<clé> ». */
+   champ, effacée à la frappe suivante. `repere` : « renom:<clé> », « defn:<clé> », ou
+   « renomv:<clé>|<valeur> » pour une valeur (Hugo, 2026-11-14). */
 function marqueEnregistre(repere) {
   const vue = S.enregistre === repere;
   return el("span", { classe: `an-enregistre${vue ? " vue" : ""}`, "data-enregistre": repere,
@@ -2187,10 +2200,11 @@ function entreeEnEdition(e) {
   if (e.forme === "variantes") {
     const vars = el("div", { classe: "an-vars", role: "group",
                              "aria-label": `Les valeurs de « ${e.libelle} »` },
-      ...(e.variantes || []).map((v) => champ({
-        classe: "an-renomv", "data-renomv": `${e.cle}|${v.cle}`, value: v.libelle,
-        "aria-label": `Valeur « ${v.libelle} »`, readonly: o.renommer ? true : null,
-        title: o.renommer })));
+      ...(e.variantes || []).map((v) => el("span", { classe: "an-var-edit" },
+        champ({ classe: "an-renomv", "data-renomv": `${e.cle}|${v.cle}`, value: v.libelle,
+                "aria-label": `Valeur « ${v.libelle} »`, readonly: o.renommer ? true : null,
+                title: o.renommer }),
+        marqueEnregistre(`renomv:${e.cle}|${v.cle}`))));
     vars.append(S.ajoutVal === e.cle
       ? champ({ classe: "an-addv", "data-addv": e.cle, placeholder: "valeur",
                 "aria-label": `Nouvelle valeur de « ${e.libelle} »`,
@@ -2340,6 +2354,7 @@ async function renommerValeur(cle, vc, valeur) {
                                  { libelle: nom, vu: { libelle: v.libelle } },
                                  { e, quoi: "Votre nom n'est pas enregistré.", mienne: nom });
   if (!rep) return;
+  S.enregistre = `renomv:${cle}|${vc}`;
   annoncer(`Renommée : ${e.libelle} · ${nom}`);
   apresEcriture();
 }
@@ -2828,7 +2843,7 @@ function rendreMots() {
   $("#an-doigt").hidden = true;
   if (!z || z.pseudo || !A.estTexte(z.type)) {
     titre.textContent = "Texte";
-    boite.replaceChildren("—");
+    boite.replaceChildren();              // une case n'a pas de texte : rien ne s'écrit
     boite.classList.add("muted");
     return;
   }
@@ -3362,8 +3377,11 @@ function rendreListe() {
   const c = caseCourante();
   const m = A.grillesMontrees(S.reglage, S.grilles, S.grilleId);
   const autres = [...m].filter((id) => id !== S.grilleId).length;
-  bouton.textContent = `Relevés : ${g ? A.nomOnglet(g) : "—"}${autres ? ` + ${autres}` : ""} ▾`;
-  if (!z) { titre.textContent = "—"; liste.replaceChildren(); rendreBarre(); return; }
+  bouton.textContent = `Relevés${g ? ` : ${A.nomOnglet(g)}` : ""}${autres ? ` + ${autres}` : ""} ▾`;
+  // Rien n'est posé, ou rien n'est choisi : RIEN ne s'écrit — « — » se lisait comme une
+  // valeur (Hugo, 2026-11-11) —, et la ligne garde sa hauteur (`.an-vide`).
+  titre.classList.toggle("an-vide", !z);
+  if (!z) { titre.textContent = ""; liste.replaceChildren(); rendreBarre(); return; }
   // La liste suit « Porte sur » : des mots désignés ne la restreignent que si l'on pose
   // sur des mots (passe du jalon 1 : « toute la bulle » ne changeait rien tant qu'un mot
   // restait désigné).
@@ -3378,7 +3396,7 @@ function rendreListe() {
   // ✕ part avec son relevé : le ✕ suivant, pour en retirer plusieurs de suite.
   redessinerSansPerdreLeFocus(liste, () => liste.replaceChildren(
     ...(montres.length ? montres.map(itemReleve)
-      : [el("li", { classe: "an-pose-vide muted", texte: "—" })]),
+      : [el("li", { classe: "an-pose-vide an-vide", "aria-hidden": "true" })]),
     ...(surface.length ? [el("li", { classe: "an-pose-groupe", id: "an-poses-planche",
                                      texte: "Sur la planche" }),
                           ...surface.map(itemReleve)] : [])),
@@ -4373,7 +4391,10 @@ function noterTouchees(t) {
       throw e;
     } finally {
       if (avant) { SIG.enVol--; SIG.ecritures++; }
-      if (!SIG.enVol && SIG.base === null) verifierPlanche();
+      // Ce que la page vient d'écrire s'ADOPTE AUSSITÔT, onglet caché compris : attendre la
+      // vérification suivante y fondait le changement qu'un autre écran ferait d'ici là
+      // (passe du mode libre, 2026-11-11). La base, si elle manque, se prend de même.
+      if (!SIG.enVol && (avant || SIG.base === null)) verifierPlanche({ apresEcriture: true });
     }
   };
 })();
@@ -4389,9 +4410,11 @@ function rebaserSignal() {
   verifierPlanche();
 }
 
-async function verifierPlanche() {
+/* `apresEcriture` : la lecture qui suit une écriture de la page, faite même onglet caché —
+   les autres attendent qu'il soit visible. */
+async function verifierPlanche({ apresEcriture = false } = {}) {
   const p = S.planche;
-  if (!p || document.hidden || SIG.enVol || SIG.plancheId !== p.id) return;
+  if (!p || (document.hidden && !apresEcriture) || SIG.enVol || SIG.plancheId !== p.id) return;
   const jeton = ++SIG.jeton, gen = SIG.gen, ecritures = SIG.ecritures;
   let rep = null;
   try { rep = await apiGet(`/api/planches/${p.id}/empreinte`); } catch (_) { return; }

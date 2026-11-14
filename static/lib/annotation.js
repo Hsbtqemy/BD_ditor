@@ -1624,13 +1624,13 @@
     if (RARES.includes(geste)) return RAISONS_RARES[geste];
     if (geste === "ranger") return "Les étiquettes se rangent par les annotateurs du projet";
     if (e && e.etat === "defini") {
-      return `« ${e.libelle} » est définie : seuls les responsables la changent`;
+      return `« ${e.libelle} » est figée : seuls les responsables la changent`;
     }
     return "Les étiquettes se renomment par les annotateurs du projet";
   }
 
   /* Une valeur NOUVELLE sous l'entrée `e` : l'ajouter est un remaniement (J5), aux
-     responsables sur une étiquette définie — la règle du serveur, que le plan dit entrée par
+     responsables sur une étiquette figée — la règle du serveur, que le plan dit entrée par
      entrée (`remaniable`). La raison qui l'éteint, `null` si elle est offerte, ou si le plan
      ne dit rien. Lue par le champ de création (`ceQuEntreeFera`) et par la ligne « Créer »
      du filtre d'une grille ouverte (`creerDansLeFiltre`) : une règle, écrite une fois. */
@@ -1646,21 +1646,24 @@
   }
 
   /* « ✎ » lui-même : offert dès qu'UN de ses gestes l'est ; éteint sinon, avec la raison du
-     renommage (« … est définie », pour un annotateur sur une étiquette définie). */
+     renommage (« … est figée », pour un annotateur sur une étiquette figée). */
   function raisonCrayon(e) {
     const o = gestesOfferts(e);
     return GESTES_DU_CRAYON.some((g) => o[g] === null) ? null : o.renommer;
   }
 
   /* L'ÉTAT d'une étiquette, dit dans ✎ seulement (« provisoire partout, dans la grille libre,
-     c'est trop », Hugo) : son mot et son infobulle. */
+     c'est trop », Hugo) : son mot et son infobulle. « Figer » mène à « figée », « Rouvrir » à
+     « provisoire » ; l'écran ne dit plus « définie » (Hugo, 2026-11-14), la base garde
+     `defini`. */
   function etatEnMots(e) {
     return e && e.etat === "provisoire"
       ? { mot: "provisoire",
           aide: "Née en la tapant : tout annotateur du projet la renomme, écrit sa définition "
                 + "et lui ajoute une valeur" }
-      : { mot: "✓ définie",
-          aide: "Écrite au formulaire ou par l'import : seuls les responsables la changent" };
+      : { mot: "✓ figée",
+          aide: "Écrite au formulaire ou par l'import, ou figée : seuls les responsables la "
+                + "changent" };
   }
 
   /* CE QU'ENTRÉE FERA dans le champ de création, sur la grille de travail `plan` : une ligne
