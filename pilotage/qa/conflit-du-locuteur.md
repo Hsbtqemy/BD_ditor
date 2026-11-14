@@ -7,6 +7,8 @@ derniere: 2026-10-25
 
 # QA — deux comptes, deux fenêtres, la même bulle : le locuteur ne s'écrase plus, et la planche dit qu'elle a changé
 
+> **Le 2026-11-14 : à réécrire.** Le basculement d'ANN-7 (v39, sur `dev` depuis `2de79fd`) a retiré le vocabulaire d'hier — tags, domaines, dimensions, attributs de case, le panneau 📖 Lexique — et le mode Annotation de l'Atelier. Son décor et ses gestes passent par le mode Annotation ; le locuteur et le personnage montré s'écrivent maintenant sur la page Annotation, avec le même `personnage_vu` et le même bandeau. La réécriture attend les correctifs de « ⟳ Actualiser » relevés sur le mode libre (`pilotage/ANN-7.md`), qu'elle jouera aussi. À ne pas rejouer telle quelle.
+
 **Écrite le 2026-10-25 sur la recette reconstruite sur `24c5e13`, jouée par Hugo le même jour** (18 sur 18), décor de l'état `avant-conc4`. Elle porte sur `CONC-4` : le locuteur et le personnage montré d'une boîte refusent un
 enregistrement fait sur une valeur que l'écran ne voyait plus (le bandeau de `CONC-3`, celui de la
 note) ; la planche ouverte signale, toutes les 30 secondes et au retour sur l'onglet, qu'elle a changé

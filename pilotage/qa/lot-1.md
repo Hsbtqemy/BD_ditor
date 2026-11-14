@@ -7,6 +7,8 @@ derniere: 2026-10-22
 
 # QA — le lot 1 : l'import en lot dans la Bibliothèque, la copie de travail à 300 dpi, l'Atelier qui choisit sa collection
 
+> **Le 2026-11-14 : en partie sans objet.** Le basculement d'ANN-7 (v39, sur `dev` depuis `2de79fd`) a retiré le vocabulaire d'hier — tags, domaines, dimensions, attributs de case, le panneau 📖 Lexique — et le mode Annotation de l'Atelier. Sont sans objet la zone « Annoter : rattacher, protéger, annuler » (le mode Annotation, les tags) et la case du mode Annotation à 320 px de « À l'étroit et à grande police » ; le reste vaut. Le locuteur et le personnage montré s'écrivent désormais sur la page Annotation.
+
 **Écrite le 2026-10-21, complétée et vérifiée le 2026-10-22 sur la recette reconstruite sur `ad2e66a`** (décor de l'état `base` migré en schéma 34 : collections, accès, l'album 2 et ses quatre masters TIFF relus en base). Non jouée. Elle porte sur le lot entier :
 `UX-11` (`9e501ea`, `7a221c8` : « ⤓ Importer des planches… » dans la fiche d'un album),
 `IMG-1`, zone « La copie de travail » (`e86aadc`, `f3d821f`, `ae2fd1f`, `036b693`, `0f4b612`,

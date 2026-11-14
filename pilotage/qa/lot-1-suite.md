@@ -7,6 +7,8 @@ derniere: 2026-10-23
 
 # QA — après le lot 1 : le nom et l'ordre des planches, le miroir du type, « Passer ce geste », supprimer / fusionner / renommer un tag, le zoom d'interface
 
+> **Le 2026-11-14 : en partie sans objet.** Le basculement d'ANN-7 (v39, sur `dev` depuis `2de79fd`) a retiré le vocabulaire d'hier — tags, domaines, dimensions, attributs de case, le panneau 📖 Lexique — et le mode Annotation de l'Atelier. Sont sans objet « Deux noms, un personnage » et « « Passer ce geste » » (jouées dans le mode Annotation de l'Atelier), « Renommer, supprimer un tag, et ce que Ctrl+Z en fait » et « Un tag local, et ce qu'un administrateur remanie », ainsi que la case du mode Annotation de « Le zoom d'interface » ; le reste vaut.
+
 **Écrite le 2026-10-22 sur la recette reconstruite sur `69b3515`**, décor de l'état `apres-lot1`
 (la fin de la passe du lot 1, schéma 34 : « Lot TIFF QA » — trois planches, page-1.tif,
 page-2.tif, page-10.tif — dans « Collection Test » ; « Lot JP2 QA » dans « Étude B » ; « esther

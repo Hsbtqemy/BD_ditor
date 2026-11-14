@@ -7,6 +7,8 @@ derniere: 2026-09-11
 
 # QA — la concordance dit les tags, et un joker seul ne casse rien
 
+> **Le 2026-11-14 : en partie sans objet.** Le basculement d'ANN-7 (v39, sur `dev` depuis `2de79fd`) a retiré le vocabulaire d'hier — tags, domaines, dimensions, attributs de case, le panneau 📖 Lexique — et le mode Annotation de l'Atelier. La zone « Le joker » vaut toujours ; les zones des tags (« Les tags en aligné », « Les tags en liste », l'export de leurs colonnes) sont sans objet — ce que l'Exploration montrera des relevés est la tranche 4. Le décor, qui pose un tag, ne se monte plus : un joker se joue sur n'importe quelle bulle transcrite.
+
 **Où** — la pile de recette locale, `https://bd.127-0-0-1.sslip.io`, sous `proprio` : il
 lit et écrit « Collection Test », et c'est le seul à pouvoir en exporter tant que personne
 n'a coché la case de DROIT-2.

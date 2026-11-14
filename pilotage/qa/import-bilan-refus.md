@@ -7,6 +7,8 @@ derniere: 2026-10-09
 
 # QA — le bilan d'un import refusé se lit, et n'en dit pas plus que le serveur
 
+> **Le 2026-11-14 : sans objet.** Le basculement d'ANN-7 (v39, sur `dev` depuis `2de79fd`) a retiré le vocabulaire d'hier — tags, domaines, dimensions, attributs de case, le panneau 📖 Lexique — et le mode Annotation de l'Atelier. L'import de vocabulaire que cette passe juge n'existe plus ; l'import d'une GRILLE a son propre bilan, joué dans `qa/grille-formulaire.md` et `qa/grille-sans-defaut.md`. Gardée pour l'historique, à ne pas rejouer.
+
 `d2684b5` a changé ce que le panneau 📖 Lexique dit après un import : un toast de synthèse
 par motif, une zone de bilan dans la modale, un menu « Importer dans » réduit aux
 collections où l'on écrit. Six tests navigateur le verrouillent, mais tous tournent dans un

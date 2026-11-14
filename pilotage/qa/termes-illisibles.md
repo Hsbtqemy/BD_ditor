@@ -7,6 +7,8 @@ derniere: —
 
 # QA — un tag ou une dimension d'une collection qu'on ne lit pas ne sort nulle part
 
+> **Le 2026-11-14 : sans objet.** Le basculement d'ANN-7 (v39, sur `dev` depuis `2de79fd`) a retiré le vocabulaire d'hier — tags, domaines, dimensions, attributs de case, le panneau 📖 Lexique — et le mode Annotation de l'Atelier. Les termes qu'elle cache n'existent plus ; ce qu'on lit d'une grille d'un autre projet est `Portee.clause_grille`, gardé par les tests. Gardée pour l'historique, à ne pas rejouer.
+
 > **Chemin remis à l'écran du 2026-09-18 (`6ea6b60`), sans toucher aux cases.** Le premier
 > geste — retirer à `lectrice` son accès à « Étude B » — se faisait dans « 👥 Accès aux
 > collections » de l'Administration ; ce panneau vit désormais dans la Bibliothèque, sous le
