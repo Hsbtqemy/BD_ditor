@@ -33,7 +33,6 @@ La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 from __future__ import annotations
 
 import argparse
-import csv
 import io
 import json
 import os
@@ -45,6 +44,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import accord  # noqa: E402  (accord modèle↔humain — NLP-1, scopable par albums)
 import accord_inter  # noqa: E402  (accord inter-annotateurs — ANN-5, lu au journal A3)
+import sortie_csv  # noqa: E402  (séparateur et BOM des CSV qui sortent — ANN-7)
+from sortie_csv import ecrivain_csv  # noqa: E402
 import database  # noqa: E402  (collection_row / collection_album_ids — palier collection)
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from config import DB_PATH, BASE_DIR  # noqa: E402
@@ -525,7 +526,7 @@ _CSV_COLS = ["niveau", "element", "qualifie", "provenance", "statut", "standard"
 
 def catalogue_csv(agg: dict) -> str:
     buf = io.StringIO()
-    w = csv.writer(buf)
+    w = ecrivain_csv(buf)                # point-virgule : Excel français (ANN-7)
     w.writerow(_CSV_COLS)
     for niveau, element, *reste in CATALOGUE:
         w.writerow([niveau, element, *reste, agg.get((niveau, element), "")])
@@ -577,7 +578,8 @@ def main(argv=None) -> int:
         if args.csv == "-":
             sys.stdout.write(texte)
         else:
-            with open(args.csv, "w", encoding="utf-8-sig", newline="") as f:  # BOM → Excel
+            with open(args.csv, "w", encoding=sortie_csv.ENCODAGE_FICHIER,
+                      newline="") as f:  # BOM → Excel
                 f.write(texte)
             print(f"CSV écrit : {args.csv}", file=sys.stderr)
     return 0

@@ -106,7 +106,7 @@ def test_la_concordance_nomme_le_locuteur_de_la_zone(client, parole):
 
     brut = client.get("/api/analyse/concordance.csv", params={"lemme": "tard"})
     assert brut.status_code == 200, brut.text
-    lignes = list(csv.DictReader(io.StringIO(brut.content.decode("utf-8-sig"))))
+    lignes = list(csv.DictReader(io.StringIO(brut.content.decode("utf-8-sig")), delimiter=";"))
     assert [(x["type"], x["locuteur"]) for x in lignes] == [(parole["type"], "Narrateur")]
 
 
@@ -186,7 +186,8 @@ def test_les_metadonnees_de_collection_nomment_le_locuteur_de_la_zone(client, pa
     rep = client.get(url, params={"format": "zip"})
     assert rep.status_code == 200, rep.text
     with zipfile.ZipFile(io.BytesIO(rep.content)) as z:
-        table = list(csv.DictReader(io.StringIO(z.read("regions.csv").decode("utf-8-sig"))))
+        table = list(csv.DictReader(io.StringIO(z.read("regions.csv").decode("utf-8-sig")),
+                                     delimiter=";"))
     locuteurs = {int(x["id"]): x["locuteur"] for x in table}
     assert locuteurs[parole["zone"]] == "Narrateur" and locuteurs[parole["bulle"]] == "Tintin"
 

@@ -21,7 +21,6 @@ La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import sys
@@ -30,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import accord  # noqa: E402
 import database  # noqa: E402
+import sortie_csv  # noqa: E402
 
 
 def _err(msg):
@@ -76,8 +76,8 @@ def _afficher(r):
 
 
 def _export_csv(r, chemin):
-    with open(chemin, "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f, delimiter=";")
+    with open(chemin, "w", encoding=sortie_csv.ENCODAGE_FICHIER, newline="") as f:
+        w = sortie_csv.ecrivain_csv(f)   # point-virgule et BOM : Excel français (ANN-7)
         # `releve_sur` (NLP-2) : restreint à un modèle, le fichier ne porte plus sur tout le
         # corpus relu, et rien d'autre ne le distinguerait d'un fichier complet.
         w.writerow(["champ", "revus", "accord", "taux", "releve_sur"])

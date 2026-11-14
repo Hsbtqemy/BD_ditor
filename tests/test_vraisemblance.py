@@ -115,7 +115,8 @@ def test_l_export_de_la_comparaison_trie_comme_l_ecran(client, album, planche, d
     def lignes(**extra):
         rep = client.get("/api/analyse/comparaison.csv", params={**base, **extra})
         assert rep.status_code == 200, rep.text
-        return list(csv.DictReader(io.StringIO(rep.text.lstrip("\ufeff"))))   # BOM Excel
+        return list(csv.DictReader(io.StringIO(rep.text.lstrip("\ufeff")),
+                                   delimiter=";"))                     # BOM Excel
 
     ecart, ll = lignes(), lignes(metrique="ll")
     assert "ll" in ll[0] and "diff" in ll[0]

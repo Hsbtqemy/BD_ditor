@@ -13,7 +13,6 @@ Rare tant qu'on n'est pas multi-utilisateur (piste C). La base suit BD_DB_PATH /
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import sys
@@ -22,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import accord_inter  # noqa: E402
 import database  # noqa: E402
+import sortie_csv  # noqa: E402
 
 
 def _err(msg):
@@ -61,8 +61,8 @@ def _afficher(r):
 
 
 def _export_csv(r, chemin):
-    with open(chemin, "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f, delimiter=";")
+    with open(chemin, "w", encoding=sortie_csv.ENCODAGE_FICHIER, newline="") as f:
+        w = sortie_csv.ecrivain_csv(f)   # point-virgule et BOM : Excel français (ANN-7)
         w.writerow(["champ", "retouches", "accords", "taux"])
         for ch in accord_inter.CHAMPS:
             c = r["champs"][ch]

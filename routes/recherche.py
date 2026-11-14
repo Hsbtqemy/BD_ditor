@@ -20,7 +20,6 @@ la table FTS dénormalisée.
 """
 from __future__ import annotations
 
-import csv
 import io
 import sqlite3
 from typing import Optional
@@ -32,6 +31,7 @@ from config import STATUTS
 from database import (citations_regions, est_bac_a_sable, sql_projet_d_album,
                       sql_region_sortante)
 from pipeline import nlp
+from sortie_csv import ecrivain_csv_dict
 
 from socle import (_clause_lemme, _csv_response, _csv_safe, _get_projet,
                    _portee_d_export, _rows, _sql_annotee, db, portee_courante,
@@ -409,7 +409,7 @@ def recherche_export(q: str = "", album: Optional[int] = None,
     # en route ») : une colonne toujours vide se lirait « aucun tag », pas « plus de tags ».
     cols = ["album", "planche", "citation", "region_id", "type",
             "ocr_texte", "note"]
-    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w = ecrivain_csv_dict(buf, cols, extrasaction="ignore")
     w.writeheader()
     for r in results:
         cit = r.get("citation") or {}

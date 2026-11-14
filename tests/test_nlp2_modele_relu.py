@@ -345,10 +345,10 @@ def test_le_csv_restreint_le_dit(client, album, planche, db_path):
     _tokens(db_path, r, [(0, "CHAT", "chat", "VERB", "")])
     _correction(db_path, r, 0, "CHAT", modele=SM, vu=("chat", "NOUN", ""))
     lignes = client.get("/api/analyse/accord.csv", params={"modele": SM}).text.splitlines()
-    assert lignes[0].split(",")[-1] == "releve_sur"
-    assert all(l.split(",")[-1] == SM for l in lignes[1:]) and len(lignes) == 4
+    assert lignes[0].split(";")[-1] == "releve_sur"
+    assert all(l.split(";")[-1] == SM for l in lignes[1:]) and len(lignes) == 4
     tout = client.get("/api/analyse/accord.csv").text.splitlines()
-    assert all(l.split(",")[-1] == "" for l in tout[1:])
+    assert all(l.split(";")[-1] == "" for l in tout[1:])
 
 
 # --------------------------------------------------------------------------- #

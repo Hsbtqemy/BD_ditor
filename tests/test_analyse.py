@@ -213,10 +213,10 @@ def test_l_export_de_distribution_dit_la_meme_chose_que_sa_route_json(client, al
     csv_txt = client.get("/api/analyse/frequences.csv?champ=lemme").text
     lignes = [l for l in csv_txt.lstrip("﻿").strip().split("\n")]
 
-    assert lignes[0] == "lemme,pos,frequence"
+    assert lignes[0] == "lemme;pos;frequence"
     assert len(lignes) - 1 == len(js), "le CSV et le JSON ne comptent pas les mêmes lignes"
     for attendu, ligne in zip(js, lignes[1:]):
-        assert ligne == f'{attendu["lemme"]},{attendu["pos"]},{attendu["freq"]}'
+        assert ligne == f'{attendu["lemme"]};{attendu["pos"]};{attendu["freq"]}'
 
 
 def test_un_export_d_analyse_neutralise_l_injection_de_formule(client, album, planche,
@@ -246,15 +246,15 @@ def test_le_croisement_s_exporte_dans_les_deux_formes(client, album, planche, db
 
     plat = client.get("/api/analyse/croisement.csv?axe_x=pos&axe_y=provenance").text
     plat = plat.lstrip("﻿").strip().split("\n")
-    assert plat[0] == "catégorie (POS),provenance,n,marge_x,marge_y"
-    assert any(l.startswith("NOUN,auto,1") for l in plat[1:]), plat
+    assert plat[0] == "catégorie (POS);provenance;n;marge_x;marge_y"
+    assert any(l.startswith("NOUN;auto;1") for l in plat[1:]), plat
 
     mat = client.get(
         "/api/analyse/croisement.csv?axe_x=pos&axe_y=provenance&forme=matrice").text
     mat = mat.lstrip("﻿").strip().split("\n")
-    assert mat[0].startswith("catégorie (POS) × provenance,")
-    assert mat[0].endswith(",Total"), mat[0]
-    assert mat[-1].startswith("Total,"), mat[-1]
+    assert mat[0].startswith("catégorie (POS) × provenance;")
+    assert mat[0].endswith(";Total"), mat[0]
+    assert mat[-1].startswith("Total;"), mat[-1]
 
     assert client.get(
         "/api/analyse/croisement.csv?axe_x=pos&axe_y=provenance&forme=zzz"
@@ -398,6 +398,6 @@ def test_l_export_de_concordance_porte_la_note_en_fin_de_ligne(client, album, pl
     _seed(db_path, bulle, [(0, "DIS", "dire", "VERB", "")])
 
     texte = client.get("/api/analyse/concordance.csv", params={"lemme": "dire"}).text
-    tete, ligne = list(csv.reader(io.StringIO(texte.lstrip("﻿"))))[:2]
+    tete, ligne = list(csv.reader(io.StringIO(texte.lstrip("﻿")), delimiter=";"))[:2]
     assert tete[-1] == "note" and "tags" not in tete and len(tete) == 13
     assert ligne[-1] == "'=CMD()"             # une note est du texte libre : `_csv_safe`

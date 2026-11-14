@@ -200,7 +200,7 @@ def test_l_export_csv_porte_les_memes_lignes_sans_les_releves(client, decor, db_
     r = client.get("/api/recherche/export.csv", headers=ADMIN,
                    params={"porte": f"{t['grille_id']}/entree/sentiment"})
     assert r.status_code == 200, r.text
-    lignes = list(csv.DictReader(io.StringIO(r.text.lstrip("﻿"))))
+    lignes = list(csv.DictReader(io.StringIO(r.text.lstrip("﻿")), delimiter=";"))
     assert sorted(int(x["region_id"]) for x in lignes) == sorted([z["bulle"], z["cartouche"]])
     assert set(lignes[0]) == {"album", "planche", "citation", "region_id", "type", "ocr_texte",
                               "note"}

@@ -184,7 +184,7 @@ def _outil(db_path, outil, *args):
 
 def _lignes(fichier):
     with open(fichier, encoding="utf-8-sig", newline="") as f:
-        return list(csv.DictReader(f))
+        return list(csv.DictReader(f, delimiter=";"))
 
 
 def _publies(db_path):

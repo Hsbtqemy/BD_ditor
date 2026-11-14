@@ -530,7 +530,7 @@ def _annotation_exportee(fmt, blob, region_id):
         return ann["note"] or ""             # dite annotée sans note : "" et non None
     if fmt == "csv":
         import csv
-        lecteur = csv.DictReader(io.StringIO(blob.decode("utf-8-sig")))
+        lecteur = csv.DictReader(io.StringIO(blob.decode("utf-8-sig")), delimiter=";")
         assert "tags" not in lecteur.fieldnames, lecteur.fieldnames
         ligne = next(l for l in lecteur if int(l["region_id"]) == region_id)
         return ligne["note"] or None
@@ -708,7 +708,7 @@ def test_les_trois_formats_retirent_les_tags_au_lieu_de_les_vider(client, album_
         parcourir(p["regions"])
     assert annotations and all(set(a) == {"note"} for a in annotations), annotations
     blob = _export_album(client, "csv", d["album_id"], ADMIN, d["alpha"]["id"])
-    entete = next(csv.reader(io.StringIO(blob.decode("utf-8-sig"))))
+    entete = next(csv.reader(io.StringIO(blob.decode("utf-8-sig")), delimiter=";"))
     assert entete[-1] == "note" and "tags" not in entete, entete
     blob = _export_album(client, "tei", d["album_id"], ADMIN, d["alpha"]["id"])
     notes = list(ET.fromstring(blob).iter("{http://www.tei-c.org/ns/1.0}note"))

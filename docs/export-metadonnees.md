@@ -220,7 +220,11 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   corpus — les ACTES sans leurs charges `avant`/`apres` depuis le 2026-09-24, cf. § *Portée
   d'une collection*) — dump relationnel recollable par les clés (`album_id`, `planche_id`,
   `region_id`, `parent_id` ; `evenement.activite_id` → `activite.id`). Groupables en `.zip`. Écrits avec un **BOM
-  UTF-8** (accents lisibles dans Excel, comme l'export de l'app). Les albums portent aussi
+  UTF-8** (accents lisibles dans Excel, comme l'export de l'app) et séparés par des
+  **points-virgules**, comme tout CSV qui sort (ANN-7, 2026-11-11 : un Excel français
+  ouvre ainsi les colonnes au double-clic) — R : `read.csv(f, sep = ";", fileEncoding =
+  "UTF-8-BOM")`, pandas : `pd.read_csv(f, sep=";", encoding="utf-8-sig")`. La fiche CSV
+  aussi. Les albums portent aussi
   leurs **contributions** (nom + rôle résolu : bucket DCterms + code MARC) et le catalogue
   **`contribution_roles`** (vocabulaire contrôlé-ouvert). Depuis **A4 (v17)**, `vocabulaire` et
   `tags` portent leur **couche SKOS** (`definition`, `note_portee`, `etat`, `collection_id` ;

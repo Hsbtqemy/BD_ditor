@@ -98,6 +98,9 @@ python tools/rapport_accord.py --csv r.csv      # + export CSV (une ligne par ch
 python tools/rapport_accord.py --modele M       # restreint aux relectures faites sous M (NLP-2)
 ```
 
+Le CSV est séparé par des points-virgules, en UTF-8 avec BOM, comme tout CSV qui sort (pandas :
+`pd.read_csv(f, sep=";", encoding="utf-8-sig")`) ; l'export de l'Exploration aussi.
+
 Le CSV ne porte que l'index actuel ; restreint, il le dit dans sa colonne `releve_sur`. La mesure
 au moment de la relecture est dans le JSON (`a_la_relecture`).
 

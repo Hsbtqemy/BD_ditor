@@ -40,6 +40,7 @@ import autorisation
 import conflit
 import grille_import
 import journal
+import sortie_csv
 from database import (CRAN_IMAGES, NATURE_COLLECTIF, CRANS, CRANS_DE_REPARTIR, DEMANDE_AMORCER,
                       DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_REPARTIR,
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
@@ -1713,7 +1714,7 @@ def _get_personnage(conn, portee: autorisation.Portee, personnage_id, *,
 # découpage rend la dépendance visible au lieu de la laisser au hasard du voisinage —
 # et `_csv_safe` porte une règle de sécurité (anti-injection de formule) qui gagne au
 # même titre que les accesseurs gardés à être un import plutôt qu'une convention.
-_BOM = chr(0xFEFF)   # BOM UTF-8 : permet à Excel (Windows) de lire les accents correctement
+_BOM = sortie_csv.BOM   # BOM UTF-8 : permet à Excel (Windows) de lire les accents correctement
 
 
 def _disposition(nom: str) -> str:
@@ -1743,7 +1744,8 @@ def _disposition(nom: str) -> str:
 
 def _csv_response(contenu: str, filename: str) -> Response:
     """Réponse CSV téléchargeable, préfixée d'un BOM UTF-8 pour qu'Excel (Windows) lise
-    correctement les accents français. (R/pandas : lire en `utf-8-sig`.)"""
+    correctement les accents français. Le contenu s'écrit par `sortie_csv` (séparateur
+    point-virgule, ANN-7). R/pandas : `sep=";"` et `utf-8-sig`."""
     return Response(content=_BOM + contenu, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": _disposition(filename)})
 

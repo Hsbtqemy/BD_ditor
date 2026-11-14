@@ -5,7 +5,6 @@ Lancer :  uvicorn main:app --reload
 """
 from __future__ import annotations
 
-import csv
 import io
 import json
 import logging
@@ -40,6 +39,7 @@ import conflit
 import empreinte
 import journal
 import sante as sante_moteurs
+from sortie_csv import ecrivain_csv_dict
 
 # ARCH-1 — le socle partagé vit dans `socle.py` ; on le ré-exporte ici parce que deux
 # cliquets (autorisation, sorties d'identité) interrogent ces noms SUR `main`, et que
@@ -2527,7 +2527,7 @@ def export_csv(album_id: int, collection_id: Optional[int] = None,
     cols = ["album", "ordre_import", "planche", "citation", "region_id", "type",
             "parent_id", "x", "y", "w", "h", "ordre", "source", "ocr_texte",
             "note"]
-    writer = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    writer = ecrivain_csv_dict(buf, cols, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
     return _csv_response(buf.getvalue(), _nom_album(album_id, titre) + ".csv")

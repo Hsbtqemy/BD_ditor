@@ -153,7 +153,7 @@ def test_lot3_recherche_facette_grammaticale(client, planche):
     lignes = exp.text.lstrip("﻿").strip().splitlines()
     # en-tête (la colonne `citation` a été ajoutée par la numérotation éditoriale)
     # ANN-7 — la colonne `tags` est retirée, et non laissée vide.
-    assert lignes[0] == "album,planche,citation,region_id,type,ocr_texte,note"
+    assert lignes[0] == "album;planche;citation;region_id;type;ocr_texte;note"
     assert any(str(rid) in l for l in lignes[1:])                            # la région exportée
 
 

@@ -266,7 +266,7 @@ def _publies(db_path):
 
 def _lignes(fichier):
     with open(fichier, encoding="utf-8-sig", newline="") as f:
-        return list(csv.DictReader(f))
+        return list(csv.DictReader(f, delimiter=";"))
 
 
 def test_le_resume_de_provenance_compte_ce_qui_est_publie(client, db_path, tmp_path,
@@ -377,7 +377,8 @@ def test_un_detail_ne_sans_acte_ne_sort_pas_apres_sa_cascade(client, db_path, tm
 
 def _rangs_csv(texte, colonne_id):
     """`{region_id: ordre}` d'une table de régions en CSV."""
-    return {int(l[colonne_id]): int(l["ordre"]) for l in csv.DictReader(io.StringIO(texte))}
+    return {int(l[colonne_id]): int(l["ordre"]) for l in csv.DictReader(io.StringIO(texte),
+                                                                    delimiter=";")}
 
 
 def test_l_ordre_publie_n_a_pas_de_trou(client, db_path, tmp_path, png_bytes):

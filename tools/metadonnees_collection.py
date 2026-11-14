@@ -43,7 +43,6 @@ La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 from __future__ import annotations
 
 import argparse
-import csv
 import io
 import json
 import os
@@ -55,6 +54,8 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_PATH, BASE_DIR  # noqa: E402
+import sortie_csv  # noqa: E402  (séparateur et BOM des CSV qui sortent — ANN-7)
+from sortie_csv import ecrivain_csv  # noqa: E402
 import database  # noqa: E402  (réutilise numeros_editoriaux / citations_regions)
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env,
@@ -511,7 +512,7 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
 
 
 def _ecrire_table(f, cols, rows):
-    w = csv.writer(f)
+    w = ecrivain_csv(f)                  # point-virgule : Excel français (ANN-7)
     w.writerow(cols)
     w.writerows(rows)
 
@@ -533,7 +534,7 @@ def _aplatir(obj, prefixe=""):
     return lignes
 
 
-_BOM = "\ufeff"          # BOM UTF-8 : permet à Excel de lire les accents
+_BOM = sortie_csv.BOM    # BOM UTF-8 : permet à Excel de lire les accents
 _XLSX_INJECT = ("=", "+", "-", "@")
 
 
@@ -794,7 +795,7 @@ def main(argv=None) -> int:
         os.makedirs(args.csv_dir, exist_ok=True)
         for nom, (cols, rows) in tbls.items():
             with open(os.path.join(args.csv_dir, f"{nom}.csv"), "w",
-                      encoding="utf-8-sig", newline="") as f:   # BOM → accents OK dans Excel
+                      encoding=sortie_csv.ENCODAGE_FICHIER, newline="") as f:   # BOM → Excel
                 _ecrire_table(f, cols, rows)
             print(f"  {nom}.csv : {len(rows)} lignes", file=sys.stderr)
         print(f"Tables CSV écrites : {args.csv_dir}", file=sys.stderr)

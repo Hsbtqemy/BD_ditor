@@ -49,6 +49,7 @@ import zipfile
 
 import grille_tableur
 import grilles
+from sortie_csv import ecrivain_csv
 from grille_tableur import FormatInvalide, TropGros  # noqa: F401 — ré-exportées
 from grilles import CARDINALITES, FORMES, propre
 
@@ -1768,7 +1769,7 @@ def exporter(conn: sqlite3.Connection, version_id: int) -> tuple[str, str]:
     def ligne(**valeurs):
         return [_neutre(valeurs.get(col)) for col in COLONNES]
     sortie = io.StringIO()
-    w = csv.writer(sortie, delimiter=";", lineterminator="\r\n")
+    w = ecrivain_csv(sortie, lineterminator="\r\n")
     w.writerow(COLONNES)
     for cle_, e in sorted(c["entrees"].items(), key=lambda kv: kv[1]["rang"]):
         if e.get("retiree"):            # ne se pose plus ; un réimport la garde retirée
@@ -1786,7 +1787,7 @@ def exporter(conn: sqlite3.Connection, version_id: int) -> tuple[str, str]:
                              structure=x["structure"], definition=x["definition"],
                              exemples=" | ".join(x["exemples"]), piege=x["piege"]))
     listes = io.StringIO()
-    w = csv.writer(listes, delimiter=";", lineterminator="\r\n")
+    w = ecrivain_csv(listes, lineterminator="\r\n")
     w.writerow(COLONNES_LISTES)
     for lc, l in sorted(c["listes"].items()):
         for qc, q in sorted(l["qualificatifs"].items(), key=lambda kv: kv[1]["rang"]):

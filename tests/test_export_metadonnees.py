@@ -197,7 +197,7 @@ def test_relecture_statut_dans_records(corpus, tmp_path):
     assert _run("metadonnees_collection.py", corpus["db"], corpus["data"],
                 "--csv-dir", str(dossier)).returncode == 0
     entete = (dossier / "planches.csv").read_text(encoding="utf-8-sig").splitlines()[0]
-    assert "relecture_statut" in entete.split(",")
+    assert "relecture_statut" in entete.split(";")
 
 
 def test_qualite_onglet_xlsx(corpus, tmp_path):
@@ -799,8 +799,8 @@ def test_metadonnees_tables_sans_les_actes_du_bac_a_sable(isoles, tmp_path):
 
     def colonne(table, nom):
         lignes = (out / f"{table}.csv").read_text(encoding="utf-8-sig").splitlines()
-        cols = lignes[0].split(",")
-        return [ligne.split(",")[cols.index(nom)] for ligne in lignes[1:]]
+        cols = lignes[0].split(";")
+        return [ligne.split(";")[cols.index(nom)] for ligne in lignes[1:]]
 
     evts = colonne("evenement", "id")
     assert str(isoles["evt_reel"]) in evts and str(isoles["evt_bac"]) not in evts

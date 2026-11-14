@@ -87,6 +87,9 @@ python tools/rapport_accord_inter.py --json r.json    # + export JSON complet
 python tools/rapport_accord_inter.py --csv r.csv      # + export CSV (accord par champ)
 ```
 
+Le CSV est séparé par des points-virgules, en UTF-8 avec BOM, comme tout CSV qui sort (pandas :
+`pd.read_csv(f, sep=";", encoding="utf-8-sig")`).
+
 Dans l'app : **Exploration → 👥 Inter** (route `GET /api/analyse/accord-inter`) — mêmes chiffres :
 re-touches, auteurs, taux par champ (barre), par paire, et divergences.
 

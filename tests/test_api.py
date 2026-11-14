@@ -296,7 +296,7 @@ def test_recherche_export_csv_porte_la_citation(client, planche):
     _region_avec_ocr_et_annotation(client, planche)
     txt = client.get("/api/recherche/export.csv", params={"q": "Esther"}).text
     header = txt.lstrip("﻿").splitlines()[0]
-    assert header.startswith("album,planche,citation,region_id")
+    assert header.startswith("album;planche;citation;region_id")
     assert "pl.1" in txt          # citation éditoriale présente
 
 
@@ -329,7 +329,7 @@ def test_export_csv_album_porte_la_citation(client, album, planche):
     client.post(f"/api/planches/{planche['id']}/regions",
                 json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50})
     txt = client.get("/api/export/csv", params={"album_id": album["id"]}).text
-    assert "album,ordre_import,planche,citation,region_id" in txt
+    assert "album;ordre_import;planche;citation;region_id" in txt
     assert "pl.1 · c1" in txt
 
 
@@ -340,7 +340,7 @@ def test_export_csv_album_paratexte(client, album, planche):
                 json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50})
     client.patch(f"/api/planches/{planche['id']}/role", json={"role": "paratexte"})
     txt = client.get("/api/export/csv", params={"album_id": album["id"]}).text
-    row = list(csv.DictReader(io.StringIO(txt.lstrip("﻿"))))[0]
+    row = list(csv.DictReader(io.StringIO(txt.lstrip("﻿")), delimiter=";"))[0]
     assert row["ordre_import"] == "1"     # page physique conservée (groupable)
     assert row["planche"] == ""           # hors numérotation éditoriale
     assert row["citation"] == "Paratexte"

@@ -8,7 +8,6 @@ produit 49 tests rouges au premier bloc extrait.
 """
 from __future__ import annotations
 
-import csv
 import io
 import sqlite3
 from typing import Optional
@@ -22,6 +21,7 @@ import journal
 from config import UPOS_TAGS
 from database import citations_regions, reindex_region, sql_album_isole
 from pipeline import nlp
+from sortie_csv import ecrivain_csv
 from vraisemblance import log_vraisemblance
 
 from socle import (
@@ -188,7 +188,7 @@ def analyse_frequences_export(champ: str = "lemme", album: Optional[int] = None,
                               PLAFOND_EXPORT, PLAFOND_EXPORT)
     cols = (["lemme", "pos", "frequence"] if champ == "lemme" else [champ, "frequence"])
     buf = io.StringIO()
-    w = csv.writer(buf, lineterminator="\n")
+    w = ecrivain_csv(buf, lineterminator="\n")
     w.writerow(cols)
     for r in lignes:
         w.writerow([_csv_safe(r["lemme"]), _csv_safe(r["pos"]), r["freq"]]
@@ -292,7 +292,7 @@ def analyse_concordance_export(lemme: Optional[str] = None, pos: Optional[str] =
                                provenance, auteur, album, type, personnage,
                                PLAFOND_EXPORT, PLAFOND_EXPORT)
     buf = io.StringIO()
-    w = csv.writer(buf, lineterminator=chr(10))
+    w = ecrivain_csv(buf, lineterminator=chr(10))
     w.writerow(["citation", "album", "planche", "region_id", "type", "locuteur",
                 "texte", "lemme", "pos", "morph", "provenance", "ocr_texte",
                 "note"])
@@ -421,7 +421,7 @@ def analyse_comparaison_export(champ: str = "lemme",
         metrique)
     lignes = out[:PLAFOND_EXPORT]
     buf = io.StringIO()
-    w = csv.writer(buf, lineterminator=chr(10))
+    w = ecrivain_csv(buf, lineterminator=chr(10))
     # Les deux TOTAUX sont des colonnes répétées, et non une ligne de commentaire en tête.
     # Une telle ligne décalerait l'en-tête pour un tableur — le défaut que le nom de
     # fichier a justement été choisi pour éviter sur la troncature. La redondance coûte
@@ -469,7 +469,7 @@ def analyse_croisement_export(axe_x: str, axe_y: str, forme: str = "plat",
                          PLAFOND_EXPORT, PLAFOND_EXPORT)
     tronque = d["x_tronque"] or d["y_tronque"]
     buf = io.StringIO()
-    w = csv.writer(buf, lineterminator=chr(10))
+    w = ecrivain_csv(buf, lineterminator=chr(10))
     if forme == "matrice":
         w.writerow([f"{d['libelle_x']} × {d['libelle_y']}"]
                    + [_csv_safe(y["libelle"]) for y in d["y"]] + ["Total"])
@@ -691,7 +691,7 @@ def analyse_accord_export(conn: sqlite3.Connection = Depends(db),
     r = accord.rapport(conn, album_ids=_albums_lisibles(conn, _portee_d_export(portee)),
                        modele=modele or None)
     buf = io.StringIO()
-    w = csv.writer(buf, lineterminator=chr(10))
+    w = ecrivain_csv(buf, lineterminator=chr(10))
     w.writerow(["champ", "revus", "accord", "taux", "modele", "indexe_le", "releve_sur"])
     for ch, c in r["champs"].items():
         w.writerow([ch, c.get("revus"), c.get("accord"), c.get("taux"),
@@ -734,7 +734,7 @@ def analyse_accord_inter_export(conn: sqlite3.Connection = Depends(db),
         conn, _portee_d_export(portee)))
     taux = {tuple(sorted((p["a"], p["b"]))): p for p in r["paires"]}
     buf = io.StringIO()
-    w = csv.writer(buf, lineterminator=chr(10))
+    w = ecrivain_csv(buf, lineterminator=chr(10))
     w.writerow(["citation", "forme", "champ", "de", "valeur_de", "a", "valeur_a",
                 "taux_paire", "retouches_paire"])
     for d in r["divergences"]:
