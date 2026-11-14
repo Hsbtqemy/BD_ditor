@@ -1948,6 +1948,11 @@ h3.collapsible:hover { color: var(--text); }
 /* ANN-8 — un message qui porte un geste (« Passer ce geste ») : le bouton suit le texte. */
 .toast-action button { margin-left: 0.5em; }
 .toast.success { border-left-color: var(--accent-green); }
+/* ANN-7, passe du locuteur (2026-11-14) : sur la page Annotation, le bandeau d'un conflit vit
+   en bas de la grille, là où se posent les messages — « Réglez d'abord le conflit, en bas de
+   la grille. » couvrait les deux boutons qu'il désigne. Tant qu'un conflit est ouvert, les
+   messages de la page se posent EN HAUT ; ailleurs et hors conflit, rien ne change. */
+body:has(#an-guide-contenu.an-conflit) #toasts { top: 1.2308rem; bottom: auto; }
 
 /* ---------- Bandeau de conflit (CONC-3) ----------
    Tranché sur maquette le 2026-09-17 : dans le panneau, au-dessus du champ, la version de

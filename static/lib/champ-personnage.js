@@ -115,6 +115,12 @@
     const BDPropositions = o().propositions;
     const doc = o().document;
     const input = element(champ, doc), sug = element(liste, doc);
+    // La liste s'ouvre au focus — sauf quand l'hôte dit que ce focus n'est pas celui de
+    // quelqu'un qui va choisir : un focus RENDU par le code, après un geste réglé (ANN-7,
+    // passe du locuteur, 2026-11-14 : après « Remplacer par la mienne », la liste s'ouvrait et
+    // couvrait la note). Sans l'option, elle s'ouvre comme avant.
+    const ouvrirAuFocus = env && typeof env.ouvrirAuFocus === "function" ? env.ouvrirAuFocus
+      : () => true;
     let timer = null, activeIdx = -1, items = [];
     let lecture = null;       // la dernière lecture PARTIE pour la liste : { q, promesse }
     let listePour = null;     // la saisie pour laquelle `items` vaut — nul : pour aucune
@@ -228,7 +234,7 @@
       activeIdx = -1; surlignerAuRetour = false;
       clearTimeout(timer); timer = setTimeout(fetchList, 200);
     });
-    input.addEventListener("focus", fetchList);
+    input.addEventListener("focus", () => { if (ouvrirAuFocus()) fetchList(); });
     input.addEventListener("blur", () => setTimeout(close, 150));
     input.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown") {

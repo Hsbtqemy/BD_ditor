@@ -60,12 +60,12 @@ function serveur(registre) {
   };
 }
 
-function monter(registre, zone = () => 7) {
+function monter(registre, zone = () => 7, options = {}) {
   const p = papier();
   const s = serveur(registre);
   const choix = [];
   C.monter(p.champ, p.liste, (id, z, nom) => { choix.push({ id, z, nom }); }, zone,
-           { ...s, document: p.doc });
+           { ...s, document: p.doc, ...options });
   return { ...p, s, choix };
 }
 
@@ -155,4 +155,24 @@ test("« Créer » pris dans une liste lue AVANT une création relit le registre
   assert.deepEqual(b.s.creations, []);
   assert.equal(b.choix.length, 1);
   assert.equal(b.choix[0].nom, "Zed");
+});
+
+test("un focus que l'hôte dit RENDU par le code n'ouvre pas la liste (passe du locuteur)", async () => {
+  // Après « Remplacer par la mienne », la page rend le focus au champ : la liste s'ouvrait et
+  // couvrait la note. L'hôte le dit par `ouvrirAuFocus` ; sans l'option, rien ne change.
+  let rendu = true;
+  const m = monter([{ id: 1, nom: "Haddock", serie: null }], () => 7,
+                   { ouvrirAuFocus: () => !rendu });
+  m.champ.emettre("focus");
+  await attendre(); await attendre();
+  assert.deepEqual(m.s.lectures, []);
+  assert.equal(m.liste.hidden, true);
+  rendu = false;                                   // un focus de la personne
+  m.champ.emettre("focus");
+  await attendre(); await attendre();
+  assert.deepEqual(m.s.lectures, [""]);
+  const sans = monter([{ id: 1, nom: "Haddock", serie: null }]);
+  sans.champ.emettre("focus");
+  await attendre(); await attendre();
+  assert.deepEqual(sans.s.lectures, [""]);
 });

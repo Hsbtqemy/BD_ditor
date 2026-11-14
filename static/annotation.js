@@ -235,6 +235,7 @@ async function ouvrirPlanche(id, regionVoulue = null, repli = null) {
     if (tour !== tourPlanche) return;
     S.regions = regions;
     if (lus || !meme) S.releves = lus ? lus.releves : [];
+    if (!meme) NEUFS.depuis(S.releves);
     S.passes = lus ? lus.passes || [] : [];
   }
   S.rangement = S.planche
@@ -845,7 +846,7 @@ async function envoyerRetraitLien(lieu, rid, vuDit) {
   }
   if (etatLien(lieu).region === rid) {
     montrerLien(lieu, null);
-    $(idLien(lieu, "input")).focus();
+    remettreLeFocus($(idLien(lieu, "input")));
   }
   if (lieu === "presence") personnageSurImage(rid, null);
   annoncer(L.retire);
@@ -1071,7 +1072,9 @@ async function resoudreConflitDuContexte(cf, garderMienne) {
       if (cf.lieu === "presence") personnageSurImage(cf.regionId, c.personnage || null);
       annoncer("La version enregistrée est gardée.");
     }
-    if (ici) $(idLien(cf.lieu, "input")).focus();
+    // Le focus revient au champ, où l'on continue ; la puce dit le choix, et la liste reste
+    // fermée : la note se lit et se clique sans Échap.
+    if (ici) remettreLeFocus($(idLien(cf.lieu, "input")));
     return;
   }
   if (cf.lieu === "nom" || cf.lieu === "ocr_texte") {
@@ -1418,9 +1421,12 @@ function brancherZonesTracees() {
 function brancherContexte() {
   // Deux montages du même champ : chacun sait ce que l'autre vient de créer (ANN-8).
   for (const lieu of Object.keys(LIENS)) {
+    // Un focus que la page REND (`remettreLeFocus`) n'ouvre pas la liste : elle couvrirait la
+    // note, qu'il faudrait atteindre par Échap (passe du locuteur, 2026-11-14).
     BDChampPersonnage.monter(idLien(lieu, "input"), idLien(lieu, "liste"),
                              (pid, rid, nom) => choisirLien(lieu, pid, rid, nom),
-                             () => etatLien(lieu).region);
+                             () => etatLien(lieu).region,
+                             { ouvrirAuFocus: () => !FOCUS.remis });
     $(idLien(lieu, "retirer")).addEventListener("click", () => retirerLien(lieu));
   }
   const champ = $("#an-note");
@@ -3367,6 +3373,32 @@ async function relireReleves() {
   apresEcriture();
 }
 
+/* UN RELEVÉ NEUF SE VOIT (passe du mode libre, 2026-11-14 : « vent », créé depuis une grille
+   fermée, arrivait en 4e ligne d'une liste qui n'en montre que trois). Un relevé né APRÈS
+   l'ouverture de la planche — posé ici, ou relu d'ailleurs par « Actualiser » —, la première
+   fois que la liste le montre, est ramené en vue DANS la liste, sans prendre le focus. Ceux que
+   la planche portait déjà, ou qu'un réglage de « Relevés : ▾ » fait paraître, ne font rien
+   défiler : leurs identifiants sont plus anciens. */
+const NEUFS = {
+  base: Infinity,               // le plus grand identifiant à l'ouverture de la planche
+  vus: new Set(),               // les neufs déjà ramenés en vue
+  depuis(releves) {
+    this.base = Math.max(0, ...releves.map((r) => r.id));
+    this.vus = new Set();
+  },
+  aMontrer(montres) {
+    const neufs = montres.filter((r) => r.id > this.base && !this.vus.has(r.id));
+    for (const r of neufs) this.vus.add(r.id);
+    return neufs.length ? neufs[neufs.length - 1] : null;
+  },
+};
+
+function montrerLeNeuf(liste, r) {
+  const b = r && liste.querySelector(`[data-releve="${r.id}"]`);
+  const li = b && b.closest("li");
+  if (li) li.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 /* ── Ce qui est posé, en bas de la colonne ── */
 function rendreListe() {
   const titre = $("#an-poses-titre");
@@ -3401,6 +3433,7 @@ function rendreListe() {
                                      texte: "Sur la planche" }),
                           ...surface.map(itemReleve)] : [])),
   () => liste.querySelector("[data-retirer]") || $("#an-releves-btn"));
+  montrerLeNeuf(liste, NEUFS.aMontrer([...montres, ...surface]));
   rendrePopover();
   rendreBarre();
 }

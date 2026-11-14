@@ -21,6 +21,7 @@ est ce que CET écran envoie et montre.
 """
 import json
 import re
+import time
 
 import httpx
 import pytest
@@ -293,3 +294,118 @@ def test_actualiser_garde_le_nom_a_moitie_tape(page, decor):
         bouton.click()
     expect(bouton).to_be_hidden(timeout=15000)
     expect(page.locator("#an-loc-input")).to_have_value("Hadd")
+
+
+# --------------------------------------------------------------------------- #
+# Vu par la session en jouant la passe du locuteur (2026-11-14) : deux écrans
+# --------------------------------------------------------------------------- #
+def _autre_ecran(page, d, type_zone):
+    ctx = page.context.browser.new_context(extra_http_headers=ECRITURE)
+    autre = ctx.new_page()
+    _ouvrir(autre, d, type_zone)
+    return ctx, autre
+
+
+def _choisir_dans(pg, champ, liste, nom):
+    c = pg.locator(champ)
+    c.click()
+    c.fill(nom)
+    expect(pg.locator(liste)).to_contain_text(nom, timeout=15000)
+    c.press("Enter")
+
+
+LIEUX = {"bulle": ("#an-loc-input", "#an-loc-liste", "#an-loc-nom", "locuteur"),
+         "personnage": ("#an-perso-input", "#an-perso-liste", "#an-perso-nom", "personnage")}
+
+
+def _conflit_a_deux_ecrans(page, d, type_zone):
+    """L'écran voit Tintin ; un AUTRE écran (un second contexte) pose Haddock ; l'écran choisit
+    Milou : 409, le bandeau du conflit s'ouvre. Rend le contexte de l'autre écran."""
+    champ, liste, puce, route = LIEUX[type_zone]
+    rid = d[type_zone]
+    with _http(d) as c:
+        assert c.put(f"/api/regions/{rid}/{route}",
+                     json={"personnage_id": d["tintin"]}).status_code == 200
+        if not any(p["nom"] == "Milou" for p in c.get("/api/personnages?q=Milou").json()):
+            c.post("/api/personnages", json={"nom": "Milou"})
+    _ouvrir(page, d, type_zone)
+    expect(page.locator(puce)).to_have_text("Tintin")
+    ctx, autre = _autre_ecran(page, d, type_zone)
+    with autre.expect_response(lambda r: r.request.method == "PUT"
+                               and r.url.endswith(f"/regions/{rid}/{route}")) as rep:
+        _choisir_dans(autre, champ, liste, "Haddock")
+    assert rep.value.status == 200, rep.value.text()
+    with page.expect_response(lambda r: r.request.method == "PUT"
+                              and r.url.endswith(f"/regions/{rid}/{route}")) as rep:
+        _choisir_dans(page, champ, liste, "Milou")
+    assert rep.value.status == 409, rep.value.text()
+    expect(page.locator("#an-cf-mienne")).to_be_visible()
+    return ctx
+
+
+def _se_chevauchent(a, b):
+    return not (a["x"] + a["width"] <= b["x"] or b["x"] + b["width"] <= a["x"]
+                or a["y"] + a["height"] <= b["y"] or b["y"] + b["height"] <= a["y"])
+
+
+def test_le_message_qui_renvoie_au_bandeau_ne_couvre_pas_ses_boutons(page, decor):
+    """Un conflit du locuteur ouvert, un autre choix dans la liste *Planche* : « Réglez d'abord
+    le conflit, en bas de la grille. » se lit, et ne couvre ni « Remplacer par la mienne » ni
+    « Garder l'autre » (vu à 1 280 px : il se posait exactement dessus)."""
+    page.set_viewport_size({"width": 1280, "height": 720})
+    with _http(decor) as c:
+        seconde = c.post(f"/api/albums/{decor['album']}/import",
+                         files={"file": ("p2.png", make_png(800, 1000), "image/png")}).json()["id"]
+    ctx = _conflit_a_deux_ecrans(page, decor, "bulle")
+    try:
+        page.locator("#an-planche-choix").select_option(str(seconde))
+        message = page.locator("#toasts .toast", has_text="Réglez d'abord le conflit")
+        expect(message).to_be_visible()
+        expect(page.locator("#an-planche-choix")).not_to_have_value(str(seconde))
+        boite = message.bounding_box()
+        for bouton in ("#an-cf-mienne", "#an-cf-autre"):
+            b = page.locator(bouton)
+            expect(b).to_be_visible()
+            assert not _se_chevauchent(boite, b.bounding_box()), (bouton, boite, b.bounding_box())
+    finally:
+        ctx.close()
+
+
+@pytest.mark.parametrize("geste", ["#an-cf-mienne", "#an-cf-autre"])
+@pytest.mark.parametrize("type_zone", ["bulle", "personnage"])
+def test_apres_le_conflit_la_liste_des_personnages_ne_couvre_pas_la_note(page, decor, geste,
+                                                                       type_zone):
+    """« Remplacer par la mienne » ou « Garder l'autre », pour un locuteur comme pour le
+    personnage d'une boîte : la puce dit le choix, le focus revient au champ, et sa liste reste
+    FERMÉE — la note se lit et se clique sans Échap (passe du locuteur, 2026-11-14)."""
+    champ, liste, puce, route = LIEUX[type_zone]
+    ctx = _conflit_a_deux_ecrans(page, decor, type_zone)
+    try:
+        # Le registre répond LENTEMENT, comme sur la recette : rapide, la liste ouverte par le
+        # focus se refermait sous le redessin du Contexte, et le défaut ne se voyait pas.
+        def lent(route):
+            time.sleep(0.6)
+            route.continue_()
+        page.route(re.compile(r"/api/personnages\?q="), lent)
+        if geste == "#an-cf-mienne":                 # « Garder l'autre » n'écrit rien
+            with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith(
+                    f"/regions/{decor[type_zone]}/{route}")) as rep:
+                page.locator(geste).click()
+            assert rep.value.status == 200, rep.value.text()
+        else:
+            page.locator(geste).click()
+        expect(page.locator("#an-cf-titre")).to_have_count(0)
+        expect(page.locator(puce)).to_have_text("Milou" if geste == "#an-cf-mienne" else "Haddock")
+        expect(page.locator(champ)).to_be_focused()
+        page.wait_for_timeout(1500)                  # une lecture lente aurait eu le temps
+        expect(page.locator(liste)).to_be_hidden()
+        note = page.locator("#an-note")
+        expect(note).to_be_visible()
+        centre = note.bounding_box()
+        dessus = page.evaluate("([x, y]) => document.elementFromPoint(x, y).id",
+                               [centre["x"] + centre["width"] / 2, centre["y"] + centre["height"] / 2])
+        assert dessus == "an-note", dessus
+        note.click()
+        expect(note).to_be_focused()
+    finally:
+        ctx.close()

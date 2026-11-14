@@ -4488,6 +4488,45 @@ def test_depuis_une_grille_fermee_creer_dans_mode_libre_sans_changer_d_onglet(pa
     expect(page.locator("#an-resultats .an-res-creer")).to_have_count(0)
 
 
+def _dans_la_vue(page, element, boite):
+    """L'élément est-il entièrement visible dans la boîte qui défile ?"""
+    return page.evaluate("""([e, b]) => { const r = e.getBoundingClientRect(),
+        c = b.getBoundingClientRect();
+      return r.top >= c.top - 0.5 && r.bottom <= c.bottom + 0.5; }""",
+                         [element.element_handle(), boite.element_handle()])
+
+
+def test_un_releve_neuf_hors_de_vue_est_ramene_dans_la_liste(page, decor):
+    """Passe du mode libre (2026-11-14) : la liste de ce qui est posé ne montre que quelques
+    lignes ; « Créer « vent » dans Mode libre » posait « vent » sous elles, hors de vue. Le
+    relevé neuf est ramené en vue dans la liste, sans prendre le focus du filtre."""
+    page.set_viewport_size({"width": 1280, "height": 860})
+    gid = _travail(decor)
+    with _http(decor) as c:
+        for nom in ("lieux : extérieur", "lieux : cour", "humeur", "saison", "météo", "bruit"):
+            _poser_libre(c, decor["bulle"], gid, nom)
+    _ouvrir(page, decor, decor["bulle"])
+    expect(page.locator(f"#an-onglet-{decor['grille']}")).to_have_attribute("aria-selected", "true")
+    liste = page.locator("#an-poses-liste")
+    filtre = page.locator("#an-filtre")
+    filtre.fill("vent")
+    with page.expect_response(lambda r: r.url.endswith("/api/releves")
+                              and r.request.method == "POST") as rep:
+        filtre.press("Enter")
+    assert rep.value.status == 201, rep.value.text()
+    neuf = liste.locator(".an-pose", has_text="vent")
+    expect(neuf).to_be_visible()
+    hauteurs = liste.evaluate("(l) => [l.scrollHeight, l.clientHeight]")
+    assert hauteurs[0] > hauteurs[1], ("la liste ne défile pas : le test ne mesure rien", hauteurs)
+    page.wait_for_function("""() => { const l = document.querySelector('#an-poses-liste');
+      const b = [...l.querySelectorAll('.an-pose')].find((x) => x.textContent.includes('vent'));
+      if (!b) return false;
+      const r = b.getBoundingClientRect(), c = l.getBoundingClientRect();
+      return r.top >= c.top - 0.5 && r.bottom <= c.bottom + 0.5; }""", timeout=5000)
+    assert _dans_la_vue(page, neuf, liste)
+    expect(filtre).to_be_focused()                   # rien n'a pris le focus
+
+
 def test_point_virgule_pose_plusieurs_valeurs_et_les_puces_se_cochent(page, decor):
     gid = _libre(page, decor)
     onglet = page.locator(f"#an-onglet-{gid}")
