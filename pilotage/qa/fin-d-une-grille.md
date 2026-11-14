@@ -19,6 +19,8 @@ une grille employée et supprimer un brouillon, mais l'écran ne l'offrait pas ;
 offrait « Activer » sans « Désactiver ». Et la case fautive du tableur ne rougissait pas dans
 Excel : la règle était juste, sa couleur ne se peignait pas.
 
+**Rejouée par la session le 2026-11-14**, dans un Chromium à 1 280 px sous `proprio`, sur une copie de l'état `apres-moustache` migrée en v39, code de `596ec30` : les zones « Désactiver depuis le formulaire » et « Supprimer, retirer, depuis la ligne d'une grille », leurs phrases telles que l'écran les dit, « Rouge QA » créée par la route plutôt que par le formulaire. Une différence de décor seulement : la copie portait des étiquettes du Mode libre, si bien que « Travail en cours » offrait « Retirer… » grisé au lieu de « Supprimer… » grisé — sur le décor restauré, vide, c'est « Supprimer… ». Le rouge du tableur avait été mesuré dans Excel le 2026-11-14 au matin (`pilotage/ANN-7.md`, case du classeur).
+
 **Le décor de l'état restauré.** « Sons et images (fictive) » est la grille de « Projet
 principal » : fermée, v1 publiée et active, 3 relevés posés. « Travail en cours » est sa
 grille de travail (le mode libre), active, sans relevé.
