@@ -2,8 +2,10 @@
 
 La règle de Hugo (2026-10-16, `CLAUDE.md` § Schéma & migrations) : une migration se vérifie
 sur une base de la version précédente qui a VÉCU, faite par le code de cette version
-(`tools/fabriquer_base_de_version.py b9183c0 tests/bases/v36-b9183c0.sql` — `b9183c0`, la
-tête de la copie d'intégration de la 3b de COL-3, est le dernier état de la v36). Elle porte
+(`tools/fabriquer_base_de_version.py 53d258e tests/bases/v36-53d258e.sql` — `53d258e`, le
+parent sur `dev` du commit de la v37, est le dernier état de la v36 ; la base d'avant venait de
+`b9183c0`, la tête d'une copie d'intégration qui n'est jamais entrée dans le dépôt, refaite le
+2026-11-14 au même contenu). Elle porte
 ce que portaient les précédentes, et ce que la v37 doit traverser : des régions des cinq
 types, des textes à apostrophes et à tirets, une copie sœur amorcée au cran `annotations`,
 un album retiré du projet, deux bacs à sable, une planche et une région détruites en haut de
@@ -26,7 +28,7 @@ import migration_v38
 import migration_v39
 import main
 
-BASE_V36 = Path(__file__).resolve().parent / "bases" / "v36-b9183c0.sql"
+BASE_V36 = Path(__file__).resolve().parent / "bases" / "v36-53d258e.sql"
 # Écrites ICI À LA MAIN, et non lues dans `database.TABLES_DES_GRILLES` : le test qui tirerait
 # son attendu de la constante qu'il éprouve en serait le miroir.
 TABLES_V37 = {"grille", "grille_version", "grille_rubrique", "grille_entree",
@@ -58,7 +60,7 @@ def _seq(db):
 
 @pytest.fixture
 def vraie_v36(tmp_path, monkeypatch):
-    """`tests/bases/v36-b9183c0.sql`, chargée dans une base du test. Les dossiers d'images
+    """`tests/bases/v36-53d258e.sql`, chargée dans une base du test. Les dossiers d'images
     sont ceux du test, vides."""
     from pipeline import ingest
     db = tmp_path / "vraie.sqlite"
