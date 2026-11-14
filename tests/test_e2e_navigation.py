@@ -172,7 +172,16 @@ def test_sans_stockage_de_session_la_page_repart_vide_sans_erreur(page, seeded):
     page.add_init_script("""Object.defineProperty(window, "sessionStorage", {
         configurable: true,
         get() { throw new DOMException("bloqué pour le test", "SecurityError"); } });""")
-    _recherche_posee(page, seeded["base"])
+    # INFRA-5 — c'est la PREMIÈRE recherche de ce serveur : elle lemmatise la requête, donc
+    # charge spaCy à froid (~10 s au repos, bien plus sous charge — cf. CLAUDE.md). On
+    # attend la RÉPONSE elle-même, avec la marge d'un chargement à froid, et non un délai
+    # posé sur le texte : 15 s sur « Aucun résultat. » tombaient dès que le poste peinait.
+    # Pas de préchauffage : le serveur de test naît à chaque test, et ce qu'on paie ici,
+    # c'est le chemin réel de la page.
+    with page.expect_response(lambda r: "/api/recherche?" in r.url and "q=bonjour" in r.url
+                              and "type=bulle" in r.url, timeout=120000) as reponse:
+        _recherche_posee(page, seeded["base"])
+    assert reponse.value.ok, reponse.value.status
     # La recherche a bien tourné jusqu'au bout : le corpus du décor n'a aucun texte.
     expect(page.locator("#results .search-hint")).to_have_text("Aucun résultat.", timeout=15000)
     _par_le_menu(page, "/exploration")
