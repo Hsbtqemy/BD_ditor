@@ -191,8 +191,14 @@
   }
 
   /* L'infobulle du bouton : « La planche a changé ailleurs : 2 régions modifiées, 1 créée.
-     Actualiser la recharge, sans perdre votre saisie. » Vide s'il n'y a rien. */
-  function titre(autres) {
+     Actualiser la recharge, sans perdre votre saisie. » Vide s'il n'y a rien.
+
+     `fermees` (facultatif) : les grilles FERMÉES que la page connaît, `Map` de leur
+     identifiant à leur nom. L'empreinte d'une fermée n'est que le numéro de sa version active
+     (`empreinte.empreintes_plans`) : si elle change, c'est qu'une montée de version — ou une
+     autre activation — l'a fait passer à une autre version, et l'infobulle le dit en ces
+     termes plutôt qu'« des étiquettes » (ANN-7, la montée de version). */
+  function titre(autres, fermees) {
     const morceaux = [];
     const regions = (l) => l.filter((x) => typeof x === "number");
     for (const [cle, mot] of [["modifiees", "modifiée"], ["creees", "créée"],
@@ -211,8 +217,22 @@
     // Le mode libre : les étiquettes d'une grille ouverte (son plan).
     const plans = new Set(["creees", "modifiees", "supprimees"]
       .flatMap((k) => autres[k].filter((x) => typeof x === "string" && x.startsWith(PREFIXE_PLAN))));
+    const versions = [];
+    for (const cle of [...plans]) {
+      const id = Number(cle.slice(PREFIXE_PLAN.length));
+      if (fermees && fermees.has && fermees.has(id)) {
+        plans.delete(cle);
+        versions.push(fermees.get(id));
+      }
+    }
     if (plans.size) {
       morceaux.push(plans.size > 1 ? `les étiquettes de ${plans.size} grilles` : "des étiquettes");
+    }
+    if (versions.length === 1) {
+      morceaux.push(versions[0] ? `la grille « ${versions[0]} » est passée à une autre version`
+        : "une grille est passée à une autre version");
+    } else if (versions.length) {
+      morceaux.push(`${versions.length} grilles sont passées à une autre version`);
     }
     if (!morceaux.length) return "";
     return `La planche a changé ailleurs : ${morceaux.join(", ")}. `

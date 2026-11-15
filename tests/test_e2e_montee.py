@@ -114,3 +114,29 @@ def test_monter_a_la_version_2_depuis_la_ligne_de_la_grille(page, live_server):
     assert {r["version"] for r in releves} == {2}
     cri = next(r for r in releves if r["id"] == d["cri"])
     assert (cri["etat"], cri["causes"]) == ("a_revoir", ["entree_absente"])
+
+
+def test_le_formulaire_d_une_grille_fermee_offre_la_montee(page, live_server):
+    """Dans l'en-tête du formulaire d'une grille fermée qui porte des relevés, une version plus
+    récente que l'active offre « Monter à la version M… », comme la ligne du bloc « Grilles » ;
+    sa confirmation est la MÊME, sous la ligne de la grille (le formulaire se ferme pour la
+    montrer, comme « Réimporter… » mène à l'import)."""
+    base = live_server
+    d = _decor(base)
+    page.goto(f"{base}/administration?vue=projets&projet={d['projet']}",
+              wait_until="networkidle")
+    ligne = page.locator(f'[data-gr-ligne="{d["grille_id"]}"]')
+    expect(ligne).to_be_visible(timeout=10000)
+    with page.expect_response(lambda r: f"/api/grilles/{d['grille_id']}/versions/" in r.url):
+        page.locator(f'[data-gr-modifier="{d["grille_id"]}"]').click()
+    tete = page.locator(".fm-tete-gestes")
+    expect(tete).to_be_visible()
+    expect(tete.get_by_role("button", name="Activer la v2")).to_have_count(0)
+    with page.expect_response(lambda r: "/montee?version=2" in r.url):
+        tete.get_by_role("button", name="Monter à la version 2…").click()
+    verdict = page.locator("#pg-montee-verdict")
+    expect(verdict).to_be_visible()
+    expect(verdict).to_be_focused()
+    expect(verdict).to_contain_text("2 relevés passent en version 2.")
+    expect(page.locator(f'[data-gr-ligne="{d["grille_id"]}"] .pg-montee')).to_be_visible()
+    expect(page.locator(".fm-tete-gestes")).to_have_count(0)

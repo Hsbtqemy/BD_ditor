@@ -3227,6 +3227,12 @@ function fmClic(b) {
     pgOuvrirImport(id);
     return true;
   }
+  if (d.fmMonter) {
+    const id = FM.grilleId, n = Number(d.fmVersion);
+    fmFermer();
+    pgOuvrirMontee(id, n);
+    return true;
+  }
   return false;
 }
 
@@ -3334,6 +3340,13 @@ function fmTeteHtml() {
     + (e.activer ? `<button type="button" class="${g.ouverte ? "primary" : "ghost"} small" data-fm-activer="1"
         data-fm-version="${e.activer}"${g.ouverte ? eteint : ""}>${g.ouverte ? "Activer dans le projet"
         : `Activer la v${e.activer}`}</button>` : "")
+    // La MONTÉE DE VERSION (ANN-7), comme sur la ligne de la grille : une version publiée plus
+    // récente que l'active, sous des relevés. Sa confirmation est celle du bloc « Grilles »,
+    // sous la ligne de la grille (`pgOuvrirMontee`) : le formulaire se ferme pour la montrer,
+    // comme « Réimporter… » mène à l'import.
+    + (e.monter ? `<button type="button" class="ghost small" data-fm-monter="1"
+        data-fm-version="${e.monter}" title="Les relevés du projet passent dans la version ${
+          e.monter} : le bilan se lit avant">Monter à la version ${e.monter}…</button>` : "")
     // Le pendant d'« Activer », comme sur la ligne de la grille (Hugo, 2026-11-13) ; éteint
     // sur la grille de travail, qui ne se désactive pas.
     + (e.desactiver ? `<button type="button" class="ghost small" data-fm-desactiver="1"${

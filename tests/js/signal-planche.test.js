@@ -210,4 +210,17 @@ test("le mode libre : le plan d'une grille ouverte entre dans les clés, touché
   assert.equal(S.titre({ creees: [], modifiees: ["releves:4", "plan:3", "plan:5"], supprimees: [] }),
                "La planche a changé ailleurs : des relevés sur 1 zone, les étiquettes de 2 grilles. "
                + "Actualiser la recharge, sans perdre votre saisie.");
+  // Une grille FERMÉE : son empreinte est le numéro de sa version — si elle change, c'est
+  // qu'elle est passée à une autre version (une montée faite ailleurs), pas « des étiquettes ».
+  const fermees = new Map([[5, "Signaux"]]);
+  assert.equal(S.titre({ creees: [], modifiees: ["plan:5"], supprimees: [] }, fermees),
+               "La planche a changé ailleurs : la grille « Signaux » est passée à une autre "
+               + "version. Actualiser la recharge, sans perdre votre saisie.");
+  assert.equal(S.titre({ creees: [], modifiees: ["plan:3", "plan:5"], supprimees: [] }, fermees),
+               "La planche a changé ailleurs : des étiquettes, la grille « Signaux » est passée "
+               + "à une autre version. Actualiser la recharge, sans perdre votre saisie.");
+  assert.equal(S.titre({ creees: ["plan:6"], modifiees: ["plan:5"], supprimees: [] },
+                       new Map([[5, "Signaux"], [6, "Sons"]])),
+               "La planche a changé ailleurs : 2 grilles sont passées à une autre version. "
+               + "Actualiser la recharge, sans perdre votre saisie.");
 });

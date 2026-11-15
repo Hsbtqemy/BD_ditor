@@ -3491,7 +3491,9 @@ function itemReleve(r) {
        g && g.id !== S.grilleId ? el("span", { classe: "an-pose-gr", texte: A.nomOnglet(g) }) : null));
   // Les gestes d'une ligne tiennent ensemble : la précision se réduit, ✕ reste à sa droite
   // (passe du jalon 1 : à 1 400 px, ✕ passait sous le champ).
-  const actes = el("span", { classe: `an-pose-actes${gestes && e && e.precision ? " avec-prec" : ""}` });
+  const choix = gestes && e && valeurAChoisir(r, e);
+  const actes = el("span", { classe: `an-pose-actes${gestes && e && (e.precision || choix) ? " avec-prec" : ""}` });
+  if (choix) actes.append(choixDeValeur(r, e, libelle));
   if (gestes && e && e.precision) {
     actes.append(el("input", { type: "text", classe: "an-prec", "data-releve": r.id,
                                "aria-label": `${e.precision} — ${libelle}`, placeholder: e.precision,
@@ -3516,6 +3518,32 @@ function itemReleve(r) {
   }
   if (actes.childNodes.length) li.append(actes);
   return li;
+}
+
+/* « À compléter · choisissez une valeur » (ANN-7, la montée de version : une entrée devenue
+   à variantes sous un relevé qui n'en porte pas) : le relevé offre, sur sa ligne, de quoi
+   choisir sa valeur — comme le champ de la précision pour « précision attendue ». Un choix
+   natif, la valeur vue envoyée avec (CONC-3 : `null`, le relevé n'en avait pas). */
+function valeurAChoisir(r, e) {
+  return !!e && e.forme === "variantes" && (e.variantes || []).length > 0
+    && (r.causes || []).includes("variante_manquante");
+}
+function choixDeValeur(r, e, libelle, id) {
+  const s = el("select", { classe: "an-varsel", "data-choisir-v": r.id, id: id || null,
+                           "aria-label": `Valeur de ${libelle}`,
+                           title: "Choisissez la valeur de ce relevé" },
+    option("", "choisissez une valeur…"),
+    ...(e.variantes || []).map((v) => option(v.cle, v.libelle)));
+  s.value = "";
+  return s;
+}
+async function choisirValeur(champ) {
+  const r = S.releves.find((x) => x.id === Number(champ.dataset.choisirV));
+  const vc = champ.value;
+  if (!r || !vc || conflitOuvert()) return;
+  await ecrire(grilleDe(r.grille_id), entreeDe(r), null, {
+    action: "modifier", releve: r, corps: { variante_cle: vc },
+    vu: { variante_cle: r.variante_cle || null } });
 }
 
 /* Le type d'une région de la planche, ou `null`. */
@@ -3602,6 +3630,7 @@ function brancherPose() {
   });
   liste.addEventListener("input", (e) => { if (e.target.matches(".an-prec")) noterVersionVue(e.target); });
   liste.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) sortieDePrecision(e.target); });
+  liste.addEventListener("change", (e) => { if (e.target.matches("[data-choisir-v]")) choisirValeur(e.target); });
   const bouton = $("#an-releves-btn");
   const pop = $("#an-releves-pop");
   bouton.addEventListener("click", () => {
@@ -4187,6 +4216,7 @@ function itemACompleter(r) {
        el("span", { classe: "an-causes", texte: A.causesEnMots(r).join(" · ") })));
   if (!gestesSur(r) || !e) return li;
   const gestes = el("div", { classe: "an-rv-gestes" });
+  if (valeurAChoisir(r, e)) gestes.append(choixDeValeur(r, e, libelle, `an-rv-var-${r.id}`));
   if ((r.causes || []).includes("precision_manquante") && e.precision) {
     gestes.append(el("input", { type: "text", classe: "an-prec", id: `an-rv-prec-${r.id}`,
                                 "data-releve": r.id, "aria-label": `${e.precision} — ${libelle}`,
@@ -4380,6 +4410,7 @@ function brancherSynthese() {
   });
   corps.addEventListener("input", (e) => { if (e.target.matches(".an-prec")) noterVersionVue(e.target); });
   corps.addEventListener("focusout", (e) => { if (e.target.matches(".an-prec")) sortieDePrecision(e.target); });
+  corps.addEventListener("change", (e) => { if (e.target.matches("[data-choisir-v]")) choisirValeur(e.target); });
 }
 
 /* ───────────── Deux écrans sur la même planche (commit 6) ─────────────
@@ -4482,7 +4513,11 @@ function afficherSignal(autres) {
   const n = autres ? BDSignal.nombre(autres) : 0;
   const montre = !b.hidden;
   b.hidden = !n;
-  b.title = n ? BDSignal.titre(autres) : "";
+  // Les grilles fermées : leur empreinte est le numéro de leur version active, et l'infobulle
+  // dit qu'une telle grille est passée à une autre version (une montée faite ailleurs).
+  const fermees = new Map(S.grilles.filter((g) => !g.ouverte).map((g) => [g.id, A.nomOnglet(g)]));
+  b.title = n ? BDSignal.titre(autres, fermees) : "";
+
   if (n && !montre) annoncer("La planche a changé ailleurs : « Actualiser » la recharge.");
 }
 

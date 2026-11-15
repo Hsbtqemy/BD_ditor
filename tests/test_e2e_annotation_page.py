@@ -5075,3 +5075,72 @@ def test_plus_mene_au_champ_de_creation_et_slash_au_filtre(page, decor):
     # Dans un champ, « + » s'écrit.
     page.keyboard.press("+")
     expect(page.locator("#an-filtre")).to_have_value("+")
+
+
+def _monter_le_cri_a_variantes(d):
+    """La v2 de « Signaux », où « cri » devient À VARIANTES (aigu, grave), publiée ; puis la
+    montée, par l'API. Le relevé « cri » du décor passe « à compléter · choisissez une
+    valeur »."""
+    from grilles_decor import MODELE, MODELE_LISTES
+    sortie = []
+    for ligne in MODELE.split("\r\n"):
+        if ligne.startswith("cri;"):
+            champs = ligne.split(";")
+            champs[3] = "variantes"
+            sortie.append(";".join(champs))
+            for v in ("aigu", "grave"):
+                sortie.append(";".join(["cri", "", "", "", "", v, v] + [""] * 9))
+        else:
+            sortie.append(ligne)
+    entrees = "\r\n".join(sortie)
+    with _http(d) as c:
+        files = {"fichier": ("e.csv", entrees.encode("utf-8-sig"), "text/csv"),
+                 "listes": ("l.csv", MODELE_LISTES.encode("utf-8-sig"), "text/csv")}
+        r = c.post(f"/api/projets/{d['projet']}/grilles/import", files=files,
+                   data={"grille_id": str(d["grille"])})
+        assert r.status_code == 200, r.text
+        r = c.post(f"/api/grilles/{d['grille']}/versions/2/publication")
+        assert r.status_code == 200, r.text
+        b = c.get(f"/api/projets/{d['projet']}/grilles/{d['grille']}/montee",
+                  params={"version": 2}).json()
+        r = c.put(f"/api/projets/{d['projet']}/grilles/{d['grille']}/activation",
+                  json={"version": 2, "vu": b["vu"]})
+        assert r.status_code == 200, r.text
+
+
+def test_choisissez_une_valeur_se_choisit_sur_la_ligne(page, decor):
+    """Un relevé « à compléter · choisissez une valeur » (une entrée devenue à variantes à la
+    montée) offre le choix de sa valeur sur sa ligne — dans ce qui est posé, et dans
+    Synthèse › À revoir —, comme le champ de la précision."""
+    _monter_le_cri_a_variantes(decor)
+    cri = _cri(decor)
+    assert cri["causes"] == ["variante_manquante"], cri
+    _ouvrir(page, decor, decor["bulle"])
+    choix = page.locator(f'#an-poses-liste [data-choisir-v="{cri["id"]}"]')
+    expect(choix).to_be_visible()
+    expect(choix).to_have_value("")
+    _synthese(page, "revoir")
+    expect(page.locator(f'#an-syn-corps [data-choisir-v="{cri["id"]}"]')).to_be_visible()
+    with page.expect_response(lambda r: r.url.endswith(f"/api/releves/{cri['id']}")
+                              and r.request.method == "PUT") as rep:
+        choix.select_option("grave")
+    assert rep.value.status == 200, rep.value.text()
+    assert json.loads(rep.value.request.post_data)["vu"] == {"variante_cle": None}
+    apres = _cri(decor)
+    assert (apres["variante_cle"], apres["etat"]) == ("grave", "normal")
+    expect(page.locator(f'[data-choisir-v="{cri["id"]}"]')).to_have_count(0)
+
+
+def test_actualiser_dit_qu_une_grille_a_change_de_version(page, decor):
+    """Après une montée faite ailleurs, l'infobulle de « ⟳ Actualiser » dit que la grille est
+    passée à une autre version, et non « des étiquettes »."""
+    _ouvrir(page, decor, decor["bulle"])
+    bouton = page.locator("#an-actualiser")
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_hidden()
+    _monter_le_cri_a_variantes(decor)
+    _retour_sur_l_onglet(page)
+    expect(bouton).to_be_visible()
+    titre = bouton.get_attribute("title")
+    assert "la grille « Signaux » est passée à une autre version" in titre, titre
+    assert "étiquettes" not in titre, titre

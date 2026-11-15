@@ -4874,6 +4874,11 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-prec { flex: 1 1 4rem; width: 4rem; min-width: 0; padding: .1538rem .4615rem; font: inherit;
            background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
            border-radius: 4px; }
+/* « Choisissez une valeur » (ANN-7, la montée de version) : le choix de la variante d'un
+   relevé qui n'en porte pas, sur sa ligne, de la taille du champ de la précision. */
+.an-varsel { flex: 0 1 auto; max-width: 12rem; min-width: 0; padding: .1538rem .3077rem;
+             font: inherit; background: var(--bg-input); color: var(--text);
+             border: 1px solid var(--border); border-radius: 4px; }
 .an-lien-btn[aria-pressed="true"] { border-color: var(--accent-amber); }
 .an-res-creer .an-res-lib { color: var(--text); text-decoration: underline; }
 .an-quals { margin-left: 1.9231rem; }
