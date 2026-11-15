@@ -302,3 +302,56 @@ test("le bilan d'un import dit d'où viendra la grille neuve", () => {
   assert.equal(G.lireReponse(200, { ...corps, derivee_de: null }).deriveeDe, "");
   assert.equal(G.lireReponse(422, "Le fichier est illisible.").deriveeDe, "");
 });
+
+/* --- La montée de version (ANN-7) --------------------------------------------------- */
+
+test("une version publiée plus récente sur une grille qui porte des relevés : « Monter »", () => {
+  const g = { ouverte: false, retiree_le: null, versions: [v(1, "publiee"), v(2, "publiee")],
+              active: { numero: 1, etat: "publiee" }, releves: 3, passes: 0 };
+  const e = G.etat(g);
+  assert.equal(e.monter, 2);
+  assert.equal(e.activer, null);
+  // Sans relevé ni passe, c'est une activation ; sans les comptes (qui ne gère pas), rien.
+  assert.deepEqual([G.etat({ ...g, releves: 0 }).activer, G.etat({ ...g, releves: 0 }).monter],
+                   [2, null]);
+  assert.equal(G.etat({ ...g, releves: 0, passes: 2 }).monter, 2);
+  assert.equal(G.etat({ ...g, releves: undefined }).monter, null);
+  // Une grille ouverte ne monte pas : elle n'a qu'une version.
+  assert.equal(G.etat({ ...g, ouverte: true, versions: [v(1, "vivante")] }).monter, null);
+});
+
+const BILAN = {
+  montee: true, de: 1, vers: 2, vu: "abc",
+  verdict: { etat: "a_repondre", phrase: "3 relevés passent en version 2. 1 sera à revoir." },
+  releves: { total: 3, normal: 2, a_revoir: 1, a_completer: 0 },
+  causes: [{ cause: "variante_absente", etat: "a_revoir", n: 1, zones: [], hors_vue: 0 }],
+  plan: { nes: [], renommes: [], retouches: [], deplaces: [], changes: [], disparus: [] },
+  a_repondre: [{ cle: "echo", libelle: "écho", releves: 2, choix: ["laisser", "fusionner"],
+                 fusionner_dans: ["origine-du-son"], reponse: null }],
+  fautes: [], refus: [], passes_rouvertes: { n: 0, zones: [], hors_vue: 0 },
+};
+
+test("le bilan d'une montée en mots : les causes avec les mots de la page, les choix", () => {
+  const vue = G.lireMontee(BILAN, { causes: { variante_absente: "cette valeur n'existe plus" },
+                                    noms: { entree: { "origine-du-son": "origine du son" } } });
+  assert.equal(vue.phrase, BILAN.verdict.phrase);
+  assert.deepEqual(vue.causes, [{ cause: "variante_absente", etat: "a_revoir", n: 1,
+                                  mots: "cette valeur n'existe plus" }]);
+  assert.deepEqual(vue.aRepondre[0].choix.map((c) => c.valeur),
+                   ["laisser", "fusionner:origine-du-son"]);
+  assert.match(vue.aRepondre[0].choix[1].libelle, /« origine du son »/);
+  assert.deepEqual(G.montable(vue, {}).ok, false);
+  assert.match(G.montable(vue, {}).raison, /1 entrée retirée à répondre/);
+  assert.deepEqual(G.montable(vue, { echo: "laisser" }), { ok: true, raison: "" });
+  assert.deepEqual(G.reponsesDeMontee(vue, { echo: "laisser", autre: "x" }), { echo: "laisser" });
+});
+
+test("une montée refusée n'offre pas « Monter », et dit pourquoi", () => {
+  const vue = G.lireMontee({ ...BILAN, a_repondre: [], verdict: { etat: "refuse", phrase: "…" },
+                             refus: [{ code: "cardinalite_contredite", cle: "cri", libelle: "cri",
+                                       zone: { album_id: 1, planche_id: 2, region_id: 3 } }] });
+  assert.equal(vue.refus[0].texte, "« cri » : deux relevés sur une même zone");
+  assert.deepEqual(vue.refus[0].zone, { album_id: 1, planche_id: 2, region_id: 3 });
+  assert.equal(G.montable(vue, {}).ok, false);
+  assert.match(G.montable(vue, {}).raison, /deux relevés/);
+});

@@ -1987,6 +1987,7 @@ const GR = {
   publier: null,         // la grille dont « Publier… » est ouvert
   fin: null,             // la fin dont la confirmation est ouverte : { id, geste }
   imp: null,             // l'import ouvert : { grilleId, nomGrille, fichier, vue, reponses, … }
+  monter: null,          // la montée dont la confirmation est ouverte : { id, numero, vue, … }
 };
 
 async function pgCharger(p) {
@@ -1995,7 +1996,7 @@ async function pgCharger(p) {
   try { d = await apiGet(`/api/projets/${id}/grilles`); }
   catch (e) { erreur = e.message || "échec"; }
   if (PJ.sel !== id) return;                 // la fiche a changé pendant la lecture
-  if (GR.projet !== id) { GR.imp = null; GR.publier = null; GR.fin = null; }
+  if (GR.projet !== id) { GR.imp = null; GR.publier = null; GR.fin = null; GR.monter = null; }
   GR.projet = id;
   GR.donnees = d;
   GR.erreur = erreur;
@@ -2044,6 +2045,9 @@ function pgListe(p) {
           >Publier la v${e.publier}…</button>` : "")
       + (e.activer ? `<button type="button" class="ghost small" data-gr-activer="${g.id}"
           data-gr-version="${e.activer}">Activer la v${e.activer}</button>` : "")
+      + (e.monter ? `<button type="button" class="ghost small" data-gr-monter="${g.id}"
+          data-gr-version="${e.monter}" title="Les relevés du projet passent dans la version ${
+            e.monter} : le bilan se lit avant">Monter à la version ${e.monter}…</button>` : "")
       + (e.desactiver ? `<button type="button" class="ghost small" data-gr-desactiver="${g.id}"${
           e.desactiverRaison ? ` aria-disabled="true" title="${esc(e.desactiverRaison)}"` : ""}
           >Désactiver</button>` : "")
@@ -2071,9 +2075,129 @@ function pgListe(p) {
         <span class="pj-puce">${esc(e.etiquette)}</span>${e.porteSur
           ? ` <span class="muted small">porte sur ${esc(e.porteSur)}</span>` : ""}${e.origine
           ? ` <span class="muted small pg-origine">${esc(e.origine)}</span>` : ""}</div>
-      <div class="pg-gestes">${gestes}</div>${confirme}${confirmeFin}</li>`;
+      <div class="pg-gestes">${gestes}</div>${confirme}${confirmeFin}${
+        GR.monter && GR.monter.id === g.id ? pgMontee() : ""}</li>`;
   }).join("")}</ul>`;
 }
+
+/* La MONTÉE DE VERSION (ANN-7) : une confirmation sous la ligne (M6 (a), tranché par Hugo le
+   2026-11-15, l'écran minimal d'avant la maquette) — la phrase et les nombres du bilan, ce qui
+   se refuse, les entrées retirées à répondre (« laisser » ou « fusionner dans… »), les relevés
+   par cause, ce qui change, puis « Monter à la version M ». Ce qui s'offre et les mots vivent
+   dans `static/lib/grilles-projet.js` ; les mots des causes sont ceux de la page Annotation. */
+function pgMontee() {
+  const M = GR.monter, B = BDGrillesProjet;
+  if (M.erreur) {
+    return `<div class="pg-confirme"><p class="small erreur">${esc(M.erreur)}</p>
+      <div class="pg-gestes"><button type="button" class="ghost small"
+        data-gr-monter-annuler="${M.id}">Fermer</button></div></div>`;
+  }
+  if (!M.vue) return `<div class="pg-confirme"><p class="col-note">Lecture du bilan…</p></div>`;
+  const v = M.vue;
+  const ton = v.etat === "refuse" ? "ko" : v.etat === "a_repondre" ? "attente" : "ok";
+  const titre = (texte, n) => `<h5>${texte}${n === undefined ? "" : ` · ${n}`}</h5>`;
+  const ETATS = { a_revoir: "à revoir", a_completer: "à compléter" };
+  const causes = v.causes.length ? `<section class="pg-bilan-s">${titre("Les relevés",
+      v.comptes ? v.comptes.total : undefined)}<ul class="pg-changements">${v.causes.map((c) => `<li>
+        <span class="pg-genre${c.etat === "a_revoir" ? " pg-genre-part" : ""}">${esc(
+          ETATS[c.etat] || c.etat)}</span> ${esc(c.mots)} <b>${c.n}</b></li>`).join("")}</ul>
+      </section>` : "";
+  const repondre = v.aRepondre.length ? `<section class="pg-bilan-s">${titre("À répondre",
+      v.aRepondre.length)}${v.aRepondre.map((a, i) => {
+        const pris = M.reponses[a.cle] || "";
+        return `<div class="pg-repondre"><label for="pg-mon-rep-${i}">« ${esc(a.libelle)} »
+            est retirée · ${esc(B.pluriel(a.releves, "relevé posé", "relevés posés"))}</label>
+          <select id="pg-mon-rep-${i}" data-gr-mon-reponse="${esc(a.cle)}">
+            <option value=""${pris ? "" : " selected"}>— à décider —</option>
+            ${a.choix.map((c) => `<option value="${esc(c.valeur)}"${c.valeur === pris
+              ? " selected" : ""}>${esc(c.libelle)}</option>`).join("")}</select></div>`;
+      }).join("")}</section>` : "";
+  const lien = (z) => (z ? ` <a class="small" href="/annotation?album=${z.album_id}&planche=${
+    z.planche_id}${z.region_id ? `&region=${z.region_id}` : ""}" target="_blank" rel="noopener"
+    title="Ouvrir la zone dans la page Annotation">la zone ↗</a>` : "");
+  const refus = v.refus.length ? `<section class="pg-bilan-s">${titre("Refusé",
+      v.refus.length)}<ul class="pg-fautes">${v.refus.map((x) => `<li class="pg-faute"><p>${
+        esc(x.texte)}${lien(x.zone)}</p></li>`).join("")}</ul></section>` : "";
+  const change = v.changements.length ? `<section class="pg-bilan-s">${titre("Ce qui change",
+      v.changements.length)}<ul class="pg-changements">${v.changements.map((c) => `<li>
+        <span class="pg-genre${c.genre === "disparaît" ? " pg-genre-part" : ""}">${esc(c.genre)}</span>
+        <span class="muted small">${esc(c.quoi)}</span>${c.nom ? ` <b>${esc(c.nom)}</b>` : ""}${
+        c.detail ? ` <span class="muted small">${esc(c.detail)}</span>` : ""}</li>`).join("")}
+      </ul></section>` : "";
+  const m = B.montable(v, M.reponses);
+  return `<div class="pg-confirme pg-montee" role="group" aria-label="Monter à la version ${
+      M.numero}"><div class="pg-bilan">
+    <p class="pg-verdict pg-verdict-${ton}" id="pg-montee-verdict" tabindex="-1">${esc(v.phrase)}</p>
+    ${refus}${repondre}${causes}${change}
+    <div class="pg-gestes pg-pied"><button type="button" class="primary small"
+      data-gr-monter-ok="${M.id}" data-gr-version="${M.numero}"${M.enVol ? " disabled" : ""}${
+        m.ok ? "" : ` aria-disabled="true" aria-describedby="pg-monter-raison"`}>Monter à la
+      version ${M.numero}</button><button type="button" class="ghost small"
+      data-gr-monter-annuler="${M.id}">Annuler</button>${m.ok ? "" : `<span
+      class="muted small" id="pg-monter-raison">${esc(m.raison)}</span>`}</div></div></div>`;
+}
+
+function pgLireMontee(b, noms) {
+  const causes = (window.BDAnnotation && BDAnnotation.CAUSES) || {};
+  return BDGrillesProjet.lireMontee(b, { causes, noms });
+}
+
+/* Ouvre la confirmation d'une montée : le bilan (`GET …/montee`, ou celui d'un 409 qui le
+   porte déjà) et les noms de la version d'arrivée. */
+async function pgOuvrirMontee(id, numero, bilan) {
+  const p = pjProjet(), g = pgGrille(id);
+  if (!p || !g) return;
+  const M = { id, numero, vue: null, reponses: {}, enVol: false, erreur: null, noms: null };
+  GR.monter = M;
+  GR.publier = null;
+  GR.fin = null;
+  pjTaireSauf(null);
+  pgListeRedessiner();
+  try {
+    M.noms = BDGrillesProjet.nomsDuPlan(await apiGet(`/api/grilles/${id}/versions/${numero}`));
+  } catch (e) { /* les identifiants se liront tels quels */ }
+  let b = bilan || null;
+  if (!b) {
+    try { b = await apiGet(`/api/projets/${p.id}/grilles/${id}/montee?version=${numero}`); }
+    catch (e) { M.erreur = e.message || "Le bilan n'a pas pu être lu."; }
+  }
+  if (GR.monter !== M) return;               // fermée, ou une autre ouverte entre-temps
+  if (b) M.vue = pgLireMontee(b, M.noms);
+  pgListeRedessiner("#pg-montee-verdict");
+}
+
+/* Monte : la version, le bilan vu, les réponses. Un 409 qui porte un bilan (il a changé, ou
+   une réponse manque) le redessine, à relire ; tout autre refus se dit dans le message. */
+async function pgMonter(id) {
+  const M = GR.monter, p = pjProjet(), g = pgGrille(id);
+  if (!M || !p || !g || M.enVol || !M.vue) return;
+  const msg = $("#pj-grilles-msg");
+  M.enVol = true;
+  pgListeRedessiner();
+  try {
+    await apiSend("PUT", `/api/projets/${p.id}/grilles/${id}/activation`,
+                  { version: M.numero, vu: M.vue.vu,
+                    reponses: BDGrillesProjet.reponsesDeMontee(M.vue, M.reponses) });
+  } catch (e) {
+    if (GR.monter !== M) return;
+    M.enVol = false;
+    const d = e.detail;
+    if (d && typeof d === "object" && d.montee) {
+      M.vue = pgLireMontee(d, M.noms);
+      pgListeRedessiner("#pg-montee-verdict");
+      pjMsg(msg, d.message || "Le bilan a changé : relisez-le.", true);
+    } else {
+      pgListeRedessiner(`[data-gr-monter-ok="${id}"]`);
+      pjMsg(msg, e.message || "Échec", true);
+    }
+    return;
+  }
+  const n = M.vue.comptes ? M.vue.comptes.total : 0;
+  GR.monter = null;
+  pgGeste(id, async () => {}, (gg) => `« ${gg.nom} » est montée à la version ${M.numero} : ${
+    BDGrillesProjet.pluriel(n, "relevé passe", "relevés passent")}.`);
+}
+
 
 function pgImport(p) {
   const d = GR.projet === p.id ? GR.donnees : null;
@@ -2373,13 +2497,47 @@ function pgClic(b) {
     return true;
   }
   if (d.grActiver) {
-    const n = Number(d.grVersion);
-    pgGeste(Number(d.grActiver),
-            (p, g) => apiSend("PUT", `/api/projets/${p.id}/grilles/${g.id}/activation`,
-                              { version: n }),
-            (g) => `« ${g.nom} » est active dans le projet, dans sa version ${n}.`);
+    const n = Number(d.grVersion), id = Number(d.grActiver);
+    // Une activation qui se révèle être une MONTÉE (une grille désactivée, réactivée dans une
+    // version plus récente que ses relevés) : le 409 porte le bilan, qui s'ouvre sous la ligne.
+    let montee = null;
+    pgGeste(id, (p, g) => apiSend("PUT", `/api/projets/${p.id}/grilles/${g.id}/activation`,
+                                  { version: n }).catch((e) => {
+              if (e.detail && typeof e.detail === "object" && e.detail.montee) montee = e.detail;
+              throw e;
+            }),
+            (g) => `« ${g.nom} » est active dans le projet, dans sa version ${n}.`)
+      .then(() => { if (montee) pgOuvrirMontee(id, n, montee); });
     return true;
   }
+  if (d.grMonter) {
+    const id = Number(d.grMonter), n = Number(d.grVersion);
+    if (GR.monter && GR.monter.id === id) {
+      GR.monter = null;
+      pgListeRedessiner(`[data-gr-monter="${id}"]`);
+    } else pgOuvrirMontee(id, n);
+    return true;
+  }
+  if (d.grMonterAnnuler) {
+    const id = Number(d.grMonterAnnuler);
+    GR.monter = null;
+    pgListeRedessiner(`[data-gr-monter="${id}"]`);
+    if (!document.querySelector(`[data-gr-monter="${id}"]`)) {
+      const nom = document.querySelector(`[data-gr-ligne="${id}"] .pg-nom`);
+      if (nom) nom.focus();
+    }
+    return true;
+  }
+  if (d.grMonterOk) {
+    if (b.getAttribute("aria-disabled") === "true") {
+      pjMsg($("#pj-grilles-msg"), BDGrillesProjet.montable(GR.monter && GR.monter.vue,
+        GR.monter && GR.monter.reponses).raison, true);
+      return true;
+    }
+    pgMonter(Number(d.grMonterOk));
+    return true;
+  }
+
   if (d.grDesactiver) {
     // Éteint sur la grille de travail : le clic dit pourquoi, et rien ne part.
     if (b.getAttribute("aria-disabled") === "true") {
@@ -3901,6 +4059,11 @@ function pjDemarrer() {
     if (GR.imp && t.matches && t.matches("[data-gr-reponse]")) {
       GR.imp.reponses[t.dataset.grReponse] = t.value;
       pgBilanRedessiner(`#${CSS.escape(t.id)}`);
+      return;
+    }
+    if (GR.monter && t.matches && t.matches("[data-gr-mon-reponse]")) {
+      GR.monter.reponses[t.dataset.grMonReponse] = t.value;
+      pgListeRedessiner(`#${CSS.escape(t.id)}`);
       return;
     }
     if (p && t.matches && t.matches("[data-e7-source]")) {

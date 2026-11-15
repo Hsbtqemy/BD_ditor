@@ -4,13 +4,13 @@
    Chargé en <script> AVANT administration.js → expose `window.BDGrillesProjet` ; aussi
    require()-able par `tests/js/grilles-projet.test.js`.
 
-   Deux choses s'y décident, et rien d'autre :
+   Trois choses s'y décident, et rien d'autre :
 
    1. CE QUI S'OFFRE sur une grille, selon son état tel que le serveur le rend
       (`GET /api/projets/{id}/grilles`, `_vue_grille`) : télécharger le classeur d'une version,
-      réimporter, publier un brouillon, activer, désactiver. Une offre n'est pas une garde :
-      chaque route pose sa question, et l'écran dit son refus. Le bloc entier ne se dessine
-      que si le serveur rend les grilles du projet (`grilles`, à qui le GÈRE).
+      réimporter, publier un brouillon, activer — ou monter —, désactiver. Une offre n'est pas
+      une garde : chaque route pose sa question, et l'écran dit son refus. Le bloc entier ne
+      se dessine que si le serveur rend les grilles du projet (`grilles`, à qui le GÈRE).
    2. LE BILAN EN MOTS d'un import (`POST /api/projets/{id}/grilles/import`) : le verdict en
       tête ; pour chaque faute, où (feuille ou fichier, ligne, entrée, question), ce qui ne
       va pas, ce qu'il faut faire ; « À savoir », « Ce qui va naître », « Ce qui change »,
@@ -18,6 +18,10 @@
       donner (« retirer » ou « fusionner dans… »). Le serveur NOMME — le verdict, le
       problème, ce qu'il faut faire sont ses phrases — ; l'écran les range et les compte.
       « Importer » ne s'offre que sur un fichier juste, et une fois chaque disparu répondu.
+   3. LE BILAN EN MOTS d'une MONTÉE DE VERSION (ANN-7 ; l'écran minimal d'avant la maquette,
+      M6 (a), tranché par Hugo le 2026-11-15) : la phrase, les relevés par cause, ce qui
+      change, les entrées retirées à répondre (« laisser » ou « fusionner dans… »), ce qui se
+      refuse. « Monter » ne s'offre qu'une fois chaque entrée répondue, et jamais sur un refus.
 
    Les mots d'une CIBLE (« la case », « des mots ») sont ceux de `grille_tableur.CIBLES_MOTS`,
    recopiés UNE fois ici : aucune route ne les publie, et `tests/test_grilles_projet_ecran.py`
@@ -121,6 +125,12 @@
       telecharger.push({ numero: brouillon.numero, libelle: `le brouillon v${brouillon.numero}` });
     }
     const activable = retiree ? null : reference;
+    // La MONTÉE DE VERSION (ANN-7) : une version publiée plus récente que l'active, sur une
+    // grille fermée qui porte des relevés ou des passes — « Activer » devient « Monter à la
+    // version M… ». Les comptes ne viennent qu'à qui gère le projet ; ailleurs, aucun geste.
+    const porte = typeof g.releves === "number" && g.releves + (g.passes || 0) > 0;
+    const monter = !g.ouverte && activable && active && porte
+      && activable.numero > active.numero ? activable.numero : null;
     // La FIN d'une grille (Hugo, 2026-11-13) : employée, elle se retire — ses relevés restent
     // lisibles ; personne ne l'emploie, elle se supprime. Les deux attendent qu'elle soit
     // désactivée, et jamais sur la grille de travail : le geste s'y montre ÉTEINT, avec sa
@@ -142,8 +152,9 @@
       telecharger,
       reimporter: !retiree,
       publier: !retiree && !g.ouverte && brouillon ? brouillon.numero : null,
-      activer: activable && !(active && active.numero === activable.numero)
+      activer: activable && !monter && !(active && active.numero === activable.numero)
         ? activable.numero : null,
+      monter,
       desactiver: !!active,
       desactiverRaison: active && g.travail ? RAISON_TRAVAIL : null,
       fin,
@@ -382,6 +393,68 @@
     return sortie;
   }
 
+  /* --- 3. Le bilan d'une MONTÉE DE VERSION, en mots (ANN-7) ------------------------- */
+
+  /* Le bilan de `GET /api/projets/{id}/grilles/{gid}/montee` — ou le `detail` d'un 409 de
+     `PUT …/activation`, qui le porte — en ce que la confirmation sous la ligne dessine.
+     `opts.causes` : les mots des causes (`BDAnnotation.CAUSES`, ceux de la page
+     Annotation) ; `opts.noms` : `nomsDuPlan` de la version d'arrivée. Rend { etat, phrase,
+     de, vers, comptes, causes: [{ cause, etat, n, mots }], changements, aRepondre, refus:
+     [{ texte, zone }], passes, vu }. */
+  function lireMontee(b, opts) {
+    const o = opts || {};
+    const mots = o.causes || {};
+    const N = (o.noms && o.noms.entree) || {};
+    const v = (b && b.verdict) || {};
+    const vue = { etat: v.etat || "refuse", phrase: v.phrase || "", de: b ? b.de : null,
+                  vers: b ? b.vers : null, comptes: (b && b.releves) || null, causes: [],
+                  changements: [], aRepondre: [], refus: [], passes: 0,
+                  vu: (b && b.vu) || null };
+    if (!b) return vue;
+    vue.causes = (b.causes || []).map((c) => ({
+      cause: c.cause, etat: c.etat, n: c.n || 0, mots: mots[c.cause] || c.cause }));
+    vue.changements = changementsEnMots(b.plan, o.noms);
+    vue.aRepondre = (b.a_repondre || []).map((a) => ({
+      cle: a.cle, libelle: a.libelle, releves: a.releves || 0,
+      choix: [{ valeur: "laisser", libelle: `Laisser : ${a.releves > 1
+        ? `ses ${a.releves} relevés passent` : "son relevé passe"}, à revoir` }]
+        .concat((a.fusionner_dans || []).map((k) => ({
+          valeur: `fusionner:${k}`, libelle: `Fusionner dans « ${N[k] || k} » : ${a.releves > 1
+            ? "ses relevés la suivent" : "son relevé la suit"}` }))) }));
+    vue.refus = (b.refus || []).map((r) => ({
+      texte: r.probleme || `« ${r.libelle || r.cle} » : deux relevés sur une même zone`,
+      zone: r.zone || null }));
+    vue.passes = (b.passes_rouvertes && b.passes_rouvertes.n) || 0;
+    return vue;
+  }
+
+  /* « Monter » s'offre-t-il ? { ok, raison }. Jamais sur un refus ; une fois chaque entrée
+     retirée répondue. */
+  function montable(vue, reponses) {
+    if (!vue) return { ok: false, raison: "Lisez d'abord le bilan." };
+    const r = reponses || {};
+    if (vue.etat === "refuse") {
+      return { ok: false, raison: vue.refus.length
+        ? vue.refus.map((x) => point(x.texte)).join(" ")
+        : "La montée est refusée : rien ne change." };
+    }
+    const manquent = vue.aRepondre.filter((a) => !r[a.cle]);
+    if (manquent.length) {
+      return { ok: false, raison: `${pluriel(manquent.length, "entrée retirée", "entrées retirées")} `
+        + "à répondre : « laisser » ou « fusionner dans… »." };
+    }
+    return { ok: true, raison: "" };
+  }
+
+  /* Les réponses telles que `PUT …/activation` les attend : `{cle: "laisser"}` ou
+     `{cle: "fusionner:<cle>"}`, celles des seules entrées qui les demandent. */
+  function reponsesDeMontee(vue, reponses) {
+    const r = reponses || {};
+    const sortie = {};
+    for (const a of (vue && vue.aRepondre) || []) if (r[a.cle]) sortie[a.cle] = r[a.cle];
+    return sortie;
+  }
+
   /* La déclaration lue, en une ligne : « « Signaux », fermée, porte sur des mots ». */
   function declarationEnMots(d) {
     if (!d) return "";
@@ -403,6 +476,7 @@
     CIBLES_MOTS, TYPE_CLASSEUR, pluriel, porteSurEnMots, origineEnMots, etat, ouEnMots,
     fauteEnMots,
     nomsDuPlan, changementsEnMots, vaNaitreEnMots, lireReponse, choixDeReponse, importable,
-    reponsesPourEnvoi, declarationEnMots, estUnClasseur, confirmation,
+    reponsesPourEnvoi, declarationEnMots, estUnClasseur, confirmation, lireMontee, montable,
+    reponsesDeMontee,
   };
 });
