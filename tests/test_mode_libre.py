@@ -627,3 +627,100 @@ def test_l_empreinte_couvre_le_plan_des_grilles_ouvertes(client, decor, db_path)
     assert client.put(f"/api/grilles/{g}/ordre", headers=STAG,
                       json={"quoi": "entree", "cle": "humour", "place": 0}).status_code == 200
     assert _plans(client, decor)[g] != e3[g]
+
+
+# --------------------------------------------------------------------------- #
+# Où se pose une étiquette tapée, et ce que dit son « Porte sur » quand il change
+# --------------------------------------------------------------------------- #
+def _vue(client, t, rid, qui=STAG):
+    rs = client.get(f"/api/planches/{t['planche']}/releves", headers=qui)
+    assert rs.status_code == 200, rs.text
+    return next(r for r in rs.json()["releves"] if r["id"] == rid)
+
+
+def test_une_etiquette_tapee_suit_la_zone_de_la_grille_de_travail_meme_sur_des_mots(
+        client, decor, db_path):
+    """Ce que fait le serveur aujourd'hui (case « Une étiquette née en la tapant se pose sur
+    des mots », 2026-11-15, posée à Hugo). La grille de travail porte sur toute zone (« sur la
+    zone », Hugo, 2026-11-05) ; une étiquette qui y naît en la posant suit ce défaut
+    (`routes/releves._entree_par_nom`) — la cible de ce qu'on désigne ne vaut que dans une
+    grille SANS défaut (Hugo, 2026-11-12, `docs/ann7-grille-sans-defaut-cadrage.md`, question
+    1). Envoyée avec des mots, elle est refusée sans rien faire naître ; l'écran, lui, la pose
+    sur la zone (`BDAnnotation.entreeNeuve`, « la liste bascule », Hugo, 2026-11-01). Seul
+    qui gère le projet la fait passer aux mots, au formulaire — un annotateur ne change pas
+    ce sur quoi elle se pose (J5 (c))."""
+    t = _travail(client, decor, db_path)
+    b, g = bulle(t), t["grille_id"]
+    r = poser(client, t, attendu=(422,), region_id=b, nouvelle_entree={"libelle": "élision"},
+              mots=[0])
+    assert "se pose sur toute la zone, pas sur des mots" in r["detail"], r
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_entree e JOIN grille_version v "
+                       "ON v.id = e.version_id WHERE v.grille_id = ?", (g,))[0]["n"] == 0
+    assert _q(db_path, "SELECT COUNT(*) AS n FROM evenement WHERE cible_table = 'grille' "
+                       "AND cible_id = ? AND apres LIKE '%entree_neuve%'", (g,))[0]["n"] == 0
+    # Sans mots, elle naît et se pose sur la bulle entière, sans cible écrite : le défaut.
+    z = poser(client, t, region_id=b, nouvelle_entree={"libelle": "élision"})
+    assert (z["region_id"], z["mots"], z["etat"]) == (b, [], "normal"), z
+    assert _q(db_path, "SELECT cible FROM grille_entree WHERE cle = 'elision'") == [
+        {"cible": None}]
+    # Un annotateur ne la fait pas passer aux mots ; qui gère le projet, oui.
+    url = f"/api/grilles/{g}/entrees/elision"
+    assert client.patch(url, headers=STAG, json={"cible": "mots"}).status_code == 403
+    assert client.delete(f"/api/releves/{z['id']}", headers=STAG).status_code == 204
+    assert client.patch(url, headers=ADMIN, json={"cible": "mots"}).status_code == 200
+    m = poser(client, t, region_id=b, entree_cle="elision", mots=[0])
+    assert (m["region_id"], [x["rang"] for x in m["mots"]], m["etat"]) == (b, [0], "normal"), m
+
+
+def test_le_porte_sur_d_une_etiquette_employee_qui_change_la_met_a_revoir(client, decor,
+                                                                          db_path):
+    """Case « Le « Porte sur » d'une étiquette employée ne change plus en silence » (vu par le
+    cadrage de la montée, `docs/ann7-montee-de-version-cadrage.md`, « Vu en passant » ; fermé
+    par la cause `pose_changee`, §3), rejouée sur la grille de TRAVAIL : son « Porte sur »
+    change en place (une grille ouverte n'a qu'une version), et la vue le dit, relevé par
+    relevé — des mots quand elle vise la zone, la zone quand elle vise des mots, la planche
+    quand elle vise une zone. Ce n'est pas refusé, sauf là où la cardinalité se contredirait
+    (deux relevés de mots sur une bulle, l'entrée passant à la zone : `une`)."""
+    t = _travail(client, decor, db_path)
+    b, g = bulle(t), t["grille_id"]
+
+    def cible(cle, valeur, attendu=200):
+        r = client.patch(f"/api/grilles/{g}/entrees/{cle}", headers=ADMIN,
+                         json={"cible": valeur})
+        assert r.status_code == attendu, r.text[:600]
+        return r
+
+    # Toute la zone → des mots : le relevé de la bulle entière passe à revoir.
+    z = poser(client, t, region_id=b, nouvelle_entree={"libelle": "ironie"})
+    assert (z["etat"], z["causes"]) == ("normal", [])
+    cible("ironie", "mots")
+    assert (lambda v: (v["etat"], v["causes"]))(_vue(client, t, z["id"])) == (
+        "a_revoir", ["pose_changee"])
+    # Rendue à la zone (le défaut de la grille) : la cause est dérivée, elle s'en va.
+    cible("ironie", None)
+    assert (lambda v: (v["etat"], v["causes"]))(_vue(client, t, z["id"])) == ("normal", [])
+
+    # Des mots → toute la zone : refusé tant que deux passages de la bulle se contrediraient,
+    # puis le passage qui reste est à revoir.
+    e = client.post(f"/api/grilles/{g}/entrees", headers=ADMIN,
+                    json={"libelle": "élision", "forme": "simple", "cible": "mots"})
+    assert e.status_code == 201, e.text[:600]
+    m1 = poser(client, t, region_id=b, entree_cle="elision", mots=[0])
+    m2 = poser(client, t, region_id=b, entree_cle="elision", mots=[2])
+    refus = cible("elision", None, attendu=409)
+    assert "cardinalite_contredite" in {a["code"] for a in refus.json()["detail"]["anomalies"]}
+    assert _vue(client, t, m1["id"])["etat"] == "normal"
+    assert client.delete(f"/api/releves/{m2['id']}", headers=STAG).status_code == 204
+    cible("elision", None)
+    assert (lambda v: (v["etat"], v["causes"]))(_vue(client, t, m1["id"])) == (
+        "a_revoir", ["pose_changee"])
+
+    # La planche → une zone : le relevé de la planche passe à revoir.
+    e = client.post(f"/api/grilles/{g}/entrees", headers=ADMIN,
+                    json={"libelle": "ambiance", "forme": "simple", "cible": "planche"})
+    assert e.status_code == 201, e.text[:600]
+    s = poser(client, t, planche_id=t["planche"], entree_cle="ambiance")
+    assert s["etat"] == "normal", s
+    cible("ambiance", "bulle")
+    assert (lambda v: (v["etat"], v["causes"]))(_vue(client, t, s["id"])) == (
+        "a_revoir", ["pose_changee"])

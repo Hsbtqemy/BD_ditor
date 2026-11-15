@@ -784,6 +784,14 @@ test("l'entrée qui naît en la posant suit la cible de la version", () => {
   // La pose qui suit vise bien la zone désignée.
   assert.deepEqual(A.cibleDePose(neuve({ zone: bulleZ, caseRegion: caseZ, mots: [] }),
                                  { zone: bulleZ, caseRegion: caseZ, mots: [] }), { region_id: 3 });
+  // Le Mode libre porte sur toute zone (Hugo, 2026-11-05) : une étiquette tapée sur des mots
+  // désignés suit ce défaut et se pose sur la bulle entière, sans ses mots — comme toute
+  // entrée de zone posée avec des mots désignés (Hugo, 2026-11-01). La règle du serveur.
+  const libre = { porte_sur: ["bulle", "cartouche", "texte", "case", "personnage", "detail"] };
+  const surMots = { zone: bulleZ, caseRegion: caseZ, mots: [1] };
+  assert.equal(A.entreeNeuve(libre, "élision", surMots).pose, "zone");
+  assert.deepEqual(A.cibleDePose(A.entreeNeuve(libre, "élision", surMots), surMots),
+                   { region_id: 3 });
   assert.deepEqual(A.vuDuReleve(rel(1, {})), { variante_cle: null, qualificatifs: [] });
   // Les qualificatifs vus forment un ENSEMBLE : ils partent triés, dans un ordre stable.
   assert.deepEqual(A.vuDuReleve(rel(1, { qualificatifs: ["objet", "hors-champ"] })).qualificatifs,
