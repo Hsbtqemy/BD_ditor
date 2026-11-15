@@ -30,6 +30,7 @@ import pytest
 import database
 import journal
 import main
+import migration_v40
 import undo
 from config import GRILLE_DE_TRAVAIL_NOM
 
@@ -183,8 +184,8 @@ def test_une_vraie_base_v38_migre_sans_rien_perdre(vraie_v38):
 
     database.init_db()
 
-    assert _sql(vraie_v38, "PRAGMA user_version")[0]["user_version"] == 39
-    assert database.SCHEMA_VERSION == 39
+    assert _sql(vraie_v38, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
+    assert database.SCHEMA_VERSION >= 39
     # 1. Les sept tables et leurs index sont partis.
     assert not TABLES_PARTIES & _tables(vraie_v38)
     assert not INDEX_PARTIS & _index(vraie_v38)
@@ -201,7 +202,8 @@ def test_une_vraie_base_v38_migre_sans_rien_perdre(vraie_v38):
     travail = {r["id"] for r in _sql(vraie_v38, "SELECT id FROM grille WHERE travail = 1")}
     for t, cle in (("grille", "id"), ("grille_version", "grille_id"),
                    ("projet_grille", "grille_id")):
-        apres = _lignes(vraie_v38, t, sans=("travail",))
+        # La v40 pose l'identifiant et l'origine d'une grille (`migration_v40`).
+        apres = _lignes(vraie_v38, t, sans=("travail", *migration_v40.COLONNES_V40.get(t, ())))
         assert set(grilles_avant[t]) <= set(apres), t
         assert {json.loads(l)[cle] for l in set(apres) - set(grilles_avant[t])} == travail, t
     # Le journal n'est pas touché : il ne gagne que la naissance des grilles de travail.
@@ -520,7 +522,7 @@ def test_une_panne_entre_la_colonne_et_ses_marques_ne_les_perd_pas(vraie_v38, mo
         vraie_v38, "PRAGMA table_info(grille_entree)" if colonne == "etat"
         else "PRAGMA table_info(grille)")}
     database.init_db()
-    assert _sql(vraie_v38, "PRAGMA user_version")[0]["user_version"] == 39
+    assert _sql(vraie_v38, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     assert _sql(vraie_v38, "SELECT etat FROM grille_entree WHERE version_id = ? "
                            "AND cle = 'ironie'", (d["version"],)) == [{"etat": "provisoire"}]
     assert _sql(vraie_v38, "SELECT id FROM grille WHERE projet_id = ? AND travail = 1",
@@ -543,7 +545,7 @@ def test_une_base_neuve_s_initialise(tmp_path, monkeypatch):
     db = tmp_path / "neuve.sqlite"
     monkeypatch.setattr(database, "DB_PATH", db)
     database.init_db()
-    assert _sql(db, "PRAGMA user_version")[0]["user_version"] == 39
+    assert _sql(db, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     assert not TABLES_PARTIES & _tables(db)
     assert [r["name"] for r in _sql(db, "PRAGMA table_info(recherche)")] == [
         "region_id", "ocr_texte", "note", "etiquettes", "lemmes"]

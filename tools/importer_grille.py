@@ -102,6 +102,9 @@ def _bilan(res, *, fautes=()) -> None:
     nait = {k: n for k, n in (res.get("va_naitre") or {}).items() if n}
     if nait:
         _err("  Ce qui va naître : " + " · ".join(f"{n} {_QUOI[k]}" for k, n in nait.items()))
+    origine = res.get("derivee_de")
+    if origine:                         # le classeur tiré d'une autre grille (v40)
+        _err("  La grille : " + grille_import.origine_en_mots(origine))
     b = res.get("bilan")
     if b:
         compare = (f"comparé à la version {res['compare_a']}" if res.get("compare_a")

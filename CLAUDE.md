@@ -412,6 +412,13 @@ première anomalie de structure, avec un bilan en DONNÉES (un verdict, chaque f
 quoi faire, « À savoir », « Ce qui va naître ») ; l'identifiant d'une entrée y est facultatif,
 et une grille ouverte s'y réimporte, une entrée employée qui disparaît attendant « retirer » ou
 « fusionner dans… » ; le modèle de `tools/` est FICTIF, et aucune vraie grille ne vit dans le dépôt.
+**Une grille DÉRIVÉE dit d'où elle vient** (v40 ; Hugo, 2026-11-15) : toute grille naît avec
+un identifiant neuf qui survit à l'instance (`grilles.identifiant_neuf`) ; son classeur le
+porte, avec son nom et la version tirée, en bas de « 1. La grille »
+(`grille_tableur.CHAMPS_ORIGINE`) ; réimporté comme grille NEUVE, il écrit son origine
+(`grille_import.origine_du_classeur`), que le plan, la fiche du projet et le bilan rendent
+(`derivee_de`) et que l'écran dit « dérivée de « … », vN ». Une version suivante n'écrit
+rien, l'identifiant d'un classeur n'est jamais celui de la neuve, et deux CSV ne portent rien.
 **Elle s'écrit aussi SANS IMPORT** (l'option hybride, tranchée sur maquette le 2026-11-03 ;
 `grille_ecriture.py`, routes dans `routes/grilles.py`) : grille, rubrique, entrée, variante,
 liste et case se créent, se modifient et se retirent — dans le BROUILLON d'une grille fermée,
@@ -1425,7 +1432,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** : par région, le tex
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 39). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 40). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - **Chaque migration se vérifie sur une VRAIE base de la version précédente** — règle posée par Hugo le 2026-10-16. Une base « défaite » à la main (une base neuve dont on retire colonnes et tables, puis qu'on ramène en arrière par `user_version`) n'a ni destructions, ni journal, ni dossiers d'images : la v30 passait toute sa suite sur de telles bases, et la relecture croisée l'a prise en défaut deux fois sur une base faite par le code v29 — une planche détruite que seule une activité nommait, un album détruit dont seul le dossier d'images restait, deux identifiants rendus après migration. La vraie base se fabrique par `tools/fabriquer_base_de_version.py <commit> tests/bases/v<N>-<commit>.sql`, qui fait tourner le code du commit lui-même — ses routes, sous trois comptes, avec des destructions en haut de chaque table — et vide la base en SQL ; le test de la migration suivante la charge et migre (`tests/test_identifiants_v30.py` lit `tests/bases/v29-10a3a90.sql`). Le commit est le dernier état de la version précédente — la tête de `main` avant la migration.
 - **Des identifiants qui ne reviennent jamais** (v30, décision de Hugo du 2026-10-15) : `albums`, `planches`, `regions`, `personnages` portent `AUTOINCREMENT`, comme les tables neuves `document` et `demande`. Sans lui SQLite rend au suivant l'identifiant du dernier détruit, et le journal, qui désigne ses cibles par identifiant et leur survit, mêlait deux objets. `projet` le porte depuis la v31 (D8), par la même reconstruction, son compteur amorcé au-dessus de ce que le journal, `demande.projet_id` et `document.projet_origine_id` ont nommé (`database._HORS_JOURNAL`). `collection` le porte depuis la v35 (COL-4) : les bacs à sable en font naître et mourir chaque semaine, et ses identifiants se réattribuaient — son compteur est amorcé au-dessus de ce que le journal et `demande.collection_id` ont nommé ; le NOM gardé à côté de l'identifiant dans une demande (`demande.collection_nom`, `demande_document.titre`) et dans la charge d'un emploi (`journal.journaliser_emploi`) reste, pour une collection supprimée qui ne se lit plus ; `demande.projet_nom` et `document.projet_origine_nom` gardent celui d'un projet supprimé, que son identifiant ne nomme plus. La vraie base de la v30 est `tests/bases/v30-5e7f56b.sql` (`tests/test_migration_v31.py`) ; celle de la v34, `tests/bases/v34-35cc4a3.sql` (`tests/test_migration_v35.py`) ; celle de
 la v35, `tests/bases/v35-f8dfa5c.sql` (`tests/test_migration_v36.py`), qui porte le jeu des
@@ -1444,8 +1451,14 @@ basculement, refaite le 2026-11-13 (elle venait de `1a47624`, du 2026-11-05) ; e
 portées (globale, locale, d'un bac à sable), un renommé et un fusionné, des attributs de case
 et de personnage, une annotation qui ne porte que des tags — et des actes annulables
 (`tests/test_migration_v39.py` ; les tests des versions d'avant défont la v39 par
-`tests/migration_v39.py`). La vraie base de la v39 n'existe pas encore : elle se fabrique
-pour la migration suivante.
+`tests/migration_v39.py`). Celle de la v39, `tests/bases/v39-2cd0d01.sql`
+(`tests/test_migration_v40.py` ; les tests d'avant mettent la v40 de côté par
+`tests/migration_v40.py`), porte des grilles de toutes les naissances — importée, avec un
+brouillon v2, construite au formulaire, de travail, de bac à sable —, une grille née du
+classeur d'une autre AVANT la v40, et une grille supprimée en haut de sa table. La v40 pose
+l'IDENTIFIANT d'une grille (un UUID, `grille.identifiant`, unique) et son ORIGINE
+(`derivee_de_identifiant`, `derivee_de_nom`, `derivee_de_version`, NULL pour l'existant). La
+vraie base de la v40 n'existe pas encore : elle se fabrique pour la migration suivante.
 - **La v39 détruit le vocabulaire d'hier et recrée l'index plein texte** (ANN-7, le
   basculement ; `database._basculer_le_vocabulaire`) : les annotations sans note, puis les sept
   tables (`TABLES_DU_VOCABULAIRE_D_HIER`, enfants d'abord, clés actives), puis `recherche`

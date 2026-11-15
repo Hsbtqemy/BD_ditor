@@ -32,7 +32,8 @@ def _q(db_path, sql, p=()):
 def _grille_de_travail(db_path, projet_id):
     """La grille de travail du projet, avec sa version et son activation ; None sinon."""
     lignes = _q(db_path,
-                "SELECT g.id, g.ouverte, g.cree_par, v.numero, v.etat, v.cible, "
+                "SELECT g.id, g.ouverte, g.cree_par, g.identifiant, g.derivee_de_identifiant, "
+                "       v.numero, v.etat, v.cible, "
                 "       v.importee_par AS par, "
                 "       (SELECT COUNT(*) FROM grille_entree e WHERE e.version_id = v.id) AS n, "
                 "       pg.version_id IS NOT NULL AS active "
@@ -50,6 +51,9 @@ def _attendue(g):
         1, 1, grilles.ETAT_VIVANTE, 0, 1), g
     assert set(grilles.cibles_de(g["cible"])) == set(grilles.CIBLES_ZONE), g["cible"]
     assert g["cree_par"] is None and g["par"] is None, g
+    # Son identifiant, qui survit à l'instance (v40), et aucune origine.
+    assert grilles.identifiant_lu(g["identifiant"]) == g["identifiant"], g
+    assert g["derivee_de_identifiant"] is None, g
 
 
 def test_un_projet_cree_par_la_route_nait_avec_sa_grille_de_travail(client, db_path):

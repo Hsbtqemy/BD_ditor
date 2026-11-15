@@ -105,8 +105,10 @@ def _get_version(conn, g: dict, numero: int) -> dict:
 
 def _vue_grille(conn, g: dict) -> dict:
     """Une grille telle que la fiche d'un projet la lit : ses versions (les brouillons pour
-    qui gère seulement), ses activations dans son projet. Aucun login : qui a importé ou
-    publié ne sort pas (option la plus fermée ; le journal le garde)."""
+    qui gère seulement), ses activations dans son projet, et d'où elle vient (`derivee_de`,
+    v40 : le nom et la version de la grille dont elle est dérivée, ou None ; l'identifiant
+    ne sort pas). Aucun login : qui a importé ou publié ne sort pas (option la plus fermée ;
+    le journal le garde)."""
     versions = [{"numero": v["numero"], "etat": v["etat"],
                  "porte_sur": list(grilles.cibles_de(v["cible"])), "note": v["note"],
                  "publiee_le": v["publiee_le"], "importee_le": v["importee_le"]}
@@ -116,7 +118,7 @@ def _vue_grille(conn, g: dict) -> dict:
     act = grilles.activation(conn, g["projet_id"], g["id"])
     vue = {"id": g["id"], "nom": g["nom"], "projet_id": g["projet_id"],
            "ouverte": bool(g["ouverte"]), "travail": bool(g["travail"]),
-           "retiree_le": g["retiree_le"],
+           "retiree_le": g["retiree_le"], "derivee_de": grilles.origine(g),
            "gerable": g["gerable"], "versions": versions,
            "active": {"numero": act["numero"], "etat": act["etat"]} if act else None}
     if g["gerable"]:
@@ -190,7 +192,7 @@ def plan_de_version(grille_id: int, numero: int, emplois: bool = Query(False),
     g = _get_grille(conn, portee, grille_id)
     v = _get_version(conn, g, numero)
     corps = {"grille": {"id": g["id"], "nom": g["nom"], "ouverte": bool(g["ouverte"]),
-                        "travail": bool(g["travail"])},
+                        "travail": bool(g["travail"]), "derivee_de": grilles.origine(g)},
              **_avec_remaniable(conn, portee, g, v, grilles.plan(conn, v["id"]))}
     if emplois and g["gerable"]:
         corps["emplois"] = grille_ecriture.emplois(conn, g, v, grilles.contenu(conn, v["id"]))
@@ -982,9 +984,10 @@ def creer_grille(projet_id: int, payload: GrilleIn, conn: sqlite3.Connection = D
         porte_sur = _norme("porte_sur", payload.porte_sur)
     except grille_import.Refus as exc:
         raise _refus_http(exc)
-    gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte, cree_par) "
-                       "VALUES (?, ?, ?, ?)", (projet_id, nom, int(payload.ouverte),
-                                               portee.utilisateur)).lastrowid
+    gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte, cree_par, identifiant) "
+                       "VALUES (?, ?, ?, ?, ?)", (projet_id, nom, int(payload.ouverte),
+                                                  portee.utilisateur,
+                                                  grilles.identifiant_neuf())).lastrowid
     etat = grilles.ETAT_VIVANTE if payload.ouverte else grilles.ETAT_BROUILLON
     grille_import.ecrire_version(conn, gid, {"cible": porte_sur, "rubriques": {},
                                              "entrees": {}, "listes": {}},

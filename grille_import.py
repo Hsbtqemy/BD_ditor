@@ -739,6 +739,74 @@ def declarer(tableur: dict, *, nom=None, ouverte=None, porte_sur=None, note=None
     return decl, anomalies, avert
 
 
+def origine_en_mots(origine: dict | None) -> str:
+    """« dérivée de « Signaux », v2 » ; sans nom ni version, ce qui en reste. Le pendant de
+    `BDGrillesProjet.origineEnMots`, pour l'outil."""
+    if not origine:
+        return ""
+    texte = (f"dérivée de « {origine['nom']} »" if origine.get("nom")
+             else "dérivée d'une autre grille")
+    return texte + (f", v{origine['version']}" if origine.get("version") else "")
+
+
+def origine_du_classeur(conn: sqlite3.Connection, tableur: dict, *,
+                        grille=None) -> tuple[dict | None, list]:
+    """D'où vient le classeur (v40, ANN-7, « Une grille dérivée dit d'où elle vient », Hugo,
+    2026-11-15) : la grille dont il a été tiré, telle que les dernières lignes de sa feuille
+    « 1. La grille » la disent (`grille_tableur.CHAMPS_ORIGINE`) — son identifiant, son nom,
+    la version tirée. Rend (`{identifiant, nom, version}` | None, avertissements).
+
+    - Deux CSV, ou un classeur sans ces lignes (rempli à la main) : rien, sans rien dire.
+    - Un identifiant qui ne se lit pas : rien, et « À savoir » le dit.
+    - `grille`, la grille d'une version SUIVANTE : rien ne s'écrit — l'origine d'une grille
+      s'écrit à sa naissance et ne change plus. Le classeur tiré d'elle-même se tait ; tiré
+      d'une AUTRE, « À savoir » le dit.
+    - Une grille neuve : l'origine, de cette instance ou d'une autre. Le nom manquant se lit
+      sur la grille de l'instance qui porte cet identifiant, s'il y en a une."""
+    feuille = tableur.get("grille") or {}
+    ou = {"fichier": tableur.get("nom_grille") or grille_tableur.FEUILLE_GRILLE}
+
+    def lu(champ):
+        valeur, ligne = feuille.get(champ, (None, None))
+        return propre(valeur), {**ou, "ligne": ligne}
+
+    brut, ou_id = lu("origine_identifiant")
+    if brut is None:
+        return None, []
+    identifiant = grilles.identifiant_lu(brut)
+    if identifiant is None:
+        return None, [_faute("origine_illisible",
+                             f"l'identifiant de la grille d'origine (« {brut} ») ne se lit "
+                             "pas : la grille ne dira pas d'où elle vient",
+                             colonne="origine_identifiant", **ou_id)]
+    nom, _ = lu("origine_nom")
+    texte, ou_v = lu("origine_version")
+    notes = []
+    version = None
+    if texte is not None:
+        chiffres = texte.lower().removeprefix("v").strip()
+        version = int(chiffres) if chiffres.isdigit() and int(chiffres) > 0 else None
+        if version is None:
+            notes.append(_faute("origine_version_illisible",
+                                f"la version tirée (« {texte} ») ne se lit pas : la grille "
+                                "dira d'où elle vient, sans sa version",
+                                colonne="origine_version", **ou_v))
+    if grille is not None:
+        if identifiant != grille["identifiant"]:
+            source = f"« {nom} »" if nom else "une autre grille"
+            notes.append(_faute(
+                "origine_ignoree",
+                f"le classeur a été tiré de {source} : l'origine d'une grille s'écrit à "
+                f"sa naissance, celle de « {grille['nom']} » ne change pas",
+                colonne="origine_identifiant", **ou_id))
+        return None, notes
+    if nom is None:
+        source = conn.execute("SELECT nom FROM grille WHERE identifiant = ?",
+                              (identifiant,)).fetchone()
+        nom = source["nom"] if source is not None else None
+    return {"identifiant": identifiant, "nom": nom, "version": version}, notes
+
+
 # --------------------------------------------------------------------------- #
 # Le bilan
 # --------------------------------------------------------------------------- #
@@ -1490,6 +1558,8 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
             raise Refus(409, "Cette grille est retirée : on ne lui importe plus de version.")
     decl, fautes_decl, notes_decl = declarer(tableur, nom=nom, ouverte=ouverte,
                                              porte_sur=porte_sur, note=note, grille=g)
+    origine, notes_origine = origine_du_classeur(conn, tableur, grille=g)
+    notes_decl += notes_origine
     ouverte, nom, note = decl["ouverte"], decl["nom"], decl["note"]
     if g is None:
         if not nom and not fautes_decl:
@@ -1566,6 +1636,8 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
                  if g is not None else None)
     resultat = {"grille_id": g["id"] if g is not None else None, "version": None,
                 "ecrit": False, "aucun_changement": False, "bilan": b,
+                "derivee_de": ({"nom": origine["nom"], "version": origine["version"]}
+                               if origine else None),
                 "va_naitre": va_naitre(avant, c), "a_repondre": a_repondre,
                 "compare_a": reference["numero"] if reference is not None else None,
                 "a_savoir": a_savoir, **commun}
@@ -1594,12 +1666,19 @@ def importer(conn: sqlite3.Connection, *, projet_id: int, flux_entrees=None, flu
                                    "remplace": True}
         return resultat
     if g is None:
-        gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte, cree_par) "
-                           "VALUES (?, ?, ?, ?)", (projet_id, nom, int(bool(ouverte)),
-                                                   par)).lastrowid
+        # Son identifiant est NEUF, toujours : celui que le classeur porte est celui de la
+        # grille dont il a été tiré, que la neuve nomme comme son origine (v40).
+        o = origine or {}
+        gid = conn.execute(
+            "INSERT INTO grille (projet_id, nom, ouverte, cree_par, identifiant, "
+            "derivee_de_identifiant, derivee_de_nom, derivee_de_version) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (projet_id, nom, int(bool(ouverte)), par, grilles.identifiant_neuf(),
+             o.get("identifiant"), o.get("nom"), o.get("version"))).lastrowid
         journal.journaliser(conn, "creation", "grille", gid,
                             apres={"projet_id": projet_id, "nom": nom,
-                                   "ouverte": bool(ouverte)})
+                                   "ouverte": bool(ouverte),
+                                   **({"derivee_de": origine} if origine else {})})
         resultat["grille_id"] = gid
     else:
         gid = g["id"]
@@ -1714,8 +1793,9 @@ def installer_grille_de_travail(conn: sqlite3.Connection, projet_id: int, *,
         n += 1
         nom = f"{GRILLE_DE_TRAVAIL_NOM} {n}"
     cible = grilles.ecrire_cibles(grilles.CIBLES_ZONE)
-    gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte, travail) "
-                       "VALUES (?, ?, 1, 1)", (projet_id, nom)).lastrowid
+    gid = conn.execute("INSERT INTO grille (projet_id, nom, ouverte, travail, identifiant) "
+                       "VALUES (?, ?, 1, 1, ?)",
+                       (projet_id, nom, grilles.identifiant_neuf())).lastrowid
     ecrire_version(conn, gid, {"cible": cible, "rubriques": {}, "entrees": {}, "listes": {}},
                    numero=1, etat=grilles.ETAT_VIVANTE, note=GRILLE_DE_TRAVAIL_NOTE, par=None)
     journal.journaliser(conn, "creation", "grille", gid,
@@ -1896,8 +1976,11 @@ def classeur(conn: sqlite3.Connection, version_id: int) -> bytes:
     déclaration, ses entrées et ses listes EN MOTS, identifiants compris, et l'exemple.
     Relu par l'import, il rend la même empreinte."""
     v = grilles.version_par_id(conn, version_id)
-    g = conn.execute("SELECT nom, ouverte FROM grille WHERE id = ?",
+    g = conn.execute("SELECT nom, ouverte, identifiant FROM grille WHERE id = ?",
                      (v["grille_id"],)).fetchone()
+    # D'où vient le classeur (v40) : réimporté comme grille neuve, il en fera une dérivée.
+    origine = ({"identifiant": g["identifiant"], "nom": g["nom"], "version": v["numero"]}
+               if g["identifiant"] else None)
     return grille_tableur.ecrire_classeur(
         grilles.contenu(conn, version_id), nom=g["nom"], ouverte=bool(g["ouverte"]),
-        porte_sur=v["cible"], note=v["note"], exemple=contenu_d_exemple())
+        porte_sur=v["cible"], note=v["note"], exemple=contenu_d_exemple(), origine=origine)

@@ -61,6 +61,16 @@
     return enumerer((sortes || []).map((s) => CIBLES_MOTS[s] || s));
   }
 
+  /* D'où vient une grille (v40) : `derivee_de` de `_vue_grille` ou du bilan d'un import,
+     `{nom, version}` ou null → « dérivée de « Signaux », v2 » ; sans nom ni version, ce
+     qui en reste ; "" pour une grille qui ne vient d'aucune autre. Le pendant de
+     `grille_import.origine_en_mots`. */
+  function origineEnMots(o) {
+    if (!o) return "";
+    const texte = o.nom ? `dérivée de « ${o.nom} »` : "dérivée d'une autre grille";
+    return o.version ? `${texte}, v${o.version}` : texte;
+  }
+
   /* --- 1. L'état d'une grille, et ce qui s'y offre ------------------------------------ */
 
   function derniere(versions, etat) {
@@ -71,6 +81,7 @@
   /* `g` : une grille telle que `_vue_grille` la rend. Rend :
      - `etiquette` : son état en quelques mots (« v1 publiée · active », « ouverte · pas
        active », « brouillon v2 », « retirée ») ;
+     - `origine` : d'où elle vient (`origineEnMots`), "" si de nulle part ;
      - `porteSur` : ce sur quoi porte sa version de référence, en mots ;
      - `telecharger` : les versions dont on offre le classeur — la référence (la vivante, ou
        la dernière publiée) et le brouillon ;
@@ -126,6 +137,7 @@
     }
     return {
       etiquette,
+      origine: origineEnMots(g.derivee_de),
       porteSur: porteSurEnMots(((reference || brouillon || {}).porte_sur) || []),
       telecharger,
       reimporter: !retiree,
@@ -278,13 +290,15 @@
 
   /* La réponse de la route d'import, en ce que l'écran dessine. `statut` : le code HTTP ;
      `corps` : le JSON rendu (200), ou le `detail` d'un refus (un objet structuré, ou une
-     phrase). Rend { etat, phrase, fautes, aSavoir, changements, vaNaitre, aRepondre,
-     declaration, compareA, ecrit, grilleId }. */
+     phrase). Rend { etat, phrase, fautes, aSavoir, changements, vaNaitre, deriveeDe,
+     aRepondre, declaration, compareA, ecrit, grilleId } — `deriveeDe` : d'où viendra la
+     grille neuve, en mots (`origineEnMots`), "" sinon. */
   function lireReponse(statut, corps, opts) {
     const o = opts || {};
     const classeur = o.classeur !== false;
     const vue = { etat: "refuse", phrase: "", fautes: [], aSavoir: [], changements: [],
-                  vaNaitre: "", aRepondre: [], declaration: null, compareA: null,
+                  vaNaitre: "", deriveeDe: "", aRepondre: [], declaration: null,
+                  compareA: null,
                   ecrit: false, grilleId: null };
     if (typeof corps === "string" || corps == null) {
       vue.phrase = corps ? point(corps) : "Le fichier n'a pas pu être vérifié.";
@@ -298,6 +312,7 @@
     vue.changements = statut < 400 || vue.etat === "a_repondre"
       ? changementsEnMots(corps.bilan, o.noms) : [];
     vue.vaNaitre = vaNaitreEnMots(corps.va_naitre);
+    vue.deriveeDe = origineEnMots(corps.derivee_de);
     vue.aRepondre = (corps.a_repondre || []).map((a) => ({
       cle: a.cle, libelle: a.libelle, releves: a.releves || 0,
       choix: a.choix || [], fusionnerDans: a.fusionner_dans || [] }));
@@ -385,7 +400,8 @@
   }
 
   return {
-    CIBLES_MOTS, TYPE_CLASSEUR, pluriel, porteSurEnMots, etat, ouEnMots, fauteEnMots,
+    CIBLES_MOTS, TYPE_CLASSEUR, pluriel, porteSurEnMots, origineEnMots, etat, ouEnMots,
+    fauteEnMots,
     nomsDuPlan, changementsEnMots, vaNaitreEnMots, lireReponse, choixDeReponse, importable,
     reponsesPourEnvoi, declarationEnMots, estUnClasseur, confirmation,
   };

@@ -146,6 +146,22 @@ CHAMPS_GRILLE = (
 )
 TITRES_GRILLE = {c: t for c, t, _ in CHAMPS_GRILLE}
 
+# D'où vient le classeur (v40, ANN-7, « Une grille dérivée dit d'où elle vient », Hugo,
+# 2026-11-15) : la grille dont il a été tiré — son nom, la version tirée, son IDENTIFIANT, qui
+# survit à l'instance —, en bas de la feuille « 1. La grille », sur fond gris comme les
+# identifiants des entrées. Facultatives : un classeur rempli à la main sans elles reste
+# valide, et ne dit d'où vient rien. Réimporté comme une grille NEUVE, il fait d'elle une
+# grille dérivée de celle-ci (`grille_import.importer`).
+TITRE_ORIGINE = "D'où vient ce classeur"
+_AIDE_ORIGINE = ("Rempli par BéDéditeur. Ne le changez pas : importé comme une grille neuve, "
+                 "ce classeur dira d'où elle vient.")
+CHAMPS_ORIGINE = (
+    ("origine_nom", "Tiré de la grille", _AIDE_ORIGINE),
+    ("origine_version", "Version tirée", _AIDE_ORIGINE),
+    ("origine_identifiant", "Identifiant de la grille", _AIDE_ORIGINE),
+)
+TITRES_GRILLE.update({c: t for c, t, _ in CHAMPS_ORIGINE})
+
 
 def norme(texte) -> str:
     """Un titre ou une valeur ramené à sa forme de COMPARAISON : sans accents, en
@@ -168,8 +184,8 @@ def _alias(colonnes) -> dict:
 
 _ALIAS_ENTREES = _alias(COLONNES_ENTREES)
 _ALIAS_LISTES = _alias(COLONNES_LISTES)
-_ALIAS_GRILLE = {**_alias(CHAMPS_GRILLE), "nom": "nom", "porte sur": "porte_sur",
-                 "ouverte": "ouverte", "note": "note"}
+_ALIAS_GRILLE = {**_alias(CHAMPS_GRILLE), **_alias(CHAMPS_ORIGINE), "nom": "nom",
+                 "porte sur": "porte_sur", "ouverte": "ouverte", "note": "note"}
 
 
 def colonne_de(titre, *, listes: bool = False) -> str | None:
@@ -576,13 +592,16 @@ def _feuille_tabulaire(ws, colonnes, rangees_, st, *, aides: bool):
 
 
 def ecrire_classeur(contenu: dict, *, nom: str, ouverte: bool, porte_sur, note=None,
-                    exemple: dict | None = None) -> bytes:
+                    exemple: dict | None = None, origine: dict | None = None) -> bytes:
     """Le classeur `.xlsx` d'une version : « 1. La grille » (la déclaration), « 2. Les
     entrées », « 3. Listes à cocher », une feuille d'exemple (le modèle fictif, quand on le
     passe) et une feuille cachée des choix. Listes déroulantes sur les questions, commentaire
     sur chaque titre, et une mise en forme conditionnelle qui passe en rouge une case dont
     la réponse n'est pas l'une de celles qu'on attend. Relu par `lire_classeur`, il rend le
-    même contenu (même empreinte)."""
+    même contenu (même empreinte).
+
+    `origine` : `{identifiant, nom, version}` de la grille et de la version tirées (v40) —
+    écrites en bas de « 1. La grille », sur fond gris (`CHAMPS_ORIGINE`) ; rien sans lui."""
     import grilles
     from openpyxl import Workbook
     from openpyxl.formatting.rule import FormulaRule
@@ -646,6 +665,15 @@ def ecrire_classeur(contenu: dict, *, nom: str, ouverte: bool, porte_sur, note=N
             (TITRES["lien"], "Faut-il désigner une autre zone ?")), start=n + 1):
         _poser(g, k, 1, titre)
         _poser(g, k, 2, aide)
+    if origine and origine.get("identifiant"):
+        n += 8                                  # sous les six questions, une ligne vide
+        _poser(g, n, 1, TITRE_ORIGINE).font = st["titre"]
+        for k, (champ, titre, aide) in enumerate(CHAMPS_ORIGINE, start=n + 1):
+            _poser(g, k, 1, titre)
+            valeur = _poser(g, k, 2, origine.get(champ.removeprefix("origine_")))
+            valeur.fill = st["gris"]
+            valeur.alignment = st["haut"]
+            _poser(g, k, 3, aide).alignment = st["haut"]
     g.column_dimensions["A"].width = 26
     g.column_dimensions["B"].width = 30
     g.column_dimensions["C"].width = 70

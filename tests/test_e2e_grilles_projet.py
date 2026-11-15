@@ -244,6 +244,38 @@ def test_le_bilan_se_lit_sans_violation_ni_defilement_de_cote(page, live_server,
         "le bloc « Grilles » fait défiler la page de côté à 320 px"
 
 
+def test_une_grille_derivee_dit_d_ou_elle_vient(page, live_server):
+    """v40 (« Une grille dérivée dit d'où elle vient », Hugo, 2026-11-15) : le classeur tiré
+    d'une grille, importé dans un AUTRE projet, fait une grille neuve que sa ligne dit
+    « dérivée de « Signaux », v1 » — le bilan l'annonce avant d'écrire ; la source, elle,
+    ne dit rien."""
+    base = live_server
+    with _http(base) as c:
+        source_p = c.post("/api/projets", json={"nom": "Étude source"}).json()["id"]
+        arrivee = c.post("/api/projets", json={"nom": "Étude dérivée"}).json()["id"]
+        source = grille_active_vivante(c, projet_id=source_p)["grille_id"]
+        data = c.get(f"/api/grilles/{source}/versions/1/tableur").content
+    _ouvrir(page, base, arrivee)
+    page.get_by_role("button", name="⤒ Importer un classeur…").click()
+    page.set_input_files("#pg-fichier", _fichier("signaux.xlsx", data))
+    page.get_by_role("button", name="Vérifier").click()
+    annonce = page.locator(".pg-bilan .pg-origine")
+    expect(annonce).to_be_visible()
+    expect(annonce).to_have_text("Une grille dérivée de « Signaux », v1.")
+    page.locator("#pg-importer").click()
+    expect(page.locator("#pg-verdict")).to_have_text(
+        "Le fichier est juste, et la grille est importée.")
+    origine = page.locator(".pg-grille", has_text="Signaux").locator(".pg-origine")
+    expect(origine).to_be_visible()
+    expect(origine).to_have_text("dérivée de « Signaux », v1")
+    with _http(base) as c:
+        (g,) = _autres(c.get(f"/api/projets/{arrivee}/grilles").json()["grilles"])
+        assert g["derivee_de"] == {"nom": "Signaux", "version": 1}
+    _ouvrir(page, base, source_p)
+    expect(page.locator(".pg-grille", has_text="Signaux")).to_be_visible()
+    expect(page.locator(".pg-origine")).to_have_count(0)
+
+
 def test_la_grille_de_travail_ne_s_offre_pas_a_desactiver(page, live_server):
     """ANN-7, le mode libre (J2) : la grille de travail ne se désactive pas — le serveur le
     refuse par un 409. « Désactiver » s'y montre ÉTEINT, focalisable, sa raison en infobulle,

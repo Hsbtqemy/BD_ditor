@@ -26,6 +26,7 @@ import pytest
 import database
 import migration_v38
 import migration_v39
+import migration_v40
 import main
 
 BASE_V36 = Path(__file__).resolve().parent / "bases" / "v36-53d258e.sql"
@@ -185,11 +186,12 @@ def test_la_base_migree_a_la_forme_d_une_base_neuve(vraie_v36, tmp_path):
     def forme(db):
         objets = {r["name"]: r["sql"] for r in _sql(
             db, "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL")}
-        # `idx_grille_travail` (v39) se pose dans `_migrate`, après la colonne qu'il lit — une
-        # base faite du seul `SCHEMA_SQL` ne l'a pas (`tests/test_migration_v39.py`).
+        # `idx_grille_travail` (v39) et `idx_grille_identifiant` (v40) se posent dans
+        # `_migrate`, après la colonne qu'ils lisent — une base faite du seul `SCHEMA_SQL` ne
+        # les a pas (`tests/test_migration_v39.py`, `tests/migration_v40.py`).
         neufs = {n: s for n, s in objets.items()
                  if (n in TABLES_V37 or any(f" ON {t}" in s for t in TABLES_V37))
-                 and n != "idx_grille_travail"}
+                 and n not in ("idx_grille_travail", *migration_v40.INDEX_V40)}
         regions = [(c["name"], c["type"], c["notnull"], c["dflt_value"])
                    for c in _sql(db, "PRAGMA table_info(regions)")]
         return neufs, regions

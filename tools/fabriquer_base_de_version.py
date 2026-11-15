@@ -58,7 +58,11 @@ Ce que le parcours pose, et pourquoi :
   tag local, un tag dans un bac à sable, un tag renommé et un fusionné, une annotation qui ne
   porte que des tags —, et des actes annulables en dernier. Depuis la v38, un accès de
   collection ne se donne qu'à qui est du projet de la collection : `_donner_acces` y fait
-  d'abord entrer le principal.
+  d'abord entrer le principal ;
+- à partir de la v39 (`_parcours_v39`, ANN-7) : une grille construite au formulaire, le
+  brouillon v2 d'une grille fermée, une grille née du classeur d'une autre AVANT la v40 (il
+  ne porte rien), une grille supprimée en haut de sa table — avec la grille de travail de
+  chaque projet et celle d'un bac à sable, que le code v39 fait naître.
 
 Le parcours n'emploie que des routes stables depuis la v29, sauf le vocabulaire (tags,
 dimensions, valeurs, attributs, domaines), que la v39 retire : ses appels sont gardés
@@ -285,6 +289,8 @@ def _jouer_le_parcours(main, database, journal) -> dict:
             faits.update(_parcours_v37(c, faits))
         if database.SCHEMA_VERSION >= 38:
             faits.update(_parcours_v38(c, faits))
+        if database.SCHEMA_VERSION >= 39:
+            faits.update(_parcours_v39(c, faits))
     return faits
 
 
@@ -759,6 +765,38 @@ def _parcours_v38(c, faits: dict) -> dict:
             "region_du_bac_taguee": bulle_du_bac}
 
 
+def _parcours_v39(c, faits: dict) -> dict:
+    """Ce qu'une base v39 doit porter pour que la v40 ait de quoi se tromper (ANN-7, « Une
+    grille dérivée dit d'où elle vient » : un IDENTIFIANT pour chaque grille, et l'origine
+    d'une grille dérivée). Les parcours d'avant posent déjà une grille IMPORTÉE (Signaux,
+    v37), la grille de TRAVAIL de chaque projet (née de la v39) et la grille d'un BAC À
+    SABLE ; celui-ci ajoute une grille CONSTRUITE au formulaire, la VERSION SUIVANTE d'une
+    grille fermée, et une grille DÉRIVÉE d'avant la v40 — le classeur de Signaux tiré, puis
+    importé comme grille neuve dans le repli : il ne porte rien, et la v40 ne doit pas lui
+    inventer d'origine. Une grille supprimée, en haut de sa table. Par les routes du code
+    v39."""
+    if _VERSION < 39:
+        return {}
+    etude, repli, signaux = faits["projet_etude"], faits["projet_repli"], faits["grille"]
+    construite = _ok(c.post(f"/api/projets/{etude}/grilles", headers=LEA,
+                            json={"nom": "Construite", "ouverte": False}), 201)["grille_id"]
+    classeur = c.get(f"/api/grilles/{signaux}/versions/1/tableur", headers=LEA)
+    assert classeur.status_code == 200, classeur.text[:300]
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    # La version suivante de Signaux : un brouillon v2, né au formulaire d'une rubrique neuve.
+    _ok(c.post(f"/api/grilles/{signaux}/rubriques", headers=LEA,
+               json={"libelle": "Ajoutée en v2"}), 201)
+    derivee = _ok(c.post(f"/api/projets/{repli}/grilles/import", headers=ADMIN,
+                         files={"fichier": ("signaux.xlsx", classeur.content, xlsx)},
+                         data={"nom": "Signaux du repli", "a_blanc": "false"}),
+                  200)["grille_id"]
+    ephemere = _ok(c.post(f"/api/projets/{etude}/grilles", headers=LEA,
+                          json={"nom": "Éphémère", "ouverte": True}), 201)["grille_id"]
+    _ok(c.delete(f"/api/grilles/{ephemere}", headers=LEA), 204)
+    return {"grille_construite": construite, "grille_derivee_avant_v40": derivee,
+            "grille_supprimee": ephemere}
+
+
 def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict) -> None:
     conn = sqlite3.connect(base)
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -833,6 +871,14 @@ def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict)
         faits["actes_sur_tags"] = dict(conn.execute(
             "SELECT type, COUNT(*) FROM evenement WHERE cible_table = 'tags' "
             "GROUP BY type ORDER BY type").fetchall())
+    if version >= 39:
+        # Les grilles, par nature : ce que la v40 doit toutes identifier.
+        faits["grilles_par_nature"] = dict(conn.execute(
+            "SELECT CASE WHEN g.travail = 1 THEN 'travail' WHEN p.bac_a_sable_de IS NOT NULL "
+            "THEN 'bac à sable' ELSE 'autre' END AS n, COUNT(*) FROM grille g "
+            "JOIN projet p ON p.id = g.projet_id GROUP BY n ORDER BY n").fetchall())
+        faits["versions_par_etat"] = dict(conn.execute(
+            "SELECT etat, COUNT(*) FROM grille_version GROUP BY etat ORDER BY etat").fetchall())
     try:
         relatif = sortie.relative_to(RACINE).as_posix()
     except ValueError:

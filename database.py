@@ -19,7 +19,7 @@ from config import DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_REGIO
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 39
+SCHEMA_VERSION = 40
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -631,13 +631,26 @@ CREATE TABLE IF NOT EXISTS grille (
     retiree_le     TEXT,
     cree_par       TEXT,
     date_creation  TEXT DEFAULT (datetime('now')),
-    travail        INTEGER NOT NULL DEFAULT 0
+    travail        INTEGER NOT NULL DEFAULT 0,
     -- v39 (ANN-7, J2, Hugo, 2026-11-06) : 1 pour LA grille de TRAVAIL du projet — ouverte, née
     -- avec lui, où l'on crée une étiquette en la posant
     -- (`grille_import.installer_grille_de_travail`). Au plus une par projet
     -- (`idx_grille_travail`, unique partiel, posé par `_migrate`) ; désignée par ce drapeau et
-    -- non par son nom, qui se change. Commentaire SOUS la dernière colonne (cf. celui de
-    -- `collection.projet_id`).
+    -- non par son nom, qui se change.
+    identifiant             TEXT,
+    derivee_de_identifiant  TEXT,
+    derivee_de_nom          TEXT,
+    derivee_de_version      INTEGER
+    -- v40 (ANN-7, « Une grille dérivée dit d'où elle vient », Hugo, 2026-11-15) :
+    -- `identifiant`, un UUID posé à toute naissance (`grilles.identifiant_neuf`) et par la
+    -- migration pour l'existant : il SURVIT à l'instance — `id` lui est propre —, et le
+    -- classeur d'une version le porte (`grille_tableur.ecrire_classeur`). Unique
+    -- (`idx_grille_identifiant`, posé par `_migrate`) ; NULL ne se lit que sur une ligne posée
+    -- à la main. `derivee_de_*` : l'ORIGINE d'une grille née de l'import d'un classeur tiré
+    -- d'une AUTRE grille — son identifiant, son nom et la version tirée, tels que le classeur
+    -- les dit, de cette instance ou d'une autre ; NULL pour une grille qui ne vient d'aucune.
+    -- Écrite à la naissance, jamais ensuite. Commentaire SOUS la dernière colonne (cf. celui
+    -- de `collection.projet_id`).
 );
 CREATE INDEX IF NOT EXISTS idx_grille_projet ON grille(projet_id);
 
@@ -1869,12 +1882,33 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "grille" in _tables:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_grille_travail "
                      "ON grille(projet_id) WHERE travail = 1")
+    # v39 → v40 (ANN-7, « Une grille dérivée dit d'où elle vient », Hugo, 2026-11-15) :
+    # l'IDENTIFIANT d'une grille, qui survit à l'instance, et son ORIGINE. Les colonnes par
+    # PRÉSENCE, AVANT la grille de travail que la v39 fait naître (elle naît avec le sien) ;
+    # l'identifiant de l'existant par la VERSION, plus bas ; l'index unique après lui.
+    if "grille" in _tables:
+        for colonne, sorte in (("identifiant", "TEXT"), ("derivee_de_identifiant", "TEXT"),
+                               ("derivee_de_nom", "TEXT"), ("derivee_de_version", "INTEGER")):
+            if colonne not in _cols("grille"):
+                conn.execute(f"ALTER TABLE grille ADD COLUMN {colonne} {sorte}")
     # 3. le vocabulaire d'hier quitte la base, l'index plein texte change `tags_concat` pour
     #    `etiquettes`, Ctrl+Z reçoit son plancher ; puis chaque projet reçoit sa grille de
     #    TRAVAIL.
     if version < 39:
         _basculer_le_vocabulaire(conn)
         _donner_les_grilles_de_travail(conn)
+    # v40, suite : chaque grille existante reçoit son identifiant — aucune ne vient d'une
+    # autre que la base sache dire (un classeur tiré avant ne portait rien) —, puis l'index
+    # qui le garde unique.
+    if version < 40 and "grille" in _tables:
+        import uuid
+        for (gid,) in conn.execute("SELECT id FROM grille WHERE identifiant IS NULL "
+                                   "ORDER BY id").fetchall():
+            conn.execute("UPDATE grille SET identifiant = ? WHERE id = ?",
+                         (str(uuid.uuid4()), gid))
+    if "grille" in _tables:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_grille_identifiant "
+                     "ON grille(identifiant)")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 

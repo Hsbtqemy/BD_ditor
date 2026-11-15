@@ -2069,7 +2069,8 @@ function pgListe(p) {
     return `<li class="pg-grille" data-gr-ligne="${g.id}"><div class="pg-tete">
         <span class="pg-nom" tabindex="-1">${esc(g.nom)}</span>
         <span class="pj-puce">${esc(e.etiquette)}</span>${e.porteSur
-          ? ` <span class="muted small">porte sur ${esc(e.porteSur)}</span>` : ""}</div>
+          ? ` <span class="muted small">porte sur ${esc(e.porteSur)}</span>` : ""}${e.origine
+          ? ` <span class="muted small pg-origine">${esc(e.origine)}</span>` : ""}</div>
       <div class="pg-gestes">${gestes}</div>${confirme}${confirmeFin}</li>`;
   }).join("")}</ul>`;
 }
@@ -2143,8 +2144,10 @@ function pgBilan() {
         ? `<span class="muted small">${esc(f.ou)} :</span> ` : ""}${esc(f.quoi)}${f.faire
         ? ` <span class="muted small">→ ${esc(f.faire)}</span>` : ""}</li>`).join("")}</ul>
       </section>` : "";
-  const nait = !imp.grilleId && v.vaNaitre && v.etat !== "refuse"
-    ? `<section class="pg-bilan-s">${titre("Ce qui va naître")}<p>${esc(v.vaNaitre)}</p></section>` : "";
+  const nait = !imp.grilleId && (v.vaNaitre || v.deriveeDe) && v.etat !== "refuse"
+    ? `<section class="pg-bilan-s">${titre("Ce qui va naître")}${v.vaNaitre
+        ? `<p>${esc(v.vaNaitre)}</p>` : ""}${v.deriveeDe
+        ? `<p class="pg-origine">Une grille ${esc(v.deriveeDe)}.</p>` : ""}</section>` : "";
   const im = B.importable(v, imp.reponses);
   const pied = v.etat === "importe"
     ? `<button type="button" class="ghost small" data-gr-import-fermer="1">Fermer</button>`

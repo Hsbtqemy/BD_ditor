@@ -21,6 +21,7 @@ import hashlib
 import json
 import sqlite3
 import unicodedata
+import uuid
 
 # Les trois FORMES d'une entrée (note §3) — et ce que chacune COMPTE (cadrage R2, tranché le
 # 2026-10-22 : « le modèle ne change pas ») : une entrée SIMPLE est posée ou non ; une
@@ -147,6 +148,34 @@ def type_convient(type_region: str, cibles) -> bool:
     if sorte == "zone":
         return type_region in cibles
     return False
+
+
+# --------------------------------------------------------------------------- #
+# L'identifiant d'une grille, et son origine (v40)
+# --------------------------------------------------------------------------- #
+def identifiant_neuf() -> str:
+    """L'IDENTIFIANT d'une grille qui naît (v40, ANN-7, « Une grille dérivée dit d'où elle
+    vient », Hugo, 2026-11-15) : un UUID, qui survit à l'instance là où `grille.id` lui est
+    propre. Toute naissance en reçoit un neuf — import, formulaire, grille de travail, grille
+    d'un bac à sable — ; il n'est jamais recopié d'un classeur."""
+    return str(uuid.uuid4())
+
+
+def identifiant_lu(valeur) -> str | None:
+    """Un identifiant de grille tel qu'un classeur le dit, sous sa forme canonique (un UUID
+    en minuscules) ; None s'il ne se lit pas comme tel."""
+    try:
+        return str(uuid.UUID(str(valeur).strip()))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def origine(g) -> dict | None:
+    """L'ORIGINE d'une grille (sa ligne) : `{nom, version}` de la grille dont elle est
+    dérivée, ou None. L'identifiant de la source ne sort pas : il ne dit rien à l'écran."""
+    if g is None or not g["derivee_de_identifiant"]:
+        return None
+    return {"nom": g["derivee_de_nom"], "version": g["derivee_de_version"]}
 
 
 # --------------------------------------------------------------------------- #

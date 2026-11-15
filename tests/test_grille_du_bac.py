@@ -29,6 +29,7 @@ import comptes
 import config
 import database
 import grille_import
+import grilles
 import socle
 from conftest import REPO_ROOT
 from grilles_decor import MODELE, MODELE_LISTES, flux, importer, ok
@@ -126,6 +127,11 @@ def test_il_nait_avec_une_grille_publiee_active_et_a_lui(client, jeu):
                     "WHERE v.grille_id = ?", (g["id"],))) == len(attendu["entrees"]) > 5
     ligne = _sql("SELECT projet_id, cree_par FROM grille WHERE id = ?", (g["id"],))[0]
     assert ligne == {"projet_id": bac["id"], "cree_par": None}, "elle n'est à personne"
+    # Son identifiant (v40), neuf, et aucune origine : elle ne vient d'aucun classeur.
+    ident = _sql("SELECT identifiant, derivee_de_identifiant FROM grille WHERE id = ?",
+                 (g["id"],))[0]
+    assert grilles.identifiant_lu(ident["identifiant"]) == ident["identifiant"]
+    assert ident["derivee_de_identifiant"] is None
 
 
 def test_chaque_bac_a_sable_a_la_sienne(client, jeu):

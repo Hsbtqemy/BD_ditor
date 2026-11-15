@@ -39,10 +39,17 @@ existent.
 
 | Feuille | Ce qu'elle porte |
 |---|---|
-| « 1. La grille » | la déclaration : en colonne A le libellé, en colonne B la réponse — « Nom de la grille », « Fermée ou ouverte » (`fermée` · `ouverte`), « Porte d'ordinaire sur », « Note de version » |
+| « 1. La grille » | la déclaration : en colonne A le libellé, en colonne B la réponse — « Nom de la grille », « Fermée ou ouverte » (`fermée` · `ouverte`), « Porte d'ordinaire sur », « Note de version » ; en bas, sur fond gris, « D'où vient ce classeur » — « Tiré de la grille », « Version tirée », « Identifiant de la grille » (v40), remplis par BéDéditeur |
 | « 2. Les entrées » | les entrées et leurs variantes (ci-dessous) |
 | « 3. Listes à cocher » | les listes de qualificatifs : « Liste », « Case », « Définition (au survol) » |
 | « Exemple » | le modèle fictif rempli ; l'import ne la lit pas |
+
+Les trois lignes de l'origine sont facultatives : un classeur rempli à la main sans elles est
+valide. Importé comme grille NEUVE, un classeur qui les porte fait d'elle une grille DÉRIVÉE
+de celle dont il a été tiré — elle reçoit son propre identifiant, et se lit « dérivée de
+« … », vN » dans la fiche de son projet ; le bilan l'annonce dans « Ce qui va naître ». Une
+version SUIVANTE n'écrit rien (l'origine s'écrit à la naissance), et « À savoir » le dit si le
+classeur a été tiré d'une autre grille. Deux CSV ne portent aucune origine.
 
 Une feuille se reconnaît à un mot de son nom (« entrées », « liste », « grille ») ; une
 feuille « Exemple… » et les feuilles inconnues sont ignorées. Une feuille cachée, « Choix »,

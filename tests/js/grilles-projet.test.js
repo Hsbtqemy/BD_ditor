@@ -279,3 +279,26 @@ test("la confirmation dit ce qui part et ce qui reste", () => {
   const g1 = { ...g, releves: 1 };
   assert.match(G.confirmation(g1, G.etat(g1), "retirer").texte, /1 relevé reste lisible\./);
 });
+
+/* --- D'où vient une grille (v40) ------------------------------------------------------ */
+
+test("une grille dérivée dit d'où elle vient ; une autre ne dit rien", () => {
+  const g = { ouverte: false, retiree_le: null, versions: [v(1, "brouillon")], active: null };
+  assert.equal(G.etat({ ...g, derivee_de: { nom: "Signaux", version: 2 } }).origine,
+               "dérivée de « Signaux », v2");
+  assert.equal(G.etat({ ...g, derivee_de: null }).origine, "");
+  assert.equal(G.etat(g).origine, "");                  // une réponse d'avant la v40
+  assert.equal(G.origineEnMots({ nom: "Signaux", version: null }), "dérivée de « Signaux »");
+  assert.equal(G.origineEnMots({ nom: null, version: 3 }), "dérivée d'une autre grille, v3");
+});
+
+test("le bilan d'un import dit d'où viendra la grille neuve", () => {
+  const corps = { verdict: { etat: "importable", phrase: "Le fichier est juste." },
+                  a_savoir: [], va_naitre: { rubriques: 1, entrees: 2 }, a_repondre: [],
+                  bilan: { nes: [], renommes: [], retouches: [], deplaces: [], changes: [],
+                           disparus: [] }, grille_id: null, ecrit: false };
+  assert.equal(G.lireReponse(200, { ...corps, derivee_de: { nom: "Signaux", version: 1 } })
+    .deriveeDe, "dérivée de « Signaux », v1");
+  assert.equal(G.lireReponse(200, { ...corps, derivee_de: null }).deriveeDe, "");
+  assert.equal(G.lireReponse(422, "Le fichier est illisible.").deriveeDe, "");
+});

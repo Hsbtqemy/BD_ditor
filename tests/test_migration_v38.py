@@ -24,6 +24,7 @@ import pytest
 import database
 import main
 import migration_v39
+import migration_v40
 
 BASE_V37 = Path(__file__).resolve().parent / "bases" / "v37-f6f53ed.sql"
 # Toutes les tables qui portent des lignes, sauf celles que la v38 change : écrites ICI À LA
@@ -101,7 +102,8 @@ def _membres(db):
 
 
 def _lignes(db, t, sans=()):
-    sans = (*sans, *migration_v39.COLONNES_V39.get(t, ()))
+    sans = (*sans, *migration_v39.COLONNES_V39.get(t, ()),
+            *migration_v40.COLONNES_V40.get(t, ()))
     return sorted(json.dumps({k: v for k, v in r.items() if k not in sans}, sort_keys=True,
                              ensure_ascii=False) for r in _sql(db, f'SELECT * FROM "{t}"'))
 
