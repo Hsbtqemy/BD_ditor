@@ -1047,8 +1047,7 @@ function bandeauDuContexte(cf) {
     : cf.lieu === "ocr_texte" ? "Votre transcription n'est pas enregistrée : elle reste dans le Contexte."
     : "Votre note n'est pas enregistrée : elle reste dans le Contexte.";
   const version = lien ? BDConflit.nomPersonnage(c.personnage, cf.lieu)
-    : c.valeur_actuelle === null || c.valeur_actuelle === undefined || c.valeur_actuelle === ""
-      ? "—" : String(c.valeur_actuelle);
+    : BDConflit.valeurEnregistree(c.valeur_actuelle);
   // Le bandeau suit d'une zone à l'autre : ailleurs, il dit où la saisie attend.
   const ailleurs = cf.regionId === (zoneCourante() || {}).id ? null : laZoneDe(cf.regionId);
   return [
@@ -3247,8 +3246,8 @@ function bandeau() {
     const c = cf.detail.conflit;
     const actuelle = c.valeur_actuelle;
     const nomDe = (k) => { const x = (planDe(cf.g) || { entrees: [] }).entrees.find((y) => y.cle === k); return x ? x.libelle : k; };
-    const version = Array.isArray(actuelle) ? actuelle.map(nomDe).join(", ")
-      : actuelle === null || actuelle === undefined || actuelle === "" ? "—" : String(actuelle);
+    const version = Array.isArray(actuelle) && actuelle.length ? actuelle.map(nomDe).join(", ")
+      : BDConflit.valeurEnregistree(Array.isArray(actuelle) ? [] : actuelle);
     lignes.push(el("p", { classe: "an-bandeau-titre", id: "an-cf-titre" },
                    el("span", { "aria-hidden": "true", texte: "⚠ " }),
                    BDConflit.titreConflit(c)));
@@ -3271,7 +3270,7 @@ function bandeau() {
     } else if (c.champ === "mots") {
       version = S.mots ? `« ${A.texteDuPassage(S.mots.mots, actuelle || [], S.mots.texte)} »` : "un autre passage";
     } else {
-      version = actuelle === null || actuelle === undefined || actuelle === "" ? "—" : String(actuelle);
+      version = BDConflit.valeurEnregistree(actuelle);
     }
     lignes.push(el("p", { classe: "an-bandeau-titre", id: "an-cf-titre" },
                    el("span", { "aria-hidden": "true", texte: "⚠ " }),

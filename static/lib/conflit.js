@@ -167,7 +167,18 @@
       : "Votre choix n'est pas enregistré.";
   }
 
+  /* ANN-7 (Hugo, 2026-11-15) — la valeur enregistrée d'un bandeau, quand l'autre l'a VIDÉE :
+     « aucune », en mots. « — » se lit comme une valeur (la règle du 2026-11-11). Une liste
+     vide est vidée aussi. */
+  const AUCUNE = "aucune";
+  function valeurEnregistree(v) {
+    if (v === null || v === undefined || v === "") return AUCUNE;
+    if (Array.isArray(v)) return v.length ? v.join(" · ") : AUCUNE;
+    if (typeof v === "boolean") return v ? "oui" : "non";
+    return String(v);
+  }
+
   return { GESTES, heure, quand, parQui, titreConflit, messageNonEnregistre,
            messageSuppression, messageAnnulationRefusee, nomPersonnage,
-           texteLienNonEnregistre };
+           texteLienNonEnregistre, valeurEnregistree };
 });

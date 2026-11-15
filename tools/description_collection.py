@@ -75,6 +75,14 @@ def _pct(n, d):
     return round(100 * n / d, 1) if d else None
 
 
+def _pct_texte(n, d) -> str:
+    """Le pourcentage d'un LIBELLÉ, à la française : « (40,0 %) », virgule et espace
+    insécable (Hugo, 2026-11-15, ANN-7) — le libellé est du texte, que l'écrivain des CSV
+    laisse tel quel. Rien sans dénominateur : « (None%) » ne disait rien."""
+    p = _pct(n, d)
+    return "" if p is None else f" ({sortie_csv.nombre(p, 1)}\u00a0%)"
+
+
 def _fmt(d: dict) -> str:
     """Distribution → 'case:12; bulle:34' (VIDE si rien)."""
     return "; ".join(f"{k}:{v}" for k, v in d.items() if v)
@@ -243,7 +251,7 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                               key=lambda p: (p["taux"] is None, p["taux"], p["retouches"]))}
     # Libellés compacts pour le catalogue CSV (registre « élément de métadonnée »).
     relecture_txt = (f"faite:{rel_tally['faite']}; en_cours:{rel_tally['en_cours']}; "
-                     f"a_faire:{rel_tally['a_faire']} ({_pct(rel_tally['faite'], planches)}%)")
+                     f"a_faire:{rel_tally['a_faire']}{_pct_texte(rel_tally['faite'], planches)}")
     accord_modele_txt = (
         (f"{accord_modele['revus']} relus; "
          + "; ".join(f"{ch}:{accord_modele['champs'][ch]['taux']}" for ch in accord.CHAMPS)
@@ -396,7 +404,7 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
         ("region", "source"): _fmt(sources),
         ("region", "date_creation"): regions,
         ("region", "citation"): "dérivé",
-        ("ocr", "ocr_texte"): f"{txt_ocr}/{txt_tot} ({_pct(txt_ocr, txt_tot)}%)",
+        ("ocr", "ocr_texte"): f"{txt_ocr}/{txt_tot}{_pct_texte(txt_ocr, txt_tot)}",
         ("tokens", "ordre"): tokens,
         ("tokens", "texte"): tokens,
         ("tokens", "lemme"): tokens,

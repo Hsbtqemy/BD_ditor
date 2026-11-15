@@ -907,3 +907,17 @@ def test_gerer_collections_n_ecrit_ni_dans_un_bac_a_sable_ni_dans_le_jeu(isoles,
                             "OR description = 'altérée'").fetchone()[0] == 0
     finally:
         conn.close()
+
+
+def test_les_pourcentages_d_un_libelle_se_lisent_a_la_francaise(corpus, tmp_path):
+    """ANN-7 (Hugo, 2026-11-15) : un libellé compact du catalogue CSV écrit « (0,0 %) »,
+    virgule et espace insécable, jamais « (0.0%) » ; sans dénominateur, rien et non
+    « (None%) »."""
+    sortie = tmp_path / "description.csv"
+    r = _run("description_collection.py", corpus["db"], corpus["data"], "--csv", str(sortie))
+    assert r.returncode == 0, r.stderr
+    texte = sortie.read_text(encoding="utf-8-sig")
+    relecture = next(l for l in texte.splitlines() if "a_faire:" in l)
+    assert "(0,0\u00a0%)" in relecture, relecture
+    assert "%)" not in texte.replace("\u00a0%)", ""), "un pourcentage sans espace insécable"
+    assert "None" not in texte

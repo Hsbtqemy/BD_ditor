@@ -3480,8 +3480,7 @@ function fmConflitHtml() {
   if (!cf) return "";
   const c = cf.detail.conflit;
   const v = c.valeur_actuelle;
-  const version = v === null || v === undefined || v === "" ? "—"
-    : Array.isArray(v) ? (v.join(" · ") || "—") : typeof v === "boolean" ? (v ? "oui" : "non") : String(v);
+  const version = BDConflit.valeurEnregistree(v);
   return `<div class="fm-conflit an-conflit" role="group" aria-labelledby="fm-conflit-titre">
     <p class="an-bandeau-titre" id="fm-conflit-titre" tabindex="-1"><span aria-hidden="true">⚠ </span>${esc(BDConflit.titreConflit(c))}</p>
     <p>Votre saisie n'est pas enregistrée : elle reste dans son champ.</p>

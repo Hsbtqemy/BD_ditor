@@ -142,3 +142,12 @@ test("le formulaire d'une grille nomme ses champs (ANN-7)", () => {
   assert.equal(C.titreConflit({ champ: "libelle", auteur: null }), "Nom modifié ailleurs");
   assert.equal(C.titreConflit({ champ: "ordre", auteur: null }), "Ordre modifié ailleurs");
 });
+
+test("une valeur vidée se dit « aucune », jamais « — » (Hugo, 2026-11-15)", () => {
+  for (const vide of [null, undefined, "", []]) assert.equal(C.valeurEnregistree(vide), "aucune");
+  assert.equal(C.valeurEnregistree("Zed"), "Zed");
+  assert.equal(C.valeurEnregistree(0), "0");
+  assert.equal(C.valeurEnregistree(["mots", "case"]), "mots · case");
+  assert.equal(C.valeurEnregistree(true), "oui");
+  assert.equal(C.valeurEnregistree(false), "non");
+});
