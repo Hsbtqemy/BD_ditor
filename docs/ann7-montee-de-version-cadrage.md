@@ -464,6 +464,8 @@ ouverts pendant.
 | M6 | Avant la maquette, l'écran de la montée : | (a) une confirmation sous la ligne, avec les nombres ; (b) l'outil seul, en ligne de commande ; (c) rien avant la maquette | (a) — le patron de « Publier », accepté « pour l'instant » le 2026-11-04 |
 | M7 | « Passer dans une grille… » : quand ? | (a) dans la foulée, après le livrable des linguistes ; (b) plus tard | (a) — il réemploie la règle de la montée, et coûte alors deux jours |
 
+**Tranché par Hugo le 2026-11-15, les sept comme proposé** : M1 (a), la montée attend ; M2 (a), « fusionner dans… » dès le premier livrable ; M3 (a), une scission se fait en retirant et en écrivant ; M4 (c), seules se rouvrent les passes où la version ajoute à regarder ; M5 (c), on revient en publiant une version qui reprend l'ancienne, puis en montant ; M6 (a), une confirmation sous la ligne avec les nombres ; M7 (a), « Passer dans une grille… » dans la foulée.
+
 **Se tranchent en route**, sans Hugo sauf avis contraire (le plus prudent à chaque fois) : une
 montée vers une version plus RÉCENTE seulement (selon M5) ; le relevé garde une précision ou
 un lien que l'entrée ne demande plus ; `entree_cle` entre dans les valeurs que Ctrl+Z compare ;
