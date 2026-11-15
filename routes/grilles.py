@@ -1366,6 +1366,17 @@ def remettre_entree(grille_id: int, cle: str, conn: sqlite3.Connection = Depends
     return _retrait(conn, portee, grille_id, cle, False)
 
 
+# Le refus de « Fusionner » sur une grille FERMÉE renvoie au geste qui fusionne, la MONTÉE de
+# version (ANN-7) : on retire l'entrée du brouillon, on publie, et « Monter à la version M… »
+# demande alors ce que deviennent ses relevés — la laisser retirée, ou les fusionner dans une
+# autre entrée (M2).
+MOTIF_FUSION_FERMEE = ("Une grille fermée ne fusionne pas dans son brouillon : ses relevés "
+                       "vivent dans leur version publiée, qui ne change plus. On fusionne une "
+                       "entrée retirée au moment de monter la version : retirez-la du "
+                       "brouillon, publiez, puis « Monter à la version… » propose de fusionner "
+                       "ses relevés dans une autre entrée.")
+
+
 @router.post("/api/grilles/{grille_id}/entrees/{cle}/fusion")
 def fusionner_entree(grille_id: int, cle: str, payload: FusionIn,
                      conn: sqlite3.Connection = Depends(db),
@@ -1375,17 +1386,16 @@ def fusionner_entree(grille_id: int, cle: str, payload: FusionIn,
     vers une entrée de même forme, posée de la même manière, de la même liste, qui porte
     ses variantes employées, et sans poser deux fois une entrée « une seule fois »
     (`grille_import._vers_possibles`, `_fusion_en_double` : 409 et la faute). Sur une grille
-    FERMÉE, refusé (409 nommé) : ses relevés vivent dans leur version publiée, que rien ne
-    change ; on y retire l'entrée du brouillon. Sur une entrée que personne n'emploie : rien
+    FERMÉE, refusé (409 nommé, `MOTIF_FUSION_FERMEE`) : ses relevés vivent dans leur version
+    publiée, que rien ne change ; on y retire l'entrée du brouillon, et la fusion se fait en
+    montant la version (`montee`). Sur une entrée que personne n'emploie : rien
     à fusionner, elle se supprime (409 nommé)."""
     def geste(g, v, avant, apres, ref):
         e = apres["entrees"].get(cle)
         if e is None:
             raise _introuvable("Entrée", cle, v)
         if v["etat"] != grilles.ETAT_VIVANTE:
-            raise grille_import.Refus(409, "Une grille fermée ne fusionne pas : ses relevés "
-                                           "vivent dans leur version publiée, qui ne change "
-                                           "plus. Retirez l'entrée du brouillon.")
+            raise grille_import.Refus(409, MOTIF_FUSION_FERMEE)
         if not _employee(conn, g, cle):
             raise grille_import.Refus(409, f"Aucun relevé ne porte « {e['libelle']} » : il "
                                            "n'y a rien à fusionner. Supprimez-la.")

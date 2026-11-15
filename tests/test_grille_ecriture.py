@@ -676,6 +676,9 @@ def test_dans_le_brouillon_d_une_fermee_une_entree_employee_se_retire_et_ne_fusi
     r = client.post(f"/api/grilles/{gid}/entrees/cri/fusion", headers=LEA,
                     json={"dans": "echo"})
     assert r.status_code == 409 and "fermée" in r.json()["detail"]
+    # Le refus renvoie au geste qui fusionne une entrée retirée : la montée de version.
+    assert "monter la version" in r.json()["detail"], r.text
+    assert "Monter à la version" in r.json()["detail"], r.text
     assert _n(db_path, "SELECT COUNT(*) FROM grille_version") == 1     # rien n'est né
     r = ok(client.post(f"/api/grilles/{gid}/entrees/cri/retrait", headers=LEA))
     assert r["version"] == {"numero": 2, "etat": "brouillon"}
