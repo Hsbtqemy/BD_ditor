@@ -398,6 +398,7 @@ Maquette https://claude.ai/artifact/Kq5QsjxMvj3RokM5u6k9z1, version 2, privée :
   l'outil : on écrit aux responsables. Dériver, c'est réexporter le tableur (identifiants
   compris) et le réimporter comme grille de son projet ; les `cle` héritées la gardent
   comparable. La trace de l'origine viendra plus tard, si l'usage la demande
+- [ ] **Une grille dérivée dit d'où elle vient** — attendu : une grille reçoit un identifiant qui survit à l'instance, son classeur le porte avec le numéro de version, et une grille importée d'un classeur tiré d'une autre se lit « dérivée de « … », vN » dans le bloc Grilles de son projet ; un test tire le classeur d'une grille, le réimporte dans un autre projet et lit l'origine. **Voulu par Hugo le 2026-11-15**, qui avance le « plus tard, si l'usage la demande » de la case ci-dessus : sans identifiant, le numéro de grille, propre à l'instance, ne peut pas la dire. À faire avant le premier fork en production — un classeur tiré avant ne porte rien
 - [x] **La suppression suit l'emploi** — attendu : écrit. Une grille que nul autre projet
   n'emploie, son responsable la supprime ; employée ailleurs, elle ne peut que sortir du
   catalogue, et la supprimer se DEMANDE à un administrateur. Le tri de l'administrateur suit la
