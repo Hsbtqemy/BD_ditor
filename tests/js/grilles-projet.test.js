@@ -344,6 +344,11 @@ test("le bilan d'une montée en mots : les causes avec les mots de la page, les 
   assert.match(G.montable(vue, {}).raison, /1 entrée retirée à répondre/);
   assert.deepEqual(G.montable(vue, { echo: "laisser" }), { ok: true, raison: "" });
   assert.deepEqual(G.reponsesDeMontee(vue, { echo: "laisser", autre: "x" }), { echo: "laisser" });
+  // Perdue par la version sans y être retirée : la raison ne la dit pas « retirée ».
+  const absente = G.lireMontee({ ...BILAN, a_repondre: [{ ...BILAN.a_repondre[0], absente: true }] });
+  assert.equal(absente.aRepondre[0].absente, true);
+  assert.match(G.montable(absente, {}).raison, /^1 entrée qui n'est plus dans la version à répondre/);
+  assert.doesNotMatch(G.montable(absente, {}).raison, /retirée/);
 });
 
 test("une montée refusée n'offre pas « Monter », et dit pourquoi", () => {

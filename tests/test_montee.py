@@ -323,9 +323,13 @@ def test_une_version_publiee_qui_perd_ce_qu_emploient_des_releves_le_dit_a_la_mo
         ("variante", "onomatopee/bang", 1)]
     assert sorted((c["cause"], c["n"]) for c in a["causes"]) == [
         ("case_absente", 1), ("entree_absente", 1), ("variante_absente", 1)]
-    assert [(x["cle"], x["releves"], x["choix"]) for x in a["a_repondre"]] == [
-        ("cri", 1, ["laisser", "fusionner"])]
-    assert monter(client, decor, vu=a["vu"], attendu=409)["detail"]["message"]
+    assert [(x["cle"], x["releves"], x["choix"], x["absente"]) for x in a["a_repondre"]] == [
+        ("cri", 1, ["laisser", "fusionner"], True)]
+    # Perdue sans être retirée : la phrase ne la dit pas « retirée » (vu le 2026-11-15).
+    assert "1 entrée absente de la version 2 attend votre réponse." in a["verdict"]["phrase"]
+    assert "retirée" not in a["verdict"]["phrase"]
+    refus = monter(client, decor, vu=a["vu"], attendu=409)["detail"]["message"]
+    assert refus.startswith("1 entrée(s) retirée(s) ou absente(s) de la version 2"), refus
     monter(client, decor, vu=a["vu"], reponses={"cri": "laisser"})
     for r, cause in ((cri, "entree_absente"), (bang, "variante_absente"),
                      (echo, "case_absente")):

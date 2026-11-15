@@ -1893,10 +1893,11 @@ def activer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, numero:
         if calcul["fautes"]:
             raise Refus(409, f"{len(calcul['fautes'])} réponse(s) ne valent pas : rien n'est "
                              "changé.", calcul["fautes"], b)
-        if calcul["repondre"]:
-            raise Refus(409, f"{calcul['repondre']} entrée(s) retirée(s) attendent votre "
-                             "réponse : « laisser » ou « fusionner dans… ». Rien n'est "
-                             "changé.", [], b)
+        # (retirées, absentes de la version d'arrivée) : un couple, jamais vrai par lui-même.
+        if sum(calcul["repondre"]):
+            raise Refus(409, f"{sum(calcul['repondre'])} entrée(s) retirée(s) ou absente(s) de "
+                             f"la version {v['numero']} attendent votre réponse : « laisser » "
+                             "ou « fusionner dans… ». Rien n'est changé.", [], b)
         montee.ecrire(conn, calcul, projet_id=projet_id, grille_id=grille_id, version=v,
                       act=act, par=par, agent=agent, agent_type=agent_type)
         return True

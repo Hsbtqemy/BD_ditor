@@ -198,8 +198,10 @@ def a_regarder(c: dict, rubrique_cle: str, type_region) -> set:
             and _se_pose_sur(c, e, type_region)}
 
 
-def _phrase(n: int, revoir: int, completer: int, repondre: int, refus: int, passes: int,
+def _phrase(n: int, revoir: int, completer: int, repondre: tuple, refus: int, passes: int,
             numero: int) -> str:
+    """`repondre` : (entrées RETIRÉES, entrées ABSENTES de la version d'arrivée) qui attendent
+    leur réponse — une entrée que la version a perdue sans la retirer n'est pas « retirée »."""
     morceaux = []
     if n:
         morceaux.append(f"{n} relevé{'s' if n > 1 else ''} passe{'nt' if n > 1 else ''} en "
@@ -218,9 +220,16 @@ def _phrase(n: int, revoir: int, completer: int, repondre: int, refus: int, pass
     if passes:
         morceaux.append(f"{passes} passe{'s' if passes > 1 else ''} « terminée » se "
                         f"rouvre{'nt' if passes > 1 else ''}.")
-    if repondre:
-        morceaux.append(f"{repondre} entrée{'s' if repondre > 1 else ''} retirée"
-                        f"{'s' if repondre > 1 else ''} attend{'ent' if repondre > 1 else ''} "
+    retirees, absentes = repondre
+    if retirees or absentes:
+        quoi = []
+        if retirees:
+            s_ = "s" if retirees > 1 else ""
+            quoi.append(f"{retirees} entrée{s_} retirée{s_}")
+        if absentes:
+            s_ = "s" if absentes > 1 else ""
+            quoi.append(f"{absentes} entrée{s_} absente{s_} de la version {numero}")
+        morceaux.append(f"{' et '.join(quoi)} attend{'ent' if retirees + absentes > 1 else ''} "
                         "votre réponse.")
     if refus:
         morceaux.append(f"{refus} cible{'s' if refus > 1 else ''} porte{'nt' if refus > 1 else ''}"
@@ -315,6 +324,9 @@ def calculer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, versio
                 vers.append(k)
         rep = reponses.get(cle_)
         a_repondre.append({"cle": cle_, "libelle": x["libelle"], "releves": x["releves"],
+                           # Retirée dans la version d'arrivée, ou absente d'elle (supprimée
+                           # d'un brouillon avant qu'un relevé s'y pose en version source).
+                           "absente": arrivee["entrees"].get(cle_) is None,
                            "choix": [LAISSER, FUSIONNER], "fusionner_dans": vers,
                            "reponse": None if rep is None else (
                                LAISSER if rep[0] == LAISSER else f"{FUSIONNER}:{rep[1]}")})
@@ -405,9 +417,10 @@ def calculer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, versio
             qc = d["cle"].partition("/")[2]
             d["releves"] = sum(1 for r in a_monter if qc in r["qualificatifs"])
     plan["releves_touches"] = sum(d["releves"] for d in plan["disparus"])
-    repondre = sum(1 for a in a_repondre if a["reponse"] is None)
+    attente = [a for a in a_repondre if a["reponse"] is None]
+    repondre = (sum(1 for a in attente if not a["absente"]), sum(1 for a in attente if a["absente"]))
     refuse = bool(refus_version or refus_cibles)
-    etat = "refuse" if refuse else "a_repondre" if repondre or fautes else "montable"
+    etat = "refuse" if refuse else "a_repondre" if any(repondre) or fautes else "montable"
     phrase = _phrase(len(a_monter), comptes["a_revoir"], comptes["a_completer"], repondre,
                      len(refus_cibles), len(rouvertes), version["numero"])
     if refus_version:

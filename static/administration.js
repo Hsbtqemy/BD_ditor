@@ -2106,7 +2106,8 @@ function pgMontee() {
       v.aRepondre.length)}${v.aRepondre.map((a, i) => {
         const pris = M.reponses[a.cle] || "";
         return `<div class="pg-repondre"><label for="pg-mon-rep-${i}">« ${esc(a.libelle)} »
-            est retirée · ${esc(B.pluriel(a.releves, "relevé posé", "relevés posés"))}</label>
+            ${a.absente ? `n'est plus dans la version ${esc(String(v.vers || ""))}`
+              : "est retirée"} · ${esc(B.pluriel(a.releves, "relevé posé", "relevés posés"))}</label>
           <select id="pg-mon-rep-${i}" data-gr-mon-reponse="${esc(a.cle)}">
             <option value=""${pris ? "" : " selected"}>— à décider —</option>
             ${a.choix.map((c) => `<option value="${esc(c.valeur)}"${c.valeur === pris

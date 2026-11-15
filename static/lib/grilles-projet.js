@@ -415,7 +415,7 @@
       cause: c.cause, etat: c.etat, n: c.n || 0, mots: mots[c.cause] || c.cause }));
     vue.changements = changementsEnMots(b.plan, o.noms);
     vue.aRepondre = (b.a_repondre || []).map((a) => ({
-      cle: a.cle, libelle: a.libelle, releves: a.releves || 0,
+      cle: a.cle, libelle: a.libelle, releves: a.releves || 0, absente: !!a.absente,
       choix: [{ valeur: "laisser", libelle: `Laisser : ${a.releves > 1
         ? `ses ${a.releves} relevés passent` : "son relevé passe"}, à revoir` }]
         .concat((a.fusionner_dans || []).map((k) => ({
@@ -440,8 +440,13 @@
     }
     const manquent = vue.aRepondre.filter((a) => !r[a.cle]);
     if (manquent.length) {
-      return { ok: false, raison: `${pluriel(manquent.length, "entrée retirée", "entrées retirées")} `
-        + "à répondre : « laisser » ou « fusionner dans… »." };
+      // Une entrée que la version a perdue sans la retirer n'est pas « retirée ».
+      const toutes = manquent.every((a) => !a.absente);
+      return { ok: false, raison: (toutes
+        ? pluriel(manquent.length, "entrée retirée", "entrées retirées")
+        : pluriel(manquent.length, "entrée qui n'est plus dans la version",
+                  "entrées qui ne sont plus dans la version"))
+        + " à répondre : « laisser » ou « fusionner dans… »." };
     }
     return { ok: true, raison: "" };
   }
