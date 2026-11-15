@@ -765,6 +765,10 @@ QUETES = {
     "/api/albums/{album_id}/amorcer/apercu": "collection={collection_id}&cran=annotations",
     # COL-3, tranche 3b — l'aperçu de « repartir de zéro » exige son cran.
     "/api/albums/{album_id}/repartir/apercu": "cran=images",
+    # ANN-7 — l'aperçu de la montée de version exige la version d'arrivée. Sur celle du
+    # semis, active : rien ne monte, le verdict seul — l'aperçu ne nomme personne de toute
+    # façon (ses zones sont des identifiants, ses comptes des nombres).
+    "/api/projets/{projet_id}/grilles/{grille_id}/montee": "version=1",
 }
 
 

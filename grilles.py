@@ -61,15 +61,26 @@ ISSUES_DOUTE = ("garde", "change", "retire")
 # de la pile de Ctrl+Z (`undo._TYPES`) — l'entrée de départ n'existe plus, et chaque relevé
 # rejoué vers elle serait un acte passé de plus —, et pas un TRAVAIL sur l'album : la fusion
 # range un vocabulaire (son acte sous `grille`), le relevé reste celui de qui l'a posé. Ce
-# qui lit le journal pour dire « qui a travaillé » l'écarte par `sql_acte_de_fusion`.
+# qui lit le journal pour dire « qui a travaillé » l'écarte par `sql_acte_qui_range`.
 ACTE_FUSION = "fusion"
+# La MONTÉE DE VERSION (ANN-7) rouvre des passes : chaque passe rouverte s'écrit
+# `passe_rouverte`, comme un « Rouvrir » — le 409 de CONC-3 sur une passe nomme alors la
+# montée —, mais marquée dans sa charge (`apres.montee`) : elle range un vocabulaire, comme
+# la fusion, et ne fait pas de qui monte la version quelqu'un qui a travaillé sur l'album.
+CLE_MONTEE = "montee"
 
 
-def sql_acte_de_fusion(e: str) -> str:
-    """Fragment SQL VRAI si l'acte `e` (un alias de `evenement`) est le report d'un relevé
-    par une fusion d'entrées (`ACTE_FUSION`), sous l'une des deux cibles d'un relevé."""
-    return (f"({e}.type = '{ACTE_FUSION}' "
-            f"AND {e}.cible_table IN ('releve', 'releve_planche'))")
+def sql_acte_qui_range(e: str) -> str:
+    """Fragment SQL VRAI si l'acte `e` (un alias de `evenement`) RANGE un vocabulaire sans
+    être un travail sur l'album, sous l'une des deux cibles d'un relevé : le report d'un
+    relevé par une fusion d'entrées (`ACTE_FUSION`), ou une passe rouverte par une montée de
+    version (`passe_rouverte` dont la charge porte `CLE_MONTEE`). Ce qui lit le journal pour
+    dire « qui a travaillé » l'écarte : « qui perd quoi », les traces d'un compte, « d'un
+    autre » pour Ctrl+Z."""
+    return (f"({e}.cible_table IN ('releve', 'releve_planche') AND ({e}.type = '{ACTE_FUSION}' "
+            f"OR ({e}.type = 'passe_rouverte' AND CASE WHEN json_valid({e}.apres) "
+            f"THEN json_extract({e}.apres, '$.{CLE_MONTEE}') END IS NOT NULL)))")
+
 
 # Le séparateur de plusieurs cibles, dans une cellule du tableur (« bulle | cartouche |
 # texte ») et en base (« bulle|cartouche|texte », dans l'ordre de `CIBLES`).

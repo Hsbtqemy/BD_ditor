@@ -42,6 +42,7 @@ import grille_import
 import grille_tableur
 import grilles
 import journal
+import montee
 from socle import (_disposition, _get_collection, _get_projet, _refuser_le_jeu, _row, db,
                    portee_courante)
 
@@ -541,6 +542,51 @@ def reexporter_tableur(grille_id: int, numero: int,
 # --------------------------------------------------------------------------- #
 class ActivationIn(BaseModel):
     version: int
+    # La MONTÉE DE VERSION (ANN-7) : les réponses aux entrées retirées — `{"cle": "laisser"}`
+    # ou `{"cle": "fusionner:<cle>"}` — et `vu`, le condensé du bilan que l'écran a lu.
+    reponses: Optional[dict] = None
+    vu: Optional[str] = None
+
+
+def _albums_lus(conn, portee) -> set:
+    ou, params = portee.clause_album("a.id")
+    return {r[0] for r in conn.execute(f"SELECT a.id FROM albums a WHERE {ou}", params)}
+
+
+@router.get("/api/projets/{projet_id}/grilles/{grille_id}/montee")
+def apercu_de_montee(projet_id: int, grille_id: int, version: int = Query(..., ge=1),
+                     conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
+    """Le BILAN de la montée de la grille vers la `version` dans ce projet (ANN-7 ; cadrage
+    `docs/ann7-montee-de-version-cadrage.md`, §4), sans rien écrire : un verdict et sa phrase,
+    ce qui change dans le plan depuis la version des relevés, les relevés comptés par issue et
+    par cause — les zones nommées, bornées aux albums que l'appelant lit, les autres comptées
+    (`hors_vue`) —, les entrées retirées qui attendent « laisser » ou « fusionner dans… »
+    (`a_repondre`, avec leurs arrivées possibles), ce qui se refuse (`refus`), les passes qui
+    se rouvriront, et `vu`, le condensé que `PUT …/activation` attend. `montee` faux : rien
+    n'est à monter, l'activation est celle d'aujourd'hui. Aucun login n'y sort.
+
+    À qui gère le projet (404 sur un projet qu'on ne voit pas, 403 nommé sinon) ; jamais sur
+    le jeu (409 nommé) ; 404 sur une grille qu'on ne lit pas, ou une version qui n'existe pas
+    (un brouillon, à qui ne gère pas)."""
+    _get_projet(conn, portee, projet_id, gerer=True, motif=_MOTIF_GERER)
+    _refuser_le_jeu(conn, projet_id=projet_id)
+    g = _get_grille(conn, portee, grille_id)
+    if g["projet_id"] != projet_id:
+        raise HTTPException(409, "Un projet ne monte que ses grilles : le catalogue n'existe "
+                                 "pas encore.")
+    v = _get_version(conn, g, version)
+    calcul = montee.calculer(conn, projet_id=projet_id, grille_id=grille_id, version=v)
+    act = grilles.activation(conn, projet_id, grille_id)
+    if calcul is None:
+        deja = act is not None and act["version_id"] == v["id"]
+        return {"grille_id": grille_id, "projet_id": projet_id, "montee": False,
+                "de": act["numero"] if act else None, "vers": v["numero"],
+                "verdict": {"etat": "deja_active" if deja else "activable",
+                            "phrase": (f"La version {v['numero']} est déjà active." if deja
+                                       else f"Aucun relevé ne change de version : la version "
+                                            f"{v['numero']} s'active.")}}
+    return montee.bilan_lisible(calcul, _albums_lus(conn, portee))
 
 
 @router.put("/api/projets/{projet_id}/grilles/{grille_id}/activation")
@@ -549,19 +595,32 @@ def activer_grille(projet_id: int, grille_id: int, payload: ActivationIn,
                    portee: autorisation.Portee = Depends(portee_courante)):
     """ACTIVE une grille sur le projet, dans UNE version (R4) — publiée pour une grille
     fermée, vivante pour une ouverte. En tranche 1, un projet n'active que SES grilles (le
-    catalogue n'existe pas : 409 nommé). Changer la version d'une activation qui porte des
-    relevés est la MONTÉE DE VERSION, refusée (409 nommé) jusqu'à la tranche qui l'écrit.
-    Les règles du modèle vivent dans `grille_import.activer`, que l'outil d'import partage
-    (`--activer`) ; ici, le droit."""
+    catalogue n'existe pas : 409 nommé). Changer la version d'une activation sous laquelle le
+    projet porte des relevés est la MONTÉE DE VERSION (ANN-7) : elle attend `vu` — le
+    condensé du bilan lu par `GET …/montee` — et une réponse pour chaque entrée retirée
+    (`reponses`) ; sans eux, ou sur un bilan qui a changé, 409 qui rend le bilan à relire.
+    Les règles du modèle vivent dans `grille_import.activer` et `montee`, que l'outil
+    d'import partage (`--activer`) ; ici, le droit."""
     _get_projet(conn, portee, projet_id, gerer=True, motif=_MOTIF_GERER)
     _refuser_le_jeu(conn, projet_id=projet_id)
     conflit.verrouiller(conn)
     g = _get_grille(conn, portee, grille_id)
     try:
         ecrit = grille_import.activer(conn, projet_id=projet_id, grille_id=grille_id,
-                                      numero=payload.version, par=portee.utilisateur)
+                                      numero=payload.version, par=portee.utilisateur,
+                                      reponses=payload.reponses, vu=payload.vu)
     except grille_import.Refus as exc:
-        raise HTTPException(exc.statut, exc.message)
+        if exc.bilan:
+            # Le bilan relu sous le verrou, borné à ce que l'appelant lit, comme l'aperçu.
+            lus = _albums_lus(conn, portee)
+            for c in exc.bilan.get("causes", []) + [exc.bilan.get("passes_rouvertes") or {}]:
+                lues = [z for z in c.get("zones", []) if z["album_id"] in lus]
+                c["hors_vue"] = c.get("hors_vue", 0) + len(c.get("zones", [])) - len(lues)
+                c["zones"] = lues
+            for r in exc.bilan.get("refus", []):
+                if r.get("zone") and r["zone"]["album_id"] not in lus:
+                    r["zone"] = None
+        raise _refus_http(exc)
     if ecrit:
         conn.commit()
     return _vue_grille(conn, g)

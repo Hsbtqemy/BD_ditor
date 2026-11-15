@@ -389,8 +389,12 @@ def test_un_projet_n_active_que_ses_grilles(client, decor):
     assert r.status_code == 409 and "catalogue" in r.json()["detail"]
 
 
-def test_changer_la_version_d_une_activation_qui_porte_des_releves_est_refuse(client, decor,
-                                                                            db_path):
+def test_changer_la_version_d_une_activation_qui_porte_des_releves_est_une_montee(client,
+                                                                                decor,
+                                                                                db_path):
+    """Changer la version d'une activation sous des relevés est la MONTÉE DE VERSION
+    (`montee`, éprouvée dans `test_montee.py`) : sans le bilan lu (`vu`), 409 qui le rend —
+    qu'on l'active par-dessus, ou qu'on désactive d'abord pour réactiver ensuite."""
     g = grille_active(client, decor["p"])
     importer(client, decor["p"], LEA, grille_id=g["grille_id"],
              entrees=MODELE.replace("un cri poussé", "un cri lancé"))
@@ -403,7 +407,8 @@ def test_changer_la_version_d_une_activation_qui_porte_des_releves_est_refuse(cl
     c.close()
     r = client.put(f"/api/projets/{decor['p']}/grilles/{g['grille_id']}/activation",
                    headers=LEA, json={"version": 2})
-    assert r.status_code == 409 and "montée de version" in r.json()["detail"]
+    assert r.status_code == 409 and r.json()["detail"]["montee"] is True
+    assert "relisez" in r.json()["detail"]["message"]
     # Ni par la porte de derrière : désactiver, puis réactiver dans l'autre version.
     ok(client.delete(f"/api/projets/{decor['p']}/grilles/{g['grille_id']}/activation",
                      headers=LEA), 204)

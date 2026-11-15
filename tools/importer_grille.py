@@ -28,7 +28,16 @@ d'écrire — celle d'une grille fermée est un brouillon : l'outil refuse alors
 compris, et dit de publier d'abord (`--publier G --activer`). `--masquer COLLECTION` (à
 répéter) : la masque ensuite dans ces collections de son projet, où elle doit être active.
 Mêmes règles que les routes (`grille_import.activer`, `grille_import.masquer`) ; tout se
-fait dans UNE transaction, et un refus n'écrit rien. Ni l'un ni l'autre à blanc.
+fait dans UNE transaction, et un refus n'écrit rien. `--masquer` ne se joue pas à blanc.
+
+Activer une version plus récente d'une grille fermée sous laquelle le projet porte des relevés
+est la MONTÉE DE VERSION (ANN-7, `montee`) : `--grille G --activer --a-blanc` imprime son
+BILAN sans rien écrire — combien de relevés passent, combien seront à revoir ou à compléter,
+et pourquoi, les entrées retirées qui attendent leur réponse, ce qui se refuse, les passes
+qui se rouvriront — ; `--grille G --activer` monte, chaque entrée retirée ayant sa réponse :
+`--laisser CLE` (ses relevés passent, à revoir) ou `--fusionner CLE=AUTRE` (ils passent à une
+autre entrée de la version d'arrivée), à répéter. L'outil calcule et écrit dans la même
+transaction : il n'a pas de bilan « vu » à rendre.
 
 Le FICHIER est un classeur `.xlsx` (le gabarit en mots, que rend
 `GET /api/grilles/{id}/versions/{n}/tableur`) ou le CSV des entrées, accompagné alors de
@@ -137,6 +146,43 @@ def _reponses(args) -> dict:
     return reponses
 
 
+def _bilan_de_montee(b) -> None:
+    """Le bilan d'une MONTÉE DE VERSION, lisible : le verdict, les relevés par issue et par
+    cause, ce qui attend une réponse, ce qui se refuse."""
+    _err(f"  {b['verdict']['phrase']}")
+    r = b.get("releves")
+    if r:
+        _err(f"  Relevés : {r['total']} — normaux {r['normal']}, à revoir {r['a_revoir']}, "
+             f"à compléter {r['a_completer']}")
+    for c in b.get("causes") or []:
+        _err(f"    · {c['cause']} : {c['n']}")
+    for a in b.get("a_repondre") or []:
+        if a.get("reponse"):
+            continue
+        vers = ", ".join(a["fusionner_dans"]) or "aucune entrée compatible"
+        _err(f"  ? « {a['cle']} » ({a['libelle']}) est retirée, {a['releves']} relevé(s) : "
+             f"--laisser {a['cle']}, ou --fusionner {a['cle']}=… (possibles : {vers})")
+    for f in b.get("fautes") or []:
+        _err(f"  ✗ {f['probleme']} {f.get('a_faire') or ''}".rstrip())
+    for x in b.get("refus") or []:
+        quoi = x.get("probleme") or (f"« {x['cle']} » : deux relevés sur une même cible "
+                                     f"{x.get('zone') or ''}")
+        _err(f"  ✗ {quoi}")
+    p = b.get("passes_rouvertes")
+    if p and p.get("n"):
+        _err(f"  Passes « terminée » rouvertes : {p['n']}")
+
+
+def _reponses_de_montee(args) -> dict:
+    """`--laisser CLE` et `--fusionner CLE=AUTRE` → les réponses de la montée."""
+    import montee
+    reponses = {c: montee.LAISSER for c in args.laisser or []}
+    for x in args.fusionner or []:
+        cle, _, vers = x.partition("=")
+        reponses[cle] = f"{montee.FUSIONNER}:{vers}"
+    return reponses
+
+
 def _activer_et_masquer(conn, args, grille_id: int, numero=None) -> list:
     """Active la grille sur son projet (`--activer`), puis la masque dans chaque collection
     de `--masquer` — dans la transaction de l'appelant. `numero` : la version à activer ;
@@ -161,8 +207,20 @@ def _activer_et_masquer(conn, args, grille_id: int, numero=None) -> list:
                                                "elle ne s'active pas, et rien n'est écrit. "
                                                "Importez sans --activer, puis publiez et activez "
                                                f"(--publier {grille_id} --activer).")
+        if getattr(args, "a_blanc", False):
+            import montee
+            calcul = montee.calculer(conn, projet_id=g["projet_id"], grille_id=grille_id,
+                                     version=grilles.version(conn, grille_id, numero),
+                                     reponses=montee.lire_reponses(_reponses_de_montee(args)))
+            if calcul is None:
+                dit.append(f"Grille {grille_id} : aucun relevé ne change de version — "
+                           f"activer la version {numero} est une activation.")
+            else:
+                dit.append(montee.bilan_lisible(calcul))
+            return dit
         ecrit = grille_import.activer(conn, projet_id=g["projet_id"], grille_id=grille_id,
-                                      numero=numero, par=None)
+                                      numero=numero, par=None,
+                                      reponses=_reponses_de_montee(args), exiger_vu=False)
         dit.append(f"Grille {grille_id} : active sur le projet {g['projet_id']}, version "
                    f"{numero}" + ("." if ecrit else " (elle l'était déjà)."))
     for collection_id in args.masquer or []:
@@ -183,12 +241,22 @@ def cmd_activer(args) -> int:
         except grille_import.Refus as e:
             conn.rollback()
             _err(e.message)
+            if e.bilan.get("montee"):
+                _bilan_de_montee({**e.bilan, "fautes": e.anomalies or e.bilan.get("fautes")})
             return CODE_REFUS
-        conn.commit()
+        if args.a_blanc:
+            conn.rollback()
+        else:
+            conn.commit()
     finally:
         conn.close()
     for ligne in dit:
-        _err(ligne)
+        if isinstance(ligne, dict):
+            if args.json:
+                print(json.dumps(ligne, ensure_ascii=False, indent=2))
+            _bilan_de_montee(ligne)
+        else:
+            _err(ligne)
     return 0
 
 
@@ -316,7 +384,11 @@ def main(argv=None) -> int:
                          "porte plus (à répéter)")
     ap.add_argument("--fusionner", action="append", metavar="CLE=AUTRE",
                     help="grille ouverte : FUSIONNE les relevés de cette entrée employée dans "
-                         "une autre (à répéter)")
+                         "une autre ; montée de version : ceux d'une entrée retirée (à "
+                         "répéter)")
+    ap.add_argument("--laisser", action="append", metavar="CLE",
+                    help="montée de version : LAISSE cette entrée retirée — ses relevés "
+                         "passent, à revoir (à répéter)")
     ap.add_argument("--publier", type=int, metavar="GRILLE",
                     help="publie le brouillon de cette grille")
     ap.add_argument("--activer", action="store_true",
@@ -325,8 +397,11 @@ def main(argv=None) -> int:
     ap.add_argument("--masquer", type=int, action="append", metavar="COLLECTION",
                     help="masque la grille dans cette collection de son projet (à répéter)")
     args = ap.parse_args(argv)
-    if args.a_blanc and (args.activer or args.masquer):
-        ap.error("--activer et --masquer écrivent : ils ne se jouent pas à blanc")
+    if args.a_blanc and (args.masquer or (args.activer and (args.fichier
+                                                           or args.publier is not None))):
+        ap.error("--masquer, et --activer avec un import ou --publier, écrivent : ils ne se "
+                 "jouent pas à blanc (--grille G --activer --a-blanc rend le bilan d'une "
+                 "montée de version)")
     database.init_db()
     if args.publier is not None:
         return cmd_publier(args)

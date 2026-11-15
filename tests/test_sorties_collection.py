@@ -537,7 +537,9 @@ OUTILS_HORS = {
         "que des identifiants de grille, de projet et de collection. `--retirer` et "
         "`--fusionner` (le réimport d'une grille ouverte, 2026-11-03) ne font que répondre "
         "pour une entrée qui disparaît : la retirer, ou reporter ses relevés sur une autre "
-        "entrée de la même grille ; ils ne disent que des clés d'entrée.",
+        "entrée de la même grille ; ils ne disent que des clés d'entrée. `--laisser` (la "
+        "montée de version) répond de même pour une entrée retirée, et le bilan de la montée "
+        "ne dit que des comptes, des causes, des clés et des identifiants de zone.",
     "dictionnaire_xlsx.py":
         "Met en classeur le DICTIONNAIRE des métadonnées, c'est-à-dire un fichier "
         "markdown du dépôt (`docs/dictionnaire-metadonnees.md`). N'ouvre pas la base.",
@@ -610,7 +612,7 @@ ENTREES_HORS = {
     "_commun.py": set(),
     "importer_grille.py": {"fichier", "--listes", "--projet", "--grille", "--nom", "--ouverte",
                            "--porte-sur", "--note", "--a-blanc", "--json", "--publier",
-                           "--activer", "--masquer", "--retirer", "--fusionner"},
+                           "--activer", "--masquer", "--retirer", "--fusionner", "--laisser"},
     "dictionnaire_xlsx.py": {"--out", "--source"},
     "rapport_accord.py": {"--json", "--csv", "--modele"},
     "rapport_accord_inter.py": {"--json", "--csv"},

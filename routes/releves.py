@@ -575,7 +575,7 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
     if act["numero"] != payload.version:
         raise HTTPException(409, f"La grille est active dans sa version {act['numero']} ; "
                                  f"votre écran montre la version {payload.version}. "
-                                 "Rechargez la page.")
+                                 "Actualisez la planche (⟳ Actualiser).")
     version = grilles.version_par_id(conn, act["version_id"])
     variante_cle = payload.variante_cle
     if payload.nouvelle_entree is not None:

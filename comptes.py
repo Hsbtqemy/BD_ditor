@@ -27,7 +27,7 @@ import autorisation
 from annuaire import GROUPES_DE_ROLE, Lecture
 from database import (NOM_COLLECTION_DEFAUT, SQL_BACS_EFFACES, collections, sql_acte_isole,
                       sql_est_isole, sql_projet_de)
-from grilles import sql_acte_de_fusion
+from grilles import sql_acte_qui_range
 
 # Tranché par Hugo le 2026-09-17 : une reprise d'identité ne s'efface jamais du journal, et un
 # mariage laisse la même trace. Sans fenêtre, le signal ne s'éteindrait jamais, et une liste
@@ -103,7 +103,7 @@ def traces(conn) -> tuple[dict, dict, dict, dict]:
         "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature', 'annulation', "
         "                          'document', 'collection_album', 'demande', 'tags', "
         "                          'grille') "
-        f"  AND NOT {sql_acte_de_fusion('evenement')} "
+        f"  AND NOT {sql_acte_qui_range('evenement')} "
         f"  AND NOT {sql_acte_isole('evenement')} "
         "GROUP BY agent")}
     # … ni un accès sur une collection d'un projet isolé, pour la même raison.

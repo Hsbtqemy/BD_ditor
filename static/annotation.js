@@ -4546,6 +4546,9 @@ async function actualiserPlanche() {
   const ou = { caseIx: S.caseIx, zoneId: S.zoneId };
   const region = zone !== null ? zone : (caseCourante() && caseCourante().case.id);
   S.mots = null;                                    // le texte a pu changer ailleurs
+  // La montée de version : la version ACTIVE d'une grille fermée a pu changer ailleurs ; on
+  // relit les grilles du projet, et le plan de la nouvelle version avec elles.
+  await chargerGrilles();
   // Le mode libre : le plan d'une grille OUVERTE change sans changer de version (une
   // étiquette née, renommée ou rangée ailleurs) ; on le relit.
   await Promise.all(S.grilles.filter((g) => g.ouverte).map((g) => rechargerPlan(g)));

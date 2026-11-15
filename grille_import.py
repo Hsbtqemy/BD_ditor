@@ -1132,7 +1132,8 @@ def reconcilier_fermee(conn, grille_id: int, avants, apres: dict,
     entrée employée ne se supprime jamais. La seule réponse est « retirer » : elle reste dans
     le brouillon, retirée, et ses relevés se relisent dans leur version publiée ;
     « fusionner dans… » est refusé sur une fermée (choix 1 des routes d'écriture, le
-    2026-11-04) — la montée de version n'existe pas.
+    2026-11-04) : on fusionne À LA MONTÉE DE VERSION (`montee`, M2), qui demande, pour chaque
+    entrée retirée, « laisser » ou « fusionner dans… ».
 
     Recommandation de la session de pilotage, à confirmer par Hugo. `avants` : les contenus
     que le fichier remplace (la dernière version publiée, le brouillon en place, le plus
@@ -1389,7 +1390,7 @@ def journaliser_fusion(conn, grille_id: int, numero: int, fusion: dict,
     """Écrit au journal un acte par relevé qu'une fusion a déplacé (`_fusionner`), sous sa
     cible ordinaire — la RÉGION (`releve`) ou la PLANCHE (`releve_planche`) —, du type
     `grilles.ACTE_FUSION` : ni Ctrl+Z ne l'offre, ni « qui perd quoi » ne le compte
-    (`grilles.sql_acte_de_fusion`). À appeler APRÈS l'acte de grille de la fusion, dont
+    (`grilles.sql_acte_qui_range`). À appeler APRÈS l'acte de grille de la fusion, dont
     `acte_id` est l'identifiant (None si l'appelant n'en a pas écrit) : chaque acte de relevé
     le nomme (`fusion.acte`), la grille et le numéro de sa version avec, et l'acte de grille
     nomme déjà ses relevés (`releve_ids`). L'état d'après est relu en base : le drapeau `une`
@@ -1835,15 +1836,25 @@ def version_activable(conn: sqlite3.Connection, grille_id: int):
 
 
 def activer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, numero: int,
-            par=None, agent: str | None = None, agent_type: str = "humain") -> bool:
+            par=None, agent: str | None = None, agent_type: str = "humain",
+            reponses=None, vu: str | None = None, exiger_vu: bool = True) -> bool:
     """ACTIVE la grille sur le projet dans la version `numero` (R4) — publiée pour une
     grille fermée, vivante pour une ouverte. Un projet n'active que SES grilles (le
-    catalogue n'existe pas) ; une grille retirée ne s'active plus ; changer la version
-    d'une activation qui porte des relevés est la MONTÉE DE VERSION, refusée — qu'on
-    l'active par-dessus ou qu'on désactive d'abord pour réactiver ensuite. Lève `Refus` ;
-    rend True si l'activation s'est écrite, False si elle était déjà celle-là."""
+    catalogue n'existe pas) ; une grille retirée ne s'active plus. Lève `Refus` ; rend True
+    si l'activation s'est écrite, False si elle était déjà celle-là.
+
+    Changer la version d'une activation sous laquelle le projet porte des relevés — qu'on
+    l'active par-dessus, ou qu'on la réactive après l'avoir désactivée — est la MONTÉE DE
+    VERSION (`montee`, ANN-7, tranchée par Hugo le 2026-11-15) : elle attend `vu`, le
+    condensé du bilan que l'écran a lu (`exiger_vu` : la route ; l'outil, qui calcule et
+    écrit dans la même transaction, s'en passe), et `reponses` (`montee.lire_reponses`) pour
+    chaque entrée retirée ; un bilan changé, une réponse qui manque ou ne vaut pas, une cible
+    qui se contredirait, une version plus ancienne : `Refus` (409) qui porte le bilan. Une
+    activation sous laquelle le projet ne porte que des PASSES y applique la règle des passes,
+    sans bilan exigé."""
     import database                              # import paresseux, cf. `importer`
     import journal
+    import montee
     if database.est_jeu(conn, projet_id):
         raise Refus(409, _MOTIF_JEU)
     g = conn.execute("SELECT * FROM grille WHERE id = ?", (grille_id,)).fetchone()
@@ -1862,10 +1873,27 @@ def activer(conn: sqlite3.Connection, *, projet_id: int, grille_id: int, numero:
     act = grilles.activation(conn, projet_id, grille_id)
     if act is not None and act["version_id"] == v["id"]:
         return False
-    if conn.execute("SELECT 1 FROM releve WHERE grille_id = ? AND version_id <> ? LIMIT 1",
-                    (grille_id, v["id"])).fetchone():
-        raise Refus(409, "Des relevés sont posés avec cette grille : changer de version est "
-                         "une montée de version, qui n'existe pas encore. Rien n'est changé.")
+    calcul = montee.calculer(conn, projet_id=projet_id, grille_id=grille_id, version=v,
+                             reponses=montee.lire_reponses(reponses))
+    if calcul is not None:
+        b = montee.bilan_lisible(calcul)
+        if calcul["refuse"]:
+            raise Refus(409, f"La montée vers la version {numero} est refusée : "
+                             f"{b['verdict']['phrase']} Rien n'est changé.", [], b)
+        if calcul["a_monter"] and exiger_vu and vu != b["vu"]:
+            raise Refus(409, "Le bilan de la montée n'est plus celui que vous avez lu (ou "
+                             "vous ne l'avez pas lu) : relisez-le avant de monter. Rien n'est "
+                             "changé.", [], b)
+        if calcul["fautes"]:
+            raise Refus(409, f"{len(calcul['fautes'])} réponse(s) ne valent pas : rien n'est "
+                             "changé.", calcul["fautes"], b)
+        if calcul["repondre"]:
+            raise Refus(409, f"{calcul['repondre']} entrée(s) retirée(s) attendent votre "
+                             "réponse : « laisser » ou « fusionner dans… ». Rien n'est "
+                             "changé.", [], b)
+        montee.ecrire(conn, calcul, projet_id=projet_id, grille_id=grille_id, version=v,
+                      act=act, par=par, agent=agent, agent_type=agent_type)
+        return True
     conn.execute("INSERT INTO projet_grille (projet_id, grille_id, version_id, active_par) "
                  "VALUES (?, ?, ?, ?) ON CONFLICT(projet_id, grille_id) DO UPDATE SET "
                  "version_id = excluded.version_id, active_par = excluded.active_par, "

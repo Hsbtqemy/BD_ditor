@@ -32,7 +32,7 @@ import journal
 from config import TYPE_DETAIL, TYPES_LOCUTEUR, TYPES_PRESENCE
 from database import (CLE_PLANCHER_ANNULATION, NATURE_COLLECTIF, SQL_NOTE_POSEE,
                       annotation_vide, reindex_etiquettes, reindex_region, unindex_region)
-from grilles import sql_acte_de_fusion
+from grilles import sql_acte_qui_range
 
 # Types d'événements et tables que l'undo sait inverser (le reste est ignoré : ni annulé,
 # ni bloquant — l'undo « saute » un acte non annulable et remonte au précédent).
@@ -381,7 +381,7 @@ _SQL_RELEVE_D_UN_AUTRE = (
     "WHERE ((_ue.cible_table = 'releve' AND _ue.cible_id = r.region_id) "
     "OR (_ue.cible_table = 'releve_planche' AND _ue.cible_id = r.planche_id)) "
     "AND _ue.agent_type = 'humain' AND _ue.agent IS NOT ? "
-    f"AND NOT {sql_acte_de_fusion('_ue')} "
+    f"AND NOT {sql_acte_qui_range('_ue')} "
     "AND COALESCE(CASE WHEN json_valid(_ue.apres) THEN json_extract(_ue.apres, '$.releve_id') "
     "END, CASE WHEN json_valid(_ue.avant) THEN json_extract(_ue.avant, '$.releve_id') END) "
     "= r.id))")

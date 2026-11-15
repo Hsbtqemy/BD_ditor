@@ -230,6 +230,10 @@ DECLAREES = {
         "Ctrl+Z d'un déplacement d'étiquette ne change que des rangs, pas un libellé",
     ("grille_import.py", "reporter_cardinalites"):
         "`une`, la cardinalité figée d'un relevé, n'est pas un libellé",
+    ("montee.py", "ecrire"):
+        "la montée de version ne concerne qu'une grille FERMÉE, dont les libellés n'entrent "
+        "pas dans l'index plein texte (J6) : changer la version, l'entrée ou `une` d'un relevé "
+        "n'y change rien",
 }
 
 

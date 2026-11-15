@@ -78,7 +78,7 @@ from database import (CRAN_ANNOTATIONS, DEMANDE_AMORCER_ENTRE_PROJETS,
                       sql_projet_d_album, sql_projet_de, sql_rang_du_cran)
 from grilles import ETAT_PUBLIEE as ETAT_VERSION_PUBLIEE
 from grilles import ETAT_VIVANTE as ETAT_VERSION_VIVANTE
-from grilles import sql_acte_de_fusion
+from grilles import sql_acte_qui_range
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
 # modifie pas ce qu'on ne voit pas, et on n'administre pas ce qu'on ne peut pas modifier.
@@ -1158,8 +1158,10 @@ def _sql_chaine_des_sources(depart: str) -> str:
 # l'ordre des planches : la fusion range un vocabulaire, son acte vit sous `grille`, et le
 # relevé reste à qui l'a posé, dont la pose compte. Le compter mettait le responsable qui
 # fusionne dans « qui perd quoi » de chaque album que la grille touche, pour un travail qu'il
-# n'y perd pas. Écarté des quatre sources qui lisent `releve` ou `releve_planche`.
-_SQL_FUSION = sql_acte_de_fusion("_te")
+# n'y perd pas. Écarté des quatre sources qui lisent `releve` ou `releve_planche`. De même la
+# passe qu'une MONTÉE DE VERSION rouvre (ANN-7) : qui monte la version rangerait sinon son
+# nom dans « qui perd quoi » de chaque album du projet (`grilles.sql_acte_qui_range`).
+_SQL_FUSION = sql_acte_qui_range("_te")
 
 
 def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str, str]]:

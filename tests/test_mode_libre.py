@@ -607,7 +607,9 @@ def test_l_empreinte_couvre_le_plan_des_grilles_ouvertes(client, decor, db_path)
     t = _travail(client, decor, db_path)
     g = str(t["grille_id"])
     e0 = _plans(client, decor)
-    assert set(e0) == {g}                      # la grille fermée du décor n'y est pas
+    # La grille fermée du décor y est aussi, par le numéro de sa version active (la montée de
+    # version) ; ce qui suit ne regarde que la grille de travail.
+    assert g in e0 and len(e0) == 2
     # Une étiquette née en posant, ailleurs : le plan change.
     poser(client, t, region_id=t["zones"]["case"], nouvelle_entree={"libelle": "ironie"})
     e1 = _plans(client, decor)

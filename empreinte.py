@@ -137,23 +137,32 @@ def empreintes_plans(conn: sqlite3.Connection, planche_id: int) -> dict[str, str
     vivante change sans changer de numéro (une étiquette née en posant, renommée, rangée,
     retirée ; une valeur ajoutée), et la page Annotation, qui garde le plan qu'elle a lu, ne
     le voyait qu'au rechargement (le cadrage du mode libre, « Le signal « ⟳ Actualiser » »).
-    Une grille FERMÉE n'y est pas : sa version publiée ne change plus (hors d'une coquille,
-    qui ne touche aucun relevé).
+    Une grille FERMÉE y est par le NUMÉRO de sa version active (ANN-7, la montée de version) :
+    sa version publiée ne change plus (hors d'une coquille, qui ne touche aucun relevé), mais
+    une montée — ou une autre version activée — change celle qu'on pose ; sans elle, une
+    planche qui ne porte aucun relevé de la grille gardait le plan d'avant jusqu'au 409 de la
+    première pose.
 
-    Ce qui compte : le contenu entier de la version (`grilles.contenu`) — libellés, rangs,
-    états, variantes, cases. Qui lit la planche lit le plan d'une grille active dans son
-    projet (`clause_grille`, moitié (b)) : aucune borne de plus. La page Annotation la lit,
-    l'Atelier l'ignore."""
+    Ce qui compte : le contenu entier de la version vivante (`grilles.contenu`) — libellés,
+    rangs, états, variantes, cases ; et le numéro de la version d'une fermée. Qui lit la
+    planche lit le plan d'une grille active dans son projet (`clause_grille`, moitié (b)) :
+    aucune borne de plus. La page Annotation la lit, l'Atelier l'ignore."""
     album = conn.execute("SELECT album_id FROM planches WHERE id = ?", (planche_id,)).fetchone()
     if album is None:
         return {}
     resultat = {}
-    for gid, vid in conn.execute(
-            "SELECT pg.grille_id, pg.version_id FROM projet_grille pg "
-            "JOIN grille g ON g.id = pg.grille_id JOIN grille_version v ON v.id = pg.version_id "
-            "WHERE pg.projet_id = ? AND g.ouverte = 1 AND v.etat = ? ORDER BY pg.grille_id",
-            (projet_d_album(conn, album[0]), grilles.ETAT_VIVANTE)).fetchall():
-        brut = json.dumps(grilles.contenu(conn, vid), sort_keys=True, ensure_ascii=False,
-                          separators=(",", ":"))
+    for gid, vid, ouverte, etat, numero in conn.execute(
+            "SELECT pg.grille_id, pg.version_id, g.ouverte, v.etat, v.numero "
+            "FROM projet_grille pg JOIN grille g ON g.id = pg.grille_id "
+            "JOIN grille_version v ON v.id = pg.version_id "
+            "WHERE pg.projet_id = ? ORDER BY pg.grille_id",
+            (projet_d_album(conn, album[0]),)).fetchall():
+        if ouverte and etat == grilles.ETAT_VIVANTE:
+            canon = grilles.contenu(conn, vid)
+        elif not ouverte:
+            canon = ["version", numero]
+        else:
+            continue
+        brut = json.dumps(canon, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         resultat[str(gid)] = hashlib.sha1(brut.encode("utf-8")).hexdigest()[:12]
     return resultat
