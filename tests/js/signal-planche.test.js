@@ -191,6 +191,12 @@ test("le mode libre : le plan d'une grille ouverte entre dans les clés, touché
                    { ids: [], sousArbre: false, plans: [3] });
   assert.deepEqual(S.regionsTouchees("PUT", "/api/grilles/3/ordre", {}, 7, OU),
                    { ids: [], sousArbre: false, plans: [3] });
+  // Une fusion, « Passer dans une grille… » : leurs relevés changent sur des zones que la page
+  // ne sait pas nommer — tout est réputé touché, la page ne se signale pas son propre geste.
+  assert.deepEqual(S.regionsTouchees("POST", "/api/grilles/3/entrees/voix/passage", {}, 7, OU),
+                   { tout: true });
+  assert.deepEqual(S.regionsTouchees("POST", "/api/grilles/3/entrees/ironie/fusion", {}, 7, OU),
+                   { tout: true });
   assert.deepEqual(S.regionsTouchees("POST", "/api/releves", { id: 5, region_id: 4, grille_id: 3 }, 7, OU),
                    { ids: [4], sousArbre: false, plans: [3] });
   assert.deepEqual(S.regionsTouchees("PUT", "/api/releves/5", { id: 5, region_id: 4, grille_id: 3 }, 7, OU),

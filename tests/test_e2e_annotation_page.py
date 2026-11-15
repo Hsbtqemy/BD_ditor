@@ -5105,12 +5105,17 @@ def test_passer_une_etiquette_dans_une_grille_puis_la_retirer(page, decor):
     expect(verdict).to_contain_text("« voix » sera vide")
     ok_ = page.locator('#an-plan [data-conf-ok="passer"]')
     expect(ok_).not_to_have_attribute("aria-disabled", "true")
-    with page.expect_response(lambda x: x.url.endswith("/entrees/voix/passage")
-                              and x.request.method == "POST") as rep:
-        ok_.click()
+    # La page relit son empreinte dès que l'écriture est finie : elle ne se signale pas son
+    # propre geste — ses relevés ont changé de grille, mais « ⟳ Actualiser » ne paraît pas (le
+    # passage est réputé avoir tout touché).
+    with page.expect_response(lambda x: x.url.endswith("/empreinte")):
+        with page.expect_response(lambda x: x.url.endswith("/entrees/voix/passage")
+                                  and x.request.method == "POST") as rep:
+            ok_.click()
     assert rep.value.status == 200, rep.value.text()
     expect(page.locator("#an-annonce")).to_contain_text(
         "Passée dans Signaux › ton de voix : 1 relevé")
+    expect(page.locator("#an-actualiser")).to_be_hidden()
     passe = next(x for x in _releves(decor) if x["id"] == r["id"])
     assert (passe["grille_id"], passe["entree_cle"], passe["variante_cle"]) == (
         decor["grille"], "ton-de-voix", "crie")

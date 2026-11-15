@@ -128,6 +128,12 @@
       return zoneSansPlan(reponse && reponse.releve_id != null ? lire("releve", Number(reponse.releve_id)) : null)
         || zoneSansPlan(lire("doute", Number(d[1]))) || tout;
     }
+    // Une fusion d'étiquettes, « Passer dans une grille… » : leurs relevés changent d'entrée,
+    // voire de grille, sur des zones que la page ne sait pas toutes nommer — réputées avoir
+    // tout touché, sans quoi la page se signalait à elle-même son propre geste.
+    if (m === "POST" && /^\/api\/grilles\/\d+\/entrees\/[^/]+\/(fusion|passage)(\?|$)/.test(p)) {
+      return tout;
+    }
     const g = p.match(/^\/api\/grilles\/(\d+)\//);
     if (g && m !== "GET") return { ids: [], sousArbre: false, plans: [Number(g[1])] };
     const pl = p.match(/^\/api\/planches\/(\d+)\/passes\//);
