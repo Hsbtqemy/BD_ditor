@@ -4573,7 +4573,7 @@ def test_point_virgule_pose_plusieurs_valeurs_et_les_puces_se_cochent(page, deco
     expect(page.locator("#an-quoi")).to_contain_text("Ajouter « joie » à « sentiment » et poser")
 
 
-def test_crayon_renomme_en_place_definit_et_passer_dit_son_bilan_eteint(page, decor):
+def test_crayon_renomme_en_place_definit_et_passer_ouvre_son_bilan(page, decor):
     gid = _travail(decor)
     with _http(decor) as c:
         _poser_libre(c, decor["bulle"], gid, "ironie")
@@ -4613,14 +4613,17 @@ def test_crayon_renomme_en_place_definit_et_passer_dit_son_bilan_eteint(page, de
         figer.click()
     expect(etat).to_have_text("✓ figée")
     expect(figer).to_have_text("Rouvrir")
-    # « Passer dans une grille… » : sa confirmation montre « Voir le bilan… » ÉTEINT, et sa
-    # raison ne nomme aucun code de cadrage.
-    page.locator('#an-plan [data-geste="passer"][data-c="ironie"]').click()
-    bilan = page.locator("#an-plan [data-conf-bilan]")
-    expect(bilan).to_have_attribute("aria-disabled", "true")
-    expect(bilan).to_have_attribute("title", re.compile(r"pas encore là"))
-    bilan.click(force=True)
-    expect(page.locator("#an-plan .an-conf")).to_contain_text("Le bilan, relevé par relevé")
+    # « Passer dans une grille… » : la seule autre grille active est choisie d'office ; elle
+    # n'a pas d'entrée « ironie », le bilan le dit, et « Passer » reste éteint tant qu'on n'a
+    # pas choisi d'entrée. Rien n'y nomme un code de cadrage.
+    with page.expect_response(lambda r: "/entrees/ironie/passage" in r.url
+                              and "vers=" in r.url):
+        page.locator('#an-plan [data-geste="passer"][data-c="ironie"]').click()
+    expect(page.locator("#an-passer-grille")).to_have_value(str(decor["grille"]))
+    expect(page.locator("#an-passer-verdict")).to_contain_text("Aucune entrée « ironie mordante »")
+    ok_ = page.locator('#an-plan [data-conf-ok="passer"]')
+    expect(ok_).to_have_attribute("aria-disabled", "true")
+    expect(ok_).to_have_attribute("title", "Choisissez l'entrée d'arrivée")
     _sans_code_de_cadrage(page, '#an-plan [data-ent="ironie"]')
     page.locator("#an-plan [data-conf-annuler]").click()
     expect(page.locator("#an-plan .an-conf")).to_have_count(0)
@@ -5075,6 +5078,78 @@ def test_plus_mene_au_champ_de_creation_et_slash_au_filtre(page, decor):
     # Dans un champ, « + » s'écrit.
     page.keyboard.press("+")
     expect(page.locator("#an-filtre")).to_have_value("+")
+
+
+# --------------------------------------------------------------------------- #
+# « Passer dans une grille… » (le mode libre, « Structurer »)
+# --------------------------------------------------------------------------- #
+def test_passer_une_etiquette_dans_une_grille_puis_la_retirer(page, decor):
+    """Une étiquette du Mode libre passe, avec son relevé, dans « Signaux › ton de voix » :
+    l'entrée se choisit, la valeur est proposée par son libellé, le bilan dit ce qui passe ;
+    « Passer » écrit, et l'étiquette vidée se propose aussitôt au retrait. Relu par l'API."""
+    gid = _travail(decor)
+    with _http(decor) as c:
+        r = _poser_libre(c, decor["bulle"], gid, "voix : crié")
+    _libre(page, decor)
+    page.locator('#an-plan [data-crayon="voix"]').click()
+    with page.expect_response(lambda x: "/entrees/voix/passage" in x.url and "vers=" in x.url):
+        page.locator('#an-plan [data-geste="passer"][data-c="voix"]').click()
+    expect(page.locator("#an-passer-grille")).to_have_value(str(decor["grille"]))
+    with page.expect_response(lambda x: "/entrees/voix/passage" in x.url
+                              and "dans=ton-de-voix" in x.url):
+        page.locator("#an-passer-entree").select_option("ton-de-voix")
+    # La table des valeurs : « crié » → « crié », proposé par le libellé.
+    expect(page.locator("#an-passer-v-0")).to_have_value("crie")
+    verdict = page.locator("#an-passer-verdict")
+    expect(verdict).to_contain_text("1 relevé passe dans « Signaux › ton de voix ».")
+    expect(verdict).to_contain_text("« voix » sera vide")
+    ok_ = page.locator('#an-plan [data-conf-ok="passer"]')
+    expect(ok_).not_to_have_attribute("aria-disabled", "true")
+    with page.expect_response(lambda x: x.url.endswith("/entrees/voix/passage")
+                              and x.request.method == "POST") as rep:
+        ok_.click()
+    assert rep.value.status == 200, rep.value.text()
+    expect(page.locator("#an-annonce")).to_contain_text(
+        "Passée dans Signaux › ton de voix : 1 relevé")
+    passe = next(x for x in _releves(decor) if x["id"] == r["id"])
+    assert (passe["grille_id"], passe["entree_cle"], passe["variante_cle"]) == (
+        decor["grille"], "ton-de-voix", "crie")
+    # L'étiquette vidée se propose au retrait, sur place.
+    conf = page.locator('#an-plan [data-ent="voix"] .an-conf')
+    expect(conf).to_contain_text("personne ne la pose, elle disparaît")
+    retirer = page.locator('#an-plan [data-ent="voix"] [data-conf-ok="retirer"]')
+    expect(retirer).to_be_focused()
+    with page.expect_response(lambda x: "/entrees/voix" in x.url
+                              and x.request.method == "DELETE"):
+        retirer.click()
+    expect(page.locator('#an-plan [data-ent="voix"]')).to_have_count(0)
+    assert "voix" not in [e["cle"] for e in _plan_du_travail(decor, gid)["entrees"]]
+
+
+def test_passer_une_valeur_sans_equivalent_se_corrige_dans_la_table(page, decor):
+    gid = _travail(decor)
+    with _http(decor) as c:
+        r = _poser_libre(c, decor["bulle"], gid, "voix : murmure")
+    _libre(page, decor)
+    page.locator('#an-plan [data-crayon="voix"]').click()
+    with page.expect_response(lambda x: "/entrees/voix/passage" in x.url and "vers=" in x.url):
+        page.locator('#an-plan [data-geste="passer"][data-c="voix"]').click()
+    with page.expect_response(lambda x: "dans=ton-de-voix" in x.url):
+        page.locator("#an-passer-entree").select_option("ton-de-voix")
+    expect(page.locator("#an-passer-v-0")).to_have_value("")
+    expect(page.locator('#an-plan .an-passer-causes[aria-label="reste"]')).to_contain_text(
+        "la valeur n'a pas d'équivalent")
+    ok_ = page.locator('#an-plan [data-conf-ok="passer"]')
+    expect(ok_).to_have_attribute("aria-disabled", "true")
+    with page.expect_response(lambda x: "variantes=" in x.url):
+        page.locator("#an-passer-v-0").select_option("chuchote")
+    expect(page.locator("#an-passer-verdict")).to_contain_text("1 relevé passe")
+    expect(ok_).not_to_have_attribute("aria-disabled", "true")
+    with page.expect_response(lambda x: x.url.endswith("/entrees/voix/passage")
+                              and x.request.method == "POST") as rep:
+        ok_.click()
+    assert rep.value.status == 200, rep.value.text()
+    assert next(x for x in _releves(decor) if x["id"] == r["id"])["variante_cle"] == "chuchote"
 
 
 def _monter_le_cri_a_variantes(d):

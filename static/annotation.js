@@ -2274,13 +2274,124 @@ function confDe(e) {
       ligne(bouton("Retirer", { classe: "ghost small an-btn-danger", "data-conf-ok": "retirer" }),
             annuler()));
   }
-  if (c.k === "passer") {
-    return boite("", el("p", { texte: `Passer « ${e.libelle} » dans une grille` }),
-      c.txt ? el("p", { classe: "muted small", texte: c.txt }) : null,
-      ligne(bouton("Voir le bilan…", { "data-conf-bilan": "1", "aria-disabled": "true",
-                                       title: A.BILAN_PASSER }), annuler()));
-  }
+  if (c.k === "passer") return confPasser(e, c, { boite, ligne, bouton, annuler });
   return null;
+}
+
+/* « Passer dans une grille… », sur place : la grille et l'entrée d'arrivée, la table des
+   valeurs (proposée par le libellé, corrigée à la main), le bilan relevé par relevé — ce qui
+   passe, ce qui reste et pourquoi —, puis « Passer ». Le bilan est celui du serveur
+   (`GET …/passage`), relu à chaque choix. */
+function confPasser(e, c, { boite, ligne, bouton, annuler }) {
+  const b = c.bilan;
+  if (!b) return boite("", el("p", { classe: "muted", texte: "Lecture…" }));
+  const choisir = (id, attr, vide, options, pris, etiquette) => el("label", { classe: "an-passer-l" },
+    el("span", { classe: "muted small", texte: etiquette }),
+    el("select", { id, [attr]: e.cle },
+       option("", vide), ...options.map(([v, t]) => { const o = option(v, t); o.selected = String(v) === String(pris ?? ""); return o; })));
+  const vers = b.vers ? b.vers.id : "";
+  const lignes = [ligne(el("span", { classe: "an-passer-titre", texte: `Passer « ${e.libelle} »` }))];
+  if (b.grilles.length) {
+    lignes.push(ligne(
+      choisir("an-passer-grille", "data-passer-grille", "— grille —",
+              b.grilles.map((g) => [g.id, g.ouverte ? g.nom : `${g.nom} · v${g.version}`]), vers, "dans"),
+      b.vers ? choisir("an-passer-entree", "data-passer-entree", "— entrée —",
+                       b.entrees.map((x) => [x.cle, x.libelle]), b.dans ? b.dans.cle : c.dans || "",
+                       "entrée") : null));
+  }
+  const arrivee = b.dans && b.entrees.find((x) => x.cle === b.dans.cle);
+  if (arrivee && arrivee.forme === "variantes" && b.correspondance.length) {
+    lignes.push(el("div", { classe: "an-passer-table", role: "group", "aria-label": "Les valeurs" },
+      ...b.correspondance.map((x, i) => {
+        const de = x.de.cle || "";
+        return el("label", { classe: "an-passer-l" },
+          el("span", { classe: "small", texte: `${x.de.libelle ? `« ${x.de.libelle} »` : "sans valeur"} · ${x.de.releves}`,
+                       title: x.propose ? "Proposée par le libellé" : "Aucune valeur de même libellé" }),
+          el("span", { classe: "muted small", "aria-hidden": "true", texte: "→" }),
+          el("select", { id: `an-passer-v-${i}`, "data-passer-valeur": de },
+             option("", "— aucune —"),
+             ...arrivee.variantes.map((v) => { const o = option(v.cle, v.libelle); o.selected = v.cle === x.vers; return o; })));
+      })));
+  }
+  lignes.push(el("p", { classe: "small", id: "an-passer-verdict", tabindex: "-1", texte: b.verdict.phrase }));
+  const groupes = (titre, gs) => (gs.length ? el("ul", { classe: "an-passer-causes", "aria-label": titre },
+    ...gs.map((g) => el("li", { classe: "small" },
+      el("span", { classe: "muted", texte: `${titre} · ` }), `${A.causeDuPassage(g)} `,
+      el("b", { texte: String(g.n) })))) : null);
+  lignes.push(groupes("reste", b.restent || []), groupes("à compléter", b.a_completer || []));
+  const p = A.passable(b);
+  lignes.push(ligne(
+    bouton("Passer", { classe: "primary small", "data-conf-ok": "passer",
+                       "aria-disabled": p.ok && !c.enVol ? null : "true", title: p.ok ? null : p.raison }),
+    annuler()));
+  return boite("", ...lignes);
+}
+
+/* Le bilan du passage, relu au serveur pour les choix de `S.conf` (la grille, l'entrée, la
+   table des valeurs). Une réponse arrivée après un autre choix ne s'affiche pas. */
+async function lireLePassage(cle) {
+  const g = grilleOuverte();
+  const c = S.conf;
+  if (!g || !c || c.cle !== cle || c.k !== "passer") return;
+  const jeton = (c.jeton || 0) + 1;
+  c.jeton = jeton;
+  const q = new URLSearchParams();
+  if (c.vers) q.set("vers", c.vers);
+  if (c.vers && c.dans) q.set("dans", c.dans);
+  if (c.vers && c.dans && c.bilan && c.bilan.dans && c.bilan.dans.cle === c.dans) {
+    q.set("variantes", JSON.stringify(A.tableDuPassage(c.bilan, c.valeurs)));
+  }
+  let b;
+  try { b = await apiGet(`/api/grilles/${g.id}/entrees/${enUrl(cle)}/passage?${q}`); } catch (err) {
+    if (S.conf === c) { S.conf = { cle, k: "raison", txt: err.message || "Le bilan n'a pas pu être lu." }; rendreCorps(); }
+    return;
+  }
+  if (S.conf !== c || c.jeton !== jeton) return;
+  // La première lecture choisit d'office ce qui n'a qu'une réponse : la seule grille, et
+  // l'entrée que le libellé propose.
+  if (!c.vers && !c.versChoisie && b.grilles.length === 1) { c.vers = b.grilles[0].id; c.bilan = b; await lireLePassage(cle); return; }
+  if (c.vers && !c.dans && !c.dansChoisie && b.propose) {
+    c.dans = b.propose; c.bilan = b; await lireLePassage(cle); return;
+  }
+  c.bilan = b;
+  c.valeurs = Object.fromEntries((b.correspondance || []).map((x) => [x.de.cle || "", x.vers || ""]));
+  rendreCorps();
+}
+
+/* « Passer » : le geste, avec la table et le bilan vus. Un bilan changé (409 qui le porte) se
+   redessine, à relire ; l'étiquette vidée se propose au retrait. */
+async function passerDansUneGrille() {
+  const g = grilleOuverte();
+  const c = S.conf;
+  const e = c && entreeDuLibre(c.cle);
+  if (!g || !e || c.enVol || !A.passable(c.bilan).ok || conflitOuvert()) return;
+  c.enVol = true;
+  rendreCorps();
+  let rep;
+  try {
+    rep = await apiSend("POST", `/api/grilles/${g.id}/entrees/${enUrl(e.cle)}/passage`,
+                        { vers: c.vers, dans: c.dans, variantes: A.tableDuPassage(c.bilan, c.valeurs),
+                          vu: c.bilan.vu });
+  } catch (err) {
+    if (S.conf !== c) return;
+    c.enVol = false;
+    const d = err && err.detail;
+    if (d && typeof d === "object" && d.verdict) c.bilan = { ...c.bilan, ...d };
+    rendreCorps();
+    const msg = (d && d.message) || err.message || "Refusé.";
+    toast(msg, "error");
+    annoncer(msg);
+    return;
+  }
+  const n = rep.passes;
+  annoncer(`Passée dans ${rep.vers.nom} › ${rep.dans.libelle} : ${n} relevé${n > 1 ? "s" : ""}`
+           + (rep.restent ? `, ${rep.restent} ${rep.restent > 1 ? "restent" : "reste"}` : ""));
+  S.conf = rep.videe ? { cle: e.cle, k: "retirer", n: 0 } : null;
+  await relireReleves();
+  rendreCorps();
+  const ok = $(`#an-plan [data-ent="${CSS.escape(e.cle)}"] [data-conf-ok]`);
+  if (rep.videe && ok) ok.focus();
+  else if (focusTombe()) remettreLeFocus($(`#an-plan [data-crayon="${CSS.escape(e.cle)}"]`) || $("#an-creer"));
 }
 
 /* Le plan qu'un geste du formulaire rend, gardé pour la page (la réponse ne porte pas la
@@ -2414,7 +2525,14 @@ async function ouvrirConf(cle, k) {
   const g = grilleOuverte();
   const e = entreeDuLibre(cle);
   if (!e) return;
-  if (k === "passer") { S.conf = { cle, k }; rendreCorps(); return; }
+  if (k === "passer") {
+    S.conf = { cle, k, vers: null, dans: null, valeurs: {}, bilan: null };
+    rendreCorps();
+    await lireLePassage(cle);
+    const premier = $("#an-passer-verdict");
+    if (premier && focusTombe()) premier.focus();
+    return;
+  }
   S.conf = { cle, k: "attente" };
   rendreCorps();
   let em;
@@ -2629,10 +2747,10 @@ function brancherModeLibre() {
         remettreLeFocus($(`#an-plan [data-crayon="${CSS.escape(cle)}"]`)
                         || $(`#an-plan [data-geste][data-c="${CSS.escape(cle)}"]`) || $("#an-creer"));
       }
-    } else if (d.confBilan) {
-      if (S.conf) { S.conf.txt = A.BILAN_PASSER; rendreCorps(); annoncer(A.BILAN_PASSER); }
     } else if (d.confOk) {
-      confirmer(d.confOk);
+      if (eteint) { if (b.title) { toast(b.title); annoncer(b.title); } return; }
+      if (d.confOk === "passer") passerDansUneGrille();
+      else confirmer(d.confOk);
     } else if (d.monter || d.descendre) {
       const cle = d.monter || d.descendre;
       if (eteint) { annoncer(b.title); return; }
@@ -2640,7 +2758,25 @@ function brancherModeLibre() {
     }
   });
   plan.addEventListener("change", (e) => {
-    if (e.target.matches("[data-conf-vers]") && S.conf) { S.conf.choix = e.target.value; rendreCorps(); }
+    const t = e.target;
+    if (t.matches("[data-conf-vers]") && S.conf) { S.conf.choix = t.value; rendreCorps(); return; }
+    // « Passer dans une grille… » : chaque choix relit le bilan au serveur.
+    const c = S.conf;
+    if (!c || c.k !== "passer") return;
+    if (t.matches("[data-passer-grille]")) {
+      c.vers = t.value ? Number(t.value) : null;
+      c.versChoisie = true;
+      c.dans = null;
+      c.dansChoisie = false;
+      c.valeurs = {};
+    } else if (t.matches("[data-passer-entree]")) {
+      c.dans = t.value || null;
+      c.dansChoisie = true;               // choisie à la main : plus de proposition d'office
+      c.valeurs = {};
+    } else if (t.matches("[data-passer-valeur]")) {
+      c.valeurs = { ...c.valeurs, [t.dataset.passerValeur]: t.value };
+    } else return;
+    lireLePassage(c.cle);
   });
   // Les champs d'édition : Entrée enregistre, Échap renonce ; quitter le champ enregistre.
   plan.addEventListener("keydown", (e) => {
@@ -4517,7 +4653,6 @@ function afficherSignal(autres) {
   // dit qu'une telle grille est passée à une autre version (une montée faite ailleurs).
   const fermees = new Map(S.grilles.filter((g) => !g.ouverte).map((g) => [g.id, A.nomOnglet(g)]));
   b.title = n ? BDSignal.titre(autres, fermees) : "";
-
   if (n && !montre) annoncer("La planche a changé ailleurs : « Actualiser » la recharge.");
 }
 

@@ -4967,6 +4967,13 @@ body.an-designer .an-mz-enfant.t-texte {
 .an-conf select { max-width: 100%; min-width: 0; padding: .2308rem .3846rem;
                   background: var(--bg-input); color: var(--text);
                   border: 1px solid var(--border); border-radius: 5px; }
+/* « Passer dans une grille… » (le mode libre) : la grille et l'entrée d'arrivée, la table des
+   valeurs, le bilan, sur place. */
+.an-passer-titre { font-weight: 600; overflow-wrap: anywhere; }
+.an-passer-l { display: inline-flex; flex-wrap: wrap; gap: .3077rem; align-items: center;
+               min-width: 0; max-width: 100%; }
+.an-passer-table { display: flex; flex-direction: column; gap: .2308rem; }
+.an-passer-causes { margin: 0; padding-left: 1.2rem; }
 .an-btn-danger { border-color: var(--danger); color: var(--danger); }
 .an-rangee { display: flex; align-items: center; gap: .4615rem; padding: .1538rem .4615rem;
              border: 1px solid transparent; border-radius: 5px; cursor: grab; }

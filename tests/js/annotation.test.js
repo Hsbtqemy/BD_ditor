@@ -1475,7 +1475,6 @@ test("les phrases des confirmations sur place", () => {
   assert.equal(A.retraitEnMots(e, 3), "Retirer « ironie » : elle ne se pose plus ; ses 3 relevés restent, à revoir.");
   assert.equal(A.fusionEnMots("humour", 1), "1 relevé passe à « humour ».");
   assert.equal(A.fusionEnMots("humour", 2), "2 relevés passent à « humour ».");
-  assert.match(A.BILAN_PASSER, /bilan, relevé par relevé/);
 });
 
 test("aucun code de cadrage ne se lit dans les mots de la page", () => {
@@ -1489,7 +1488,8 @@ test("aucun code de cadrage ne se lit dans les mots de la page", () => {
     for (const [k, v] of Object.entries(x)) balayer(v, `${ou}.${k}`, profondeur + 1);
   };
   for (const [nom, v] of Object.entries(A)) balayer(v, nom);
-  assert.ok(Object.keys(A.RAISONS_RARES).length && A.BILAN_PASSER, "le balayage porte sur rien");
+  assert.ok(Object.keys(A.RAISONS_RARES).length && Object.keys(A.PASSER_CAUSES).length,
+            "le balayage porte sur rien");
   assert.ok(CODE.test("une tranche à part (J8)") && CODE.test("CONC-3"), "le motif ne mord pas");
   assert.deepEqual(vus, []);
 });
@@ -1503,4 +1503,40 @@ test("une valeur d'une étiquette « plusieurs » s'ajoute à côté, et se reti
   assert.equal(A.geste(s, [p], { variante: "perte" }).releve, p);
   const j = rel(21, { entree_cle: "sentiment", variante_cle: "joie" });
   assert.equal(A.geste(s, [p, j], { variante: "joie" }).releve, j);
+});
+
+test("« Passer dans une grille… » : les causes en mots, ce qui s'offre, la table des valeurs", () => {
+  // Les causes de la montée, dites pour une entrée d'ARRIVÉE ; et celles du passage.
+  assert.equal(A.causeDuPassage({ cause: "type_change", n: 1 }),
+               "l'entrée ne se pose pas sur ce type de zone");
+  assert.equal(A.causeDuPassage({ cause: "pose_changee", designe: "mots", n: 1 }),
+               "l'entrée se pose sur toute la zone");
+  assert.equal(A.causeDuPassage({ cause: "pose_changee", designe: "zone", n: 1 }),
+               "l'entrée se pose sur des mots");
+  assert.equal(A.causeDuPassage({ cause: "pose_changee", designe: "planche", n: 1 }),
+               "l'entrée ne se pose pas sur la planche");
+  assert.equal(A.causeDuPassage({ cause: "sans_equivalent", n: 2 }), "la valeur n'a pas d'équivalent");
+  assert.equal(A.causeDuPassage({ cause: "deja_pose", n: 1 }), "déjà posée sur la zone");
+  assert.equal(A.causeDuPassage({ cause: "variante_manquante", n: 1 }), "choisissez une valeur");
+  // Chaque cause que le serveur peut rendre a ses mots (`structurer.ORDRE_DES_CAUSES`, et
+  // celles qui se complètent).
+  for (const c of ["type_change", "pose_changee", "entree_absente", "variante_absente",
+                   "variante_sans_place", "case_absente", "case_sans_place", "variante_manquante",
+                   "sans_equivalent", "deja_pose", "en_double", "meme_valeur",
+                   "precision_manquante", "lien_manquant"]) {
+    assert.notEqual(A.causeDuPassage({ cause: c, designe: "mots" }), c, c);
+  }
+  // « Passer » s'offre sur un bilan passable seulement ; éteint, il dit pourquoi.
+  assert.deepEqual(A.passable({ verdict: { etat: "passable", phrase: "x" } }), { ok: true, raison: "" });
+  assert.equal(A.passable({ verdict: { etat: "choisir_entree" } }).raison, "Choisissez l'entrée d'arrivée");
+  assert.equal(A.passable({ verdict: { etat: "rien_a_passer", phrase: "Aucun relevé." } }).raison,
+               "Aucun relevé.");
+  assert.equal(A.passable(null).ok, false);
+  // La table : ce qu'on a choisi, sinon ce que le bilan retient ; « aucune » part en null.
+  const bilan = { correspondance: [{ de: { cle: "crie" }, vers: "crie" },
+                                   { de: { cle: "murmure" }, vers: null },
+                                   { de: { cle: null }, vers: "chuchote" }] };
+  assert.deepEqual(A.tableDuPassage(bilan, {}), { crie: "crie", murmure: null, "": "chuchote" });
+  assert.deepEqual(A.tableDuPassage(bilan, { murmure: "chuchote", "": "" }),
+                   { crie: "crie", murmure: "chuchote", "": null });
 });

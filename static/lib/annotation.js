@@ -1830,9 +1830,60 @@
   function fusionEnMots(dans, n) {
     return `${nReleves(n)} ${n > 1 ? "passent" : "passe"} à « ${dans} ».`;
   }
-  /* « Voir le bilan… » de « Passer dans une grille… », éteint : le geste viendra avec sa
-     tranche, et l'écran le dit sans nommer de code de cadrage (passe du mode libre). */
-  const BILAN_PASSER = "Le bilan, relevé par relevé, n'est pas encore là : ce geste viendra plus tard";
+  /* « PASSER DANS UNE GRILLE… » (le mode libre, « Structurer ») : une étiquette passe, avec
+     ses relevés, dans une entrée d'une autre grille active du projet. Le serveur fait le bilan
+     (`GET …/entrees/{cle}/passage`) ; l'écran en dit les causes en mots — celles de la montée
+     de version, dites pour une entrée d'ARRIVÉE (« ne se pose pas », non « ne se pose plus »),
+     et celles du passage —, ce qui s'offre, et la table des valeurs à envoyer. */
+  const PASSER_CAUSES = {
+    type_change: "l'entrée ne se pose pas sur ce type de zone",
+    entree_absente: "l'entrée n'est pas dans la grille",
+    variante_absente: "cette valeur n'est pas dans l'entrée",
+    variante_sans_place: "l'entrée ne prend pas de valeur",
+    case_absente: "une case cochée n'est pas dans la liste",
+    case_sans_place: "l'entrée ne prend pas de cases",
+    variante_manquante: "choisissez une valeur",
+    sans_equivalent: "la valeur n'a pas d'équivalent",
+    deja_pose: "déjà posée sur la zone",
+    en_double: "deux relevés sur une zone où l'entrée ne se pose qu'une fois",
+    meme_valeur: "la même valeur deux fois sur la zone",
+    precision_manquante: "précision attendue",
+    lien_manquant: "lien attendu vers une autre zone",
+  };
+  const POSE_DU_PASSAGE = {
+    planche: "l'entrée ne se pose pas sur la planche",
+    mots: "l'entrée se pose sur toute la zone",
+    zone: "l'entrée se pose sur des mots",
+  };
+  /* Un groupe du bilan (`{cause, n, designe?}`) en mots. */
+  function causeDuPassage(g) {
+    if (!g) return "";
+    if (g.cause === "pose_changee") return POSE_DU_PASSAGE[g.designe] || "l'entrée ne se pose pas ainsi";
+    return PASSER_CAUSES[g.cause] || String(g.cause);
+  }
+  /* « Passer » s'offre-t-il ? `{ ok, raison }` : sur un bilan qui dit `passable` seulement ;
+     éteint, la raison se dit sur place. */
+  function passable(bilan) {
+    const v = bilan && bilan.verdict;
+    if (!v) return { ok: false, raison: "Lecture du bilan…" };
+    if (v.etat === "passable") return { ok: true, raison: "" };
+    if (v.etat === "choisir_grille") return { ok: false, raison: "Choisissez la grille d'arrivée" };
+    if (v.etat === "choisir_entree") return { ok: false, raison: "Choisissez l'entrée d'arrivée" };
+    if (v.etat === "a_corriger") return { ok: false, raison: "Une valeur choisie n'est pas de l'entrée d'arrivée" };
+    return { ok: false, raison: v.phrase || "Rien ne passe" };
+  }
+  /* La table des valeurs à envoyer, depuis le bilan et ce qu'on a choisi (`choix`, `{valeur
+     du Mode libre ("" sans valeur): variante d'arrivée, ou "" pour aucune}`) : chaque ligne du
+     bilan, sa valeur choisie, sinon celle que le bilan retient. */
+  function tableDuPassage(bilan, choix) {
+    const t = {};
+    for (const x of (bilan && bilan.correspondance) || []) {
+      const de = x.de.cle || "";
+      const pris = choix && Object.prototype.hasOwnProperty.call(choix, de) ? choix[de] : x.vers;
+      t[de] = pris || null;
+    }
+    return t;
+  }
 
   /* La boîte du guide REPLIÉE ou dépliée (Hugo, passe du jalon 1 : la liste de ce qui est
      posé veut plus de place) : retenue sur le poste, clé `bd-annotation-guide`, sous
@@ -1873,6 +1924,6 @@
            gestesOfferts, raisonValeurNouvelle,
            raisonCrayon, etatEnMots, ceQuEntreeFera, dansModeLibre, TRIS, TRI_DEFAUT, CLE_TRI,
            lireTri, retenirTri, trierEntrees, deplacement, deplacementAvant, retraitEnMots,
-           fusionEnMots, BILAN_PASSER };
+           fusionEnMots, PASSER_CAUSES, causeDuPassage, passable, tableDuPassage };
 
 });
