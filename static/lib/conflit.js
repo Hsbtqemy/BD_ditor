@@ -46,6 +46,8 @@
     releve: ["Relevé", "m", "le relevé"],
     // ANN-7, J8 : la grille d'un relevé, que « Passer dans une grille… » change.
     grille_id: ["Grille", "f", "la grille"],
+    // ANN-7 : l'entrée d'un relevé, qu'une montée (fusion) ou un passage change.
+    entree_cle: ["Entrée", "f", "l'entrée"],
     // ANN-7, tranche 2, commit 9 — le nom d'un détail, sur la page Annotation.
     nom: ["Nom", "m", "le nom"],
     // ANN-7 — le formulaire d'une grille (Administration) : les champs d'une grille, d'une

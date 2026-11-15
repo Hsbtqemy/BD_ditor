@@ -48,6 +48,9 @@ LIBELLES = {
     "releve": "le relevé",
     # ANN-7, J8 : la grille d'un relevé, que « Passer dans une grille… » change (`undo`).
     "grille_id": "la grille",
+    # ANN-7 : l'entrée d'un relevé, qu'une montée de version (fusion) ou « Passer dans une
+    # grille… » change — Ctrl+Z d'une pose la compare (`undo._VALEURS_DU_RELEVE`).
+    "entree_cle": "l'entrée",
     # v37 (G17) — le nom libre d'une zone de détail (`journal._REGION_COLS`), que garde
     # l'annulation d'une création ou d'une modification de région.
     "nom": "le nom",
@@ -68,6 +71,8 @@ LIBELLES = {
     "liste_cle": "la liste",
     "ordre": "l'ordre",
 }
+# Les libellés féminins dont l'article s'élide : « l'entrée a été modifiée ».
+_FEMININS_ELIDES = frozenset({"l'entrée"})
 
 
 def verrouiller(conn: sqlite3.Connection) -> None:
@@ -101,7 +106,7 @@ class Perime(Exception):
 
     def message(self) -> str:
         quoi = LIBELLES.get(self.champ, self.champ)
-        e = "e" if quoi.startswith("la ") else ""      # « la note a été modifiée »
+        e = "e" if quoi.startswith("la ") or quoi in _FEMININS_ELIDES else ""  # « la note a été modifiée »
         if quoi.startswith("les "):                    # « les qualificatifs ont été modifiés »
             return self._message_pluriel(quoi)
         a = self.auteur

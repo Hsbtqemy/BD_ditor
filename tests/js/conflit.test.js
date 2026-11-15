@@ -98,6 +98,14 @@ test("une annulation de locuteur ou de présence refusée nomme le lien (ANN-8)"
                "Annulation impossible : le personnage montré a été modifié depuis par Stagiaire QA à 14 h 32.");
 });
 
+test("ANN-7 — une annulation refusée sur un relevé passé ou fusionné nomme l'entrée", () => {
+  const auteur = { nom: "Proprio QA", le: iso(local(2026, 9, 17, 14, 32)) };
+  assert.equal(C.messageAnnulationRefusee({ champ: "entree_cle", auteur }, MAINTENANT),
+               "Annulation impossible : l'entrée a été modifiée depuis par Proprio QA à 14 h 32.");
+  assert.equal(C.titreConflit({ champ: "entree_cle", auteur }, MAINTENANT),
+               "Entrée modifiée par Proprio QA à 14 h 32");
+});
+
 test("CONC-4 — un lien : le titre nomme le locuteur ou le personnage montré", () => {
   const auteur = { nom: "Bob Martin", login: "bob", le: iso(local(2026, 9, 17, 14, 32)) };
   assert.equal(C.titreConflit({ champ: "locuteur", auteur }, MAINTENANT),

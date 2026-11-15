@@ -302,6 +302,16 @@ def test_le_message_accorde_le_participe_au_champ(client, planche):
     assert "le texte a été modifié " in texte and "l'avez vu." in texte, texte
 
 
+def test_le_message_accorde_l_entree_elidee():
+    """ANN-7 — « l'entrée a été modifiée » : l'article élidé ne dit pas le genre, la liste le
+    dit (Ctrl+Z d'une pose dont la montée ou un passage a changé l'entrée)."""
+    import conflit
+    m = conflit.Perime("releve", 1, "entree_cle", "ton-de-voix", None).message()
+    assert "l'entrée a été modifiée ailleurs depuis que vous l'avez vue." in m, m
+    m = conflit.Perime("releve", 1, "ordre", 2, None).message()
+    assert "l'ordre a été modifié ailleurs depuis que vous l'avez vu." in m, m
+
+
 # --------------------------------------------------------------------------- #
 # Q7 — qui : le nom affiché, ou « un autre écran de ce même compte »
 # --------------------------------------------------------------------------- #
