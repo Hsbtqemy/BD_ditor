@@ -984,6 +984,22 @@ test("les causes de l'état, en mots, dans l'ordre du serveur ; une inconnue se 
   assert.deepEqual(A.causesEnMots(null), []);
 });
 
+test("les causes de la montée de version, en mots ; la sorte de pose selon ce que le relevé désigne", () => {
+  assert.deepEqual(A.causesEnMots(rel5(1, { causes: ["variante_absente", "variante_sans_place",
+                                                     "case_absente", "case_sans_place",
+                                                     "variante_manquante"] })),
+                   ["cette valeur n'existe plus", "l'entrée ne prend plus de valeur",
+                    "une case cochée n'est pas dans la liste", "l'entrée ne prend plus de cases",
+                    "choisissez une valeur"]);
+  assert.deepEqual(A.causesEnMots(rel5(1, { causes: ["pose_changee"] })),
+                   ["l'entrée se pose maintenant sur des mots"]);
+  assert.deepEqual(A.causesEnMots(rel5(1, { causes: ["pose_changee"], mots: desMots(1) })),
+                   ["l'entrée se pose maintenant sur toute la zone"]);
+  assert.deepEqual(A.causesEnMots(rel5(1, { causes: ["pose_changee"], region_id: null,
+                                            planche_id: 4 })),
+                   ["l'entrée ne se pose plus sur la planche"]);
+});
+
 test("ce que le relevé désignait : le passage ancré, ses trous compris", () => {
   assert.equal(A.passageAncre(rel5(1, { mots: desMots(2, 3, 5) })), "m2 m3 … m5");
   assert.equal(A.passageAncre(rel5(1, { mots: [] })), "");

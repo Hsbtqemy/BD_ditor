@@ -1170,14 +1170,28 @@ LEFT JOIN token_correction c
 --   « à compléter » — une précision ou un lien que l'entrée attend, et que le relevé ne
 --   porte pas ;
 --   « normal » sinon.
+-- Six causes de plus avec la MONTÉE DE VERSION (ANN-7 ; cadrage
+-- `docs/ann7-montee-de-version-cadrage.md`, §3) — elles n'existaient pas tant que la version
+-- ne changeait pas sous des relevés, et valent hors d'elle aussi : la SORTE DE POSE changée
+-- (`pose_changee` : un relevé de planche dont l'entrée ne vise plus la planche, des mots
+-- quand elle vise toute la zone, une zone entière quand elle vise des mots) ; une VARIANTE
+-- qui n'existe plus (`variante_absente`) ou n'a plus de place (`variante_sans_place`), à
+-- revoir, ou qui MANQUE à une entrée devenue à variantes (`variante_manquante`), à
+-- compléter ; une CASE cochée hors de la liste (`case_absente`), ou des cases sur une entrée
+-- qui n'en prend plus (`case_sans_place`), à revoir.
 -- La règle du type est celle de `grilles.type_convient`, écrite ici en SQL ;
--- `tests/test_releves.py` accorde les deux, type par type et cible par cible.
+-- `tests/test_releves.py` accorde les deux, type par type et cible par cible ; et toutes les
+-- causes qui dépendent de la version sont celles de `grilles.causes_dans_la_version`, que
+-- `tests/test_regle_du_releve.py` accorde à la vue, cas par cas.
 DROP VIEW IF EXISTS releves_effectifs;
 CREATE VIEW releves_effectifs AS
 SELECT x.*,
        CASE WHEN x.mot_perdu OR x.texte_change OR x.lien_perdu OR x.type_change
-                 OR x.entree_absente THEN 'a_revoir'
-            WHEN x.precision_manquante OR x.lien_manquant THEN 'a_completer'
+                 OR x.pose_changee OR x.entree_absente OR x.variante_absente
+                 OR x.variante_sans_place OR x.case_absente OR x.case_sans_place
+                 THEN 'a_revoir'
+            WHEN x.variante_manquante OR x.precision_manquante OR x.lien_manquant
+                 THEN 'a_completer'
             ELSE 'normal' END AS etat
 FROM (
   SELECT r.*,
@@ -1194,7 +1208,32 @@ FROM (
                    WHEN COALESCE(e.cible, v.cible) IN ('planche', 'entite') THEN 0
                    ELSE instr('|' || COALESCE(e.cible, v.cible) || '|',
                               '|' || g.type || '|') > 0 END)) AS type_change,
+         (e.cle IS NOT NULL AND COALESCE(e.cible, v.cible) IS NOT NULL AND (
+              (r.planche_id IS NOT NULL AND COALESCE(e.cible, v.cible) <> 'planche')
+              OR (r.region_id IS NOT NULL AND EXISTS (
+                      SELECT 1 FROM releve_mot m2 WHERE m2.releve_id = r.id)
+                  AND COALESCE(e.cible, v.cible) NOT IN ('mots', 'planche', 'entite'))
+              OR (r.region_id IS NOT NULL AND NOT EXISTS (
+                      SELECT 1 FROM releve_mot m3 WHERE m3.releve_id = r.id)
+                  AND COALESCE(e.cible, v.cible) = 'mots'))) AS pose_changee,
          (e.cle IS NULL OR e.retiree = 1) AS entree_absente,
+         (e.cle IS NOT NULL AND r.variante_cle IS NOT NULL AND e.forme = 'variantes'
+              AND NOT EXISTS (SELECT 1 FROM grille_variante gv
+                              WHERE gv.version_id = r.version_id
+                                AND gv.entree_cle = r.entree_cle AND gv.cle = r.variante_cle))
+             AS variante_absente,
+         (e.cle IS NOT NULL AND r.variante_cle IS NOT NULL AND e.forme <> 'variantes')
+             AS variante_sans_place,
+         (e.cle IS NOT NULL AND r.variante_cle IS NULL AND e.forme = 'variantes')
+             AS variante_manquante,
+         (e.cle IS NOT NULL AND e.forme = 'qualificatifs' AND EXISTS (
+              SELECT 1 FROM releve_qualificatif q WHERE q.releve_id = r.id AND NOT EXISTS (
+                  SELECT 1 FROM grille_qualificatif gq WHERE gq.version_id = r.version_id
+                     AND gq.liste_cle = e.liste_cle AND gq.cle = q.qualificatif_cle)))
+             AS case_absente,
+         (e.cle IS NOT NULL AND e.forme <> 'qualificatifs' AND EXISTS (
+              SELECT 1 FROM releve_qualificatif q2 WHERE q2.releve_id = r.id))
+             AS case_sans_place,
          (e.precision IS NOT NULL AND TRIM(COALESCE(r.precision, '')) = '')
              AS precision_manquante,
          (e.lien = 1 AND r.lien_region_id IS NULL) AS lien_manquant

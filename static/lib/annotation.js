@@ -1339,13 +1339,32 @@
     texte_change: "le texte a changé depuis la pose",
     lien_perdu: "la zone liée a disparu",
     type_change: "la zone a changé de sorte",
+    // La montée de version (ANN-7) : ce qu'une version nouvelle ne laisse plus au relevé.
+    pose_changee: "l'entrée ne se pose plus ainsi",
     entree_absente: "l'entrée n'est plus dans la grille",
+    variante_absente: "cette valeur n'existe plus",
+    variante_sans_place: "l'entrée ne prend plus de valeur",
+    case_absente: "une case cochée n'est pas dans la liste",
+    case_sans_place: "l'entrée ne prend plus de cases",
+    variante_manquante: "choisissez une valeur",
     precision_manquante: "précision attendue",
     lien_manquant: "lien attendu vers une autre zone",
   };
 
+  /* La sorte de pose changée se dit selon ce que le relevé désigne : la planche (l'entrée ne
+     la vise plus), des mots (l'entrée vise toute la zone), une zone entière (l'entrée vise
+     des mots) — la règle de `grilles.causes_dans_la_version`. */
+  function poseChangeeEnMots(r) {
+    if (r.region_id === null || r.region_id === undefined) {
+      return "l'entrée ne se pose plus sur la planche";
+    }
+    return (r.mots || []).length ? "l'entrée se pose maintenant sur toute la zone"
+      : "l'entrée se pose maintenant sur des mots";
+  }
+
   function causesEnMots(r) {
-    return ((r && r.causes) || []).map((c) => CAUSES[c] || String(c));
+    return ((r && r.causes) || []).map((c) => (c === "pose_changee" ? poseChangeeEnMots(r)
+      : CAUSES[c] || String(c)));
   }
 
   /* Ce que le relevé DÉSIGNAIT à sa pose : le passage tel qu'il a été ancré — les formes

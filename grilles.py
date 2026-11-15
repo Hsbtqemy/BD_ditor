@@ -151,6 +151,105 @@ def type_convient(type_region: str, cibles) -> bool:
 
 
 # --------------------------------------------------------------------------- #
+# Un relevé dans une version (ANN-7, la montée de version ; cadrage
+# `docs/ann7-montee-de-version-cadrage.md`, §3)
+# --------------------------------------------------------------------------- #
+# Les CAUSES qu'une VERSION donne à un relevé — ce qui dépend du plan seul, et que la montée
+# change : les autres (un mot perdu, un texte changé, une zone liée disparue) suivent le
+# texte et les liens, quelle que soit la version. `releves_effectifs` les écrit en SQL, cette
+# règle en Python : `tests/test_regle_du_releve.py` les accorde, cas par cas. La montée, Ctrl+Z
+# (un relevé rendu dans la version active) et « Passer dans une grille… » l'appellent.
+CAUSES_A_REVOIR_DE_VERSION = ("type_change", "pose_changee", "entree_absente",
+                              "variante_absente", "variante_sans_place", "case_absente",
+                              "case_sans_place")
+CAUSES_A_COMPLETER_DE_VERSION = ("variante_manquante", "precision_manquante", "lien_manquant")
+# Celles qui ne dépendent pas de la version (la vue les dit aussi).
+CAUSES_A_REVOIR_DU_TEXTE = ("mot_perdu", "texte_change", "lien_perdu")
+
+
+def causes_dans_la_version(c: dict, r: dict) -> list:
+    """Les causes que la version de contenu `c` (`contenu`) donne au relevé `r`, dans l'ordre
+    de `CAUSES_A_REVOIR_DE_VERSION` puis `CAUSES_A_COMPLETER_DE_VERSION` — vide : il y passe
+    « normal ». `r` : `{entree_cle, planche (un relevé de SURFACE), type_region (None sur la
+    planche), mots (il désigne des mots), variante_cle, qualificatifs, precision,
+    lien_region_id}`.
+
+    - l'entrée absente de la version, ou RETIRÉE : `entree_absente` (rien d'autre ne se dit
+      d'une entrée qui n'existe pas ; une retirée garde ses autres causes) ;
+    - le TYPE de la région ne convient plus à la cible de l'entrée : `type_change` (G8) ;
+    - la SORTE DE POSE a changé : un relevé de planche dont l'entrée ne vise plus la planche,
+      des mots dont l'entrée vise toute la zone, une zone entière dont l'entrée vise des mots
+      — `pose_changee` ;
+    - une VARIANTE qui n'existe plus dans l'entrée (`variante_absente`), ou qui n'a plus de
+      place, l'entrée n'étant plus à variantes (`variante_sans_place`) ; une entrée devenue à
+      variantes sous un relevé qui n'en porte pas : `variante_manquante`, à compléter ;
+    - une CASE cochée qui n'est pas dans la liste de l'entrée (`case_absente`), ou des cases
+      sur une entrée qui n'en prend plus (`case_sans_place`) ;
+    - une précision ou un lien attendus et absents (`precision_manquante`, `lien_manquant`).
+
+    Une entrée qui ne dit pas où elle se pose (une version sans « Porte sur ») ne dit rien du
+    type ni de la sorte de pose : la vue rend NULL, la règle se tait de même."""
+    e = c["entrees"].get(r["entree_cle"])
+    if e is None:
+        return ["entree_absente"]
+    causes = set()
+    if e.get("retiree"):
+        causes.add("entree_absente")
+    cibles = cibles_de(e.get("cible")) or cibles_de(c.get("cible"))
+    pose = sorte_de_pose(cibles)
+    if cibles and not r["planche"] and not type_convient(r["type_region"], cibles):
+        causes.add("type_change")
+    if cibles and ((r["planche"] and pose != "planche")
+                   or (not r["planche"] and r["mots"] and pose == "zone")
+                   or (not r["planche"] and not r["mots"] and pose == "mots")):
+        causes.add("pose_changee")
+    forme = e["forme"]
+    if r.get("variante_cle"):
+        if forme != "variantes":
+            causes.add("variante_sans_place")
+        elif r["variante_cle"] not in (e.get("variantes") or {}):
+            causes.add("variante_absente")
+    elif forme == "variantes":
+        causes.add("variante_manquante")
+    cochees = set(r.get("qualificatifs") or ())
+    if cochees:
+        if forme != "qualificatifs":
+            causes.add("case_sans_place")
+        else:
+            liste = (c.get("listes") or {}).get(e.get("liste_cle")) or {}
+            if cochees - set(liste.get("qualificatifs") or {}):
+                causes.add("case_absente")
+    if e.get("precision") is not None and not (r.get("precision") or "").strip(" "):
+        causes.add("precision_manquante")
+    if e.get("lien") and r.get("lien_region_id") is None:
+        causes.add("lien_manquant")
+    return [x for x in CAUSES_A_REVOIR_DE_VERSION + CAUSES_A_COMPLETER_DE_VERSION
+            if x in causes]
+
+
+def etat_des_causes(causes) -> str:
+    """L'ÉTAT que des causes donnent à un relevé — la règle de `releves_effectifs` :
+    `a_revoir` dès une cause à revoir, sinon `a_completer` dès une cause à compléter, sinon
+    `normal`."""
+    causes = set(causes)
+    if causes & set(CAUSES_A_REVOIR_DE_VERSION + CAUSES_A_REVOIR_DU_TEXTE):
+        return "a_revoir"
+    if causes & set(CAUSES_A_COMPLETER_DE_VERSION):
+        return "a_completer"
+    return "normal"
+
+
+def convient(c: dict, r: dict) -> bool:
+    """Le relevé `r` peut-il VIVRE dans la version `c` comme s'il y avait été posé — son
+    entrée y existe et n'est pas retirée, sa variante et ses cases y ont leur place, il s'y
+    pose de la même manière, sur une zone d'un type qu'elle vise ? La règle que Ctrl+Z lit
+    pour rendre un relevé d'avant la montée dans la version active (cadrage, §7). Une
+    précision ou un lien manquants ne l'empêchent pas : ils se complètent."""
+    return not (set(causes_dans_la_version(c, r)) & set(CAUSES_A_REVOIR_DE_VERSION
+                                                        + ("variante_manquante",)))
+
+
+# --------------------------------------------------------------------------- #
 # L'identifiant d'une grille, et son origine (v40)
 # --------------------------------------------------------------------------- #
 def identifiant_neuf() -> str:

@@ -35,8 +35,9 @@ contre une colonne.
 
 L'ÉTAT ne s'écrit pas (G2) : la vue `releves_effectifs` le dérive — « à revoir » (un mot du
 passage perdu, le texte de la zone changé depuis l'ancrage, la région liée disparue, un type
-de région qui ne convient plus, une entrée absente), « à compléter » (une précision ou un
-lien attendus et absents), « normal » sinon.
+de région qui ne convient plus, une sorte de pose changée, une entrée absente, une variante
+ou une case qui n'existe plus ou n'a plus de place), « à compléter » (une variante, une
+précision ou un lien attendus et absents), « normal » sinon.
 
 Le JOURNAL (R10) : deux cibles, sur le patron des annotations — `releve` (`cible_id` = la
 RÉGION du relevé) et `releve_planche` (`cible_id` = la PLANCHE) ; l'identifiant du relevé
@@ -118,8 +119,11 @@ def collectifs(conn, logins) -> set:
         f"({', '.join('?' * len(voulus))})", voulus)}
 
 
-_CAUSES = ("mot_perdu", "texte_change", "lien_perdu", "type_change", "entree_absente",
-           "precision_manquante", "lien_manquant")
+# Les causes que la vue `releves_effectifs` dérive, dans l'ordre où l'écran les dit — celles
+# qui dépendent de la version sont celles de `grilles.causes_dans_la_version` (la montée de
+# version, ANN-7), dans son ordre.
+_CAUSES = (grilles.CAUSES_A_REVOIR_DU_TEXTE + grilles.CAUSES_A_REVOIR_DE_VERSION
+           + grilles.CAUSES_A_COMPLETER_DE_VERSION)
 
 
 def vue_releve(conn, r, *, modifiable: bool, noms: dict, partages: set,
