@@ -44,6 +44,8 @@
     lien_region_id: ["Lien", "m", "le lien"],
     mots: ["Passage", "m", "le passage"],
     releve: ["Relevé", "m", "le relevé"],
+    // ANN-7, J8 : la grille d'un relevé, que « Passer dans une grille… » change.
+    grille_id: ["Grille", "f", "la grille"],
     // ANN-7, tranche 2, commit 9 — le nom d'un détail, sur la page Annotation.
     nom: ["Nom", "m", "le nom"],
     // ANN-7 — le formulaire d'une grille (Administration) : les champs d'une grille, d'une

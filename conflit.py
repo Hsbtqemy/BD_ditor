@@ -46,6 +46,8 @@ LIBELLES = {
     # (`undo._inverser_releve`), ou un relevé qui vit sur une région dont on annule la
     # création (`undo._garder_releves_de_creation`).
     "releve": "le relevé",
+    # ANN-7, J8 : la grille d'un relevé, que « Passer dans une grille… » change (`undo`).
+    "grille_id": "la grille",
     # v37 (G17) — le nom libre d'une zone de détail (`journal._REGION_COLS`), que garde
     # l'annulation d'une création ou d'une modification de région.
     "nom": "le nom",

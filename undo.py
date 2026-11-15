@@ -828,9 +828,11 @@ def _laisse_par_un_geste_passe(conn, e):
 # son ENTRÉE (ANN-7, la montée de version) : une fusion la change, et défaire la pose d'origine
 # retirerait sans rien dire le relevé fusionné ; le 409 « Passer ce geste » nomme la fusion.
 # Aucune route ne change l'entrée d'un relevé : elle n'est jamais dans la charge d'une
-# modification, seulement comparée à la création.
+# modification, seulement comparée à la création. Sa GRILLE aussi (ANN-7, J8 : « Passer dans
+# une grille… » la change, et l'entrée d'arrivée peut porter la même clé) : défaire la pose
+# d'une étiquette passée depuis dans une autre grille reçoit le 409 qui nomme qui l'y a passée.
 _VALEURS_DU_RELEVE = ("variante_cle", "qualificatifs", "precision", "lien_region_id", "mots",
-                      "entree_cle")
+                      "entree_cle", "grille_id")
 # Celles qu'une MODIFICATION défait (`entree_cle` n'en est jamais).
 _VALEURS_MODIFIEES = ("variante_cle", "qualificatifs", "precision", "lien_region_id", "mots")
 
@@ -1026,6 +1028,14 @@ def _inverser_releve(conn, e, avant, apres) -> None:
     # Une modification : ce que l'acte a changé revient, et lui seul.
     avant, apres = avant or {}, apres or {}
     changes = [c for c in _VALEURS_MODIFIEES if c in apres]
+    # Passé depuis dans une AUTRE grille (ANN-7, J8) : la retouche d'avant ne se défait pas
+    # dans une grille où elle n'a pas été faite — le 409 nomme qui l'y a passé, et « Passer ce
+    # geste » le franchit (cadrage du mode libre, « Structurer »).
+    qui = conflit.auteur_du_champ(conn, e["cible_table"], e["cible_id"], "grille_id",
+                                  actuel["grille_id"], depuis=e["id"], objet=objet)
+    if qui is not None:
+        raise conflit.Perime(e["cible_table"], e["cible_id"], "grille_id", actuel["grille_id"],
+                             qui)
     if not _valeurs_rendues_tiennent(conn, actuel, avant, changes):
         # La variante ou une case rendue n'est plus dans la version du relevé — une montée
         # l'a retirée depuis l'acte : l'état d'avant ne peut plus être rétabli.

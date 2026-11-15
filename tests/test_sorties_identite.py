@@ -168,6 +168,15 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
     client.post(f"/api/releves/{r_releve.json()['id']}/doutes", headers=ident,
                 json={"texte": "semis"})
     client.put(f"/api/regions/{r['id']}/passes/{grille_id}", headers=ident, json={})
+    # ANN-7, J8 — une étiquette du MODE LIBRE posée par la sentinelle : l'aperçu de « Passer
+    # dans une grille… » se balaie sur la grille de travail du projet (`SUR_LE_TRAVAIL`).
+    travail = next(g for g in client.get(f"/api/projets/{projet['id']}/grilles",
+                                         headers=ident).json()["actives"] if g["travail"])
+    r_libre = client.post("/api/releves", headers=ident,
+                          json={"grille_id": travail["id"], "version": travail["version"]["numero"],
+                                "region_id": r["id"],
+                                "nouvelle_entree": {"libelle": "semis : valeur"}})
+    assert r_libre.status_code == 201, r_libre.text
     # COL-4 — un BAC À SABLE d'un AUTRE compte, où la sentinelle est invitée : `GET
     # /api/projets` y rend le login de son propriétaire (l'invité doit savoir chez qui il
     # est). Le propriétaire porte la sentinelle dans son login — un autre compte que celle
@@ -308,6 +317,7 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
             "projet_id": projet["id"],
             "base_id": base["id"],
             "grille_id": grille_id, "numero": 1,
+            "travail_id": travail["id"], "cle": "semis",
             # `chemin_web` vaut « derivatives/xxx.jpg » ; la route monte déjà sur
             # /derivatives, on ne garde donc que la partie qui suit.
             "chemin": (pl.get("chemin_web") or "").split("derivatives/")[-1]}
@@ -769,7 +779,14 @@ QUETES = {
     # semis, active : rien ne monte, le verdict seul — l'aperçu ne nomme personne de toute
     # façon (ses zones sont des identifiants, ses comptes des nombres).
     "/api/projets/{projet_id}/grilles/{grille_id}/montee": "version=1",
+    # ANN-7, J8 — l'aperçu de « Passer dans une grille… », vers la grille du semis : le bilan
+    # entier (ses zones sont des identifiants, ses comptes des nombres).
+    "/api/grilles/{grille_id}/entrees/{cle}/passage": "vers={grille_id}&dans=cri",
 }
+
+# Les routes qui ne parlent que sur la grille de TRAVAIL du projet (ANN-7, J8) : balayées sur
+# elle, et non sur la grille du semis, où elles répondent 409.
+SUR_LE_TRAVAIL = {"/api/grilles/{grille_id}/entrees/{cle}/passage"}
 
 
 # Les routes qui ne parlent que sur une collection de BASE : balayées sur elle, et non sur
@@ -782,6 +799,8 @@ def _balayer_routes(client, seme) -> dict:
     for r in _routes_get():
         cle = ("route", r.path)
         decor = {**seme, "collection_id": seme["base_id"]} if r.path in SUR_LA_BASE else seme
+        if r.path in SUR_LE_TRAVAIL:
+            decor = {**seme, "grille_id": seme["travail_id"]}
         chemin = _chemin_concret(r.path, decor)
         if chemin is None:
             continue                                    # → exigé dans NON_BALAYE

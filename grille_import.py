@@ -1386,7 +1386,7 @@ _COLONNES_D_UN_REPORT = ("id", "region_id", "planche_id", "grille_id", "version_
 
 
 def journaliser_fusion(conn, grille_id: int, numero: int, fusion: dict,
-                       acte_id: int | None) -> int:
+                       acte_id: int | None, *, vers: dict | None = None) -> int:
     """Écrit au journal un acte par relevé qu'une fusion a déplacé (`_fusionner`), sous sa
     cible ordinaire — la RÉGION (`releve`) ou la PLANCHE (`releve_planche`) —, du type
     `grilles.ACTE_FUSION` : ni Ctrl+Z ne l'offre, ni « qui perd quoi » ne le compte
@@ -1401,12 +1401,18 @@ def journaliser_fusion(conn, grille_id: int, numero: int, fusion: dict,
     types), la garde de CONC-3 (qui a changé un champ qu'elle garde), « qui perd quoi »
     (bornée à qui efface l'album, et qui l'écarte), et aucun export (`releve` est retenu) :
     écrire l'acte sur un relevé d'un album que le responsable ne lit pas ne lui en montre
-    rien, et ne le montre à personne."""
+    rien, et ne le montre à personne.
+
+    `vers` (ANN-7, « Passer dans une grille… », `structurer`) : la grille et la version
+    d'ARRIVÉE quand la fusion change de grille — `{grille_id, version}`, nommées dans le lien ;
+    la charge, elle, dit déjà la grille d'avant et d'après."""
     import journal                               # import paresseux, cf. `importer`
     avants = fusion.get("releves_avant") or {}
     ids = list(fusion.get("releve_ids") or [])
     lien = {"acte": acte_id, "grille_id": grille_id, "version": numero,
             "de": fusion["de"], "dans": fusion["dans"]}
+    if vers is not None:
+        lien["vers"] = {"grille_id": vers["grille_id"], "version": vers["version"]}
     n = 0
     for i in range(0, len(ids), 500):
         tranche = ids[i:i + 500]

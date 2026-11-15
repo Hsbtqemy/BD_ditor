@@ -43,6 +43,7 @@ import grille_tableur
 import grilles
 import journal
 import montee
+import structurer
 from socle import (_disposition, _get_collection, _get_projet, _refuser_le_jeu, _row, db,
                    portee_courante)
 
@@ -1405,6 +1406,115 @@ def fusionner_entree(grille_id: int, cle: str, payload: FusionIn,
                 "actes": [("suppression", f"entree:{cle}", _vue_entree(e),
                            {"fusionnee_dans": dans})]}
     return _ecrire(conn, portee, grille_id, geste)
+
+
+# -- « Passer dans une grille… » (J8) --------------------------------------------- #
+# Une étiquette du Mode libre passe, avec ses relevés, dans une entrée d'une AUTRE grille active
+# du projet (`structurer`, la règle de la montée réemployée). Qui : qui GÈRE le projet (J8,
+# 2026-11-06 : « le geste réécrit les relevés des autres et fixe un vocabulaire ») — le geste
+# `fusionner` de `Portee.peut_remanier_entree`, dont l'écran lit `remaniable`. Un aperçu, puis
+# le geste, avec `vu`, le condensé du bilan lu (CONC-3), relu sous le verrou d'écriture. Pas
+# de Ctrl+Z du geste, comme la fusion.
+_MOTIF_PASSER = ("Passer une étiquette dans une autre grille revient aux responsables du "
+                 "projet (et aux administrateurs de l'instance).")
+
+
+class PassageIn(_Strict):
+    vers: int
+    dans: str
+    variantes: Optional[dict] = None
+    vu: Optional[str] = None
+
+
+def _variantes(texte: str | None) -> dict | None:
+    """La table de correspondance reçue en paramètre : un objet JSON `{valeur: variante}`."""
+    if not texte:
+        return None
+    try:
+        valeur = json.loads(texte)
+    except ValueError:
+        raise HTTPException(422, "`variantes` doit être un objet JSON.")
+    if not isinstance(valeur, dict) or not all(
+            isinstance(k, str) and (v is None or isinstance(v, str)) for k, v in valeur.items()):
+        raise HTTPException(422, "`variantes` doit être un objet JSON, chaque valeur une clé "
+                                 "de variante ou null.")
+    return valeur
+
+
+def _passage(conn, portee, grille_id: int, cle: str, *, vers=None, dans=None,
+             variantes=None) -> tuple:
+    """Les gardes du passage, puis son calcul : `(grille, calcul)`. 404 sur une grille qu'on
+    ne lit pas ou une étiquette qui n'existe pas ; 403 nommé à qui ne gère pas le projet ;
+    409 nommés sur le jeu, hors du Mode libre, vers une grille d'un autre projet."""
+    g = _get_grille(conn, portee, grille_id)
+    if not g["gerable"]:
+        raise HTTPException(403, _MOTIF_PASSER)
+    _refuser_le_jeu(conn, projet_id=g["projet_id"])
+    if not g["travail"]:
+        raise HTTPException(409, "On ne passe dans une autre grille qu'une étiquette du Mode "
+                                 "libre : une autre grille se remanie à son formulaire.")
+    act = grilles.activation(conn, g["projet_id"], g["id"])
+    if act is None or grilles.entree(conn, act["version_id"], cle) is None:
+        raise HTTPException(404, f"Étiquette « {cle} » introuvable dans le Mode libre.")
+    if vers is not None:
+        d = _get_grille(conn, portee, vers)
+        if d["projet_id"] != g["projet_id"]:
+            raise HTTPException(409, "On ne passe que dans une grille du même projet : le "
+                                     "catalogue n'existe pas encore.")
+    try:
+        calcul = structurer.calculer(conn, projet_id=g["projet_id"], source=g, cle=cle,
+                                     vers_id=vers, dans=grilles.propre(dans),
+                                     correspondance=variantes)
+    except grille_import.Refus as exc:
+        raise _refus_http(exc)
+    return g, calcul
+
+
+@router.get("/api/grilles/{grille_id}/entrees/{cle}/passage")
+def apercu_du_passage(grille_id: int, cle: str, vers: Optional[int] = Query(None),
+                      dans: Optional[str] = Query(None), variantes: Optional[str] = Query(None),
+                      conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    """Le BILAN du passage de l'étiquette `cle` du Mode libre dans l'entrée `dans` de la grille
+    `vers` (ANN-7, J8), sans rien écrire : les grilles où passer (actives dans le projet), les
+    entrées de la version active d'arrivée et celle que le libellé propose, la table de
+    correspondance des valeurs (`variantes`, un objet JSON qui corrige la proposition), un
+    verdict et sa phrase, les relevés qui passent et ceux qui RESTENT par cause — leurs zones
+    bornées aux albums que l'appelant lit —, s'il en reste à compléter, si l'étiquette sera
+    vidée (`videe`), et `vu`, le condensé que `POST …/passage` attend. Aucun login n'y sort."""
+    _, calcul = _passage(conn, portee, grille_id, cle, vers=vers, dans=dans,
+                         variantes=_variantes(variantes))
+    return structurer.bilan_lisible(calcul, _albums_lus(conn, portee))
+
+
+@router.post("/api/grilles/{grille_id}/entrees/{cle}/passage")
+def passer_dans_une_grille(grille_id: int, cle: str, payload: PassageIn,
+                           conn: sqlite3.Connection = Depends(db),
+                           portee: autorisation.Portee = Depends(portee_courante)):
+    """FAIT PASSER l'étiquette `cle` du Mode libre, avec ceux de ses relevés qui conviennent,
+    dans l'entrée `dans` de la grille `vers` (ANN-7, J8) — dans sa version ACTIVE, sans qu'aucune
+    version naisse. Sous le verrou d'écriture, le bilan se relit : sans `vu`, ou s'il n'est plus
+    celui qu'on a lu, 409 qui le rend à relire ; rien à passer, 409 ; une correspondance qui
+    ne vaut pas, 422. Rend ce qui est passé, ce qui reste, et si l'étiquette est vidée (elle se
+    propose alors au retrait)."""
+    conflit.verrouiller(conn)
+    g, calcul = _passage(conn, portee, grille_id, cle, vers=payload.vers, dans=payload.dans,
+                         variantes=payload.variantes)
+    b = structurer.bilan_lisible(calcul, _albums_lus(conn, portee))
+    if calcul["fautes"]:
+        raise HTTPException(422, {"message": f"{len(calcul['fautes'])} correspondance(s) ne "
+                                             "valent pas : rien ne passe.", **b,
+                                  "anomalies": calcul["fautes"]})
+    if b["verdict"]["etat"] != "passable":
+        raise HTTPException(409, {"message": f"{b['verdict']['phrase']} Rien ne passe.", **b})
+    if payload.vu != b["vu"]:
+        raise HTTPException(409, {"message": "Le bilan n'est plus celui que vous avez lu (ou "
+                                             "vous ne l'avez pas lu) : relisez-le avant de "
+                                             "passer. Rien ne passe.", **b})
+    fait = structurer.ecrire(conn, calcul, source=g)
+    conn.commit()
+    return {**{k: fait[k] for k in ("passes", "restent", "videe", "releve_ids")},
+            "de": b["de"], "vers": b["vers"], "dans": b["dans"]}
 
 
 # -- Les variantes ------------------------------------------------------------ #
