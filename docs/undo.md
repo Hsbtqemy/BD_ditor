@@ -564,6 +564,19 @@ et la règle est une, celle de la montée (`grilles.convient`) :
   retirer sans rien dire un relevé qui n'est plus celui qu'on avait posé. Aucune route ne
   change l'entrée d'un relevé : une modification ne la porte jamais.
 
+## Après « Passer dans une grille… » (ANN-7, J8)
+
+Le passage d'une étiquette du Mode libre dans une autre grille (`structurer.py`) ne s'annule
+pas, comme la fusion : un acte `fusion` par relevé, hors de `_TYPES`, et un acte sous la grille
+de travail. Il change la GRILLE d'un relevé, et l'entrée d'arrivée peut porter la même clé et
+la même valeur que l'étiquette : `grille_id` est donc parmi les valeurs que Ctrl+Z compare à la
+création (`_VALEURS_DU_RELEVE`) — défaire la pose reçoit le 409 de CONC-3, « la grille a été
+modifiée par … », que « Passer ce geste » franchit. Une RETOUCHE d'avant le passage ne se
+défait pas non plus dans la grille d'arrivée : le même 409, lu sur l'acte `fusion` qui a changé
+`grille_id` depuis la retouche (`conflit.auteur_du_champ`). Rendre un relevé retiré AVANT le
+passage le rend dans sa grille d'origine, s'il y convient encore — l'étiquette vidée a pu être
+retirée : l'acte est alors passé.
+
 ## La page Annotation (ANN-7, tranche 2)
 
 Ctrl+Z y est le même qu'à l'Atelier : la pile est par agent et non par écran, si bien qu'un

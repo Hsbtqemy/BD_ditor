@@ -929,7 +929,10 @@ règle d'accès (cf. §2).
     ligne du relevé, et les zones terminées où la version ajoute quelque chose à regarder
     redeviennent à faire. On ne redescend pas : pour revenir, publiez une version qui reprend
     l'ancienne, puis montez. Si quelqu'un pose un relevé pendant que vous lisez le bilan,
-    *Monter* répond que le bilan a changé et le redessine : relisez-le.
+    *Monter* répond que le bilan a changé et le redessine : relisez-le. Le formulaire de la
+    grille offre le même *Monter à la version M…* dans son en-tête. Pour fusionner une entrée
+    d'une grille fermée, retirez-la du brouillon, publiez, puis répondez *Fusionner dans « … »*
+    à la montée.
   - **Qui y entre** : dans *Faire entrer*, choisissez un groupe sous *Groupes de
     l'annuaire*, ou *Un compte, ou un groupe absent de la liste…* — il faut alors taper son
     *nom exact* et répondre à *Compte ou groupe ?*, sans valeur par défaut : un groupe
@@ -1111,7 +1114,14 @@ l'ordre *À la main*, celui de tout le projet (la poignée ⠿, ou ↑ ↓), et 
 **✎** renomme l'étiquette et ses valeurs sur place, écrit sa *définition* (lue ensuite dans la
 ligne du guide, au survol de l'étiquette) et en ajoute des valeurs (*+ valeur*) ; Entrée, ou
 quitter le champ, enregistre, et « ✓ enregistré » le dit à droite du champ. Dessous, *Figer*
-(ou *Rouvrir*), *Fusionner dans…* et *Retirer…* sont aux responsables du projet. Une étiquette
+(ou *Rouvrir*), *Fusionner dans…*, *Passer dans une grille…* et *Retirer…* sont aux
+responsables du projet. **Passer dans une grille…** fait passer l'étiquette, avec ses relevés,
+dans une entrée d'une autre grille active du projet : choisissez la grille, puis l'entrée ;
+chaque valeur de l'étiquette trouve sa valeur d'arrivée, proposée quand elle porte le même nom,
+à corriger sinon ; le bilan dit combien de relevés passent, et ceux qui restent dans le Mode
+libre, et pourquoi. *Passer* les fait passer ; vidée, l'étiquette propose aussitôt *Retirer*.
+Une entrée absente de la grille d'arrivée s'y écrit d'abord (puis, pour une grille fermée, on
+publie et on monte la version). Une étiquette
 née en la tapant est *provisoire* : tout annotateur du projet la renomme, la définit et lui
 ajoute des valeurs ; une étiquette *figée* ne change que par les responsables. Un geste qu'on n'a pas reste
 visible, éteint, et dit pourquoi au clic.
@@ -1120,7 +1130,8 @@ visible, éteint, et dit pourquoi au clic.
 en dernier *Sur la planche* —, et en traits sous les mots, un couloir par relevé, à la couleur
 de sa rubrique. *Relevés ▾* règle les grilles montrées. Un clic sur une ligne redésigne son
 passage ; **?** ouvre un doute, **✕** retire. Une entrée qui attend une précision la demande
-sur la ligne ; une entrée qui attend un lien offre *Désigner sur la planche* : cliquez l'autre
+sur la ligne, comme une entrée devenue à valeurs demande *choisissez une valeur* ; une entrée
+qui attend un lien offre *Désigner sur la planche* : cliquez l'autre
 zone, sur la minicarte ou dans la case.
 
 **Douter.** **?** ouvre son formulaire dans la boîte du guide, le commentaire est obligatoire,
@@ -1162,7 +1173,8 @@ terminées).
 
 **À plusieurs.** Si la planche — une étiquette d'une grille ouverte, ou la version d'une
 grille, montée dans l'Administration — a changé ailleurs,
-**⟳ Actualiser** paraît dans la bande : il
+**⟳ Actualiser** paraît dans la bande (son infobulle dit ce qui a changé : des relevés, des
+étiquettes, ou une grille passée à une autre version) : il
 garde votre zone, vos mots désignés et ce que vous écriviez. Si quelqu'un a modifié la valeur
 que vous changez, un bandeau prend la place du guide : *Remplacer par la mienne* ou *Garder
 l'autre*. **Ctrl+Z**, hors d'un champ, défait votre dernier geste : poser, retirer, le texte,

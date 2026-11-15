@@ -203,7 +203,22 @@ de ses mots est aujourd'hui, et un Ctrl+Z du texte le rend normal sans rien écr
   et le 409 le rend à relire. Qui gère le projet monte ; jamais sur le jeu. L'écran : « Monter
   à la version M… », une confirmation sous la ligne de la grille (M6 (a)) ; l'outil :
   `tools/importer_grille.py --grille G --activer [--a-blanc] [--laisser CLE] [--fusionner
-  CLE=AUTRE]`. Les passes : §9. Ctrl+Z : §11.
+  CLE=AUTRE]`. Les passes : §9. Ctrl+Z : §11. Le formulaire d'une grille offre aussi « Monter à
+  la version M… » dans son en-tête : il ouvre la même confirmation.
+- **« Passer dans une grille… »** (J8 ; `docs/ann7-mode-libre-cadrage.md`, « Structurer », et
+  le §8 de `docs/ann7-montee-de-version-cadrage.md` ; `structurer.py`) : une étiquette du Mode
+  libre passe, avec ses relevés, dans une entrée d'une AUTRE grille active du projet, dans sa
+  version ACTIVE — jamais le brouillon ; aucune version ne naît, et une entrée qui manque, le
+  bilan dit de l'écrire, publier, monter la version, puis revenir. La règle est celle de la
+  montée : un relevé qui ne convient pas à l'entrée d'arrivée RESTE dans le Mode libre, et le
+  bilan dit pourquoi — mêmes causes, plus celles du passage (une valeur sans équivalent, déjà
+  posée sur la zone, deux relevés sur une zone où l'entrée ne se pose qu'une fois, la même
+  valeur deux fois). Une précision ou un lien attendus : il passe, à compléter. Les valeurs
+  suivent une table de correspondance, proposée par le libellé et corrigée à la main ; une
+  étiquette sans valeur peut en recevoir une (proposée par son nom). Le bilan, puis le geste
+  avec `vu`, sous le verrou. À qui gère le projet. Le journal : un acte `fusion` par relevé
+  déplacé, un acte qui résume ; aucune passe ne se rouvre ; les étiquettes des régions touchées
+  se réindexent ; l'étiquette vidée se propose au retrait.
 - **Une coquille** (définition, exemple, piège) se corrige sans nouvelle version, par un
   responsable, au journal (tranché le 2026-10-22 ; sa route dès la tranche 1, G15) : elle ne
   touche aucun relevé.
@@ -355,6 +370,10 @@ retenu est la VALEUR vue (G1, 2026-10-25), qui donne le même refus sans colonne
   et l'acte est passé sinon ; une passe se rend si la montée ne l'aurait pas rouverte. Un
   relevé FUSIONNÉ à la montée a changé d'entrée : défaire sa pose reçoit le 409 de `CONC-3`, qui
   nomme la fusion, et « Passer ce geste » le franchit.
+- **« Passer dans une grille… » ne s'annule pas** (J8, comme la fusion). Il change la grille
+  d'un relevé : défaire sa pose reçoit le 409 qui nomme qui l'a passé (`grille_id` est comparé,
+  la clé de l'entrée d'arrivée pouvant être la même), et une retouche d'avant ne se défait pas
+  dans la grille d'arrivée.
 - **Supprimer une région supprime ses relevés** (CASCADE), et l'annuler les rend : l'instantané
   profond de l'annulation les emporte, avec leurs doutes et les passes de la région.
 - **Jamais de CASCADE sur la planche** (Q5, 2026-10-22) : un relevé de surface fait échouer la
@@ -388,7 +407,6 @@ filtre (« Porte… »). Restent à venir :
   ne suit pas les versions de son origine). La montée de version existe (§6) ; son écran
   entier — relevé par relevé, les zones, les passes rouvertes — attend la maquette du bilan
   de « Publier… ».
-- « Passer dans une grille… » (structurer, J8) : une tranche à part.
 - Rien dans l'Exploration ni dans les exports : un relevé ne SORT par aucune voie avant la
   tranche 4 — l'export CSV de la Recherche suit son filtre, sans porter les relevés —, et le
   cliquet des sorties le vérifie.
