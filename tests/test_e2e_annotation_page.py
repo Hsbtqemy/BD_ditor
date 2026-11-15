@@ -4704,10 +4704,15 @@ def test_plus_valeur_cour_puis_entree_cree_la_valeur_cour(page, decor):
     expect(champ).to_be_focused()
     expect(champ).to_have_attribute("autocomplete", "off")
     page.keyboard.type("cour", delay=40)
-    with page.expect_response(lambda r: r.url.endswith("/entrees/lieu/variantes")
-                              and r.request.method == "POST") as rep:
-        page.keyboard.press("Enter")
+    # La valeur naît, PUIS la page la pose : attendre les deux réponses. N'attendre que la
+    # première lisait les relevés avant la pose (rouge dans l'image, le 2026-11-15).
+    with page.expect_response(lambda r: r.url.endswith("/api/releves")
+                              and r.request.method == "POST") as pose:
+        with page.expect_response(lambda r: r.url.endswith("/entrees/lieu/variantes")
+                                  and r.request.method == "POST") as rep:
+            page.keyboard.press("Enter")
     assert rep.value.status == 201, rep.value.text()
+    assert pose.value.status == 201, pose.value.text()
     assert json.loads(rep.value.request.post_data) == {"libelle": "cour"}
     lieu = next(e for e in _plan_du_travail(decor, gid)["entrees"] if e["cle"] == "lieu")
     assert [v["libelle"] for v in lieu["variantes"]] == ["école", "cour"]
