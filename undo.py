@@ -824,8 +824,71 @@ def _laisse_par_un_geste_passe(conn, e):
 # --------------------------------------------------------------------------- #
 # Les relevés (ANN-7, tranche 1, R10)
 # --------------------------------------------------------------------------- #
-# Les valeurs d'un relevé qu'une annulation remet, gardées comme les champs de CONC-3.
-_VALEURS_DU_RELEVE = ("variante_cle", "qualificatifs", "precision", "lien_region_id", "mots")
+# Les valeurs d'un relevé qu'une annulation remet, gardées comme les champs de CONC-3 — et
+# son ENTRÉE (ANN-7, la montée de version) : une fusion la change, et défaire la pose d'origine
+# retirerait sans rien dire le relevé fusionné ; le 409 « Passer ce geste » nomme la fusion.
+# Aucune route ne change l'entrée d'un relevé : elle n'est jamais dans la charge d'une
+# modification, seulement comparée à la création.
+_VALEURS_DU_RELEVE = ("variante_cle", "qualificatifs", "precision", "lien_region_id", "mots",
+                      "entree_cle")
+# Celles qu'une MODIFICATION défait (`entree_cle` n'en est jamais).
+_VALEURS_MODIFIEES = ("variante_cle", "qualificatifs", "precision", "lien_region_id", "mots")
+
+
+def _version_active(conn, snap):
+    """`(version_id, numero)` de l'activation de la grille du relevé dans le projet de l'album
+    de sa cible, ou None si elle n'y est pas active (ou que la cible n'existe plus)."""
+    from database import projet_d_album
+    if snap.get("region_id") is not None:
+        a = conn.execute("SELECT p.album_id FROM regions g JOIN planches p "
+                         "ON p.id = g.planche_id WHERE g.id = ?",
+                         (snap["region_id"],)).fetchone()
+    else:
+        a = conn.execute("SELECT album_id FROM planches WHERE id = ?",
+                         (snap.get("planche_id"),)).fetchone()
+    if a is None:
+        return None
+    return conn.execute("SELECT pg.version_id, v.numero FROM projet_grille pg "
+                        "JOIN grille_version v ON v.id = pg.version_id WHERE pg.projet_id = ? "
+                        "AND pg.grille_id = ?", (projet_d_album(conn, a[0]),
+                                                 snap["grille_id"])).fetchone()
+
+
+def _plus_recente(conn, act, version_id) -> bool:
+    """La version active `act` est-elle PLUS RÉCENTE que `version_id` ? Un instantané ne se
+    rend jamais dans une version d'avant la sienne (M5 : on ne redescend pas)."""
+    n = conn.execute("SELECT numero FROM grille_version WHERE id = ?", (version_id,)).fetchone()
+    return n is not None and act[1] > n[0]
+
+
+def _version_pour_rendre(conn, snap, type_region):
+    """La version où RENDRE le relevé de l'instantané `snap` — un relevé retiré, ou que la
+    suppression d'une région a emporté : la sienne, si la grille y est encore active ; sinon,
+    après une MONTÉE DE VERSION, la version active, si le relevé y vit comme s'il y avait été
+    posé (`grilles.convient` : son entrée y existe et n'est pas retirée, sa variante et ses
+    cases y ont leur place, il s'y pose de la même manière — cadrage de la montée, §7). None :
+    il ne se rend pas, et l'acte est passé. `type_region` : celui de sa zone (None pour la
+    planche)."""
+    import grilles
+    act = _version_active(conn, snap)
+    if act is None:
+        return None
+    if act[0] == snap["version_id"]:
+        return act[0]
+    if not _plus_recente(conn, act, snap["version_id"]):
+        return None
+    r = {"entree_cle": snap["entree_cle"], "planche": snap.get("region_id") is None,
+         "type_region": type_region, "mots": bool(snap.get("mots")),
+         "variante_cle": snap.get("variante_cle"), "qualificatifs": snap.get("qualificatifs"),
+         "precision": snap.get("precision"), "lien_region_id": snap.get("lien_region_id")}
+    return act[0] if grilles.convient(grilles.contenu(conn, act[0]), r) else None
+
+
+def _type_de_la_region(conn, region_id):
+    if region_id is None:
+        return None
+    t = conn.execute("SELECT type FROM regions WHERE id = ?", (region_id,)).fetchone()
+    return t[0] if t else None
 
 
 def _activation_du_releve(conn, snap) -> bool:
@@ -903,8 +966,13 @@ def _inverser_releve(conn, e, avant, apres) -> None:
     if t == "suppression":
         if actuel:
             raise UndoImpossible("le relevé existe déjà")
-        if not (_activation_du_releve(conn, snap) and _entree_existe(conn, snap,
-                                                                     posable=True)):
+        # Un relevé retiré avant une MONTÉE DE VERSION se rend dans la version active, s'il y
+        # convient ; sinon l'acte est passé (cadrage de la montée, §7).
+        vid = _version_pour_rendre(conn, snap, _type_de_la_region(conn, snap.get("region_id")))
+        if vid is None:
+            raise Irretablissable()
+        snap = {**snap, "version_id": vid}
+        if not _entree_existe(conn, snap, posable=True):
             raise Irretablissable()
         une, sur_des_mots = _une_aujourd_hui(conn, snap)
         cible = {"region_id": snap.get("region_id"), "planche_id": snap.get("planche_id"),
@@ -957,7 +1025,11 @@ def _inverser_releve(conn, e, avant, apres) -> None:
         return
     # Une modification : ce que l'acte a changé revient, et lui seul.
     avant, apres = avant or {}, apres or {}
-    changes = [c for c in _VALEURS_DU_RELEVE if c in apres]
+    changes = [c for c in _VALEURS_MODIFIEES if c in apres]
+    if not _valeurs_rendues_tiennent(conn, actuel, avant, changes):
+        # La variante ou une case rendue n'est plus dans la version du relevé — une montée
+        # l'a retirée depuis l'acte : l'état d'avant ne peut plus être rétabli.
+        raise Irretablissable()
     for champ in changes:
         conflit.verifier(conn, e["cible_table"], e["cible_id"], champ, vu=apres.get(champ),
                          actuel=actuel[champ], nouveau=avant.get(champ), depuis=e["id"],
@@ -1002,6 +1074,54 @@ def _inverser_releve(conn, e, avant, apres) -> None:
     reindex_etiquettes(conn, [actuel["region_id"]])       # J6 : la variante rendue s'y lit
 
 
+def _version_de_la_passe(conn, p, type_region):
+    """La version où rendre une PASSE qu'une suppression de région avait emportée : la sienne
+    si la grille y est active ; après une MONTÉE DE VERSION, la version active, si la montée
+    ne l'aurait pas rouverte (sa rubrique y existe, et la version n'ajoute rien à regarder
+    sur sa zone : la règle de `montee`, M4 c) ; None sinon — elle ne se rend pas."""
+    import grilles
+    import montee
+    act = _version_active(conn, p)
+    if act is None or p.get("version_id") is None:
+        return None
+    if act[0] == p["version_id"]:
+        return act[0]
+    if not _plus_recente(conn, act, p["version_id"]):
+        return None
+    arrivee, source = grilles.contenu(conn, act[0]), grilles.contenu(conn, p["version_id"])
+    rk = p.get("rubrique_cle") or ""
+    if rk and rk not in arrivee["rubriques"]:
+        return None
+    if (montee.a_regarder(arrivee, rk, type_region)
+            - montee.a_regarder(source, rk, type_region)):
+        return None
+    return act[0]
+
+
+def _valeurs_rendues_tiennent(conn, actuel, avant, changes) -> bool:
+    """La variante et les cases qu'une modification défaite RENDRAIT ont-elles leur place dans
+    la version ACTUELLE du relevé ? Après une MONTÉE DE VERSION, la valeur d'avant la retouche
+    peut ne plus exister : la rendre ferait un relevé à revoir que personne n'a posé. Seules
+    les valeurs que l'acte rend se lisent — un relevé déjà à revoir pour une autre cause se
+    défait comme avant."""
+    import grilles
+    if not ({"variante_cle", "qualificatifs"} & set(changes)):
+        return True
+    c = grilles.contenu(conn, actuel["version_id"])
+    e = c["entrees"].get(actuel["entree_cle"])
+    if e is None:
+        return False
+    if "variante_cle" in changes and avant.get("variante_cle") and (
+            e["forme"] != "variantes" or avant["variante_cle"] not in e["variantes"]):
+        return False
+    if "qualificatifs" in changes and avant.get("qualificatifs"):
+        liste = c["listes"].get(e.get("liste_cle")) or {}
+        if e["forme"] != "qualificatifs" or (set(avant["qualificatifs"])
+                                              - set(liste.get("qualificatifs") or {})):
+            return False
+    return True
+
+
 def _inverser_ordre(conn, e, avant, apres) -> None:
     """L'inverse d'un déplacement d'étiquette (« ↕ Ranger ») : les entrées que l'acte a
     rangées reprennent, ENTRE ELLES, l'ordre d'avant, aux places qu'elles tiennent — une
@@ -1042,9 +1162,12 @@ def _rendre_releves(conn, snap) -> int:
     manque = 0
     for n in _noeuds(snap):
         for r in n.get("releves", []):
-            if not (_activation_du_releve(conn, r) and _entree_existe(conn, r)):
+            # Après une MONTÉE DE VERSION, dans la version active s'il y convient (§7).
+            vid = _version_pour_rendre(conn, {**r, "region_id": n["id"]}, n.get("type"))
+            if vid is None or not _entree_existe(conn, {**r, "version_id": vid}):
                 manque += 1
                 continue
+            r = {**r, "version_id": vid}
             conn.execute("SAVEPOINT rendre_un_releve")
             try:
                 releves.rendre(conn, r)
@@ -1054,13 +1177,14 @@ def _rendre_releves(conn, snap) -> int:
                 conn.execute("RELEASE rendre_un_releve")
                 manque += 1
         for p in n.get("passes", []):
-            if not _activation_du_releve(conn, {**p, "region_id": n["id"]}):
+            vid = _version_de_la_passe(conn, {**p, "region_id": n["id"]}, n.get("type"))
+            if vid is None:
                 manque += 1
                 continue
             conn.execute("INSERT OR IGNORE INTO passe (id, region_id, planche_id, grille_id, "
                          "version_id, rubrique_cle, par, le, recopiee) "
                          "VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)",
-                         (p["id"], n["id"], p["grille_id"], p["version_id"],
+                         (p["id"], n["id"], p["grille_id"], vid,
                           p["rubrique_cle"], p["par"], p["le"], p.get("recopiee", 0)))
     return manque
 
