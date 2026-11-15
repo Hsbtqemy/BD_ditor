@@ -291,6 +291,51 @@ def test_reimporter_publier_puis_monter(client, decor, db_path):
     monter(client, decor, version=2)                 # rien ne change de version : réactivée
 
 
+def test_une_version_publiee_qui_perd_ce_qu_emploient_des_releves_le_dit_a_la_montee(
+        client, decor, db_path):
+    """L'hypothèse du cadrage (« Vu en passant », et §3 : « l'entrée a disparu de la vM ») :
+    le brouillon de la v2 naît pendant que la v1 ne porte rien sur « cri », « bang » ni la
+    case « hors champ » — leur suppression y est permise —, puis des relevés se posent en v1
+    sur eux, puis le brouillon se publie. La publication ne le revérifie pas (elle publie) ;
+    la MONTÉE le dit : ce qui disparaît, avec ses relevés, chaque cause, et l'entrée à
+    décider comme une entrée retirée. Laissés, les relevés passent en v2, à revoir, et se
+    retirent comme les autres."""
+    gid = decor["grille_id"]
+    for chemin in ("entrees/cri", "entrees/onomatopee/variantes/bang",
+                   "listes/sources/cases/hors-champ"):
+        ok(client.delete(f"/api/grilles/{gid}/{chemin}", headers=LEA))
+    b = bulle(decor)
+    cri = poser(client, decor, region_id=b, entree_cle="cri", mots=[0])
+    bang = poser(client, decor, region_id=b, entree_cle="onomatopee", variante_cle="bang",
+                 mots=[8])
+    echo = poser(client, decor, region_id=b, entree_cle="echo", qualificatifs=["hors-champ"],
+                 mots=[2])
+    # Une autre valeur de l'entrée, qui reste : elle passe, et ne compte pas sous « bang ».
+    crac = poser(client, decor, region_id=decor["zones"]["texte"], entree_cle="onomatopee",
+                 variante_cle="crac", mots=[2])
+    ok(client.post(f"/api/grilles/{gid}/versions/2/publication", headers=LEA))
+
+    a = apercu(client, decor)
+    assert a["verdict"]["etat"] == "a_repondre"
+    assert a["releves"] == {"total": 4, "normal": 1, "a_revoir": 3, "a_completer": 0}
+    assert sorted((x["quoi"], x["cle"], x["releves"]) for x in a["plan"]["disparus"]) == [
+        ("entree", "cri", 1), ("qualificatif", "sources/hors-champ", 1),
+        ("variante", "onomatopee/bang", 1)]
+    assert sorted((c["cause"], c["n"]) for c in a["causes"]) == [
+        ("case_absente", 1), ("entree_absente", 1), ("variante_absente", 1)]
+    assert [(x["cle"], x["releves"], x["choix"]) for x in a["a_repondre"]] == [
+        ("cri", 1, ["laisser", "fusionner"])]
+    assert monter(client, decor, vu=a["vu"], attendu=409)["detail"]["message"]
+    monter(client, decor, vu=a["vu"], reponses={"cri": "laisser"})
+    for r, cause in ((cri, "entree_absente"), (bang, "variante_absente"),
+                     (echo, "case_absente")):
+        apres = vue(client, decor, r["id"])
+        assert (apres["version"], apres["etat"], apres["causes"]) == (2, "a_revoir", [cause])
+    assert (lambda v: (v["version"], v["etat"]))(vue(client, decor, crac["id"])) == (2, "normal")
+    for r in (cri, bang, echo):
+        assert client.delete(f"/api/releves/{r['id']}", headers=STAG).status_code == 204
+
+
 # --------------------------------------------------------------------------- #
 # Le périmètre : le projet, jamais la grille entière (le jour du catalogue)
 # --------------------------------------------------------------------------- #
