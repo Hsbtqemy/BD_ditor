@@ -638,38 +638,112 @@ def _vue(client, t, rid, qui=STAG):
     return next(r for r in rs.json()["releves"] if r["id"] == rid)
 
 
-def test_une_etiquette_tapee_suit_la_zone_de_la_grille_de_travail_meme_sur_des_mots(
-        client, decor, db_path):
-    """Ce que fait le serveur aujourd'hui (case « Une étiquette née en la tapant se pose sur
-    des mots », 2026-11-15, posée à Hugo). La grille de travail porte sur toute zone (« sur la
-    zone », Hugo, 2026-11-05) ; une étiquette qui y naît en la posant suit ce défaut
-    (`routes/releves._entree_par_nom`) — la cible de ce qu'on désigne ne vaut que dans une
-    grille SANS défaut (Hugo, 2026-11-12, `docs/ann7-grille-sans-defaut-cadrage.md`, question
-    1). Envoyée avec des mots, elle est refusée sans rien faire naître ; l'écran, lui, la pose
-    sur la zone (`BDAnnotation.entreeNeuve`, « la liste bascule », Hugo, 2026-11-01). Seul
-    qui gère le projet la fait passer aux mots, au formulaire — un annotateur ne change pas
-    ce sur quoi elle se pose (J5 (c))."""
+def _entree_ecrite(db_path, grille_id, cle):
+    (e,) = _q(db_path, "SELECT e.cible, e.cardinalite, e.etat, e.forme FROM grille_entree e "
+                       "JOIN grille_version v ON v.id = e.version_id "
+                       "WHERE v.grille_id = ? AND e.cle = ?", (grille_id, cle))
+    return e
+
+
+def test_une_etiquette_tapee_sur_des_mots_nait_sur_ces_mots(client, decor, db_path):
+    """Hugo, 2026-11-15, option (b) : la grille de travail porte sur toute zone, mais une
+    étiquette NEUVE tapée sur des mots désignés naît sur ces mots — cible « mots » et
+    cardinalité « plusieurs » écrites (`routes/releves._entree_par_nom`) — et s'y pose. Un
+    annotateur le fait : c'est une naissance, pas un remaniement. Ses poses suivantes sont
+    celles d'une entrée écrite au formulaire avec la cible « mots » : sur un autre passage de
+    la même bulle, un second relevé ; sans mots, le refus de toute entrée de mots."""
     t = _travail(client, decor, db_path)
     b, g = bulle(t), t["grille_id"]
-    r = poser(client, t, attendu=(422,), region_id=b, nouvelle_entree={"libelle": "élision"},
+    r = poser(client, t, region_id=b, nouvelle_entree={"libelle": "élision"}, mots=[0])
+    assert (r["region_id"], [m["rang"] for m in r["mots"]], r["etat"]) == (b, [0], "normal"), r
+    assert r["une"] is False
+    assert _entree_ecrite(db_path, g, "elision") == {
+        "cible": "mots", "cardinalite": "plusieurs", "etat": "provisoire", "forme": "simple"}
+    # Le plan la dit sur des mots, et l'écran la posera là.
+    assert (lambda e: (e["pose"], e["cibles"], e["cible_declaree"]))(_plan(client, t)["elision"])         == ("mots", ["mots"], ["mots"])
+    # La naissance s'écrit au journal comme toute étiquette tapée, sa cible en plus.
+    (acte,) = _q(db_path, "SELECT apres FROM evenement WHERE cible_table = 'grille' "
+                          "AND cible_id = ? AND apres LIKE '%entree_neuve%'", (g,))
+    assert '"cible": "mots"' in acte["apres"] and '"cardinalite": "plusieurs"' in acte["apres"]
+    # Ses poses suivantes : un second relevé sur un autre passage de la même bulle
+    # (`plusieurs`, le défaut des mots) ; sans mots désignés, le refus d'une entrée de mots.
+    r2 = poser(client, t, region_id=b, entree_cle="elision", mots=[1, 2])
+    assert [m["rang"] for m in r2["mots"]] == [1, 2]
+    z = poser(client, t, attendu=(422,), region_id=b, entree_cle="elision")
+    assert "mots" in z["detail"], z
+    # Une étiquette qui EXISTE garde sa cible : « ironie », née sur la zone, ne passe pas aux
+    # mots parce qu'on en désigne.
+    poser(client, t, region_id=t["zones"]["cartouche"], nouvelle_entree={"libelle": "ironie"})
+    assert _entree_ecrite(db_path, g, "ironie")["cible"] is None
+    x = poser(client, t, attendu=(422,), region_id=b, nouvelle_entree={"libelle": "ironie"},
               mots=[0])
-    assert "se pose sur toute la zone, pas sur des mots" in r["detail"], r
-    assert _q(db_path, "SELECT COUNT(*) AS n FROM grille_entree e JOIN grille_version v "
-                       "ON v.id = e.version_id WHERE v.grille_id = ?", (g,))[0]["n"] == 0
-    assert _q(db_path, "SELECT COUNT(*) AS n FROM evenement WHERE cible_table = 'grille' "
-                       "AND cible_id = ? AND apres LIKE '%entree_neuve%'", (g,))[0]["n"] == 0
-    # Sans mots, elle naît et se pose sur la bulle entière, sans cible écrite : le défaut.
+    assert "se pose sur toute la zone, pas sur des mots" in x["detail"], x
+    assert _entree_ecrite(db_path, g, "ironie")["cible"] is None
+
+
+def test_nom_valeur_tape_sur_des_mots_nait_sur_ces_mots(client, decor, db_path):
+    """« nom : valeur » sur des mots : l'entrée à variantes naît sur eux, `plusieurs` (J3) ; une
+    seconde valeur s'y ajoute et se pose sur un autre passage."""
+    t = _travail(client, decor, db_path)
+    b, g = bulle(t), t["grille_id"]
+    r = poser(client, t, region_id=b, nouvelle_entree={"libelle": "registre : familier"},
+              mots=[0, 1])
+    assert (r["variante_cle"], [m["rang"] for m in r["mots"]]) == ("familier", [0, 1])
+    assert _entree_ecrite(db_path, g, "registre") == {
+        "cible": "mots", "cardinalite": "plusieurs", "etat": "provisoire", "forme": "variantes"}
+    r2 = poser(client, t, region_id=b, nouvelle_entree={"libelle": "registre : soutenu"},
+               mots=[4])
+    assert (r2["variante_cle"], [m["rang"] for m in r2["mots"]]) == ("soutenu", [4])
+
+
+def test_sans_mots_une_etiquette_tapee_nait_sur_la_zone_comme_avant(client, decor, db_path):
+    t = _travail(client, decor, db_path)
+    b, g = bulle(t), t["grille_id"]
     z = poser(client, t, region_id=b, nouvelle_entree={"libelle": "élision"})
-    assert (z["region_id"], z["mots"], z["etat"]) == (b, [], "normal"), z
-    assert _q(db_path, "SELECT cible FROM grille_entree WHERE cle = 'elision'") == [
-        {"cible": None}]
-    # Un annotateur ne la fait pas passer aux mots ; qui gère le projet, oui.
+    assert (z["region_id"], z["mots"], z["etat"], z["une"]) == (b, [], "normal", True), z
+    assert _entree_ecrite(db_path, g, "elision") == {
+        "cible": None, "cardinalite": None, "etat": "provisoire", "forme": "simple"}
+    # Un annotateur ne la fait pas passer aux mots ; qui gère le projet, oui (J5 (c)).
     url = f"/api/grilles/{g}/entrees/elision"
     assert client.patch(url, headers=STAG, json={"cible": "mots"}).status_code == 403
-    assert client.delete(f"/api/releves/{z['id']}", headers=STAG).status_code == 204
-    assert client.patch(url, headers=ADMIN, json={"cible": "mots"}).status_code == 200
-    m = poser(client, t, region_id=b, entree_cle="elision", mots=[0])
-    assert (m["region_id"], [x["rang"] for x in m["mots"]], m["etat"]) == (b, [0], "normal"), m
+
+
+def test_une_autre_grille_ouverte_garde_son_defaut_sur_des_mots(client, decor, db_path):
+    """Seule la grille de TRAVAIL fait naître sur les mots désignés : une autre grille ouverte
+    qui a un défaut le garde, et l'entrée tapée sur des mots est refusée comme avant."""
+    from grilles_decor import csv_de, grille_active
+    entete = ["cle", "forme", "libelle"]
+    g = grille_active(client, decor["p"], entrees=csv_de([entete, ["a", "simple", "a"]]),
+                      listes=None, nom="Libre", ouverte=True, porte_sur="bulle")
+    t = {**decor, **g}
+    r = poser(client, t, attendu=(422,), region_id=bulle(decor),
+              nouvelle_entree={"libelle": "élision"}, mots=[0])
+    assert "se pose sur toute la zone, pas sur des mots" in r["detail"], r
+    z = poser(client, t, region_id=bulle(decor), nouvelle_entree={"libelle": "élision"})
+    assert z["mots"] == []
+    assert _entree_ecrite(db_path, g["grille_id"], "elision")["cible"] is None
+
+
+def test_ctrl_z_d_une_etiquette_nee_sur_des_mots_comme_sur_la_zone(client, decor, db_path):
+    """Ctrl+Z défait la POSE ; l'étiquette née reste, provisoire, comme une étiquette née sur la
+    zone (la naissance, sous la grille, ne s'annule pas). L'index plein texte suit."""
+    from test_reindex_etiquettes import _trouve
+    t = _travail(client, decor, db_path)
+    b, g = bulle(t), t["grille_id"]
+    poser(client, t, region_id=t["zones"]["cartouche"], nouvelle_entree={"libelle": "ironie"})
+    r = poser(client, t, region_id=b, nouvelle_entree={"libelle": "élision"}, mots=[0])
+    assert _trouve(db_path, "elision") == [b]
+    rep = client.post("/api/undo", headers=STAG)
+    assert rep.status_code == 200, rep.text
+    assert [x["id"] for x in _releves(db_path, g, b)] == []
+    assert r["id"] not in [x["id"] for x in _releves(db_path, g)]
+    assert _trouve(db_path, "elision") == []
+    assert _entree_ecrite(db_path, g, "elision")["cible"] == "mots"
+    # La zone, pareil : la pose défaite, l'étiquette reste.
+    rep = client.post("/api/undo", headers=STAG)
+    assert rep.status_code == 200, rep.text
+    assert _releves(db_path, g) == []
+    assert _entree_ecrite(db_path, g, "ironie")["cible"] is None
 
 
 def test_le_porte_sur_d_une_etiquette_employee_qui_change_la_met_a_revoir(client, decor,

@@ -1106,7 +1106,9 @@ guide dit la définition, la structure, les exemples, les pièges de ce que vous
 **Le Mode libre** est le premier onglet : la grille de travail du projet, où l'on écrit ses
 propres étiquettes. Tapez dans **+ Nouvelle étiquette…** un nom, « nom : valeur », ou
 plusieurs valeurs séparées par « ; » ; la ligne dessous dit ce qu'Entrée fera, et chaque
-valeur se pose et se défait à part. Depuis une autre grille, un nom qu'elle n'a pas propose
+valeur se pose et se défait à part. Une étiquette nouvelle tapée pendant que des mots sont
+désignés naît sur ces mots et s'y pose — la ligne dit « sur les mots désignés » — ; sans mots
+désignés, elle se pose sur la zone (tranché par Hugo le 2026-11-15). Depuis une autre grille, un nom qu'elle n'a pas propose
 *Créer « … » dans Mode libre* ; la touche `+` ouvre le champ depuis n'importe quel onglet. Les
 valeurs d'une étiquette sont des puces qui se cochent une à une, la même jamais deux fois sur
 la même zone. L'ordre est *À la main* ou *A → Z*, retenu sur votre poste ; **↕ Ranger** change

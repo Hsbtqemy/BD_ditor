@@ -445,14 +445,18 @@ def _empreinte_et_journal(conn, grille_id: int, version, charge: dict) -> None:
 
 
 def _entree_par_nom(conn, grille_id: int, version, libelle: str, forme: str, *,
-                    cible=None):
+                    cible=None, travail: bool = False):
     """L'entrée de ce NOM dans la version — comparé par la clé d'un libellé
     (`database.cle_tag` : casse, apostrophes, espaces) —, reprise ; sinon elle NAÎT, sous la
     forme demandée (`simple`, ou `variantes` pour « nom : valeur »). Sa `cle` se DÉRIVE de
     son libellé comme à l'import et au formulaire (`grille_ecriture.cle_neuve` : sans
     accents, minuscules, tirets, 48 caractères, `-2` à la collision). Sans rubrique ; sa
     cible est celle de la version, ou, dans une version sans défaut, `cible` : ce qu'on
-    désigne en la posant, écrit sur elle (Hugo, 2026-11-12)."""
+    désigne en la posant, écrit sur elle (Hugo, 2026-11-12). Dans la grille de TRAVAIL
+    (`travail`), qui porte sur toute zone, une entrée tapée sur des MOTS désignés naît sur
+    ces mots, `plusieurs`, cible et cardinalité écrites (Hugo, 2026-11-15, option (b)) : ses
+    poses suivantes sont celles d'une entrée écrite au formulaire avec la cible « mots ». Les
+    autres grilles ouvertes gardent leur défaut."""
     entrees = {r["cle"]: r for r in conn.execute(
         "SELECT * FROM grille_entree WHERE version_id = ? ORDER BY rang, id", (version["id"],))}
     e = next((r for r in entrees.values() if cle_tag(r["libelle"]) == cle_tag(libelle)), None)
@@ -470,8 +474,9 @@ def _entree_par_nom(conn, grille_id: int, version, libelle: str, forme: str, *,
     # « sentiment : tristesse » font deux relevés sur une même bulle, comme deux tags ; écrit
     # sur l'entrée, que le formulaire montre et peut changer. SIMPLE, elle garde le défaut
     # de sa cible (`une` sur une zone) : la poser deux fois la retire.
-    cardinalite = "plusieurs" if forme == "variantes" else None
-    if grilles.cibles_de(version["cible"]):
+    sur_mots = travail and cible == grilles.CIBLE_MOTS
+    cardinalite = "plusieurs" if forme == "variantes" or sur_mots else None
+    if grilles.cibles_de(version["cible"]) and not sur_mots:
         cible = None                     # elle suit le défaut de la version
     conn.execute("INSERT INTO grille_entree (version_id, cle, rang, forme, libelle, etat, "
                  "cardinalite, cible) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -530,7 +535,8 @@ def _variante_par_nom(conn, portee, grille_id: int, version, entree, valeur: str
     return vc
 
 
-def _entree_neuve(conn, portee, grille_id: int, version, libelle: str, *, cible=None):
+def _entree_neuve(conn, portee, grille_id: int, version, libelle: str, *, cible=None,
+                  travail: bool = False):
     """Une entrée qui naît EN LA POSANT, dans la version vivante d'une grille OUVERTE (G14,
     le patron des tags libres). Rend `(entrée, cle de variante ou None)`.
 
@@ -540,19 +546,21 @@ def _entree_neuve(conn, portee, grille_id: int, version, libelle: str, *, cible=
     variantes qui existe (« lieu : grotte ») s'y ajoute comme variante — si l'entrée est
     PROVISOIRE, ou par qui gère le projet (J5, `_exiger_ajout_de_valeur`). Les deux-points
     séparent au PREMIER ; un côté vide est refusé (422 nommé), comme un nom déjà pris par une
-    entrée qui n'est pas à variantes. Sans deux-points : une entrée simple, comme avant."""
+    entrée qui n'est pas à variantes. Sans deux-points : une entrée simple, comme avant.
+    `cible` et `travail` : où elle naît (`_entree_par_nom`)."""
     libelle = grilles.propre(libelle)
     if not libelle:
         raise HTTPException(422, "Une entrée neuve a besoin d'un libellé.")
     nom, deux_points, valeur = libelle.partition(":")
     if not deux_points:
         return _entree_par_nom(conn, grille_id, version, libelle, "simple",
-                               cible=cible), None
+                               cible=cible, travail=travail), None
     nom, valeur = grilles.propre(nom), grilles.propre(valeur)
     if not nom or not valeur:
         raise HTTPException(422, "« nom : valeur » demande les deux : l'entrée avant les "
                                  "deux-points, sa variante après (« lieu : forêt »).")
-    e = _entree_par_nom(conn, grille_id, version, nom, "variantes", cible=cible)
+    e = _entree_par_nom(conn, grille_id, version, nom, "variantes", cible=cible,
+                        travail=travail)
     if e["forme"] != "variantes":
         raise HTTPException(422, f"« {e['libelle']} » est déjà une entrée de la grille, sans "
                                  "variantes : posez-la telle quelle, ou donnez un autre nom à "
@@ -579,17 +587,18 @@ def poser_releve(payload: ReleveIn, conn: sqlite3.Connection = Depends(db),
     version = grilles.version_par_id(conn, act["version_id"])
     variante_cle = payload.variante_cle
     if payload.nouvelle_entree is not None:
-        ouverte = conn.execute("SELECT ouverte FROM grille WHERE id = ?",
-                               (payload.grille_id,)).fetchone()[0]
+        ouverte, travail = conn.execute("SELECT ouverte, travail FROM grille WHERE id = ?",
+                                        (payload.grille_id,)).fetchone()
         if not ouverte or version["etat"] != grilles.ETAT_VIVANTE:
             raise HTTPException(422, "Une entrée ne naît en posant que dans une grille "
                                      "ouverte.")
-        # Sans défaut, ce qu'on désigne : des mots, la sorte de la zone, ou la planche.
+        # Sans défaut, ce qu'on désigne : des mots, la sorte de la zone, ou la planche ; dans
+        # la grille de travail, des mots désignés (Hugo, 2026-11-15).
         designee = ("planche" if cible["region"] is None
                     else grilles.CIBLE_MOTS if payload.mots else cible["region"]["type"])
         entree, variante_neuve = _entree_neuve(conn, portee, payload.grille_id, version,
                                                payload.nouvelle_entree.libelle,
-                                               cible=designee)
+                                               cible=designee, travail=bool(travail))
         if variante_neuve is not None:
             if payload.variante_cle and payload.variante_cle != variante_neuve:
                 raise HTTPException(422, "La variante se dit une fois : dans « nom : valeur », "

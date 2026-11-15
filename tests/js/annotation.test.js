@@ -784,13 +784,13 @@ test("l'entrée qui naît en la posant suit la cible de la version", () => {
   // La pose qui suit vise bien la zone désignée.
   assert.deepEqual(A.cibleDePose(neuve({ zone: bulleZ, caseRegion: caseZ, mots: [] }),
                                  { zone: bulleZ, caseRegion: caseZ, mots: [] }), { region_id: 3 });
-  // Le Mode libre porte sur toute zone (Hugo, 2026-11-05) : une étiquette tapée sur des mots
-  // désignés suit ce défaut et se pose sur la bulle entière, sans ses mots — comme toute
-  // entrée de zone posée avec des mots désignés (Hugo, 2026-11-01). La règle du serveur.
-  const libre = { porte_sur: ["bulle", "cartouche", "texte", "case", "personnage", "detail"] };
-  const surMots = { zone: bulleZ, caseRegion: caseZ, mots: [1] };
-  assert.equal(A.entreeNeuve(libre, "élision", surMots).pose, "zone");
-  assert.deepEqual(A.cibleDePose(A.entreeNeuve(libre, "élision", surMots), surMots),
+  // Une grille OUVERTE avec un défaut, qui n'est pas la grille de travail : une entrée tapée
+  // sur des mots désignés suit ce défaut et se pose sur la bulle entière (Hugo, 2026-11-01).
+  const zones = ["bulle", "cartouche", "texte", "case", "personnage", "detail"];
+  const autre = { grille: { ouverte: true }, porte_sur: zones };
+  const surMots = { zone: bulleZ, caseRegion: caseZ, porte: "mots", mots: [1] };
+  assert.equal(A.entreeNeuve(autre, "élision", surMots).pose, "zone");
+  assert.deepEqual(A.cibleDePose(A.entreeNeuve(autre, "élision", surMots), surMots),
                    { region_id: 3 });
   assert.deepEqual(A.vuDuReleve(rel(1, {})), { variante_cle: null, qualificatifs: [] });
   // Les qualificatifs vus forment un ENSEMBLE : ils partent triés, dans un ordre stable.
@@ -1310,6 +1310,72 @@ test("une grille sans rubrique se lit à plat, sans « Sans rubrique »", () => 
   // Avec une rubrique, le groupe des orphelines garde son nom.
   assert.equal(A.arbre(PLAN).find((n) => n.cle === "").plat, undefined);
   assert.deepEqual(A.vuesAfficher(LIBRE), []);
+});
+
+test("le Mode libre : une étiquette tapée sur des mots désignés naît sur ces mots", () => {
+  // Hugo, 2026-11-15, option (b) : la grille de travail porte sur toute zone, mais des mots
+  // désignés font naître l'étiquette sur eux, `plusieurs`, cible écrite — la règle du serveur
+  // (`routes/releves._entree_par_nom`). La pose garde les mots : la liste ne bascule pas.
+  const bulleZ = { id: 3, type: "bulle" }, caseZ = { id: 2, type: "case" };
+  const surMots = { zone: bulleZ, caseRegion: caseZ, porte: "mots", mots: [2, 1] };
+  const e = A.entreeNeuve(LIBRE, "élision", surMots);
+  assert.deepEqual([e.pose, e.cibles, e.cible_declaree, e.cardinalite],
+                   ["mots", ["mots"], ["mots"], "plusieurs"]);
+  assert.equal(A.entreeNeuve(LIBRE, "registre : soutenu", surMots).pose, "mots");
+  const cible = A.cibleDePose(e, surMots);
+  assert.deepEqual(cible, { region_id: 3, mots: [1, 2] });
+  const options = A.optionsPorteSur(LIBRE, bulleZ, caseZ, surMots.mots);
+  assert.equal(A.porteApresPose("mots", cible, surMots.mots, options), "mots");
+  // Sans mots désignés : la zone, comme avant, sans cible écrite.
+  const sans = A.entreeNeuve(LIBRE, "élision", { zone: bulleZ, caseRegion: caseZ, mots: [] });
+  assert.deepEqual([sans.pose, sans.cible_declaree], ["zone", []]);
+  assert.deepEqual(A.cibleDePose(sans, { zone: bulleZ, caseRegion: caseZ, mots: [] }),
+                   { region_id: 3 });
+  // « Toute la bulle » choisie, ou la case, l'emporte sur des mots désignés.
+  for (const porte of ["zone", "case"]) {
+    const x = A.entreeNeuve(LIBRE, "élision", { ...surMots, porte });
+    assert.deepEqual([x.pose, x.cible_declaree], ["zone", []], porte);
+  }
+  // Des mots désignés hors d'une zone de texte (une boîte) ne comptent pas.
+  const boite = { id: 4, type: "personnage" };
+  assert.equal(A.entreeNeuve(LIBRE, "élision", { zone: boite, porte: "mots", mots: [0] }).pose,
+               "zone");
+  // « Porte sur » offre les mots dès qu'il y en a de désignés dans une zone de texte, et
+  // seulement alors : sans sélection, rien ne change.
+  assert.deepEqual(A.optionsPorteSur(LIBRE, bulleZ, caseZ, [1]).map((o) => o.cle),
+                   ["mots", "zone", "case"]);
+  assert.deepEqual(A.optionsPorteSur(LIBRE, bulleZ, caseZ, []).map((o) => o.cle),
+                   ["zone", "case"]);
+  assert.deepEqual(A.optionsPorteSur(LIBRE, boite, caseZ, [0]).map((o) => o.cle), ["case"]);
+  // Une étiquette qui EXISTE garde sa cible : « ironie » vise la bulle entière.
+  const ironie = LIBRE.entrees.find((x) => x.cle === "ironie");
+  assert.deepEqual(A.cibleDePose(ironie, surMots), { region_id: 3 });
+  // Une autre grille ouverte, avec un défaut : rien ne change, même avec des mots désignés.
+  const autre = { ...LIBRE, grille: { id: 6, ouverte: true } };
+  assert.equal(A.entreeNeuve(autre, "élision", surMots).pose, "zone");
+  assert.deepEqual(A.optionsPorteSur({ ...autre, entrees: [] }, bulleZ, caseZ, [1])
+    .map((o) => o.cle), ["zone", "case"]);
+});
+
+test("ce qu'Entrée fera le dit : « sur les mots désignés »", () => {
+  const bulleZ = { id: 3, type: "bulle" }, caseZ = { id: 2, type: "case" };
+  const surMots = { zone: bulleZ, caseRegion: caseZ, porte: "mots", mots: [1] };
+  const f = (t, ctx) => A.ceQuEntreeFera(LIBRE, t, posees([]), ctx);
+  assert.equal(f("élision", surMots).libelle, "Créer « élision » et poser sur les mots désignés");
+  assert.equal(f("registre : soutenu ; familier", surMots).libelle,
+               "Créer « registre : soutenu, familier » et poser sur les mots désignés");
+  assert.equal(f("élision", { ...surMots, mots: [] }).libelle, "Créer « élision » et poser");
+  assert.equal(f("élision", { ...surMots, porte: "zone" }).libelle, "Créer « élision » et poser");
+  assert.equal(f("élision").libelle, "Créer « élision » et poser");
+  // Une étiquette qui existe garde sa ligne : elle garde sa cible.
+  assert.equal(f("ironie", surMots).libelle, "Poser « ironie »");
+  // Depuis une grille fermée, « Créer « … » dans Mode libre » le dit aussi.
+  const fermee = { id: 1, ouverte: false };
+  const travail = { id: 5, ouverte: true, travail: true };
+  assert.equal(A.dansModeLibre(fermee, travail, "élision", [], LIBRE, posees([]), surMots).libelle,
+               "Créer « élision » dans Mode libre, sur les mots désignés");
+  assert.equal(A.dansModeLibre(fermee, travail, "élision", [], LIBRE, posees([])).libelle,
+               "Créer « élision » dans Mode libre");
 });
 
 test("une grille de travail vide dit sur quoi poser : jamais « Porte sur — »", () => {

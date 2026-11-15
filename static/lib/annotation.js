@@ -850,14 +850,17 @@
      zone de texte, la zone entière, la case, la planche. Rend `[{ cle, libelle }]`, dans cet
      ordre. L'entité (« X, partout ») n'est pas offerte : le serveur la refuse jusqu'à
      l'étage de projet des personnages (G3). */
-  function optionsPorteSur(plan, zone, caseRegion) {
+  function optionsPorteSur(plan, zone, caseRegion, mots) {
     // Une grille OUVERTE pose aussi ce qui va naître : une étiquette tapée prend la cible de
     // sa version — sans quoi une grille de travail vide disait « Porte sur — » (point 8) —,
     // et, SANS défaut, celle de ce qu'on désigne (Hugo, 2026-11-12) : tout ce qu'une entrée
-    // neuve peut viser d'ici.
+    // neuve peut viser d'ici. Dans le Mode libre, des mots DÉSIGNÉS (`mots`, la sélection)
+    // aussi : une étiquette tapée y naît sur eux (Hugo, 2026-11-15).
     const ouverte = !!(plan && plan.grille && plan.grille.ouverte);
+    const surMots = ouverte && !!plan.grille.travail && rangs(mots).length
+      ? [{ pose: "mots", cibles: ["mots"] }] : [];
     const neuve = !ouverte ? []
-      : (plan.porte_sur || []).length ? [entreeNeuve(plan, "")]
+      : (plan.porte_sur || []).length ? [entreeNeuve(plan, ""), ...surMots]
       : [["mots"], zone && !zone.pseudo ? [zone.type] : null, ["case"], ["planche"]]
         .filter(Boolean).map((c) => ({ pose: c[0] === "mots" ? "mots"
           : c[0] === "planche" ? "planche" : "zone", cibles: c }));
@@ -963,16 +966,22 @@
      valeur » la fait naître À VARIANTES, sous son nom (le serveur fait naître la variante).
      Dans une grille SANS défaut, sur ce qu'on désigne (`ctx`, celui de `cibleDePose`), la
      règle du serveur (Hugo, 2026-11-12) : la planche, la case, des mots, sinon la sorte de
-     la zone. */
+     la zone. Dans le MODE LIBRE (la grille de travail, qui porte sur toute zone), sur des
+     mots désignés quand « Porte sur » est aux mots : elle naît sur eux, `plusieurs`, cible
+     écrite (Hugo, 2026-11-15, la règle du serveur) ; sinon le défaut. */
   function entreeNeuve(plan, libelle, ctx) {
     const defaut = (plan && plan.porte_sur) || [];
-    const cibles = defaut.length ? defaut : cibleDesignee(ctx);
+    const designee = cibleDesignee(ctx);
+    const surMots = !!(plan && plan.grille && plan.grille.travail)
+      && designee.length === 1 && designee[0] === "mots";
+    const cibles = defaut.length && !surMots ? defaut : designee;
     const pose = cibles.includes("mots") ? "mots" : cibles.includes("planche") ? "planche"
       : cibles.includes("entite") ? "entite" : "zone";
     const nv = nomEtValeur(libelle);
     return { cle: null, libelle: nv ? nv.nom : libelle, forme: nv ? "variantes" : "simple",
              cibles, pose, cardinalite: "plusieurs",
-             cible_declaree: defaut.length ? [] : cibles, rubriques: [], variantes: [] };
+             cible_declaree: defaut.length && !surMots ? [] : cibles, rubriques: [],
+             variantes: [] };
   }
 
   function cibleDesignee(ctx) {
@@ -1693,8 +1702,11 @@
      `{ nouvelle }` (une étiquette, ou « nom : valeur », qui naît en posant),
      `{ entree_cle, variante_cle? }` (l'existante), `{ entree_cle, nouvelle }` (une valeur
      nouvelle d'une étiquette qui existe, par son libellé). Entrée sur un nom qui existe pose
-     l'EXISTANTE. Une ligne éteinte (`ok: false`) dit pourquoi rien ne partira. */
-  function ceQuEntreeFera(plan, texte, posees) {
+     l'EXISTANTE. Une ligne éteinte (`ok: false`) dit pourquoi rien ne partira. `ctx` (celui
+     de `cibleDePose`) : une étiquette NEUVE qui naîtra sur les mots désignés le dit (Hugo,
+     2026-11-15) ; une existante garde sa cible. */
+  const SUR_LES_MOTS = " sur les mots désignés";
+  function ceQuEntreeFera(plan, texte, posees, ctx) {
     const s = lireSaisie(texte);
     if (!s) return null;
     const off = (chemin, libelle) => ({ ok: false, chemin, libelle, gestes: [] });
@@ -1703,7 +1715,8 @@
     const e = entreeDeNom(plan, s.nom);
     if (!e) {
       const lib = s.valeurs.length ? `${s.nom} : ${s.valeurs.join(", ")}` : s.nom;
-      return { ok: true, chemin: "nouvelle étiquette", libelle: `Créer « ${lib} » et poser`,
+      const ou = entreeNeuve(plan, s.nom, ctx).pose === "mots" ? SUR_LES_MOTS : "";
+      return { ok: true, chemin: "nouvelle étiquette", libelle: `Créer « ${lib} » et poser${ou}`,
                gestes: s.valeurs.length ? s.valeurs.map((v) => ({ nouvelle: `${s.nom} : ${v}` }))
                  : [{ nouvelle: s.nom }] };
     }
@@ -1746,13 +1759,15 @@
      sans changer d'onglet (maquette du 2026-11-06). `null` sur une grille ouverte (elle crée
      chez elle), sans grille de travail, quand le filtre trouve quelque chose, ou quand Entrée
      n'y ferait rien. */
-  function dansModeLibre(choisie, travail, requete, resultats, planTravail, posees) {
+  function dansModeLibre(choisie, travail, requete, resultats, planTravail, posees, ctx) {
     const t = String(requete || "").trim();
     if (!choisie || choisie.ouverte || !travail || !t || !planTravail) return null;
     if ((resultats || []).length) return null;
-    const a = ceQuEntreeFera(planTravail, t, posees);
+    const a = ceQuEntreeFera(planTravail, t, posees, ctx);
     if (!a || !a.ok) return null;
-    return { ...a, libelle: `${a.libelle.replace(/ et poser$/, "")} dans ${NOM_MODE_LIBRE}` };
+    const ou = a.libelle.endsWith(SUR_LES_MOTS) ? `,${SUR_LES_MOTS}` : "";
+    const sans = a.libelle.slice(0, a.libelle.length - (ou ? SUR_LES_MOTS.length : 0));
+    return { ...a, libelle: `${sans.replace(/ et poser$/, "")} dans ${NOM_MODE_LIBRE}${ou}` };
   }
 
   /* L'ORDRE de la liste du Mode libre : un tri d'écran, retenu sur le poste, pour soi (clé

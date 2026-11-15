@@ -558,6 +558,57 @@ def test_lieu_foret_se_pose_dans_la_grille_de_travail(page, decor):
     expect(page.locator("#an-resultats .an-res-creer")).to_have_count(0)
 
 
+def test_une_etiquette_tapee_sur_des_mots_designes_nait_sur_eux(page, decor):
+    """Hugo, 2026-11-15, option (b) : au clavier, désigner deux mots, « + », taper une
+    étiquette NEUVE, Entrée — elle naît sur ces mots et s'y pose, la ligne d'Entrée le disait,
+    et la liste reste sur les mots au lieu de basculer vers la bulle."""
+    with _http(decor) as c:
+        actives = c.get(f"/api/projets/{decor['projet']}/grilles").json()["actives"]
+    travail = next(g["id"] for g in actives if g["nom"] == GRILLE_DE_TRAVAIL_NOM)
+    _ouvrir(page, decor, decor["bulle"])
+    mots = page.locator("#an-mots")
+    expect(_mot(page, 1)).to_be_visible()
+    mots.focus()
+    page.keyboard.press("Home")
+    page.keyboard.press("Shift+ArrowRight")
+    expect(page.locator("#an-poses-titre")).to_have_text("Sur « MILLE SABORDS »")
+    page.keyboard.press("+")
+    champ = page.locator("#an-creer")
+    expect(champ).to_be_focused()
+    expect(page.locator(f"#an-onglet-{travail}")).to_have_attribute("aria-selected", "true")
+    expect(page.locator('#an-porte [data-porte="mots"]')).to_have_attribute("aria-pressed", "true")
+    page.keyboard.type("élision")
+    quoi = page.locator("#an-quoi")
+    expect(quoi).to_be_visible()
+    expect(quoi).to_contain_text("Créer « élision » et poser sur les mots désignés")
+    with page.expect_response(lambda r: r.request.method == "POST"
+                              and r.url.endswith("/api/releves")) as rep:
+        page.keyboard.press("Enter")
+    assert rep.value.status == 201, rep.value.text()
+    pose = rep.value.json()
+    assert (pose["grille_id"], [m["rang"] for m in pose["mots"]]) == (travail, [0, 1])
+    expect(page.locator("#an-annonce")).to_have_text("Posé : élision")
+    # La liste reste sur les mots, qui restent désignés ; l'étiquette s'y lit.
+    expect(page.locator('#an-porte [data-porte="mots"]')).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#an-poses-titre")).to_have_text("Sur « MILLE SABORDS »")
+    expect(page.locator("#an-poses-liste .an-pose-lib", has_text="élision")).to_have_count(1)
+    expect(_mot(page, 0)).to_have_attribute("aria-selected", "true")
+    expect(champ).to_have_value("")
+    # Sans mots désignés, une étiquette neuve se pose sur la bulle, comme avant.
+    mots.focus()
+    page.keyboard.press("Escape")
+    expect(page.locator("#an-poses-titre")).to_have_text("Dans la bulle b1")
+    page.keyboard.press("+")
+    page.keyboard.type("ironie")
+    expect(quoi).to_contain_text("Créer « ironie » et poser")
+    expect(quoi).not_to_contain_text("sur les mots désignés")
+    with page.expect_response(lambda r: r.request.method == "POST"
+                              and r.url.endswith("/api/releves")) as rep:
+        page.keyboard.press("Enter")
+    assert rep.value.status == 201, rep.value.text()
+    assert rep.value.json()["mots"] == []
+
+
 # --------------------------------------------------------------------------- #
 # « Terminée », le parcours, Ctrl+Z (commit 4)
 # --------------------------------------------------------------------------- #

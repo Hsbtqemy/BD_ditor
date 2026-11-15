@@ -1723,7 +1723,8 @@ function rendreResultats(plan, filtre) {
   if (aCreer) trouves.push({ creer: aCreer, libelle: A.libelleDeCreation(plan, aCreer),
                              chemin: `dans ${g.nom}`, exemple: null });
   const t = ecrivable() ? grilleDeTravail() : null;
-  const libre = t ? A.dansModeLibre(g, t, filtre, trouves, planDe(t), poseesSur(t)) : null;
+  const libre = t ? A.dansModeLibre(g, t, filtre, trouves, planDe(t), poseesSur(t),
+                                    contexteDePose()) : null;
   if (libre) trouves.push({ libre, libelle: libre.libelle, chemin: A.NOM_MODE_LIBRE, exemple: null });
   S.resultats = trouves;
   if (S.actif >= trouves.length) S.actif = 0;
@@ -2059,7 +2060,7 @@ function analyseDuChamp() {
   const g = grilleOuverte();
   const plan = planDe(g);
   if (!g || !g.travail || !plan) return null;
-  const a = A.ceQuEntreeFera(plan, S.creer, poseesSur(g));
+  const a = A.ceQuEntreeFera(plan, S.creer, poseesSur(g), contexteDePose());
   if (a && a.ok && !ecrivable()) return { ok: false, chemin: "lecture", libelle: LECTURE, gestes: [] };
   return a;
 }
@@ -2937,7 +2938,7 @@ function rendrePorte() {
   const boite = $("#an-porte");
   const plan = planDe(grilleOuverte());
   const c = caseCourante();
-  const opts = plan ? A.optionsPorteSur(plan, zoneCourante(), c ? c.case : null) : [];
+  const opts = plan ? A.optionsPorteSur(plan, zoneCourante(), c ? c.case : null, S.sel) : [];
   if (!opts.some((o) => o.cle === S.porte)) S.porte = opts.length ? opts[0].cle : null;
   redessinerSansPerdreLeFocus(boite, () => boite.replaceChildren(
     el("span", { classe: "an-gr-lbl", texte: "Porte sur" }),
@@ -3080,7 +3081,7 @@ function marquerDoigt() {
    et l'état des entrées suivent. */
 function apresSelection() {
   if (S.sel.length && A.optionsPorteSur(planDe(grilleOuverte()), zoneCourante(),
-                                        caseCourante() && caseCourante().case)
+                                        caseCourante() && caseCourante().case, S.sel)
         .some((o) => o.cle === "mots")) S.porte = "mots";
   marquerSelection();
   rendrePorte();
@@ -3336,7 +3337,8 @@ async function poser(entreeCle, choix) {
 /* La liste montre ce qu'on vient de poser : elle quitte des mots qu'il ne touche pas. */
 function listeSurLaCible(cible) {
   const c = caseCourante();
-  const options = A.optionsPorteSur(planDe(grilleOuverte()), zoneCourante(), c ? c.case : null);
+  const options = A.optionsPorteSur(planDe(grilleOuverte()), zoneCourante(), c ? c.case : null,
+                                    S.sel);
   const porte = A.porteApresPose(S.porte, cible, S.sel, options);
   if (porte === S.porte) return;
   S.porte = porte;

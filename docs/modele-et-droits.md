@@ -852,6 +852,12 @@ Une étiquette née « nom : valeur » se pose **plusieurs fois** : « sentiment
 « sentiment : tristesse » laissent deux relevés sur la bulle — jamais deux fois la même valeur
 sur la même zone. L'ordre des étiquettes, *↕ Ranger*, est celui de tout le projet.
 
+Une étiquette **neuve** tapée pendant que des mots sont désignés naît **sur ces mots** et s'y
+pose (tranché par Hugo le 2026-11-15) : elle se posera ensuite sur d'autres mots, plusieurs
+fois dans une même bulle, jamais sur une zone entière. Sans mots désignés, elle naît sur la
+zone. Une étiquette qui existe déjà garde ce sur quoi elle se pose ; seul qui gère le projet
+le change, au formulaire.
+
 ### Provisoire ou figée
 
 Une entrée née en la tapant est **provisoire** ; une entrée écrite — par un tableur ou par le
