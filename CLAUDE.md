@@ -465,8 +465,11 @@ projet des personnages. Il porte sa variante, ses qualificatifs (UN ensemble), u
 un lien vers une région du MÊME album ; la cardinalité `une` d'une entrée est tenue par un
 index unique partiel. **Son état n'est pas une colonne** : `releves_effectifs` (vue, recréée
 au démarrage) le DÉRIVE — à revoir (mot perdu, texte changé depuis l'ancrage, région liée
-disparue, type qui ne convient plus, entrée absente), à compléter (précision ou lien
-attendus), normal — et dit ses causes. Un texte retouché RÉ-ANCRE les relevés de sa région
+disparue, type qui ne convient plus, sorte de pose changée, entrée absente, une variante ou
+une case qui n'existe plus ou n'a plus de place), à compléter (variante, précision ou lien
+attendus), normal — et dit ses causes ; celles qui dépendent de la VERSION sont aussi écrites
+en Python, `grilles.causes_dans_la_version`, que `tests/test_regle_du_releve.py` accorde à la
+vue cas par cas. Un texte retouché RÉ-ANCRE les relevés de sa région
 (`releves.reancrer_releves`, appelé par `database.reindex_region`) : un mot déplacé suit, un
 mot perdu laisse le relevé ancré sur l'ancien texte (`texte_ancre`), donc à revoir, sans
 rien écrire. Le DOUTE (`doute`, `doute_message`, un seul ouvert par relevé) et la PASSE
@@ -482,6 +485,26 @@ relevé ne sort** d'un export, de la voie du dépôt ni d'un outil de sortie
 relevés suivent une copie amorcée au cran `annotations` si leur grille est active dans le
 projet d'arrivée, et sont COMPTÉS sinon (`database.compter_le_travail`) ; repartir de zéro
 les retire ; ils comptent au « travail d'autrui » de la suppression directe.
+**La MONTÉE DE VERSION d'une grille fermée** (Hugo, 2026-11-15, les sept questions du
+cadrage `docs/ann7-montee-de-version-cadrage.md` comme proposé ; `montee.py`, appelé par
+`grille_import.activer`) fait passer les relevés d'un PROJET d'une version publiée à une
+version publiée PLUS RÉCENTE — jamais l'inverse (M5) : on revient en publiant une version qui
+reprend l'ancienne. Le périmètre est le projet, écrit dès maintenant pour le jour du
+catalogue (`montee.releves_du_projet`, `sql_projet_d_album`) ; un relevé garde ses valeurs,
+seuls changent sa version, son drapeau `une` et, fusionné, son entrée ; ce qui ne convient
+plus se DIT par l'état dérivé. Le BILAN se lit avant (`GET
+/api/projets/{id}/grilles/{gid}/montee?version=M`, à qui gère le projet, ses zones bornées à
+ce qu'on lit) ; monter, c'est `PUT …/activation` avec `vu`, le condensé du bilan lu — un relevé
+posé entre-temps le change, 409 qui le rend —, et une réponse par entrée employée RETIRÉE :
+« laisser » ou « fusionner dans… » (M2, les règles de la fusion d'une ouverte) ; une cible qui
+porterait deux relevés d'une entrée passée à « une seule fois » la refuse (M1). Une passe se
+ROUVRE quand la version ajoute quelque chose à regarder sur sa zone (M4 c), écrite
+`passe_rouverte` marquée `montee`, que « qui perd quoi » et les traces d'un compte écartent
+comme la fusion (`grilles.sql_acte_qui_range`). L'empreinte des plans porte le numéro de
+version d'une grille fermée active : une montée fait paraître « ⟳ Actualiser », qui relit les
+grilles du projet. L'écran : « Monter à la version M… », une confirmation sous la ligne du
+bloc « Grilles » (M6 (a), `static/lib/grilles-projet.js`) ; l'outil :
+`tools/importer_grille.py --grille G --activer [--a-blanc] [--laisser CLE]`.
 
 ### Autorisation par collection (AUTH-2, v23)
 
@@ -1569,7 +1592,14 @@ autre à son journal — hors l'acte `fusion` qu'une fusion d'entrées écrit su
 qu'elle déplace (`grilles.ACTE_FUSION`, qui n'est pas non plus un travail sur l'album) —,
 jamais par son seul dernier retoucheur ; le refus nomme un auteur
 autre que soi lu sur l'objet (`auteur`, puis `modifie_par`), sinon « ailleurs ». Ctrl+Z
-d'une retouche de relevé rend aussi `modifie_par` et `modifie_le`.
+d'une retouche de relevé rend aussi `modifie_par` et `modifie_le`. **Après une MONTÉE DE
+VERSION** (qui, elle, ne s'annule pas : un acte sous `grille`) : défaire une pose ou une
+retouche lit le relevé actuel, passé dans la nouvelle version — une retouche dont la valeur
+rendue n'y existe plus est passée ; rendre un relevé retiré, ou ceux d'une région supprimée,
+le rend dans la version ACTIVE s'il y convient (`grilles.convient`, `undo._version_pour_rendre`),
+et l'acte est passé sinon — une passe, si la montée ne l'aurait pas rouverte ; et
+`entree_cle` est parmi les valeurs que Ctrl+Z compare à la création, si bien que défaire la
+pose d'un relevé fusionné reçoit le 409 nommé, qui offre « Passer ce geste ».
 
 **Avant d'écrire, deux questions, et un acte qui échoue à l'une est PASSÉ** (AUTH-14, 2026-10-15). `regions`, `planches`, `albums` et `personnages` n'avaient pas d'`AUTOINCREMENT` : l'identifiant d'un objet détruit revenait au suivant, et tout identifiant que le journal garde — `cible_id`, instantanés — pouvait désigner un AUTRE objet, dans une autre collection. **Depuis la v30 (2026-10-16) ils ne reviennent plus** (§ Schéma & migrations) ; les témoins ci-dessous RESTENT, pour les actes d'avant la v30 — leurs identifiants ont pu être repris avant elle — et comme défense en profondeur : un identifiant rendu par une transaction défaite, une ligne posée à la main. Les tests du cloisonnement de Ctrl+Z ramènent leur base à la numérotation d'avant pour les mesurer encore. **Un cinquième témoin depuis la tranche 3b** (E8) : une REMISE À ZÉRO de l'album — ou de la planche — journalisée depuis l'acte (`undo.planches_remises_a_zero`, l'acte `repartir` sous le document) ; l'acte est passé, « l'état d'avant ne peut plus être rétabli » — Ctrl+Z ne remonte pas au-delà, et un geste d'un autre album ou d'une autre planche s'annule encore. Il se lit AVANT l'objet et ses lieux, par la planche où vivait la région au moment de l'acte (le journal) : la création d'une région que la remise à zéro a effacée tombait sinon dans la première phrase (relecture croisée de la 3b, constat 4). Sa phrase ne se dit qu'à qui écrit encore la planche remise à zéro ; à tout autre, la première. (1) **Peut-on écrire maintenant à chaque endroit que l'inverse touche** — la région, la planche de CHAQUE nœud d'une suppression rétablie, le parent rendu, le personnage reposé ? `undo.annuler` prend `ecrivable` en argument OBLIGATOIRE, que la route tire des accesseurs gardés sous la portée de la requête (`undo.lieux`). Le résiduel du 2026-08-28, « un droit d'écriture ailleurs suffit », est fermé. (2) **L'objet est-il encore celui de l'acte ?** Quatre témoins, sans changement de schéma : aucune création journalisée sous cet identifiant depuis l'acte ; la planche au moment de l'acte ; l'album importé après l'acte ; une suppression journalisée depuis l'acte et non annulée. Un personnage doit être vu de l'agent et né avant l'acte ; un parent rendu se valide comme la route (`_validate_parent`). Si l'une répond non, ou si une contrainte de la base refuse l'inverse, l'acte est **passé** : une trace append-only (`type='abandon'`, `cible_table='annulation'`) le sort de la pile — retenue de toute sortie (`tools/_commun.CIBLES_RETENUES`), hors du compte des actes d'un compte —, et le Ctrl+Z suivant défait le geste d'avant. **Définitivement** : l'acte ne revient pas si l'objet est rétabli plus tard, c'est voulu. Le refus dit deux phrases et rien de l'objet — « Ne s'annule plus : *geste* — la région n'est plus à votre portée », ou « … — l'état d'avant ne peut plus être rétabli » ; une seule pour tout ce qui est hors de portée, sans quoi la différence entre « supprimée » et « reprise ailleurs » fuirait. Là où l'agent lit et écrit, le conflit de version (CONC-3) est inchangé. Les trous qui restent (une planche reprise dans un album importé avant l'acte, une région disparue et reprise sans événement, une reprise dans la même seconde) sont écrits dans `docs/undo.md` et dans la fiche ; la garde d'écriture les tient tous, c'est l'identité qui manque. Le remède de fond, des identifiants qui ne reviennent plus, attendait la migration v30 (`COL-3`) ; il est arrivé avec elle le 2026-10-16, et ne vaut que pour les identifiants nés après elle.
 

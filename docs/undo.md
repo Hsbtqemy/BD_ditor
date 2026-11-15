@@ -537,6 +537,33 @@ disparu, comptés dans `releves_non_rendus`. Un relevé retiré par la LEVÉE d'
 types à eux, hors de la pile. Un texte retouché qui ré-ancre les relevés n'écrit rien quand
 un mot est perdu : Ctrl+Z du texte les rend normaux sans rien rejouer.
 
+## Après une montée de version (ANN-7)
+
+La montée de version d'une grille fermée (`montee.py` ; `docs/grilles-et-releves.md`, §6) ne
+s'annule pas : un acte `lien` sous `grille`, hors de `_TYPES`, comme une fusion. Pour revenir,
+on publie une version qui reprend l'ancienne, puis on monte (M5). Ce qu'elle change — la
+version des relevés, leur entrée quand on la fusionne — rejaillit sur les gestes d'AVANT elle,
+et la règle est une, celle de la montée (`grilles.convient`) :
+
+- **Défaire une pose ou une retouche** lit le relevé ACTUEL, passé dans la nouvelle version :
+  il se défait. Sauf une retouche dont la variante ou les cases qu'elle rendrait n'existent
+  plus dans cette version (`_valeurs_rendues_tiennent`) : l'acte est passé, avec la seconde
+  phrase — la rendre ferait un relevé à revoir que personne n'a posé.
+- **Rendre un relevé retiré**, ou ceux qu'emportait la suppression d'une région, lit
+  l'instantané, dans l'ANCIENNE version : il se rend dans la version ACTIVE s'il y convient —
+  son entrée y existe et n'est pas retirée, sa variante et ses cases y ont leur place, il s'y
+  pose de la même manière (`_version_pour_rendre`) ; sinon l'acte est passé, ou le relevé est
+  compté dans `releves_non_rendus`. Jamais dans une version plus ancienne que la sienne.
+- **Une passe** qu'emportait la suppression d'une région se rend dans la version active si la
+  montée ne l'aurait pas rouverte — sa rubrique y existe, et la version n'ajoute rien à
+  regarder sur sa zone (`_version_de_la_passe`, la règle de `montee.a_regarder`) ; sinon elle
+  est comptée.
+- **Un relevé FUSIONNÉ à la montée** a changé d'entrée. `entree_cle` est désormais parmi les
+  valeurs que Ctrl+Z compare à la création (`_VALEURS_DU_RELEVE`) : défaire sa pose reçoit le
+  409 de CONC-3, qui nomme l'acte de fusion, et « Passer ce geste » le franchit — au lieu de
+  retirer sans rien dire un relevé qui n'est plus celui qu'on avait posé. Aucune route ne
+  change l'entrée d'un relevé : une modification ne la porte jamais.
+
 ## La page Annotation (ANN-7, tranche 2)
 
 Ctrl+Z y est le même qu'à l'Atelier : la pile est par agent et non par écran, si bien qu'un

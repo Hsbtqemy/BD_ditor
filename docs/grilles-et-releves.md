@@ -82,9 +82,15 @@ grille des linguistes, posée sur toute la zone, et le LIEU d'une case aura sa p
   linguistes écrira l'emphase par manière (deux entrées, ou une entrée à variantes posée deux
   fois). L'outil DIT comment chaque forme compte (`docs/import-grille.md`), pour que l'auteur
   d'une grille choisisse en connaissance de cause.
-- **« À compléter »** a deux causes : une entrée dont la forme change entre deux versions
-  (avec la montée de version) ; et, tranché sur la maquette v3 (2026-10-22), une précision ou
-  un lien que l'entrée attend et que le relevé ne porte pas.
+- **« À compléter »** a trois causes : une entrée devenue à variantes sous un relevé qui n'en
+  porte pas (« choisissez une valeur », avec la montée de version) ; et, tranché sur la
+  maquette v3 (2026-10-22), une précision ou un lien que l'entrée attend et que le relevé ne
+  porte pas. **« À revoir »**, outre ce que le texte et les liens font (§5), dit ce qu'une
+  version ne laisse plus au relevé (la montée de version, §6) : une entrée retirée ou absente,
+  un type de zone qu'elle ne vise plus, une sorte de pose changée (des mots, toute la zone, la
+  planche), une valeur qui n'existe plus ou n'a plus de place, une case hors de la liste, des
+  cases sur une entrée qui n'en prend plus. Ces causes valent hors de la montée aussi : le
+  « Porte sur » d'une étiquette employée de la grille de travail qui change les dit.
 - Une forme nouvelle demande du code, une fois, pour toutes les grilles. Le contenu, lui, est
   libre.
 
@@ -176,8 +182,28 @@ de ses mots est aujourd'hui, et un Ctrl+Z du texte le rend normal sans rien écr
   la `cle` : renommer ou retoucher une définition n'abîme rien ; déplacer change les comptes par
   rubrique, passé compris ; supprimer une entrée employée est interdit (elle devient
   « retirée ») ; fusionner reporte les relevés, tracé ; scinder met les relevés « à revoir » ;
-  changer de forme met les relevés incomplets « à compléter ». **En tranche 1, la montée de
-  version d'un projet n'existe pas** : une seule version publiée par grille suffit à commencer.
+  changer de forme met les relevés incomplets « à compléter ».
+- **La MONTÉE DE VERSION** (Hugo, 2026-11-15, les sept questions de
+  `docs/ann7-montee-de-version-cadrage.md` comme proposé ; `montee.py`) fait passer les
+  relevés d'un PROJET d'une version publiée à une version publiée PLUS RÉCENTE (M5 : on ne
+  redescend pas ; pour revenir, on publie une version qui reprend l'ancienne, puis on monte).
+  Le périmètre est le projet — les relevés dont l'album est du projet, copies gardées au fonds
+  comprises —, jamais la grille entière, pour le jour du catalogue. Un relevé garde toutes ses
+  valeurs ; seuls changent sa version, son drapeau `une`, et son entrée quand on la fusionne.
+  Ce qui ne convient plus se DIT par l'état dérivé (§3 : `releves_effectifs`, la règle de
+  `grilles.causes_dans_la_version`), jamais corrigé en silence. Avant de monter, un BILAN
+  (`GET /api/projets/{id}/grilles/{gid}/montee?version=M`) : combien passent, combien seront
+  à revoir ou à compléter et pourquoi, les zones (bornées à ce qu'on lit), ce qui change dans
+  le plan. Une entrée employée RETIRÉE attend sa réponse — « laisser » (ses relevés passent, à
+  revoir) ou « fusionner dans… » une entrée de la version d'arrivée, aux règles de la fusion
+  d'une grille ouverte (M2) ; une cible qui porterait deux relevés d'une entrée passée à « une
+  seule fois » REFUSE la montée tant qu'on n'en a pas retiré un (M1). Une SCISSION se fait en
+  retirant l'entrée et en écrivant les nouvelles (M3). Monter, c'est `PUT …/activation` avec
+  `vu`, le condensé du bilan lu, et les réponses : un relevé posé entre-temps change le bilan,
+  et le 409 le rend à relire. Qui gère le projet monte ; jamais sur le jeu. L'écran : « Monter
+  à la version M… », une confirmation sous la ligne de la grille (M6 (a)) ; l'outil :
+  `tools/importer_grille.py --grille G --activer [--a-blanc] [--laisser CLE] [--fusionner
+  CLE=AUTRE]`. Les passes : §9. Ctrl+Z : §11.
 - **Une coquille** (définition, exemple, piège) se corrige sans nouvelle version, par un
   responsable, au journal (tranché le 2026-10-22 ; sa route dès la tranche 1, G15) : elle ne
   touche aucun relevé.
@@ -263,6 +289,16 @@ regardée avec cette grille. C'est ce qui distingue « 0 élision » de « pas e
 ne dépend d'aucun relevé, et se retire (« Rouvrir »). Le parcours « à faire seulement » de
 « Suivante » la lit. Le mot est « terminée » (maquette v3, 2026-10-22).
 
+**À la montée de version** (M4 c), une passe se ROUVRE quand la version d'arrivée lui ajoute
+quelque chose à regarder sur SA zone — une entrée née, entrée dans sa rubrique (ou l'une de
+ses sous-rubriques), ou dont « Porte sur » s'élargit au type de la zone ; la passe « toute la
+grille » regarde toute la grille. Une passe dont la rubrique n'existe plus part. Toute autre
+passe reste, sa version portée à l'arrivée. Une entrée retirée, renommée ou retouchée ne
+rouvre rien, ni un relevé qui devient à revoir. Chaque passe rouverte s'écrit
+`passe_rouverte`, marquée `montee` : le 409 d'un écran qui la voyait encore marquée nomme qui
+a monté, mais « qui perd quoi » et les traces d'un compte ne la comptent pas
+(`grilles.sql_acte_qui_range`).
+
 **La passe est COMMUNE et signée** (Q7, 2026-10-22) : marquée par l'un, elle vaut pour tous et
 dit qui, quand ; on se partage les zones. **Les valeurs uniques** — la variante choisie, les
 qualificatifs, la précision, le lien, le passage, la levée d'un doute, la passe — refusent une
@@ -312,6 +348,13 @@ retenu est la VALEUR vue (G1, 2026-10-25), qui donne le même refus sans colonne
   entrées de la grille de travail ; un message de doute ne s'annule pas (il se lève ou se
   répond), ni rien d'autre du plan d'une grille. Il ne remonte pas au-dessous du plancher de la
   v39 : aucun acte d'avant le basculement n'est plus offert.
+- **La montée de version ne s'annule pas** (M5). Les gestes d'AVANT elle, si : défaire une pose
+  ou une retouche lit le relevé actuel, passé dans la nouvelle version — sauf quand la valeur
+  que la retouche rendrait n'y existe plus (l'acte est passé) ; rendre un relevé retiré, ou ceux
+  d'une région supprimée, le rend dans la version ACTIVE s'il y convient (`grilles.convient`),
+  et l'acte est passé sinon ; une passe se rend si la montée ne l'aurait pas rouverte. Un
+  relevé FUSIONNÉ à la montée a changé d'entrée : défaire sa pose reçoit le 409 de `CONC-3`, qui
+  nomme la fusion, et « Passer ce geste » le franchit.
 - **Supprimer une région supprime ses relevés** (CASCADE), et l'annuler les rend : l'instantané
   profond de l'annulation les emporte, avec leurs doutes et les passes de la région.
 - **Jamais de CASCADE sur la planche** (Q5, 2026-10-22) : un relevé de surface fait échouer la
@@ -341,7 +384,10 @@ publie et active ; le basculement a retiré les tags et les attributs, sans conv
 Recherche cherche les étiquettes des grilles ouvertes, rend les relevés de chaque zone et les
 filtre (« Porte… »). Restent à venir :
 
-- Ni le catalogue, ni la montée de version d'un projet, ni la dérivation.
+- Ni le catalogue, ni la dérivation complète (une grille dérivée dit d'où elle vient, v40, et
+  ne suit pas les versions de son origine). La montée de version existe (§6) ; son écran
+  entier — relevé par relevé, les zones, les passes rouvertes — attend la maquette du bilan
+  de « Publier… ».
 - « Passer dans une grille… » (structurer, J8) : une tranche à part.
 - Rien dans l'Exploration ni dans les exports : un relevé ne SORT par aucune voie avant la
   tranche 4 — l'export CSV de la Recherche suit son filtre, sans porter les relevés —, et le

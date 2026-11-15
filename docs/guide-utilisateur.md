@@ -915,6 +915,21 @@ règle d'accès (cf. §2).
     collection du projet où vous écrivez — la base d'abord —, puis *Demander* : un
     administrateur répondra *Rendre* ou *Garder au fonds*, et la ligne dit *retour demandé
     le …* d'ici là. Un administrateur, lui, lit *Rendre à…* et rend tout de suite.
+  - **Grilles** — **monter à une version plus récente** : quand une grille fermée porte des
+    relevés dans le projet et qu'une version plus récente est publiée, sa ligne offre
+    *Monter à la version M…* à la place d'*Activer*. Une confirmation s'ouvre sous la ligne :
+    la phrase du bilan (*412 relevés passent en version 3. 9 seront à revoir, 4 à
+    compléter.*), ce qui se refuse, les entrées retirées à répondre, les relevés comptés par
+    cause, ce qui change dans la grille. Pour chaque entrée retirée, choisissez *Laisser* —
+    ses relevés passent, *à revoir* — ou *Fusionner dans « … »* — ils passent à cette entrée ;
+    *Monter à la version M* ne s'offre qu'une fois chacune répondue. Une zone qui porterait
+    deux relevés d'une entrée passée à « une seule fois » refuse la montée : *la zone ↗*
+    l'ouvre dans la page Annotation, retirez-en un, puis rouvrez la confirmation. Les relevés
+    gardent leurs valeurs ; ce qui ne convient plus se lit *à revoir* ou *à compléter* sur la
+    ligne du relevé, et les zones terminées où la version ajoute quelque chose à regarder
+    redeviennent à faire. On ne redescend pas : pour revenir, publiez une version qui reprend
+    l'ancienne, puis montez. Si quelqu'un pose un relevé pendant que vous lisez le bilan,
+    *Monter* répond que le bilan a changé et le redessine : relisez-le.
   - **Qui y entre** : dans *Faire entrer*, choisissez un groupe sous *Groupes de
     l'annuaire*, ou *Un compte, ou un groupe absent de la liste…* — il faut alors taper son
     *nom exact* et répondre à *Compte ou groupe ?*, sans valeur par défaut : un groupe
@@ -1145,7 +1160,8 @@ dont un mot a disparu, avec *Rattacher aux mots désignés*, ce qui reste à com
 levés), *Décompte* (par grille, rubrique, entrée, variante, qualificatif, et les zones
 terminées).
 
-**À plusieurs.** Si la planche — ou une étiquette d'une grille ouverte — a changé ailleurs,
+**À plusieurs.** Si la planche — une étiquette d'une grille ouverte, ou la version d'une
+grille, montée dans l'Administration — a changé ailleurs,
 **⟳ Actualiser** paraît dans la bande : il
 garde votre zone, vos mots désignés et ce que vous écriviez. Si quelqu'un a modifié la valeur
 que vous changez, un bandeau prend la place du guide : *Remplacer par la mienne* ou *Garder

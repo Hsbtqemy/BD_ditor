@@ -178,7 +178,8 @@ def test_et_entre_deux_filtres_avec_le_texte_et_le_type(client, decor, db_path):
 
 def test_une_entree_se_reconnait_par_sa_cle_quelle_que_soit_la_version(client, decor, db_path):
     """Une version 2 publiée de la grille fermée ; un relevé posé dans la version 1 et un autre
-    rattaché à la version 2 (par SQL : la montée de version n'existe pas encore) : le filtre
+    rattaché à la version 2 (par SQL : deux versions sous une même grille, ce que la montée
+    de version ne laisse jamais, n'en est que plus exigeant pour le filtre) : le filtre
     les trouve tous deux, par l'entrée comme par la rubrique."""
     t, z = _monter(client, decor, db_path)
     s = decor["grille_id"]
