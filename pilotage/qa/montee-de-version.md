@@ -20,20 +20,20 @@ mots, donc plusieurs fois par zone ; « écho » est une entrée à qualificatif
 personne à l'écran. Le parcours entier est joué par `tests/test_e2e_montee.py`, relu par l'API.
 
 ### Préparer la v2
-- [ ] Fenêtre `stagiaire`, page Annotation, planche 1 : poser « cri » sur deux mots de la même bulle, « écho » sur une autre, « onomatopée de choc · bang » sur une troisième ; marquer « terminée » la bulle de « cri » pour toute la grille, puis pour « B. Provenance » : chaque relevé se lit dans la liste de ce qui est posé, et la minicarte marque la bulle terminée
-- [ ] Fenêtre `proprio`, Administration › Projets › « Projet principal », bloc « Grilles », « Modifier… » sur la grille : renommer « cri » en « cri poussé », retirer « écho », passer « cri » à « une seule fois », ajouter une entrée « soupir » sous « Voix » ; « ← Projet principal », « Publier la v2… », « Publier la v2 » : la ligne de la grille offre « Monter à la version 2… », et plus « Activer la v2 »
+- [x] Fenêtre `stagiaire`, page Annotation, planche 1 : poser « cri » sur deux mots de la même bulle, « écho » sur une autre, « onomatopée de choc · bang » sur une troisième ; marquer « terminée » la bulle de « cri » pour toute la grille, puis pour « B. Provenance » : chaque relevé se lit dans la liste de ce qui est posé, et la minicarte marque la bulle terminée
+- [x] Fenêtre `proprio`, Administration › Projets › « Projet principal », bloc « Grilles », « Modifier… » sur la grille : renommer « cri » en « cri poussé », retirer « écho », passer « cri » à « une seule fois », ajouter une entrée « soupir » sous « Voix » ; « ← Projet principal », « Publier la v2… », « Publier la v2 » : la ligne de la grille offre « Monter à la version 2… », et plus « Activer la v2 »
 
 ### Le bilan, sous `proprio`
-- [ ] « Monter à la version 2… » : sous la ligne, la phrase commence par « N relevés passent en version 2. » et dit qu'une cible porte deux relevés d'une entrée qui ne s'y pose plus qu'une fois ; « Refusé · 1 » montre « la zone ↗ » ; « Monter à la version 2 » est grisé, et la raison s'affiche à côté
-- [ ] « la zone ↗ » ouvre la bulle dans la page Annotation ; fenêtre `stagiaire`, retirer l'un des deux « cri » ; fenêtre `proprio`, « Annuler » puis « Monter à la version 2… » : « Refusé » a disparu
-- [ ] « À répondre · 1 » dit « « écho » est retirée » ; le menu offre « Laisser : … à revoir » et « Fusionner dans « origine du son » » ; tant que rien n'est choisi, « Monter à la version 2 » reste grisé, et le dit au clic
+- [x] « Monter à la version 2… » : sous la ligne, la phrase commence par « N relevés passent en version 2. » et dit qu'une cible porte deux relevés d'une entrée qui ne s'y pose plus qu'une fois ; « Refusé · 1 » montre « la zone ↗ » ; « Monter à la version 2 » est grisé, et la raison s'affiche à côté
+- [x] « la zone ↗ » ouvre la bulle dans la page Annotation ; fenêtre `stagiaire`, retirer l'un des deux « cri » ; fenêtre `proprio`, « Annuler » puis « Monter à la version 2… » : « Refusé » a disparu
+- [x] « À répondre · 1 » dit « « écho » est retirée » ; le menu offre « Laisser : … à revoir » et « Fusionner dans « origine du son » » ; tant que rien n'est choisi, « Monter à la version 2 » reste grisé, et le dit au clic
 
 ### Deux écrans pendant la montée
-- [ ] Fenêtre `stagiaire`, sans recharger, poser « cri » sur un mot d'une autre bulle ; fenêtre `proprio`, choisir « Laisser », puis « Monter à la version 2 » : un message dit que le bilan a changé, et le bilan se redessine avec un relevé de plus
-- [ ] Fenêtre `proprio`, « Monter à la version 2 » : un message dit « « Sons et images (fictive) » est montée à la version 2 : N relevés passent. », et la ligne dit « v2 publiée · active »
+- [x] Fenêtre `stagiaire`, sans recharger, poser « cri » sur un mot d'une autre bulle ; fenêtre `proprio`, choisir « Laisser », puis « Monter à la version 2 » : un message dit que le bilan a changé, et le bilan se redessine avec un relevé de plus
+- [x] Fenêtre `proprio`, « Monter à la version 2 » : un message dit « « Sons et images (fictive) » est montée à la version 2 : N relevés passent. », et la ligne dit « v2 publiée · active »
 
 ### Après la montée, sous `stagiaire`
-- [ ] Fenêtre `stagiaire`, sans recharger : « ⟳ Actualiser » paraît dans les trente secondes ; le cliquer : l'onglet de la grille montre « cri poussé » et « soupir », et le relevé « écho » se lit « à revoir », sa cause disant que l'entrée n'est plus dans la grille
-- [ ] Sur la bulle de « cri », la passe « toute la grille » n'est plus terminée (« soupir » est à regarder), et celle de « B. Provenance » l'est encore
-- [ ] Ctrl+Z hors d'un champ défait le dernier relevé posé, qui quitte la liste ; poser « soupir » sur un mot réussit, et le relevé se lit dans la liste
-- [ ] Fenêtre `proprio`, Bibliothèque, l'album de la planche, « Autres gestes », « Supprimer… » : « qui perd quoi » ne nomme pas `proprio` pour la montée
+- [x] Fenêtre `stagiaire`, sans recharger : « ⟳ Actualiser » paraît dans les trente secondes ; le cliquer : l'onglet de la grille montre « cri poussé » et « soupir », et le relevé « écho » se lit « à revoir », sa cause disant que l'entrée n'est plus dans la grille
+- [x] Sur la bulle de « cri », la passe « toute la grille » n'est plus terminée (« soupir » est à regarder), et celle de « B. Provenance » l'est encore
+- [x] Ctrl+Z hors d'un champ défait le dernier relevé posé, qui quitte la liste ; poser « soupir » sur un mot réussit, et le relevé se lit dans la liste
+- [x] Fenêtre `proprio`, Bibliothèque, l'album de la planche, « Autres gestes », « Supprimer… » : « qui perd quoi » ne nomme pas `proprio` pour la montée
