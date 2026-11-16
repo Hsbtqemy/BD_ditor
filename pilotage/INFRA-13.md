@@ -13,6 +13,7 @@ statut: différé
 
 ### Le remède
 - [x] **Hugo tranche le remède** — attendu : (a) la veille lance `deployer.sh --sans-suite`, et la suite dans l'image devient une condition, jouée sur le poste à la révision poussée, avant tout push de `main` (la pratique depuis le 2026-10-10, cf. `INFRA-10`) ; ou (b) la suite reste sur le VPS, bornée (`docker run --memory`, un seul processus), au risque d'un rouge de mémoire. Proposition de la session : (a) **Tranché par Hugo le 2026-11-15 : (a). Appliqué au DÉFAUT de `deployer.sh` et non à la seule veille, `e5e8d87` : un `./deploy/deployer.sh` tapé à la main, comme dans toutes les procédures écrites, aurait refait la panne.**
+- [ ] **Le déploiement de la v40 se lance avec `--sans-suite`** — attendu : sur le VPS, `./deploy/deployer.sh --sans-suite` (ou `git pull --ff-only`, puis `./deploy/deployer.sh`) ; tapé nu, c'est le script de `2cd0d01` qui s'exécute — bash garde le fichier ouvert avant son propre `pull` —, et il joue encore la suite dans l'image par défaut. La veille ne le fera pas à notre place : la v40 migre, et elle ne déploie jamais une migration ; sa phrase de refus, comme `docs/exploitation.md`, dit `./deploy/deployer.sh` nu (vu le 2026-11-16 en préparant le déploiement)
 - [ ] **Le minuteur ne peut plus geler le VPS** — attendu : après le remède, un push de `main` déployé par la veille seule laisse SSH et le site répondre pendant tout le déploiement ; tant que ce n'est pas fait, le prochain push de `main` refait la panne, sans personne devant
 - [x] **`docs/exploitation.md` dit où la suite dans l'image se joue** — attendu : la section du déploiement nomme la condition du remède retenu, et ce qu'il faut faire si un VPS gèle (redémarrer à froid, arrêter `bd-deploiement.timer` AVANT tout : un `stop` ne survit pas au redémarrage) **Le 2026-11-15, `e5e8d87` : « Mettre à jour le code », et la section des tests du poste.**
 
@@ -24,4 +25,4 @@ Une hypothèse, pas une cause établie : la mémoire. Ce qui la trancherait — 
 
 Le jour même, la réindexation par le moteur de langue (temps 3 de la v39) a pris 7,2 s pour 3 375 régions, sans pression visible : ce n'est pas elle qu'il faut craindre.
 
-Mis en attente le 2026-11-15 : la dernière case ne se ferme qu'au prochain push de `main`, en regardant SSH et le site pendant que la veille déploie seule.
+Mis en attente le 2026-11-15 : la dernière case ne se ferme qu'au prochain push de `main`, en regardant SSH et le site pendant que la veille déploie seule. Pas celui de la v40 (2026-11-16) : il migre, donc se déploie à la main ; le premier push de `main` SANS migration la fermera.
