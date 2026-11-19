@@ -304,7 +304,7 @@ semaines » (Hugo, le même jour).
   **Tranché par Hugo le 2026-10-22, à la séance de conception d'`ANN-7` (Q9) : (b)** —
   découpage, transcription relue, locuteurs, lieux, et aucun tag avant le basculement, ce qui
   laisse les grilles partir d'un vocabulaire neuf sans rien convertir
-- [ ] **Le guide ne donne qu'UNE forme par tag** — attendu : ses tableaux et son index
+- [x] **Le guide ne donne qu'UNE forme par tag** — attendu : ses tableaux et son index
   s'accordent. Six écarts relevés le 2026-10-12, dont chacun ferait deux tags, donc deux
   compteurs : « élision » et « élision notée » ; « il / ils réduit à i ou y » et « il réduit à
   i ou y » ; « impersonnel present » sans accent et « impersonnel présent » ; « insulte » et
@@ -312,6 +312,8 @@ semaines » (Hugo, le même jour).
   l'interrogative indirecte rangée sous le titre « Exclamation » ; la ligne « intensifieur »,
   qui donne un tag dans une colonne et trois dans l'autre
   **Hugo, le 2026-10-12** : ces écarts seront réglés, de son côté
+  **Réglés comme le propose le document de relecture (« Les six écarts du guide »), rapporté par Hugo le 2026-11-19, après la séance avec les linguistes** :
+  une forme par entrée dans `C:\temp\grille-linguistes\grille-des-linguistes.xlsx`
 - [x] **Les tags du guide existent avant le premier stagiaire** — attendu : chacun est créé
   d'avance, avec sa définition et son exemple, pour que personne ne le tape de mémoire ;
   l'autocomplétion fait le reste. Environ soixante-cinq tags simples, plus une centaine de
@@ -345,7 +347,7 @@ semaines » (Hugo, le même jour).
   Preuves : suite par défaut 1 664 passés ; passe navigateur entière sur le poste, 447 passés
   et trois accrocs dus à une mise en veille (réseau suspendu, serveur de test hors délai),
   rejoués seuls et verts ; dans l'image, sous l'autre police, les fichiers de l'Atelier verts
-- [ ] **Le narrateur d'un récitatif a sa place dans le registre, ou une place à lui** —
+- [x] **Le narrateur d'un récitatif a sa place dans le registre, ou une place à lui** —
   attendu : tranché avec les linguistes. Leur grille range le locuteur en quatre sortes —
   personnage identifié, non identifié, collectif, narrateur. Aujourd'hui le locuteur d'un
   cartouche se choisit dans le registre des personnages, où l'on peut créer une entrée pour
@@ -356,6 +358,7 @@ semaines » (Hugo, le même jour).
   l'histoire pointe vers SA fiche du registre — la grille dit « narrateur·ice » sur le
   cartouche, « personnage identifié » sur ses bulles, et le registre relie les deux ; un
   narrateur anonyme laisse le champ « Locuteur » vide, la variante suffit
+  **Tranché comme proposé, rapporté par Hugo le 2026-11-19, après la séance avec les linguistes**
 - [ ] **Une zone nomme plusieurs locuteurs** — attendu : deux personnages qui parlent dans la
   même bulle (ou le même cartouche, le même texte) se désignent tous deux dans le registre, et
   la grille y pose deux relevés « personnage identifié ». **Hugo, 2026-11-02**, en répondant à
@@ -508,9 +511,11 @@ semaines » (Hugo, le même jour).
   linguistes. La maquette pose « emphase par typographie et ponctuation » comme un seul
   relevé : 1 emphase, 1 typographie, 1 ponctuation. Le guide en fait deux tags, donc deux
   emphases **Non — répondu par les linguistes le 2026-10-22**, rapporté par Hugo : « deux tags ». « Emphase par typographie et ponctuation » compte DEUX emphases, comme le guide ; ce que la maquette faisait (un seul relevé, une emphase) ne vaut pas. Le modèle ne change pas (Hugo, même jour, case d'`ANN-7`) : la grille des linguistes écrira l'emphase par manière, une entrée chacune
-- [ ] **Le chevauchement désigne l'autre bulle d'un clic** — attendu : confirmé. Un lien que
+- [x] **Le chevauchement désigne l'autre bulle d'un clic** — attendu : confirmé. Un lien que
   l'outil tient remplace la référence écrite dans la Note, qui change quand l'ordre de
   lecture change (cf. « Avant que les stagiaires commencent »)
+  **Confirmé (question 4 du document de relecture : la bulle entière, un lien vers l'autre
+  bulle, plusieurs fois par bulle), rapporté par Hugo le 2026-11-19, après la séance avec les linguistes**
 - [ ] **Le décompte dans la vue, l'aperçu de l'Exploration, ou les deux** — attendu : tranché.
   Hugo, le 2026-10-14 : « à voir ce qui semble le plus utile » ; la maquette montre les deux
 - [x] **Au doigt, la tablette et le téléphone se jouent sur un vrai appareil** — attendu : les
