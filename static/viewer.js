@@ -72,7 +72,8 @@ const state = {
   albumId: null,
   planches: [],
   planche: null,           // planche courante (objet de la liste)
-  webScale: 1,             // web_width / master_width
+  passeEnCours: null,      // CONC-2 : le nom de la passe automatique qui tourne (`unePasseALaFois`)
+  webScale: 1,            // web_width / master_width
   webW: 0, webH: 0,
   regions: [],
   regionsById: new Map(),
@@ -2491,8 +2492,36 @@ async function toggleLock() {
   } catch (e) { toast("Verrou : " + e.message, "error"); }
 }
 
+/* CONC-2 (2026-11-25) — UNE passe automatique à la fois depuis cet écran. Mesuré en
+   production : rien n'empêchait de relancer une passe en cours, et l'OCR d'une même planche
+   est parti cinq fois de suite ; chaque clic de plus attendait son tour derrière le verrou
+   des moteurs, puis rechargeait le modèle et redécodait l'image pour rien. Pendant une
+   passe, les trois entrées du menu ⚙ portent `data-passe-occupee` (et non `aria-disabled`,
+   que la visite pose et retire pour son compte) ; un clic dit ce qui tourne et ne relance
+   rien. */
+const BOUTONS_DE_PASSE = ["#btn-segmenter", "#btn-bulles", "#btn-ocr"];
+
+async function unePasseALaFois(nom, geste) {
+  if (state.passeEnCours) {
+    toast(`${state.passeEnCours} : déjà en cours, attendez qu'elle finisse.`);
+    return;
+  }
+  state.passeEnCours = nom;
+  for (const sel of BOUTONS_DE_PASSE) $(sel)?.setAttribute("data-passe-occupee", nom);
+  try {
+    await geste();
+  } finally {
+    state.passeEnCours = null;
+    for (const sel of BOUTONS_DE_PASSE) $(sel)?.removeAttribute("data-passe-occupee");
+  }
+}
+
 async function segmenter() {
   if (!state.planche || plancheVerrouillee()) return;
+  return unePasseALaFois("La segmentation", segmenterMaintenant);
+}
+
+async function segmenterMaintenant() {
   toast("Segmentation en cours…");
   try {
     const res = await apiSend("POST", `/api/planches/${state.planche.id}/segmenter`);
@@ -2514,6 +2543,10 @@ async function segmenter() {
 
 async function detecterBulles() {
   if (!state.planche || plancheVerrouillee()) return;
+  return unePasseALaFois("La détection des bulles", detecterBullesMaintenant);
+}
+
+async function detecterBullesMaintenant() {
   toast("Détection des bulles…");
   try {
     const res = await apiSend("POST", `/api/planches/${state.planche.id}/detecter-bulles`);
@@ -2526,6 +2559,10 @@ async function detecterBulles() {
 
 async function lancerOCR() {
   if (!state.planche || plancheVerrouillee()) return;
+  return unePasseALaFois("L'OCR", lancerOCRMaintenant);
+}
+
+async function lancerOCRMaintenant() {
   toast("OCR en cours… (premier appel : chargement du modèle)");
   try {
     const res = await apiSend("POST", `/api/planches/${state.planche.id}/ocr`);

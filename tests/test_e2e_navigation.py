@@ -1060,3 +1060,43 @@ def test_le_lien_d_une_case_en_transcription_suit_la_meme_regle(page, seeded_cas
     _dans_le_mode(page, "transcription", "Transcription")
     expect(page.locator("#tr-progress")).to_have_text("Bulle 4 / 5")
     expect(page.locator("#tr-text")).to_have_value("BAS 1")
+
+
+def test_une_passe_automatique_a_la_fois(page, seeded):
+    """CONC-2 (2026-11-25) — pendant qu'une passe tourne, ni elle ni une autre ne repart de
+    cet écran. Mesuré en production : l'OCR d'une même planche est parti cinq fois de suite,
+    chaque clic de plus rechargeant le modèle derrière le verrou des moteurs. La réponse de
+    l'OCR est TENUE (interceptée) : c'est ce qui laisse la passe « en cours » le temps du
+    test, sans dépendre de la vitesse d'un moteur."""
+    tenues, segmentations = [], []
+    page.route("**/api/planches/*/ocr*", lambda route: tenues.append(route))
+    page.route("**/api/planches/*/segmenter*", lambda route: segmentations.append(route))
+    page.goto(_viewer_url(seeded), wait_until="networkidle")
+    expect(page.locator("#region-id")).to_have_text(f"#{seeded['region']}", timeout=15000)
+    menu = page.locator("#traitement-menu")
+
+    def choisir(sel):
+        if not menu.is_visible():
+            page.click("#btn-traitement")
+        page.click(sel)
+
+    choisir("#btn-ocr")
+    expect(page.locator("#btn-segmenter")).to_have_attribute("data-passe-occupee", "L'OCR")
+    choisir("#btn-ocr")
+    choisir("#btn-segmenter")
+    expect(page.locator(".toast", has_text="déjà en cours").first).to_be_visible()
+    page.wait_for_timeout(300)                 # une requête partie à tort aurait le temps
+    assert len(tenues) == 1, f"l'OCR est reparti : {len(tenues)} requêtes"
+    assert segmentations == [], "une autre passe est partie pendant l'OCR"
+
+    tenues[0].fulfill(json={"planche_id": seeded["planche"], "ocr": 0, "ignores": 0,
+                            "echecs": 0})
+    expect(page.locator("#btn-ocr")).not_to_have_attribute("data-passe-occupee", "L'OCR")
+    choisir("#btn-ocr")                        # la passe finie, on peut la relancer
+    for _ in range(100):                       # les routes tenues arrivent pendant l'attente
+        if len(tenues) == 2:
+            break
+        page.wait_for_timeout(50)
+    assert len(tenues) == 2
+    tenues[1].fulfill(json={"planche_id": seeded["planche"], "ocr": 0, "ignores": 0,
+                            "echecs": 0})

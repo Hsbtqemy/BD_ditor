@@ -843,6 +843,9 @@ kbd {
 /* Pendant la visite et les repères, une entrée qui LANCE (`data-parcours-lance`) est
    éteinte par le wizard : lisible, au clavier, son infobulle dit pourquoi. */
 .dropdown-menu [data-wizard-eteint] { color: var(--text-muted); cursor: not-allowed; }
+/* Une passe automatique tourne (CONC-2) : les trois entrées du menu ⚙ restent au clavier,
+   un clic dit ce qui tourne (`unePasseALaFois`, viewer.js). */
+.dropdown-menu [data-passe-occupee] { color: var(--text-muted); cursor: progress; }
 /* La dernière page, en deux colonnes comme les autres (Hugo, 2026-11-05) : l'aperçu de la
    carte, puis les deux choix en cartes. À l'étroit, quand les colonnes s'empilent (moins de
    deux pistes de 16rem), l'aperçu se retire : les choix sont ce qu'on vient chercher. */
