@@ -280,7 +280,16 @@ COPY . .
 # donc les modèles ML ne sont téléchargés qu'une seule fois.
 ENV BD_DATA_DIR=/data \
     HOME=/data \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    MALLOC_ARENA_MAX=2
+
+# MALLOC_ARENA_MAX (CONC-2, 2026-11-25) : glibc ouvre une réserve de mémoire PAR FIL
+# d'exécution, jusqu'à huit par cœur, et ce que Python y libère n'est pas rendu au système.
+# Les routes synchrones tournent dans un groupe de fils, et les passes y chargent des
+# modèles et des images de plusieurs centaines de Mo : mesuré en production, décharger les
+# deux modèles n'a rien rendu (1,94 → 2,12 Go), et le process a atteint 2,4 Go jusqu'à
+# l'OOM. Deux réserves suffisent à un seul worker ; `pipeline/modeles.py` demande en plus
+# à glibc de rendre la mémoire libre après chaque déchargement (`malloc_trim`).
 
 # CONTRAT D'IMAGE (SANTE-1 / QA-5) : les quatre moteurs doivent être RÉELLEMENT
 # utilisables, pas seulement présents. Le build ÉCHOUE sinon.
