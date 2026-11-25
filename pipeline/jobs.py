@@ -117,7 +117,13 @@ def _run(job_id: int) -> None:
                         break
                     try:
                         with ML_LOCK:                    # pas d'inférence ML concurrente
-                            _apply_pass(conn, passe, pid)
+                            try:
+                                _apply_pass(conn, passe, pid)
+                            finally:
+                                # CONC-2 : l'échéance d'inactivité ne décharge pas un
+                                # modèle entre deux passes du lot (`pipeline/modeles.py`).
+                                from pipeline.modeles import signaler_usage
+                                signaler_usage()
                         conn.commit()
                     except PasseInterrompue:
                         # DEMANDÉE, donc pas une erreur : rien à collecter, personne n'a

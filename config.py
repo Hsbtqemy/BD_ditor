@@ -218,6 +218,15 @@ MAX_IMAGE_PIXELS = int(os.environ.get("BD_MAX_IMAGE_PIXELS", 200_000_000))
 # où l'on préfère ne pas voir un fil s'armer.
 TTL_MASTER_CROP = float(os.environ.get("BD_TTL_MASTER_CROP", 120))
 
+# Durée sans passe automatique au bout de laquelle les deux modèles torch (bulles, OCR) sont
+# déchargés (CONC-2, 2026-11-25 ; cf. `pipeline/modeles.py`). Les passes interactives ne
+# déchargent plus l'autre modèle : ce va-et-vient, refait planche après planche, fragmentait
+# la mémoire du process jusqu'à l'OOM en production. Dix minutes couvrent le parcours d'un
+# album (segmenter, bulles, OCR, relire, planche suivante) ; au-delà, les 833 Mio des deux
+# modèles ne servent plus personne. À 0 (ou moins), rien ne se décharge seul : seuls la fin
+# d'un lot et `POST /api/ml/liberer` déchargent.
+TTL_MODELES = float(os.environ.get("BD_TTL_MODELES", 600))
+
 # Les formats d'image que le corpus accepte, et RIEN d'autre (SEC-3).
 #
 # Un seul endroit, et les deux vues en DÉRIVENT : `IMG_EXTS` filtre ce qu'on peut

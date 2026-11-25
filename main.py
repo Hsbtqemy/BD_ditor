@@ -1025,12 +1025,17 @@ def detecter_bulles(planche_id: int, conf: float = 0.3,
         )
     try:
         with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
-            from pipeline.modeles import liberer_modeles_ml
-            liberer_modeles_ml(sauf=("bulles", "nlp"))   # CONC-2 : libère l'autre modèle torch (OCR)
-            with journal.passe_ml(conn, "bulles", planche_id, agent="yolov8-bulles",
-                                  version=journal.version_moteur("ultralytics"),
-                                  params={"conf": conf}):
-                res = detect_bulles(conn, planche_id, conf=conf)
+            # CONC-2 (2026-11-25) — l'autre modèle torch n'est plus déchargé ici : ce
+            # va-et-vient, à chaque étape du parcours, fragmentait la mémoire jusqu'à l'OOM.
+            # Les deux partent ensemble après `TTL_MODELES` sans passe (`pipeline/modeles.py`).
+            from pipeline.modeles import signaler_usage
+            try:                                 # même une passe ratée a chargé le modèle
+                with journal.passe_ml(conn, "bulles", planche_id, agent="yolov8-bulles",
+                                      version=journal.version_moteur("ultralytics"),
+                                      params={"conf": conf}):
+                    res = detect_bulles(conn, planche_id, conf=conf)
+            finally:
+                signaler_usage()
     except BullesError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
@@ -1049,12 +1054,14 @@ def ocr_route(planche_id: int, only_empty: bool = True,
         )
     try:
         with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
-            from pipeline.modeles import liberer_modeles_ml
-            liberer_modeles_ml(sauf=("ocr", "nlp"))      # CONC-2 : libère l'autre modèle torch (bulles)
-            with journal.passe_ml(conn, "ocr", planche_id, agent="easyocr",
-                                  version=journal.version_moteur("easyocr"),
-                                  params={"only_empty": only_empty}):
-                res = ocr_planche(conn, planche_id, only_empty=only_empty)
+            from pipeline.modeles import signaler_usage   # CONC-2 : cf. `detecter_bulles`
+            try:                                 # même une passe ratée a chargé le modèle
+                with journal.passe_ml(conn, "ocr", planche_id, agent="easyocr",
+                                      version=journal.version_moteur("easyocr"),
+                                      params={"only_empty": only_empty}):
+                    res = ocr_planche(conn, planche_id, only_empty=only_empty)
+            finally:
+                signaler_usage()
     except OCRError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
