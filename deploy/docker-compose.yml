@@ -98,6 +98,13 @@ services:
       # `.env` et non décommenté ici, pour la raison du référent : une ligne versionnée
       # changée sur le serveur ferait un conflit à chaque `git pull`. Cf. docs/exploitation.md.
       - BD_NLP_PREWARM=${BD_NLP_PREWARM:-}
+      # Le moteur de langue EN VEILLE par défaut (NLP-4, 2026-11-26) : dans cette image,
+      # charger spaCy fait importer torch, et l'application passe de 70 à ~500 Mo qu'aucun
+      # déchargement ne rend. Les lemmes et la grammaire se rattrapent chaque nuit, dans un
+      # processus à part (deploy/reindex-nlp.sh, timer bd-reindex-nlp) ; la relecture
+      # grammaticale est fermée dans la journée. `BD_NLP=1` dans `deploy/.env` le rallume
+      # (puis `tools/reindex_nlp.py --a-rattraper`), sans toucher à cette ligne versionnée.
+      - BD_NLP=${BD_NLP:-0}
     volumes:
       - bd-data:/data            # corpus, dérivés, base SQLite, caches de modèles
     expose:

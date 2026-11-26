@@ -300,3 +300,20 @@ def test_une_correction_deja_orpheline_ne_se_rattache_pas_la_nuit(
     _rattraper(db_path)
     (c,) = _etat(db_path, rid)[1]
     assert c["obsolete"] == 1 and c["ordre"] < 0
+
+
+def test_le_compose_met_spacy_en_veille_par_defaut_et_l_env_le_rallume():
+    """La veille est la valeur PAR DÉFAUT du déploiement, et elle se lève par `deploy/.env`
+    sans toucher à une ligne versionnée — la raison du préchauffage : une ligne changée sur
+    le serveur ferait un conflit à chaque `git pull`."""
+    compose = RACINE / "deploy" / "docker-compose.yml"
+    if not compose.exists():
+        pytest.skip(
+            "deploy/ est exclu du contexte de build (.dockerignore) : ce test ne tourne QUE "
+            "sur la machine de développement. Son skip dans l'image N'EST PAS une couverture "
+            "— cf. QA-6, « un skip se lit comme un succès »")
+    texte = compose.read_text(encoding="utf-8")
+    lignes = [l.strip() for l in texte.splitlines() if not l.strip().startswith("#")]
+    assert "- BD_NLP=${BD_NLP:-0}" in lignes
+    exemple = (RACINE / "deploy" / ".env.example").read_text(encoding="utf-8")
+    assert "# BD_NLP=1" in exemple        # documentée, et commentée : la veille reste le défaut
