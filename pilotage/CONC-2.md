@@ -46,6 +46,7 @@ seule à garantir le zéro-OOM, est restée dehors.
 - [x] **L'Atelier ne lance qu'une passe automatique à la fois** — attendu : pendant une passe, un second clic sur une entrée du menu ⚙ Traitement dit « … : déjà en cours » et n'envoie aucune requête (`f2d7932`, `test_une_passe_automatique_a_la_fois`)
 - [ ] **En production, la mémoire redescend quand les passes s'arrêtent** — attendu : après le déploiement, sur une journée d'annotation où des passes tournent, `docker exec bd-app grep -E 'VmRSS|VmHWM' /proc/1/status` donne un `VmHWM` sous 1,5 Go, et un `VmRSS` sous 600 Mo quinze minutes après la dernière passe
 - [ ] **Le conteneur a une limite mémoire** — attendu : `mem_limit` et `memswap_limit`, égaux, dans `deploy/docker-compose.yml` : 2 Go d'abord, 1,5 Go une fois la case précédente mesurée. Décision de Hugo : le VPS a 3,8 Go, partagés avec d'autres projets
+- [ ] **« Éprouver » ne laisse pas torch dans l'application** — attendu : dans l'Administration, 🩺 Moteurs, « Éprouver » sur une instance où aucune passe n'a tourné, puis `docker exec bd-app grep VmRSS /proc/1/status` : la mémoire n'a pas pris les quelques centaines de Mo d'`import ultralytics` et d'`import easyocr`, qui restent jusqu'au redémarrage (`sante._verifier_bulles`, `_verifier_ocr` importent DANS le processus ; vu le 2026-11-26 en mettant spaCy en veille, `NLP-4`)
 
 ## Contexte
 
@@ -66,6 +67,13 @@ tué deux fois (`OOMKilled`). Ce qu'ont montré les mesures, dans l'ordre :
   quelques requêtes SQL chacune, sans image), ni le journal WAL (vide), ni un import (aucun
   en douze heures) n'expliquaient la mémoire. Le `%CPU` de `docker top` (10 %) est une
   moyenne sur la vie du process : le cœur saturé l'est par pics, pendant les passes.
+
+**Le 2026-11-26, la base n'était pas celle qu'on croyait.** Redémarré, `bd-app` tenait 531 Mo
+au bout de 33 secondes, aucun modèle de passe chargé : spaCy y faisait venir torch (thinc
+l'importe s'il est installé). L'application seule pèse 70 Mo dans l'image, avec spaCy 498 Mo.
+spaCy est mis en veille dans l'application et rattrapé la nuit dans un processus à part
+(`NLP-4`). Après une passe, torch reste importé même modèles déchargés (mesuré : environ
+160 Mo) : le seuil de 600 Mo de la case « En production » en tient compte.
 
 **L'isolation (v2) retrouve un mérite que la v1 n'a pas** : la mémoire d'un sous-process
 revient au système à sa sortie, entière, ce que ni `malloc_trim` ni les réserves bornées ne
