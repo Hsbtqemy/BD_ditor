@@ -21,8 +21,10 @@ from conftest import requires_kumiko
 def test_sante_rapide_garde_ses_clefs(client):
     """Sondes de conteneur et panneau 🩺 Moteurs en dépendent : ses clefs ne bougent pas."""
     d = client.get("/api/sante").json()
-    assert set(d) == {"kumiko", "bulles", "ocr", "lemmes", "modeles_charges"}
+    assert set(d) == {"kumiko", "bulles", "ocr", "lemmes", "modeles_charges", "en_veille"}
     assert all(isinstance(d[k], bool) for k in ("kumiko", "bulles", "ocr", "lemmes"))
+    # NLP-4 : une clef AJOUTÉE, une liste — les quatre booléens d'avant n'ont pas bougé.
+    assert isinstance(d["en_veille"], list)
 
 
 def test_sante_rapide_n_importe_rien(client, monkeypatch):

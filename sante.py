@@ -112,11 +112,28 @@ def rapide() -> dict:
     from pipeline.ocr import ocr_available
     from pipeline.segmentation import kumiko_available
     return {"kumiko": kumiko_available(), "bulles": bulles_available(),
-            "ocr": ocr_available(), "lemmes": nlp_available()}
+            "ocr": ocr_available(), "lemmes": nlp_available(),
+            "en_veille": en_veille()}
+
+
+def en_veille() -> list:
+    """Les moteurs COUPÉS par l'exploitation (NLP-4) : installés, mais volontairement
+    hors service. Une clef à part et non un faux dans `lemmes` seul, sans quoi l'écran
+    dirait « non installé » d'un moteur qu'on a mis en veille, et l'on irait chercher
+    une installation qui ne manque pas."""
+    from pipeline import nlp
+    return ["nlp"] if nlp.en_veille() else []
 
 
 def profond(moteur: str) -> dict:
     """{ok, erreur} pour UN moteur, en l'important réellement. Mémorisé par moteur."""
+    if moteur in en_veille():
+        # En veille, ÉPROUVER ne charge rien : `_verifier_nlp` importerait spaCy, et thinc
+        # torch, DANS l'application, qui garderait ces ~430 Mo jusqu'à son redémarrage —
+        # exactement ce que la veille retire. Rien n'est mémorisé : la veille levée, le
+        # moteur s'éprouve de nouveau.
+        return {"ok": False, "en_veille": True,
+                "erreur": "en veille (BD_NLP=0) : non chargé dans l'application"}
     with _verrou:
         if moteur in _profond:
             return _profond[moteur]

@@ -784,6 +784,25 @@ def _norm_corr(v: Optional[str]) -> Optional[str]:
     return v or None
 
 
+MOTIF_GRAMMAIRE_EN_VEILLE = (
+    "La relecture grammaticale est en veille sur cette instance (BD_NLP=0) : spaCy n'y "
+    "est pas chargé. Les corrections déjà faites sont gardées ; la relecture reprendra "
+    "quand le moteur sera rallumé.")
+
+
+def _exiger_grammaire_allumee() -> None:
+    """NLP-4 — refuser les gestes de la grammaire tant que spaCy est EN VEILLE.
+
+    Non par prudence : par ce qui suit chacun d'eux. Corriger, valider ou annuler
+    réindexe la région, et une réindexation sans moteur ne produit aucun token — elle
+    EFFACE ceux de la région. Le geste serait accepté, puis défait sous les yeux de qui
+    vient de le faire : la correction gardée, mais rattachée à rien à l'écran. 503, le
+    code d'un moteur indisponible (§ Pipeline de `CLAUDE.md`), et une phrase qui le dit.
+    Seule la VEILLE est refusée ici : un poste sans spaCy installé garde ce qu'il avait."""
+    if nlp.en_veille():
+        raise HTTPException(503, MOTIF_GRAMMAIRE_EN_VEILLE)
+
+
 @router.put("/api/regions/{region_id}/tokens/{ordre}")
 def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
                    request: Request, conn: sqlite3.Connection = Depends(db),
@@ -800,6 +819,7 @@ def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
     le nom du nouveau — la proposition gardée, elle, reste celle qui s'affichait."""
     # AUTH-2 — corriger la grammaire, c'est écrire sur la région.
     _get_region(conn, portee, region_id, ecriture=True)
+    _exiger_grammaire_allumee()
     tok = conn.execute("SELECT texte, lemme, pos, morph FROM tokens "
                        "WHERE region_id = ? AND ordre = ?", (region_id, ordre)).fetchone()
     if tok is None:
@@ -868,6 +888,7 @@ def valider_grammaire(region_id: int, request: Request,
     d'origine. Sans token (moteur absent), le relevé précédent est gardé tel quel."""
     # AUTH-2 — corriger la grammaire, c'est écrire sur la région.
     _get_region(conn, portee, region_id, ecriture=True)
+    _exiger_grammaire_allumee()
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
     nlp.ensure_loaded()          # spaCy hors transaction (cf. corriger_token)
@@ -919,6 +940,7 @@ def annuler_correction(region_id: int, ordre: int,
     corrigé du FTS)."""
     # AUTH-2 — corriger la grammaire, c'est écrire sur la région.
     _get_region(conn, portee, region_id, ecriture=True)
+    _exiger_grammaire_allumee()
     nlp.ensure_loaded()   # charge spaCy HORS transaction (le reindex qui suit ne tiendra pas le verrou pendant le cold-load)
     _corr_cols = ("ordre", "forme", "lemme", "pos", "morph", "etat")
     avant_corr = conn.execute(
@@ -959,5 +981,6 @@ def analyse_info(conn: sqlite3.Connection = Depends(db),
         f"  JOIN planches pl ON pl.id = r.planche_id "
         f" WHERE rch.lemmes <> '' AND {ou}", params).fetchone()["n"]
     return {"moteur_disponible": nlp.nlp_available(),
+            "en_veille": nlp.en_veille(),                 # NLP-4 : coupé, pas absent
             "modele_configure": nlp.configured_model(),   # léger : pas de chargement du modèle
             "meta": meta, "tokens": nb_tokens, "regions_lemmatisees": nb_lemmes}

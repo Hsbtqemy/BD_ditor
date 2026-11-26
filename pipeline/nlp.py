@@ -13,6 +13,17 @@ Conception :
   les mots pour des noms propres (non lemmatisés). Minusculer corrige ça.
 - Chargement paresseux + verrou : spaCy n'est pas garanti thread-safe, et le modèle
   ne se charge qu'au premier usage (≈ quelques secondes), puis ≈ 15 ms / texte.
+
+EN VEILLE (NLP-4, 2026-11-26) : `BD_NLP=0` coupe le moteur sans le désinstaller.
+`nlp_available()` répond alors False, et TOUT le repli d'un moteur absent s'applique —
+lemmes vides, aucun token, les corrections humaines gardées sans être ré-ancrées
+(`database._appliquer_corrections`, `reancrer=False`). Pourquoi : dans l'image, où torch
+est installé pour les passes, charger spaCy fait importer torch par thinc, et le processus
+passe de 70 à 498 Mo (mesuré dans `bdediteur:suite`, et 531 Mo en production le
+2026-11-26, aucun modèle de passe chargé) ; décharger le modèle ne rend pas ce que
+l'import a pris. La veille se lit À CHAQUE APPEL et non au chargement du module :
+`docker exec -e BD_NLP=1 … tools/reindex_nlp.py` rallume le moteur pour un processus à
+part, qui rend sa mémoire en se terminant (`deploy/reindex-nlp.sh`).
 """
 from __future__ import annotations
 
@@ -24,9 +35,21 @@ _MODEL = os.environ.get("BD_SPACY_MODEL", "fr_core_news_sm")
 _nlp = None
 _lock = threading.Lock()
 
+# Les valeurs qui METTENT en veille. Tout le reste — absente, vide, 1, une faute de
+# frappe — laisse le moteur allumé : une veille ne s'impose que dite, puisqu'elle retire
+# des lemmes à l'index.
+_VALEURS_DE_VEILLE = ("0", "false", "no", "non", "off")
+
+
+def en_veille() -> bool:
+    """Le moteur est-il coupé par `BD_NLP` (NLP-4) ? Lu à chaque appel."""
+    return os.environ.get("BD_NLP", "").strip().lower() in _VALEURS_DE_VEILLE
+
 
 def nlp_available() -> bool:
-    """spaCy ET le modèle configuré sont-ils installés ?"""
+    """spaCy ET le modèle configuré sont-ils installés — et le moteur allumé ?"""
+    if en_veille():
+        return False
     return (importlib.util.find_spec("spacy") is not None
             and importlib.util.find_spec(_MODEL) is not None)
 

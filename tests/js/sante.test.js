@@ -127,3 +127,30 @@ test("aucun moteur installé n'est pas une panne, et le bilan le dit", () => {
   assert.match(b.texte, /seront refusées/);
   assert.doesNotMatch(b.texte, /503/);
 });
+
+/* NLP-4 — la VEILLE. Le serveur répond alors `lemmes: false` ET `en_veille: ["nlp"]` ;
+   l'erreur muette serait d'afficher « non installé », et d'envoyer l'exploitant chercher
+   une installation qui ne manque pas. */
+const VEILLE = { kumiko: true, bulles: true, ocr: true, lemmes: false, en_veille: ["nlp"] };
+const enVeilleProfond = { ...tousOk,
+  nlp: { ok: false, en_veille: true, erreur: "en veille (BD_NLP=0)" } };
+
+test("un moteur en veille se dit en veille, avant comme après l'épreuve", () => {
+  for (const profond of [null, enVeilleProfond]) {
+    const e = etat(VEILLE, profond, NLP);
+    assert.equal(e.etat, "veille");
+    assert.equal(e.mot, "en veille");
+    assert.match(e.note, /BD_NLP=0/);
+  }
+  // La veille d'un moteur ne déteint pas sur les autres.
+  assert.equal(etat(VEILLE, enVeilleProfond, OCR).etat, "ok");
+});
+
+test("la veille n'est pas une panne, et le bilan la nomme à côté du verdict", () => {
+  const b = bilan(VEILLE, enVeilleProfond);
+  assert.equal(b.erreur, false);
+  assert.match(b.texte, /^Tous les moteurs installés répondent\. En veille : spaCy\.$/);
+  const seul = bilan({ ...RIEN_LA, en_veille: ["nlp"] },
+                     { ...tousAbsents, nlp: enVeilleProfond.nlp });
+  assert.match(seul.texte, /^Aucun autre moteur installé sur cette instance\. En veille : spaCy\.$/);
+});

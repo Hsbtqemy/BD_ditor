@@ -53,6 +53,14 @@
      que personne n'a éprouvé). Retourne { etat, mot, note } — `etat` sert la couleur, le
      MOT porte l'information à lui seul (WCAG 1.4.1 : la teinte ne fait que renforcer). */
   function etat(rapide, profond, moteur) {
+    /* En VEILLE (NLP-4) : installé, coupé exprès. Avant tout le reste, parce que le
+       serveur répond aussi `lemmes: false` — sans cette branche, l'écran dirait « non
+       installé », et l'on chercherait une installation qui ne manque pas. */
+    if (rapide && Array.isArray(rapide.en_veille) && rapide.en_veille.includes(moteur.cle)) {
+      return { etat: "veille", mot: "en veille",
+               note: "Coupé par l'exploitation (BD_NLP=0) : la Recherche se replie sur les "
+                     + "débuts de mots, et la relecture grammaticale attend qu'on le rallume." };
+    }
     const present = !!(rapide && rapide[moteur.rapide]);
     const p = profond ? profond[moteur.cle] : null;
     if (!p) {
@@ -98,11 +106,19 @@
                       + `${pannes > 1 ? "s" : ""}. La cause est ci-dessus ; quoi en `
                       + "faire : docs/deploiement-docker.md, « Un moteur en panne »." };
     }
+    /* Un moteur en veille n'est ni une panne ni un manque : il se nomme À CÔTÉ du
+       verdict, sans quoi « tous les moteurs installés répondent » couvrirait un moteur
+       installé qui, justement, ne répond pas. */
+    const veille = MOTEURS.filter((m, i) => etats[i] === "veille").map((m) => m.nom);
+    const enVeille = veille.length ? ` En veille : ${veille.join(", ")}.` : "";
     return { erreur: false,
-             texte: etats.includes("ok")
+             texte: (etats.includes("ok")
                ? "Tous les moteurs installés répondent."
-               : "Aucun moteur installé sur cette instance : les passes de "
-                 + "reconnaissance seront refusées, le reste de l'outil fonctionne." };
+               : veille.length
+                 ? "Aucun autre moteur installé sur cette instance."
+                 : "Aucun moteur installé sur cette instance : les passes de "
+                   + "reconnaissance seront refusées, le reste de l'outil fonctionne.")
+               + enVeille };
   }
 
   return { MOTEURS, etat, bilan };

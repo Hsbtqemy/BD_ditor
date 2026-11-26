@@ -13,7 +13,7 @@ import re
 import sqlite3
 import unicodedata
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Iterator, Optional
 
 from config import DB_PATH, STATUTS, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_REGION_RETENUS
 
@@ -4689,6 +4689,25 @@ def _reancrer_corrections(conn: sqlite3.Connection, region_id: int, new_tokens: 
 
     corr = conn.execute("SELECT * FROM token_correction WHERE region_id = ?",
                         (region_id,)).fetchall()
+    if not old:
+        # SANS ancienne tokenisation (NLP-4) : une écriture faite sans moteur de langue —
+        # spaCy en veille, absent, ou une analyse ratée — a effacé les tokens de la région
+        # en gardant ses corrections. Il n'y a plus rien à aligner, et toutes partaient
+        # orphelines au premier passage du moteur : la veille en faisait la règle d'une
+        # journée entière de retouches. On aligne alors chaque correction sur sa FORME —
+        # le mot à sa place s'il y est, sinon le SEUL mot de cette forme dans la région.
+        # Une forme qui revient plusieurs fois reste ambiguë, et la correction orpheline :
+        # gardée, à revérifier, jamais attachée au mauvais mot.
+        par_forme: dict = {}
+        for t in new_tokens:
+            par_forme.setdefault(t["texte"], []).append(t["ordre"])
+        for c in corr:
+            if c["obsolete"] or c["ordre"] < 0:
+                continue          # déjà orpheline AVANT : la forme revenue n'y change rien
+            if new_forme.get(c["ordre"]) == c["forme"]:
+                remap[c["ordre"]] = c["ordre"]
+            elif len(par_forme.get(c["forme"], ())) == 1:
+                remap[c["ordre"]] = par_forme[c["forme"]][0]
     survivors, orphans, pris = [], [], set()
     for c in corr:
         no = remap.get(c["ordre"])
@@ -4771,7 +4790,37 @@ def reindex_region(conn: sqlite3.Connection, region_id: int) -> None:
     releves.reancrer_releves(conn, region_id)
 
 
-def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
+def regions_a_rattraper(conn: sqlite3.Connection) -> list[int]:
+    """Les régions qu'une écriture a réindexées SANS moteur de langue (NLP-4) : spaCy en
+    veille ou absent, leur texte ou leur note a changé, et la réindexation structurelle
+    leur a laissé des lemmes vides et aucun token. C'est ce que la réindexation de nuit
+    refait, et rien d'autre.
+
+    Deux signes, réunis, parce qu'aucun ne suffit seul. Un dialogue sans token : une
+    écriture sans moteur EFFACE les tokens de la région (`_index_region`) — mais les
+    lemmes, eux, peuvent ne pas être vides, une correction humaine y ajoutant les siens
+    (`_appliquer_corrections`). Des lemmes vides sur un texte ou une note : le seul signe
+    d'une note retouchée, qui ne porte jamais de token. Le prix est connu : un texte dont
+    spaCy ne tire aucun mot de contenu revient chaque nuit, pour quelques millisecondes.
+
+    `region_id` est UNINDEXED dans `recherche` : on la lit en UN parcours, jamais région
+    par région (la mesure du 2026-11-06, dans `reindex_all`)."""
+    sans_lemmes = {r[0] for r in conn.execute(
+        "SELECT region_id FROM recherche WHERE lemmes = '' OR lemmes IS NULL")}
+    avec_tokens = {r[0] for r in conn.execute("SELECT DISTINCT region_id FROM tokens")}
+    ids = []
+    for r in conn.execute(
+            "SELECT r.id, r.ocr_texte, a.note FROM regions r "
+            "LEFT JOIN annotations a ON a.region_id = r.id ORDER BY r.id"):
+        dialogue = (r["ocr_texte"] or "").strip()
+        ecrit = dialogue or (r["note"] or "").strip()
+        if (dialogue and r["id"] not in avec_tokens) or (ecrit and r["id"] in sans_lemmes):
+            ids.append(r["id"])
+    return ids
+
+
+def reindex_all(conn: sqlite3.Connection, chunk: int = 500,
+                regions: Optional[list[int]] = None) -> int:
     """Réindexation NLP EN LOT (lemmes + tokens) de toutes les régions, via
     `nlp.pipe` (rapide). À lancer explicitement (commande `tools/reindex_nlp.py`) :
     après un changement de paramètre (Phase 1) ou pour figer l'index définitif avec
@@ -4779,6 +4828,8 @@ def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
     Commit par lots (transaction bornée, index mis à jour au fur et à mesure).
     Enregistre le modèle utilisé dans `meta` (reproductibilité). Renvoie le nombre
     de régions traitées. Sans spaCy : réindexation structurelle (repli propre).
+    `regions` borne le passage à ces régions-là (le rattrapage de nuit, NLP-4,
+    `regions_a_rattraper`) ; sans lui, tout le corpus.
 
     Un run qui ÉCHOUE ou qu'on INTERROMPT (Ctrl+C) laisse lui aussi une activité
     CLOSE au journal (A3), avec son bilan partiel — sans quoi une réindexation ratée
@@ -4787,7 +4838,10 @@ def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
     import journal
     aid = journal.ouvrir_activite(conn, "reindex_nlp", agent="spacy", agent_type="moteur",
                                   version=(model_info().get("model") or None),
-                                  params={"chunk": chunk})
+                                  params={"chunk": chunk,
+                                          # NLP-4 : un rattrapage le dit, et combien
+                                          **({"a_rattraper": len(regions)}
+                                             if regions is not None else {})})
     # La trace du DÉPART est validée tout de suite, et c'est ce qui la fait survivre à
     # l'échec de ce qui suit. Sans ce commit, l'activité n'était persistée qu'en même temps
     # que le PREMIER lot : une panne avant lui — un `analyse_batch` qui lève sur le lot
@@ -4804,7 +4858,8 @@ def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
     conn.commit()
     n = 0
     try:
-        ids = [r[0] for r in conn.execute("SELECT id FROM regions ORDER BY id")]
+        ids = (sorted(regions) if regions is not None
+               else [r[0] for r in conn.execute("SELECT id FROM regions ORDER BY id")])
         for start in range(0, len(ids), chunk):
             paquet = ids[start:start + chunk]
             marques = ",".join("?" * len(paquet))
@@ -4855,8 +4910,13 @@ def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
         # l'activité ouverte alors que tout le travail était fait — le même mensonge, à
         # la dernière ligne près.
         info = model_info()
+        # Un rattrapage (NLP-4) écrit ses propres clefs : `nlp_reindexed_*` dit la dernière
+        # réindexation ENTIÈRE, et une nuit de dix régions ne doit pas la faire passer pour
+        # le corpus. Le modèle, lui, s'écrit dans les deux cas : c'est lui qui a produit
+        # les tokens qu'on vient d'écrire.
+        suffixe = "rattrape" if regions is not None else "reindexed"
         meta = {"nlp_model": info.get("model", ""), "nlp_spacy": info.get("spacy", ""),
-                "nlp_reindexed_count": str(n), "nlp_reindexed_at": "datetime"}
+                f"nlp_{suffixe}_count": str(n), f"nlp_{suffixe}_at": "datetime"}
         for cle, val in meta.items():
             if val == "datetime":
                 conn.execute(

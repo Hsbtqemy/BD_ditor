@@ -4177,7 +4177,7 @@ fieldset.fm-q { border: 0; padding: 0; margin: 1rem 0 0; min-width: 0; }
 .sante-etat { font-weight: 600; font-size: .84rem; }
 .sante-ok { color: var(--accent-green); }
 .sante-panne { color: var(--ink-red); }
-.sante-absent, .sante-present { color: var(--text-muted); }
+.sante-absent, .sante-present, .sante-veille { color: var(--text-muted); }
 /* La cause d'une panne vient du serveur (type + message d'exception) : elle peut être
    longue et sans espace, et ne doit pas élargir la modale. */
 .sante-note { margin: .15rem 0 0; overflow-wrap: anywhere; }

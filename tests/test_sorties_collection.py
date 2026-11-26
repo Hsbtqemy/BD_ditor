@@ -563,7 +563,9 @@ OUTILS_HORS = {
     "mesurer_reflow.py": "Mesure des rectangles dans un navigateur. N'ouvre pas la base.",
     "faux_proxy_auth.py": "Faux proxy de développement : relaie du HTTP. N'ouvre pas "
                           "la base.",
-    "reindex_nlp.py": "Maintenance : régénère tokens et index. Compte rendu = décompte.",
+    "reindex_nlp.py": "Maintenance : régénère tokens et index, tout le corpus ou ce qui reste "
+                      "à rattraper (`--a-rattraper`, NLP-4). Compte rendu = décompte et nom "
+                      "du modèle.",
     "reindex_materiel.py": "Maintenance : relit les masters. Compte rendu = décompte.",
     "regenerer_derives.py": "Maintenance : réécrit les dérivés. Compte rendu = décompte.",
     "faire_miniatures.py":
@@ -624,7 +626,7 @@ ENTREES_HORS = {
     "valider_iiif.py": {"chemins"},
     "mesurer_reflow.py": {SYS_ARGV},
     "faux_proxy_auth.py": set(),
-    "reindex_nlp.py": set(),
+    "reindex_nlp.py": {"--a-rattraper"},
     "reindex_materiel.py": {"--dry-run", "--force"},
     "regenerer_derives.py": {"--album", "--appliquer", "--meme-a-la-bonne-taille", "--mode",
                              "--planche", "--toutes"},

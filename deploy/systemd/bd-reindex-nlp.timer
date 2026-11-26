@@ -1,0 +1,16 @@
+# Le rattrapage NLP de nuit (NLP-4) : CHAQUE NUIT À 3 H, heure de Paris — à l'écart de
+# l'effacement des bacs à sable (le lundi à 4 h) et des heures où l'on annote.
+[Unit]
+Description=BeDediteur — rattrape chaque nuit les lemmes et la grammaire
+
+[Timer]
+# Le fuseau dans l'expression : l'horloge du VPS est en UTC, et 3 h de Paris n'y tombe
+# pas à la même heure l'hiver et l'été.
+OnCalendar=*-*-* 03:00:00 Europe/Paris
+# Machine arrêtée à 3 h : le passage se fait à son redémarrage.
+Persistent=true
+RandomizedDelaySec=300
+Unit=bd-reindex-nlp.service
+
+[Install]
+WantedBy=timers.target
