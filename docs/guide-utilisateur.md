@@ -778,9 +778,9 @@ albums au centre, l'album ouvert à droite. En haut de la page, le **fil** dit o
   la ligne à côté du bouton dit *n sur N* et le fichier en cours, puis le bilan, dit quel
   fichier est devenu quelle planche et nomme chaque fichier refusé. Cf. étape 1.
 - **Changer l'ordre des planches** : *⇅ Ranger par nom de fichier* (confirmé d'abord), ou
-  ↑ ↓ sur la ligne d'une planche, dans la fiche d'un album où vous écrivez ; le nom du
-  fichier d'origine se lit au survol de la ligne. Les numéros éditoriaux et les citations
-  suivent le nouvel ordre. Cf. étape 1.
+  ↑ ↓ sur la ligne d'une planche (un cran), ⇈ ⇊ (tout en haut, tout en bas), dans la
+  fiche d'un album où vous écrivez ; le nom du fichier d'origine se lit au survol de la
+  ligne. Les numéros éditoriaux et les citations suivent le nouvel ordre. Cf. étape 1.
 - **Relecture** : une pastille par planche, et un filtre pour n'afficher que les planches à
   faire, en cours ou faites.
 - **Traitements par lot** : cocher des albums (onglet *Albums* d'une collection) ou des

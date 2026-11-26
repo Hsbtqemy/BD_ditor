@@ -180,10 +180,11 @@ def test_un_ordre_qui_ne_nomme_pas_chaque_planche_une_fois_est_refuse(client, al
     assert _ordre(client, album["id"]) == ids
 
 
+@pytest.mark.parametrize("geste", ["descendre", "tout_en_bas"])
 def test_un_acte_par_geste_au_journal_sous_le_document_hors_de_ctrl_z(client, album,
-                                                                       db_path):
+                                                                       db_path, geste):
     ids = [_importer(client, album["id"], f"secret-{i}.png")["id"] for i in (1, 2)]
-    r = _ordonner(client, album["id"], ids[::-1], ids, geste="descendre")
+    r = _ordonner(client, album["id"], ids[::-1], ids, geste=geste)
     assert r.status_code == 200, r.text
     lignes = _sql(db_path, "SELECT type, cible_table, avant, apres FROM evenement "
                            "WHERE apres LIKE '%ordre%'")
@@ -193,7 +194,7 @@ def test_un_acte_par_geste_au_journal_sous_le_document_hors_de_ctrl_z(client, al
     assert json.loads(avant) == {"album_id": album["id"], "acte": "ordre_des_planches",
                                  "ordre": ids}
     assert json.loads(apres) == {"album_id": album["id"], "acte": "ordre_des_planches",
-                                 "ordre": ids[::-1], "geste": "descendre"}
+                                 "ordre": ids[::-1], "geste": geste}
     assert "secret" not in avant + apres            # aucun nom de fichier dans la charge
     # Ctrl+Z ne le défait pas : rien d'annulable n'a été fait.
     assert client.get("/api/undo/prochain").json() is None

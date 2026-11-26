@@ -242,6 +242,19 @@ test("deplacer : un cran vers le haut, vers le bas, rien au bord", () => {
   assert.deepEqual(ids, [1, 2, 3], "la liste reçue n'est pas touchée");
 });
 
+test("deplacerAuBord : tout en haut, tout en bas, les autres dans leur ordre ; rien au bord", () => {
+  const ids = [1, 2, 3, 4];
+  assert.deepEqual(I.deplacerAuBord(ids, 3, -1), [3, 1, 2, 4]);
+  assert.deepEqual(I.deplacerAuBord(ids, 2, 1), [1, 3, 4, 2]);
+  assert.deepEqual(I.deplacerAuBord(ids, 4, -1), [4, 1, 2, 3]);
+  assert.deepEqual(I.deplacerAuBord(ids, 1, 1), [2, 3, 4, 1]);
+  assert.equal(I.deplacerAuBord(ids, 1, -1), null);
+  assert.equal(I.deplacerAuBord(ids, 4, 1), null);
+  assert.equal(I.deplacerAuBord(ids, 9, 1), null);
+  assert.equal(I.deplacerAuBord(ids, 2, 2), null);
+  assert.deepEqual(ids, [1, 2, 3, 4], "la liste reçue n'est pas touchée");
+});
+
 const pl = (id, nom) => ({ id, nom_fichier_origine: nom });
 
 test("ordreParNom : l'ordre naturel des noms, comme l'import en lot", () => {

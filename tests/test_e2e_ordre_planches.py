@@ -6,8 +6,8 @@ Ce que ce fichier mesure, sous des identités derrière le proxy :
 - le nom du fichier d'origine se lit au SURVOL de la ligne d'une planche — « Fichier :
   p10.png » —, et une planche d'avant la v34 n'a pas d'infobulle ;
 - « ⇅ Ranger par nom de fichier » confirme d'abord, en disant ce qui change, puis range ;
-- ↑ ↓ déplacent une planche d'un cran, au clavier comme à la souris, et le focus suit la
-  planche déplacée ;
+- ↑ ↓ déplacent une planche d'un cran, ⇈ ⇊ jusqu'au bord de l'album, au clavier comme à
+  la souris, et le focus suit la planche déplacée ;
 - un ordre changé par quelqu'un d'autre pendant qu'on regarde : le geste est refusé, la
   fiche le dit et montre l'ordre actuel ;
 - aucun de ces gestes pour qui ne fait que lire l'album.
@@ -178,6 +178,34 @@ def test_monter_et_descendre_au_clavier_puis_a_la_souris(page, live_server):
         (ids[1], 310, 1), (ids[0], 300, 2), (ids[2], 320, 3)]
 
 
+def test_tout_en_haut_et_tout_en_bas(page, live_server):
+    """⇈ ⇊ (Hugo, 2026-11-26) : la planche va au bord de l'album d'un geste, les autres
+    gardent leur ordre ; le focus la suit, et passe au geste inverse quand le sien s'éteint."""
+    aid, ids = _decor(live_server, noms=("a.png", "b.png", "c.png", "d.png"))
+    _ouvrir(page, live_server)
+    lignes = _lignes(page)
+    expect(lignes.nth(0).locator("[data-tout-en-haut]")).to_be_disabled()
+    expect(lignes.nth(3).locator("[data-tout-en-bas]")).to_be_disabled()
+    expect(page.locator(f"[data-tout-en-haut='{ids[2]}']")).to_have_attribute(
+        "aria-label", "Mettre la planche 3 (i.003) tout en haut")
+
+    # Au clavier : la troisième va tout en haut ; ⇈ s'éteint, le focus passe à ⇊.
+    page.locator(f"[data-tout-en-haut='{ids[2]}']").focus()
+    page.keyboard.press("Enter")
+    ligne = page.locator("#bi-ordre-msg")
+    expect(ligne).to_have_text("Déplacée : c'est maintenant la planche 1 (i.001).")
+    expect(lignes.nth(0)).to_have_attribute("data-ligne-planche", str(ids[2]))
+    expect(page.locator(f"[data-tout-en-haut='{ids[2]}']")).to_be_disabled()
+    expect(page.locator(f"[data-tout-en-bas='{ids[2]}']")).to_be_focused()
+    assert _ordre_serveur(live_server, aid) == [ids[2], ids[0], ids[1], ids[3]]
+
+    # À la souris : la première d'origine, désormais deuxième, va tout en bas.
+    page.locator(f"[data-tout-en-bas='{ids[0]}']").click()
+    expect(ligne).to_have_text("Déplacée : c'est maintenant la planche 4 (i.004).")
+    expect(lignes.nth(3)).to_have_attribute("data-ligne-planche", str(ids[0]))
+    assert _ordre_serveur(live_server, aid) == [ids[2], ids[1], ids[3], ids[0]]
+
+
 def test_un_ordre_change_ailleurs_est_refuse_et_la_fiche_montre_l_ordre_actuel(page,
                                                                             live_server):
     aid, ids = _decor(live_server, noms=("a.png", "b.png", "c.png"))
@@ -202,7 +230,8 @@ def test_aucun_geste_d_ordre_pour_qui_ne_fait_que_lire(page, live_server):
     _ouvrir(page, live_server, "lina")
     expect(_lignes(page)).to_have_count(3)
     expect(page.locator("#bi-ranger-nom")).to_have_count(0)
-    expect(page.locator("#album-detail [data-monter], #album-detail [data-descendre]")) \
+    expect(page.locator("#album-detail [data-monter], #album-detail [data-descendre], "
+                        "#album-detail [data-tout-en-haut], #album-detail [data-tout-en-bas]")) \
         .to_have_count(0)
     # L'infobulle, elle, est pour tous ceux qui lisent l'album.
     expect(_lignes(page).nth(0)).to_have_attribute("title", "Fichier : p10.png")
@@ -222,7 +251,9 @@ def test_les_fleches_s_eteignent_sous_un_filtre_de_relecture(page, live_server):
     raison = re.compile(r"^Retirez le filtre de relecture pour changer l'ordre")
     monter = page.locator(f"[data-monter='{ids[0]}']")
     descendre = page.locator(f"[data-descendre='{ids[0]}']")
-    for bouton in (monter, descendre, page.locator(f"[data-monter='{ids[1]}']")):
+    en_haut = page.locator(f"[data-tout-en-haut='{ids[0]}']")
+    for bouton in (en_haut, monter, descendre, page.locator(f"[data-monter='{ids[1]}']"),
+                   page.locator(f"[data-tout-en-bas='{ids[1]}']")):
         expect(bouton).to_have_attribute("aria-disabled", "true")
         assert bouton.get_attribute("disabled") is None
         expect(bouton).to_have_accessible_description(raison)
@@ -231,10 +262,11 @@ def test_les_fleches_s_eteignent_sous_un_filtre_de_relecture(page, live_server):
     from test_e2e_a11y import _audit, _fmt
     viol = _audit(page)
     assert not viol, f"Fiche d'un album, flèches éteintes :\n{_fmt(viol)}"
-    # Au clavier : la case de la ligne, puis Tab — le bouton éteint reçoit le focus.
+    # Au clavier : la case de la ligne, puis Tab — le bouton éteint reçoit le focus (⇈, le
+    # premier des gestes d'ordre de la ligne).
     page.locator(f"input[data-pid='{ids[0]}']").focus()
     page.keyboard.press("Tab")
-    expect(monter).to_be_focused()
+    expect(en_haut).to_be_focused()
     page.keyboard.press("Enter")
     expect(page.locator("#bi-ordre-msg")).to_have_text(raison)
     # À la souris, sur ↓ — qui, filtre retiré, déplacerait vraiment : rien ne part.

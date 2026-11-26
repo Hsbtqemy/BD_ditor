@@ -1942,7 +1942,8 @@ class OrdrePlanchesIn(BaseModel):
     l'ignore) ; `geste` : ce qui l'a produit, pour le journal."""
     ordre: list[int]
     vu: list[int]
-    geste: Optional[Literal["monter", "descendre", "ranger_par_nom"]] = None
+    geste: Optional[Literal["monter", "descendre", "tout_en_haut", "tout_en_bas",
+                            "ranger_par_nom"]] = None
 
 
 class RoleIn(BaseModel):

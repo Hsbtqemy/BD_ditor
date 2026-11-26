@@ -302,7 +302,7 @@ poser un locuteur ou une présence, corriger la grammaire, valider une planche, 
 retirer une planche, modifier la notice ou la paternité, forcer le statut de relecture.
 Ne comptent pas : un travail supprimé depuis ; une passe automatique, même lancée par un
 collègue — elle est attribuée à son moteur, pas à une personne ; ranger l'album dans une
-collection ; **changer l'ordre de ses planches** (↑ ↓, *Ranger par nom de fichier* — décision
+collection ; **changer l'ordre de ses planches** (↑ ↓ ⇈ ⇊, *Ranger par nom de fichier* — décision
 du 2026-10-22 : déplacer une page n'est pas y travailler) ; **repartir de zéro** sur l'album,
 ou le **retirer du projet** (décision du 2026-10-25 : l'un efface, l'autre range) ; déposer
 une demande. Le travail recopié d'une autre copie compte comme celui de ses auteurs, tant

@@ -183,6 +183,16 @@
     return ordre;
   }
 
+  /* Mettre une planche tout en haut (`sens` -1) ou tout en bas (+1) de l'album, les autres
+     gardant leur ordre relatif : le nouvel ordre, ou null si elle y est déjà — ou absente. */
+  function deplacerAuBord(ids, id, sens) {
+    const i = (ids || []).indexOf(id);
+    if (i < 0 || (sens !== -1 && sens !== 1)) return null;
+    if (sens < 0 ? i === 0 : i === ids.length - 1) return null;
+    const reste = ids.filter((x) => x !== id);
+    return sens < 0 ? [id].concat(reste) : reste.concat([id]);
+  }
+
   /* « Ranger par nom de fichier » : l'ordre NATUREL des noms d'origine (`nom_fichier_origine`,
      la règle de l'import en lot — p2 avant p10, ni casse ni accents), à égalité l'ordre
      exact des caractères puis l'ordre actuel. Les planches sans nom noté (importées avant
@@ -228,6 +238,6 @@
   }
 
   return { ordonner, arreteLaSerie, arretDeLaSerie, STATUTS_DU_SERVEUR, importerEnLot, libelleProgression, libelleBilan, tonBilan,
-           STATUTS_D_ALBUM, libellePlanche, correspondances, ligneEchec, deplacer, ordreParNom,
+           STATUTS_D_ALBUM, libellePlanche, correspondances, ligneEchec, deplacer, deplacerAuBord, ordreParNom,
            phraseRangerParNom };
 });

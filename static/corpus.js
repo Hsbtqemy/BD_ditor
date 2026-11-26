@@ -1763,7 +1763,8 @@ function htmlImport(a) {
 
 /* ── Changer l'ordre des planches (UX-11, Hugo, 2026-10-22) ────────────────────────────
    Deux gestes, offerts à qui écrit dans l'album (`ecrivable`, la question exacte de la
-   route) : « Ranger par nom de fichier », qui confirme d'abord, et ↑ ↓ sur chaque ligne.
+   route) : « Ranger par nom de fichier », qui confirme d'abord, et ↑ ↓ sur chaque ligne —
+   avec ⇈ ⇊, qui la mènent tout en haut ou tout en bas (Hugo, 2026-11-26).
    Tous deux envoient l'ordre ENTIER à `PUT /api/albums/{id}/ordre-des-planches`, avec
    l'ordre que la fiche montrait (`vu`) : si quelqu'un l'a changé entre-temps, le serveur
    refuse par un 409 qui le nomme, et la fiche se recharge sur l'ordre actuel. Le numéro
@@ -1797,25 +1798,35 @@ function boutonsOrdre(a, p) {
   const i = state.planches.findIndex((x) => x.id === p.id);
   const nom = esc(plancheNomLu(p));
   const eteint = ordreEteint(a);
-  const bouton = (attr, glyphe, verbe, titre, auBord) => (eteint
+  const bouton = (attr, glyphe, etiquette, titre, auBord) => (eteint
     ? `<button type="button" class="icon-btn ordre-eteint" data-${attr}="${p.id}" `
       + `aria-disabled="true" aria-describedby="bi-ordre-raison" title="${esc(eteint)}" `
-      + `aria-label="${verbe} ${nom}"><span aria-hidden="true">${glyphe}</span></button>`
+      + `aria-label="${etiquette}"><span aria-hidden="true">${glyphe}</span></button>`
     : `<button type="button" class="icon-btn" data-${attr}="${p.id}" title="${titre}" `
-      + `aria-label="${verbe} ${nom}" ${auBord || ORDRE.enCours ? "disabled" : ""}>${glyphe}</button>`);
-  return bouton("monter", "↑", "Monter", "Monter d'un cran dans l'album", i <= 0)
-    + bouton("descendre", "↓", "Descendre", "Descendre d'un cran dans l'album",
-             i < 0 || i >= state.planches.length - 1) + " ";
+      + `aria-label="${etiquette}" ${auBord || ORDRE.enCours ? "disabled" : ""}>${glyphe}</button>`);
+  const enHaut = i <= 0, enBas = i < 0 || i >= state.planches.length - 1;
+  return bouton("tout-en-haut", "⇈", `Mettre ${nom} tout en haut`, "Mettre tout en haut de l'album", enHaut)
+    + bouton("monter", "↑", `Monter ${nom}`, "Monter d'un cran dans l'album", enHaut)
+    + bouton("descendre", "↓", `Descendre ${nom}`, "Descendre d'un cran dans l'album", enBas)
+    + bouton("tout-en-bas", "⇊", `Mettre ${nom} tout en bas`, "Mettre tout en bas de l'album", enBas)
+    + " ";
 }
 
-/* Après un ↑ ↓, le focus reste sur le bouton de la planche DÉPLACÉE, qui a changé de ligne :
-   un second appui la déplace encore. Au bord, ce bouton s'éteint ; le focus passe à l'autre. */
+/* L'attribut du bouton d'un geste d'ordre : un cran (↑ ↓) ou jusqu'au bord (⇈ ⇊). */
+function attrOrdre(sens, auBord) {
+  if (auBord) return sens < 0 ? "tout-en-haut" : "tout-en-bas";
+  return sens < 0 ? "monter" : "descendre";
+}
+
+/* Après un ↑ ↓ ⇈ ⇊, le focus reste sur le bouton de la planche DÉPLACÉE, qui a changé de
+   ligne : un second appui la déplace encore. Au bord, ce bouton s'éteint ; le focus passe
+   au geste inverse de la même sorte (↓ pour ↑, ⇊ pour ⇈). */
 function rendreFocusOrdre() {
   if (!ORDRE.focus) return;
-  const { pid, sens } = ORDRE.focus;
+  const { pid, sens, auBord } = ORDRE.focus;
   ORDRE.focus = null;
-  const voulu = document.querySelector(`[data-${sens < 0 ? "monter" : "descendre"}="${pid}"]`);
-  const autre = document.querySelector(`[data-${sens < 0 ? "descendre" : "monter"}="${pid}"]`);
+  const voulu = document.querySelector(`[data-${attrOrdre(sens, auBord)}="${pid}"]`);
+  const autre = document.querySelector(`[data-${attrOrdre(-sens, auBord)}="${pid}"]`);
   const b = voulu && !voulu.disabled ? voulu : autre;
   if (b) b.focus();
 }
@@ -1839,16 +1850,20 @@ async function envoyerOrdre(albumId, ordre, geste, focus) {
   return erreur;
 }
 
-async function deplacerPlanche(pid, sens) {
+/* Un cran (↑ ↓), ou jusqu'au bord de l'album (`auBord`, ⇈ ⇊ : les autres planches gardent
+   leur ordre relatif). */
+async function deplacerPlanche(pid, sens, auBord = false) {
   const a = state.albums.find((x) => x.id === state.openId);
   if (ORDRE.enCours || !a) return;
   const eteint = ordreEteint(a);
   if (eteint) { colMsg($("#bi-ordre-msg"), eteint + "."); return; }
   const albumId = state.openId;
-  const ordre = BDImport.deplacer(state.planches.map((p) => p.id), pid, sens);
+  const ids = state.planches.map((p) => p.id);
+  const ordre = auBord ? BDImport.deplacerAuBord(ids, pid, sens) : BDImport.deplacer(ids, pid, sens);
   if (!ordre) return;
-  const erreur = await envoyerOrdre(albumId, ordre, sens < 0 ? "monter" : "descendre",
-                                    { pid, sens });
+  const geste = auBord ? (sens < 0 ? "tout_en_haut" : "tout_en_bas")
+                       : (sens < 0 ? "monter" : "descendre");
+  const erreur = await envoyerOrdre(albumId, ordre, geste, { pid, sens, auBord });
   if (state.openId !== albumId) return;
   const p = state.planches.find((x) => x.id === pid);
   if (erreur) colMsg($("#bi-ordre-msg"), erreur.message, true);
@@ -4799,6 +4814,10 @@ function brancherFiche() {
     if (monter) { deplacerPlanche(Number(monter.dataset.monter), -1); return; }
     const descendre = t.closest("button[data-descendre]");
     if (descendre) { deplacerPlanche(Number(descendre.dataset.descendre), 1); return; }
+    const enHaut = t.closest("button[data-tout-en-haut]");
+    if (enHaut) { deplacerPlanche(Number(enHaut.dataset.toutEnHaut), -1, true); return; }
+    const enBas = t.closest("button[data-tout-en-bas]");
+    if (enBas) { deplacerPlanche(Number(enBas.dataset.toutEnBas), 1, true); return; }
     if (t.closest("#bi-import-arreter")) {
       IMPORT.arreter = true;
       const b = $("#bi-import-arreter");
