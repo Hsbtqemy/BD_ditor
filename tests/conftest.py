@@ -322,7 +322,7 @@ def poser_attribut(db_file: Path, *, cible: str, dimension: str, valeur: str,
 # `bulles` présent dont l'import lève `torchvision::nms` est la panne du 2026-08-27,
 # qu'aucune machine de test ne produira spontanément.
 SANTE_RAPIDE = {"kumiko": True, "bulles": True, "ocr": False, "lemmes": False,
-                "modeles_charges": {}}
+                "modeles_charges": {}, "en_veille": []}         # NLP-4 : aucun en veille
 SANTE_PROFOND = dict(SANTE_RAPIDE, profond={
     "kumiko": {"ok": True, "erreur": None},
     "bulles": {"ok": False,
