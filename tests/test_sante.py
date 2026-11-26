@@ -6,13 +6,26 @@ levait une exception, et `kumiko: true` alors que la passe 1 renvoyait 500. Ces 
 verrouillent la séparation des deux profondeurs, et surtout que le contrôle profond
 RAPPORTE la panne au lieu de la taire.
 """
+import importlib.util
+import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 import sante
 from conftest import requires_kumiko
+
+_RACINE = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture
+def ici(monkeypatch):
+    """L'épreuve dans CE processus : les tests qui truquent `_CONTROLES`, `cv2` ou le point
+    d'entrée de Kumiko le font ici, et le processus d'à côté ne le verrait pas."""
+    monkeypatch.setattr(sante, "_eprouver", sante._eprouver_ici)
 
 
 # --------------------------------------------------------------------------- #
@@ -55,7 +68,7 @@ def test_sante_profond_sur_demande(client, monkeypatch):
     assert all(v["ok"] for v in d["profond"].values())
 
 
-def test_profond_rapporte_la_cause(monkeypatch):
+def test_profond_rapporte_la_cause(monkeypatch, ici):
     """Un moteur cassé doit dire POURQUOI : sans la cause, un opérateur à distance n'a
     aucun moyen de diagnostiquer — c'est tout l'intérêt face au contrôle rapide."""
     sante._reset()
@@ -68,7 +81,7 @@ def test_profond_rapporte_la_cause(monkeypatch):
     assert r["erreur"].startswith("RuntimeError")
 
 
-def test_profond_memoise(monkeypatch):
+def test_profond_memoise(monkeypatch, ici):
     """Mémoïsé : on ne recharge pas torch à chaque appel."""
     sante._reset()
     appels = []
@@ -78,7 +91,7 @@ def test_profond_memoise(monkeypatch):
     assert len(appels) == 1
 
 
-def test_profond_borne_le_message(monkeypatch):
+def test_profond_borne_le_message(monkeypatch, ici):
     """Une exception bavarde ne doit pas noyer la réponse."""
     sante._reset()
     def bavard():
@@ -90,7 +103,7 @@ def test_profond_borne_le_message(monkeypatch):
 # --------------------------------------------------------------------------- #
 # Ce que le contrôle rapide NE PEUT PAS voir — la raison d'être du profond
 # --------------------------------------------------------------------------- #
-def test_kumiko_profond_refuse_opencv_5(monkeypatch, tmp_path):
+def test_kumiko_profond_refuse_opencv_5(monkeypatch, tmp_path, ici):
     """OpenCV 5 s'importe parfaitement et casse Kumiko ensuite (`HoughLinesP` renvoie
     (N, 4) au lieu de (N, 1, 4)). `find_spec` n'y voit rien ; le profond doit refuser.
 
@@ -114,7 +127,7 @@ def test_kumiko_profond_refuse_opencv_5(monkeypatch, tmp_path):
 
 
 @requires_kumiko
-def test_kumiko_profond_accepte_opencv_4(monkeypatch):
+def test_kumiko_profond_accepte_opencv_4(monkeypatch, ici):
     """Le marqueur ici, parce que l'attendu est `ok is True` : il exige cv2 ET le point
     d'entrée `lib/kumiko`, que `_verifier_kumiko` vérifie avant la version. Sans garde,
     l'`import cv2` faisait ÉCHOUER la suite d'une installation noyau au lieu de la
@@ -124,6 +137,76 @@ def test_kumiko_profond_accepte_opencv_4(monkeypatch):
     sante._reset()
     monkeypatch.setattr(cv2, "__version__", "4.13.0", raising=False)
     assert sante.profond("kumiko")["ok"] is True
+
+
+# --------------------------------------------------------------------------- #
+# L'épreuve profonde ne laisse rien dans l'application (CONC-2, 2026-11-26)
+# --------------------------------------------------------------------------- #
+_LOURDS = ("torch", "cv2", "ultralytics", "easyocr", "spacy", "thinc")
+
+_MESURE = (
+    "import json, sys\n"
+    f"sys.path.insert(0, {str(_RACINE)!r})\n"
+    "import sante\n"
+    "r = sante.rapport()\n"
+    f"print(json.dumps({{'rapport': r, 'charges': [m for m in {_LOURDS!r} "
+    "if m in sys.modules]}))\n")
+
+
+def test_l_epreuve_profonde_ne_charge_rien_dans_l_application():
+    """Mesuré en production le 2026-11-26 : après le contrôle de déploiement, qui joue
+    `/api/sante?profond=1`, l'application tenait 440 Mo et `/proc/1/maps` portait torch,
+    torchvision et cv2 — contre 78 Mo juste après un redémarrage. L'épreuve se joue donc
+    dans un processus à part, et celui qui l'appelle n'importe AUCUN moteur.
+
+    Mesuré dans un processus NEUF : celui de la suite a déjà importé cv2 ou torch par
+    d'autres tests, et n'y verrait rien. Les moteurs présents doivent répondre `ok` : un
+    processus d'à côté qui n'éprouverait rien rendrait ce test vert pour rien."""
+    fini = subprocess.run([sys.executable, "-c", _MESURE], cwd=str(_RACINE),
+                          capture_output=True, text=True, encoding="utf-8", timeout=600)
+    assert fini.returncode == 0, fini.stderr[-2000:]
+    d = json.loads(fini.stdout.strip().splitlines()[-1])
+    assert d["charges"] == [], f"l'épreuve a chargé dans l'application : {d['charges']}"
+    for moteur, module in (("bulles", "ultralytics"), ("ocr", "easyocr"), ("nlp", "spacy")):
+        if importlib.util.find_spec(module):
+            assert d["rapport"][moteur]["ok"] is True, d["rapport"][moteur]
+
+
+def test_l_epreuve_d_a_cote_rapporte_la_cause():
+    """La panne vient du processus d'à côté avec son type et son message, comme avant."""
+    r = sante._eprouver_a_part("moteur-inconnu")
+    assert r == {"ok": False, "erreur": "KeyError: 'moteur-inconnu'"}
+
+
+@pytest.mark.parametrize("code, sortie, erreurs, attendu", [
+    (-9, "", "", "code -9) : aucune sortie"),                    # tué : l'OOM, par exemple
+    (1, "", "ligne\nImportError: libtorch.so", "code 1) : ImportError: libtorch.so"),
+    (0, "pas du json", "", "code 0) : aucune sortie"),
+    (0, '{"erreur": null}', "", "sans répondre"),                # pas de `ok` : pas une réponse
+])
+def test_une_epreuve_qui_meurt_sans_repondre_est_une_panne(code, sortie, erreurs, attendu):
+    r = sante._lire_reponse(code, sortie, erreurs)
+    assert r["ok"] is False and attendu in r["erreur"] and len(r["erreur"]) <= 300
+
+
+def test_la_reponse_est_la_derniere_ligne():
+    """Une bibliothèque peut écrire pendant son import : la réponse est la dernière ligne."""
+    r = sante._lire_reponse(0, 'Downloading…\n{"ok": false, "erreur": "X: y"}\n', "")
+    assert r == {"ok": False, "erreur": "X: y"}
+
+
+def test_une_reponse_lue_fait_foi_meme_si_le_processus_tombe_ensuite():
+    """L'épreuve a répondu ; tomber en rendant ses bibliothèques n'en fait pas une panne."""
+    assert sante._lire_reponse(-11, '{"ok": true, "erreur": null}', "Segmentation fault") \
+        == {"ok": True, "erreur": None}
+
+
+def test_une_epreuve_trop_longue_est_une_panne(monkeypatch):
+    def lent(*a, **k):
+        raise subprocess.TimeoutExpired(a[0], sante.DELAI_EPREUVE)
+    monkeypatch.setattr(sante.subprocess, "run", lent)
+    r = sante._eprouver_a_part("bulles")
+    assert r["ok"] is False and f"{sante.DELAI_EPREUVE} s" in r["erreur"]
 
 
 # --------------------------------------------------------------------------- #

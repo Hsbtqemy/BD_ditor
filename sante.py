@@ -24,8 +24,18 @@ mesure rien est pire que pas de contrôle.
 
 D'où la séparation : la voie RAPIDE reste ce qu'elle était (aucune régression de latence),
 la voie PROFONDE importe réellement et dit POURQUOI quand ça échoue. Le résultat profond
-est mémorisé : un import qui a réussi ne peut pas échouer ensuite dans le même process, et
-on ne recharge pas torch à chaque appel.
+est mémorisé : l'installation ne change pas sous un processus qui tourne, et on ne relance
+pas l'épreuve à chaque appel.
+
+**L'épreuve profonde tourne dans un processus À PART** (CONC-2, 2026-11-26). Elle importait
+ultralytics, easyocr et cv2 DANS l'application, qui gardait torch jusqu'à son redémarrage :
+mesuré en production, 440 Mo après le contrôle de déploiement contre 78 Mo juste après un
+redémarrage, `/proc/1/maps` portant torch, torchvision et cv2. Le déploiement la joue à
+chaque fois, et « Éprouver » aussi. Un processus qui se termine rend toute sa mémoire, ce
+que ni un déchargement ni `malloc_trim` ne garantissent (cf. `NLP-4`). Il éprouve la même
+installation — même interpréteur, même environnement, même dépôt — et rend le même
+`{ok, erreur}` ; un processus qui meurt sans répondre (tué, délai dépassé) est une panne,
+dite comme telle.
 
 Le même cœur sert `tools/verifier_moteurs.py`, lancé À LA CONSTRUCTION de l'image — c'est
 là que le troisième cas se rattrape. La suite de tests, elle, ne le peut pas : la couche
@@ -44,7 +54,11 @@ exclu par défaut de la suite.
 """
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import threading
+from pathlib import Path
 from typing import Callable, Optional
 
 # Ce qu'il faut RÉELLEMENT importer pour prouver qu'un moteur fonctionne. Ce ne sont pas
@@ -137,15 +151,74 @@ def profond(moteur: str) -> dict:
     with _verrou:
         if moteur in _profond:
             return _profond[moteur]
-    try:
-        _CONTROLES[moteur]()
-        res = {"ok": True, "erreur": None}
-    except Exception as exc:                        # tout est bon à attraper ici : un
-        res = {"ok": False,                         # moteur cassé lève n'importe quoi
-               "erreur": f"{type(exc).__name__}: {exc}"[:300]}
+    res = _eprouver(moteur)
     with _verrou:
         _profond[moteur] = res
     return res
+
+
+def _eprouver_ici(moteur: str) -> dict:
+    """L'épreuve elle-même, dans le processus qui l'appelle — celui d'À CÔTÉ en service."""
+    try:
+        _CONTROLES[moteur]()
+        return {"ok": True, "erreur": None}
+    except Exception as exc:                        # tout est bon à attraper ici : un
+        return {"ok": False,                        # moteur cassé lève n'importe quoi
+                "erreur": f"{type(exc).__name__}: {exc}"[:300]}
+
+
+_ICI = Path(__file__).resolve().parent
+
+# Le délai d'UNE épreuve. Le contrôle de déploiement attend 120 s la réponse entière
+# (`deploy/verifier_deploiement.py`) : les épreuves se suivent, la plus lourde — torch
+# importé à froid sur le VPS — se compte en dizaines de secondes.
+DELAI_EPREUVE = 100
+
+# Le processus d'à côté : il ne fait que l'épreuve, et sa dernière ligne est la réponse.
+_ENFANT = ("import json, sys\n"
+           "sys.path.insert(0, sys.argv[1])\n"
+           "import sante\n"
+           "print(json.dumps(sante._eprouver_ici(sys.argv[2])))\n")
+
+
+def _eprouver_a_part(moteur: str) -> dict:
+    """L'épreuve dans un processus qui se termine, et rend avec lui tout ce qu'il a importé."""
+    try:
+        fini = subprocess.run(
+            [sys.executable, "-c", _ENFANT, str(_ICI), moteur], cwd=str(_ICI),
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=DELAI_EPREUVE)
+    except subprocess.TimeoutExpired:
+        return {"ok": False,
+                "erreur": f"TimeoutExpired: l'épreuve a dépassé {DELAI_EPREUVE} s"}
+    except OSError as exc:
+        return {"ok": False, "erreur": f"{type(exc).__name__}: {exc}"[:300]}
+    return _lire_reponse(fini.returncode, fini.stdout, fini.stderr)
+
+
+def _lire_reponse(code: int, sortie: Optional[str], erreurs: Optional[str]) -> dict:
+    """La réponse du processus d'à côté : sa DERNIÈRE ligne, une bibliothèque pouvant écrire
+    avant elle. Une réponse lisible fait foi quel que soit le code de sortie : l'épreuve a
+    répondu, et un processus qui tombe ENSUITE, en rendant ses bibliothèques, n'en dit rien
+    de plus. Sans réponse lisible, une panne qui dit le code de sortie (négatif : tué par
+    un signal, l'OOM compris) et la dernière ligne de ses erreurs."""
+    lignes = [l for l in (sortie or "").splitlines() if l.strip()]
+    if lignes:
+        try:
+            res = json.loads(lignes[-1])
+        except ValueError:
+            res = None
+        if isinstance(res, dict) and isinstance(res.get("ok"), bool):
+            return {"ok": res["ok"], "erreur": res.get("erreur")}
+    fin = [l for l in (erreurs or "").splitlines() if l.strip()]
+    return {"ok": False,
+            "erreur": (f"l'épreuve s'est arrêtée sans répondre (code {code}) : "
+                       f"{fin[-1] if fin else 'aucune sortie'}")[:300]}
+
+
+# Ce que `profond` appelle : à part en service ; les tests qui truquent `_CONTROLES` dans
+# CE processus le remplacent par `_eprouver_ici`.
+_eprouver: Callable[[str], dict] = _eprouver_a_part
 
 
 def rapport(moteurs: Optional[tuple] = None) -> dict:

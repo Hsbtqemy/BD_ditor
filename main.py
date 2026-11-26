@@ -2683,7 +2683,8 @@ def sante(profond: bool = False):
 
     Avec `?profond=1`, chaque moteur est RÉELLEMENT importé et le rapport dit pourquoi
     quand ça échoue. Coûteux au premier appel (torch se charge, plusieurs secondes et
-    quelques centaines de Mo), puis mémorisé. À utiliser pour diagnostiquer une instance
+    quelques centaines de Mo, dans un processus À PART qui les rend en se terminant :
+    CONC-2), puis mémorisé. À utiliser pour diagnostiquer une instance
     déployée, où l'on n'a plus d'accès shell — c'est précisément là que le contrôle rapide
     ment : le 2026-08-27 il a annoncé `bulles: true` sur une pile dont le premier
     `import ultralytics` levait une exception. Cf. `sante.py`."""
