@@ -201,6 +201,36 @@ def test_le_rattrapage_refait_ce_que_la_veille_a_laisse_et_rien_d_autre(
     assert "cheval" in _etat(db_path, note)[2].split()
 
 
+def test_une_bulle_sans_mot_de_contenu_ne_revient_pas_chaque_nuit(
+        client, planche, db_path, monkeypatch):
+    """La première nuit de production (2026-11-26) a repris 418 régions, et la seconde les
+    mêmes 418 : 362 bulles de mots vides (« C'est ça »), qui n'ont jamais de lemmes, et 56
+    de ponctuation seule (« ? »), qui n'ont jamais de token. Faites une fois, elles ne
+    reviennent plus. Et une bulle de cette sorte retouchée en veille est bien reprise : le
+    signe d'un dialogue est l'absence de token, pas celle des lemmes."""
+    vides = [_bulle(client, planche, t) for t in ("C'EST ÇA", "HA HA", "?", "… ?!")]
+    symbole = _bulle(client, planche, "♥")
+    conn = _conn(db_path)
+    try:
+        assert all(_etat(db_path, rid)[2] == "" for rid in vides[:2])   # aucun lemme
+        assert database.regions_a_rattraper(conn) == []
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("BD_NLP", "0")
+    client.put(f"/api/regions/{vides[0]}", json={"ocr_texte": "ET TOI"})
+    client.put(f"/api/regions/{symbole}", json={"ocr_texte": "♥ ♥"})
+    monkeypatch.delenv("BD_NLP")
+    conn = _conn(db_path)
+    try:
+        assert database.regions_a_rattraper(conn) == sorted([vides[0], symbole])
+        database.reindex_all(conn, regions=database.regions_a_rattraper(conn))
+        assert database.regions_a_rattraper(conn) == []
+    finally:
+        conn.close()
+    assert _etat(db_path, vides[0])[0] and _etat(db_path, symbole)[0]   # des tokens
+
+
 def test_l_outil_refuse_en_veille_sans_rien_toucher(client, planche, db_path, veille):
     """Sans moteur, `reindex_all` est une réindexation STRUCTURELLE : lancée sur le corpus,
     elle effacerait tous les tokens. En veille, l'outil ne la lance donc pas."""

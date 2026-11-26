@@ -4796,12 +4796,17 @@ def regions_a_rattraper(conn: sqlite3.Connection) -> list[int]:
     leur a laissé des lemmes vides et aucun token. C'est ce que la réindexation de nuit
     refait, et rien d'autre.
 
-    Deux signes, réunis, parce qu'aucun ne suffit seul. Un dialogue sans token : une
-    écriture sans moteur EFFACE les tokens de la région (`_index_region`) — mais les
-    lemmes, eux, peuvent ne pas être vides, une correction humaine y ajoutant les siens
-    (`_appliquer_corrections`). Des lemmes vides sur un texte ou une note : le seul signe
-    d'une note retouchée, qui ne porte jamais de token. Le prix est connu : un texte dont
-    spaCy ne tire aucun mot de contenu revient chaque nuit, pour quelques millisecondes.
+    Un signe par sorte de région, et jamais l'autre. Une région qui porte un DIALOGUE :
+    l'absence de token, et elle seule — une écriture sans moteur EFFACE les tokens de la
+    région (`_index_region`), que ce soit le texte ou la note qui ait changé. Ses lemmes ne
+    disent rien : ils ne gardent que les mots de CONTENU, si bien qu'une bulle faite de
+    mots vides (« C'est ça », « Ha ha ») n'en a jamais, et revenait chaque nuit — 362
+    régions sur 418 à la première nuit de production (2026-11-26), toutes déjà faites. Un
+    dialogue fait de PONCTUATION seule (« ? », « … ») ne donne aucun token non plus : il
+    n'est pas repris (56 des 418). Un symbole, lui, est un mot pour spaCy (« ♥ », « € »),
+    et un dialogue qui en porte reste repris s'il n'a pas de token. Une région SANS
+    dialogue : des lemmes vides sur sa note, le seul signe d'une note retouchée. Le prix
+    restant est connu : une note faite de mots vides revient chaque nuit.
 
     `region_id` est UNINDEXED dans `recherche` : on la lit en UN parcours, jamais région
     par région (la mesure du 2026-11-06, dans `reindex_all`)."""
@@ -4813,10 +4818,20 @@ def regions_a_rattraper(conn: sqlite3.Connection) -> list[int]:
             "SELECT r.id, r.ocr_texte, a.note FROM regions r "
             "LEFT JOIN annotations a ON a.region_id = r.id ORDER BY r.id"):
         dialogue = (r["ocr_texte"] or "").strip()
-        ecrit = dialogue or (r["note"] or "").strip()
-        if (dialogue and r["id"] not in avec_tokens) or (ecrit and r["id"] in sans_lemmes):
+        if dialogue:
+            if r["id"] not in avec_tokens and not _ponctuation_seule(dialogue):
+                ids.append(r["id"])
+        elif (r["note"] or "").strip() and r["id"] in sans_lemmes:
             ids.append(r["id"])
     return ids
+
+
+def _ponctuation_seule(texte: str) -> bool:
+    """Le texte n'est fait que de ponctuation Unicode (catégories P*) et d'espaces : spaCy
+    n'en tire aucun token (`nlp._extract` écarte `is_punct`), avec ou sans moteur. Un
+    symbole (catégories S*) n'en est pas : spaCy en fait un mot."""
+    import unicodedata
+    return all(unicodedata.category(ch).startswith("P") for ch in texte if not ch.isspace())
 
 
 def reindex_all(conn: sqlite3.Connection, chunk: int = 500,
