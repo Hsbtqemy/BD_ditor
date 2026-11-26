@@ -215,6 +215,13 @@ def controle_interne(service):
             print(f"    ?? {moteur:8} rapide={present}, mais le rapport profond n'a pas "
                   f"de clé « {cle_profonde} » — les noms ont divergé, relire `sante.py`")
             manques.append(f"{moteur} (clé introuvable)")   # mesuré : le rapport existe
+        elif detail.get("en_veille") and cle_profonde in (rep.get("en_veille") or []):
+            # NLP-4 : un moteur mis EN VEILLE par l'exploitation (`BD_NLP=0`, le défaut du
+            # compose) n'est ni absent ni cassé — il est coupé exprès, et la nuit le
+            # rattrape dans un processus à part. Les deux voies doivent le dire : une
+            # veille que la voie rapide ignore est une incohérence, donc une panne.
+            print(f"    -- {moteur:8} en veille (BD_NLP=0) — voulu : non chargé dans "
+                  "l'application, rattrapé la nuit")
         else:
             raison = detail.get("erreur") or "sans raison rapportée"
             print(f"    !! {moteur:8} rapide={present} mais profond={ok} — {raison}")
@@ -711,7 +718,7 @@ def main():
         print("      l'Exploration, la relecture (ANN-4) et les deux rapports d'accord")
         print("      sortent vides, sans qu'aucun message ne le dise.")
     elif not a.sans_interne and not empechement:
-        print("  Les quatre moteurs répondent réellement.")
+        print("  Aucun moteur absent ni cassé (un moteur en veille est dit plus haut).")
 
     print("\n  Restent à vérifier à la main (hors de portée d'un script) :")
     print("    · la déconnexion depuis l'UI, pas seulement via /api/moi")

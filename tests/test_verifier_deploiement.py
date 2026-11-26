@@ -146,6 +146,36 @@ def test_une_sonde_saine_ne_declare_rien(monkeypatch):
     assert (manques, empechement) == ([], None)
 
 
+# Ce que rend la sonde sur l'instance depuis NLP-4 : spaCy en veille, dit par les DEUX voies.
+_RAPPORT_EN_VEILLE = (
+    '{"kumiko": true, "bulles": true, "ocr": true, "lemmes": false, "en_veille": ["nlp"],'
+    ' "profond": {"kumiko": {"ok": true}, "bulles": {"ok": true}, "ocr": {"ok": true},'
+    ' "nlp": {"ok": false, "en_veille": true, "erreur": "en veille (BD_NLP=0)"}}}')
+
+
+def test_un_moteur_en_veille_n_est_pas_une_panne(monkeypatch, capsys):
+    """NLP-4 — la sortie du 2026-11-26 : le premier déploiement de la veille a rendu
+    « ÉCHEC — moteur(s) absents ou cassés : lemmes » sur une instance saine, pour un moteur
+    coupé exprès par le compose."""
+    _sonde(monkeypatch, _Reponse(returncode=0, stdout=_RAPPORT_EN_VEILLE))
+
+    manques, empechement = verifier_deploiement.controle_interne("app")
+
+    assert (manques, empechement) == ([], None)
+    assert "en veille" in capsys.readouterr().out
+
+
+def test_une_veille_que_la_voie_rapide_ignore_reste_une_panne(monkeypatch):
+    """Le sens inverse : le rapport profond dit « en veille » mais la voie rapide ne le dit
+    pas. Les deux lisent le même drapeau ; s'ils divergent, quelque chose est cassé."""
+    rapport = _RAPPORT_EN_VEILLE.replace('"en_veille": ["nlp"],', '"en_veille": [],')
+    _sonde(monkeypatch, _Reponse(returncode=0, stdout=rapport))
+
+    manques, _ = verifier_deploiement.controle_interne("app")
+
+    assert manques == ["lemmes"]
+
+
 # --------------------------------------------------------------------------- #
 # AUTH-6 — la lecture de l'annuaire par l'application
 # --------------------------------------------------------------------------- #
