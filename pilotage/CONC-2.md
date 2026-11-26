@@ -5,7 +5,12 @@ statut: interrompu
 
 # CONC-2 — isolation subprocess des moteurs ML (v2)
 
-**Arrêté sur** — 2026-11-25, `f2d7932` : **ROUVERT**, sur la condition que l'abandon avait
+**Arrêté sur** — 2026-11-26, `3fa3c56` : l'épreuve profonde des moteurs (`/api/sante?profond=1`,
+que jouent le contrôle de déploiement et « Éprouver ») tourne dans un processus à part, qui
+rend torch en se terminant. Ni poussé ni déployé : la case « Ni « Éprouver » ni le contrôle
+de déploiement… » se coche sur la mesure de production qui suivra.
+
+Avant cela, 2026-11-25, `f2d7932` : **ROUVERT**, sur la condition que l'abandon avait
 écrite — un process d'API réellement tué, observé et daté. En production, le conteneur a été
 tué deux fois par manque de mémoire le 2026-11-25 (la dernière à 13:00 UTC), 2,4 Go au plus
 haut. Trois commits sur `dev` : plus de va-et-vient entre les modèles torch, déchargés

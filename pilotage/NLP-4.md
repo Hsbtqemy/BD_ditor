@@ -5,7 +5,8 @@ statut: interrompu
 
 # NLP-4 — spaCy en veille, et sa place dans le processus
 
-**Arrêté sur** — 2026-11-26, `cdd0710` : spaCy est EN VEILLE en production depuis le
+**Arrêté sur** — 2026-11-26, `f4462a7` (le décor des tests navigateur reçoit la clé
+`en_veille`, oubliée depuis `a679f68`) ; avant lui, `cdd0710` : spaCy est EN VEILLE en production depuis le
 2026-11-26 (`BD_NLP=0`, posé par le compose), et le timer de nuit est posé. Le rattrapage ne
 reprend plus chaque nuit les bulles sans mot de contenu (`cdd0710`), et le contrôle de
 déploiement lit la veille comme voulue (`9698602`) ; les deux sont déployés. Restent : le
