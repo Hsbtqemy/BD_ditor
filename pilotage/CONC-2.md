@@ -10,9 +10,10 @@ statut: interrompu
 tué deux fois par manque de mémoire le 2026-11-25 (la dernière à 13:00 UTC), 2,4 Go au plus
 haut. Trois commits sur `dev` : plus de va-et-vient entre les modèles torch, déchargés
 ensemble après dix minutes sans passe, et `malloc_trim` (`75adff9`) ; `MALLOC_ARENA_MAX=2`
-dans l'image (`fd04b9f`) ; une passe automatique à la fois dans l'Atelier (`f2d7932`). Ni
-poussés ni déployés : la mesure en production et la limite mémoire du conteneur restent à
-faire.
+dans l'image (`fd04b9f`) ; une passe automatique à la fois dans l'Atelier (`f2d7932`).
+Déployés le 2026-11-26 avec la veille de spaCy (`NLP-4`). Restent : la mesure sur une
+journée d'annotation, la limite mémoire du conteneur, et l'épreuve profonde qui laisse torch
+dans l'application — mesurée le 2026-11-26, chaque DÉPLOIEMENT la joue.
 
 Avant cela, 2026-09-02 : **ABANDONNÉ**, la question de fond enfin tranchée. Le
 `Reste` restait ouvert exprès — c'était le sens de ce statut : la fiche garde son raisonnement
@@ -46,7 +47,7 @@ seule à garantir le zéro-OOM, est restée dehors.
 - [x] **L'Atelier ne lance qu'une passe automatique à la fois** — attendu : pendant une passe, un second clic sur une entrée du menu ⚙ Traitement dit « … : déjà en cours » et n'envoie aucune requête (`f2d7932`, `test_une_passe_automatique_a_la_fois`)
 - [ ] **En production, la mémoire redescend quand les passes s'arrêtent** — attendu : après le déploiement, sur une journée d'annotation où des passes tournent, `docker exec bd-app grep -E 'VmRSS|VmHWM' /proc/1/status` donne un `VmHWM` sous 1,5 Go, et un `VmRSS` sous 600 Mo quinze minutes après la dernière passe
 - [ ] **Le conteneur a une limite mémoire** — attendu : `mem_limit` et `memswap_limit`, égaux, dans `deploy/docker-compose.yml` : 2 Go d'abord, 1,5 Go une fois la case précédente mesurée. Décision de Hugo : le VPS a 3,8 Go, partagés avec d'autres projets
-- [ ] **« Éprouver » ne laisse pas torch dans l'application** — attendu : dans l'Administration, 🩺 Moteurs, « Éprouver » sur une instance où aucune passe n'a tourné, puis `docker exec bd-app grep VmRSS /proc/1/status` : la mémoire n'a pas pris les quelques centaines de Mo d'`import ultralytics` et d'`import easyocr`, qui restent jusqu'au redémarrage (`sante._verifier_bulles`, `_verifier_ocr` importent DANS le processus ; vu le 2026-11-26 en mettant spaCy en veille, `NLP-4`)
+- [ ] **Ni « Éprouver » ni le contrôle de déploiement ne laissent torch dans l'application** — attendu : après un déploiement, sans passe ni autre geste, `docker exec bd-app grep VmRSS /proc/1/status` donne moins de 150 Mo et `/proc/1/maps` ne porte ni `torch` ni `cv2` ; de même après « Éprouver » dans l'Administration, 🩺 Moteurs. Les deux passent par `/api/sante?profond=1`, dont `sante._verifier_bulles` et `_verifier_ocr` importent ultralytics et easyocr DANS le processus, où ils restent jusqu'au redémarrage. Mesuré le 2026-11-26 : 78 Mo juste après un redémarrage à la main, 440 Mo après le déploiement de `cdd0710`, `/proc/1/maps` portant torch, torchvision et cv2, sans spaCy (`NLP-4`)
 
 ## Contexte
 
